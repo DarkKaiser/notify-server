@@ -1,5 +1,22 @@
 package task
 
+// singletone 구현
+// https://blog.puppyloper.com/menus/Golang/articles/Golang%EA%B3%BC%20Singleton
+
+type TaskManager struct {
+	TaskList []Task
+	// task를 싱핼시 해당 실행 task에 대한 id를 반환하며 이 id를 이용하여 언제든 작업을 쉬소할 수 있다.
+}
+
+func (tm *TaskManager) Run(id int) {
+	for _, task := range tm.TaskList {
+		if task.Id() == id {
+			go task.Run()
+			break
+		}
+	}
+}
+
 type Task interface {
 	Id() int
 	Run() bool
