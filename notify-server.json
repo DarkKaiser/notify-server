@@ -1,0 +1,37 @@
+{
+	"debug_mode": true,
+	"torrent": {
+		"download_path": "P:\\Torrent",
+		"watch_dir": "~watch"
+	},
+	"exclude_files": [
+		"btranking.com.url"
+	],
+	"ignore_dir_chars": " .-_",
+
+
+	"tasks" : [
+		{
+			"id" : "alganicmall",
+			"commands" : [
+				{
+					"command": "command",
+					"time" : "* * * * "
+				},
+				{
+					"command": "command2",
+					"time" : "* * * * "
+				}
+			],
+			"metadata" : "",
+			"notifierid" :"telegram"
+		}
+	],
+
+	"notifiers" : [
+		{
+			"id" : "telegram",
+			"chatRoomId" : "000"
+		}
+	]
+}

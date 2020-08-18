@@ -2,7 +2,7 @@ package cron
 
 import (
 	"fmt"
-	"github.com/darkkaiser/notify-server/task"
+	_ "github.com/darkkaiser/notify-server/task"
 	"github.com/robfig/cron"
 )
 
