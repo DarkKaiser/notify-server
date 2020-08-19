@@ -1,7 +1,7 @@
 {
 	"debug_mode": true,
 	"torrent": {
-		"download_path": "P:\\Torrent",
+		"download_path": "P:\\Torrent11",
 		"watch_dir": "~watch"
 	},
 	"exclude_files": [
@@ -10,28 +10,30 @@
 	"ignore_dir_chars": " .-_",
 
 
+
+
+	"notifiers": [
+		{
+			"id": "TELEGRAM",
+			"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk"
+		}
+	],
 	"tasks" : [
 		{
-			"id" : "alganicmall",
+			"id" : "ALGANICMALL",
 			"commands" : [
 				{
-					"command": "command",
-					"time" : "* * * * "
+					"commandId": "crawing",
+					"time" : "*/1 * * * *"
 				},
 				{
-					"command": "command2",
-					"time" : "* * * * "
+					"commandId": "crawing",
+					"time" : "*/1 * * * *"
 				}
 			],
 			"metadata" : "",
 			"notifierid" :"telegram"
 		}
-	],
-
-	"notifiers" : [
-		{
-			"id" : "telegram",
-			"chatRoomId" : "000"
-		}
 	]
+
 }

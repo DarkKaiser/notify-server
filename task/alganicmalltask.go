@@ -1,14 +1,27 @@
 package task
 
+const (
+	CRAWING CommandId = "crawing"
+)
+
 type AlganicMallTask struct {
 	Task
 }
 
-func NewAlganicMallTask(id TaskId) *AlganicMallTask {
-	return &AlganicMallTask{}
+func NewAlganicMallTask(id CommandId) *AlganicMallTask {
+	return &AlganicMallTask{
+		Task: Task{
+			id:        ALGANICMALL_TASK,
+			commandId: id,
+		},
+	}
 }
 
 func (t *AlganicMallTask) Run() bool {
+	if t.CommandId() == CRAWING {
+
+	}
+
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.
 	// 각각의 데이터는 data.xxx.json 파일로 관리한다.
 	// 데이터파일에서 어떤 노티에 보내야하는지를 설정한다.(없으면 모두, 있으면 해당 노티로 보낸다, 지금은 1개)
