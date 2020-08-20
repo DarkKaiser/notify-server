@@ -1,9 +1,5 @@
 package task
 
-const (
-	CRAWING CommandId = "crawing"
-)
-
 type AlganicMallTask struct {
 	Task
 }
@@ -18,7 +14,7 @@ func NewAlganicMallTask(id CommandId) *AlganicMallTask {
 }
 
 func (t *AlganicMallTask) Run() bool {
-	if t.CommandId() == CRAWING {
+	if t.CommandId() == ALGANICMALL_COMMAND_CRAWING {
 
 	}
 

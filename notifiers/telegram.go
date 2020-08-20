@@ -1,4 +1,4 @@
-package server
+package notifiers
 
 import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -6,8 +6,12 @@ import (
 )
 
 type TelegramNotifier struct {
-	bot *tgbotapi.BotAPI
 	// 각 알림 객체는 고유의 ID를 가진다. 이건 json 파일에서 읽어올수 있도록 한다. 각 알림객체는 자신만의 데이터가 필요하기도 하다(계정정보 등)
+	bot *tgbotapi.BotAPI
+}
+
+func (t *TelegramNotifier) Id() NotifierId {
+	return NOTIFIER_TELEGRAM
 }
 
 func (t *TelegramNotifier) Init(token string) {
@@ -27,20 +31,19 @@ func (t *TelegramNotifier) Init(token string) {
 
 	updates, err := t.bot.GetUpdatesChan(u)
 
-	for update := range updates {
-		if update.Message == nil { // ignore any non-Message Updates
-			continue
-		}
+	go func() {
+		for update := range updates {
+			if update.Message == nil { // ignore any non-Message Updates
+				continue
+			}
 
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-		if update.Message.Text == "/help" {
-			t.Notify("도움말은 아직이예요")
-		}
-	}
-}
+			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-func (t *TelegramNotifier) Id() NotifierId {
-	return NOTIFIER_TELEGRAM
+			if update.Message.Text == "/help" {
+				t.Notify("도움말은 아직이예요")
+			}
+		}
+	}()
 }
 
 func (t *TelegramNotifier) Notify(m string) bool {

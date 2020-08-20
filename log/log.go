@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/darkkaiser/notify-server/global"
 	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"math"
 	"os"
 	"strings"
@@ -19,7 +19,10 @@ const (
 )
 
 func InitLog(appConfig *global.AppConfig) {
-	if appConfig.DebugMode == true {
+	log.SetLevel(log.TraceLevel)
+	log.SetFormatter(&log.TextFormatter{})
+
+	if appConfig.Debug == true {
 		return
 	}
 
@@ -38,7 +41,7 @@ func InitLog(appConfig *global.AppConfig) {
 	log.SetOutput(file)
 }
 
-func CleanOutOfLogFiles() {
+func CleanOutOfLogFiles(checkDaysAgo float64) {
 	fiList, err := ioutil.ReadDir(logFileDir)
 	if err != nil {
 		return
@@ -51,15 +54,15 @@ func CleanOutOfLogFiles() {
 			continue
 		}
 
-		outOfDays := math.Abs(t.Sub(fi.ModTime()).Hours()) / 24
-		if outOfDays >= 15. {
+		daysAgo := math.Abs(t.Sub(fi.ModTime()).Hours()) / 24
+		if daysAgo >= checkDaysAgo {
 			filePath := logFileDir + string(os.PathSeparator) + fileName
 
 			err = os.Remove(filePath)
 			if err == nil {
-				log.Printf("오래된 로그파일 삭제 성공(%s)", filePath)
+				log.Infof("오래된 로그파일 삭제 성공(%s)", filePath)
 			} else {
-				log.Printf("오래된 로그파일 삭제 실패(%s), %s", filePath, err)
+				log.Infof("오래된 로그파일 삭제 실패(%s), %s", filePath, err)
 			}
 		}
 	}

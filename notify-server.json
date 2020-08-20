@@ -1,34 +1,27 @@
 {
-	"debug_mode": true,
-	"torrent": {
-		"download_path": "P:\\Torrent11",
-		"watch_dir": "~watch"
+	"debug": true,
+	"notifiers": {
+		"telegram": [
+			{
+				"id": "darkkaiser_notify_bot",
+				"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
+				"chat_id": 297396697
+			}
+		]
 	},
-	"exclude_files": [
-		"btranking.com.url"
-	],
-	"ignore_dir_chars": " .-_",
-
-
-
-
-	"notifiers": [
-		{
-			"id": "TELEGRAM",
-			"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk"
-		}
-	],
-	"tasks" : [
+	"tasks": [
 		{
 			"id" : "ALGANICMALL",
 			"commands" : [
 				{
 					"commandId": "crawing",
-					"time" : "*/1 * * * *"
+					"time" : "*/1 * * * *",
+					"default_notifier_id": "TELEGRAM_1"
 				},
 				{
 					"commandId": "crawing",
-					"time" : "*/1 * * * *"
+					"time" : "*/1 * * * *",
+					"default_notifier_id": "TELEGRAM_1"
 				}
 			],
 			"metadata" : "",
