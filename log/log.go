@@ -18,11 +18,12 @@ const (
 	logFileExtension string = "log"
 )
 
-func InitLog(appConfig *global.AppConfig) {
+func Init(config *global.AppConfig, checkDaysAgo float64) {
 	log.SetLevel(log.TraceLevel)
+	log.SetReportCaller(true)
 	log.SetFormatter(&log.TextFormatter{})
 
-	if appConfig.Debug == true {
+	if config.Debug == true {
 		return
 	}
 
@@ -39,9 +40,12 @@ func InitLog(appConfig *global.AppConfig) {
 	utils.CheckErr(err)
 
 	log.SetOutput(file)
+
+	// 일정 시간이 지난 로그 파일을 모두 삭제한다.
+	cleanOutOfLogFiles(checkDaysAgo)
 }
 
-func CleanOutOfLogFiles(checkDaysAgo float64) {
+func cleanOutOfLogFiles(checkDaysAgo float64) {
 	fiList, err := ioutil.ReadDir(logFileDir)
 	if err != nil {
 		return

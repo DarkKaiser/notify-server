@@ -14,42 +14,39 @@ const (
 )
 
 type AppConfig struct {
-	Debug     bool      `json:"debug"`
-	Notifiers *Notifier `json:"notifiers"`
-	Tasks     []*Task   `json:"tasks"`
+	Debug     bool       `json:"debug"`
+	Notifiers *Notifiers `json:"notifiers"`
+	Tasks     []*Task    `json:"tasks"`
 }
 
-type Notifier struct {
+type Notifiers struct {
 	Telegrams []*Telegram `json:"telegram"`
 }
 
 type Telegram struct {
 	Id     string `json:"id"`
 	Token  string `json:"token"`
-	ChatID int64  `json:"chat_id"`
+	ChatId int64  `json:"chat_id"`
 }
 
-// @@@@@
 type Task struct {
-	Id         string     `json:"id"`
-	Commands   []*Command `json:"commands"`
-	Metadata   string     `json:"metadata"`
-	NotifierId string     `json:"notifierid"`
+	Id       string     `json:"id"`
+	Commands []*Command `json:"commands"`
 }
 
-// @@@@@
 type Command struct {
-	Command string `json:"commandId"`
-	Time    string `json:"time"`
+	Id         string `json:"id"`
+	TimeSpec   string `json:"time_spec"`
+	NotifierId string `json:"notifier_id"`
 }
 
 func InitAppConfig() *AppConfig {
 	data, err := ioutil.ReadFile(AppConfigFileName)
 	utils.CheckErr(err)
 
-	var appConfig AppConfig
-	err = json.Unmarshal(data, &appConfig)
+	var config AppConfig
+	err = json.Unmarshal(data, &config)
 	utils.CheckErr(err)
 
-	return &appConfig
+	return &config
 }

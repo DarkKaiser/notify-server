@@ -14,19 +14,11 @@
 			"id" : "ALGANICMALL",
 			"commands" : [
 				{
-					"commandId": "crawing",
-					"time" : "*/1 * * * *",
-					"default_notifier_id": "TELEGRAM_1"
-				},
-				{
-					"commandId": "crawing",
-					"time" : "*/1 * * * *",
-					"default_notifier_id": "TELEGRAM_1"
+					"id": "WatchNewEvents",
+					"time_spec" : "*/1 * * * *",
+					"notifier_id": "darkkaiser_notify_bot"
 				}
-			],
-			"metadata" : "",
-			"notifierid" :"telegram"
+			]
 		}
 	]
-
 }

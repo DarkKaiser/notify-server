@@ -1,21 +1,27 @@
 package main
 
 import (
-	"github.com/darkkaiser/notify-server/cron1"
+	"context"
 	"github.com/darkkaiser/notify-server/global"
 	_log_ "github.com/darkkaiser/notify-server/log"
-	"github.com/darkkaiser/notify-server/notifiers"
-	"github.com/darkkaiser/notify-server/task"
+	"github.com/darkkaiser/notify-server/service/notify"
+	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
-	"time"
+	"os"
+	"os/signal"
+	"runtime"
+	"sync"
+	"syscall"
 )
 
 func main() {
-	// 환경설정 정보를 읽어들인다.
-	appConfig := global.InitAppConfig()
+	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
 
-	// 로그를 초기화한다.
-	_log_.InitLog(appConfig)
+	// 환경설정 정보를 읽어들인다.
+	config := global.InitAppConfig()
+
+	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
+	_log_.Init(config, 30.)
 
 	log.Info("##########################################################")
 	log.Info("###                                                    ###")
@@ -25,25 +31,33 @@ func main() {
 	log.Info("###                                                    ###")
 	log.Info("##########################################################")
 
-	// 일정 시간이 지난 로그파일을 모두 삭제한다.
-	_log_.CleanOutOfLogFiles(30.)
+	log.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> START")
 
-	log.Print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> START")
+	// Set up cancellation context and waitgroup
+	serviceCtx, cancel := context.WithCancel(context.Background())
+	serviceStopWaiter := &sync.WaitGroup{}
 
 	// @@@@@
-	tm := task.TaskManager{}
-	tm.Init(appConfig)
+	////////////////////////////////
+	// serviceStopWaiter.Add(1)
+	task.NewTaskService(config, serviceCtx, serviceStopWaiter).Run()
+	notify.NewNotifyServiceGroup(config, serviceCtx, serviceStopWaiter).Run()
+	//// Start workers and Add [workerPoolSize] to WaitGroup
+	//for i := 0; i < workerPoolSize; i++ {
+	//	//go consumer.workerFunc(wg, i)
+	//}
+	////////////////////////////////
 
-	var c cron1.CronServer
-	c.Tmm = &tm
-	c.Start(appConfig)
+	// Handle sigterm and await termC signal
+	termC := make(chan os.Signal)
+	signal.Notify(termC, syscall.SIGINT, syscall.SIGTERM)
 
-	n := notifiers.NotifierManager{}
-	n.Start(appConfig)
-	//time.Sleep(3 * time.Second)
-	//n.Notify(server.NOTIFIER_TELEGRAM, "테스트메시지")
+	<-termC // Blocks here until interrupted
 
-	time.Sleep(3000 * time.Second)
+	// Handle shutdown
+	log.Info("Shutdown signal received")
+	cancel()                 // Signal cancellation to context.Context
+	serviceStopWaiter.Wait() // Block here until are workers are done
 
-	log.Print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< END")
+	log.Info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< END")
 }
