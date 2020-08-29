@@ -16,6 +16,7 @@ type alganicMallTask struct {
 	twg        *sync.WaitGroup
 }
 
+// @@@@@
 func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, commandId TaskCommandId, twg *sync.WaitGroup, taskcancel chan *struct{}, taskdone chan TaskInstanceId, ctx context.Context) (TaskHandler, error) {
 	a := &alganicMallTask{
 		task: task{
@@ -32,10 +33,12 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, com
 	return a, nil
 }
 
+// @@@@@
 func (t *alganicMallTask) Cancel() {
 	t.cancel = true
 }
 
+// @@@@@
 func (t *alganicMallTask) Run() {
 	defer t.twg.Done()
 

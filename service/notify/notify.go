@@ -11,103 +11,118 @@ import (
 type NotifierId string
 
 const (
-	NidTelegramNotifyBot NotifierId = "darkkaiser_notify_bot"
+	NidTelegramDarkKaiserNotifyBot NotifierId = "darkkaiser_notify_bot"
 )
 
-//@@@@@
-type NotifierService interface {
+type notifier struct {
+	id NotifierId
+
+	notifyStopWaiter *sync.WaitGroup
+
+	notifyServiceStopCtx context.Context
+}
+
+func (n *notifier) Id() NotifierId {
+	return n.id
+}
+
+type notifierHandler interface {
 	Id() NotifierId
-	Notify(m string) bool
+	Notify(m string) bool //@@@@@
 }
 
 // @@@@@
-type NotifyRequester interface {
-	Notify(id NotifierId, m string) (succeeded bool)
-}
+//type NotifyRequester interface {
+//	Notify(id NotifierId, m string) (succeeded bool)
+//}
 
-type notifyServiceGroup struct {
+type notifyService struct {
 	config *global.AppConfig
 
-	serviceCtx        context.Context
+	serviceStopCtx    context.Context
 	serviceStopWaiter *sync.WaitGroup
+
+	notifyStopWaiter *sync.WaitGroup
 
 	running   bool
 	runningMu sync.Mutex
 
-	//@@@@@
-	notifierServiceStopWaiter *sync.WaitGroup //@@@@@
-	notifyServiceList         []NotifierService
+	notifierHandlers []notifierHandler
 }
 
-func NewNotifyServiceGroup(config *global.AppConfig, serviceCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
-	return &notifyServiceGroup{
+func NewNotifyService(config *global.AppConfig, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
+	return &notifyService{
 		config: config,
 
-		serviceCtx:        serviceCtx,
+		serviceStopCtx:    serviceStopCtx,
 		serviceStopWaiter: serviceStopWaiter,
+
+		notifyStopWaiter: &sync.WaitGroup{},
 
 		running:   false,
 		runningMu: sync.Mutex{},
-
-		//@@@@@
-		notifierServiceStopWaiter: &sync.WaitGroup{},
 	}
 }
 
-func (sg *notifyServiceGroup) Run() {
-	sg.runningMu.Lock()
-	defer sg.runningMu.Unlock()
+func (s *notifyService) Run() {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 
-	if sg.running == true {
+	log.Debug("Notify 서비스 시작중...")
+
+	if s.running == true {
+		defer s.serviceStopWaiter.Done()
+
+		log.Warn("Notify 서비스가 이미 시작됨!!!")
+
 		return
 	}
 
-	// Telegram Notify 서비스를 시작한다.
-	for _, telegram := range sg.config.Notifiers.Telegrams {
+	// Telegram Notifier를 실행한다.
+	for _, telegram := range s.config.Notifiers.Telegrams {
 		switch NotifierId(telegram.Id) {
-		case NidTelegramNotifyBot:
-			// @@@@@
-			sg.notifierServiceStopWaiter.Add(1)
-			t := newTelegramNotifyService(sg.serviceCtx, sg.notifierServiceStopWaiter, NidTelegramNotifyBot, telegram.Token, telegram.ChatId)
-			t.Run(sg.config)
-			//sg.notifyServiceList = append(sg.notifyServiceList, &t)
+		case NidTelegramDarkKaiserNotifyBot:
+			s.notifyStopWaiter.Add(1)
+			h := newTelegramNotifier(NidTelegramDarkKaiserNotifyBot, telegram.Token, telegram.ChatId, s.notifyStopWaiter, s.serviceStopCtx)
+			s.notifierHandlers = append(s.notifierHandlers, h)
+
+			log.Debugf("'%s' Telegram Notifier가 Notify 서비스에 등록되었습니다.", NidTelegramDarkKaiserNotifyBot)
 
 		default:
-			log.Panicf("지원하지 않는 Telegram Id('%s')가 입력되었습니다.", telegram.Id)
+			log.Panicf("알 수 없는 Notifier ID가 입력되었습니다.(Notifier:Telegram, NotifierId:%s)", telegram.Id)
 		}
 	}
 
-	sg.serviceStopWaiter.Add(1)
+	// Notify 서비스를 시작한다.
 	go func() {
-		defer sg.serviceStopWaiter.Done()
+		defer s.serviceStopWaiter.Done()
 
 		select {
-		case <-sg.serviceCtx.Done():
-			log.Debug("Notify 서비스를 중지합니다.")
+		case <-s.serviceStopCtx.Done():
+			log.Debug("Notify 서비스 중지중...")
 
-			//@@@@@
-			///////////////////////////////////
-			sg.notifierServiceStopWaiter.Wait()
-			// notifyservice.wait
-			//sg.notifyServiceList.clear
+			// 등록된 모든 Notifier의 알림활동이 중지될때까지 대기한다.
+			s.notifyStopWaiter.Wait()
 
-			sg.runningMu.Lock()
-			sg.running = false
-			sg.runningMu.Unlock()
-			///////////////////////////////////
+			s.runningMu.Lock()
+			s.running = false
+			s.notifierHandlers = nil
+			s.runningMu.Unlock()
 
-			log.Debug("Notify 서비스가 중지되었습니다.")
+			log.Debug("Notify 서비스 중지됨")
 		}
 	}()
 
-	sg.running = true
+	s.running = true
+
+	log.Debug("Notify 서비스 시작됨")
 }
 
 //@@@@@
-func (sg *notifyServiceGroup) Notify(id NotifierId, m string) (succeeded bool) {
+func (s *notifyService) Notify(id NotifierId, m string) (succeeded bool) {
 	succeeded = false
 
-	for _, notifier := range sg.notifyServiceList {
+	for _, notifier := range s.notifierHandlers {
 		if notifier.Id() == id {
 			// 채널을 이용해서 메시지를 넘겨주는걸로 변경
 			notifier.Notify(m)

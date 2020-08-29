@@ -75,7 +75,7 @@ type TaskHandler interface {
 type taskService struct {
 	config *global.AppConfig
 
-	serviceCtx        context.Context
+	serviceStopCtx    context.Context
 	serviceStopWaiter *sync.WaitGroup
 
 	running   bool
@@ -95,11 +95,11 @@ type taskService struct {
 	twg            *sync.WaitGroup
 }
 
-func NewTaskService(config *global.AppConfig, serviceCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
+func NewTaskService(config *global.AppConfig, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
 	return &taskService{
 		config: config,
 
-		serviceCtx:        serviceCtx,
+		serviceStopCtx:    serviceStopCtx,
 		serviceStopWaiter: serviceStopWaiter,
 
 		running:   false,
@@ -124,42 +124,47 @@ func (s *taskService) Run() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
+	log.Debug("Task 서비스 시작중...")
+
 	if s.running == true {
+		defer s.serviceStopWaiter.Done()
+
+		log.Warn("Task 서비스가 이미 시작됨!!!")
+
 		return
 	}
 
-	s.serviceStopWaiter.Add(1)
-	go func() {
-		defer s.serviceStopWaiter.Done()
-
-		s._run_()
-	}()
-
-	s.running = true
-}
-
-func (s *taskService) _run_() {
 	// Task 스케쥴러를 시작한다.
 	s.scheduler.Start(s.config, s)
+
+	go s._running_()
+
+	s.running = true
+
+	log.Debug("Task 서비스 시작됨")
+}
+
+func (s *taskService) _running_() {
+	defer s.serviceStopWaiter.Done()
 
 	for {
 		select {
 		case taskRunData := <-s.taskRunRequestC:
-			log.Debugf("새로운 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+			log.Debugf("새 Task 실행 요청 수신(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 
 			switch taskRunData.id {
 			case TidAlganicMall:
 				// @@@@@
 				s.twg.Add(1)
-				addUint64 := s.taskInstanceIdGenerator.New()
-				// addUint64 := TaskInstanceId(atomic.AddUint64((*uint64)(&latestInstanceId), 1))
-				taskHandler, err := newAlganicMallTask(addUint64, taskRunData, taskRunData.commandId, s.twg, s.taskcancelChan, s.taskdone, taskRunData.ctx)
+				instanceId := s.taskInstanceIdGenerator.New()
+				taskHandler, err := newAlganicMallTask(instanceId, taskRunData, taskRunData.commandId, s.twg, s.taskcancelChan, s.taskdone, taskRunData.ctx)
 				println(err)
 				// @@@@@ task 실행중 취소하는 방법은?
-				s.RunningTasks[addUint64] = taskHandler
+				s.RunningTasks[instanceId] = taskHandler
 				go taskHandler.Run()
 
 			default:
+				// @@@@@ notify
 				log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 			}
 
@@ -182,8 +187,8 @@ func (s *taskService) _run_() {
 			delete(s.RunningTasks, 0)
 			// @@@@@ 해당 task만 취소되어야됨
 
-		case <-s.serviceCtx.Done():
-			log.Debug("Task 서비스를 중지합니다.")
+		case <-s.serviceStopCtx.Done():
+			log.Debug("Task 서비스 중지중...")
 
 			// Task 스케쥴러를 중지한다.
 			s.scheduler.Stop()
@@ -200,7 +205,7 @@ func (s *taskService) _run_() {
 			s.running = false
 			s.runningMu.Unlock()
 
-			log.Debug("Task 서비스가 중지되었습니다.")
+			log.Debug("Task 서비스 중지됨")
 
 			return
 		}

@@ -2,115 +2,103 @@ package notify
 
 import (
 	"context"
-	"github.com/darkkaiser/notify-server/global"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
-type telegramNotifyService struct {
-	serviceCtx        context.Context
-	serviceStopWaiter *sync.WaitGroup
+type telegramNotifier struct {
+	notifier
 
-	id     NotifierId
-	token  string
-	chatId int64
-
-	// @@@@@@
-	// 각 알림 객체는 고유의 ID를 가진다. 이건 json 파일에서 읽어올수 있도록 한다. 각 알림객체는 자신만의 데이터가 필요하기도 하다(계정정보 등)
 	bot *tgbotapi.BotAPI
+
+	chatId int64
 }
 
-// @@@@@
-func newTelegramNotifyService(serviceCtx context.Context, serviceStopWaiter *sync.WaitGroup, id NotifierId, token string, chatId int64) *telegramNotifyService {
-	return &telegramNotifyService{
-		serviceCtx:        serviceCtx,
-		serviceStopWaiter: serviceStopWaiter,
+func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopWaiter *sync.WaitGroup, notifyServiceStopCtx context.Context) notifierHandler {
+	notifier := &telegramNotifier{
+		notifier: notifier{
+			id:                   id,
+			notifyStopWaiter:     notifyStopWaiter,
+			notifyServiceStopCtx: notifyServiceStopCtx,
+		},
 
-		id:     id,
-		token:  token,
 		chatId: chatId,
 	}
-}
 
-// @@@@@
-func (s *telegramNotifyService) Run(*global.AppConfig) {
-	// 파일에서 데이터 읽어오고 객체 초기화
+	// 텔레그램 봇을 생성한다.
 	var err error
-	s.bot, err = tgbotapi.NewBotAPI(s.token)
+	notifier.bot, err = tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	s.bot.Debug = true
+	notifier.bot.Debug = true
 
-	log.Printf("Authorized on account %s", s.bot.Self.UserName)
+	config := tgbotapi.NewUpdate(0)
+	config.Timeout = 60
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	updateC, err := notifier.bot.GetUpdatesChan(config)
 
-	updates, err := s.bot.GetUpdatesChan(u)
+	go notifier._running_(updateC)
 
-	go func() {
-		defer s.serviceStopWaiter.Done()
+	log.Debugf("'%s' Telegram Notifier의 알림활동이 시작됨(Authorized on account %s)", notifier.id, notifier.bot.Self.UserName)
 
-		for {
-			select {
-			case update := <-updates:
-				if update.Message == nil { // ignore any non-Message Updates
-					continue
-				}
+	return notifier
+}
 
-				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+func (n *telegramNotifier) _running_(updateC tgbotapi.UpdatesChannel) {
+	defer n.notifyStopWaiter.Done()
 
-				if update.Message.Text == "/help" {
-					s.Notify("도움말은 아직이예요")
-				} else if update.Message.Text == "/new_alganicmall_event" {
-					ctx := context.Background()
-					ctx = context.WithValue(ctx, "chatId", update.Message.Chat.ID)
-					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
-
-					//					add <- struct {
-					//						taskId : TI_ALGANICMALL,
-					//						commandId : TCI_ALGANICMALL_CRAWING,
-					//						ctx : ctx,
-					//					}
-				}
-				//			case receive<-notifymessage:받을때 context를 그대로 받는다.
-				//				msg := tgbotapi.NewMessage(297396697, m)
-				//				//msg.ReplyToMessageID = update.Message.MessageID
-				//				s.bot.Send(msg)
-			case <-s.serviceCtx.Done():
-				log.Info("telegram 종료중...")
-				//close(tm.add)
-				//close(tm.cancel)
-				//close(tm.taskcancel)
-				//n.twg.Wait()
-				log.Info("telegram 종료됨")
-				return
+	for {
+		select {
+		case update := <-updateC:
+			// ignore any non-Message Updates
+			if update.Message == nil {
+				continue
 			}
+
+			// 등록되지 않은 ChatID인 경우는 무시한다.
+			if update.Message.Chat.ID != n.chatId {
+				continue
+			}
+
+			// @@@@@
+			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+			if update.Message.Text == "/help" {
+				n.Notify("도움말은 아직이예요")
+			} else if update.Message.Text == "/new_alganicmall_event" {
+				ctx := context.Background()
+				ctx = context.WithValue(ctx, "chatId", update.Message.Chat.ID)
+				ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
+
+				//					add <- struct {
+				//						taskId : TI_ALGANICMALL,
+				//						commandId : TCI_ALGANICMALL_CRAWING,
+				//						ctx : ctx,
+				//					}
+			}
+			//			case receive<-notifymessage:받을때 context를 그대로 받는다.
+			//				msg := tgbotapi.NewMessage(297396697, m)
+			//				//msg.ReplyToMessageID = update.Message.MessageID
+			//				s.bot.Send(msg)
+
+		case <-n.notifyServiceStopCtx.Done():
+			n.bot.StopReceivingUpdates()
+
+			log.Debugf("'%s' Telegram Notifier의 알림활동이 중지됨", n.id)
+
+			return
 		}
-
-		//		for update := range updates {
-		//		}
-	}()
-}
-
-// @@@@@
-func (s *telegramNotifyService) _run_() {
-
-}
-
-// @@@@@
-func (s *telegramNotifyService) Id() NotifierId {
-	return s.id
+	}
 }
 
 //@@@@@ XXXXX channel로 수신
-func (s *telegramNotifyService) Notify(m string) bool {
-	msg := tgbotapi.NewMessage(297396697, m)
+func (n *telegramNotifier) Notify(m string) bool {
+	msg := tgbotapi.NewMessage(n.chatId, m)
 	//msg.ReplyToMessageID = update.Message.MessageID
-	s.bot.Send(msg)
+	n.bot.Send(msg)
 
 	return true
 }

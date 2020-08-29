@@ -43,7 +43,7 @@ func (s *scheduler) Start(config *global.AppConfig, r TaskRunRequester) {
 
 	s.running = true
 
-	log.Debug("Task 스케쥴러가 시작되었습니다.")
+	log.Debug("Task 스케쥴러 시작됨")
 }
 
 func (s *scheduler) Stop() {
@@ -59,5 +59,5 @@ func (s *scheduler) Stop() {
 
 	s.running = false
 
-	log.Debug("Task 스케쥴러가 중지되었습니다.")
+	log.Debug("Task 스케쥴러 중지됨")
 }

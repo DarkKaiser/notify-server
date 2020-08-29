@@ -34,18 +34,14 @@ func main() {
 	log.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> START")
 
 	// Set up cancellation context and waitgroup
-	serviceCtx, cancel := context.WithCancel(context.Background())
+	serviceStopCtx, cancel := context.WithCancel(context.Background())
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// @@@@@
 	////////////////////////////////
-	// serviceStopWaiter.Add(1)
-	task.NewTaskService(config, serviceCtx, serviceStopWaiter).Run()
-	notify.NewNotifyServiceGroup(config, serviceCtx, serviceStopWaiter).Run()
-	//// Start workers and Add [workerPoolSize] to WaitGroup
-	//for i := 0; i < workerPoolSize; i++ {
-	//	//go consumer.workerFunc(wg, i)
-	//}
+	serviceStopWaiter.Add(2)
+	task.NewTaskService(config, serviceStopCtx, serviceStopWaiter).Run()
+	notify.NewNotifyService(config, serviceStopCtx, serviceStopWaiter).Run()
 	////////////////////////////////
 
 	// Handle sigterm and await termC signal
