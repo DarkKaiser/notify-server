@@ -1,68 +1,60 @@
 package task
 
 import (
-	"context"
 	"sync"
 	"time"
 )
 import log "github.com/sirupsen/logrus"
 
-// @@@@@
 type alganicMallTask struct {
 	task
-	cancel     bool
-	taskcancel chan *struct{}
-	taskdone   chan TaskInstanceId
-	twg        *sync.WaitGroup
+
+	// @@@@@
+	taskDone       chan<- TaskInstanceId
+	taskStopWaiter *sync.WaitGroup
 }
 
-// @@@@@
-func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, commandId TaskCommandId, twg *sync.WaitGroup, taskcancel chan *struct{}, taskdone chan TaskInstanceId, ctx context.Context) (TaskHandler, error) {
-	a := &alganicMallTask{
+func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId) (taskHandler, error) {
+	task := &alganicMallTask{
 		task: task{
-			id:         TidAlganicMall,
-			commandId:  commandId,
+			id:         taskRunData.id,
+			commandId:  taskRunData.commandId,
 			instanceId: instanceId,
-			ctx:        ctx,
+
+			cancel: false,
+
+			ctx: taskRunData.ctx,
 		},
-		taskcancel: taskcancel,
-		taskdone:   taskdone,
-		twg:        twg,
+
+		// @@@@@
+		taskDone:       taskDone,
+		taskStopWaiter: taskStopWaiter,
 	}
 
-	return a, nil
-}
-
-// @@@@@
-func (t *alganicMallTask) Cancel() {
-	t.cancel = true
+	// @@@@@
+	return task, nil
 }
 
 // @@@@@
 func (t *alganicMallTask) Run() {
-	defer t.twg.Done()
+	defer t.taskStopWaiter.Done()
 
 	if t.CommandId() == TcidAlganicMallWatchNewEvents {
-		for {
-			select {
-			case <-t.taskcancel:
-				// @@@@@ 작업 시간이 길경우 taskcancelChan 이벤트를 바로 못받음, 작업이 모두 끝나야 받을 수 있음
-				log.Info("$$$$$$$$$$$$$$$$ alganicMallTask 종료됨")
-				return
-			default:
-				for i := 0; i < 10; i++ {
-					log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
-					time.Sleep(1 * time.Second)
+		for i := 0; i < 10; i++ {
+			log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
+			time.Sleep(1 * time.Second)
 
-					if t.cancel == true {
-						// 종료처리필요
-						break
-					}
-				}
-
-				t.taskdone <- t.instanceId
+			if t.cancel == true {
+				// 종료처리필요
+				break
 			}
 		}
+
+		if t.cancel == false {
+			// notify??
+		}
+
+		t.taskDone <- t.instanceId
 	}
 
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.

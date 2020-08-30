@@ -34,7 +34,10 @@ type task struct {
 	id         TaskId
 	commandId  TaskCommandId
 	instanceId TaskInstanceId
-	ctx        context.Context //@@@@@
+
+	cancel bool
+
+	ctx context.Context
 }
 
 func (t *task) Id() TaskId {
@@ -49,23 +52,28 @@ func (t *task) InstanceId() TaskInstanceId {
 	return t.instanceId
 }
 
-// @@@@@
+// @@@@@ setcancel???
+func (t *task) Cancel() {
+	t.cancel = true
+}
+
 func (t *task) Context() context.Context {
 	return t.ctx
 }
 
 type TaskRunRequester interface {
 	TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool)
+	TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool)
 }
 
 type taskRunData struct {
 	id        TaskId
 	commandId TaskCommandId
-	ctx       context.Context // @@@@@
+	ctx       context.Context
 }
 
 // @@@@@
-type TaskHandler interface {
+type taskHandler interface {
 	InstanceId() TaskInstanceId
 	Run()
 	Cancel()
@@ -74,9 +82,6 @@ type TaskHandler interface {
 
 type taskService struct {
 	config *global.AppConfig
-
-	serviceStopCtx    context.Context
-	serviceStopWaiter *sync.WaitGroup
 
 	running   bool
 	runningMu sync.Mutex
@@ -88,19 +93,15 @@ type taskService struct {
 	taskRunRequestC chan *taskRunData
 
 	// @@@@@
-	RunningTasks   map[TaskInstanceId]TaskHandler
-	cancelChan     chan *struct{}
-	taskcancelChan chan *struct{}
-	taskdone       chan TaskInstanceId
-	twg            *sync.WaitGroup
+	runTaskHandlers map[TaskInstanceId]taskHandler
+	cancelChan      chan *struct{}
+	taskdone        chan TaskInstanceId
+	taskStopWaiter  *sync.WaitGroup
 }
 
-func NewTaskService(config *global.AppConfig, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
+func NewTaskService(config *global.AppConfig) service.Service {
 	return &taskService{
 		config: config,
-
-		serviceStopCtx:    serviceStopCtx,
-		serviceStopWaiter: serviceStopWaiter,
 
 		running:   false,
 		runningMu: sync.Mutex{},
@@ -112,22 +113,21 @@ func NewTaskService(config *global.AppConfig, serviceStopCtx context.Context, se
 		taskRunRequestC: make(chan *taskRunData, 10),
 
 		// @@@@@
-		RunningTasks:   make(map[TaskInstanceId]TaskHandler),
-		cancelChan:     make(chan *struct{}, 10),
-		taskdone:       make(chan TaskInstanceId, 10),
-		twg:            &sync.WaitGroup{},
-		taskcancelChan: make(chan *struct{}, 10),
+		runTaskHandlers: make(map[TaskInstanceId]taskHandler),
+		cancelChan:      make(chan *struct{}, 10),
+		taskdone:        make(chan TaskInstanceId, 10),
+		taskStopWaiter:  &sync.WaitGroup{},
 	}
 }
 
-func (s *taskService) Run() {
+func (s *taskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Task 서비스 시작중...")
 
 	if s.running == true {
-		defer s.serviceStopWaiter.Done()
+		defer serviceStopWaiter.Done()
 
 		log.Warn("Task 서비스가 이미 시작됨!!!")
 
@@ -137,16 +137,18 @@ func (s *taskService) Run() {
 	// Task 스케쥴러를 시작한다.
 	s.scheduler.Start(s.config, s)
 
-	go s._running_()
+	go func() {
+		defer serviceStopWaiter.Done()
+
+		s.run0(serviceStopCtx)
+	}()
 
 	s.running = true
 
 	log.Debug("Task 서비스 시작됨")
 }
 
-func (s *taskService) _running_() {
-	defer s.serviceStopWaiter.Done()
-
+func (s *taskService) run0(serviceStopCtx context.Context) {
 	for {
 		select {
 		case taskRunData := <-s.taskRunRequestC:
@@ -154,51 +156,58 @@ func (s *taskService) _running_() {
 
 			switch taskRunData.id {
 			case TidAlganicMall:
-				// @@@@@
-				s.twg.Add(1)
+				// @@@@@ mutex lock???
+				s.taskStopWaiter.Add(1)
 				instanceId := s.taskInstanceIdGenerator.New()
-				taskHandler, err := newAlganicMallTask(instanceId, taskRunData, taskRunData.commandId, s.twg, s.taskcancelChan, s.taskdone, taskRunData.ctx)
+				// @@@@@
+				h, err := newAlganicMallTask(instanceId, taskRunData, s.taskStopWaiter, s.taskdone)
 				println(err)
 				// @@@@@ task 실행중 취소하는 방법은?
-				s.RunningTasks[instanceId] = taskHandler
-				go taskHandler.Run()
+				s.runTaskHandlers[instanceId] = h
+				go h.Run()
 
 			default:
 				// @@@@@ notify
 				log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 			}
 
-			// @@@@@
+			// @@@@@ task 작업 완료
 		case id2 := <-s.taskdone:
+			// @@@@@ mutex lock???
 			//log.Info("##### 완료 task 수신됨: " + strconv.Itoa(id2))
 			// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
-			//				handler := s.RunningTasks[newId]
+			//				handler := s.runTaskHandlers[newId]
 			//ctx2 := handler.Context()
 			//notifyserverChan<- struct {
 			//				message:
 			//					ctx : ctx2
 			//				}
-			delete(s.RunningTasks, id2)
+			delete(s.runTaskHandlers, id2)
 
-			// @@@@@
+			// @@@@@ notifier로부터 취소 명령이 들어온경우
 		case <-s.cancelChan:
-			taskHandler := s.RunningTasks[0]
+			// @@@@@ mutex lock???
+			taskHandler := s.runTaskHandlers[0]
 			taskHandler.Cancel()
-			delete(s.RunningTasks, 0)
+			delete(s.runTaskHandlers, 0)
 			// @@@@@ 해당 task만 취소되어야됨
 
-		case <-s.serviceStopCtx.Done():
+		case <-serviceStopCtx.Done():
 			log.Debug("Task 서비스 중지중...")
 
 			// Task 스케쥴러를 중지한다.
 			s.scheduler.Stop()
 
-			// @@@@@
+			// @@@@@ 아래 블럭도 mutex를 감싸야하나?
 			/////////////////
+			// @@@@@ mutex lock???
+			for _, handler := range s.runTaskHandlers {
+				handler.Cancel()
+			}
 			close(s.taskRunRequestC)
 			close(s.cancelChan)
-			close(s.taskcancelChan)
-			s.twg.Wait()
+			close(s.taskdone)
+			s.taskStopWaiter.Wait()
 			/////////////////
 
 			s.runningMu.Lock()
@@ -213,6 +222,10 @@ func (s *taskService) _running_() {
 }
 
 func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool) {
+	return s.TaskRunWithContext(id, commandId, nil)
+}
+
+func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -224,6 +237,7 @@ func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId) (succeeded boo
 	s.taskRunRequestC <- &taskRunData{
 		id:        id,
 		commandId: commandId,
+		ctx:       ctx,
 	}
 
 	return true

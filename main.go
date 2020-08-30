@@ -39,9 +39,12 @@ func main() {
 
 	// @@@@@
 	////////////////////////////////
+	taskService := task.NewTaskService(config)
+	notifyService := notify.NewNotifyService(config)
+
 	serviceStopWaiter.Add(2)
-	task.NewTaskService(config, serviceStopCtx, serviceStopWaiter).Run()
-	notify.NewNotifyService(config, serviceStopCtx, serviceStopWaiter).Run()
+	taskService.Run(serviceStopCtx, serviceStopWaiter)
+	notifyService.Run(serviceStopCtx, serviceStopWaiter)
 	////////////////////////////////
 
 	// Handle sigterm and await termC signal

@@ -16,10 +16,6 @@ const (
 
 type notifier struct {
 	id NotifierId
-
-	notifyStopWaiter *sync.WaitGroup
-
-	notifyServiceStopCtx context.Context
 }
 
 func (n *notifier) Id() NotifierId {
@@ -31,59 +27,48 @@ type notifierHandler interface {
 	Notify(m string) bool //@@@@@
 }
 
-// @@@@@
-//type NotifyRequester interface {
-//	Notify(id NotifierId, m string) (succeeded bool)
-//}
-
 type notifyService struct {
 	config *global.AppConfig
-
-	serviceStopCtx    context.Context
-	serviceStopWaiter *sync.WaitGroup
-
-	notifyStopWaiter *sync.WaitGroup
 
 	running   bool
 	runningMu sync.Mutex
 
 	notifierHandlers []notifierHandler
+
+	notifyStopWaiter *sync.WaitGroup
 }
 
-func NewNotifyService(config *global.AppConfig, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) service.Service {
+func NewNotifyService(config *global.AppConfig) service.Service {
 	return &notifyService{
 		config: config,
 
-		serviceStopCtx:    serviceStopCtx,
-		serviceStopWaiter: serviceStopWaiter,
-
-		notifyStopWaiter: &sync.WaitGroup{},
-
 		running:   false,
 		runningMu: sync.Mutex{},
+
+		notifyStopWaiter: &sync.WaitGroup{},
 	}
 }
 
-func (s *notifyService) Run() {
+func (s *notifyService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Notify 서비스 시작중...")
 
 	if s.running == true {
-		defer s.serviceStopWaiter.Done()
+		defer serviceStopWaiter.Done()
 
 		log.Warn("Notify 서비스가 이미 시작됨!!!")
 
 		return
 	}
 
-	// Telegram Notifier를 실행한다.
+	// Telegram Notifier의 알림활동을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
 		switch NotifierId(telegram.Id) {
 		case NidTelegramDarkKaiserNotifyBot:
 			s.notifyStopWaiter.Add(1)
-			h := newTelegramNotifier(NidTelegramDarkKaiserNotifyBot, telegram.Token, telegram.ChatId, s.notifyStopWaiter, s.serviceStopCtx)
+			h := newTelegramNotifier(NidTelegramDarkKaiserNotifyBot, telegram.Token, telegram.ChatId, serviceStopCtx, s.notifyStopWaiter)
 			s.notifierHandlers = append(s.notifierHandlers, h)
 
 			log.Debugf("'%s' Telegram Notifier가 Notify 서비스에 등록되었습니다.", NidTelegramDarkKaiserNotifyBot)
@@ -95,10 +80,10 @@ func (s *notifyService) Run() {
 
 	// Notify 서비스를 시작한다.
 	go func() {
-		defer s.serviceStopWaiter.Done()
+		defer serviceStopWaiter.Done()
 
 		select {
-		case <-s.serviceStopCtx.Done():
+		case <-serviceStopCtx.Done():
 			log.Debug("Notify 서비스 중지중...")
 
 			// 등록된 모든 Notifier의 알림활동이 중지될때까지 대기한다.
@@ -122,6 +107,7 @@ func (s *notifyService) Run() {
 func (s *notifyService) Notify(id NotifierId, m string) (succeeded bool) {
 	succeeded = false
 
+	// runningMu lock???
 	for _, notifier := range s.notifierHandlers {
 		if notifier.Id() == id {
 			// 채널을 이용해서 메시지를 넘겨주는걸로 변경

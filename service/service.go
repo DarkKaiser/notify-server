@@ -1,5 +1,10 @@
 package service
 
+import (
+	"context"
+	"sync"
+)
+
 type Service interface {
-	Run()
+	Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup)
 }

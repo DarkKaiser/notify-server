@@ -10,17 +10,15 @@ import (
 type telegramNotifier struct {
 	notifier
 
-	bot *tgbotapi.BotAPI
-
 	chatId int64
+
+	bot *tgbotapi.BotAPI
 }
 
-func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopWaiter *sync.WaitGroup, notifyServiceStopCtx context.Context) notifierHandler {
+func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
-			id:                   id,
-			notifyStopWaiter:     notifyStopWaiter,
-			notifyServiceStopCtx: notifyServiceStopCtx,
+			id: id,
 		},
 
 		chatId: chatId,
@@ -40,15 +38,15 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopWa
 
 	updateC, err := notifier.bot.GetUpdatesChan(config)
 
-	go notifier._running_(updateC)
+	go notifier.run0(updateC, notifyStopCtx, notifyStopWaiter)
 
 	log.Debugf("'%s' Telegram Notifier의 알림활동이 시작됨(Authorized on account %s)", notifier.id, notifier.bot.Self.UserName)
 
 	return notifier
 }
 
-func (n *telegramNotifier) _running_(updateC tgbotapi.UpdatesChannel) {
-	defer n.notifyStopWaiter.Done()
+func (n *telegramNotifier) run0(updateC tgbotapi.UpdatesChannel, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
+	defer notifyStopWaiter.Done()
 
 	for {
 		select {
@@ -69,6 +67,7 @@ func (n *telegramNotifier) _running_(updateC tgbotapi.UpdatesChannel) {
 			if update.Message.Text == "/help" {
 				n.Notify("도움말은 아직이예요")
 			} else if update.Message.Text == "/new_alganicmall_event" {
+				// @@@@@ 텔레그램으로 취소할수있는 메시지를 보내야함
 				ctx := context.Background()
 				ctx = context.WithValue(ctx, "chatId", update.Message.Chat.ID)
 				ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
@@ -84,7 +83,7 @@ func (n *telegramNotifier) _running_(updateC tgbotapi.UpdatesChannel) {
 			//				//msg.ReplyToMessageID = update.Message.MessageID
 			//				s.bot.Send(msg)
 
-		case <-n.notifyServiceStopCtx.Done():
+		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
 
 			log.Debugf("'%s' Telegram Notifier의 알림활동이 중지됨", n.id)
