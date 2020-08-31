@@ -72,14 +72,16 @@ type taskRunData struct {
 	ctx       context.Context
 }
 
-// @@@@@
 type taskHandler interface {
 	Id() TaskId
 	CommandId() TaskCommandId
 	InstanceId() TaskInstanceId
+
 	Context() context.Context
 
 	Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId)
+
+	// @@@@@
 	Cancel()
 }
 
@@ -95,13 +97,11 @@ type taskService struct {
 
 	taskInstanceIdGenerator taskInstanceIdGenerator
 
-	taskRunRequestC chan *taskRunData
+	taskDoneC          chan TaskInstanceId
+	taskRunRequestC    chan *taskRunData
+	taskCancelRequestC chan TaskInstanceId
 
 	taskStopWaiter *sync.WaitGroup
-
-	// @@@@@
-	cancelChan chan *struct{}
-	taskDone   chan TaskInstanceId
 }
 
 func NewTaskService(config *global.AppConfig) service.Service {
@@ -117,13 +117,11 @@ func NewTaskService(config *global.AppConfig) service.Service {
 
 		taskInstanceIdGenerator: taskInstanceIdGenerator{id: 0},
 
-		taskRunRequestC: make(chan *taskRunData, 10),
+		taskDoneC:          make(chan TaskInstanceId, 10),
+		taskRunRequestC:    make(chan *taskRunData, 10),
+		taskCancelRequestC: make(chan TaskInstanceId, 10),
 
 		taskStopWaiter: &sync.WaitGroup{},
-
-		// @@@@@
-		cancelChan: make(chan *struct{}, 10),
-		taskDone:   make(chan TaskInstanceId, 10),
 	}
 }
 
@@ -187,10 +185,9 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
-			go h.Run(s.taskStopWaiter, s.taskDone)
+			go h.Run(s.taskStopWaiter, s.taskDoneC)
 
-			// @@@@@ task 작업 완료
-		case id2 := <-s.taskDone:
+		case instanceId := <-s.taskDoneC:
 			// @@@@@ mutex lock???
 			//log.Info("##### 완료 task 수신됨: " + strconv.Itoa(id2))
 			// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
@@ -200,15 +197,19 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			//				message:
 			//					ctx : ctx2
 			//				}
-			delete(s.taskHandlers, id2)
+			s.runningMu.Lock()
+			delete(s.taskHandlers, instanceId)
+			s.runningMu.Unlock()
 
 			// @@@@@ notifier로부터 취소 명령이 들어온경우
-		case <-s.cancelChan:
-			// @@@@@ mutex lock???
-			taskHandler := s.taskHandlers[0]
-			taskHandler.Cancel()
-			delete(s.taskHandlers, 0)
-			// @@@@@ 해당 task만 취소되어야됨
+		case instanceId := <-s.taskCancelRequestC:
+			// @@@@@
+			s.runningMu.Lock()
+			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
+				taskHandler.Cancel()
+				delete(s.taskHandlers, instanceId)
+			}
+			s.runningMu.Unlock()
 
 		case <-serviceStopCtx.Done():
 			log.Debug("Task 서비스 중지중...")
@@ -218,13 +219,14 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			// @@@@@ 아래 블럭도 mutex를 감싸야하나?
 			/////////////////
-			// @@@@@ mutex lock???
+			s.runningMu.Lock()
 			for _, handler := range s.taskHandlers {
 				handler.Cancel()
 			}
+			s.runningMu.Unlock()
 			close(s.taskRunRequestC)
-			close(s.cancelChan)
-			close(s.taskDone)
+			close(s.taskCancelRequestC)
+			close(s.taskDoneC)
 			s.taskStopWaiter.Wait()
 			/////////////////
 

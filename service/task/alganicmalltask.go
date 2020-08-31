@@ -1,10 +1,10 @@
 package task
 
 import (
+	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
-import log "github.com/sirupsen/logrus"
 
 type alganicMallTask struct {
 	task
@@ -26,26 +26,35 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 	return task
 }
 
-func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId) {
+func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
 	defer taskStopWaiter.Done()
 
-	// @@@@@
-	if t.CommandId() == TcidAlganicMallWatchNewEvents {
-		for i := 0; i < 10; i++ {
-			log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
-			time.Sleep(1 * time.Second)
+	switch t.CommandId() {
+	case TcidAlganicMallWatchNewEvents:
+		t.runWatchNewEvents()
 
-			if t.cancel == true {
-				// 종료처리필요
-				break
-			}
+	default:
+		// @@@@@ 로그 메시지 출력+notify
+	}
+
+	// @@@@@ cancel된것도 보내나?
+
+	taskDoneC <- t.instanceId
+}
+
+func (t *alganicMallTask) runWatchNewEvents() {
+	for i := 0; i < 10; i++ {
+		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
+		time.Sleep(1 * time.Second)
+
+		if t.cancel == true {
+			// 종료처리필요
+			break
 		}
+	}
 
-		if t.cancel == false {
-			// notify??
-		}
-
-		taskDone <- t.instanceId
+	if t.cancel == false {
+		// notify??
 	}
 
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.
@@ -61,4 +70,5 @@ func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- Ta
 	//	 프로그램 시작시 메시지를 같이 넘기고 그 결과를 전송받아야 한다.
 	//	 결과는 프로그램 콘솔에 찍힌걸 읽어올수 있으면 이걸 사용
 	//	 안되면 결과파일을 지정해서 넘겨주고 종료시 이 결과파일을 분석
+
 }
