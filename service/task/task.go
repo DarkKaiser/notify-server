@@ -91,15 +91,17 @@ type taskService struct {
 
 	scheduler scheduler
 
+	taskHandlers map[TaskInstanceId]taskHandler
+
 	taskInstanceIdGenerator taskInstanceIdGenerator
 
 	taskRunRequestC chan *taskRunData
 
-	// @@@@@
-	taskHandlers   map[TaskInstanceId]taskHandler
-	cancelChan     chan *struct{}
-	taskDone       chan TaskInstanceId
 	taskStopWaiter *sync.WaitGroup
+
+	// @@@@@
+	cancelChan chan *struct{}
+	taskDone   chan TaskInstanceId
 }
 
 func NewTaskService(config *global.AppConfig) service.Service {
@@ -111,15 +113,17 @@ func NewTaskService(config *global.AppConfig) service.Service {
 
 		scheduler: scheduler{},
 
+		taskHandlers: make(map[TaskInstanceId]taskHandler),
+
 		taskInstanceIdGenerator: taskInstanceIdGenerator{id: 0},
 
 		taskRunRequestC: make(chan *taskRunData, 10),
 
-		// @@@@@
-		taskHandlers:   make(map[TaskInstanceId]taskHandler),
-		cancelChan:     make(chan *struct{}, 10),
-		taskDone:       make(chan TaskInstanceId, 10),
 		taskStopWaiter: &sync.WaitGroup{},
+
+		// @@@@@
+		cancelChan: make(chan *struct{}, 10),
+		taskDone:   make(chan TaskInstanceId, 10),
 	}
 }
 
@@ -155,29 +159,35 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case taskRunData := <-s.taskRunRequestC:
 			log.Debugf("새 Task 실행 요청 수신(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 
+			var instanceId TaskInstanceId
+
+			s.runningMu.Lock()
+			for {
+				instanceId = s.taskInstanceIdGenerator.New()
+				if _, exists := s.taskHandlers[instanceId]; exists == false {
+					break
+				}
+			}
+			s.runningMu.Unlock()
+
+			var h taskHandler
 			switch taskRunData.id {
 			case TidAlganicMall:
-				instanceId := s.taskInstanceIdGenerator.New()
-				h := newAlganicMallTask(instanceId, taskRunData)
-
-				// @@@@@
-				s.runningMu.Lock()
-				// 이미 동일한 id가 있다면...??
-				if _, exists := s.taskHandlers[instanceId]; exists == true {
-					s.runningMu.Unlock()
-					// error
-					continue
-				}
-				s.taskHandlers[instanceId] = h
-				s.runningMu.Unlock()
-
-				s.taskStopWaiter.Add(1)
-				go h.Run(s.taskStopWaiter, s.taskDone)
+				h = newAlganicMallTask(instanceId, taskRunData)
 
 			default:
 				// @@@@@ notify
 				log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+
+				continue
 			}
+
+			s.runningMu.Lock()
+			s.taskHandlers[instanceId] = h
+			s.runningMu.Unlock()
+
+			s.taskStopWaiter.Add(1)
+			go h.Run(s.taskStopWaiter, s.taskDone)
 
 			// @@@@@ task 작업 완료
 		case id2 := <-s.taskDone:
