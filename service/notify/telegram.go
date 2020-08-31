@@ -15,7 +15,7 @@ type telegramNotifier struct {
 	bot *tgbotapi.BotAPI
 }
 
-func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) notifierHandler {
+func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
@@ -33,20 +33,18 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64, notifyStopCt
 
 	notifier.bot.Debug = true
 
-	config := tgbotapi.NewUpdate(0)
-	config.Timeout = 60
-
-	updateC, err := notifier.bot.GetUpdatesChan(config)
-
-	go notifier.run0(updateC, notifyStopCtx, notifyStopWaiter)
-
-	log.Debugf("'%s' Telegram Notifier의 알림활동이 시작됨(Authorized on account %s)", notifier.id, notifier.bot.Self.UserName)
-
 	return notifier
 }
 
-func (n *telegramNotifier) run0(updateC tgbotapi.UpdatesChannel, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
 	defer notifyStopWaiter.Done()
+
+	config := tgbotapi.NewUpdate(0)
+	config.Timeout = 60
+
+	updateC, _ := n.bot.GetUpdatesChan(config)
+
+	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.id, n.bot.Self.UserName)
 
 	for {
 		select {
@@ -86,7 +84,7 @@ func (n *telegramNotifier) run0(updateC tgbotapi.UpdatesChannel, notifyStopCtx c
 		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
 
-			log.Debugf("'%s' Telegram Notifier의 알림활동이 중지됨", n.id)
+			log.Debugf("'%s' Telegram Notifier의 작업이 중지됨", n.id)
 
 			return
 		}

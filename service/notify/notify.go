@@ -24,7 +24,11 @@ func (n *notifier) Id() NotifierId {
 
 type notifierHandler interface {
 	Id() NotifierId
-	Notify(m string) bool //@@@@@
+
+	Run(notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
+
+	//@@@@@
+	Notify(m string) bool
 }
 
 type notifyService struct {
@@ -63,13 +67,15 @@ func (s *notifyService) Run(serviceStopCtx context.Context, serviceStopWaiter *s
 		return
 	}
 
-	// Telegram Notifier의 알림활동을 시작한다.
+	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
 		switch NotifierId(telegram.Id) {
 		case NidTelegramDarkKaiserNotifyBot:
-			s.notifyStopWaiter.Add(1)
-			h := newTelegramNotifier(NidTelegramDarkKaiserNotifyBot, telegram.Token, telegram.ChatId, serviceStopCtx, s.notifyStopWaiter)
+			h := newTelegramNotifier(NidTelegramDarkKaiserNotifyBot, telegram.Token, telegram.ChatId)
 			s.notifierHandlers = append(s.notifierHandlers, h)
+
+			s.notifyStopWaiter.Add(1)
+			go h.Run(serviceStopCtx, s.notifyStopWaiter)
 
 			log.Debugf("'%s' Telegram Notifier가 Notify 서비스에 등록되었습니다.", NidTelegramDarkKaiserNotifyBot)
 
@@ -78,29 +84,30 @@ func (s *notifyService) Run(serviceStopCtx context.Context, serviceStopWaiter *s
 		}
 	}
 
-	// Notify 서비스를 시작한다.
-	go func() {
-		defer serviceStopWaiter.Done()
-
-		select {
-		case <-serviceStopCtx.Done():
-			log.Debug("Notify 서비스 중지중...")
-
-			// 등록된 모든 Notifier의 알림활동이 중지될때까지 대기한다.
-			s.notifyStopWaiter.Wait()
-
-			s.runningMu.Lock()
-			s.running = false
-			s.notifierHandlers = nil
-			s.runningMu.Unlock()
-
-			log.Debug("Notify 서비스 중지됨")
-		}
-	}()
+	go s.run0(serviceStopCtx, serviceStopWaiter)
 
 	s.running = true
 
 	log.Debug("Notify 서비스 시작됨")
+}
+
+func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+	defer serviceStopWaiter.Done()
+
+	select {
+	case <-serviceStopCtx.Done():
+		log.Debug("Notify 서비스 중지중...")
+
+		// 등록된 모든 Notifier의 작업이 중지될때까지 대기한다.
+		s.notifyStopWaiter.Wait()
+
+		s.runningMu.Lock()
+		s.running = false
+		s.notifierHandlers = nil
+		s.runningMu.Unlock()
+
+		log.Debug("Notify 서비스 중지됨")
+	}
 }
 
 //@@@@@

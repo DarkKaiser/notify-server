@@ -8,13 +8,9 @@ import log "github.com/sirupsen/logrus"
 
 type alganicMallTask struct {
 	task
-
-	// @@@@@
-	taskDone       chan<- TaskInstanceId
-	taskStopWaiter *sync.WaitGroup
 }
 
-func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId) (taskHandler, error) {
+func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) taskHandler {
 	task := &alganicMallTask{
 		task: task{
 			id:         taskRunData.id,
@@ -25,20 +21,15 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData, tas
 
 			ctx: taskRunData.ctx,
 		},
-
-		// @@@@@
-		taskDone:       taskDone,
-		taskStopWaiter: taskStopWaiter,
 	}
 
-	// @@@@@
-	return task, nil
+	return task
 }
 
-// @@@@@
-func (t *alganicMallTask) Run() {
-	defer t.taskStopWaiter.Done()
+func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId) {
+	defer taskStopWaiter.Done()
 
+	// @@@@@
 	if t.CommandId() == TcidAlganicMallWatchNewEvents {
 		for i := 0; i < 10; i++ {
 			log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
@@ -54,7 +45,7 @@ func (t *alganicMallTask) Run() {
 			// notify??
 		}
 
-		t.taskDone <- t.instanceId
+		taskDone <- t.instanceId
 	}
 
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.

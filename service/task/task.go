@@ -74,10 +74,13 @@ type taskRunData struct {
 
 // @@@@@
 type taskHandler interface {
+	Id() TaskId
+	CommandId() TaskCommandId
 	InstanceId() TaskInstanceId
-	Run()
-	Cancel()
 	Context() context.Context
+
+	Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId)
+	Cancel()
 }
 
 type taskService struct {
@@ -93,10 +96,10 @@ type taskService struct {
 	taskRunRequestC chan *taskRunData
 
 	// @@@@@
-	runTaskHandlers map[TaskInstanceId]taskHandler
-	cancelChan      chan *struct{}
-	taskdone        chan TaskInstanceId
-	taskStopWaiter  *sync.WaitGroup
+	taskHandlers   map[TaskInstanceId]taskHandler
+	cancelChan     chan *struct{}
+	taskDone       chan TaskInstanceId
+	taskStopWaiter *sync.WaitGroup
 }
 
 func NewTaskService(config *global.AppConfig) service.Service {
@@ -113,10 +116,10 @@ func NewTaskService(config *global.AppConfig) service.Service {
 		taskRunRequestC: make(chan *taskRunData, 10),
 
 		// @@@@@
-		runTaskHandlers: make(map[TaskInstanceId]taskHandler),
-		cancelChan:      make(chan *struct{}, 10),
-		taskdone:        make(chan TaskInstanceId, 10),
-		taskStopWaiter:  &sync.WaitGroup{},
+		taskHandlers:   make(map[TaskInstanceId]taskHandler),
+		cancelChan:     make(chan *struct{}, 10),
+		taskDone:       make(chan TaskInstanceId, 10),
+		taskStopWaiter: &sync.WaitGroup{},
 	}
 }
 
@@ -137,18 +140,16 @@ func (s *taskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	// Task 스케쥴러를 시작한다.
 	s.scheduler.Start(s.config, s)
 
-	go func() {
-		defer serviceStopWaiter.Done()
-
-		s.run0(serviceStopCtx)
-	}()
+	go s.run0(serviceStopCtx, serviceStopWaiter)
 
 	s.running = true
 
 	log.Debug("Task 서비스 시작됨")
 }
 
-func (s *taskService) run0(serviceStopCtx context.Context) {
+func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+	defer serviceStopWaiter.Done()
+
 	for {
 		select {
 		case taskRunData := <-s.taskRunRequestC:
@@ -156,15 +157,22 @@ func (s *taskService) run0(serviceStopCtx context.Context) {
 
 			switch taskRunData.id {
 			case TidAlganicMall:
-				// @@@@@ mutex lock???
-				s.taskStopWaiter.Add(1)
 				instanceId := s.taskInstanceIdGenerator.New()
+				h := newAlganicMallTask(instanceId, taskRunData)
+
 				// @@@@@
-				h, err := newAlganicMallTask(instanceId, taskRunData, s.taskStopWaiter, s.taskdone)
-				println(err)
-				// @@@@@ task 실행중 취소하는 방법은?
-				s.runTaskHandlers[instanceId] = h
-				go h.Run()
+				s.runningMu.Lock()
+				// 이미 동일한 id가 있다면...??
+				if _, exists := s.taskHandlers[instanceId]; exists == true {
+					s.runningMu.Unlock()
+					// error
+					continue
+				}
+				s.taskHandlers[instanceId] = h
+				s.runningMu.Unlock()
+
+				s.taskStopWaiter.Add(1)
+				go h.Run(s.taskStopWaiter, s.taskDone)
 
 			default:
 				// @@@@@ notify
@@ -172,24 +180,24 @@ func (s *taskService) run0(serviceStopCtx context.Context) {
 			}
 
 			// @@@@@ task 작업 완료
-		case id2 := <-s.taskdone:
+		case id2 := <-s.taskDone:
 			// @@@@@ mutex lock???
 			//log.Info("##### 완료 task 수신됨: " + strconv.Itoa(id2))
 			// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
-			//				handler := s.runTaskHandlers[newId]
+			//				handler := s.taskHandlers[newId]
 			//ctx2 := handler.Context()
 			//notifyserverChan<- struct {
 			//				message:
 			//					ctx : ctx2
 			//				}
-			delete(s.runTaskHandlers, id2)
+			delete(s.taskHandlers, id2)
 
 			// @@@@@ notifier로부터 취소 명령이 들어온경우
 		case <-s.cancelChan:
 			// @@@@@ mutex lock???
-			taskHandler := s.runTaskHandlers[0]
+			taskHandler := s.taskHandlers[0]
 			taskHandler.Cancel()
-			delete(s.runTaskHandlers, 0)
+			delete(s.taskHandlers, 0)
 			// @@@@@ 해당 task만 취소되어야됨
 
 		case <-serviceStopCtx.Done():
@@ -201,17 +209,18 @@ func (s *taskService) run0(serviceStopCtx context.Context) {
 			// @@@@@ 아래 블럭도 mutex를 감싸야하나?
 			/////////////////
 			// @@@@@ mutex lock???
-			for _, handler := range s.runTaskHandlers {
+			for _, handler := range s.taskHandlers {
 				handler.Cancel()
 			}
 			close(s.taskRunRequestC)
 			close(s.cancelChan)
-			close(s.taskdone)
+			close(s.taskDone)
 			s.taskStopWaiter.Wait()
 			/////////////////
 
 			s.runningMu.Lock()
 			s.running = false
+			s.taskHandlers = nil
 			s.runningMu.Unlock()
 
 			log.Debug("Task 서비스 중지됨")

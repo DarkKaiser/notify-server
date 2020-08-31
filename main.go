@@ -37,11 +37,12 @@ func main() {
 	serviceStopCtx, cancel := context.WithCancel(context.Background())
 	serviceStopWaiter := &sync.WaitGroup{}
 
-	// @@@@@
-	////////////////////////////////
+	// 서비스를 시작한다.
 	taskService := task.NewTaskService(config)
 	notifyService := notify.NewNotifyService(config)
 
+	// @@@@@
+	////////////////////////////////
 	serviceStopWaiter.Add(2)
 	taskService.Run(serviceStopCtx, serviceStopWaiter)
 	notifyService.Run(serviceStopCtx, serviceStopWaiter)
