@@ -32,6 +32,10 @@ type notifierHandler interface {
 	Notify(m string) bool
 }
 
+type NotifyRequester interface {
+	Notify(id NotifierId, message string, ctx context.Context) (succeeded bool)
+}
+
 type notifyService struct {
 	config *global.AppConfig
 
@@ -40,9 +44,9 @@ type notifyService struct {
 
 	notifierHandlers []notifierHandler
 
-	taskRunRequester task.TaskRunRequester
-
 	notifyStopWaiter *sync.WaitGroup
+
+	taskRunRequester task.TaskRunRequester
 }
 
 func NewNotifyService(config *global.AppConfig) service.Service {
@@ -52,9 +56,9 @@ func NewNotifyService(config *global.AppConfig) service.Service {
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		taskRunRequester: nil,
-
 		notifyStopWaiter: &sync.WaitGroup{},
+
+		taskRunRequester: nil,
 	}
 }
 
@@ -127,7 +131,7 @@ func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *
 }
 
 //@@@@@
-func (s *notifyService) Notify(id NotifierId, m string) (succeeded bool) {
+func (s *notifyService) Notify(id NotifierId, message string, ctx context.Context) (succeeded bool) {
 	succeeded = false
 
 	// runningMu lock???

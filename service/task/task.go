@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/darkkaiser/notify-server/global"
 	"github.com/darkkaiser/notify-server/service"
+	"github.com/darkkaiser/notify-server/service/notify"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"sync/atomic"
@@ -69,7 +70,7 @@ type taskHandler interface {
 
 	Cancel()
 
-	Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
+	Run(r notify.NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
 }
 
 type taskRunData struct {
@@ -102,6 +103,8 @@ type taskService struct {
 	taskCancelRequestC chan TaskInstanceId
 
 	taskStopWaiter *sync.WaitGroup
+
+	notifyRequester notify.NotifyRequester
 }
 
 func NewTaskService(config *global.AppConfig) service.Service {
@@ -122,6 +125,8 @@ func NewTaskService(config *global.AppConfig) service.Service {
 		taskCancelRequestC: make(chan TaskInstanceId, 10),
 
 		taskStopWaiter: &sync.WaitGroup{},
+
+		notifyRequester: nil,
 	}
 }
 
@@ -137,6 +142,17 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 		log.Warn("Task 서비스가 이미 시작됨!!!")
 
 		return
+	}
+
+	// NotifyRequester 객체를 구한다.
+	if o := valueCtx.Value("NotifyRequester"); o != nil {
+		r, ok := o.(notify.NotifyRequester)
+		if ok == false {
+			log.Panicf("NotifyRequester 객체를 구할 수 없습니다.")
+		}
+		s.notifyRequester = r
+	} else {
+		log.Panicf("NotifyRequester 객체를 구할 수 없습니다.")
 	}
 
 	// Task 스케쥴러를 시작한다.
@@ -185,7 +201,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
-			go h.Run(s.taskStopWaiter, s.taskDoneC)
+			go h.Run(s.notifyRequester, s.taskStopWaiter, s.taskDoneC)
 
 		case instanceId := <-s.taskDoneC:
 			s.runningMu.Lock()
@@ -265,7 +281,6 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx
 }
 
 func (s *taskService) TaskCancel(id TaskInstanceId) (succeeded bool) {
-	// @@@@@
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

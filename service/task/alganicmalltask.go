@@ -1,6 +1,7 @@
 package task
 
 import (
+	"github.com/darkkaiser/notify-server/service/notify"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
@@ -26,12 +27,12 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 	return task
 }
 
-func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
+func (t *alganicMallTask) Run(r notify.NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
 	defer taskStopWaiter.Done()
 
 	switch t.CommandId() {
 	case TcidAlganicMallWatchNewEvents:
-		t.runWatchNewEvents()
+		t.runWatchNewEvents(r)
 
 	default:
 		// @@@@@ 로그 메시지 출력+notify
@@ -43,7 +44,7 @@ func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- T
 	}
 }
 
-func (t *alganicMallTask) runWatchNewEvents() {
+func (t *alganicMallTask) runWatchNewEvents(r notify.NotifyRequester) {
 	for i := 0; i < 5; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
 		time.Sleep(1 * time.Second)
