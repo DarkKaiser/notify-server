@@ -15,8 +15,8 @@ type telegramNotifier struct {
 	chatId int64
 
 	bot         *tgbotapi.BotAPI
-	botCommands []telegramBotCommand     //@@@@@
-	r           task.TaskHandleRequester // @@@@@
+	botCommands []telegramBotCommand  //@@@@@
+	r           task.TaskRunRequester // @@@@@
 }
 
 // @@@@@
@@ -61,24 +61,8 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 	return notifier
 }
 
-func (n *telegramNotifier) Run(notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(r task.TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
 	defer notifyStopWaiter.Done()
-
-	// @@@@@ notifyservice run()함수에서 구하기, 못 구할때는 panic 발생???
-	v := notifyStopCtx.Value("TaskHandleRequester")
-	u, ok := v.(task.TaskHandleRequester)
-	println(ok)
-	taskService := u
-	//if v := ctx.Value("current_user"); v != nil {
-	//	// 타입 확인(type assertion)
-	//	u, ok := v.(User)
-	//	if !ok {
-	//		return errors.New("Not authorized")
-	//	}
-	//	currentUser = u
-	//} else {
-	//	return errors.New("Not authorized")
-	//}
 
 	config := tgbotapi.NewUpdate(0)
 	config.Timeout = 60
@@ -124,7 +108,7 @@ func (n *telegramNotifier) Run(notifyStopCtx context.Context, notifyStopWaiter *
 					ctx = context.WithValue(ctx, "chatId", update.Message.Chat.ID)
 					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
 
-					taskService.TaskRunWithContext(task.TidAlganicMall, task.TcidAlganicMallWatchNewEvents, ctx)
+					r.TaskRunWithContext(task.TidAlganicMall, task.TcidAlganicMallWatchNewEvents, ctx)
 
 					continue
 				}

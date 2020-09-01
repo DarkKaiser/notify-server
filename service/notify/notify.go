@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/darkkaiser/notify-server/global"
 	"github.com/darkkaiser/notify-server/service"
+	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
@@ -25,7 +26,7 @@ func (n *notifier) Id() NotifierId {
 type notifierHandler interface {
 	Id() NotifierId
 
-	Run(notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
+	Run(r task.TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
 
 	//@@@@@
 	Notify(m string) bool
@@ -39,6 +40,8 @@ type notifyService struct {
 
 	notifierHandlers []notifierHandler
 
+	taskRunRequester task.TaskRunRequester
+
 	notifyStopWaiter *sync.WaitGroup
 }
 
@@ -48,6 +51,8 @@ func NewNotifyService(config *global.AppConfig) service.Service {
 
 		running:   false,
 		runningMu: sync.Mutex{},
+
+		taskRunRequester: nil,
 
 		notifyStopWaiter: &sync.WaitGroup{},
 	}
@@ -67,6 +72,17 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 		return
 	}
 
+	// TaskRunRequester 객체를 구한다.
+	if o := valueCtx.Value("TaskRunRequester"); o != nil {
+		r, ok := o.(task.TaskRunRequester)
+		if ok == false {
+			log.Panicf("TaskRunRequester 객체를 구할 수 없습니다.")
+		}
+		s.taskRunRequester = r
+	} else {
+		log.Panicf("TaskRunRequester 객체를 구할 수 없습니다.")
+	}
+
 	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
 		switch NotifierId(telegram.Id) {
@@ -75,7 +91,7 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 			s.notifierHandlers = append(s.notifierHandlers, h)
 
 			s.notifyStopWaiter.Add(1)
-			go h.Run(serviceStopCtx, s.notifyStopWaiter)
+			go h.Run(s.taskRunRequester, serviceStopCtx, s.notifyStopWaiter)
 
 			log.Debugf("'%s' Telegram Notifier가 Notify 서비스에 등록되었습니다.", NidTelegramDarkKaiserNotifyBot)
 

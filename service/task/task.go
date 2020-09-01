@@ -78,8 +78,7 @@ type taskRunData struct {
 	ctx       context.Context
 }
 
-// @@@@@ 명칭
-type TaskHandleRequester interface {
+type TaskRunRequester interface {
 	TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool)
 	TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool)
 
@@ -265,8 +264,8 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx
 	return true
 }
 
-// @@@@@
 func (s *taskService) TaskCancel(id TaskInstanceId) (succeeded bool) {
+	// @@@@@
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

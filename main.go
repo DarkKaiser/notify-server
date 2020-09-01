@@ -38,8 +38,8 @@ func main() {
 	services := []service.Service{task.NewTaskService(config), notify.NewNotifyService(config)}
 
 	valueCtx := context.Background()
-	valueCtx = context.WithValue(valueCtx, "TaskHandleRequester", services[0]) // @@@@@
-	valueCtx = context.WithValue(valueCtx, "notifierHandler", services[1])     // @@@@@
+	valueCtx = context.WithValue(valueCtx, "TaskRunRequester", services[0])
+	valueCtx = context.WithValue(valueCtx, "notifierHandler", services[1]) // @@@@@
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())
