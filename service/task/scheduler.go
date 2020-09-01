@@ -14,7 +14,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *global.AppConfig, r TaskRunRequester) {
+func (s *scheduler) Start(config *global.AppConfig, r TaskHandleRequester) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

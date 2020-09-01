@@ -17,9 +17,9 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 			commandId:  taskRunData.commandId,
 			instanceId: instanceId,
 
-			cancel: false,
-
 			ctx: taskRunData.ctx,
+
+			cancel: false,
 		},
 	}
 
@@ -35,15 +35,16 @@ func (t *alganicMallTask) Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- T
 
 	default:
 		// @@@@@ 로그 메시지 출력+notify
+		// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 	}
 
-	// @@@@@ cancel된것도 보내나?
-
-	taskDoneC <- t.instanceId
+	if t.cancel == false {
+		taskDoneC <- t.instanceId
+	}
 }
 
 func (t *alganicMallTask) runWatchNewEvents() {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
 		time.Sleep(1 * time.Second)
 
@@ -55,6 +56,14 @@ func (t *alganicMallTask) runWatchNewEvents() {
 
 	if t.cancel == false {
 		// notify??
+		// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
+		//				handler := s.taskHandlers[newId]
+		//ctx2 := handler.Context()
+		//notifyserverChan<- struct {
+		//				message:
+		//					ctx : ctx2
+		//				}
+
 	}
 
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.
@@ -70,5 +79,4 @@ func (t *alganicMallTask) runWatchNewEvents() {
 	//	 프로그램 시작시 메시지를 같이 넘기고 그 결과를 전송받아야 한다.
 	//	 결과는 프로그램 콘솔에 찍힌걸 읽어올수 있으면 이걸 사용
 	//	 안되면 결과파일을 지정해서 넘겨주고 종료시 이 결과파일을 분석
-
 }

@@ -6,5 +6,5 @@ import (
 )
 
 type Service interface {
-	Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup)
+	Run(valueCtx context.Context, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup)
 }

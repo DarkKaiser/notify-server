@@ -53,7 +53,7 @@ func NewNotifyService(config *global.AppConfig) service.Service {
 	}
 }
 
-func (s *notifyService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

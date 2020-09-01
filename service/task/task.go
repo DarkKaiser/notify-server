@@ -35,9 +35,9 @@ type task struct {
 	commandId  TaskCommandId
 	instanceId TaskInstanceId
 
-	cancel bool
-
 	ctx context.Context
+
+	cancel bool
 }
 
 func (t *task) Id() TaskId {
@@ -52,24 +52,12 @@ func (t *task) InstanceId() TaskInstanceId {
 	return t.instanceId
 }
 
-// @@@@@ setcancel???
-func (t *task) Cancel() {
-	t.cancel = true
-}
-
 func (t *task) Context() context.Context {
 	return t.ctx
 }
 
-type TaskRunRequester interface {
-	TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool)
-	TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool)
-}
-
-type taskRunData struct {
-	id        TaskId
-	commandId TaskCommandId
-	ctx       context.Context
+func (t *task) Cancel() {
+	t.cancel = true
 }
 
 type taskHandler interface {
@@ -79,10 +67,23 @@ type taskHandler interface {
 
 	Context() context.Context
 
-	Run(taskStopWaiter *sync.WaitGroup, taskDone chan<- TaskInstanceId)
-
-	// @@@@@
 	Cancel()
+
+	Run(taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
+}
+
+type taskRunData struct {
+	id        TaskId
+	commandId TaskCommandId
+	ctx       context.Context
+}
+
+// @@@@@ 명칭
+type TaskHandleRequester interface {
+	TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool)
+	TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool)
+
+	TaskCancel(id TaskInstanceId) (succeeded bool)
 }
 
 type taskService struct {
@@ -125,7 +126,7 @@ func NewTaskService(config *global.AppConfig) service.Service {
 	}
 }
 
-func (s *taskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -155,8 +156,6 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	for {
 		select {
 		case taskRunData := <-s.taskRunRequestC:
-			log.Debugf("새 Task 실행 요청 수신(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
-
 			var instanceId TaskInstanceId
 
 			s.runningMu.Lock()
@@ -167,6 +166,8 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				}
 			}
 			s.runningMu.Unlock()
+
+			log.Debugf("새 Task 실행 요청 수신(TaskId:%s, CommandId:%s, InstanceId:%d)", taskRunData.id, taskRunData.commandId, instanceId)
 
 			var h taskHandler
 			switch taskRunData.id {
@@ -188,26 +189,26 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.taskStopWaiter, s.taskDoneC)
 
 		case instanceId := <-s.taskDoneC:
-			// @@@@@ mutex lock???
-			//log.Info("##### 완료 task 수신됨: " + strconv.Itoa(id2))
-			// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
-			//				handler := s.taskHandlers[newId]
-			//ctx2 := handler.Context()
-			//notifyserverChan<- struct {
-			//				message:
-			//					ctx : ctx2
-			//				}
-			s.runningMu.Lock()
-			delete(s.taskHandlers, instanceId)
-			s.runningMu.Unlock()
-
-			// @@@@@ notifier로부터 취소 명령이 들어온경우
-		case instanceId := <-s.taskCancelRequestC:
-			// @@@@@
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
+				log.Debugf("Task 작업이 완료되었습니다.(TaskId:%s, CommandId:%s, InstanceId:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
+
+				delete(s.taskHandlers, instanceId)
+			} else {
+				log.Warnf("등록되지 않은 Task 작업 완료가 수신되었습니다.(InstanceId:%d)", instanceId)
+			}
+			s.runningMu.Unlock()
+
+		case instanceId := <-s.taskCancelRequestC:
+			// @@@@@ cancel일때 여기서 삭제하지 않고 task에서 done을 날려서 거기서 삭제하는건??? 삭제하는게 여러군데 있음..
+			s.runningMu.Lock()
+			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
+				log.Debugf("Task 작업이 취소되었습니다.(TaskId:%s, CommandId:%s, InstanceId:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
+
 				taskHandler.Cancel()
 				delete(s.taskHandlers, instanceId)
+			} else {
+				log.Warnf("등록되지 않은 Task 취소 요청이 수신되었습니다.(InstanceId:%d)", instanceId)
 			}
 			s.runningMu.Unlock()
 
@@ -260,6 +261,21 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx
 		commandId: commandId,
 		ctx:       ctx,
 	}
+
+	return true
+}
+
+// @@@@@
+func (s *taskService) TaskCancel(id TaskInstanceId) (succeeded bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			succeeded = false
+
+			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceId:%s, panic:%s", id, r)
+		}
+	}()
+
+	s.taskCancelRequestC <- id
 
 	return true
 }

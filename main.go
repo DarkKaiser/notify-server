@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/darkkaiser/notify-server/global"
 	_log_ "github.com/darkkaiser/notify-server/log"
+	"github.com/darkkaiser/notify-server/service"
 	"github.com/darkkaiser/notify-server/service/notify"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
@@ -33,20 +34,22 @@ func main() {
 
 	log.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> START")
 
+	// 서비스를 생성한다.
+	services := []service.Service{task.NewTaskService(config), notify.NewNotifyService(config)}
+
+	valueCtx := context.Background()
+	valueCtx = context.WithValue(valueCtx, "TaskHandleRequester", services[0]) // @@@@@
+	valueCtx = context.WithValue(valueCtx, "notifierHandler", services[1])     // @@@@@
+
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	taskService := task.NewTaskService(config)
-	notifyService := notify.NewNotifyService(config)
-
-	// @@@@@
-	////////////////////////////////
-	serviceStopWaiter.Add(2)
-	taskService.Run(serviceStopCtx, serviceStopWaiter)
-	notifyService.Run(serviceStopCtx, serviceStopWaiter)
-	////////////////////////////////
+	serviceStopWaiter.Add(len(services))
+	for _, s := range services {
+		s.Run(valueCtx, serviceStopCtx, serviceStopWaiter)
+	}
 
 	// Handle sigterm and await termC signal
 	termC := make(chan os.Signal)
