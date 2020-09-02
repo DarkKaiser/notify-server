@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"context"
@@ -25,8 +25,7 @@ const (
 )
 
 const (
-	// 엘가닉몰
-	TcidAlganicMallWatchNewEvents TaskCommandId = "WatchNewEvents"
+	TcidAlganicMallWatchNewEvents TaskCommandId = "WatchNewEvents" // 엘가닉몰 신규 이벤트 감시
 )
 
 type task struct {
@@ -34,10 +33,10 @@ type task struct {
 	commandId  TaskCommandId
 	instanceId TaskInstanceId
 
-	cancel bool
-
 	notifierId  NotifierId
 	notifierCtx context.Context
+
+	cancel bool
 }
 
 func (t *task) Id() TaskId {
@@ -52,10 +51,6 @@ func (t *task) InstanceId() TaskInstanceId {
 	return t.instanceId
 }
 
-func (t *task) Cancel() {
-	t.cancel = true
-}
-
 func (t *task) NotifierId() NotifierId {
 	return t.notifierId
 }
@@ -64,17 +59,21 @@ func (t *task) NotifierContext() context.Context {
 	return t.notifierCtx
 }
 
+func (t *task) Cancel() {
+	t.cancel = true
+}
+
 type taskHandler interface {
 	Id() TaskId
 	CommandId() TaskCommandId
 	InstanceId() TaskInstanceId
 
-	Cancel()
-
 	NotifierId() NotifierId
 	NotifierContext() context.Context
 
-	Run(r NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
+	Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
+
+	Cancel()
 }
 
 type taskRunData struct {
@@ -85,10 +84,9 @@ type taskRunData struct {
 	notifierCtx context.Context
 }
 
-type TaskRunRequester interface {
+type TaskRunner interface {
 	TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId) (succeeded bool)
 	TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context) (succeeded bool)
-
 	TaskCancel(id TaskInstanceId) (succeeded bool)
 }
 
@@ -110,7 +108,7 @@ type taskService struct {
 
 	taskStopWaiter *sync.WaitGroup
 
-	notifyRequester NotifyRequester
+	notifySender NotifySender
 }
 
 func NewTaskService(config *global.AppConfig) Service {
@@ -132,7 +130,7 @@ func NewTaskService(config *global.AppConfig) Service {
 
 		taskStopWaiter: &sync.WaitGroup{},
 
-		notifyRequester: nil,
+		notifySender: nil,
 	}
 }
 
@@ -150,15 +148,15 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 		return
 	}
 
-	// NotifyRequester 객체를 구한다.
-	if o := valueCtx.Value("NotifyRequester"); o != nil {
-		r, ok := o.(NotifyRequester)
+	// NotifySender 객체를 구한다.
+	if o := valueCtx.Value("notifysender"); o != nil {
+		r, ok := o.(NotifySender)
 		if ok == false {
-			log.Panicf("NotifyRequester 객체를 구할 수 없습니다.")
+			log.Panicf("NotifySender 객체를 구할 수 없습니다.")
 		}
-		s.notifyRequester = r
+		s.notifySender = r
 	} else {
-		log.Panicf("NotifyRequester 객체를 구할 수 없습니다.")
+		log.Panicf("NotifySender 객체를 구할 수 없습니다.")
 	}
 
 	// Task 스케쥴러를 시작한다.
@@ -196,8 +194,8 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				h = newAlganicMallTask(instanceId, taskRunData)
 
 			default:
-				// @@@@@ notify
 				log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+				// @@@@@ notify
 
 				continue
 			}
@@ -207,7 +205,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
-			go h.Run(s.notifyRequester, s.taskStopWaiter, s.taskDoneC)
+			go h.Run(s.notifySender, s.taskStopWaiter, s.taskDoneC)
 
 		case instanceId := <-s.taskDoneC:
 			s.runningMu.Lock()
@@ -240,6 +238,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.scheduler.Stop()
 
 			// @@@@@ 아래 블럭도 mutex를 감싸야하나?
+			// 어차피 채널을 닫기 때문에 닫은 서비스는 재사용하지 못한다. new로 무조건 재생성해야된다.
 			/////////////////
 			s.runningMu.Lock()
 			for _, handler := range s.taskHandlers {
@@ -255,6 +254,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Lock()
 			s.running = false
 			s.taskHandlers = nil
+			s.notifySender = nil
 			s.runningMu.Unlock()
 
 			log.Debug("Task 서비스 중지됨")

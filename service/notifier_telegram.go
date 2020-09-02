@@ -1,8 +1,9 @@
-package services
+package service
 
 import (
 	"context"
 	"fmt"
+	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -13,17 +14,14 @@ type telegramNotifier struct {
 
 	chatId int64
 
-	bot         *tgbotapi.BotAPI
-	botCommands []telegramBotCommand //@@@@@
-	r           TaskRunRequester     // @@@@@
+	bot *tgbotapi.BotAPI
+
+	botCommands []telegramBotCommand
 }
 
-// @@@@@
 type telegramBotCommand struct {
-	command            string
-	commandKor         string
-	commandSyntax      string
-	commandDescription string
+	command     string
+	description string
 }
 
 func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHandler {
@@ -35,17 +33,12 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 		chatId: chatId,
 	}
 
-	// @@@@@
 	notifier.botCommands = append(notifier.botCommands, telegramBotCommand{
-		command:            "alganicmall_watch_new_events",
-		commandKor:         "엘가닉몰 New 이벤트 알림",
-		commandSyntax:      "/alganicmall_watch_new_events (엘가닉몰 New 이벤트 알림)",
-		commandDescription: "엘가닉몰에 새로운 이벤트가 발생될 때 알림 메시지를 보냅니다.",
+		command:     "alganicmall_watch_new_events",
+		description: "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
 	}, telegramBotCommand{
-		command:            "help",
-		commandKor:         "도움말",
-		commandSyntax:      "/help (도움말)",
-		commandDescription: "도움말을 표시합니다.",
+		command:     "help",
+		description: "도움말을 표시합니다.",
 	})
 
 	// 텔레그램 봇을 생성한다.
@@ -60,7 +53,7 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 	return notifier
 }
 
-func (n *telegramNotifier) Run(r TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(runner TaskRunner, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
 	defer notifyStopWaiter.Done()
 
 	config := tgbotapi.NewUpdate(0)
@@ -70,6 +63,7 @@ func (n *telegramNotifier) Run(r TaskRunRequester, notifyStopCtx context.Context
 
 	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.id, n.bot.Self.UserName)
 
+LOOP:
 	for {
 		select {
 		case update := <-updateC:
@@ -83,59 +77,56 @@ func (n *telegramNotifier) Run(r TaskRunRequester, notifyStopCtx context.Context
 				continue
 			}
 
-			///////////////////////////////////
-			// @@@@@
-			command := update.Message.Text
-			command = command[1:]
-
+			command := update.Message.Text[1:]
 			if command == "help" {
-				var m = fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n\n")
+				m := fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n\n")
 				for i, botCommand := range n.botCommands {
 					if i != 0 {
 						m += "\n\n"
 					}
-					m += fmt.Sprintf("%s\n%s", botCommand.commandSyntax, botCommand.commandDescription)
+					m += fmt.Sprintf("%s\n%s", botCommand.command, botCommand.description)
 				}
-				msg := tgbotapi.NewMessage(n.chatId, string(m))
-				n.bot.Send(msg)
+
+				_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
+				utils.CheckErr(err) //@@@@@
 
 				continue
 			}
 
 			for _, botCommand := range n.botCommands {
 				if command == botCommand.command {
+					// @@@@@
+					//////////////////
 					ctx := context.Background()
-					ctx = context.WithValue(ctx, "notifierId", n.id)
+					ctx = context.WithValue(ctx, "taskId", TidAlganicMall)
+					ctx = context.WithValue(ctx, "taskCommandId", TcidAlganicMallWatchNewEvents)
 					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
 
-					r.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx)
+					if runner.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx) == true {
+						// @@@@@
+						msg := tgbotapi.NewMessage(n.chatId, "요청하였습니다.")
+						msg.ReplyToMessageID = update.Message.MessageID
+						n.bot.Send(msg)
+					}
+					//////////////////
 
-					continue
+					goto LOOP
 				}
 			}
 
-			// 취소명령/cancel_xxx
+			// 취소명령/cancel_xxx@@@@@
 
 			m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '/help'을 입력하세요.", update.Message.Text)
-			msg := tgbotapi.NewMessage(n.chatId, string(m))
-			n.bot.Send(msg)
+			_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
+			utils.CheckErr(err) //@@@@@
 
-			//					add <- struct {
-			//						taskId : TI_ALGANICMALL,
-			//						commandId : TCI_ALGANICMALL_CRAWING,
-			//						ctx : ctx,
-			//					}
-			//} else if update.Message.Text == "/help" {
-			//	//@@@@@
-			//	m := fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n")
-			//	msg := tgbotapi.NewMessage(n.chatId, string(m))
-			//	n.bot.Send(msg)
-			//} else {
-			//}
+			// @@@@@
+			//////////////////
 			//			case receive<-notifymessage:받을때 context를 그대로 받는다.
 			//				msg := tgbotapi.NewMessage(297396697, m)
 			//				//msg.ReplyToMessageID = update.Message.MessageID
 			//				s.bot.Send(msg)
+			//////////////////
 
 		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
@@ -148,7 +139,7 @@ func (n *telegramNotifier) Run(r TaskRunRequester, notifyStopCtx context.Context
 }
 
 //@@@@@ XXXXX channel로 수신
-func (n *telegramNotifier) Notify(message string, ctx context.Context) bool {
+func (n *telegramNotifier) Notify(ctx context.Context, message string) bool {
 	msg := tgbotapi.NewMessage(n.chatId, message)
 	//msg.ReplyToMessageID = update.Message.MessageID
 	n.bot.Send(msg)

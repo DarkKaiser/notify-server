@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"github.com/darkkaiser/notify-server/global"
@@ -14,7 +14,7 @@ type taskScheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *taskScheduler) Start(config *global.AppConfig, r TaskRunRequester) {
+func (s *taskScheduler) Start(config *global.AppConfig, runner TaskRunner) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -24,12 +24,12 @@ func (s *taskScheduler) Start(config *global.AppConfig, r TaskRunRequester) {
 
 	s.cron = cron.New(cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())))
 
-	for _, task := range config.Tasks {
-		for _, command := range task.Commands {
-			_, err := s.cron.AddFunc(command.TimeSpec, func() {
-				if r.TaskRun(TaskId(task.Id), TaskCommandId(command.Id), NotifierId(command.NotifierId)) == false {
+	for _, t := range config.Tasks {
+		for _, c := range t.Commands {
+			_, err := s.cron.AddFunc(c.TimeSpec, func() {
+				if runner.TaskRun(TaskId(t.Id), TaskCommandId(c.Id), NotifierId(c.NotifierId)) == false {
 					// @@@@@ 로그 남기고 notify 하기
-					//log.Warnf()
+					// log.Warnf()
 				}
 			})
 

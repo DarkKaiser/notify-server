@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	log "github.com/sirupsen/logrus"
@@ -11,41 +11,39 @@ type alganicMallTask struct {
 }
 
 func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) taskHandler {
-	task := &alganicMallTask{
+	return &alganicMallTask{
 		task: task{
 			id:         taskRunData.id,
 			commandId:  taskRunData.commandId,
 			instanceId: instanceId,
 
-			cancel: false,
-
 			notifierId:  taskRunData.notifierId,
 			notifierCtx: taskRunData.notifierCtx,
+
+			cancel: false,
 		},
 	}
-
-	return task
 }
 
-func (t *alganicMallTask) Run(r NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
+func (t *alganicMallTask) Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
 	defer taskStopWaiter.Done()
 
 	switch t.CommandId() {
 	case TcidAlganicMallWatchNewEvents:
-		t.runWatchNewEvents(r)
+		t.runWatchNewEvents(sender)
 
 	default:
 		// @@@@@ 로그 메시지 출력+notify
 		// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 	}
 
-	// @@@@@
+	// @@@@@ cancel일대 어케할지경정,+ defer 함수로 만들기
 	if t.cancel == false {
 		taskDoneC <- t.instanceId
 	}
 }
 
-func (t *alganicMallTask) runWatchNewEvents(r NotifyRequester) {
+func (t *alganicMallTask) runWatchNewEvents(sender NotifySender) {
 	// @@@@@
 	for i := 0; i < 5; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")

@@ -1,4 +1,4 @@
-package services
+package service
 
 import (
 	"context"
@@ -24,14 +24,13 @@ func (n *notifier) Id() NotifierId {
 type notifierHandler interface {
 	Id() NotifierId
 
-	Run(r TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
+	Run(runner TaskRunner, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
 
 	//@@@@@
-	Notify(message string, ctx context.Context) bool
+	Notify(ctx context.Context, message string) bool
 }
 
-// @@@@@
-type NotifyRequester interface {
+type NotifySender interface {
 	Notify(id NotifierId, ctx context.Context, message string) (succeeded bool)
 }
 
@@ -45,7 +44,7 @@ type notifyService struct {
 
 	notifyStopWaiter *sync.WaitGroup
 
-	taskRunRequester TaskRunRequester
+	taskRunner TaskRunner
 }
 
 func NewNotifyService(config *global.AppConfig) Service {
@@ -57,7 +56,7 @@ func NewNotifyService(config *global.AppConfig) Service {
 
 		notifyStopWaiter: &sync.WaitGroup{},
 
-		taskRunRequester: nil,
+		taskRunner: nil,
 	}
 }
 
@@ -75,15 +74,15 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 		return
 	}
 
-	// TaskRunRequester 객체를 구한다.
-	if o := valueCtx.Value("TaskRunRequester"); o != nil {
-		r, ok := o.(TaskRunRequester)
+	// TaskRunner 객체를 구한다.
+	if o := valueCtx.Value("taskrunner"); o != nil {
+		r, ok := o.(TaskRunner)
 		if ok == false {
-			log.Panicf("TaskRunRequester 객체를 구할 수 없습니다.")
+			log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
 		}
-		s.taskRunRequester = r
+		s.taskRunner = r
 	} else {
-		log.Panicf("TaskRunRequester 객체를 구할 수 없습니다.")
+		log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
 	}
 
 	// Telegram Notifier의 작업을 시작한다.
@@ -94,7 +93,7 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 			s.notifierHandlers = append(s.notifierHandlers, h)
 
 			s.notifyStopWaiter.Add(1)
-			go h.Run(s.taskRunRequester, serviceStopCtx, s.notifyStopWaiter)
+			go h.Run(s.taskRunner, serviceStopCtx, s.notifyStopWaiter)
 
 			log.Debugf("'%s' Telegram Notifier가 Notify 서비스에 등록되었습니다.", NidTelegramDarkKaiserNotifyBot)
 
@@ -123,25 +122,32 @@ func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *
 		s.runningMu.Lock()
 		s.running = false
 		s.notifierHandlers = nil
+		s.taskRunner = nil //@@@@@
 		s.runningMu.Unlock()
 
 		log.Debug("Notify 서비스 중지됨")
 	}
 }
 
-//@@@@@
+//@@@@@ 함수구현, 내부에서 바로 notifier를 호출할지 아니면 채널을 통해서 보내고 나서 호출할지는 더 고민
 func (s *notifyService) Notify(id NotifierId, ctx context.Context, message string) (succeeded bool) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+
 	succeeded = false
 
-	// runningMu lock???
-	//for _, notifier := range s.notifierHandlers {
-	//if notifier.Id() == id {
-	//	// 채널을 이용해서 메시지를 넘겨주는걸로 변경
-	//	notifier.Notify(message)
-	//	succeeded = true
-	//	break
-	//}
-	//}
+	for _, notifier := range s.notifierHandlers {
+		if notifier.Id() == id {
+			// 채널을 이용해서 메시지를 넘겨주는걸로 변경
+			//notifier.NotifyC() <- struct {
+			//	ctx,
+			//	message
+			//}
+			notifier.Notify(ctx, message)
+			succeeded = true
+			break
+		}
+	}
 
 	return
 }
