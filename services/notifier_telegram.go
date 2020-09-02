@@ -1,9 +1,8 @@
-package notify
+package services
 
 import (
 	"context"
 	"fmt"
-	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -15,8 +14,8 @@ type telegramNotifier struct {
 	chatId int64
 
 	bot         *tgbotapi.BotAPI
-	botCommands []telegramBotCommand  //@@@@@
-	r           task.TaskRunRequester // @@@@@
+	botCommands []telegramBotCommand //@@@@@
+	r           TaskRunRequester     // @@@@@
 }
 
 // @@@@@
@@ -38,10 +37,10 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 
 	// @@@@@
 	notifier.botCommands = append(notifier.botCommands, telegramBotCommand{
-		command:            "new_alganicmall_event",
-		commandKor:         "엘가닉몰 이벤트",
-		commandSyntax:      "/new_alganicmall_event (도움말)",
-		commandDescription: "엘가닉몰 이벤트를 표시합니다.",
+		command:            "alganicmall_watch_new_events",
+		commandKor:         "엘가닉몰 New 이벤트 알림",
+		commandSyntax:      "/alganicmall_watch_new_events (엘가닉몰 New 이벤트 알림)",
+		commandDescription: "엘가닉몰에 새로운 이벤트가 발생될 때 알림 메시지를 보냅니다.",
 	}, telegramBotCommand{
 		command:            "help",
 		commandKor:         "도움말",
@@ -61,7 +60,7 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 	return notifier
 }
 
-func (n *telegramNotifier) Run(r task.TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(r TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup) {
 	defer notifyStopWaiter.Done()
 
 	config := tgbotapi.NewUpdate(0)
@@ -84,6 +83,7 @@ func (n *telegramNotifier) Run(r task.TaskRunRequester, notifyStopCtx context.Co
 				continue
 			}
 
+			///////////////////////////////////
 			// @@@@@
 			command := update.Message.Text
 			command = command[1:]
@@ -105,10 +105,10 @@ func (n *telegramNotifier) Run(r task.TaskRunRequester, notifyStopCtx context.Co
 			for _, botCommand := range n.botCommands {
 				if command == botCommand.command {
 					ctx := context.Background()
-					ctx = context.WithValue(ctx, "chatId", update.Message.Chat.ID)
+					ctx = context.WithValue(ctx, "notifierId", n.id)
 					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
 
-					r.TaskRunWithContext(task.TidAlganicMall, task.TcidAlganicMallWatchNewEvents, ctx)
+					r.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx)
 
 					continue
 				}
@@ -148,8 +148,8 @@ func (n *telegramNotifier) Run(r task.TaskRunRequester, notifyStopCtx context.Co
 }
 
 //@@@@@ XXXXX channel로 수신
-func (n *telegramNotifier) Notify(m string) bool {
-	msg := tgbotapi.NewMessage(n.chatId, m)
+func (n *telegramNotifier) Notify(message string, ctx context.Context) bool {
+	msg := tgbotapi.NewMessage(n.chatId, message)
 	//msg.ReplyToMessageID = update.Message.MessageID
 	n.bot.Send(msg)
 

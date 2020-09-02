@@ -1,7 +1,6 @@
-package task
+package services
 
 import (
-	"github.com/darkkaiser/notify-server/service/notify"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
@@ -18,16 +17,17 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 			commandId:  taskRunData.commandId,
 			instanceId: instanceId,
 
-			ctx: taskRunData.ctx,
-
 			cancel: false,
+
+			notifierId:  taskRunData.notifierId,
+			notifierCtx: taskRunData.notifierCtx,
 		},
 	}
 
 	return task
 }
 
-func (t *alganicMallTask) Run(r notify.NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
+func (t *alganicMallTask) Run(r NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
 	defer taskStopWaiter.Done()
 
 	switch t.CommandId() {
@@ -39,12 +39,14 @@ func (t *alganicMallTask) Run(r notify.NotifyRequester, taskStopWaiter *sync.Wai
 		// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
 	}
 
+	// @@@@@
 	if t.cancel == false {
 		taskDoneC <- t.instanceId
 	}
 }
 
-func (t *alganicMallTask) runWatchNewEvents(r notify.NotifyRequester) {
+func (t *alganicMallTask) runWatchNewEvents(r NotifyRequester) {
+	// @@@@@
 	for i := 0; i < 5; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
 		time.Sleep(1 * time.Second)

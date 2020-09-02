@@ -1,10 +1,8 @@
-package notify
+package services
 
 import (
 	"context"
 	"github.com/darkkaiser/notify-server/global"
-	"github.com/darkkaiser/notify-server/service"
-	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
@@ -26,14 +24,15 @@ func (n *notifier) Id() NotifierId {
 type notifierHandler interface {
 	Id() NotifierId
 
-	Run(r task.TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
+	Run(r TaskRunRequester, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
 
 	//@@@@@
-	Notify(m string) bool
+	Notify(message string, ctx context.Context) bool
 }
 
+// @@@@@
 type NotifyRequester interface {
-	Notify(id NotifierId, message string, ctx context.Context) (succeeded bool)
+	Notify(id NotifierId, ctx context.Context, message string) (succeeded bool)
 }
 
 type notifyService struct {
@@ -46,10 +45,10 @@ type notifyService struct {
 
 	notifyStopWaiter *sync.WaitGroup
 
-	taskRunRequester task.TaskRunRequester
+	taskRunRequester TaskRunRequester
 }
 
-func NewNotifyService(config *global.AppConfig) service.Service {
+func NewNotifyService(config *global.AppConfig) Service {
 	return &notifyService{
 		config: config,
 
@@ -78,7 +77,7 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 
 	// TaskRunRequester 객체를 구한다.
 	if o := valueCtx.Value("TaskRunRequester"); o != nil {
-		r, ok := o.(task.TaskRunRequester)
+		r, ok := o.(TaskRunRequester)
 		if ok == false {
 			log.Panicf("TaskRunRequester 객체를 구할 수 없습니다.")
 		}
@@ -131,18 +130,18 @@ func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *
 }
 
 //@@@@@
-func (s *notifyService) Notify(id NotifierId, message string, ctx context.Context) (succeeded bool) {
+func (s *notifyService) Notify(id NotifierId, ctx context.Context, message string) (succeeded bool) {
 	succeeded = false
 
 	// runningMu lock???
-	for _, notifier := range s.notifierHandlers {
-		if notifier.Id() == id {
-			// 채널을 이용해서 메시지를 넘겨주는걸로 변경
-			notifier.Notify(m)
-			succeeded = true
-			break
-		}
-	}
+	//for _, notifier := range s.notifierHandlers {
+	//if notifier.Id() == id {
+	//	// 채널을 이용해서 메시지를 넘겨주는걸로 변경
+	//	notifier.Notify(message)
+	//	succeeded = true
+	//	break
+	//}
+	//}
 
 	return
 }

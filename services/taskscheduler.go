@@ -1,4 +1,4 @@
-package task
+package services
 
 import (
 	"github.com/darkkaiser/notify-server/global"
@@ -7,14 +7,14 @@ import (
 	"sync"
 )
 
-type scheduler struct {
+type taskScheduler struct {
 	cron *cron.Cron
 
 	running   bool
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *global.AppConfig, r TaskRunRequester) {
+func (s *taskScheduler) Start(config *global.AppConfig, r TaskRunRequester) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -27,7 +27,7 @@ func (s *scheduler) Start(config *global.AppConfig, r TaskRunRequester) {
 	for _, task := range config.Tasks {
 		for _, command := range task.Commands {
 			_, err := s.cron.AddFunc(command.TimeSpec, func() {
-				if r.TaskRun(TaskId(task.Id), TaskCommandId(command.Id)) == false {
+				if r.TaskRun(TaskId(task.Id), TaskCommandId(command.Id), NotifierId(command.NotifierId)) == false {
 					// @@@@@ 로그 남기고 notify 하기
 					//log.Warnf()
 				}
@@ -46,7 +46,7 @@ func (s *scheduler) Start(config *global.AppConfig, r TaskRunRequester) {
 	log.Debug("Task 스케쥴러 시작됨")
 }
 
-func (s *scheduler) Stop() {
+func (s *taskScheduler) Stop() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

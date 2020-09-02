@@ -1,10 +1,8 @@
-package task
+package services
 
 import (
 	"context"
 	"github.com/darkkaiser/notify-server/global"
-	"github.com/darkkaiser/notify-server/service"
-	"github.com/darkkaiser/notify-server/service/notify"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"sync/atomic"
@@ -36,9 +34,10 @@ type task struct {
 	commandId  TaskCommandId
 	instanceId TaskInstanceId
 
-	ctx context.Context
-
 	cancel bool
+
+	notifierId  NotifierId
+	notifierCtx context.Context
 }
 
 func (t *task) Id() TaskId {
@@ -53,12 +52,16 @@ func (t *task) InstanceId() TaskInstanceId {
 	return t.instanceId
 }
 
-func (t *task) Context() context.Context {
-	return t.ctx
-}
-
 func (t *task) Cancel() {
 	t.cancel = true
+}
+
+func (t *task) NotifierId() NotifierId {
+	return t.notifierId
+}
+
+func (t *task) NotifierContext() context.Context {
+	return t.notifierCtx
 }
 
 type taskHandler interface {
@@ -66,22 +69,25 @@ type taskHandler interface {
 	CommandId() TaskCommandId
 	InstanceId() TaskInstanceId
 
-	Context() context.Context
-
 	Cancel()
 
-	Run(r notify.NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
+	NotifierId() NotifierId
+	NotifierContext() context.Context
+
+	Run(r NotifyRequester, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId)
 }
 
 type taskRunData struct {
 	id        TaskId
 	commandId TaskCommandId
-	ctx       context.Context
+
+	notifierId  NotifierId
+	notifierCtx context.Context
 }
 
 type TaskRunRequester interface {
-	TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool)
-	TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool)
+	TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId) (succeeded bool)
+	TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context) (succeeded bool)
 
 	TaskCancel(id TaskInstanceId) (succeeded bool)
 }
@@ -92,7 +98,7 @@ type taskService struct {
 	running   bool
 	runningMu sync.Mutex
 
-	scheduler scheduler
+	scheduler taskScheduler
 
 	taskHandlers map[TaskInstanceId]taskHandler
 
@@ -104,17 +110,17 @@ type taskService struct {
 
 	taskStopWaiter *sync.WaitGroup
 
-	notifyRequester notify.NotifyRequester
+	notifyRequester NotifyRequester
 }
 
-func NewTaskService(config *global.AppConfig) service.Service {
+func NewTaskService(config *global.AppConfig) Service {
 	return &taskService{
 		config: config,
 
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		scheduler: scheduler{},
+		scheduler: taskScheduler{},
 
 		taskHandlers: make(map[TaskInstanceId]taskHandler),
 
@@ -146,7 +152,7 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 
 	// NotifyRequester 객체를 구한다.
 	if o := valueCtx.Value("NotifyRequester"); o != nil {
-		r, ok := o.(notify.NotifyRequester)
+		r, ok := o.(NotifyRequester)
 		if ok == false {
 			log.Panicf("NotifyRequester 객체를 구할 수 없습니다.")
 		}
@@ -258,11 +264,11 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId) (succeeded bool) {
-	return s.TaskRunWithContext(id, commandId, nil)
+func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId) (succeeded bool) {
+	return s.TaskRunWithContext(id, commandId, notifierId, nil)
 }
 
-func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx context.Context) (succeeded bool) {
+func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -274,7 +280,9 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, ctx
 	s.taskRunRequestC <- &taskRunData{
 		id:        id,
 		commandId: commandId,
-		ctx:       ctx,
+
+		notifierId:  notifierId,
+		notifierCtx: notifierCtx,
 	}
 
 	return true
