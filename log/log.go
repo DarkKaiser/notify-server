@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"github.com/darkkaiser/notify-server/global"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -14,16 +13,15 @@ import (
 
 const (
 	logFileDir       string = "logs"
-	logFilePrefix           = global.AppName
 	logFileExtension string = "log"
 )
 
-func Init(config *global.AppConfig, checkDaysAgo float64) {
+func Init(debug bool, appName string, checkDaysAgo float64) {
 	log.SetLevel(log.TraceLevel)
 	log.SetReportCaller(true)
 	log.SetFormatter(&log.TextFormatter{})
 
-	if config.Debug == true {
+	if debug == true {
 		return
 	}
 
@@ -35,17 +33,17 @@ func Init(config *global.AppConfig, checkDaysAgo float64) {
 
 	// 로그 파일을 생성한다.
 	t := time.Now()
-	filePath := fmt.Sprintf("%s%s%s-%d%02d%02d%02d%02d%02d.%s", logFileDir, string(os.PathSeparator), logFilePrefix, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), logFileExtension)
+	filePath := fmt.Sprintf("%s%s%s-%d%02d%02d%02d%02d%02d.%s", logFileDir, string(os.PathSeparator), appName, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), logFileExtension)
 	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	utils.CheckErr(err)
 
 	log.SetOutput(file)
 
 	// 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	cleanOutOfLogFiles(checkDaysAgo)
+	cleanOutOfLogFiles(appName, checkDaysAgo)
 }
 
-func cleanOutOfLogFiles(checkDaysAgo float64) {
+func cleanOutOfLogFiles(appName string, checkDaysAgo float64) {
 	fiList, err := ioutil.ReadDir(logFileDir)
 	if err != nil {
 		return
@@ -54,7 +52,7 @@ func cleanOutOfLogFiles(checkDaysAgo float64) {
 	t := time.Now()
 	for _, fi := range fiList {
 		fileName := fi.Name()
-		if strings.HasPrefix(fileName, logFilePrefix) == false || strings.HasSuffix(fileName, logFileExtension) == false {
+		if strings.HasPrefix(fileName, appName) == false || strings.HasSuffix(fileName, logFileExtension) == false {
 			continue
 		}
 

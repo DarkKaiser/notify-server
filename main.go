@@ -20,7 +20,7 @@ func main() {
 	config := global.InitAppConfig()
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.Init(config, 30.)
+	_log_.Init(config.Debug, global.AppName, 30.)
 
 	log.Info("##########################################################")
 	log.Info("###                                                    ###")
@@ -30,11 +30,10 @@ func main() {
 	log.Info("###                                                    ###")
 	log.Info("##########################################################")
 
-	log.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> START")
-
 	// 서비스를 생성한다.
 	serviceList := []services.Service{services.NewTaskService(config), services.NewNotifyService(config)}
 
+	// @@@@@
 	valueCtx := context.Background()
 	valueCtx = context.WithValue(valueCtx, "TaskRunRequester", serviceList[0])
 	valueCtx = context.WithValue(valueCtx, "NotifyRequester", serviceList[1])
@@ -59,6 +58,4 @@ func main() {
 	log.Info("Shutdown signal received")
 	cancel()                 // Signal cancellation to context.Context
 	serviceStopWaiter.Wait() // Block here until are workers are done
-
-	log.Info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< END")
 }
