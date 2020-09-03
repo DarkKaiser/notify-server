@@ -37,6 +37,8 @@ type task struct {
 	notifierCtx context.Context
 
 	cancel bool
+
+	runFunc func(sender NotifySender)
 }
 
 func (t *task) Id() TaskId {
@@ -57,6 +59,15 @@ func (t *task) NotifierId() NotifierId {
 
 func (t *task) NotifierContext() context.Context {
 	return t.notifierCtx
+}
+
+func (t *task) Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
+	defer taskStopWaiter.Done()
+	defer func() {
+		taskDoneC <- t.instanceId
+	}()
+
+	t.runFunc(sender)
 }
 
 func (t *task) Cancel() {

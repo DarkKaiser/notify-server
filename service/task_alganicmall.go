@@ -2,7 +2,6 @@ package service
 
 import (
 	log "github.com/sirupsen/logrus"
-	"sync"
 	"time"
 )
 
@@ -11,7 +10,7 @@ type alganicMallTask struct {
 }
 
 func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) taskHandler {
-	return &alganicMallTask{
+	task := &alganicMallTask{
 		task: task{
 			id:         taskRunData.id,
 			commandId:  taskRunData.commandId,
@@ -23,22 +22,20 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 			cancel: false,
 		},
 	}
-}
 
-func (t *alganicMallTask) Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
-	defer taskStopWaiter.Done()
-	defer func() {
-		taskDoneC <- t.instanceId
-	}()
+	// @@@@@ 테스트
+	task.runFunc = func(sender NotifySender) {
+		switch task.CommandId() {
+		case TcidAlganicMallWatchNewEvents:
+			task.runWatchNewEvents(sender)
 
-	switch t.CommandId() {
-	case TcidAlganicMallWatchNewEvents:
-		t.runWatchNewEvents(sender)
-
-	default:
-		// @@@@@ 로그 메시지 출력+notify
-		// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+		default:
+			// @@@@@ 로그 메시지 출력+notify
+			// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+		}
 	}
+
+	return task
 }
 
 func (t *alganicMallTask) runWatchNewEvents(sender NotifySender) {
