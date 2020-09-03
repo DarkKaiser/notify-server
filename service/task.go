@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"github.com/darkkaiser/notify-server/global"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -67,6 +68,10 @@ func (t *task) Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDone
 		taskDoneC <- t.instanceId
 	}()
 
+	if t.runFunc == nil {
+		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.id, t.commandId)
+	}
+
 	t.runFunc(sender)
 }
 
@@ -114,8 +119,8 @@ type taskService struct {
 	taskInstanceIdGenerator taskInstanceIdGenerator
 
 	taskDoneC          chan TaskInstanceId
-	taskRunRequestC    chan *taskRunData
 	taskCancelRequestC chan TaskInstanceId
+	taskRunRequestC    chan *taskRunData
 
 	taskStopWaiter *sync.WaitGroup
 
@@ -136,8 +141,8 @@ func NewTaskService(config *global.AppConfig) Service {
 		taskInstanceIdGenerator: taskInstanceIdGenerator{id: 0},
 
 		taskDoneC:          make(chan TaskInstanceId, 10),
-		taskRunRequestC:    make(chan *taskRunData, 10),
 		taskCancelRequestC: make(chan TaskInstanceId, 10),
+		taskRunRequestC:    make(chan *taskRunData, 10),
 
 		taskStopWaiter: &sync.WaitGroup{},
 
@@ -171,7 +176,7 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 	}
 
 	// Task 스케쥴러를 시작한다.
-	s.scheduler.Start(s.config, s)
+	s.scheduler.Start(s.config, s, s.notifySender)
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
 
@@ -197,7 +202,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			log.Debugf("새 Task 실행 요청 수신(TaskId:%s, CommandId:%s, InstanceId:%d)", taskRunData.id, taskRunData.commandId, instanceId)
+			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신(TaskInstanceID:%d)", taskRunData.id, taskRunData.commandId, instanceId)
 
 			var h taskHandler
 			switch taskRunData.id {
@@ -205,8 +210,10 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				h = newAlganicMallTask(instanceId, taskRunData)
 
 			default:
-				log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
-				// @@@@@ notify
+				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.id, taskRunData.commandId)
+
+				log.Error(m)
+				s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, m)
 
 				continue
 			}
@@ -218,26 +225,28 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.notifySender, s.taskStopWaiter, s.taskDoneC)
 
+			s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.")
+
 		case instanceId := <-s.taskDoneC:
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
-				log.Debugf("Task 작업이 완료되었습니다.(TaskId:%s, CommandId:%s, InstanceId:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
+				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
 
 				delete(s.taskHandlers, instanceId)
 			} else {
-				log.Warnf("등록되지 않은 Task 작업 완료가 수신되었습니다.(InstanceId:%d)", instanceId)
+				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceId)
 			}
 			s.runningMu.Unlock()
 
 		case instanceId := <-s.taskCancelRequestC:
-			// @@@@@ 테스트
 			s.runningMu.Lock()
+			// @@@@@ notify 취소요청되었다는 메시지를 보낸다.
 			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
-				log.Debugf("Task 작업이 취소되었습니다.(TaskId:%s, CommandId:%s, InstanceId:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
+				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
 
 				taskHandler.Cancel()
 			} else {
-				log.Warnf("등록되지 않은 Task 취소 요청이 수신되었습니다.(InstanceId:%d)", instanceId)
+				log.Warnf("등록되지 않은 Task에 대한 작업취소요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceId)
 			}
 			s.runningMu.Unlock()
 
@@ -283,7 +292,7 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, not
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("Task 실행 요청중에 panic이 발생하였습니다.(TaskId:%s, TaskCommandId:%s, panic:%s", id, commandId, r)
+			log.Errorf("'%s::%s' Task 실행 요청중에 panic이 발생하였습니다.(panic:%s", id, commandId, r)
 		}
 	}()
 
@@ -303,7 +312,7 @@ func (s *taskService) TaskCancel(id TaskInstanceId) (succeeded bool) {
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceId:%s, panic:%s", id, r)
+			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%s, panic:%s", id, r)
 		}
 	}()
 

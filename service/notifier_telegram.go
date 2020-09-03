@@ -17,11 +17,15 @@ type telegramNotifier struct {
 	bot *tgbotapi.BotAPI
 
 	botCommands []telegramBotCommand
+
+	//@@@@@
+	taskRunRequestC chan *notifyData
 }
 
 type telegramBotCommand struct {
-	command     string
-	description string
+	command              string
+	description          string
+	contextWithMessageId bool //@@@@@
 }
 
 func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHandler {
@@ -31,14 +35,18 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 		},
 
 		chatId: chatId,
+
+		taskRunRequestC: make(chan *notifyData, 10), //@@@@@
 	}
 
 	notifier.botCommands = append(notifier.botCommands, telegramBotCommand{
-		command:     "alganicmall_watch_new_events",
-		description: "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
+		command:              "alganicmall_watch_new_events",
+		description:          "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
+		contextWithMessageId: false,
 	}, telegramBotCommand{
-		command:     "help",
-		description: "도움말을 표시합니다.",
+		command:              "help",
+		description:          "도움말을 표시합니다.",
+		contextWithMessageId: false,
 	})
 
 	// 텔레그램 봇을 생성한다.
@@ -88,7 +96,10 @@ LOOP:
 				}
 
 				_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
-				utils.CheckErr(err) //@@@@@
+				if err != nil {
+					// @@@@@
+					log.Errorf("%s", err)
+				}
 
 				continue
 			}
@@ -104,9 +115,9 @@ LOOP:
 
 					if runner.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx) == true {
 						// @@@@@
-						msg := tgbotapi.NewMessage(n.chatId, "요청하였습니다.")
-						msg.ReplyToMessageID = update.Message.MessageID
-						n.bot.Send(msg)
+						//msg := tgbotapi.NewMessage(n.chatId, "요청하였습니다.")
+						//msg.ReplyToMessageID = update.Message.MessageID
+						//n.bot.Send(msg)
 					}
 					//////////////////
 
@@ -120,16 +131,18 @@ LOOP:
 			_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
 			utils.CheckErr(err) //@@@@@
 
+		case nd := <-n.taskRunRequestC:
 			// @@@@@
-			//////////////////
-			//			case receive<-notifymessage:받을때 context를 그대로 받는다.
-			//				msg := tgbotapi.NewMessage(297396697, m)
-			//				//msg.ReplyToMessageID = update.Message.MessageID
-			//				s.bot.Send(msg)
-			//////////////////
+			msg := tgbotapi.NewMessage(n.chatId, nd.message)
+			//msg.ReplyToMessageID = update.Message.MessageID
+			n.bot.Send(msg)
 
 		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
+
+			// @@@@@
+			n.bot = nil
+			close(n.taskRunRequestC)
 
 			log.Debugf("'%s' Telegram Notifier의 작업이 중지됨", n.id)
 
@@ -138,11 +151,28 @@ LOOP:
 	}
 }
 
-//@@@@@ XXXXX channel로 수신
-func (n *telegramNotifier) Notify(ctx context.Context, message string) bool {
-	msg := tgbotapi.NewMessage(n.chatId, message)
-	//msg.ReplyToMessageID = update.Message.MessageID
-	n.bot.Send(msg)
+//@@@@@
+type notifyData struct {
+	ctx     context.Context
+	message string
+}
+
+func (n *telegramNotifier) Notify(ctx context.Context, message string) (succeeded bool) {
+	// @@@@@
+	defer func() {
+		if r := recover(); r != nil {
+			succeeded = false
+
+			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceId:%s, panic:%s", message, r)
+		}
+	}()
+
+	n.taskRunRequestC <- &notifyData{
+		ctx:     ctx,
+		message: message,
+	}
+
+	return true
 
 	return true
 }

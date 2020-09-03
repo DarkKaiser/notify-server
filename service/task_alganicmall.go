@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -29,8 +30,10 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 			task.runWatchNewEvents(sender)
 
 		default:
-			// @@@@@ 로그 메시지 출력+notify
-			// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
+			m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", taskRunData.id, taskRunData.commandId)
+
+			log.Error(m)
+			sender.Notify(task.notifierId, task.notifierCtx, m)
 		}
 	}
 
@@ -49,17 +52,19 @@ func (t *alganicMallTask) runWatchNewEvents(sender NotifySender) {
 		}
 	}
 
-	if t.cancel == false {
-		// notify??
-		// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
-		//				handler := s.taskHandlers[newId]
-		//ctx2 := handler.Context()
-		//notifyserverChan<- struct {
-		//				message:
-		//					ctx : ctx2
-		//				}
-
+	if t.cancel == true {
+		return
 	}
+
+	sender.Notify(t.notifierId, t.notifierCtx, "태스크가 완료되었습니다.")
+	// notify??
+	// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
+	//				handler := s.taskHandlers[newId]
+	//ctx2 := handler.Context()
+	//notifyserverChan<- struct {
+	//				message:
+	//					ctx : ctx2
+	//				}
 
 	// 웹 크롤링해서 이벤트를 로드하고 Noti로 알린다.
 	// 각각의 데이터는 data.xxx.json 파일로 관리한다.
