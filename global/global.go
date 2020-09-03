@@ -20,6 +20,7 @@ type AppConfig struct {
 }
 
 type Notifiers struct {
+	Default   string      `json:"default"`
 	Telegrams []*Telegram `json:"telegram"`
 }
 

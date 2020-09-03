@@ -41,7 +41,8 @@ type notifyService struct {
 	running   bool
 	runningMu sync.Mutex
 
-	notifierHandlers []notifierHandler
+	notifierHandlers       []notifierHandler
+	defaultNotifierHandler notifierHandler
 
 	notifyStopWaiter *sync.WaitGroup
 
@@ -54,6 +55,8 @@ func NewNotifyService(config *global.AppConfig) Service {
 
 		running:   false,
 		runningMu: sync.Mutex{},
+
+		defaultNotifierHandler: nil,
 
 		notifyStopWaiter: &sync.WaitGroup{},
 
@@ -103,6 +106,17 @@ func (s *notifyService) Run(valueCtx context.Context, serviceStopCtx context.Con
 		}
 	}
 
+	// 기본 Notifier를 구한다.
+	for _, h := range s.notifierHandlers {
+		if h.Id() == NotifierId(s.config.Notifiers.Default) {
+			s.defaultNotifierHandler = h
+			break
+		}
+	}
+	if s.defaultNotifierHandler == nil {
+		log.Panicf("알 수 없는 기본 Notifier ID가 입력되었습니다.(NotifierId:%s)", s.config.Notifiers.Default)
+	}
+
 	go s.run0(serviceStopCtx, serviceStopWaiter)
 
 	s.running = true
@@ -123,6 +137,7 @@ func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *
 		s.runningMu.Lock()
 		s.running = false
 		s.notifierHandlers = nil
+		s.defaultNotifierHandler = nil
 		s.taskRunner = nil //@@@@@
 		s.runningMu.Unlock()
 
@@ -158,5 +173,7 @@ func (s *notifyService) NotifyWithDefaultNotifier(message string) (succeeded boo
 	defer s.runningMu.Unlock()
 
 	// @@@@@
+	s.defaultNotifierHandler.Notify(nil, message)
+
 	return true
 }
