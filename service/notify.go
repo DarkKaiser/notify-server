@@ -32,6 +32,7 @@ type notifierHandler interface {
 
 type NotifySender interface {
 	Notify(id NotifierId, ctx context.Context, message string) (succeeded bool)
+	NotifyWithDefaultNotifier(message string) (succeeded bool)
 }
 
 type notifyService struct {
@@ -129,25 +130,33 @@ func (s *notifyService) run0(serviceStopCtx context.Context, serviceStopWaiter *
 	}
 }
 
-//@@@@@ 함수구현, 내부에서 바로 notifier를 호출할지 아니면 채널을 통해서 보내고 나서 호출할지는 더 고민
 func (s *notifyService) Notify(id NotifierId, ctx context.Context, message string) (succeeded bool) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	succeeded = false
-
-	for _, notifier := range s.notifierHandlers {
-		if notifier.Id() == id {
+	for _, h := range s.notifierHandlers {
+		if h.Id() == id {
+			//@@@@@ 함수구현, 내부에서 바로 notifier를 호출할지 아니면 채널을 통해서 보내고 나서 호출할지는 더 고민
 			// 채널을 이용해서 메시지를 넘겨주는걸로 변경
 			//notifier.NotifyC() <- struct {
 			//	ctx,
 			//	message
 			//}
-			notifier.Notify(ctx, message)
-			succeeded = true
-			break
+			h.Notify(ctx, message)
+
+			return true
 		}
 	}
 
-	return
+	// @@@@@ log.error+notify(???)
+
+	return false
+}
+
+func (s *notifyService) NotifyWithDefaultNotifier(message string) (succeeded bool) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+
+	// @@@@@
+	return true
 }

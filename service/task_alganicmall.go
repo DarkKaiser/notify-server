@@ -27,6 +27,9 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 
 func (t *alganicMallTask) Run(sender NotifySender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceId) {
 	defer taskStopWaiter.Done()
+	defer func() {
+		taskDoneC <- t.instanceId
+	}()
 
 	switch t.CommandId() {
 	case TcidAlganicMallWatchNewEvents:
@@ -35,11 +38,6 @@ func (t *alganicMallTask) Run(sender NotifySender, taskStopWaiter *sync.WaitGrou
 	default:
 		// @@@@@ 로그 메시지 출력+notify
 		// log.Errorf("등록되지 않은 Task 실행 요청이 수신되었습니다(TaskId:%s, CommandId:%s)", taskRunData.id, taskRunData.commandId)
-	}
-
-	// @@@@@ cancel일대 어케할지경정,+ defer 함수로 만들기
-	if t.cancel == false {
-		taskDoneC <- t.instanceId
 	}
 }
 

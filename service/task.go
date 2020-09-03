@@ -219,13 +219,12 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 		case instanceId := <-s.taskCancelRequestC:
-			// @@@@@ cancel일때 여기서 삭제하지 않고 task에서 done을 날려서 거기서 삭제하는건??? 삭제하는게 여러군데 있음..
+			// @@@@@ 테스트
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
 				log.Debugf("Task 작업이 취소되었습니다.(TaskId:%s, CommandId:%s, InstanceId:%d)", taskHandler.Id(), taskHandler.CommandId(), instanceId)
 
 				taskHandler.Cancel()
-				delete(s.taskHandlers, instanceId)
 			} else {
 				log.Warnf("등록되지 않은 Task 취소 요청이 수신되었습니다.(InstanceId:%d)", instanceId)
 			}
@@ -254,7 +253,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Lock()
 			s.running = false
 			s.taskHandlers = nil
-			s.notifySender = nil
+			s.notifySender = nil //@@@@@
 			s.runningMu.Unlock()
 
 			log.Debug("Task 서비스 중지됨")
