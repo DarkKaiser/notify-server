@@ -23,7 +23,6 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 		},
 	}
 
-	// @@@@@ 테스트
 	task.runFunc = func(sender NotifySender) {
 		switch task.CommandId() {
 		case TcidAlganicMallWatchNewEvents:
