@@ -225,7 +225,8 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.notifySender, s.taskStopWaiter, s.taskDoneC)
 
-			s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.")
+			// @@@@@ 취소 instanceid가 넘어가야됨, 여기서 /cancel 을 추가하면 안됨 notifier에서 추가해야됨
+			s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.\n/cancel_xxx")
 
 		case instanceId := <-s.taskDoneC:
 			s.runningMu.Lock()

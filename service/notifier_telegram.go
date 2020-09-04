@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -24,6 +23,12 @@ type telegramBotCommand struct {
 	description string
 }
 
+const (
+	botCommandHelp                      string = "help"
+	botCommandCancel                    string = "cancel"
+	botCommandAlganicmallWatchNewEvents string = "alganicmall_watch_new_events"
+)
+
 func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
@@ -36,10 +41,10 @@ func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHand
 	}
 
 	notifier.botCommands = append(notifier.botCommands, telegramBotCommand{
-		command:     "alganicmall_watch_new_events",
+		command:     botCommandAlganicmallWatchNewEvents,
 		description: "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
 	}, telegramBotCommand{
-		command:     "help",
+		command:     botCommandHelp,
 		description: "도움말을 표시합니다.",
 	})
 
@@ -80,21 +85,25 @@ LOOP:
 			}
 
 			command := update.Message.Text[1:]
-			if command == "help" {
+			switch command {
+			case botCommandHelp:
 				m := fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n\n")
 				for i, botCommand := range n.botCommands {
 					if i != 0 {
 						m += "\n\n"
 					}
-					m += fmt.Sprintf("%s\n%s", botCommand.command, botCommand.description)
+					m += fmt.Sprintf("/%s\n%s", botCommand.command, botCommand.description)
 				}
 
 				_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
 				if err != nil {
-					// @@@@@
-					log.Errorf("%s", err)
+					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 
+				continue
+
+			case botCommandCancel:
+				// 취소명령/cancel_xxx@@@@@
 				continue
 			}
 
@@ -115,17 +124,20 @@ LOOP:
 				}
 			}
 
-			// 취소명령/cancel_xxx@@@@@
-
 			m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '/help'을 입력하세요.", update.Message.Text)
 			_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
-			utils.CheckErr(err) //@@@@@
+			if err != nil {
+				log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+			}
 
 		case notifySendData := <-n.notifySendC:
 			// @@@@@
 			msg := tgbotapi.NewMessage(n.chatId, notifySendData.message)
 			//msg.ReplyToMessageID = update.Message.MessageID
-			n.bot.Send(msg)
+			_, err := n.bot.Send(msg)
+			if err != nil {
+				log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+			}
 
 		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
