@@ -17,36 +17,30 @@ type telegramNotifier struct {
 	bot *tgbotapi.BotAPI
 
 	botCommands []telegramBotCommand
-
-	//@@@@@
-	taskRunRequestC chan *notifyData
 }
 
 type telegramBotCommand struct {
-	command              string
-	description          string
-	contextWithMessageId bool //@@@@@
+	command     string
+	description string
 }
 
 func newTelegramNotifier(id NotifierId, token string, chatId int64) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
+
+			notifySendC: make(chan *notifySendData, 10),
 		},
 
 		chatId: chatId,
-
-		taskRunRequestC: make(chan *notifyData, 10), //@@@@@
 	}
 
 	notifier.botCommands = append(notifier.botCommands, telegramBotCommand{
-		command:              "alganicmall_watch_new_events",
-		description:          "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
-		contextWithMessageId: false,
+		command:     "alganicmall_watch_new_events",
+		description: "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
 	}, telegramBotCommand{
-		command:              "help",
-		description:          "도움말을 표시합니다.",
-		contextWithMessageId: false,
+		command:     "help",
+		description: "도움말을 표시합니다.",
 	})
 
 	// 텔레그램 봇을 생성한다.
@@ -114,10 +108,6 @@ LOOP:
 					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
 
 					if runner.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx) == true {
-						// @@@@@
-						//msg := tgbotapi.NewMessage(n.chatId, "요청하였습니다.")
-						//msg.ReplyToMessageID = update.Message.MessageID
-						//n.bot.Send(msg)
 					}
 					//////////////////
 
@@ -131,48 +121,26 @@ LOOP:
 			_, err := n.bot.Send(tgbotapi.NewMessage(n.chatId, m))
 			utils.CheckErr(err) //@@@@@
 
-		case nd := <-n.taskRunRequestC:
+		case notifySendData := <-n.notifySendC:
 			// @@@@@
-			msg := tgbotapi.NewMessage(n.chatId, nd.message)
+			msg := tgbotapi.NewMessage(n.chatId, notifySendData.message)
 			//msg.ReplyToMessageID = update.Message.MessageID
 			n.bot.Send(msg)
 
 		case <-notifyStopCtx.Done():
 			n.bot.StopReceivingUpdates()
 
+			////////////////////////////////
 			// @@@@@
 			n.bot = nil
-			close(n.taskRunRequestC)
+			n.chatId = 0
+			n.botCommands = nil
+			close(n.notifySendC)
+			////////////////////////////////
 
 			log.Debugf("'%s' Telegram Notifier의 작업이 중지됨", n.id)
 
 			return
 		}
 	}
-}
-
-//@@@@@
-type notifyData struct {
-	ctx     context.Context
-	message string
-}
-
-func (n *telegramNotifier) Notify(ctx context.Context, message string) (succeeded bool) {
-	// @@@@@
-	defer func() {
-		if r := recover(); r != nil {
-			succeeded = false
-
-			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceId:%s, panic:%s", message, r)
-		}
-	}()
-
-	n.taskRunRequestC <- &notifyData{
-		ctx:     ctx,
-		message: message,
-	}
-
-	return true
-
-	return true
 }

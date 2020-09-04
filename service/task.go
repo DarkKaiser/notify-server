@@ -118,9 +118,9 @@ type taskService struct {
 
 	taskInstanceIdGenerator taskInstanceIdGenerator
 
-	taskDoneC          chan TaskInstanceId
-	taskCancelRequestC chan TaskInstanceId
-	taskRunRequestC    chan *taskRunData
+	taskRunC    chan *taskRunData
+	taskDoneC   chan TaskInstanceId
+	taskCancelC chan TaskInstanceId
 
 	taskStopWaiter *sync.WaitGroup
 
@@ -140,9 +140,9 @@ func NewTaskService(config *global.AppConfig) Service {
 
 		taskInstanceIdGenerator: taskInstanceIdGenerator{id: 0},
 
-		taskDoneC:          make(chan TaskInstanceId, 10),
-		taskCancelRequestC: make(chan TaskInstanceId, 10),
-		taskRunRequestC:    make(chan *taskRunData, 10),
+		taskRunC:    make(chan *taskRunData, 10),
+		taskDoneC:   make(chan TaskInstanceId, 10),
+		taskCancelC: make(chan TaskInstanceId, 10),
 
 		taskStopWaiter: &sync.WaitGroup{},
 
@@ -190,7 +190,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 	for {
 		select {
-		case taskRunData := <-s.taskRunRequestC:
+		case taskRunData := <-s.taskRunC:
 			var instanceId TaskInstanceId
 
 			s.runningMu.Lock()
@@ -238,7 +238,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-		case instanceId := <-s.taskCancelRequestC:
+		case instanceId := <-s.taskCancelC:
 			s.runningMu.Lock()
 			// @@@@@ notify 취소요청되었다는 메시지를 보낸다.
 			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
@@ -264,8 +264,8 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				handler.Cancel()
 			}
 			s.runningMu.Unlock()
-			close(s.taskRunRequestC)
-			close(s.taskCancelRequestC)
+			close(s.taskRunC)
+			close(s.taskCancelC)
 			close(s.taskDoneC)
 			s.taskStopWaiter.Wait()
 			/////////////////
@@ -296,7 +296,7 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, not
 		}
 	}()
 
-	s.taskRunRequestC <- &taskRunData{
+	s.taskRunC <- &taskRunData{
 		id:        id,
 		commandId: commandId,
 
@@ -316,7 +316,7 @@ func (s *taskService) TaskCancel(id TaskInstanceId) (succeeded bool) {
 		}
 	}()
 
-	s.taskCancelRequestC <- id
+	s.taskCancelC <- id
 
 	return true
 }

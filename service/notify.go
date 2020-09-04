@@ -16,10 +16,29 @@ const (
 
 type notifier struct {
 	id NotifierId
+
+	notifySendC chan *notifySendData
 }
 
 func (n *notifier) Id() NotifierId {
 	return n.id
+}
+
+func (n *notifier) Notify(ctx context.Context, message string) (succeeded bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			succeeded = false
+
+			log.Errorf("알림메시지 발송중에 panic이 발생하였습니다.(NotifierID:%s, message:%s, panic:%s", n.id, message, r)
+		}
+	}()
+
+	n.notifySendC <- &notifySendData{
+		ctx:     ctx,
+		message: message,
+	}
+
+	return true
 }
 
 type notifierHandler interface {
@@ -28,6 +47,11 @@ type notifierHandler interface {
 	Run(runner TaskRunner, notifyStopCtx context.Context, notifyStopWaiter *sync.WaitGroup)
 
 	Notify(ctx context.Context, message string) (succeeded bool)
+}
+
+type notifySendData struct {
+	ctx     context.Context
+	message string
 }
 
 type NotifySender interface {
@@ -157,10 +181,10 @@ func (s *notifyService) Notify(id NotifierId, ctx context.Context, message strin
 		}
 	}
 
-	m := fmt.Sprintf("존재하지 않는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(메시지:%s)", id, message)
+	m := fmt.Sprintf("존재하지 않는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(message:%s)", id, message)
 
 	log.Errorf(m)
-	s.defaultNotifierHandler.Notify(nil, message)
+	s.defaultNotifierHandler.Notify(nil, m)
 
 	return false
 }
