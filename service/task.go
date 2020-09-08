@@ -98,11 +98,14 @@ type taskRunData struct {
 
 	notifierId  NotifierId
 	notifierCtx context.Context
+
+	// @@@@@
+	response bool
 }
 
 type TaskRunner interface {
-	TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId) (succeeded bool)
-	TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context) (succeeded bool)
+	TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId, response bool) (succeeded bool)
+	TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context, response bool) (succeeded bool)
 	TaskCancel(id TaskInstanceId) (succeeded bool)
 }
 
@@ -225,8 +228,14 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.notifySender, s.taskStopWaiter, s.taskDoneC)
 
-			// @@@@@ 취소 instanceid가 넘어가야됨, 여기서 /cancel 을 추가하면 안됨 notifier에서 추가해야됨
-			s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.\n/cancel_xxx")
+			if taskRunData.response == true {
+				// @@@@@
+				taskRunData.notifierCtx = context.WithValue(taskRunData.notifierCtx, "cancelInstanceId", instanceId)
+
+				// @@@@@ 스케쥴러 또는 텔레그램에서 요청된 메시지, 스케쥴러에서 요청된 메시지의 응답을 보내야 할까?
+				// @@@@@ 취소 instanceid가 넘어가야됨, 여기서 /cancel 을 추가하면 안됨 notifier에서 추가해야됨
+				s.notifySender.Notify(taskRunData.notifierId, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.\n/cancel_xxx")
+			}
 
 		case instanceId := <-s.taskDoneC:
 			s.runningMu.Lock()
@@ -284,11 +293,11 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId) (succeeded bool) {
-	return s.TaskRunWithContext(id, commandId, notifierId, nil)
+func (s *taskService) TaskRun(id TaskId, commandId TaskCommandId, notifierId NotifierId, response bool) (succeeded bool) {
+	return s.TaskRunWithContext(id, commandId, notifierId, nil, response)
 }
 
-func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context) (succeeded bool) {
+func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, notifierId NotifierId, notifierCtx context.Context, response bool) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -303,6 +312,9 @@ func (s *taskService) TaskRunWithContext(id TaskId, commandId TaskCommandId, not
 
 		notifierId:  notifierId,
 		notifierCtx: notifierCtx,
+
+		// @@@@@
+		response: response,
 	}
 
 	return true

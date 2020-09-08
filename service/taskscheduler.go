@@ -28,7 +28,7 @@ func (s *taskScheduler) Start(config *global.AppConfig, runner TaskRunner, sende
 	for _, t := range config.Tasks {
 		for _, c := range t.Commands {
 			_, err := s.cron.AddFunc(c.TimeSpec, func() {
-				if runner.TaskRun(TaskId(t.Id), TaskCommandId(c.Id), NotifierId(c.NotifierId)) == true {
+				if runner.TaskRun(TaskId(t.Id), TaskCommandId(c.Id), NotifierId(c.NotifierId), false) == true {
 					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.Id, c.Id)
 
 					log.Error(m)

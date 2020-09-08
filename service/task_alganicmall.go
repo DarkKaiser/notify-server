@@ -42,12 +42,13 @@ func newAlganicMallTask(instanceId TaskInstanceId, taskRunData *taskRunData) tas
 
 func (t *alganicMallTask) runWatchNewEvents(sender NotifySender) {
 	// @@@@@
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 50; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
 		time.Sleep(1 * time.Second)
 
 		if t.cancel == true {
 			// 종료처리필요
+			log.Info("==============================취소==========================================")
 			break
 		}
 	}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -21,6 +23,10 @@ type telegramNotifier struct {
 type telegramBotCommand struct {
 	command     string
 	description string
+
+	// @@@@@
+	mainId string
+	subId  string
 }
 
 const (
@@ -85,8 +91,7 @@ LOOP:
 			}
 
 			command := update.Message.Text[1:]
-			switch command {
-			case botCommandHelp:
+			if command == botCommandHelp {
 				m := fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n\n")
 				for i, botCommand := range n.botCommands {
 					if i != 0 {
@@ -101,9 +106,11 @@ LOOP:
 				}
 
 				continue
-
-			case botCommandCancel:
+			} else if strings.HasPrefix(command, botCommandCancel) == true {
 				// 취소명령/cancel_xxx@@@@@
+				split := strings.Split(command, "_")
+				n, _ := strconv.Atoi(split[1])
+				runner.TaskCancel(TaskInstanceId(n))
 				continue
 			}
 
@@ -112,11 +119,19 @@ LOOP:
 					// @@@@@
 					//////////////////
 					ctx := context.Background()
-					ctx = context.WithValue(ctx, "taskId", TidAlganicMall)
+					ctx = context.WithValue(ctx, "taskId", TidAlganicMall) //botCommand.taskId
 					ctx = context.WithValue(ctx, "taskCommandId", TcidAlganicMallWatchNewEvents)
+					ctx = context.WithValue(ctx, "cancelInstanceId", -1) //cancelId
+
+					// telegram notifier에 종속적인 값들
+					ctx = context.WithValue(ctx, "botCommand", command)
 					ctx = context.WithValue(ctx, "messageId", update.Message.MessageID)
 
-					if runner.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx) == true {
+					// runner 인터페이스를 task로 옮기는건??? notifyReceiver.TaskRun
+					// 함수에서 tid 같은건 문자열로 하고... 그럼 분리 가능???
+					// 지원가능한 커맨드목록을 global 같은데에 두고 이걸 기반으로 task 및 notifier에서 사용
+					if runner.TaskRunWithContext(TidAlganicMall, TcidAlganicMallWatchNewEvents, n.Id(), ctx, true) == false {
+						log.Errorf("Task 실행요청이 실패하였습니다.(%s)", botCommand)
 					}
 					//////////////////
 
@@ -131,12 +146,25 @@ LOOP:
 			}
 
 		case notifySendData := <-n.notifySendC:
-			// @@@@@
-			msg := tgbotapi.NewMessage(n.chatId, notifySendData.message)
-			//msg.ReplyToMessageID = update.Message.MessageID
-			_, err := n.bot.Send(msg)
-			if err != nil {
-				log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+			if notifySendData.ctx == nil {
+				m := tgbotapi.NewMessage(n.chatId, notifySendData.message)
+				_, err := n.bot.Send(m)
+				if err != nil {
+					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+				}
+			} else {
+				// @@@@@
+				m := notifySendData.message
+				v := notifySendData.ctx.Value("cancelInstanceId")
+				if v != -1 {
+					m += fmt.Sprintf("\n/cancel_%d", v)
+				}
+				msg := tgbotapi.NewMessage(n.chatId, m)
+				//msg.ReplyToMessageID = update.Message.MessageID
+				_, err := n.bot.Send(msg)
+				if err != nil {
+					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+				}
 			}
 
 		case <-notifyStopCtx.Done():
