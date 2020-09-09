@@ -33,3 +33,14 @@ func FormatCommas(n int) string {
 	}
 	return str
 }
+
+func ToSnakeCase(str string, separator string) string {
+	matchFirstRegexp := regexp.MustCompile("(.)([A-Z][a-z]+)")
+	matchAllRegexp := regexp.MustCompile("([a-z0-9])([A-Z])")
+
+	repl := fmt.Sprintf("${1}%s${2}", separator)
+	snakeCaseString := matchFirstRegexp.ReplaceAllString(str, repl)
+	snakeCaseString = matchAllRegexp.ReplaceAllString(snakeCaseString, repl)
+
+	return strings.ToLower(snakeCaseString)
+}

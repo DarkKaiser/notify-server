@@ -1,8 +1,8 @@
 {
 	"debug": true,
 	"notifiers": {
-		"default": "darkkaiser_notify_bot",
-		"telegram": [
+		"default_notifier_id": "darkkaiser_notify_bot",
+		"telegrams": [
 			{
 				"id": "darkkaiser_notify_bot",
 				"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
@@ -12,12 +12,20 @@
 	},
 	"tasks": [
 		{
-			"id" : "ALGANICMALL",
-			"commands" : [
+			"id": "ALGANICMALL",
+			"title": "엘가닉몰",
+			"commands": [
 				{
 					"id": "WatchNewEvents",
-					"time_spec" : "*/10 * * * *",
-					"notifier_id": "darkkaiser_notify_bot"
+					"description": "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "*/30 * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
 				}
 			]
 		}

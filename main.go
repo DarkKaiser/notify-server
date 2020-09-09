@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
-	"github.com/darkkaiser/notify-server/global"
+	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
+	"github.com/darkkaiser/notify-server/service/notify"
+	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
@@ -17,14 +19,14 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
 
 	// 환경설정 정보를 읽어들인다.
-	config := global.InitAppConfig()
+	config := g.InitAppConfig()
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.Init(config.Debug, global.AppName, 30.)
+	_log_.Init(config.Debug, g.AppName, 30.)
 
 	log.Info("##########################################################")
 	log.Info("###                                                    ###")
-	log.Infof("###                %s %s                 ###", global.AppName, global.AppVersion)
+	log.Infof("###                %s %s                 ###", g.AppName, g.AppVersion)
 	log.Info("###                                                    ###")
 	log.Info("###                           developed by DarkKaiser  ###")
 	log.Info("###                                                    ###")
@@ -32,13 +34,13 @@ func main() {
 
 	// 서비스를 생성한다.
 	services := []service.Service{
-		service.NewTaskService(config),
-		service.NewNotifyService(config),
+		task.NewService(config),
+		notify.NewService(config),
 	}
 
 	valueCtx := context.Background()
-	valueCtx = context.WithValue(valueCtx, "taskrunner", services[0])
-	valueCtx = context.WithValue(valueCtx, "notifysender", services[1])
+	valueCtx = context.WithValue(valueCtx, "notify.notification_sender", services[1])
+	valueCtx = context.WithValue(valueCtx, "notify.notifier_action_processor", services[0])
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())

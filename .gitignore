@@ -13,3 +13,9 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+# 로그폴더
+logs/
+
+# .idea 폴더
+.idea/

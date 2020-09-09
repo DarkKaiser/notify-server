@@ -1,21 +1,22 @@
-package service
+package task
 
 import (
 	"fmt"
-	"github.com/darkkaiser/notify-server/global"
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/service/notify"
 	"github.com/robfig/cron"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
-type taskScheduler struct {
+type scheduler struct {
 	cron *cron.Cron
 
 	running   bool
 	runningMu sync.Mutex
 }
 
-func (s *taskScheduler) Start(config *global.AppConfig, runner TaskRunner, sender NotifySender) {
+func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, notificationSender notify.NotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -27,12 +28,17 @@ func (s *taskScheduler) Start(config *global.AppConfig, runner TaskRunner, sende
 
 	for _, t := range config.Tasks {
 		for _, c := range t.Commands {
-			_, err := s.cron.AddFunc(c.TimeSpec, func() {
-				if runner.TaskRun(TaskId(t.Id), TaskCommandId(c.Id), NotifierId(c.NotifierId), false) == true {
-					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.Id, c.Id)
+			if c.Scheduler.Runnable == false {
+				continue
+			}
+
+			_, err := s.cron.AddFunc(c.Scheduler.TimeSpec, func() {
+				defaultNotifierID := notify.NotifierID(c.DefaultNotifierID)
+				if taskRunner.TaskRun(t.ID, c.ID, defaultNotifierID, false) == false {
+					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.ID, c.ID)
 
 					log.Error(m)
-					sender.Notify(NotifierId(c.NotifierId), nil, m)
+					notificationSender.Notify(defaultNotifierID, nil, m)
 				}
 			})
 
@@ -49,7 +55,7 @@ func (s *taskScheduler) Start(config *global.AppConfig, runner TaskRunner, sende
 	log.Debug("Task 스케쥴러 시작됨")
 }
 
-func (s *taskScheduler) Stop() {
+func (s *scheduler) Stop() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
