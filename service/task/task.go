@@ -284,18 +284,18 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 		case instanceID := <-s.taskCancelC:
 			s.runningMu.Lock()
-			// @@@@@ notify 취소요청되었다는 메시지를 보낸다.
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+				taskHandler.Cancel()
 
-				// @@@@@
 				taskCtx := context.Background()
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskHandler.ID())
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskHandler.CommandID())
-				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "취소되었습니다.", taskCtx)
+				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", taskCtx)
 
-				taskHandler.Cancel()
+				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 			} else {
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없어 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
+
 				log.Warnf("등록되지 않은 Task에 대한 작업취소요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 			}
 			s.runningMu.Unlock()

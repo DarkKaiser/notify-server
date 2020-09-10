@@ -142,8 +142,14 @@ LOOP:
 					commandSplit := strings.Split(command, telegramBotCommandSeparator)
 					if len(commandSplit) == 2 {
 						if taskInstanceID, err := strconv.ParseUint(commandSplit[1], 10, 64); err == nil {
-							// @@@@@ 텔레그램으로 메시지를 여기서 바로 보내야 하나 아니면 응답을 기다려야 하나???
-							taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID))
+							if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
+								m := fmt.Sprintf("작업 취소 요청이 실패하였습니다.")
+
+								log.Error(m)
+								if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
+									log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+								}
+							}
 
 							continue
 						}
