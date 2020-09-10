@@ -17,7 +17,8 @@
 			"commands": [
 				{
 					"id": "WatchNewEvents",
-					"description": "엘가닉몰에 신규 이벤트가 발생될 때 알림 메시지를 보냅니다.",
+					"title": "신규 이벤트 확인",
+					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": true,
 						"time_spec": "*/30 * * * *"

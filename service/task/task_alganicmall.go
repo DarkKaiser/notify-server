@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"time"
@@ -19,14 +20,14 @@ func init() {
 		supportedCommands: []TaskCommandID{TcidAlganicMallWatchNewEvents},
 
 		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
-			if taskRunData.id != TidAlganicMall {
+			if taskRunData.taskID != TidAlganicMall {
 				return nil
 			}
 
 			task := &alganicMallTask{
 				task: task{
-					id:         taskRunData.id,
-					commandID:  taskRunData.commandID,
+					id:         taskRunData.taskID,
+					commandID:  taskRunData.taskCommandID,
 					instanceID: instanceID,
 
 					notifierID: taskRunData.notifierID,
@@ -41,10 +42,15 @@ func init() {
 					task.runWatchNewEvents(taskNotificationSender)
 
 				default:
+					// @@@@@
+					taskCtx := context.Background()
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, task.ID())
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, task.CommandID())
+
 					m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", task.ID(), task.CommandID())
 
 					log.Error(m)
-					taskNotificationSender.Notify(task.NotifierID(), m, nil) //@@@@@ ctx가 안 넘어가도 되나???
+					taskNotificationSender.Notify(task.NotifierID(), m, taskCtx)
 				}
 			}
 

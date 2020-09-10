@@ -28,6 +28,7 @@ type AppConfig struct {
 		Title    string `json:"title"`
 		Commands []struct {
 			ID          string `json:"id"`
+			Title       string `json:"title"`
 			Description string `json:"description"`
 			Scheduler   struct {
 				Runnable bool   `json:"runnable"`

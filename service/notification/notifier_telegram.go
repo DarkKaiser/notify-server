@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	// @@@@@
-	NotifierContextKeyBotCommand NotifierContextKey = "botCommand"
-	NotifierContextKeyMessageID  NotifierContextKey = "messageId"
+	TaskCtxKeyTelegramBotCommand = "telegramNotifier.botCommand"
 )
 
 const (
@@ -69,7 +67,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 			notifier.botCommands = append(notifier.botCommands,
 				telegramBotCommand{
 					command:            command,
-					commandTitle:       t.Title,
+					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title),
 					commandDescription: c.Description,
 
 					taskID:        task.TaskID(t.ID),
@@ -144,34 +142,28 @@ LOOP:
 					// 취소명령 형식 : /cancel_nnn
 					commandSplit := strings.Split(command, telegramBotCommandSeparator)
 					if len(commandSplit) == 2 {
-						// @@@@@
-						//////////////////
-						taskInstanceID, _ := strconv.ParseUint(commandSplit[1], 10, 32)
-						taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID))
-						//////////////////
-						continue
+						if taskInstanceID, err := strconv.ParseUint(commandSplit[1], 10, 64); err == nil {
+							// @@@@@ 텔레그램으로 메시지를 여기서 바로 보내야 하나 아니면 응답을 기다려야 하나???
+							taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID))
+
+							continue
+						}
 					}
 				}
 
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
-						// @@@@@
-						//////////////////
-						// filldefaultcontext()
-						ctx := context.Background()
-						ctx = context.WithValue(ctx, NotifierContextTaskID, botCommand.taskID)
-						ctx = context.WithValue(ctx, NotifierContextTaskCommandID, botCommand.taskCommandID)
-						// ctx = context.WithValue(ctx, NotifierContextKeyInstanceID, 0) // @@@@@ add 하지 않음
+						taskCtx := context.Background()
+						taskCtx = context.WithValue(taskCtx, TaskCtxKeyTelegramBotCommand, botCommand.command)
 
-						// telegram notifier에 종속적인 값들
-						ctx = context.WithValue(ctx, NotifierContextKeyBotCommand, command)
-						ctx = context.WithValue(ctx, NotifierContextKeyMessageID, update.Message.MessageID)
+						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
+							m := fmt.Sprintf("'%s::%s' Task의 실행 요청이 실패하였습니다.", botCommand.taskID, botCommand.taskCommandID)
 
-						if taskRunner.TaskRunWithContext(task.TaskID(botCommand.taskID), task.TaskCommandID(botCommand.taskCommandID), string(n.ID()), ctx, true) == false {
-							log.Errorf("Task 실행요청이 실패하였습니다.(%s)", botCommand)
-							// bot.send
+							log.Error(m)
+							if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
+								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+							}
 						}
-						//////////////////
 
 						goto LOOP
 					}
@@ -179,35 +171,47 @@ LOOP:
 			}
 
 			m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '/%s'을 입력하세요.", update.Message.Text, telegramBotCommandHelp)
-			_, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m))
-			if err != nil {
+			if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 				log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 			}
 
 		case notificationSendData := <-n.notificationSendC:
-			//@@@@@
-			////////////////////////////////
-			if notificationSendData.ctx == nil {
-				m := tgbotapi.NewMessage(n.chatID, notificationSendData.message)
-				_, err := n.bot.Send(m)
-				if err != nil {
+			m := notificationSendData.message
+
+			if notificationSendData.taskCtx == nil {
+				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			} else {
-				// @@@@@
-				m := notificationSendData.message
-				v, ok := notificationSendData.ctx.Value(NotifierContextTaskInstanceID).(uint64)
-				if ok == true {
-					m += fmt.Sprintf("\n/%s%s%d", telegramBotCommandCancel, telegramBotCommandSeparator, v)
+				if command, ok := notificationSendData.taskCtx.Value(TaskCtxKeyTelegramBotCommand).(string); ok == true {
+					for _, botCommand := range n.botCommands {
+						if botCommand.command == command {
+							m = fmt.Sprintf("[ %s ]\n\n%s", botCommand.commandTitle, m)
+							break
+						}
+					}
+				} else {
+					taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
+					taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+					if ok1 == true && ok2 == true {
+						for _, botCommand := range n.botCommands {
+							if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
+								m = fmt.Sprintf("[ %s ]\n\n%s", botCommand.commandTitle, m)
+								break
+							}
+						}
+					}
 				}
-				msg := tgbotapi.NewMessage(n.chatID, m)
-				//msg.ReplyToMessageID = update.Message.MessageID
-				_, err := n.bot.Send(msg)
-				if err != nil {
+
+				// TaskInstanceID가 존재하는 경우 취소 명령어를 붙인다.
+				if taskInstanceID, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
+					m += fmt.Sprintf("\n%s%s%s%d", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+				}
+
+				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			}
-			////////////////////////////////
 
 		case <-notificationStopCtx.Done():
 			n.bot.StopReceivingUpdates()

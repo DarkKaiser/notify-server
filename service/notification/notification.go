@@ -10,15 +10,6 @@ import (
 )
 
 type NotifierID string
-type NotifierContextKey string // @@@@@
-
-const (
-	// @@@@@ task라는 명칭이 notification에 너무 있나??
-	NotifierContextTaskID        NotifierContextKey = "TaskID"
-	NotifierContextTaskCommandID NotifierContextKey = "TaskCommandID"
-	// @@@@@ task에서 얘를 사용할 수 없음
-	NotifierContextTaskInstanceID NotifierContextKey = "TaskInstanceID"
-)
 
 //
 // notifier

@@ -36,7 +36,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.ID, c.ID)
 
 					log.Error(m)
-					taskNotificationSender.Notify(c.DefaultNotifierID, nil, m)
+					taskNotificationSender.Notify(c.DefaultNotifierID, m, nil)
 				}
 			})
 
