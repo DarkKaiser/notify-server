@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"github.com/darkkaiser/notify-server/service/notify"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -20,15 +19,14 @@ func init() {
 		supportedCommands: []TaskCommandID{TcidAlganicMallWatchNewEvents},
 
 		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
-			id := TaskID(taskRunData.id)
-			if id != TidAlganicMall {
+			if taskRunData.id != TidAlganicMall {
 				return nil
 			}
 
 			task := &alganicMallTask{
 				task: task{
-					id:         id,
-					commandID:  TaskCommandID(taskRunData.commandID),
+					id:         taskRunData.id,
+					commandID:  taskRunData.commandID,
 					instanceID: instanceID,
 
 					notifierID:  taskRunData.notifierID,
@@ -38,7 +36,7 @@ func init() {
 				},
 			}
 
-			task.runFunc = func(notificationSender notify.NotificationSender) {
+			task.runFunc = func(notificationSender TaskNotificationSender) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
 					task.runWatchNewEvents(notificationSender)
@@ -60,7 +58,7 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(notificationSender notify.NotificationSender) {
+func (t *alganicMallTask) runWatchNewEvents(notificationSender TaskNotificationSender) {
 	// @@@@@
 	for i := 0; i < 50; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")

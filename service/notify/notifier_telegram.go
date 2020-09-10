@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
@@ -12,8 +13,8 @@ import (
 	"sync"
 )
 
-// @@@@@
 const (
+	// @@@@@
 	NotifierContextKeyBotCommand NotifierContextKey = "botCommand"
 	NotifierContextKeyMessageID  NotifierContextKey = "messageId"
 )
@@ -31,8 +32,8 @@ type telegramBotCommand struct {
 	commandTitle       string
 	commandDescription string
 
-	taskID        string
-	taskCommandID string
+	taskID        task.TaskID
+	taskCommandID task.TaskCommandID
 }
 
 type telegramNotifier struct {
@@ -71,8 +72,8 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 					commandTitle:       t.Title,
 					commandDescription: c.Description,
 
-					taskID:        t.ID,
-					taskCommandID: c.ID,
+					taskID:        task.TaskID(t.ID),
+					taskCommandID: task.TaskCommandID(c.ID),
 				},
 			)
 		}
@@ -97,7 +98,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 	return notifier
 }
 
-func (n *telegramNotifier) Run(notifierActionProcessor NotifierActionProcessor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
 	defer notificationStopWaiter.Done()
 
 	config := tgbotapi.NewUpdate(0)
@@ -146,7 +147,7 @@ LOOP:
 						// @@@@@
 						//////////////////
 						taskInstanceID, _ := strconv.ParseUint(commandSplit[1], 10, 32)
-						notifierActionProcessor.TaskCancel(taskInstanceID)
+						taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID))
 						//////////////////
 						continue
 					}
@@ -166,7 +167,7 @@ LOOP:
 						ctx = context.WithValue(ctx, NotifierContextKeyBotCommand, command)
 						ctx = context.WithValue(ctx, NotifierContextKeyMessageID, update.Message.MessageID)
 
-						if notifierActionProcessor.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, n.ID(), ctx, true) == false {
+						if taskRunner.TaskRunWithContext(task.TaskID(botCommand.taskID), task.TaskCommandID(botCommand.taskCommandID), string(n.ID()), ctx, true) == false {
 							log.Errorf("Task 실행요청이 실패하였습니다.(%s)", botCommand)
 							// bot.send
 						}

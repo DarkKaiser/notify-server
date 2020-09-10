@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service"
+	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
@@ -49,23 +50,12 @@ func (n *notifier) Notify(ctx context.Context, message string) (succeeded bool) 
 type notifierHandler interface {
 	ID() NotifierID
 	Notify(ctx context.Context, message string) (succeeded bool)
-	Run(notifierActionProcessor NotifierActionProcessor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
+	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
 }
 
 type notificationSendData struct {
 	ctx     context.Context
 	message string
-}
-
-type NotificationSender interface {
-	Notify(id NotifierID, ctx context.Context, message string) bool
-	NotifyWithDefault(message string) bool
-}
-
-type NotifierActionProcessor interface {
-	TaskRun(id string, commandID string, notifierID NotifierID, notifyResultOfTaskRunRequest bool) (succeeded bool)
-	TaskRunWithContext(id string, commandID string, notifierID NotifierID, notifierCtx context.Context, notifyResultOfTaskRunRequest bool) (succeeded bool)
-	TaskCancel(instanceID uint64) (succeeded bool)
 }
 
 type notificationService struct {
@@ -74,9 +64,10 @@ type notificationService struct {
 	running   bool
 	runningMu sync.Mutex
 
-	defaultNotifierHandler  notifierHandler
-	notifierHandlers        []notifierHandler
-	notifierActionProcessor NotifierActionProcessor
+	defaultNotifierHandler notifierHandler
+	notifierHandlers       []notifierHandler
+
+	taskRunner task.TaskRunner
 
 	notificationStopWaiter *sync.WaitGroup
 }
@@ -88,8 +79,9 @@ func NewService(config *g.AppConfig) service.Service {
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		defaultNotifierHandler:  nil,
-		notifierActionProcessor: nil,
+		defaultNotifierHandler: nil,
+
+		taskRunner: nil,
 
 		notificationStopWaiter: &sync.WaitGroup{},
 	}
@@ -109,15 +101,15 @@ func (s *notificationService) Run(valueCtx context.Context, serviceStopCtx conte
 		return
 	}
 
-	// NotifierActionProcessor 객체를 구한다.
-	if o := valueCtx.Value("notify.notifier_action_processor"); o != nil {
-		r, ok := o.(NotifierActionProcessor)
+	// TaskRunner 객체를 구한다.
+	if o := valueCtx.Value("task.task_runner"); o != nil {
+		r, ok := o.(task.TaskRunner)
 		if ok == false {
-			log.Panicf("NotifierActionProcessor 객체를 구할 수 없습니다.")
+			log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
 		}
-		s.notifierActionProcessor = r
+		s.taskRunner = r
 	} else {
-		log.Panicf("NotifierActionProcessor 객체를 구할 수 없습니다.")
+		log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
 	}
 
 	// Telegram Notifier의 작업을 시작한다.
@@ -127,7 +119,7 @@ func (s *notificationService) Run(valueCtx context.Context, serviceStopCtx conte
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)
-		go h.Run(s.notifierActionProcessor, serviceStopCtx, s.notificationStopWaiter)
+		go h.Run(s.taskRunner, serviceStopCtx, s.notificationStopWaiter)
 
 		log.Debugf("'%s' Telegram Notifier가 Notification 서비스에 등록되었습니다.", notifierID)
 	}
@@ -166,7 +158,7 @@ func (s *notificationService) run0(serviceStopCtx context.Context, serviceStopWa
 		s.running = false
 		s.notifierHandlers = nil
 		s.defaultNotifierHandler = nil
-		s.notifierActionProcessor = nil
+		s.taskRunner = nil
 		s.runningMu.Unlock()
 		///////////////////////////////////
 
@@ -174,17 +166,17 @@ func (s *notificationService) run0(serviceStopCtx context.Context, serviceStopWa
 	}
 }
 
-func (s *notificationService) Notify(id NotifierID, ctx context.Context, message string) bool {
+func (s *notificationService) Notify(notifierID string, ctx context.Context, message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	for _, h := range s.notifierHandlers {
-		if h.ID() == id {
+		if h.ID() == NotifierID(notifierID) {
 			return h.Notify(ctx, message)
 		}
 	}
 
-	m := fmt.Sprintf("존재하지 않는 NotifierID('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", id, message)
+	m := fmt.Sprintf("존재하지 않는 NotifierID('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
 
 	log.Error(m)
 	s.defaultNotifierHandler.Notify(nil, m)

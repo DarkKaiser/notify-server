@@ -39,8 +39,8 @@ func main() {
 	}
 
 	valueCtx := context.Background()
-	valueCtx = context.WithValue(valueCtx, "notify.notification_sender", services[1])
-	valueCtx = context.WithValue(valueCtx, "notify.notifier_action_processor", services[0])
+	valueCtx = context.WithValue(valueCtx, "task.task_runner", services[0])
+	valueCtx = context.WithValue(valueCtx, "task.task_notification_sender", services[1])
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())

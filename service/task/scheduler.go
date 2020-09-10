@@ -3,7 +3,6 @@ package task
 import (
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service/notify"
 	"github.com/robfig/cron"
 	log "github.com/sirupsen/logrus"
 	"sync"
@@ -16,7 +15,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, notificationSender notify.NotificationSender) {
+func (s *scheduler) Start(config *g.AppConfig, runner TaskRunner, notificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -33,12 +32,11 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, notificati
 			}
 
 			_, err := s.cron.AddFunc(c.Scheduler.TimeSpec, func() {
-				defaultNotifierID := notify.NotifierID(c.DefaultNotifierID)
-				if taskRunner.TaskRun(t.ID, c.ID, defaultNotifierID, false) == false {
+				if runner.TaskRun(TaskID(t.ID), TaskCommandID(c.ID), c.DefaultNotifierID, false) == false {
 					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.ID, c.ID)
 
 					log.Error(m)
-					notificationSender.Notify(defaultNotifierID, nil, m)
+					notificationSender.Notify(c.DefaultNotifierID, nil, m)
 				}
 			})
 
