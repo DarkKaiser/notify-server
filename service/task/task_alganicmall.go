@@ -29,23 +29,22 @@ func init() {
 					commandID:  taskRunData.commandID,
 					instanceID: instanceID,
 
-					notifierID:  taskRunData.notifierID,
-					notifierCtx: taskRunData.notifierCtx,
+					notifierID: taskRunData.notifierID,
 
 					cancel: false,
 				},
 			}
 
-			task.runFunc = func(notificationSender TaskNotificationSender) {
+			task.runFunc = func(taskNotificationSender TaskNotificationSender) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					task.runWatchNewEvents(notificationSender)
+					task.runWatchNewEvents(taskNotificationSender)
 
 				default:
 					m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", task.ID(), task.CommandID())
 
 					log.Error(m)
-					notificationSender.Notify(task.NotifierID(), task.NotifierContext(), m)
+					taskNotificationSender.Notify(task.NotifierID(), m, nil) //@@@@@ ctx가 안 넘어가도 되나???
 				}
 			}
 
@@ -58,7 +57,7 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(notificationSender TaskNotificationSender) {
+func (t *alganicMallTask) runWatchNewEvents(taskNotificationSender TaskNotificationSender) {
 	// @@@@@
 	for i := 0; i < 50; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
@@ -75,7 +74,7 @@ func (t *alganicMallTask) runWatchNewEvents(notificationSender TaskNotificationS
 		return
 	}
 
-	notificationSender.Notify(t.notifierID, t.notifierCtx, "태스크가 완료되었습니다.")
+	taskNotificationSender.Notify(t.notifierID, "태스크가 완료되었습니다.", nil)
 	// notify??
 	// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
 	//				handler := s.taskHandlers[newId]

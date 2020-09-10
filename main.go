@@ -5,7 +5,7 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
-	"github.com/darkkaiser/notify-server/service/notify"
+	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"os"
@@ -32,24 +32,20 @@ func main() {
 	log.Info("###                                                    ###")
 	log.Info("##########################################################")
 
-	// 서비스를 생성한다.
-	services := []service.Service{
-		task.NewService(config),
-		notify.NewService(config),
-	}
+	// 서비스를 생성하고 초기화한다.
+	taskService := task.NewService(config)
+	notificationService := notification.NewService(config, taskService)
 
-	valueCtx := context.Background()
-	valueCtx = context.WithValue(valueCtx, "task.task_runner", services[0])
-	valueCtx = context.WithValue(valueCtx, "task.task_notification_sender", services[1])
+	taskService.SetTaskNotificationSender(notificationService)
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	serviceStopWaiter.Add(len(services))
-	for _, s := range services {
-		s.Run(valueCtx, serviceStopCtx, serviceStopWaiter)
+	for _, s := range []service.Service{taskService, notificationService} {
+		serviceStopWaiter.Add(1)
+		s.Run(serviceStopCtx, serviceStopWaiter)
 	}
 
 	// Handle sigterm and await termC signal

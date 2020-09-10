@@ -15,7 +15,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *g.AppConfig, runner TaskRunner, notificationSender TaskNotificationSender) {
+func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -32,11 +32,11 @@ func (s *scheduler) Start(config *g.AppConfig, runner TaskRunner, notificationSe
 			}
 
 			_, err := s.cron.AddFunc(c.Scheduler.TimeSpec, func() {
-				if runner.TaskRun(TaskID(t.ID), TaskCommandID(c.ID), c.DefaultNotifierID, false) == false {
+				if taskRunner.TaskRun(TaskID(t.ID), TaskCommandID(c.ID), c.DefaultNotifierID, false) == false {
 					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.ID, c.ID)
 
 					log.Error(m)
-					notificationSender.Notify(c.DefaultNotifierID, nil, m)
+					taskNotificationSender.Notify(c.DefaultNotifierID, nil, m)
 				}
 			})
 

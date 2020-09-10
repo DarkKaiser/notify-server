@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"sync/atomic"
@@ -13,7 +12,11 @@ import (
 type TaskID string
 type TaskCommandID string
 type TaskInstanceID uint64
+type TaskContextKey string
 
+//
+// taskInstanceIDGenerator
+//
 type taskInstanceIDGenerator struct {
 	id TaskInstanceID
 }
@@ -22,6 +25,9 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 	return TaskInstanceID(atomic.AddUint64((*uint64)(&g.id), 1))
 }
 
+//
+// supportedTasks
+//
 var supportedTasks = make(map[TaskID]*supportedTaskData)
 
 type supportedTaskData struct {
@@ -46,17 +52,31 @@ func validTaskCommand(taskID TaskID, taskCommandID TaskCommandID) bool {
 	return false
 }
 
+//
+// task
+//
 type task struct {
 	id         TaskID
 	commandID  TaskCommandID
 	instanceID TaskInstanceID
 
-	notifierID  string
-	notifierCtx context.Context
+	notifierID string
 
 	cancel bool
 
 	runFunc func(TaskNotificationSender)
+}
+
+type taskHandler interface {
+	ID() TaskID
+	CommandID() TaskCommandID
+	InstanceID() TaskInstanceID
+
+	NotifierID() string
+
+	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
+
+	Cancel()
 }
 
 func (t *task) ID() TaskID {
@@ -75,11 +95,7 @@ func (t *task) NotifierID() string {
 	return t.notifierID
 }
 
-func (t *task) NotifierContext() context.Context {
-	return t.notifierCtx
-}
-
-func (t *task) Run(notificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
+func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
 	defer taskStopWaiter.Done()
 	defer func() {
 		taskDoneC <- t.instanceID
@@ -89,48 +105,47 @@ func (t *task) Run(notificationSender TaskNotificationSender, taskStopWaiter *sy
 		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
 	}
 
-	t.runFunc(notificationSender)
+	t.runFunc(taskNotificationSender)
 }
 
 func (t *task) Cancel() {
 	t.cancel = true
 }
 
-type taskHandler interface {
-	ID() TaskID
-	CommandID() TaskCommandID
-	InstanceID() TaskInstanceID
-
-	NotifierID() string
-	NotifierContext() context.Context
-
-	Run(notificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
-
-	Cancel()
-}
-
+//
+// taskRunData
+//
 type taskRunData struct {
 	id        TaskID
 	commandID TaskCommandID
+	ctx       context.Context
 
-	notifierID  string
-	notifierCtx context.Context
+	notifierID string
 
-	notifyResultOfTaskRunRequest bool
+	notificationOfRequestResult bool
 }
 
+//
+// TaskRunner
+//
 type TaskRunner interface {
-	TaskRun(id TaskID, commandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool) (succeeded bool)
-	TaskRunWithContext(id TaskID, commandID TaskCommandID, notifierID string, notifierCtx context.Context, notifyResultOfTaskRunRequest bool) (succeeded bool)
+	TaskRun(id TaskID, commandID TaskCommandID, notifierID string, notificationOfRequestResult bool) (succeeded bool)
+	TaskRunWithContext(id TaskID, commandID TaskCommandID, ctx context.Context, notifierID string, notificationOfRequestResult bool) (succeeded bool)
 	TaskCancel(instanceID TaskInstanceID) (succeeded bool)
 }
 
+//
+// TaskNotificationSender
+//
 type TaskNotificationSender interface {
-	Notify(notifierID string, ctx context.Context, message string) bool
+	Notify(notifierID string, message string, taskCtx context.Context) bool
 	NotifyWithDefault(message string) bool
 }
 
-type taskService struct {
+//
+// TaskService
+//
+type TaskService struct {
 	config *g.AppConfig
 
 	running   bool
@@ -151,8 +166,8 @@ type taskService struct {
 	taskStopWaiter *sync.WaitGroup
 }
 
-func NewService(config *g.AppConfig) service.Service {
-	return &taskService{
+func NewService(config *g.AppConfig) *TaskService {
+	return &TaskService{
 		config: config,
 
 		running:   false,
@@ -174,11 +189,15 @@ func NewService(config *g.AppConfig) service.Service {
 	}
 }
 
-func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Task 서비스 시작중...")
+
+	if s.taskNotificationSender == nil {
+		log.Panicf("TaskNotificationSender 객체가 초기화되지 않았습니다.")
+	}
 
 	if s.running == true {
 		defer serviceStopWaiter.Done()
@@ -186,17 +205,6 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 		log.Warn("Task 서비스가 이미 시작됨!!!")
 
 		return
-	}
-
-	// TaskNotificationSender 객체를 구한다.
-	if o := valueCtx.Value("task.task_notification_sender"); o != nil {
-		r, ok := o.(TaskNotificationSender)
-		if ok == false {
-			log.Panicf("TaskNotificationSender 객체를 구할 수 없습니다.")
-		}
-		s.taskNotificationSender = r
-	} else {
-		log.Panicf("TaskNotificationSender 객체를 구할 수 없습니다.")
 	}
 
 	// Task 스케쥴러를 시작한다.
@@ -209,7 +217,7 @@ func (s *taskService) Run(valueCtx context.Context, serviceStopCtx context.Conte
 	log.Debug("Task 서비스 시작됨")
 }
 
-func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	for {
@@ -222,7 +230,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.id, taskRunData.commandID)
 
 				log.Error(m)
-				s.taskNotificationSender.Notify(taskRunData.notifierID, taskRunData.notifierCtx, m)
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.ctx)
 
 				continue
 			}
@@ -247,7 +255,7 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.id, taskRunData.commandID)
 
 				log.Error(m)
-				s.taskNotificationSender.Notify(taskRunData.notifierID, taskRunData.notifierCtx, m)
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.ctx)
 
 				continue
 			}
@@ -259,13 +267,13 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
-			if taskRunData.notifyResultOfTaskRunRequest == true {
+			if taskRunData.notificationOfRequestResult == true {
 				// @@@@@
-				taskRunData.notifierCtx = context.WithValue(taskRunData.notifierCtx, "cancelInstanceId", instanceId)
+				taskRunData.ctx = context.WithValue(taskRunData.ctx, "cancelInstanceId", instanceId)
 
 				// @@@@@ 스케쥴러 또는 텔레그램에서 요청된 메시지, 스케쥴러에서 요청된 메시지의 응답을 보내야 할까?
 				// @@@@@ 취소 instanceid가 넘어가야됨, 여기서 /cancel 을 추가하면 안됨 notifier에서 추가해야됨
-				s.taskNotificationSender.Notify(taskRunData.notifierID, taskRunData.notifierCtx, "작업 진행중입니다. 잠시만 기다려 주세요.\n/cancel_xxx")
+				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.\n/cancel_xxx", taskRunData.ctx)
 			}
 			////////////////////////////////////
 
@@ -331,11 +339,11 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *taskService) TaskRun(id TaskID, commandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool) (succeeded bool) {
-	return s.TaskRunWithContext(id, commandID, notifierID, nil, notifyResultOfTaskRunRequest)
+func (s *TaskService) TaskRun(id TaskID, commandID TaskCommandID, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
+	return s.TaskRunWithContext(id, commandID, nil, notifierID, notificationOfRequestResult)
 }
 
-func (s *taskService) TaskRunWithContext(id TaskID, commandID TaskCommandID, notifierID string, notifierCtx context.Context, notifyResultOfTaskRunRequest bool) (succeeded bool) {
+func (s *TaskService) TaskRunWithContext(id TaskID, commandID TaskCommandID, ctx context.Context, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -347,17 +355,17 @@ func (s *taskService) TaskRunWithContext(id TaskID, commandID TaskCommandID, not
 	s.taskRunC <- &taskRunData{
 		id:        id,
 		commandID: commandID,
+		ctx:       ctx,
 
-		notifierID:  notifierID,
-		notifierCtx: notifierCtx,
+		notifierID: notifierID,
 
-		notifyResultOfTaskRunRequest: notifyResultOfTaskRunRequest,
+		notificationOfRequestResult: notificationOfRequestResult,
 	}
 
 	return true
 }
 
-func (s *taskService) TaskCancel(instanceID TaskInstanceID) (succeeded bool) {
+func (s *TaskService) TaskCancel(instanceID TaskInstanceID) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -369,4 +377,8 @@ func (s *taskService) TaskCancel(instanceID TaskInstanceID) (succeeded bool) {
 	s.taskCancelC <- instanceID
 
 	return true
+}
+
+func (s *TaskService) SetTaskNotificationSender(taskNotificiationSender TaskNotificationSender) {
+	s.taskNotificationSender = taskNotificiationSender
 }

@@ -1,36 +1,45 @@
-package notify
+package notification
 
 import (
 	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
 type NotifierID string
-type NotifierContextKey string
+type NotifierContextKey string // @@@@@
 
 const (
 	// @@@@@ task라는 명칭이 notification에 너무 있나??
-	NotifierContextTaskID         NotifierContextKey = "TaskID"
-	NotifierContextTaskCommandID  NotifierContextKey = "TaskCommandID"
+	NotifierContextTaskID        NotifierContextKey = "TaskID"
+	NotifierContextTaskCommandID NotifierContextKey = "TaskCommandID"
+	// @@@@@ task에서 얘를 사용할 수 없음
 	NotifierContextTaskInstanceID NotifierContextKey = "TaskInstanceID"
 )
 
+//
+// notifier
+//
 type notifier struct {
 	id NotifierID
 
 	notificationSendC chan *notificationSendData
 }
 
+type notifierHandler interface {
+	ID() NotifierID
+	Notify(message string, taskCtx context.Context) (succeeded bool)
+	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
+}
+
 func (n *notifier) ID() NotifierID {
 	return n.id
 }
 
-func (n *notifier) Notify(ctx context.Context, message string) (succeeded bool) {
+func (n *notifier) Notify(message string, taskCtx context.Context) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -40,25 +49,25 @@ func (n *notifier) Notify(ctx context.Context, message string) (succeeded bool) 
 	}()
 
 	n.notificationSendC <- &notificationSendData{
-		ctx:     ctx,
 		message: message,
+		taskCtx: taskCtx,
 	}
 
 	return true
 }
 
-type notifierHandler interface {
-	ID() NotifierID
-	Notify(ctx context.Context, message string) (succeeded bool)
-	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
-}
-
+//
+// notificationSendData
+//
 type notificationSendData struct {
-	ctx     context.Context
 	message string
+	taskCtx context.Context
 }
 
-type notificationService struct {
+//
+// NotificationService
+//
+type NotificationService struct {
 	config *g.AppConfig
 
 	running   bool
@@ -72,8 +81,8 @@ type notificationService struct {
 	notificationStopWaiter *sync.WaitGroup
 }
 
-func NewService(config *g.AppConfig) service.Service {
-	return &notificationService{
+func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
+	return &NotificationService{
 		config: config,
 
 		running:   false,
@@ -81,17 +90,21 @@ func NewService(config *g.AppConfig) service.Service {
 
 		defaultNotifierHandler: nil,
 
-		taskRunner: nil,
+		taskRunner: taskRunner,
 
 		notificationStopWaiter: &sync.WaitGroup{},
 	}
 }
 
-func (s *notificationService) Run(valueCtx context.Context, serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Notification 서비스 시작중...")
+
+	if s.taskRunner == nil {
+		log.Panicf("TaskRunner 객체가 초기화되지 않았습니다.")
+	}
 
 	if s.running == true {
 		defer serviceStopWaiter.Done()
@@ -101,27 +114,15 @@ func (s *notificationService) Run(valueCtx context.Context, serviceStopCtx conte
 		return
 	}
 
-	// TaskRunner 객체를 구한다.
-	if o := valueCtx.Value("task.task_runner"); o != nil {
-		r, ok := o.(task.TaskRunner)
-		if ok == false {
-			log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
-		}
-		s.taskRunner = r
-	} else {
-		log.Panicf("TaskRunner 객체를 구할 수 없습니다.")
-	}
-
 	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
-		notifierID := NotifierID(telegram.ID)
-		h := newTelegramNotifier(notifierID, telegram.Token, telegram.ChatID, s.config)
+		h := newTelegramNotifier(NotifierID(telegram.ID), telegram.Token, telegram.ChatID, s.config)
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)
 		go h.Run(s.taskRunner, serviceStopCtx, s.notificationStopWaiter)
 
-		log.Debugf("'%s' Telegram Notifier가 Notification 서비스에 등록되었습니다.", notifierID)
+		log.Debugf("'%s' Telegram Notifier가 Notification 서비스에 등록되었습니다.", telegram.ID)
 	}
 
 	// 기본 Notifier를 구한다.
@@ -142,7 +143,7 @@ func (s *notificationService) Run(valueCtx context.Context, serviceStopCtx conte
 	log.Debug("Notification 서비스 시작됨")
 }
 
-func (s *notificationService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	select {
@@ -166,26 +167,26 @@ func (s *notificationService) run0(serviceStopCtx context.Context, serviceStopWa
 	}
 }
 
-func (s *notificationService) Notify(notifierID string, ctx context.Context, message string) bool {
+func (s *NotificationService) Notify(notifierID string, message string, taskCtx context.Context) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	for _, h := range s.notifierHandlers {
 		if h.ID() == NotifierID(notifierID) {
-			return h.Notify(ctx, message)
+			return h.Notify(message, taskCtx)
 		}
 	}
 
 	m := fmt.Sprintf("존재하지 않는 NotifierID('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
 
 	log.Error(m)
-	s.defaultNotifierHandler.Notify(nil, m)
+	s.defaultNotifierHandler.Notify(m, nil)
 
 	return false
 }
 
-func (s *notificationService) NotifyWithDefault(message string) bool {
+func (s *NotificationService) NotifyWithDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
-	return s.defaultNotifierHandler.Notify(nil, message)
+	return s.defaultNotifierHandler.Notify(message, nil)
 }
