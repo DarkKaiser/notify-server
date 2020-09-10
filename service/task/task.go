@@ -64,9 +64,9 @@ type task struct {
 
 	notifierID string
 
-	cancel bool
-
 	runFunc func(TaskNotificationSender)
+
+	cancel bool
 }
 
 type taskHandler interface {
@@ -226,6 +226,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	for {
 		select {
 		case taskRunData := <-s.taskRunC:
+			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
+
 			if isSupportedTask(taskRunData.taskID, taskRunData.taskCommandID) == false {
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
@@ -235,20 +237,18 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				continue
 			}
 
-			var instanceId TaskInstanceID
+			var instanceID TaskInstanceID
 
 			s.runningMu.Lock()
 			for {
-				instanceId = s.taskInstanceIDGenerator.New()
-				if _, exists := s.taskHandlers[instanceId]; exists == false {
+				instanceID = s.taskInstanceIDGenerator.New()
+				if _, exists := s.taskHandlers[instanceID]; exists == false {
 					break
 				}
 			}
 			s.runningMu.Unlock()
 
-			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신(TaskInstanceID:%d)", taskRunData.taskID, taskRunData.taskCommandID, instanceId)
-
-			h := supportedTasks[taskRunData.taskID].newTaskFunc(instanceId, taskRunData)
+			h := supportedTasks[taskRunData.taskID].newTaskFunc(instanceID, taskRunData)
 			if h == nil {
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
@@ -259,34 +259,34 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 
 			s.runningMu.Lock()
-			s.taskHandlers[instanceId] = h
+			s.taskHandlers[instanceID] = h
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if taskRunData.notificationOfRequestResult == true {
-				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, instanceId)
+				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, instanceID)
 
 				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx)
 			}
 
-		case instanceId := <-s.taskDoneC:
+		case instanceID := <-s.taskDoneC:
 			s.runningMu.Lock()
-			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
-				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceId)
+			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
+				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
-				delete(s.taskHandlers, instanceId)
+				delete(s.taskHandlers, instanceID)
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceId)
+				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 			}
 			s.runningMu.Unlock()
 
-		case instanceId := <-s.taskCancelC:
+		case instanceID := <-s.taskCancelC:
 			s.runningMu.Lock()
 			// @@@@@ notify 취소요청되었다는 메시지를 보낸다.
-			if taskHandler, exists := s.taskHandlers[instanceId]; exists == true {
-				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceId)
+			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
+				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
 				// @@@@@
 				taskCtx := context.Background()
@@ -296,7 +296,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				taskHandler.Cancel()
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업취소요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceId)
+				log.Warnf("등록되지 않은 Task에 대한 작업취소요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 			}
 			s.runningMu.Unlock()
 
@@ -345,6 +345,10 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 			log.Errorf("'%s::%s' Task 실행 요청중에 panic이 발생하였습니다.(panic:%s", taskID, taskCommandID, r)
 		}
 	}()
+
+	if taskCtx == nil {
+		taskCtx = context.Background()
+	}
 
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskID)
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskCommandID)

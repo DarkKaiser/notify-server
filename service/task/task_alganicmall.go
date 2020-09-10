@@ -12,7 +12,7 @@ const (
 	TidAlganicMall TaskID = "ALGANICMALL" // 엘가닉몰(http://www.alganicmall.com/)
 
 	// TaskCommandID
-	TcidAlganicMallWatchNewEvents TaskCommandID = "WatchNewEvents" // 엘가닉몰 신규 이벤트 감시
+	TcidAlganicMallWatchNewEvents TaskCommandID = "WatchNewEvents" // 엘가닉몰 신규 이벤트 확인
 )
 
 func init() {
@@ -42,7 +42,6 @@ func init() {
 					task.runWatchNewEvents(taskNotificationSender)
 
 				default:
-					// @@@@@
 					taskCtx := context.Background()
 					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, task.ID())
 					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, task.CommandID())
@@ -65,7 +64,7 @@ type alganicMallTask struct {
 
 func (t *alganicMallTask) runWatchNewEvents(taskNotificationSender TaskNotificationSender) {
 	// @@@@@
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 500; i++ {
 		log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
 		time.Sleep(1 * time.Second)
 
