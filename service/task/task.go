@@ -23,35 +23,24 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 	return TaskInstanceID(atomic.AddUint64((*uint64)(&g.id), 1))
 }
 
-// @@@@@ 맵으로 바꿔서 지원가능한 명령 목록을 생성해두는건 어떤지...
-var taskList = make(map[TaskID][]TaskCommandID)
-var taskList1 = make(map[TaskID]struct {
-	a []TaskCommandID
-	b func(instanceId TaskInstanceID, taskRunData *taskRunData)
-})
+// 지원 가능한 Task 목록
+var supportedTasks = make(map[TaskID]*supportedTaskData)
 
-// 지원가능한 Task 및 Command
-// @@@@@ 외부 프로그램에 대한 처리도 할것(웹서비스를 통한 수행)
-const (
-//	TidAlganicMall TaskId = "ALGANICMALL" // 엘가닉몰(http://www.alganicmall.com/)
+type supportedTaskData struct { //@@@@@ 명칭 supportedTaskValue
+	supportedCommandIDs []TaskCommandID
 
-//	TcidAlganicMallWatchNewEvents TaskCommandId = "WatchNewEvents" // 엘가닉몰 신규 이벤트 감시
-)
-
-// @@@@@
-func init() {
-	//	taskList[TidAlganicMall] = append(taskList[TidAlganicMall], TcidAlganicMallWatchNewEvents)
+	newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
 }
 
 // @@@@@
-func validTaskCommand(taskID TaskID, commandID TaskCommandID) bool {
-	ids, exists := taskList[taskID]
+func validTaskCommand(taskID TaskID, taskCommandID TaskCommandID) bool {
+	ids, exists := supportedTasks[taskID]
 	if exists == false {
 		return false
 	}
 
-	for _, id := range ids {
-		if id == commandID {
+	for _, id := range ids.supportedCommandIDs {
+		if id == taskCommandID {
 			return true
 		}
 	}
@@ -222,10 +211,16 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	for {
 		select {
 		case taskRunData := <-s.taskRunC:
-			// @@@@@id, commnadid에대한 유효성 체크, mapm으로 만들어져 있어야됨
+			// @@@@@
 			////////////////////////////////////
 			if validTaskCommand(TaskID(taskRunData.id), TaskCommandID(taskRunData.commandID)) == false {
+				// @@@@@id, commnadid에대한 유효성 체크
+				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.id, taskRunData.commandID)
 
+				log.Error(m)
+				s.notificationSender.Notify(taskRunData.notifierID, taskRunData.notifierCtx, m)
+
+				continue
 			}
 
 			var instanceId TaskInstanceID
@@ -241,12 +236,10 @@ func (s *taskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신(TaskInstanceID:%d)", taskRunData.id, taskRunData.commandID, instanceId)
 
-			var h taskHandler
-			switch TaskID(taskRunData.id) {
-			case TidAlganicMall:
-				h = newAlganicMallTask(instanceId, taskRunData)
-
-			default:
+			// @@@@@
+			a := supportedTasks[TaskID(taskRunData.id)]
+			var h = a.newTaskFunc(instanceId, taskRunData)
+			if h == nil {
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.id, taskRunData.commandID)
 
 				log.Error(m)

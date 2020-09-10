@@ -156,9 +156,10 @@ LOOP:
 					if command == botCommand.command {
 						// @@@@@
 						//////////////////
+						// filldefaultcontext()
 						ctx := context.Background()
-						ctx = context.WithValue(ctx, NotifierContextKeyTaskID, botCommand.taskID)
-						ctx = context.WithValue(ctx, NotifierContextKeyCommandID, botCommand.taskCommandID)
+						ctx = context.WithValue(ctx, NotifierContextTaskID, botCommand.taskID)
+						ctx = context.WithValue(ctx, NotifierContextTaskCommandID, botCommand.taskCommandID)
 						// ctx = context.WithValue(ctx, NotifierContextKeyInstanceID, 0) // @@@@@ add 하지 않음
 
 						// telegram notifier에 종속적인 값들
@@ -194,7 +195,7 @@ LOOP:
 			} else {
 				// @@@@@
 				m := notificationSendData.message
-				v, ok := notificationSendData.ctx.Value(NotifierContextKeyInstanceID).(uint64)
+				v, ok := notificationSendData.ctx.Value(NotifierContextTaskInstanceID).(uint64)
 				if ok == true {
 					m += fmt.Sprintf("\n/%s%s%d", telegramBotCommandCancel, telegramBotCommandSeparator, v)
 				}

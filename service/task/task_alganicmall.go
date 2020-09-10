@@ -15,84 +15,49 @@ const (
 	TcidAlganicMallWatchNewEvents TaskCommandID = "WatchNewEvents" // 엘가닉몰 신규 이벤트 감시
 )
 
-// @@@@@
 func init() {
-	taskList[TidAlganicMall] = append(taskList[TidAlganicMall], TcidAlganicMallWatchNewEvents)
+	supportedTasks[TidAlganicMall] = &supportedTaskData{
+		supportedCommandIDs: []TaskCommandID{TcidAlganicMallWatchNewEvents},
 
-	// @@@@@
-	newFunc := func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
-		if TaskID(taskRunData.id) != TidAlganicMall {
-			// @@@@@ error, panic은 안됨 프로그램이 종료되어버림
-		}
-
-		task := &alganicMallTask{
-			task: task{
-				id:         TaskID(taskRunData.id),
-				commandID:  TaskCommandID(taskRunData.commandID),
-				instanceID: instanceID,
-
-				notifierID:  taskRunData.notifierID,
-				notifierCtx: taskRunData.notifierCtx,
-
-				cancel: false,
-			},
-		}
-
-		task.runFunc = func(notificationSender notify.NotificationSender) {
-			switch task.CommandID() {
-			case TcidAlganicMallWatchNewEvents:
-				task.runWatchNewEvents(notificationSender)
-
-			default:
-				m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", taskRunData.id, taskRunData.commandID)
-
-				log.Error(m)
-				notificationSender.Notify(task.notifierID, task.notifierCtx, m)
+		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
+			id := TaskID(taskRunData.id)
+			if id != TidAlganicMall {
+				return nil
 			}
-		}
 
-		return task
+			task := &alganicMallTask{
+				task: task{
+					id:         id,
+					commandID:  TaskCommandID(taskRunData.commandID),
+					instanceID: instanceID,
+
+					notifierID:  taskRunData.notifierID,
+					notifierCtx: taskRunData.notifierCtx,
+
+					cancel: false,
+				},
+			}
+
+			task.runFunc = func(notificationSender notify.NotificationSender) {
+				switch task.CommandID() {
+				case TcidAlganicMallWatchNewEvents:
+					task.runWatchNewEvents(notificationSender)
+
+				default:
+					m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", task.ID(), task.CommandID())
+
+					log.Error(m)
+					notificationSender.Notify(task.NotifierID(), task.NotifierContext(), m)
+				}
+			}
+
+			return task
+		},
 	}
-	println(newFunc)
 }
 
 type alganicMallTask struct {
 	task
-}
-
-// @@@@@ 삭제대상
-func newAlganicMallTask(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
-	if TaskID(taskRunData.id) != TidAlganicMall {
-		// @@@@@ error, panic은 안됨 프로그램이 종료되어버림
-	}
-
-	task := &alganicMallTask{
-		task: task{
-			id:         TaskID(taskRunData.id),
-			commandID:  TaskCommandID(taskRunData.commandID),
-			instanceID: instanceID,
-
-			notifierID:  taskRunData.notifierID,
-			notifierCtx: taskRunData.notifierCtx,
-
-			cancel: false,
-		},
-	}
-
-	task.runFunc = func(sender notify.NotificationSender) {
-		switch task.CommandID() {
-		case TcidAlganicMallWatchNewEvents:
-			task.runWatchNewEvents(sender)
-
-		default:
-			m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", taskRunData.id, taskRunData.commandID)
-
-			log.Error(m)
-			sender.Notify(task.notifierID, task.notifierCtx, m)
-		}
-	}
-
-	return task
 }
 
 func (t *alganicMallTask) runWatchNewEvents(notificationSender notify.NotificationSender) {

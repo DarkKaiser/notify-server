@@ -10,15 +10,13 @@ import (
 )
 
 type NotifierID string
-
-// @@@@@
 type NotifierContextKey string
 
-// @@@@@
 const (
-	NotifierContextKeyTaskID     NotifierContextKey = "taskId"
-	NotifierContextKeyCommandID  NotifierContextKey = "taskCommandId"
-	NotifierContextKeyInstanceID NotifierContextKey = "taskInstanceId"
+	// @@@@@ task라는 명칭이 notification에 너무 있나??
+	NotifierContextTaskID         NotifierContextKey = "TaskID"
+	NotifierContextTaskCommandID  NotifierContextKey = "TaskCommandID"
+	NotifierContextTaskInstanceID NotifierContextKey = "TaskInstanceID"
 )
 
 type notifier struct {
