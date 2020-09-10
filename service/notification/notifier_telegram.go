@@ -209,7 +209,7 @@ LOOP:
 
 				// TaskInstanceID가 존재하는 경우 취소 명령어를 붙인다.
 				if taskInstanceID, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
-					m += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, strconv.FormatUint(uint64(taskInstanceID), 10))
+					m += fmt.Sprintf("\n%s%s%s%d", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
 				}
 
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
