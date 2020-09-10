@@ -17,7 +17,7 @@ const (
 
 func init() {
 	supportedTasks[TidAlganicMall] = &supportedTaskData{
-		supportedCommandIDs: []TaskCommandID{TcidAlganicMallWatchNewEvents},
+		supportedCommands: []TaskCommandID{TcidAlganicMallWatchNewEvents},
 
 		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
 			id := TaskID(taskRunData.id)

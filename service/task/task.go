@@ -26,8 +26,8 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 // 지원 가능한 Task 목록
 var supportedTasks = make(map[TaskID]*supportedTaskData)
 
-type supportedTaskData struct { //@@@@@ 명칭 supportedTaskValue
-	supportedCommandIDs []TaskCommandID
+type supportedTaskData struct {
+	supportedCommands []TaskCommandID
 
 	newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
 }
@@ -39,7 +39,7 @@ func validTaskCommand(taskID TaskID, taskCommandID TaskCommandID) bool {
 		return false
 	}
 
-	for _, id := range ids.supportedCommandIDs {
+	for _, id := range ids.supportedCommands {
 		if id == taskCommandID {
 			return true
 		}
