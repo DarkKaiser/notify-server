@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/darkkaiser/notify-server/utils"
 	"io/ioutil"
+	"log"
 )
 
 const (
@@ -49,6 +50,40 @@ func InitAppConfig() *AppConfig {
 	var config AppConfig
 	err = json.Unmarshal(data, &config)
 	utils.CheckErr(err)
+
+	//
+	// 파일 내용에 대해 유효성 검사를 한다.
+	//
+	var notifierIDs []string
+	for _, telegram := range config.Notifiers.Telegrams {
+		if utils.Contains(notifierIDs, telegram.ID) == true {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifierID(%s)가 중복되었습니다.", AppConfigFileName, telegram.ID)
+		}
+		notifierIDs = append(notifierIDs, telegram.ID)
+	}
+	if utils.Contains(notifierIDs, config.Notifiers.DefaultNotifierID) == false {
+		log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, config.Notifiers.DefaultNotifierID)
+	}
+
+	var taskIDs []string
+	for _, t := range config.Tasks {
+		if utils.Contains(taskIDs, t.ID) == true {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. TaskID(%s)가 중복되었습니다.", AppConfigFileName, t.ID)
+		}
+		taskIDs = append(taskIDs, t.ID)
+
+		var commandIDs []string
+		for _, c := range t.Commands {
+			if utils.Contains(commandIDs, c.ID) == true {
+				log.Panicf("%s 파일의 내용이 유효하지 않습니다. CommandID(%s)가 중복되었습니다.", AppConfigFileName, c.ID)
+			}
+			commandIDs = append(commandIDs, c.ID)
+
+			if utils.Contains(notifierIDs, c.DefaultNotifierID) == false {
+				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, t.ID, c.ID, c.DefaultNotifierID)
+			}
+		}
+	}
 
 	return &config
 }
