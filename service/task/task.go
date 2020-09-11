@@ -198,6 +198,9 @@ type TaskService struct {
 }
 
 func NewService(config *g.AppConfig) *TaskService {
+	// @@@@@ 서비스 시작시 allowMultipleIntances 값을 config에서 읽어와서 초기화할까????
+	// 여러가지 정보중에서 위 변수 하나만 초기화하는것도 이상함!!!
+
 	return &TaskService{
 		config: config,
 
@@ -258,15 +261,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.taskID, taskRunData.taskCommandID)
 			if err != nil {
-				// @@@@@
-				if taskRunData.taskCtx != nil {
-					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
-				}
-
-				// @@@@@
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
 				log.Error(m)
+
+				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
 				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
 
 				continue
@@ -286,15 +285,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					// @@@@@
-					if taskRunData.taskCtx != nil {
-						//taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
-					}
-
-					m := fmt.Sprintf("'%s::%s'는 이미 작업중입니다.", taskRunData.taskID, taskRunData.taskCommandID)
-
-					log.Error(m)
-					s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
+					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, alreadyRunTaskHandler.InstanceID())
+					s.taskNotificationSender.Notify(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
 
 					continue
 				}
@@ -313,13 +305,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			h := taskConfig.newTaskFunc(instanceID, taskRunData)
 			if h == nil {
-				if taskRunData.taskCtx != nil {
-					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
-				}
-
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
 				log.Error(m)
+
+				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
 				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
 
 				continue
@@ -334,7 +324,6 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			if taskRunData.notificationOfRequestResult == true {
 				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, instanceID)
-
 				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx)
 			}
 
@@ -354,16 +343,17 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
 				taskHandler.Cancel()
 
+				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+
 				taskCtx := context.Background()
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskHandler.ID())
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskHandler.CommandID())
+
 				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", taskCtx)
-
-				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 			} else {
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없어 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
-
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
+
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
 			}
 			s.runningMu.Unlock()
 
@@ -389,7 +379,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Lock()
 			s.running = false
 			s.taskHandlers = nil
-			s.taskNotificationSender = nil //@@@@@
+			s.taskNotificationSender = nil
 			s.runningMu.Unlock()
 			/////////////////
 

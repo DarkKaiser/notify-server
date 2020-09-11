@@ -19,7 +19,8 @@ func init() {
 			{
 				taskCommandID: TcidAlganicMallWatchNewEvents,
 
-				allowMultipleIntances: false, //@@@@@ 테스트 끝나고 true로 변경
+				// @@@@@ json 파일로 옮길까?
+				allowMultipleIntances: true,
 			},
 		},
 
@@ -80,7 +81,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskNotificationSender TaskNotificat
 
 	taskNotificationSender.Notify(t.notifierID, "태스크가 완료되었습니다.", nil)
 	// notify??
-	// @@@@@ 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
+	// 메시지도 수신받아서 notifyserver로 보내기, 이때 유효한 task인지 체크도 함
 	//				handler := s.taskHandlers[newId]
 	//ctx2 := handler.Context()
 	//notifyserverChan<- struct {
