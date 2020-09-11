@@ -14,6 +14,8 @@ type TaskCommandID string
 type TaskInstanceID uint64
 
 const (
+	TaskCtxKeyErrorOccurred = "ErrorOccurred"
+
 	TaskCtxKeyTaskID         = "Task.TaskID"
 	TaskCtxKeyTaskCommandID  = "Task.TaskCommandID"
 	TaskCtxKeyTaskInstanceID = "Task.TaskInstanceID"
@@ -229,6 +231,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
 
 			if isSupportedTask(taskRunData.taskID, taskRunData.taskCommandID) == false {
+				if taskRunData.taskCtx != nil {
+					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
+				}
+
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
 				log.Error(m)
@@ -250,6 +256,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			h := supportedTasks[taskRunData.taskID].newTaskFunc(instanceID, taskRunData)
 			if h == nil {
+				if taskRunData.taskCtx != nil {
+					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
+				}
+
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
 				log.Error(m)

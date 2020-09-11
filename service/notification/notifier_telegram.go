@@ -212,6 +212,10 @@ LOOP:
 					m += fmt.Sprintf("\n%s%s%s%d", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
 				}
 
+				if errorOccured, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccured == true {
+					m = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m)
+				}
+
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}

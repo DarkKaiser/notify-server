@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/robfig/cron"
@@ -33,10 +34,15 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 
 			_, err := s.cron.AddFunc(c.Scheduler.TimeSpec, func() {
 				if taskRunner.TaskRun(TaskID(t.ID), TaskCommandID(c.ID), c.DefaultNotifierID, false) == false {
+					taskCtx := context.Background()
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID)
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, c.ID)
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+
 					m := fmt.Sprintf("Task 스케쥴러에서 요청한 '%s::%s' Task의 실행 요청이 실패하였습니다.", t.ID, c.ID)
 
 					log.Error(m)
-					taskNotificationSender.Notify(c.DefaultNotifierID, m, nil)
+					taskNotificationSender.Notify(c.DefaultNotifierID, m, taskCtx)
 				}
 			})
 

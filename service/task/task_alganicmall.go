@@ -45,6 +45,7 @@ func init() {
 					taskCtx := context.Background()
 					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, task.ID())
 					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, task.CommandID())
+					taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
 
 					m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", task.ID(), task.CommandID())
 
