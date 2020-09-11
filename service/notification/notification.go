@@ -144,15 +144,12 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 		// 등록된 모든 Notifier의 작업이 중지될때까지 대기한다.
 		s.notificationStopWaiter.Wait()
 
-		// @@@@@
-		///////////////////////////////////
 		s.runningMu.Lock()
 		s.running = false
+		s.taskRunner = nil
 		s.notifierHandlers = nil
 		s.defaultNotifierHandler = nil
-		s.taskRunner = nil
 		s.runningMu.Unlock()
-		///////////////////////////////////
 
 		log.Debug("Notification 서비스 중지됨")
 	}

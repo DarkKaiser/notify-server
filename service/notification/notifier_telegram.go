@@ -224,13 +224,10 @@ LOOP:
 		case <-notificationStopCtx.Done():
 			n.bot.StopReceivingUpdates()
 
-			////////////////////////////////
-			// @@@@@
-			n.bot = nil
-			n.chatID = 0
-			n.botCommands = nil
 			close(n.notificationSendC)
-			////////////////////////////////
+
+			n.bot = nil
+			n.notificationSendC = nil
 
 			log.Debugf("'%s' Telegram Notifier의 작업이 중지됨", n.ID())
 
