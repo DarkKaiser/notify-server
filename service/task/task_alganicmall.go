@@ -1,8 +1,6 @@
 package task
 
 import (
-	"context"
-	"fmt"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -16,8 +14,14 @@ const (
 )
 
 func init() {
-	supportedTasks[TidAlganicMall] = &supportedTaskData{
-		supportedCommands: []TaskCommandID{TcidAlganicMallWatchNewEvents},
+	supportedTasks[TidAlganicMall] = &supportedTaskConfig{
+		commandConfigs: []*supportedTaskCommandConfig{
+			{
+				taskCommandID: TcidAlganicMallWatchNewEvents,
+
+				allowMultipleIntances: false, //@@@@@ 테스트 끝나고 true로 변경
+			},
+		},
 
 		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
 			if taskRunData.taskID != TidAlganicMall {
@@ -36,22 +40,16 @@ func init() {
 				},
 			}
 
-			task.runFunc = func(taskNotificationSender TaskNotificationSender) {
+			task.runFunc = func(taskNotificationSender TaskNotificationSender) bool {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
 					task.runWatchNewEvents(taskNotificationSender)
 
 				default:
-					taskCtx := context.Background()
-					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, task.ID())
-					taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, task.CommandID())
-					taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
-
-					m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", task.ID(), task.CommandID())
-
-					log.Error(m)
-					taskNotificationSender.Notify(task.NotifierID(), m, taskCtx)
+					return false
 				}
+
+				return true
 			}
 
 			return task

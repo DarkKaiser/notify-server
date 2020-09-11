@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	log "github.com/sirupsen/logrus"
@@ -35,25 +36,35 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 //
 // supportedTasks
 //
-var supportedTasks = make(map[TaskID]*supportedTaskData)
+var supportedTasks = make(map[TaskID]*supportedTaskConfig)
 
-type supportedTaskData struct {
-	supportedCommands []TaskCommandID
+type newTaskFunction func(TaskInstanceID, *taskRunData) taskHandler
 
-	newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
+type supportedTaskConfig struct {
+	commandConfigs []*supportedTaskCommandConfig
+
+	newTaskFunc newTaskFunction
 }
 
-func isSupportedTask(taskID TaskID, taskCommandID TaskCommandID) bool {
-	taskData, exists := supportedTasks[taskID]
+type supportedTaskCommandConfig struct {
+	taskCommandID TaskCommandID
+
+	allowMultipleIntances bool
+}
+
+func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
+	taskConfig, exists := supportedTasks[taskID]
 	if exists == true {
-		for _, command := range taskData.supportedCommands {
-			if command == taskCommandID {
-				return true
+		for _, commandConfig := range taskConfig.commandConfigs {
+			if commandConfig.taskCommandID == taskCommandID {
+				return taskConfig, commandConfig, nil
 			}
 		}
+
+		return nil, nil, errors.New("지원하지 않는 Command가 입력되었습니다")
 	}
 
-	return false
+	return nil, nil, errors.New("입력된 Task를 찾을 수 없습니다")
 }
 
 //
@@ -66,7 +77,7 @@ type task struct {
 
 	notifierID string
 
-	runFunc func(TaskNotificationSender)
+	runFunc func(TaskNotificationSender) bool
 
 	cancel bool
 }
@@ -81,6 +92,7 @@ type taskHandler interface {
 	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
 
 	Cancel()
+	IsCanceled() bool
 }
 
 func (t *task) ID() TaskID {
@@ -109,11 +121,25 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
 	}
 
-	t.runFunc(taskNotificationSender)
+	if t.runFunc(taskNotificationSender) == false {
+		taskCtx := context.Background()
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+
+		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
+
+		log.Error(m)
+		taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
+	}
 }
 
 func (t *task) Cancel() {
 	t.cancel = true
+}
+
+func (t *task) IsCanceled() bool {
+	return t.cancel
 }
 
 //
@@ -230,17 +256,48 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case taskRunData := <-s.taskRunC:
 			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
 
-			if isSupportedTask(taskRunData.taskID, taskRunData.taskCommandID) == false {
+			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.taskID, taskRunData.taskCommandID)
+			if err != nil {
+				// @@@@@
 				if taskRunData.taskCtx != nil {
 					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
 				}
 
+				// @@@@@
 				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
 
 				log.Error(m)
 				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
 
 				continue
+			}
+
+			// 다중 인스턴스의 생성이 허용되지 않는 Task인 경우, 이미 실행중인 동일한 Task가 있는지 확인한다.
+			if commandConfig.allowMultipleIntances == false {
+				var alreadyRunTaskHandler taskHandler
+
+				s.runningMu.Lock()
+				for _, handler := range s.taskHandlers {
+					if handler.ID() == taskRunData.taskID && handler.CommandID() == taskRunData.taskCommandID && handler.IsCanceled() == false {
+						alreadyRunTaskHandler = handler
+						break
+					}
+				}
+				s.runningMu.Unlock()
+
+				if alreadyRunTaskHandler != nil {
+					// @@@@@
+					if taskRunData.taskCtx != nil {
+						//taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
+					}
+
+					m := fmt.Sprintf("'%s::%s'는 이미 작업중입니다.", taskRunData.taskID, taskRunData.taskCommandID)
+
+					log.Error(m)
+					s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
+
+					continue
+				}
 			}
 
 			var instanceID TaskInstanceID
@@ -254,7 +311,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h := supportedTasks[taskRunData.taskID].newTaskFunc(instanceID, taskRunData)
+			h := taskConfig.newTaskFunc(instanceID, taskRunData)
 			if h == nil {
 				if taskRunData.taskCtx != nil {
 					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
