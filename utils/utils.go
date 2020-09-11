@@ -44,3 +44,12 @@ func ToSnakeCase(str string, separator string) string {
 
 	return strings.ToLower(snakeCaseString)
 }
+
+func Contains(list []string, item string) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
