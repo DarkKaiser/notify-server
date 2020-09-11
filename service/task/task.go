@@ -296,7 +296,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			} else {
 				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없어 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
 
-				log.Warnf("등록되지 않은 Task에 대한 작업취소요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
+				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 			}
 			s.runningMu.Unlock()
 
@@ -372,7 +372,7 @@ func (s *TaskService) TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%s, panic:%s", taskInstanceID, r)
+			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%d, panic:%s", taskInstanceID, r)
 		}
 	}()
 
