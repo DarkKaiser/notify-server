@@ -155,6 +155,11 @@ func (t *task) dataFileName() string {
 func (t *alganicMallTask) readDataFromFile(v interface{}) error {
 	data, err := ioutil.ReadFile(t.dataFileName())
 	if err != nil {
+		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
+		if _, ok := err.(*os.PathError); ok {
+			return nil
+		}
+
 		return err
 	}
 
