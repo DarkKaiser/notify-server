@@ -2,10 +2,15 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -140,6 +145,29 @@ func (t *task) Cancel() {
 
 func (t *task) IsCanceled() bool {
 	return t.cancel
+}
+
+func (t *task) dataFileName() string {
+	filename := fmt.Sprintf("%s-task-%s-%s.json", g.AppName, utils.ToSnakeCase(string(t.ID())), utils.ToSnakeCase(string(t.CommandID())))
+	return strings.ReplaceAll(filename, "_", "-")
+}
+
+func (t *alganicMallTask) readDataFromFile(v interface{}) error {
+	data, err := ioutil.ReadFile(t.dataFileName())
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(data, v)
+}
+
+func (t *alganicMallTask) writeDataToFile(v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "\t")
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(t.dataFileName(), data, os.FileMode(0644))
 }
 
 //
