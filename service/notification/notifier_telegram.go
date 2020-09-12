@@ -62,7 +62,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 				continue
 			}
 
-			command := fmt.Sprintf("%s%s%s", utils.ToSnakeCase(t.ID, telegramBotCommandSeparator), telegramBotCommandSeparator, utils.ToSnakeCase(c.ID, telegramBotCommandSeparator))
+			command := fmt.Sprintf("%s_%s", utils.ToSnakeCase(t.ID), utils.ToSnakeCase(c.ID))
 
 			notifier.botCommands = append(notifier.botCommands,
 				telegramBotCommand{
