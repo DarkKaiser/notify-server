@@ -187,10 +187,12 @@ LOOP:
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			} else {
+				changeParseModeHtml := false
 				if command, ok := notificationSendData.taskCtx.Value(TaskCtxKeyTelegramBotCommand).(string); ok == true {
 					for _, botCommand := range n.botCommands {
 						if botCommand.command == command {
-							m = fmt.Sprintf("[ %s ]\n\n%s", botCommand.commandTitle, m)
+							m = fmt.Sprintf("<b>[ %s ]</b>\n\n%s", botCommand.commandTitle, m)
+							changeParseModeHtml = true
 							break
 						}
 					}
@@ -200,7 +202,8 @@ LOOP:
 					if ok1 == true && ok2 == true {
 						for _, botCommand := range n.botCommands {
 							if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-								m = fmt.Sprintf("[ %s ]\n\n%s", botCommand.commandTitle, m)
+								m = fmt.Sprintf("<b>[ %s ]</b>\n\n%s", botCommand.commandTitle, m)
+								changeParseModeHtml = true
 								break
 							}
 						}
@@ -216,7 +219,12 @@ LOOP:
 					m = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m)
 				}
 
-				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
+				messageConfig := tgbotapi.NewMessage(n.chatID, m)
+				if changeParseModeHtml == true {
+					messageConfig.ParseMode = tgbotapi.ModeHTML
+				}
+
+				if _, err := n.bot.Send(messageConfig); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			}
