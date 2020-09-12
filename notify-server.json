@@ -27,6 +27,19 @@
 						"usable": true
 					},
 					"default_notifier_id": "darkkaiser_notify_bot"
+				},
+				{
+					"id": "WatchAtoCream",
+					"title": "아토크림 정보 변경 확인",
+					"description": "엘가닉몰에 아토크림 정보가 변경되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "*/30 * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
 				}
 			]
 		}

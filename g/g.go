@@ -14,6 +14,7 @@ const (
 	AppConfigFileName = AppName + ".json"
 )
 
+// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
 type AppConfig struct {
 	Debug     bool `json:"debug"`
 	Notifiers struct {
