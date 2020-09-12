@@ -363,25 +363,26 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			// Task 스케쥴러를 중지한다.
 			s.scheduler.Stop()
 
-			// @@@@@ 아래 블럭도 mutex를 감싸야하나?
-			// 어차피 채널을 닫기 때문에 닫은 서비스는 재사용하지 못한다. new로 무조건 재생성해야된다.
-			/////////////////
 			s.runningMu.Lock()
+			// 현재 작업중인 Task의 작업을 모두 취소한다.
 			for _, handler := range s.taskHandlers {
 				handler.Cancel()
 			}
 			s.runningMu.Unlock()
+
 			close(s.taskRunC)
 			close(s.taskCancelC)
-			close(s.taskDoneC)
+
+			// Task의 작업이 모두 취소될 때까지 대기한다.
 			s.taskStopWaiter.Wait()
+
+			close(s.taskDoneC)
 
 			s.runningMu.Lock()
 			s.running = false
 			s.taskHandlers = nil
 			s.taskNotificationSender = nil
 			s.runningMu.Unlock()
-			/////////////////
 
 			log.Debug("Task 서비스 중지됨")
 
