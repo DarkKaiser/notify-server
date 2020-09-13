@@ -35,7 +35,7 @@ func init() {
 			{
 				taskCommandID: TcidAlganicMallWatchNewEvents,
 
-				allowMultipleIntances: true, // @@@@@ json 파일로 옮길까?
+				allowMultipleIntances: true,
 			},
 			{
 				taskCommandID: TcidAlganicMallWatchAtoCream,

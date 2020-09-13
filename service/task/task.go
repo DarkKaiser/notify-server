@@ -239,9 +239,6 @@ type TaskService struct {
 }
 
 func NewService(config *g.AppConfig) *TaskService {
-	// @@@@@ 서비스 시작시 allowMultipleIntances 값을 config에서 읽어와서 초기화할까????
-	// 여러가지 정보중에서 위 변수 하나만 초기화하는것도 이상함!!!
-
 	return &TaskService{
 		config: config,
 
