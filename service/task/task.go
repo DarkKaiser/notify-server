@@ -82,7 +82,7 @@ type task struct {
 
 	notifierID string
 
-	runFunc func(TaskNotificationSender) bool
+	runFunc func(TaskNotificationSender, context.Context) error
 
 	cancel bool
 }
@@ -126,16 +126,16 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
 	}
 
-	if t.runFunc(taskNotificationSender) == false {
-		taskCtx := context.Background()
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+	var taskCtx = context.Background()
+	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
+	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
+	if t.runFunc(taskNotificationSender, taskCtx) != nil {
 		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
 
 		log.Error(m)
-		taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
+
+		t.notifyWithError(taskNotificationSender, m, taskCtx)
 	}
 }
 
@@ -145,6 +145,14 @@ func (t *task) Cancel() {
 
 func (t *task) IsCanceled() bool {
 	return t.cancel
+}
+
+func (t *task) notifyWithError(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
+	return t.notify(taskNotificationSender, m, context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true))
+}
+
+func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
+	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
 }
 
 func (t *task) dataFileName() string {
@@ -298,8 +306,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true))
 
 				continue
 			}
@@ -342,8 +349,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true)
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx)
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true))
 
 				continue
 			}
@@ -378,7 +384,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
-				taskCtx := context.Background()
+				var taskCtx = context.Background()
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskHandler.ID())
 				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskHandler.CommandID())
 
