@@ -122,8 +122,17 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		taskDoneC <- t.instanceID
 	}()
 
+	var taskCtx = context.Background()
+	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
+	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
+
 	if t.runFunc == nil {
-		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
+		// @@@@@
+		m := fmt.Sprintf("'%s::%s' Task의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
+
+		t.notifyWithError(taskNotificationSender, m, taskCtx)
+
+		log.Panic(m)
 	}
 
 	// TaskData를 초기화하고 읽어들인다.
@@ -138,42 +147,45 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	}
 	if taskData == nil {
 		// @@@@@
-		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
+		m := fmt.Sprintf("'%s::%s' Task의 TaskData 초기화가 실패하였습니다.", t.ID(), t.CommandID())
+
+		t.notifyWithError(taskNotificationSender, m, taskCtx)
+
+		log.Panic(m)
 	}
-	// @@@@@
-	//////////////////////////////////
-	err := t.readDataFromFile(&taskData)
+	err := t.readTaskDataFromFile(taskData)
 	if err != nil {
+		// @@@@@
 		// 항목의 타입이 다르면 에러발생(json.unmarshalTypeError)
 		if err.Error() == "dd" {
 		}
-	}
-	//////////////////////////////////
-
-	var taskCtx = context.Background()
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
-
-	// @@@@@
-	// 변경된것이 없으면 태스크데이터는 닐을 반환
-	//////////////////////////////////
-	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
-	if err != nil {
-		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
+		m := fmt.Sprintf("'%s::%s' Task의 TaskData 초기화가 실패하였습니다.", t.ID(), t.CommandID())
 
 		log.Error(m)
 
 		t.notifyWithError(taskNotificationSender, m, taskCtx)
-	} else {
-		if changedTaskData != nil {
-
-		}
-
-		if len(message) > 0 {
-
-		}
 	}
-	//////////////////////////////////
+
+	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
+	if err == nil {
+		if len(message) > 0 {
+			t.notify(taskNotificationSender, message, taskCtx)
+		}
+
+		if changedTaskData != nil {
+			if err := t.writeTaskDataToFile(changedTaskData); err != nil {
+				// @@@@@
+			}
+		}
+	} else {
+		// @@@@@[ 엘가닉몰 > 신규 이벤트 확인 ] 이게 있으면 id::id 형태로 나올 필요가 없을것같음, 기존 명령도 확인
+		//		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
+		m := fmt.Sprintf("'%s::%s' Task의 실행이 실패하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
+
+		log.Error(m)
+
+		t.notifyWithError(taskNotificationSender, m, taskCtx)
+	}
 }
 
 func (t *task) Cancel() {
@@ -184,6 +196,7 @@ func (t *task) IsCanceled() bool {
 	return t.cancel
 }
 
+// @@@@@ 함수 notifywithdefault가 있음
 func (t *task) notifyWithError(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
 	return t.notify(taskNotificationSender, m, context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true))
 }
@@ -197,7 +210,7 @@ func (t *task) dataFileName() string {
 	return strings.ReplaceAll(filename, "_", "-")
 }
 
-func (t *task) readDataFromFile(v interface{}) error {
+func (t *task) readTaskDataFromFile(v interface{}) error {
 	data, err := ioutil.ReadFile(t.dataFileName())
 	if err != nil {
 		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
@@ -211,7 +224,7 @@ func (t *task) readDataFromFile(v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func (t *task) writeDataToFile(v interface{}) error {
+func (t *task) writeTaskDataToFile(v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		return err
@@ -334,9 +347,15 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case taskRunData := <-s.taskRunC:
 			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
 
+			if taskRunData.taskCtx == nil {
+				taskRunData.taskCtx = context.Background()
+			}
+			taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskID, taskRunData.taskID)
+			taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskCommandID, taskRunData.taskCommandID)
+
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.taskID, taskRunData.taskCommandID)
 			if err != nil {
-				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
+				m := "등록되지 않은 작업입니다."
 
 				log.Error(m)
 
@@ -379,7 +398,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			h := taskConfig.newTaskFunc(instanceID, taskRunData)
 			if h == nil {
-				m := fmt.Sprintf("'%s::%s'는 등록되지 않은 Task입니다.", taskRunData.taskID, taskRunData.taskCommandID)
+				m := "등록되지 않은 작업입니다."
 
 				log.Error(m)
 
@@ -476,13 +495,6 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 			log.Errorf("'%s::%s' Task 실행 요청중에 panic이 발생하였습니다.(panic:%s", taskID, taskCommandID, r)
 		}
 	}()
-
-	if taskCtx == nil {
-		taskCtx = context.Background()
-	}
-
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskID)
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskCommandID)
 
 	s.taskRunC <- &taskRunData{
 		taskID:        taskID,
