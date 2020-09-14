@@ -127,12 +127,11 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
 	if t.runFunc == nil {
-		// @@@@@
-		m := fmt.Sprintf("'%s::%s' Task의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
+		log.Errorf("'%s::%s' Task의 runFunc이 초기화되지 않았습니다.", t.ID(), t.CommandID())
 
-		t.notifyWithError(taskNotificationSender, m, taskCtx)
+		t.notifyError(taskNotificationSender, "작업 진행중에 오류가 발생하였습니다. runFunc이 초기화되지 않았습니다.", taskCtx)
 
-		log.Panic(m)
+		return
 	}
 
 	// TaskData를 초기화하고 읽어들인다.
@@ -146,12 +145,11 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		}
 	}
 	if taskData == nil {
-		// @@@@@
-		m := fmt.Sprintf("'%s::%s' Task의 TaskData 초기화가 실패하였습니다.", t.ID(), t.CommandID())
+		log.Errorf("'%s::%s' Task의 TaskData 생성이 실패하였습니다.", t.ID(), t.CommandID())
 
-		t.notifyWithError(taskNotificationSender, m, taskCtx)
+		t.notifyError(taskNotificationSender, "작업 진행중에 오류가 발생하였습니다. 작업데이터 생성이 실패하였습니다.", taskCtx)
 
-		log.Panic(m)
+		return
 	}
 	err := t.readTaskDataFromFile(taskData)
 	if err != nil {
@@ -163,7 +161,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 
 		log.Error(m)
 
-		t.notifyWithError(taskNotificationSender, m, taskCtx)
+		t.notifyError(taskNotificationSender, m, taskCtx)
 	}
 
 	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
@@ -178,13 +176,9 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			}
 		}
 	} else {
-		// @@@@@[ 엘가닉몰 > 신규 이벤트 확인 ] 이게 있으면 id::id 형태로 나올 필요가 없을것같음, 기존 명령도 확인
-		//		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
-		m := fmt.Sprintf("'%s::%s' Task의 실행이 실패하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
+		log.Errorf("'%s::%s' Task 실행중 오류가 발생하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
 
-		log.Error(m)
-
-		t.notifyWithError(taskNotificationSender, m, taskCtx)
+		t.notifyError(taskNotificationSender, fmt.Sprintf("작업 진행중에 오류가 발생하였습니다.\n\n- %s", err.Error()), taskCtx)
 	}
 }
 
@@ -196,8 +190,7 @@ func (t *task) IsCanceled() bool {
 	return t.cancel
 }
 
-// @@@@@ 함수 notifywithdefault가 있음
-func (t *task) notifyWithError(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
+func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
 	return t.notify(taskNotificationSender, m, context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true))
 }
 
