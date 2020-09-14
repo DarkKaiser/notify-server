@@ -116,6 +116,7 @@ func (t *task) NotifierID() string {
 	return t.notifierID
 }
 
+// @@@@@ 로그및 노티 메시지 다시 확인
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
 	defer taskStopWaiter.Done()
 	defer func() {
@@ -127,10 +128,8 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
 	if t.runFunc == nil {
-		log.Errorf("'%s::%s' Task의 runFunc이 초기화되지 않았습니다.", t.ID(), t.CommandID())
-
-		t.notifyError(taskNotificationSender, "작업 진행중에 오류가 발생하였습니다. runFunc이 초기화되지 않았습니다.", taskCtx)
-
+		log.Errorf("'%s::%s' Task의 runFunc이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
+		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- runFunc이 초기화되지 않았습니다.", taskCtx)
 		return
 	}
 
@@ -145,23 +144,14 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		}
 	}
 	if taskData == nil {
-		log.Errorf("'%s::%s' Task의 TaskData 생성이 실패하였습니다.", t.ID(), t.CommandID())
-
-		t.notifyError(taskNotificationSender, "작업 진행중에 오류가 발생하였습니다. 작업데이터 생성이 실패하였습니다.", taskCtx)
-
+		log.Errorf("'%s::%s' Task의 TaskData 생성이 실패하여 작업이 실패하였습니다.", t.ID(), t.CommandID())
+		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- 작업데이터 생성이 실패하였습니다.", taskCtx)
 		return
 	}
 	err := t.readTaskDataFromFile(taskData)
 	if err != nil {
-		// @@@@@
-		// 항목의 타입이 다르면 에러발생(json.unmarshalTypeError)
-		if err.Error() == "dd" {
-		}
-		m := fmt.Sprintf("'%s::%s' Task의 TaskData 초기화가 실패하였습니다.", t.ID(), t.CommandID())
-
-		log.Error(m)
-
-		t.notifyError(taskNotificationSender, m, taskCtx)
+		log.Warnf("'%s::%s' Task의 TaskData 로딩이 실패하였습니다. 빈 TaskData를 이용하여 Task를 계속 실행합니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
+		t.notify(taskNotificationSender, fmt.Sprintf("작업데이터 로딩이 실패하였습니다.\n\n- %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err.Error()), taskCtx)
 	}
 
 	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
@@ -172,13 +162,14 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 
 		if changedTaskData != nil {
 			if err := t.writeTaskDataToFile(changedTaskData); err != nil {
-				// @@@@@
+				log.Warnf("'%s::%s' Task의 TaskData 저장이 실패하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
+				t.notify(taskNotificationSender, fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.\n\n- %s", err.Error()), taskCtx)
 			}
 		}
 	} else {
-		log.Errorf("'%s::%s' Task 실행중 오류가 발생하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
-
-		t.notifyError(taskNotificationSender, fmt.Sprintf("작업 진행중에 오류가 발생하였습니다.\n\n- %s", err.Error()), taskCtx)
+		log.Errorf("'%s::%s' Task를 실행하는 중에 오류가 발생하여 작업이 실패하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
+		t.notifyError(taskNotificationSender, fmt.Sprintf("작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- %s", err.Error()), taskCtx)
+		return
 	}
 }
 
