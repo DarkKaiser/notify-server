@@ -29,20 +29,29 @@ type alganicmallWatchNewEventsData struct {
 	} `json:"events"`
 }
 
+// @@@@@
+type alganicmallWatchAtoCreamData struct {
+	Events []struct {
+		Title string `json:"title"`
+		Link  string `json:"link"`
+	} `json:"events"`
+}
+
 func init() {
 	supportedTasks[TidAlganicMall] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{
-			{
-				taskCommandID: TcidAlganicMallWatchNewEvents,
+		commandConfigs: []*supportedTaskCommandConfig{{
+			taskCommandID: TcidAlganicMallWatchNewEvents,
 
-				allowMultipleIntances: true,
-			},
-			{
-				taskCommandID: TcidAlganicMallWatchAtoCream,
+			allowMultipleIntances: true,
 
-				allowMultipleIntances: true,
-			},
-		},
+			newTaskDataFunc: func() interface{} { return &alganicmallWatchNewEventsData{} },
+		}, {
+			taskCommandID: TcidAlganicMallWatchAtoCream,
+
+			allowMultipleIntances: true,
+
+			newTaskDataFunc: func() interface{} { return &alganicmallWatchAtoCreamData{} },
+		}},
 
 		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
 			if taskRunData.taskID != TidAlganicMall {
@@ -61,19 +70,19 @@ func init() {
 				},
 			}
 
-			task.runFunc = func(taskNotificationSender TaskNotificationSender, taskCtx context.Context) error {
+			task.runFunc = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}, err error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					task.runWatchNewEvents(taskNotificationSender, taskCtx)
+					message, changedTaskData = task.runWatchNewEvents(taskData, taskNotificationSender, taskCtx)
 
 				case TcidAlganicMallWatchAtoCream:
-					task.runWatchAtoCream(taskNotificationSender, taskCtx)
+					message, changedTaskData = task.runWatchAtoCream(taskData, taskNotificationSender, taskCtx)
 
 				default:
-					return errors.New("no find task command")
+					err = errors.New("no find task command")
 				}
 
-				return nil
+				return message, changedTaskData, err
 			}
 
 			return task
@@ -85,23 +94,16 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskNotificationSender TaskNotificationSender, taskCtx context.Context) {
+func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
+	var config = taskData.(*alganicmallWatchNewEventsData)
 	// @@@@@
-	// 파일에서 데이터 읽어오기, 데이터를 인자값으로 받기
-	var config alganicmallWatchNewEventsData
-	err := t.readDataFromFile(&config)
-	if err != nil { // 항목의 타입이 다르면 에러발생(json.unmarshalTypeError)
-		if err.Error() == "dd" {
-
-		}
-	}
 	in := len(config.Events)
 	println(in)
 	for _, s := range config.Events {
 		println(s.Title)
 	}
 
-	err = t.writeDataToFile(&config)
+	err := t.writeDataToFile(&config)
 	if err != nil {
 
 	}
@@ -166,13 +168,20 @@ func (t *alganicMallTask) runWatchNewEvents(taskNotificationSender TaskNotificat
 	//	 프로그램 시작시 메시지를 같이 넘기고 그 결과를 전송받아야 한다.
 	//	 결과는 프로그램 콘솔에 찍힌걸 읽어올수 있으면 이걸 사용
 	//	 안되면 결과파일을 지정해서 넘겨주고 종료시 이 결과파일을 분석
+
+	return "", nil
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskNotificationSender TaskNotificationSender, taskCtx context.Context) {
+func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
+	var config = taskData.(*alganicmallWatchAtoCreamData)
+	println(config)
+
 	// @@@@@
 	fmt.Print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
 	if t.cancel == true {
 		return
 	}
 	taskNotificationSender.Notify(t.notifierID, "태스크가 완료되었습니다.", nil)
+
+	return "", nil
 }

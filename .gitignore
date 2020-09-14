@@ -19,3 +19,6 @@ logs/
 
 # .idea 폴더
 .idea/
+
+# Task 데이터 파일
+/notify-server-task-*.json

@@ -43,18 +43,18 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 //
 var supportedTasks = make(map[TaskID]*supportedTaskConfig)
 
-type newTaskFunction func(TaskInstanceID, *taskRunData) taskHandler
-
 type supportedTaskConfig struct {
 	commandConfigs []*supportedTaskCommandConfig
 
-	newTaskFunc newTaskFunction
+	newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
 }
 
 type supportedTaskCommandConfig struct {
 	taskCommandID TaskCommandID
 
 	allowMultipleIntances bool
+
+	newTaskDataFunc func() interface{}
 }
 
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
@@ -82,7 +82,7 @@ type task struct {
 
 	notifierID string
 
-	runFunc func(TaskNotificationSender, context.Context) error
+	runFunc func(interface{}, TaskNotificationSender, context.Context) (string, interface{}, error)
 
 	cancel bool
 }
@@ -126,17 +126,54 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
 	}
 
+	// TaskData를 초기화하고 읽어들인다.
+	var taskData interface{}
+	if taskConfig, exists := supportedTasks[t.ID()]; exists == true {
+		for _, commandConfig := range taskConfig.commandConfigs {
+			if commandConfig.taskCommandID == t.CommandID() {
+				taskData = commandConfig.newTaskDataFunc()
+				break
+			}
+		}
+	}
+	if taskData == nil {
+		// @@@@@
+		log.Panicf("'%s::%s' Task 객체의 runFunc이 할당되지 않았습니다.", t.ID(), t.CommandID())
+	}
+	// @@@@@
+	//////////////////////////////////
+	err := t.readDataFromFile(&taskData)
+	if err != nil {
+		// 항목의 타입이 다르면 에러발생(json.unmarshalTypeError)
+		if err.Error() == "dd" {
+		}
+	}
+	//////////////////////////////////
+
 	var taskCtx = context.Background()
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
-	if t.runFunc(taskNotificationSender, taskCtx) != nil {
+	// @@@@@
+	// 변경된것이 없으면 태스크데이터는 닐을 반환
+	//////////////////////////////////
+	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
+	if err != nil {
 		m := fmt.Sprintf("'%s' Task의 '%s' 명령은 등록되지 않았습니다.", t.ID(), t.CommandID())
 
 		log.Error(m)
 
 		t.notifyWithError(taskNotificationSender, m, taskCtx)
+	} else {
+		if changedTaskData != nil {
+
+		}
+
+		if len(message) > 0 {
+
+		}
 	}
+	//////////////////////////////////
 }
 
 func (t *task) Cancel() {
@@ -160,7 +197,7 @@ func (t *task) dataFileName() string {
 	return strings.ReplaceAll(filename, "_", "-")
 }
 
-func (t *alganicMallTask) readDataFromFile(v interface{}) error {
+func (t *task) readDataFromFile(v interface{}) error {
 	data, err := ioutil.ReadFile(t.dataFileName())
 	if err != nil {
 		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
@@ -174,7 +211,7 @@ func (t *alganicMallTask) readDataFromFile(v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func (t *alganicMallTask) writeDataToFile(v interface{}) error {
+func (t *task) writeDataToFile(v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		return err
