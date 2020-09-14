@@ -161,9 +161,9 @@ LOOP:
 						taskCtx := context.Background()
 						taskCtx = context.WithValue(taskCtx, TaskCtxKeyTelegramBotCommand, botCommand.command)
 						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
-							m := fmt.Sprintf("'%s::%s' Task의 실행 요청이 실패하였습니다.", botCommand.taskID, botCommand.taskCommandID)
+							log.Errorf("사용자 요청 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 
-							log.Error(m)
+							m := fmt.Sprintf("<b>[ %s ]</b>\n\n사용자 요청 작업의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 							if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 							}

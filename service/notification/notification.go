@@ -165,13 +165,11 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 		}
 	}
 
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, task.TaskCtxKeyErrorOccurred, true)
-
-	m := fmt.Sprintf("존재하지 않는 NotifierID('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
+	m := fmt.Sprintf("알 수 없는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
 
 	log.Error(m)
-	s.defaultNotifierHandler.Notify(m, ctx)
+
+	s.defaultNotifierHandler.Notify(m, context.WithValue(context.Background(), task.TaskCtxKeyErrorOccurred, true))
 
 	return false
 }
