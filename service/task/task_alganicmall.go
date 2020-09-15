@@ -69,7 +69,7 @@ func init() {
 				},
 			}
 
-			task.run = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}, err error) {
+			task.runFn = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}, err error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
 					message, changedTaskData = task.runWatchNewEvents(taskData, taskNotificationSender, taskCtx)

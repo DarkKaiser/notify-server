@@ -93,7 +93,7 @@ type task struct {
 
 	notifierID string
 
-	run runFunc
+	runFn runFunc
 
 	cancel bool
 }
@@ -137,9 +137,9 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
-	if t.run == nil {
-		log.Errorf("'%s::%s' Task의 run()이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
-		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- run()이 초기화되지 않았습니다.", taskCtx)
+	if t.runFn == nil {
+		log.Errorf("'%s::%s' Task의 runFn()이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
+		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- runFn()이 초기화되지 않았습니다.", taskCtx)
 		return
 	}
 
@@ -164,7 +164,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		t.notify(taskNotificationSender, fmt.Sprintf("작업데이터 로딩이 실패하였습니다.\n\n- %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err.Error()), taskCtx)
 	}
 
-	message, changedTaskData, err := t.run(taskData, taskNotificationSender, taskCtx)
+	message, changedTaskData, err := t.runFn(taskData, taskNotificationSender, taskCtx)
 	if err == nil {
 		if len(message) > 0 {
 			t.notify(taskNotificationSender, message, taskCtx)
@@ -438,7 +438,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			} else {
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
 			}
 			s.runningMu.Unlock()
 
