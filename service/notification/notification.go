@@ -159,8 +159,9 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
+	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {
-		if h.ID() == NotifierID(notifierID) {
+		if h.ID() == id {
 			return h.Notify(message, taskCtx)
 		}
 	}
@@ -169,6 +170,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 
 	log.Error(m)
 
+	// @@@@@ 고민
 	s.defaultNotifierHandler.Notify(m, context.WithValue(context.Background(), task.TaskCtxKeyErrorOccurred, true))
 
 	return false
