@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"net/http"
 	"regexp"
 	"strings"
 )
@@ -11,12 +10,6 @@ import (
 func CheckErr(err error) {
 	if err != nil {
 		log.Fatal(err)
-	}
-}
-
-func CheckStatusCode(res *http.Response) {
-	if res.StatusCode != 200 {
-		log.Fatal("Request failed with Status:", res.StatusCode)
 	}
 }
 

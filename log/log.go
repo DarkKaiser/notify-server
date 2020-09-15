@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -19,7 +20,18 @@ const (
 func Init(debug bool, appName string, checkDaysAgo float64) {
 	log.SetLevel(log.TraceLevel)
 	log.SetReportCaller(true)
-	log.SetFormatter(&log.TextFormatter{})
+	log.SetFormatter(&log.TextFormatter{
+		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
+			const ignorePath = "github.com/darkkaiser/"
+
+			function = fmt.Sprintf("%s(line:%d)", frame.Function, frame.Line)
+			if strings.HasPrefix(function, ignorePath) == true {
+				function = function[len(ignorePath):]
+			}
+
+			return
+		},
+	})
 
 	if debug == true {
 		return
