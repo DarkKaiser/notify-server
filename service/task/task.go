@@ -41,12 +41,15 @@ func (g *taskInstanceIDGenerator) New() TaskInstanceID {
 //
 // supportedTasks
 //
+type newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
+type newTaskDataFunc func() interface{}
+
 var supportedTasks = make(map[TaskID]*supportedTaskConfig)
 
 type supportedTaskConfig struct {
 	commandConfigs []*supportedTaskCommandConfig
 
-	newTaskFunc func(TaskInstanceID, *taskRunData) taskHandler
+	newTask newTaskFunc
 }
 
 type supportedTaskCommandConfig struct {
@@ -54,7 +57,7 @@ type supportedTaskCommandConfig struct {
 
 	allowMultipleIntances bool
 
-	newTaskDataFunc func() interface{}
+	newTaskData newTaskDataFunc
 }
 
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
@@ -138,7 +141,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	if taskConfig, exists := supportedTasks[t.ID()]; exists == true {
 		for _, commandConfig := range taskConfig.commandConfigs {
 			if commandConfig.taskCommandID == t.CommandID() {
-				taskData = commandConfig.newTaskDataFunc()
+				taskData = commandConfig.newTaskData()
 				break
 			}
 		}
@@ -364,7 +367,6 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				if alreadyRunTaskHandler != nil {
 					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, alreadyRunTaskHandler.InstanceID())
 					s.taskNotificationSender.Notify(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
-
 					continue
 				}
 			}
@@ -380,7 +382,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h := taskConfig.newTaskFunc(instanceID, taskRunData)
+			h := taskConfig.newTask(instanceID, taskRunData)
 			if h == nil {
 				m := "등록되지 않은 작업입니다."
 

@@ -21,16 +21,16 @@ const (
 	TcidAlganicMallWatchAtoCream  TaskCommandID = "WatchAtoCream"  // 엘가닉몰 아토크림 정보 변경 확인
 )
 
-// @@@@@
 type alganicmallWatchNewEventsData struct {
+	// @@@@@
 	Events []struct {
 		Title string `json:"title"`
 		Link  string `json:"link"`
 	} `json:"events"`
 }
 
-// @@@@@
 type alganicmallWatchAtoCreamData struct {
+	// @@@@@
 	Events []struct {
 		Title string `json:"title"`
 		Link  string `json:"link"`
@@ -44,16 +44,16 @@ func init() {
 
 			allowMultipleIntances: true,
 
-			newTaskDataFunc: func() interface{} { return &alganicmallWatchNewEventsData{} },
+			newTaskData: func() interface{} { return &alganicmallWatchNewEventsData{} },
 		}, {
 			taskCommandID: TcidAlganicMallWatchAtoCream,
 
 			allowMultipleIntances: true,
 
-			newTaskDataFunc: func() interface{} { return &alganicmallWatchAtoCreamData{} },
+			newTaskData: func() interface{} { return &alganicmallWatchAtoCreamData{} },
 		}},
 
-		newTaskFunc: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
+		newTask: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
 			if taskRunData.taskID != TidAlganicMall {
 				return nil
 			}
@@ -95,15 +95,17 @@ type alganicMallTask struct {
 }
 
 func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
-	var config = taskData.(*alganicmallWatchNewEventsData)
+	var orignTaskData, ok = taskData.(*alganicmallWatchNewEventsData)
+	println(ok)
+
 	// @@@@@
-	in := len(config.Events)
+	in := len(orignTaskData.Events)
 	println(in)
-	for _, s := range config.Events {
+	for _, s := range orignTaskData.Events {
 		println(s.Title)
 	}
 
-	err := t.writeDataToFile(&config)
+	err := t.writeTaskDataToFile(&orignTaskData)
 	if err != nil {
 
 	}
@@ -157,17 +159,10 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificati
 	//}
 
 	if t.cancel == false {
-		taskNotificationSender.Notify(t.notifierID, "태스크가 완료되었습니다.", taskCtx)
-	}
+		message = "태스크가 완료되었습니다."
 
-	// 로또번호구하기 : 타 프로그램 실행 후 결과 받기
-	// - 이미 실행된 프로그램? 아니면 새로 시작할것인가?
-	// > 이미 실행된 프로그램 XXX
-	//	 프로그램을 찾아서 메시지를 넘겨서 결과를 전송받아야 한다.
-	// > 새로 시작
-	//	 프로그램 시작시 메시지를 같이 넘기고 그 결과를 전송받아야 한다.
-	//	 결과는 프로그램 콘솔에 찍힌걸 읽어올수 있으면 이걸 사용
-	//	 안되면 결과파일을 지정해서 넘겨주고 종료시 이 결과파일을 분석
+		return message, changedTaskData
+	}
 
 	return "", nil
 }
@@ -181,7 +176,6 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificatio
 	if t.cancel == true {
 		return
 	}
-	taskNotificationSender.Notify(t.notifierID, "태스크가 완료되었습니다.", nil)
 
 	return "", nil
 }

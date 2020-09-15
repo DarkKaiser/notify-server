@@ -158,7 +158,7 @@ LOOP:
 
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
-						taskCtx := context.Background()
+						var taskCtx = context.Background()
 						taskCtx = context.WithValue(taskCtx, TaskCtxKeyTelegramBotCommand, botCommand.command)
 						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
 							log.Errorf("사용자 요청 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
