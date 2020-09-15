@@ -22,11 +22,11 @@ func Init(debug bool, appName string, checkDaysAgo float64) {
 	log.SetReportCaller(true)
 	log.SetFormatter(&log.TextFormatter{
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
-			const ignorePath = "github.com/darkkaiser/"
+			const shortPath = "github.com/darkkaiser/notify-server"
 
 			function = fmt.Sprintf("%s(line:%d)", frame.Function, frame.Line)
-			if strings.HasPrefix(function, ignorePath) == true {
-				function = function[len(ignorePath):]
+			if strings.HasPrefix(function, shortPath) == true {
+				function = "..." + function[len(shortPath):]
 			}
 
 			return
