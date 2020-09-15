@@ -14,10 +14,6 @@ import (
 )
 
 const (
-	TaskCtxKeyTelegramBotCommand = "telegramNotifier.botCommand"
-)
-
-const (
 	telegramBotCommandHelp   = "help"
 	telegramBotCommandCancel = "cancel"
 
@@ -62,11 +58,9 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 				continue
 			}
 
-			command := fmt.Sprintf("%s_%s", utils.ToSnakeCase(t.ID), utils.ToSnakeCase(c.ID))
-
 			notifier.botCommands = append(notifier.botCommands,
 				telegramBotCommand{
-					command:            command,
+					command:            fmt.Sprintf("%s_%s", utils.ToSnakeCase(t.ID), utils.ToSnakeCase(c.ID)),
 					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title),
 					commandDescription: c.Description,
 
@@ -158,14 +152,18 @@ LOOP:
 
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
-						var taskCtx = context.WithValue(context.Background(), TaskCtxKeyTelegramBotCommand, botCommand.command)
-
-						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
+						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, nil, string(n.ID()), true) == false {
 							log.Errorf("사용자가 요청한 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 
-							m := fmt.Sprintf("<b>[ %s ]</b>\n\n사용자가 요청한 작업의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
-							if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+							// @@@@@ 고민
+							var taskCtx = context.Background()
+							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyTaskID, botCommand.taskID)
+							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyTaskCommandID, botCommand.taskCommandID)
+							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyErrorOccurred, true)
+
+							n.notificationSendC <- &notificationSendData{
+								message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
+								taskCtx: taskCtx,
 							}
 						}
 
@@ -180,29 +178,20 @@ LOOP:
 			}
 
 		case notificationSendData := <-n.notificationSendC:
-			m := notificationSendData.message
-
 			if notificationSendData.taskCtx == nil {
-				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
+				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, notificationSendData.message)); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			} else {
-				if command, ok := notificationSendData.taskCtx.Value(TaskCtxKeyTelegramBotCommand).(string); ok == true {
+				m := notificationSendData.message
+
+				taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
+				taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+				if ok1 == true && ok2 == true {
 					for _, botCommand := range n.botCommands {
-						if botCommand.command == command {
+						if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
 							m = fmt.Sprintf("<b>[ %s ]</b>\n\n%s", botCommand.commandTitle, m)
 							break
-						}
-					}
-				} else {
-					taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
-					taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
-					if ok1 == true && ok2 == true {
-						for _, botCommand := range n.botCommands {
-							if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-								m = fmt.Sprintf("<b>[ %s ]</b>\n\n%s", botCommand.commandTitle, m)
-								break
-							}
 						}
 					}
 				}
