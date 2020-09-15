@@ -1,14 +1,10 @@
 package task
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/darkkaiser/notify-server/utils"
 	"golang.org/x/text/encoding/korean"
-	"golang.org/x/text/transform"
 	"net/http"
 )
 
@@ -21,11 +17,14 @@ const (
 	TcidAlganicMallWatchAtoCream  TaskCommandID = "WatchAtoCream"  // 엘가닉몰 아토크림 정보 변경 확인
 )
 
+const (
+	alganicmallBaseUrl = "https://www.alganicmall.com/"
+)
+
 type alganicmallWatchNewEventsData struct {
-	// @@@@@
 	Events []struct {
-		Title string `json:"title"`
-		Link  string `json:"link"`
+		Name string `json:"name"`
+		Url  string `json:"url"`
 	} `json:"events"`
 }
 
@@ -44,16 +43,16 @@ func init() {
 
 			allowMultipleIntances: true,
 
-			newTaskData: func() interface{} { return &alganicmallWatchNewEventsData{} },
+			newTaskDataFn: func() interface{} { return &alganicmallWatchNewEventsData{} },
 		}, {
 			taskCommandID: TcidAlganicMallWatchAtoCream,
 
 			allowMultipleIntances: true,
 
-			newTaskData: func() interface{} { return &alganicmallWatchAtoCreamData{} },
+			newTaskDataFn: func() interface{} { return &alganicmallWatchAtoCreamData{} },
 		}},
 
-		newTask: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
 			if taskRunData.taskID != TidAlganicMall {
 				return nil
 			}
@@ -79,7 +78,7 @@ func init() {
 					message, changedTaskData = task.runWatchAtoCream(taskData, taskNotificationSender, taskCtx)
 
 				default:
-					err = errors.New("no find task command")
+					err = ErrNoImplementationForTaskCommand
 				}
 
 				return message, changedTaskData, err
@@ -96,78 +95,82 @@ type alganicMallTask struct {
 
 func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
 	var orignTaskData, ok = taskData.(*alganicmallWatchNewEventsData)
-	println(ok)
-
-	// @@@@@
-	in := len(orignTaskData.Events)
-	println(in)
-	for _, s := range orignTaskData.Events {
-		println(s.Title)
+	if ok == false {
+		// @@@@@
 	}
+	println(orignTaskData)
+	var currentTaskData = &alganicmallWatchNewEventsData{}
+	println(currentTaskData)
 
-	err := t.writeTaskDataToFile(&orignTaskData)
+	newEventsPageUrl := fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl)
+	res, err := http.Get(newEventsPageUrl)
 	if err != nil {
-
+		//log.Fatal(err)
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		return
 	}
-
-	// http://suapapa.github.io/blog//post/handling_cp949_in_go/
-	// https://m.blog.naver.com/PostView.nhn?blogId=nersion&logNo=220884742148&proxyReferer=https:%2F%2Fwww.google.com%2F
-
-	clPageUrl := fmt.Sprintf("https://www.alganicmall.com/board/board.html?code=alganic_image1")
-
-	res, err := http.Get(clPageUrl)
-	utils.CheckErr(err)
-	utils.CheckStatusCode(res)
+	if res.StatusCode != 200 {
+		//log.Fatal("Request failed with Status:", res.StatusCode)
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		//t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- 작업데이터 생성이 실패하였습니다.", taskCtx)
+		return
+	}
 
 	defer res.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
-	utils.CheckErr(err)
-
-	doc.Find("td.bl_subject > a").Each(func(i int, s *goquery.Selection) {
-		//	https://medium.com/@SlackBeck/%EC%9C%84%EC%B1%97-%EB%AF%B8%EB%8B%88%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8%EC%97%90%EC%84%9C-%EC%9C%84%EC%B1%97-%ED%8E%98%EC%9D%B4-%EC%97%B0%EB%8F%99-%EC%82%BD%EC%A7%88%EA%B8%B0-%EB%B6%80%EC%A0%9C-golang%EC%97%90%EC%84%9C-euc-kr-%EC%84%9C%EB%B2%84%EC%99%80-http-%ED%86%B5%EC%8B%A0%ED%95%98%EA%B8%B0-8dbbeca13c9
-		euckrDec := korean.EUCKR.NewDecoder()
-		s2, err := euckrDec.String(s.Text())
-		if err != nil {
-			panic(err)
-		}
-		println(s2)
-
-		// 인코딩 변환 필요
-		var bufs bytes.Buffer
-		wr := transform.NewWriter(&bufs, korean.EUCKR.NewDecoder())
-		wr.Write([]byte(s.Text()))
-		wr.Close()
-
-		convVal := bufs.String()
-		println(convVal)
-
-		fmt.Print(s.Text())
-	})
-
-	// @@@@@
-
-	//for i := 0; i < 500; i++ {
-	//	log.Info("&&&&&&&&&&&&&&&&&&& alganicMallTask running.. ")
-	//	time.Sleep(1 * time.Second)
-	//
-	//	if t.cancel == true {
-	//		// 종료처리필요
-	//		log.Info("==============================취소==========================================")
-	//		break
-	//	}
-	//}
-
-	if t.cancel == false {
-		message = "태스크가 완료되었습니다."
-
-		return message, changedTaskData
+	if err != nil {
+		//log.Fatal(err)
+		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		return
 	}
 
-	return "", nil
+	euckrDec := korean.EUCKR.NewDecoder()
+	doc.Find("td.bl_subject > a").Each(func(i int, s *goquery.Selection) {
+		attr, _ := s.Attr("href")
+		s2, _ := euckrDec.String(s.Text())
+
+		currentTaskData.Events = append(currentTaskData.Events, struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		}{s2, fmt.Sprintf("%sboard/%s", alganicmallBaseUrl, attr)})
+	})
+
+	var changed bool
+	for _, event := range currentTaskData.Events {
+		find := false
+		for _, s := range orignTaskData.Events {
+			if event.Name == s.Name && event.Url == s.Url {
+				find = true
+				break
+			}
+		}
+		if find == false {
+			message = fmt.Sprintf("%s\n\n%s\n%s", message, event.Name, event.Url)
+			changed = true
+		}
+	}
+
+	if changed == true {
+		changedTaskData = &currentTaskData
+	}
+
+	if len(message) == 0 {
+		message = "신규 이벤트가 없습니다."
+	}
+
+	if t.cancel == true {
+		return "", nil
+	}
+
+	return message, changedTaskData
 }
 
 func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
+	//$("table.product_table")
+	// 제목 : <font class="brandbrandname"> 아토크림 10개 세트<span class="braddname"></span></font>
+	// 가격 : <span class="brandprice"><span class="mk_price">190,000원</span></span>
+
 	var config = taskData.(*alganicmallWatchAtoCreamData)
 	println(config)
 

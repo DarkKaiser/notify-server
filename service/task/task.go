@@ -27,6 +27,12 @@ const (
 	TaskCtxKeyTaskInstanceID = "Task.TaskInstanceID"
 )
 
+var (
+	ErrNotSupportedTask               = errors.New("not supported task")
+	ErrNotSupportedCommand            = errors.New("not supported command")
+	ErrNoImplementationForTaskCommand = errors.New("no implementation for task command")
+)
+
 //
 // taskInstanceIDGenerator
 //
@@ -49,7 +55,7 @@ var supportedTasks = make(map[TaskID]*supportedTaskConfig)
 type supportedTaskConfig struct {
 	commandConfigs []*supportedTaskCommandConfig
 
-	newTask newTaskFunc
+	newTaskFn newTaskFunc
 }
 
 type supportedTaskCommandConfig struct {
@@ -57,7 +63,7 @@ type supportedTaskCommandConfig struct {
 
 	allowMultipleIntances bool
 
-	newTaskData newTaskDataFunc
+	newTaskDataFn newTaskDataFunc
 }
 
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
@@ -69,10 +75,10 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*s
 			}
 		}
 
-		return nil, nil, errors.New("지원하지 않는 Command가 입력되었습니다")
+		return nil, nil, ErrNotSupportedCommand
 	}
 
-	return nil, nil, errors.New("입력된 Task를 찾을 수 없습니다")
+	return nil, nil, ErrNotSupportedTask
 }
 
 //
@@ -142,7 +148,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	if taskConfig, exists := supportedTasks[t.ID()]; exists == true {
 		for _, commandConfig := range taskConfig.commandConfigs {
 			if commandConfig.taskCommandID == t.CommandID() {
-				taskData = commandConfig.newTaskData()
+				taskData = commandConfig.newTaskDataFn()
 				break
 			}
 		}
@@ -383,7 +389,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h := taskConfig.newTask(instanceID, taskRunData)
+			h := taskConfig.newTaskFn(instanceID, taskRunData)
 			if h == nil {
 				m := "등록되지 않은 작업입니다."
 
