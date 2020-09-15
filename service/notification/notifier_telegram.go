@@ -143,7 +143,7 @@ LOOP:
 					if len(commandSplit) == 2 {
 						if taskInstanceID, err := strconv.ParseUint(commandSplit[1], 10, 64); err == nil {
 							if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
-								m := fmt.Sprintf("작업 취소 요청이 실패하였습니다.")
+								m := fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%d)", taskInstanceID)
 
 								log.Error(m)
 								if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
@@ -158,12 +158,12 @@ LOOP:
 
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
-						var taskCtx = context.Background()
-						taskCtx = context.WithValue(taskCtx, TaskCtxKeyTelegramBotCommand, botCommand.command)
-						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
-							log.Errorf("사용자 요청 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
+						var taskCtx = context.WithValue(context.Background(), TaskCtxKeyTelegramBotCommand, botCommand.command)
 
-							m := fmt.Sprintf("<b>[ %s ]</b>\n\n사용자 요청 작업의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
+						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, taskCtx, string(n.ID()), true) == false {
+							log.Errorf("사용자가 요청한 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
+
+							m := fmt.Sprintf("<b>[ %s ]</b>\n\n사용자가 요청한 작업의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 							if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 							}
