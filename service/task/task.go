@@ -78,6 +78,8 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*s
 //
 // task
 //
+type runFunc func(interface{}, TaskNotificationSender, context.Context) (string, interface{}, error)
+
 type task struct {
 	id         TaskID
 	commandID  TaskCommandID
@@ -85,7 +87,7 @@ type task struct {
 
 	notifierID string
 
-	runFunc func(interface{}, TaskNotificationSender, context.Context) (string, interface{}, error)
+	run runFunc
 
 	cancel bool
 }
@@ -119,7 +121,6 @@ func (t *task) NotifierID() string {
 	return t.notifierID
 }
 
-// @@@@@ 로그및 노티 메시지 다시 확인
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
 	defer taskStopWaiter.Done()
 	defer func() {
@@ -130,9 +131,9 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
 	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
 
-	if t.runFunc == nil {
-		log.Errorf("'%s::%s' Task의 runFunc이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
-		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- runFunc이 초기화되지 않았습니다.", taskCtx)
+	if t.run == nil {
+		log.Errorf("'%s::%s' Task의 run()이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
+		t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- run()이 초기화되지 않았습니다.", taskCtx)
 		return
 	}
 
@@ -157,7 +158,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		t.notify(taskNotificationSender, fmt.Sprintf("작업데이터 로딩이 실패하였습니다.\n\n- %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err.Error()), taskCtx)
 	}
 
-	message, changedTaskData, err := t.runFunc(taskData, taskNotificationSender, taskCtx)
+	message, changedTaskData, err := t.run(taskData, taskNotificationSender, taskCtx)
 	if err == nil {
 		if len(message) > 0 {
 			t.notify(taskNotificationSender, message, taskCtx)
