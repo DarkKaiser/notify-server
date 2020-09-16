@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/text/encoding/korean"
@@ -69,7 +68,7 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}, err error) {
+			task.runFn = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}, err error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
 					message, changedTaskData = task.runWatchNewEvents(taskData, taskNotificationSender, taskCtx)
@@ -93,7 +92,7 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
+func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}) {
 	var orignTaskData, ok = taskData.(*alganicmallWatchNewEventsData)
 	if ok == false {
 		// @@@@@
@@ -106,12 +105,12 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificati
 	res, err := http.Get(newEventsPageUrl)
 	if err != nil {
 		//log.Fatal(err)
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		taskCtx.WithError()
 		return
 	}
 	if res.StatusCode != 200 {
 		//log.Fatal("Request failed with Status:", res.StatusCode)
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		taskCtx.WithError()
 		//t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- 작업데이터 생성이 실패하였습니다.", taskCtx)
 		return
 	}
@@ -121,7 +120,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificati
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
 		//log.Fatal(err)
-		taskCtx = context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true)
+		taskCtx.WithError()
 		return
 	}
 
@@ -166,7 +165,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificati
 	return message, changedTaskData
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx context.Context) (message string, changedTaskData interface{}) {
+func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}) {
 	//$("table.product_table")
 	// 제목 : <font class="brandbrandname"> 아토크림 10개 세트<span class="braddname"></span></font>
 	// 가격 : <span class="brandprice"><span class="mk_price">190,000원</span></span>

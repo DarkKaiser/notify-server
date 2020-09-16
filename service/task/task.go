@@ -84,7 +84,7 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*s
 //
 // task
 //
-type runFunc func(interface{}, TaskNotificationSender, context.Context) (string, interface{}, error)
+type runFunc func(interface{}, TaskNotificationSender, TaskContext) (string, interface{}, error)
 
 type task struct {
 	id         TaskID
@@ -133,9 +133,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		taskDoneC <- t.instanceID
 	}()
 
-	var taskCtx = context.Background()
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, t.ID())
-	taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, t.CommandID())
+	var taskCtx = NewContext().WithTask(t.ID(), t.CommandID())
 
 	if t.runFn == nil {
 		log.Errorf("'%s::%s' Task의 runFn()이 초기화되지 않아 작업이 실패하였습니다.", t.ID(), t.CommandID())
@@ -173,7 +171,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		if changedTaskData != nil {
 			if err := t.writeTaskDataToFile(changedTaskData); err != nil {
 				log.Warnf("'%s::%s' Task의 TaskData 저장이 실패하였습니다.(error:%s)", t.ID(), t.CommandID(), err.Error())
-				t.notify(taskNotificationSender, fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.\n\n- %s", err.Error()), taskCtx)
+				t.notifyError(taskNotificationSender, fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.\n\n- %s", err.Error()), taskCtx)
 			}
 		}
 	} else {
@@ -191,11 +189,11 @@ func (t *task) IsCanceled() bool {
 	return t.cancel
 }
 
-func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
-	return t.notify(taskNotificationSender, m, context.WithValue(taskCtx, TaskCtxKeyErrorOccurred, true))
+func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
+	return t.notify(taskNotificationSender, m, taskCtx.WithError())
 }
 
-func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx context.Context) bool {
+func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
 	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
 }
 
@@ -228,13 +226,59 @@ func (t *task) writeTaskDataToFile(v interface{}) error {
 }
 
 //
+// TaskContext
+//
+type TaskContext interface {
+	With(key, val interface{}) TaskContext
+	WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext
+	WithInstanceID(taskInstanceID TaskInstanceID) TaskContext
+	WithError() TaskContext
+	Value(key interface{}) interface{}
+}
+
+type taskContext struct {
+	ctx context.Context
+}
+
+func NewContext() TaskContext {
+	return &taskContext{
+		ctx: context.Background(),
+	}
+}
+
+func (c *taskContext) With(key, val interface{}) TaskContext {
+	c.ctx = context.WithValue(c.ctx, key, val)
+	return c
+}
+
+func (c *taskContext) WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext {
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskID, taskID)
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskCommandID, taskCommandID)
+	return c
+}
+
+func (c *taskContext) WithInstanceID(taskInstanceID TaskInstanceID) TaskContext {
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskInstanceID, taskInstanceID)
+	return c
+}
+
+func (c *taskContext) WithError() TaskContext {
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyErrorOccurred, true)
+	return c
+}
+
+func (c *taskContext) Value(key interface{}) interface{} {
+	return c.ctx.Value(key)
+}
+
+//
 // taskRunData
 //
 type taskRunData struct {
 	taskID        TaskID
 	taskCommandID TaskCommandID
 
-	taskCtx context.Context
+	taskCtx TaskContext
 
 	notifierID string
 
@@ -246,7 +290,7 @@ type taskRunData struct {
 //
 type TaskRunner interface {
 	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool) (succeeded bool)
-	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx context.Context, notifierID string, notificationOfRequestResult bool) (succeeded bool)
+	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool) (succeeded bool)
 	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
@@ -254,7 +298,7 @@ type TaskRunner interface {
 // TaskNotificationSender
 //
 type TaskNotificationSender interface {
-	Notify(notifierID string, message string, taskCtx context.Context) bool
+	Notify(notifierID string, message string, taskCtx TaskContext) bool
 	NotifyWithDefault(message string) bool
 }
 
@@ -342,10 +386,9 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
 
 			if taskRunData.taskCtx == nil {
-				taskRunData.taskCtx = context.Background()
+				taskRunData.taskCtx = NewContext()
 			}
-			taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskID, taskRunData.taskID)
-			taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskCommandID, taskRunData.taskCommandID)
+			taskRunData.taskCtx.WithTask(taskRunData.taskID, taskRunData.taskCommandID)
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.taskID, taskRunData.taskCommandID)
 			if err != nil {
@@ -353,7 +396,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true))
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
 
 				continue
 			}
@@ -372,7 +415,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, alreadyRunTaskHandler.InstanceID())
+					taskRunData.taskCtx.WithInstanceID(alreadyRunTaskHandler.InstanceID())
 					s.taskNotificationSender.Notify(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
 					continue
 				}
@@ -395,7 +438,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, context.WithValue(taskRunData.taskCtx, TaskCtxKeyErrorOccurred, true))
+				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
 
 				continue
 			}
@@ -408,8 +451,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if taskRunData.notificationOfRequestResult == true {
-				taskRunData.taskCtx = context.WithValue(taskRunData.taskCtx, TaskCtxKeyTaskInstanceID, instanceID)
-				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx)
+				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID))
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -430,11 +472,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
-				var taskCtx = context.Background()
-				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskID, taskHandler.ID())
-				taskCtx = context.WithValue(taskCtx, TaskCtxKeyTaskCommandID, taskHandler.CommandID())
-
-				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", taskCtx)
+				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
 			} else {
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 
@@ -480,7 +518,7 @@ func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifi
 	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notificationOfRequestResult)
 }
 
-func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx context.Context, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
+func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

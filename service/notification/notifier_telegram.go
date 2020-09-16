@@ -157,7 +157,7 @@ LOOP:
 
 							n.notificationSendC <- &notificationSendData{
 								message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
-								taskCtx: task.NewTaskContext().WithTaskCommandID(botCommand.taskID, botCommand.taskCommandID).WithError(),
+								taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
 							}
 						}
 

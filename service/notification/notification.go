@@ -170,7 +170,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 
 	log.Error(m)
 
-	s.defaultNotifierHandler.Notify(m, task.NewTaskContext().WithError())
+	s.defaultNotifierHandler.Notify(m, task.NewContext().WithError())
 
 	return false
 }
