@@ -64,7 +64,9 @@ func init() {
 
 					notifierID: taskRunData.notifierID,
 
-					cancel: false,
+					canceled: false,
+
+					runBy: taskRunData.taskRunBy,
 				},
 			}
 

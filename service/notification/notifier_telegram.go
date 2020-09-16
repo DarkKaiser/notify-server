@@ -152,7 +152,7 @@ LOOP:
 
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
-						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, nil, string(n.ID()), true) == false {
+						if taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) == false {
 							log.Errorf("사용자가 요청한 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 
 							n.notificationSendC <- &notificationSendData{

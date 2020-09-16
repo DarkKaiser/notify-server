@@ -18,6 +18,7 @@ import (
 type TaskID string
 type TaskCommandID string
 type TaskInstanceID uint64
+type TaskRunBy int
 
 const (
 	TaskCtxKeyErrorOccurred = "ErrorOccurred"
@@ -25,6 +26,11 @@ const (
 	TaskCtxKeyTaskID         = "Task.TaskID"
 	TaskCtxKeyTaskCommandID  = "Task.TaskCommandID"
 	TaskCtxKeyTaskInstanceID = "Task.TaskInstanceID"
+)
+
+const (
+	TaskRunByUser TaskRunBy = iota
+	TaskRunByScheduler
 )
 
 var (
@@ -93,9 +99,11 @@ type task struct {
 
 	notifierID string
 
-	runFn runFunc
+	canceled bool
 
-	cancel bool
+	runBy TaskRunBy
+
+	runFn runFunc
 }
 
 type taskHandler interface {
@@ -105,10 +113,10 @@ type taskHandler interface {
 
 	NotifierID() string
 
-	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
-
 	Cancel()
 	IsCanceled() bool
+
+	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
 }
 
 func (t *task) ID() TaskID {
@@ -125,6 +133,14 @@ func (t *task) InstanceID() TaskInstanceID {
 
 func (t *task) NotifierID() string {
 	return t.notifierID
+}
+
+func (t *task) Cancel() {
+	t.canceled = true
+}
+
+func (t *task) IsCanceled() bool {
+	return t.canceled
 }
 
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
@@ -181,20 +197,12 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	}
 }
 
-func (t *task) Cancel() {
-	t.cancel = true
-}
-
-func (t *task) IsCanceled() bool {
-	return t.cancel
+func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
+	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
 }
 
 func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return t.notify(taskNotificationSender, m, taskCtx.WithError())
-}
-
-func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
+	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx.WithError())
 }
 
 func (t *task) dataFileName() string {
@@ -282,15 +290,17 @@ type taskRunData struct {
 
 	notifierID string
 
-	notificationOfRequestResult bool
+	notificationOfRequestResult bool // @@@@@ 변수명 한번 더 고민
+
+	taskRunBy TaskRunBy
 }
 
 //
 // TaskRunner
 //
 type TaskRunner interface {
-	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool) (succeeded bool)
-	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool) (succeeded bool)
+	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool)
+	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool)
 	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
@@ -514,11 +524,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
-	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notificationOfRequestResult)
+func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool) {
+	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notificationOfRequestResult, taskRunBy)
 }
 
-func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool) (succeeded bool) {
+func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -536,6 +546,8 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 		notifierID: notifierID,
 
 		notificationOfRequestResult: notificationOfRequestResult,
+
+		taskRunBy: taskRunBy,
 	}
 
 	return true
