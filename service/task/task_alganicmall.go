@@ -160,7 +160,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificati
 		message = "신규 이벤트가 없습니다."
 	}
 
-	if t.cancel == true {
+	if t.canceled == true {
 		return "", nil
 	}
 
@@ -177,7 +177,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificatio
 
 	// @@@@@
 	fmt.Print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-	if t.cancel == true {
+	if t.canceled == true {
 		return
 	}
 

@@ -290,7 +290,7 @@ type taskRunData struct {
 
 	notifierID string
 
-	notificationOfRequestResult bool // @@@@@ 변수명 한번 더 고민
+	notifyResultOfTaskRunRequest bool
 
 	taskRunBy TaskRunBy
 }
@@ -299,8 +299,8 @@ type taskRunData struct {
 // TaskRunner
 //
 type TaskRunner interface {
-	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool)
-	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool)
+	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
+	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
 	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
@@ -460,7 +460,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
-			if taskRunData.notificationOfRequestResult == true {
+			if taskRunData.notifyResultOfTaskRunRequest == true {
 				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID))
 			}
 
@@ -486,7 +486,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			} else {
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
 			}
 			s.runningMu.Unlock()
 
@@ -524,11 +524,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool) {
-	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notificationOfRequestResult, taskRunBy)
+func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool) {
+	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
 }
 
-func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notificationOfRequestResult bool, taskRunBy TaskRunBy) (succeeded bool) {
+func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -545,7 +545,7 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 
 		notifierID: notifierID,
 
-		notificationOfRequestResult: notificationOfRequestResult,
+		notifyResultOfTaskRunRequest: notifyResultOfTaskRunRequest,
 
 		taskRunBy: taskRunBy,
 	}
