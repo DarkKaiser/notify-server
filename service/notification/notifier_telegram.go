@@ -155,15 +155,9 @@ LOOP:
 						if taskRunner.TaskRunWithContext(botCommand.taskID, botCommand.taskCommandID, nil, string(n.ID()), true) == false {
 							log.Errorf("사용자가 요청한 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
 
-							// @@@@@ 고민
-							var taskCtx = context.Background()
-							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyTaskID, botCommand.taskID)
-							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyTaskCommandID, botCommand.taskCommandID)
-							taskCtx = context.WithValue(taskCtx, task.TaskCtxKeyErrorOccurred, true)
-
 							n.notificationSendC <- &notificationSendData{
 								message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
-								taskCtx: taskCtx,
+								taskCtx: task.NewTaskContext().WithTaskCommandID(botCommand.taskID, botCommand.taskCommandID).WithError(),
 							}
 						}
 

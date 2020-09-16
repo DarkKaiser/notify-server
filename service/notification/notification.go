@@ -22,7 +22,7 @@ type notifier struct {
 
 type notifierHandler interface {
 	ID() NotifierID
-	Notify(message string, taskCtx context.Context) (succeeded bool)
+	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
 	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
 }
 
@@ -30,7 +30,7 @@ func (n *notifier) ID() NotifierID {
 	return n.id
 }
 
-func (n *notifier) Notify(message string, taskCtx context.Context) (succeeded bool) {
+func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -52,7 +52,7 @@ func (n *notifier) Notify(message string, taskCtx context.Context) (succeeded bo
 //
 type notificationSendData struct {
 	message string
-	taskCtx context.Context
+	taskCtx task.TaskContext
 }
 
 //
@@ -155,7 +155,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 	}
 }
 
-func (s *NotificationService) Notify(notifierID string, message string, taskCtx context.Context) bool {
+func (s *NotificationService) Notify(notifierID string, message string, taskCtx task.TaskContext) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -170,8 +170,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 
 	log.Error(m)
 
-	// @@@@@ 고민
-	s.defaultNotifierHandler.Notify(m, context.WithValue(context.Background(), task.TaskCtxKeyErrorOccurred, true))
+	s.defaultNotifierHandler.Notify(m, task.NewTaskContext().WithError())
 
 	return false
 }
