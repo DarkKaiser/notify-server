@@ -1,10 +1,12 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/encoding/korean"
-	"net/http"
 )
 
 const (
@@ -70,19 +72,16 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}, err error) {
+			task.runFn = func(taskData interface{}) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					message, changedTaskData = task.runWatchNewEvents(taskData, taskNotificationSender, taskCtx)
+					return task.runWatchNewEvents(taskData)
 
 				case TcidAlganicMallWatchAtoCream:
-					message, changedTaskData = task.runWatchAtoCream(taskData, taskNotificationSender, taskCtx)
-
-				default:
-					err = ErrNoImplementationForTaskCommand
+					return task.runWatchAtoCream(taskData)
 				}
 
-				return message, changedTaskData, err
+				return "", nil, ErrNoImplementationForTaskCommand
 			}
 
 			return task
@@ -94,80 +93,92 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}) {
-	var orignTaskData, ok = taskData.(*alganicmallWatchNewEventsData)
+func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message string, changedTaskData interface{}, err error) {
+	originTaskData, ok := taskData.(*alganicmallWatchNewEventsData)
 	if ok == false {
-		// @@@@@
+		log.Panic("TaskData의 타입 변환이 실패하였습니다.")
 	}
-	println(orignTaskData)
-	var currentTaskData = &alganicmallWatchNewEventsData{}
-	println(currentTaskData)
 
-	newEventsPageUrl := fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl)
-	res, err := http.Get(newEventsPageUrl)
+	// 이벤트 페이지를 읽어온다.
+	document, err := httpWebPageDocument(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl))
 	if err != nil {
-		//log.Fatal(err)
-		taskCtx.WithError()
-		return
-	}
-	if res.StatusCode != 200 {
-		//log.Fatal("Request failed with Status:", res.StatusCode)
-		taskCtx.WithError()
-		//t.notifyError(taskNotificationSender, "작업 진행중 오류가 발생하여 작업이 실패하였습니다.\n\n- 작업데이터 생성이 실패하였습니다.", taskCtx)
-		return
+		return "", nil, err
 	}
 
-	defer res.Body.Close()
+	// @@@@@ css가 바뀌어도 알수가 없음
+	// 읽어온 이벤트 페이지에서 이벤트 정보를 추출한다.
+	euckrDecoder := korean.EUCKR.NewDecoder()
+	actualityTaskData := &alganicmallWatchNewEventsData{}
+	document.Find("td.bl_subject > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		name, err0 := euckrDecoder.String(s.Text())
+		if err0 != nil {
+			err = errors.New(fmt.Sprintf("이벤트 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			return false
+		}
 
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		//log.Fatal(err)
-		taskCtx.WithError()
-		return
-	}
+		url, exists := s.Attr("href")
+		if exists == false {
+			err = errors.New(fmt.Sprint("이벤트 URL 추출이 실패하였습니다."))
+			return false
+		}
 
-	euckrDec := korean.EUCKR.NewDecoder()
-	doc.Find("td.bl_subject > a").Each(func(i int, s *goquery.Selection) {
-		attr, _ := s.Attr("href")
-		s2, _ := euckrDec.String(s.Text())
-
-		currentTaskData.Events = append(currentTaskData.Events, struct {
+		actualityTaskData.Events = append(actualityTaskData.Events, struct {
 			Name string `json:"name"`
 			Url  string `json:"url"`
-		}{s2, fmt.Sprintf("%sboard/%s", alganicmallBaseUrl, attr)})
-	})
+		}{
+			Name: utils.CleanString(name),
+			Url:  fmt.Sprintf("%sboard/%s", alganicmallBaseUrl, url),
+		})
 
-	var changed bool
-	for _, event := range currentTaskData.Events {
-		find := false
-		for _, s := range orignTaskData.Events {
-			if event.Name == s.Name && event.Url == s.Url {
-				find = true
+		return true
+	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 신규 이벤트 정보를 확인한다.
+	m := ""
+	existsNewEvents := false
+	for _, actualityEvent := range actualityTaskData.Events {
+		existsOriginEvent := false
+		for _, originEvent := range originTaskData.Events {
+			if actualityEvent.Name == originEvent.Name && actualityEvent.Url == originEvent.Url {
+				existsOriginEvent = true
 				break
 			}
 		}
-		if find == false {
-			message = fmt.Sprintf("%s\n\n%s\n%s", message, event.Name, event.Url)
-			changed = true
+
+		if existsOriginEvent == false {
+			existsNewEvents = true
+
+			if len(m) > 0 {
+				m = fmt.Sprintf("%s\n\n%s\n%s", m, actualityEvent.Name, actualityEvent.Url)
+			} else {
+				m = fmt.Sprintf("%s%s\n%s", m, actualityEvent.Name, actualityEvent.Url)
+			}
 		}
 	}
 
-	if changed == true {
-		changedTaskData = &currentTaskData
+	// @@@@@ 신규이벤트 존재시 기존 이벤트는 안뿌려줄것인가?
+	// @@@@@ 신규이벤트가 없을때 기존 이벤트 목록이라도 뿔려줄것인가?
+
+	if existsNewEvents == true {
+		message = m
+		changedTaskData = actualityTaskData
+	} else {
+		if t.runBy == TaskRunByUser {
+			message = "새롭게 등록된 이벤트가 없습니다."
+		}
 	}
 
-	if len(message) == 0 {
-		message = "신규 이벤트가 없습니다."
+	if t.IsCanceled() == true {
+		return "", nil, nil
 	}
 
-	if t.canceled == true {
-		return "", nil
-	}
-
-	return message, changedTaskData
+	return message, changedTaskData, nil
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificationSender TaskNotificationSender, taskCtx TaskContext) (message string, changedTaskData interface{}) {
+func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string, changedTaskData interface{}, err error) {
 	//$("table.product_table")
 	// 제목 : <font class="brandbrandname"> 아토크림 10개 세트<span class="braddname"></span></font>
 	// 가격 : <span class="brandprice"><span class="mk_price">190,000원</span></span>
@@ -181,5 +192,5 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}, taskNotificatio
 		return
 	}
 
-	return "", nil
+	return "", nil, err
 }
