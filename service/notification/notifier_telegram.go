@@ -100,6 +100,8 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 
 	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.Self.UserName)
 
+	htmlTagReplacer := strings.NewReplacer("<", "&lt;", ">", "&gt;")
+
 LOOP:
 	for {
 		select {
@@ -172,9 +174,7 @@ LOOP:
 			}
 
 		case notificationSendData := <-n.notificationSendC:
-			m := notificationSendData.message
-			m = strings.ReplaceAll(m, "<", "&lt;")
-			m = strings.ReplaceAll(m, ">", "&gt;")
+			m := htmlTagReplacer.Replace(notificationSendData.message)
 
 			if notificationSendData.taskCtx == nil {
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
@@ -186,7 +186,7 @@ LOOP:
 				if ok1 == true && ok2 == true {
 					for _, botCommand := range n.botCommands {
 						if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-							m = fmt.Sprintf("<b>[ %s ]</b>\n\n%s", botCommand.commandTitle, m)
+							m = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", botCommand.commandTitle, m)
 							break
 						}
 					}
