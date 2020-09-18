@@ -142,7 +142,7 @@ LOOP:
 								m := fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%d)", taskInstanceID)
 
 								log.Error(m)
-								if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
+								if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m))); err != nil {
 									log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 								}
 							}
