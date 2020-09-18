@@ -197,32 +197,44 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 	euckrDecoder := korean.EUCKR.NewDecoder()
 	actualityTaskData := &alganicmallWatchAtoCreamData{}
 	document.Find("table.product_table").EachWithBreak(func(i int, s *goquery.Selection) bool {
-		ps := s.Find("td")
-		if ps.Length() != 8 {
+		productSelection := s.Find("td")
+		// @@@@@ 8개가 아닌것도 있음
+		if productSelection.Length() != 8 {
+			err = errors.New(fmt.Sprintf("제품의 <TD> 태그의 갯수(%d)가 유효하지 않습니다. CSS셀렉터를 확인하세요.", productSelection.Length()))
 			return false
 		}
 
-		// @@@@@
-		name, err0 := euckrDecoder.String(ps.Eq(3 /* 제품명 */).Text())
+		name, err0 := euckrDecoder.String(productSelection.Eq(3 /* 제품명 */).Text())
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("이벤트 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("제품 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
 			return false
 		}
+		if strings.Contains(name, "아토크림") == false {
+			return true
+		}
 
-		// a가 하나만 나와야 됨
-		url, exists := ps.Eq(3 /* 제품명 */).Find("a").Attr("href")
+		productLinkSelection := productSelection.Eq(3 /* 제품명 */).Find("a")
+		if productLinkSelection.Length() != 1 {
+			err = errors.New(fmt.Sprintf("제품 이름의 <A> 태그의 갯수(%d)가 유효하지 않습니다. CSS셀렉터를 확인하세요.", productLinkSelection.Length()))
+			return false
+		}
+		url, exists := productLinkSelection.Attr("href")
 		if exists == false {
-			err = errors.New(fmt.Sprint("이벤트 URL 추출이 실패하였습니다."))
+			err = errors.New(fmt.Sprint("제품 URL 추출이 실패하였습니다."))
 			return false
 		}
 
-		price, err0 := euckrDecoder.String(ps.Eq(6 /* 제품가격 */).Text())
+		priceString, err0 := euckrDecoder.String(productSelection.Eq(6 /* 제품가격 */).Text())
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("이벤트 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
 			return false
 		}
-		price = utils.CleanString(strings.ReplaceAll(strings.ReplaceAll(price, ",", ""), "원", ""))
-		n, err0 := strconv.Atoi(price)
+		priceString = utils.CleanString(strings.ReplaceAll(strings.ReplaceAll(priceString, ",", ""), "원", ""))
+		price, err0 := strconv.Atoi(priceString)
+		if err0 != nil {
+			err = errors.New(fmt.Sprintf("제품 가격의 숫자 변환이 실패하였습니다. (error:%s)", err0))
+			return false
+		}
 
 		actualityTaskData.Products = append(actualityTaskData.Products, struct {
 			Name  string `json:"name"`
@@ -230,7 +242,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 			Url   string `json:"url"`
 		}{
 			Name:  utils.CleanString(name),
-			Price: n,
+			Price: price,
 			Url:   fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})
 
@@ -241,15 +253,42 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 	}
 
 	// @@@@@
-	///////////////////////////
-	//$("table.product_table")
-	// 제목 : <font class="brandbrandname"> 아토크림 10개 세트<span class="braddname"></span></font>
-	// 가격 : <span class="brandprice"><span class="mk_price">190,000원</span></span>
-	println(originTaskData)
-	println(document)
-	println(actualityTaskData)
-	println(euckrDecoder)
-	///////////////////////////
+	// 신규 이벤트 정보를 확인한다.
+	m := ""
+	existsNewProducts := false
+	for _, actualityProduct := range actualityTaskData.Products {
+		existsOriginProduct := false
+		for _, originProduct := range originTaskData.Products {
+			if actualityProduct.Name == originProduct.Name && actualityProduct.Price == originProduct.Price && actualityProduct.Url == originProduct.Url {
+				existsOriginProduct = true
+				break
+			}
+		}
+
+		if existsOriginProduct == false {
+			existsNewProducts = true
+
+			// @@@@@ 가격만 변경된것은 표현해줘야 됨
+			if len(m) > 0 {
+				m = fmt.Sprintf("%s\n\n☞ %s\n%s", m, actualityProduct.Name, actualityProduct.Url)
+			} else {
+				m = fmt.Sprintf("%s☞ %s\n%s", m, actualityProduct.Name, actualityProduct.Url)
+			}
+		}
+	}
+
+	// @@@@@
+	if existsNewProducts == true {
+		message = fmt.Sprintf("신규 이벤트가 발생하였습니다.\n\n%s", m)
+		changedTaskData = actualityTaskData
+	} else {
+		if t.runBy == TaskRunByUser {
+			message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 다음과 같습니다:"
+			for _, actualityEvent := range actualityTaskData.Products {
+				message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEvent.Name, actualityEvent.Url)
+			}
+		}
+	}
 
 	if t.IsCanceled() == true {
 		return "", nil, nil

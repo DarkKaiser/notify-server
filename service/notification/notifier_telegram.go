@@ -172,13 +172,15 @@ LOOP:
 			}
 
 		case notificationSendData := <-n.notificationSendC:
+			m := notificationSendData.message
+			m = strings.ReplaceAll(m, "<", "&lt;")
+			m = strings.ReplaceAll(m, ">", "&gt;")
+
 			if notificationSendData.taskCtx == nil {
-				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, notificationSendData.message)); err != nil {
+				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			} else {
-				m := notificationSendData.message
-
 				taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
 				taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
 				if ok1 == true && ok2 == true {
