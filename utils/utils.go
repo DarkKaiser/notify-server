@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"regexp"
 	"strings"
@@ -33,4 +34,14 @@ func Contains(list []string, item string) bool {
 
 func CleanString(str string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
+}
+
+func FormatCommas(num int) string {
+	str := fmt.Sprintf("%d", num)
+	re := regexp.MustCompile("(\\d+)(\\d{3})")
+	for n := ""; n != str; {
+		n = str
+		str = re.ReplaceAllString(str, "$1,$2")
+	}
+	return str
 }
