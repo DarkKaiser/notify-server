@@ -34,7 +34,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 				taskID := TaskID(t.ID)
 				taskCommandID := TaskCommandID(c.ID)
 				if taskRunner.TaskRun(taskID, taskCommandID, c.DefaultNotifierID, false, TaskRunByScheduler) == false {
-					m := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다."
+					m := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 
 					log.Error(m)
 

@@ -144,7 +144,7 @@ func (t *task) IsCanceled() bool {
 }
 
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
-	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다."
+	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
 	defer taskStopWaiter.Done()
 	defer func() {
@@ -154,7 +154,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	var taskCtx = NewContext().WithTask(t.ID(), t.CommandID())
 
 	if t.runFn == nil {
-		m := fmt.Sprintf("%s\n\n- runFn()이 초기화되지 않았습니다.", errString)
+		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)
 
 		log.Error(m)
 		t.notifyError(taskNotificationSender, m, taskCtx)
@@ -173,7 +173,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		}
 	}
 	if taskData == nil {
-		m := fmt.Sprintf("%s\n\n- 작업데이터 생성이 실패하였습니다.", errString)
+		m := fmt.Sprintf("%s\n\n☑ 작업데이터 생성이 실패하였습니다.", errString)
 
 		log.Error(m)
 		t.notifyError(taskNotificationSender, m, taskCtx)
@@ -182,7 +182,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	}
 	err := t.readTaskDataFromFile(taskData)
 	if err != nil {
-		m := fmt.Sprintf("작업데이터 로딩이 실패하였습니다.\n\n- %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err)
+		m := fmt.Sprintf("작업데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err)
 
 		log.Warn(m)
 		t.notify(taskNotificationSender, m, taskCtx)
@@ -196,14 +196,14 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 
 		if changedTaskData != nil {
 			if err := t.writeTaskDataToFile(changedTaskData); err != nil {
-				m := fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.\n\n- %s", err)
+				m := fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
 				log.Warn(m)
 				t.notifyError(taskNotificationSender, m, taskCtx)
 			}
 		}
 	} else {
-		m := fmt.Sprintf("%s\n\n- %s", errString, err)
+		m := fmt.Sprintf("%s\n\n☑ %s", errString, err)
 
 		log.Error(m)
 		t.notifyError(taskNotificationSender, m, taskCtx)
