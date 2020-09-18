@@ -34,9 +34,9 @@ const (
 )
 
 var (
-	ErrNotSupportedTask               = errors.New("not supported task")
-	ErrNotSupportedCommand            = errors.New("not supported command")
-	ErrNoImplementationForTaskCommand = errors.New("작업에 해당하는 명령이 구현되지 않았습니다") //@@@@@
+	ErrNotSupportedTask               = errors.New("지원되지 않는 작업입니다")
+	ErrNotSupportedCommand            = errors.New("지원되지 않는 작업 커맨드입니다")
+	ErrNoImplementationForTaskCommand = errors.New("작업 커맨드에 대한 구현이 없습니다")
 )
 
 //
