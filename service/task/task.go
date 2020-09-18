@@ -417,7 +417,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.taskID, taskRunData.taskCommandID)
 			if err != nil {
-				m := "등록되지 않은 작업입니다."
+				m := "등록되지 않은 작업입니다.😱"
 
 				log.Error(m)
 
@@ -459,7 +459,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			h := taskConfig.newTaskFn(instanceID, taskRunData)
 			if h == nil {
-				m := "등록되지 않은 작업입니다."
+				m := "등록되지 않은 작업입니다.😱"
 
 				log.Error(m)
 
@@ -501,7 +501,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			} else {
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
 
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다. 취소 요청이 실패하였습니다.(ID:%d)", instanceID))
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%d)", instanceID))
 			}
 			s.runningMu.Unlock()
 
