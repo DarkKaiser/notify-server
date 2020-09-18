@@ -139,11 +139,9 @@ LOOP:
 					if len(commandSplit) == 2 {
 						if taskInstanceID, err := strconv.ParseUint(commandSplit[1], 10, 64); err == nil {
 							if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
-								m := fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%d)", taskInstanceID)
-
-								log.Error(m)
-								if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m))); err != nil {
-									log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+								n.notificationSendC <- &notificationSendData{
+									message: fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%d)", taskInstanceID),
+									taskCtx: task.NewContext().WithError(),
 								}
 							}
 
@@ -155,8 +153,6 @@ LOOP:
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
 						if taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) == false {
-							log.Errorf("사용자가 요청한 작업('%s')의 실행 요청이 실패하였습니다.", botCommand.commandTitle)
-
 							n.notificationSendC <- &notificationSendData{
 								message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
 								taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
