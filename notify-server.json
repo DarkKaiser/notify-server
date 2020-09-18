@@ -42,6 +42,25 @@
 					"default_notifier_id": "darkkaiser_notify_bot"
 				}
 			]
+		},
+		{
+			"id": "LOTTO",
+			"title": "로또",
+			"commands": [
+				{
+					"id": "Prediction",
+					"title": "로또 당첨번호 예측",
+					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
+					"scheduler": {
+						"runnable": false,
+						"time_spec": "* * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				}
+			]
 		}
 	]
 }
