@@ -107,14 +107,13 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 		return "", nil, err
 	}
 
-	// @@@@@ css가 바뀌어도 알수가 없음
 	// 읽어온 이벤트 페이지에서 이벤트 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
 	actualityTaskData := &alganicmallWatchNewEventsData{}
 	document.Find("#bl_table #bl_list td.bl_subject > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		name, err0 := euckrDecoder.String(s.Text())
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("이벤트 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
 			return false
 		}
 
@@ -154,9 +153,9 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 			existsNewEvents = true
 
 			if len(m) > 0 {
-				m = fmt.Sprintf("%s\n\n☞ %s\n%s", m, actualityEvent.Name, actualityEvent.Url)
+				m = fmt.Sprintf("%s\n\n☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
 			} else {
-				m = fmt.Sprintf("%s☞ %s\n%s", m, actualityEvent.Name, actualityEvent.Url)
+				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
 			}
 		}
 	}
@@ -166,9 +165,13 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 		changedTaskData = actualityTaskData
 	} else {
 		if t.runBy == TaskRunByUser {
-			message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 다음과 같습니다:"
-			for _, actualityEvent := range actualityTaskData.Events {
-				message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEvent.Name, actualityEvent.Url)
+			if len(actualityTaskData.Events) == 0 {
+				message = "엘가닉몰에 등록된 이벤트가 하나도 없습니다."
+			} else {
+				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
+				for _, actualityEvent := range actualityTaskData.Events {
+					message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEvent.Name, actualityEvent.Url)
+				}
 			}
 		}
 	}
@@ -192,28 +195,34 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 		return "", nil, err
 	}
 
+	// @@@@@
+	htmlTagReplacer := strings.NewReplacer("<", "&lt;", ">", "&gt;")
+	println(htmlTagReplacer)
+
 	// @@@@@ css가 바뀌어도 알수가 없음
 	// 읽어온 제품 페이지에서 제품 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
 	actualityTaskData := &alganicmallWatchAtoCreamData{}
 	document.Find("table.product_table").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		productSelection := s.Find("td")
-		// @@@@@ 8개가 아닌것도 있음
-		if productSelection.Length() != 8 {
-			err = errors.New(fmt.Sprintf("제품의 <TD> 태그의 갯수(%d)가 유효하지 않습니다. CSS셀렉터를 확인하세요.", productSelection.Length()))
+
+		// 제품명
+		productNameSelection := productSelection.Find("tr > td > a > font.brandbrandname")
+		if true || productNameSelection.Length() != 1 {
+			err = errors.New(fmt.Sprintf("제품 이름의 <A> 태그의 갯수(%d)가 유효하지 않습니다. CSS셀렉터를 확인하세요.", productNameSelection.Length()))
 			return false
 		}
-
-		name, err0 := euckrDecoder.String(productSelection.Eq(3 /* 제품명 */).Text())
+		name, err0 := euckrDecoder.String(productNameSelection.Text())
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("제품 이름의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
 			return false
 		}
 		if strings.Contains(name, "아토크림") == false {
 			return true
 		}
 
-		productLinkSelection := productSelection.Eq(3 /* 제품명 */).Find("a")
+		// 제품URL
+		productLinkSelection := productSelection.Find("tr > td.Brand_prodtHeight > a")
 		if productLinkSelection.Length() != 1 {
 			err = errors.New(fmt.Sprintf("제품 이름의 <A> 태그의 갯수(%d)가 유효하지 않습니다. CSS셀렉터를 확인하세요.", productLinkSelection.Length()))
 			return false
@@ -224,15 +233,20 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 			return false
 		}
 
-		priceString, err0 := euckrDecoder.String(productSelection.Eq(6 /* 제품가격 */).Text())
+		// 제품가격
+		priceSelection := productSelection.Find("tr > td.brandprice_tr > span.brandprice > span.mk_price")
+		if priceSelection.Length() != 1 {
+			return false
+		}
+		priceString, err0 := euckrDecoder.String(priceSelection.Text())
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
 			return false
 		}
 		priceString = utils.CleanString(strings.ReplaceAll(strings.ReplaceAll(priceString, ",", ""), "원", ""))
 		price, err0 := strconv.Atoi(priceString)
 		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품 가격의 숫자 변환이 실패하였습니다. (error:%s)", err0))
+			err = errors.New(fmt.Sprintf("제품 가격의 숫자 변환이 실패하였습니다.(error:%s)", err0))
 			return false
 		}
 

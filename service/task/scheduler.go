@@ -30,15 +30,18 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 				continue
 			}
 
+			// ※ 아래 구문을 func() 내부로 옮기게 되면 for 루프 마지막 항목의 값으로만 전달된다.
+			taskID := TaskID(t.ID)
+			taskCommandID := TaskCommandID(c.ID)
+			defaultNotifierID := c.DefaultNotifierID
+
 			_, err := s.cron.AddFunc(c.Scheduler.TimeSpec, func() {
-				taskID := TaskID(t.ID)
-				taskCommandID := TaskCommandID(c.ID)
-				if taskRunner.TaskRun(taskID, taskCommandID, c.DefaultNotifierID, false, TaskRunByScheduler) == false {
+				if taskRunner.TaskRun(taskID, taskCommandID, defaultNotifierID, false, TaskRunByScheduler) == false {
 					m := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 
 					log.Error(m)
 
-					taskNotificationSender.Notify(c.DefaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
+					taskNotificationSender.Notify(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
 				}
 			})
 
