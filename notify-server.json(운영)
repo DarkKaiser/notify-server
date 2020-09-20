@@ -1,0 +1,47 @@
+{
+	"debug": true,
+	"notifiers": {
+		"default_notifier_id": "darkkaiser_notify_bot",
+		"telegrams": [
+			{
+				"id": "darkkaiser_notify_bot",
+				"token": "635513176:AAGjq5LaW0eFm--WjCCxstSoyb0SeVNmezo",
+				"chat_id": 297396697
+			}
+		]
+	},
+	"tasks": [
+		{
+			"id": "ALGANICMALL",
+			"title": "엘가닉몰",
+			"commands": [
+				{
+					"id": "WatchNewEvents",
+					"title": "신규 이벤트 확인",
+					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "0 9 * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				},
+				{
+					"id": "WatchAtoCream",
+					"title": "아토크림 정보 변경 확인",
+					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "0 9 * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				}
+			]
+		}
+	]
+}
