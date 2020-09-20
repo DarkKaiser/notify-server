@@ -1,5 +1,5 @@
 {
-	"debug": true,
+	"debug": false,
 	"notifiers": {
 		"default_notifier_id": "darkkaiser_notify_bot",
 		"telegrams": [
