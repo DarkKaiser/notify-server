@@ -91,7 +91,6 @@ func init() {
 	}
 }
 
-// @@@@@ 최종 테스트
 type alganicMallTask struct {
 	task
 }
