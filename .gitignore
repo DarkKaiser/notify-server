@@ -20,5 +20,6 @@ logs/
 # .idea 폴더
 .idea/
 
+/notify-server
 /notify-server.json
 /notify-server-task-*.json
