@@ -12,12 +12,12 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
+	"time"
 )
 
 type TaskID string
 type TaskCommandID string
-type TaskInstanceID uint64
+type TaskInstanceID string
 type TaskRunBy int
 
 const (
@@ -43,11 +43,40 @@ var (
 // taskInstanceIDGenerator
 //
 type taskInstanceIDGenerator struct {
-	id TaskInstanceID
 }
 
 func (g *taskInstanceIDGenerator) New() TaskInstanceID {
-	return TaskInstanceID(atomic.AddUint64((*uint64)(&g.id), 1))
+	return TaskInstanceID(g.toRadixNotation62String(time.Now().UnixNano()))
+}
+
+func (g *taskInstanceIDGenerator) toRadixNotation62String(value int64) string {
+	if value < 0 {
+		return ""
+	}
+
+	var digits = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+
+	var s []string
+	var radix = int64(len(digits))
+
+	for value > 0 {
+		s = append(s, digits[value%radix])
+		value = value / radix
+		if value == 0 {
+			break
+		}
+	}
+
+	return strings.Join(g.reverse(s), "")
+}
+
+func (g *taskInstanceIDGenerator) reverse(s []string) []string {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+	return s
 }
 
 //
@@ -362,7 +391,7 @@ func NewService(config *g.AppConfig) *TaskService {
 
 		taskHandlers: make(map[TaskInstanceID]taskHandler),
 
-		taskInstanceIDGenerator: taskInstanceIDGenerator{id: 0},
+		taskInstanceIDGenerator: taskInstanceIDGenerator{},
 
 		taskNotificationSender: nil,
 
@@ -482,11 +511,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case instanceID := <-s.taskDoneC:
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%s)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
 				delete(s.taskHandlers, instanceID)
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
+				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%s)", instanceID)
 			}
 			s.runningMu.Unlock()
 
@@ -495,13 +524,13 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
 				taskHandler.Cancel()
 
-				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%d)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%s)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
 				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%d)", instanceID)
+				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%s)", instanceID)
 
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%d)", instanceID))
+				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
 			}
 			s.runningMu.Unlock()
 
@@ -573,7 +602,7 @@ func (s *TaskService) TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%d, panic:%s", taskInstanceID, r)
+			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%s, panic:%s", taskInstanceID, r)
 		}
 	}()
 

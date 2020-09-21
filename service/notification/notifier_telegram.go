@@ -8,7 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -137,16 +136,15 @@ LOOP:
 					// 취소명령 형식 : /cancel_nnnn
 					commandSplit := strings.Split(command, telegramBotCommandSeparator)
 					if len(commandSplit) == 2 {
-						if taskInstanceID, err := strconv.ParseUint(commandSplit[1], 10, 64); err == nil {
-							if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
-								n.notificationSendC <- &notificationSendData{
-									message: fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%d)", taskInstanceID),
-									taskCtx: task.NewContext().WithError(),
-								}
+						taskInstanceID := commandSplit[1]
+						if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
+							n.notificationSendC <- &notificationSendData{
+								message: fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%s)", taskInstanceID),
+								taskCtx: task.NewContext().WithError(),
 							}
-
-							continue
 						}
+
+						continue
 					}
 				}
 
@@ -190,7 +188,7 @@ LOOP:
 
 				// TaskInstanceID가 존재하는 경우 취소 명령어를 붙인다.
 				if taskInstanceID, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
-					m += fmt.Sprintf("\n%s%s%s%d", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+					m += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
 				}
 
 				if errorOccured, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccured == true {
