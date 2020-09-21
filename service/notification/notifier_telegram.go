@@ -189,6 +189,29 @@ LOOP:
 				// TaskInstanceID가 존재하는 경우 취소 명령어를 붙인다.
 				if taskInstanceID, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
 					m += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+
+					// 작업 실행 후 경과시간(단위 : 초)
+					if elapsedTimeAfterRun, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyElapsedTimeAfterRun).(int64); ok == true && elapsedTimeAfterRun > 0 {
+						seconds := elapsedTimeAfterRun % 60
+						elapsedTimeAfterRun = elapsedTimeAfterRun / 60
+						minutes := elapsedTimeAfterRun % 60
+						hours := elapsedTimeAfterRun / 60
+
+						var elapsedTimeString string
+						if hours > 0 {
+							elapsedTimeString = fmt.Sprintf("%d시간 ", hours)
+						}
+						if minutes > 0 {
+							elapsedTimeString += fmt.Sprintf("%d분 ", minutes)
+						}
+						if seconds > 0 {
+							elapsedTimeString += fmt.Sprintf("%d초 ", seconds)
+						}
+
+						if len(elapsedTimeString) > 0 {
+							m += fmt.Sprintf(" (%s지남)", elapsedTimeString)
+						}
+					}
 				}
 
 				if errorOccured, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccured == true {

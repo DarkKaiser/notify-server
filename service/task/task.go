@@ -23,9 +23,10 @@ type TaskRunBy int
 const (
 	TaskCtxKeyErrorOccurred = "ErrorOccurred"
 
-	TaskCtxKeyTaskID         = "Task.TaskID"
-	TaskCtxKeyTaskCommandID  = "Task.TaskCommandID"
-	TaskCtxKeyTaskInstanceID = "Task.TaskInstanceID"
+	TaskCtxKeyTaskID              = "Task.TaskID"
+	TaskCtxKeyTaskCommandID       = "Task.TaskCommandID"
+	TaskCtxKeyTaskInstanceID      = "Task.TaskInstanceID"
+	TaskCtxKeyElapsedTimeAfterRun = "Task.ElapsedTimeAfterRun"
 )
 
 const (
@@ -130,7 +131,8 @@ type task struct {
 
 	canceled bool
 
-	runBy TaskRunBy
+	runBy   TaskRunBy
+	runTime time.Time
 
 	runFn runFunc
 }
@@ -144,6 +146,8 @@ type taskHandler interface {
 
 	Cancel()
 	IsCanceled() bool
+
+	ElapsedTimeAfterRun() int64
 
 	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
 }
@@ -172,6 +176,10 @@ func (t *task) IsCanceled() bool {
 	return t.canceled
 }
 
+func (t *task) ElapsedTimeAfterRun() int64 {
+	return int64(time.Now().Sub(t.runTime).Seconds())
+}
+
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
 	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
@@ -179,6 +187,8 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	defer func() {
 		taskDoneC <- t.instanceID
 	}()
+
+	t.runTime = time.Now()
 
 	var taskCtx = NewContext().WithTask(t.ID(), t.CommandID())
 
@@ -283,7 +293,7 @@ func (t *task) writeTaskDataToFile(v interface{}) error {
 type TaskContext interface {
 	With(key, val interface{}) TaskContext
 	WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext
-	WithInstanceID(taskInstanceID TaskInstanceID) TaskContext
+	WithInstanceID(taskInstanceID TaskInstanceID, elapsedTimeAfterRun int64) TaskContext
 	WithError() TaskContext
 	Value(key interface{}) interface{}
 }
@@ -309,8 +319,9 @@ func (c *taskContext) WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskC
 	return c
 }
 
-func (c *taskContext) WithInstanceID(taskInstanceID TaskInstanceID) TaskContext {
+func (c *taskContext) WithInstanceID(taskInstanceID TaskInstanceID, elapsedTimeAfterRun int64) TaskContext {
 	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskInstanceID, taskInstanceID)
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
 	return c
 }
 
@@ -469,7 +480,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					taskRunData.taskCtx.WithInstanceID(alreadyRunTaskHandler.InstanceID())
+					taskRunData.taskCtx.WithInstanceID(alreadyRunTaskHandler.InstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
 					s.taskNotificationSender.Notify(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
 					continue
 				}
@@ -505,7 +516,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if taskRunData.notifyResultOfTaskRunRequest == true {
-				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID))
+				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID, 0))
 			}
 
 		case instanceID := <-s.taskDoneC:
