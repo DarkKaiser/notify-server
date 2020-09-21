@@ -8,10 +8,8 @@ import (
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	log "github.com/sirupsen/logrus"
-	"net/url"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -81,22 +79,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 
 	// 텔레그램 봇을 생성한다.
 	var err error
-	for i := 0; i < 30; i++ {
-		notifier.bot, err = tgbotapi.NewBotAPI(token)
-		if err == nil {
-			break
-		}
-
-		switch err.(type) {
-		case *url.Error:
-			// 서버가 부팅되는 도중에 네트워크 연결이 되지 않은 상태에서 프로그램이 실행되면 에러가 발생하므로
-			// 네트워크 연결이 완료되는 시간(15초)동안 계속 대기할 수 있도록 한다.
-			time.Sleep(500 * time.Millisecond)
-
-		default:
-			break
-		}
-	}
+	notifier.bot, err = tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
 	}
