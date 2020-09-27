@@ -1,11 +1,15 @@
 package task
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -85,8 +89,10 @@ type lottoTask struct {
 }
 
 func (t *lottoTask) runPrediction(taskData interface{}) (message string, changedTaskData interface{}, err error) {
-	// @@@@@ 결과파일 경로 넘겨주기
 	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
+
+	var cmdOutBuffer bytes.Buffer
+	cmd.Stdout = &cmdOutBuffer
 
 	// 비동기적으로 작업을 시작한다.
 	err = cmd.Start()
@@ -121,9 +127,42 @@ func (t *lottoTask) runPrediction(taskData interface{}) (message string, changed
 		return "", nil, err
 	}
 
-	// 작업 결과를 받아온다.
 	// @@@@@
-	message = "종료되었습니다."
+	///////////////////////////////////
+	// 작업 결과를 받아온다.
+	// 로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(최대 당첨가능 확률값:0.1, 경로:F:\Solutions-Private\lotto-prediction\dist\prediction-logs\931_20200927_233542591_predict.log)
+	cmdOutString := cmdOutBuffer.String()
+	analysisFilePath := regexp.MustCompile("로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\\((.*)\\)").FindString(cmdOutString)
+	if len(analysisFilePath) == 0 {
+		return "", nil, errors.New("")
+	}
+	analysisFilePath = regexp.MustCompile("경로:(.*)\\.log").FindString(analysisFilePath)
+	if len(analysisFilePath) == 0 {
+		return "", nil, errors.New("")
+	}
+	analysisFilePath = analysisFilePath[len("경로:"):]
+
+	// 추출된 당첨번호 정보를 읽어들인다.
+	data, err := ioutil.ReadFile(analysisFilePath)
+	if err != nil {
+		return "", nil, err
+	}
+
+	analysisResultData := string(data)
+	index := strings.Index(analysisResultData, "- 분석결과")
+	if index == -1 {
+		return "", nil, errors.New(fmt.Sprintf("%s", analysisFilePath)) //@@@@@
+	}
+	analysisResultData = analysisResultData[index:]
+
+	message = regexp.MustCompile("당첨 확률이 높은 당첨번호 목록\\([0-9]+개\\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.").FindString(analysisResultData)
+	message += "\r\n\r\n"
+	message += "- " + regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData) + "\r\n"
+	message += "- " + regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData) + "\r\n"
+	message += "- " + regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData) + "\r\n"
+	message += "- " + regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData) + "\r\n"
+	message += "- " + regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData)
+	//////////////////////////////////
 
 	if t.IsCanceled() == true {
 		return "", nil, nil
