@@ -58,7 +58,8 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_notify_bot",
+					"reserved_data_1": "F:\\Solutions-Private\\lotto-prediction\\dist"
 				}
 			]
 		}

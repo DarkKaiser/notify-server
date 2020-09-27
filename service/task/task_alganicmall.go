@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/encoding/korean"
@@ -55,7 +56,7 @@ func init() {
 			newTaskDataFn: func() interface{} { return &alganicmallWatchAtoCreamData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) taskHandler {
 			if taskRunData.taskID != TidAlganicMall {
 				return nil
 			}

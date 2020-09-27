@@ -2,9 +2,11 @@ package task
 
 import (
 	"fmt"
+	"github.com/darkkaiser/notify-server/g"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -28,9 +30,22 @@ func init() {
 			newTaskDataFn: func() interface{} { return &lottoPredictionData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData) taskHandler {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) taskHandler {
 			if taskRunData.taskID != TidLotto {
 				return nil
+			}
+
+			var appPath string
+			for _, t := range config.Tasks {
+				if taskRunData.taskID == TaskID(t.ID) {
+					for _, c := range t.Commands {
+						if taskRunData.taskCommandID == TaskCommandID(c.ID) {
+							appPath = strings.Trim(c.ReservedData1, " ")
+							break
+						}
+					}
+					break
+				}
 			}
 
 			task := &lottoTask{
@@ -46,7 +61,7 @@ func init() {
 					runBy: taskRunData.taskRunBy,
 				},
 
-				appPath: "e:\\1", //@@@@@
+				appPath: appPath,
 			}
 
 			task.runFn = func(taskData interface{}) (string, interface{}, error) {
@@ -70,6 +85,7 @@ type lottoTask struct {
 }
 
 func (t *lottoTask) runPrediction(taskData interface{}) (message string, changedTaskData interface{}, err error) {
+	// @@@@@ 결과파일 경로 넘겨주기
 	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 
 	// 비동기적으로 작업을 시작한다.
@@ -107,8 +123,6 @@ func (t *lottoTask) runPrediction(taskData interface{}) (message string, changed
 
 	// 작업 결과를 받아온다.
 	// @@@@@
-	//	s := cmdOutBuffer.String()
-	//	println(s)
 	message = "종료되었습니다."
 
 	if t.IsCanceled() == true {

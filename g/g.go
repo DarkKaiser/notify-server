@@ -40,6 +40,7 @@ type AppConfig struct {
 				Usable bool `json:"usable"`
 			} `json:"notifier"`
 			DefaultNotifierID string `json:"default_notifier_id"`
+			ReservedData1     string `json:"reserved_data_1"`
 		} `json:"commands"`
 	} `json:"tasks"`
 }
