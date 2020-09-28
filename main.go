@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
@@ -24,13 +25,16 @@ func main() {
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
 	_log_.InitLog(config.Debug, g.AppName, 30.)
 
-	log.Info("##########################################################")
-	log.Info("###                                                    ###")
-	log.Infof("###                %s %s                 ###", g.AppName, g.AppVersion)
-	log.Info("###                                                    ###")
-	log.Info("###                           developed by DarkKaiser  ###")
-	log.Info("###                                                    ###")
-	log.Info("##########################################################")
+	// 아스키아트(https://ko.rakko.tools/tools/68/, 폰트:standard)
+	fmt.Println("")
+	fmt.Println("  _   _         _    _   __          ____")
+	fmt.Println(" | \\ | |  ___  | |_ (_) / _| _   _  / ___|   ___  _ __ __   __  ___  _ __")
+	fmt.Println(" |  \\| | / _ \\ | __|| || |_ | | | | \\___ \\  / _ \\| '__|\\ \\ / / / _ \\| '__|")
+	fmt.Println(" | |\\  || (_) || |_ | ||  _|| |_| |  ___) ||  __/| |    \\ V / |  __/| |")
+	fmt.Println(" |_| \\_| \\___/  \\__||_||_|   \\__, | |____/  \\___||_|     \\_/   \\___||_|")
+	fmt.Printf("                             |___/                                       v%s\r\n", g.AppVersion)
+	fmt.Println("                                                        developed by DarkKaiser")
+	fmt.Printf("--------------------------------------------------------------------------------")
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(config)
