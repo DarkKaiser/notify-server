@@ -17,7 +17,7 @@ const (
 	logFileExtension string = "log"
 )
 
-func Init(debug bool, appName string, checkDaysAgo float64) {
+func init() {
 	log.SetLevel(log.TraceLevel)
 	log.SetReportCaller(true)
 	log.SetFormatter(&log.TextFormatter{
@@ -32,7 +32,9 @@ func Init(debug bool, appName string, checkDaysAgo float64) {
 			return
 		},
 	})
+}
 
+func InitLog(debug bool, appName string, checkDaysAgo float64) {
 	if debug == true {
 		return
 	}

@@ -22,7 +22,7 @@ func main() {
 	config := g.InitAppConfig()
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.Init(config.Debug, g.AppName, 30.)
+	_log_.InitLog(config.Debug, g.AppName, 30.)
 
 	log.Info("##########################################################")
 	log.Info("###                                                    ###")
