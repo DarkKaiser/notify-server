@@ -48,6 +48,17 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 }
 
 //
+// NotificationType
+//
+type NotificationType int
+
+const (
+	// @@@@@
+	NotificationTypePlainText NotificationType = iota
+	NotificationTypeError
+)
+
+//
 // notificationSendData
 //
 type notificationSendData struct {
@@ -155,7 +166,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 	}
 }
 
-func (s *NotificationService) Notify(notifierID string, message string, taskCtx task.TaskContext) bool {
+func (s *NotificationService) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -175,7 +186,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 	return false
 }
 
-func (s *NotificationService) NotifyWithDefault(message string) bool {
+func (s *NotificationService) NotifyToDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 	return s.defaultNotifierHandler.Notify(message, nil)

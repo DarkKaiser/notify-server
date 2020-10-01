@@ -89,6 +89,7 @@ type lottoTask struct {
 	appPath string
 }
 
+//noinspection GoUnusedParameter
 func (t *lottoTask) runPrediction(taskData interface{}) (message string, changedTaskData interface{}, err error) {
 	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 

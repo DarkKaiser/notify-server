@@ -252,11 +252,11 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 }
 
 func (t *task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx)
+	return taskNotificationSender.NotifyWithTaskContext(t.NotifierID(), m, taskCtx)
 }
 
 func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.Notify(t.NotifierID(), m, taskCtx.WithError())
+	return taskNotificationSender.NotifyWithTaskContext(t.NotifierID(), m, taskCtx.WithError())
 }
 
 func (t *task) dataFileName() string {
@@ -363,8 +363,8 @@ type TaskRunner interface {
 // TaskNotificationSender
 //
 type TaskNotificationSender interface {
-	Notify(notifierID string, message string, taskCtx TaskContext) bool
-	NotifyWithDefault(message string) bool
+	NotifyToDefault(message string) bool
+	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
 }
 
 //
@@ -461,7 +461,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
+				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
 
 				continue
 			}
@@ -481,7 +481,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				if alreadyRunTaskHandler != nil {
 					taskRunData.taskCtx.WithInstanceID(alreadyRunTaskHandler.InstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.taskNotificationSender.Notify(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
+					s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.taskCtx)
 					continue
 				}
 			}
@@ -503,7 +503,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Error(m)
 
-				s.taskNotificationSender.Notify(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
+				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
 
 				continue
 			}
@@ -516,7 +516,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if taskRunData.notifyResultOfTaskRunRequest == true {
-				s.taskNotificationSender.Notify(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID, 0))
+				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.taskCtx.WithInstanceID(instanceID, 0))
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -537,11 +537,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%s)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
 
-				s.taskNotificationSender.Notify(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
+				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
 			} else {
 				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%s)", instanceID)
 
-				s.taskNotificationSender.NotifyWithDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
+				s.taskNotificationSender.NotifyToDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
 			}
 			s.runningMu.Unlock()
 

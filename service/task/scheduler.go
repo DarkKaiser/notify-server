@@ -41,7 +41,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 
 					log.Error(m)
 
-					taskNotificationSender.Notify(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
+					taskNotificationSender.NotifyWithTaskContext(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
 				}
 			})
 
