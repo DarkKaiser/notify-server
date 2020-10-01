@@ -21,6 +21,7 @@ type TaskInstanceID string
 type TaskRunBy int
 
 const (
+	TaskCtxKeyTitle         = "Title"
 	TaskCtxKeyErrorOccurred = "ErrorOccurred"
 
 	TaskCtxKeyTaskID              = "Task.TaskID"

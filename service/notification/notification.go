@@ -48,22 +48,19 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 }
 
 //
-// NotificationType
-//
-type NotificationType int
-
-const (
-	// @@@@@
-	NotificationTypePlainText NotificationType = iota
-	NotificationTypeError
-)
-
-//
 // notificationSendData
 //
 type notificationSendData struct {
 	message string
 	taskCtx task.TaskContext
+}
+
+//
+// NotificationSender
+//
+type NotificationSender interface {
+	Notify(notifierID string, title string, message string, errorOccurred bool) bool
+	NotifyToDefault(message string) bool
 }
 
 //
@@ -166,6 +163,21 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 	}
 }
 
+func (s *NotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+	taskCtx := task.NewContext().With(task.TaskCtxKeyTitle, title)
+	if errorOccurred == true {
+		taskCtx.WithError()
+	}
+
+	return s.NotifyWithTaskContext(notifierID, message, taskCtx)
+}
+
+func (s *NotificationService) NotifyToDefault(message string) bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	return s.defaultNotifierHandler.Notify(message, nil)
+}
+
 func (s *NotificationService) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
@@ -184,10 +196,4 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 	s.defaultNotifierHandler.Notify(m, task.NewContext().WithError())
 
 	return false
-}
-
-func (s *NotificationService) NotifyToDefault(message string) bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-	return s.defaultNotifierHandler.Notify(message, nil)
 }

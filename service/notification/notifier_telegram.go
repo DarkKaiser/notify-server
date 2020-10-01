@@ -175,13 +175,18 @@ LOOP:
 					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
 				}
 			} else {
-				taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
-				taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
-				if ok1 == true && ok2 == true {
-					for _, botCommand := range n.botCommands {
-						if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-							m = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", botCommand.commandTitle, m)
-							break
+				title, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTitle).(string)
+				if ok == true && len(title) > 0 {
+					m = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", title, m)
+				} else {
+					taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
+					taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+					if ok1 == true && ok2 == true {
+						for _, botCommand := range n.botCommands {
+							if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
+								m = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", botCommand.commandTitle, m)
+								break
+							}
 						}
 					}
 				}
