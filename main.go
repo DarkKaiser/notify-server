@@ -6,6 +6,7 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
+	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
@@ -38,6 +39,7 @@ func main() {
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(config)
 	notificationService := notification.NewService(config, taskService)
+	notifyAPIService := api.NewNotifyAPIService(config, notificationService)
 
 	taskService.SetTaskNotificationSender(notificationService)
 
@@ -46,7 +48,7 @@ func main() {
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	for _, s := range []service.Service{taskService, notificationService} {
+	for _, s := range []service.Service{taskService, notificationService, notifyAPIService} {
 		serviceStopWaiter.Add(1)
 		s.Run(serviceStopCtx, serviceStopWaiter)
 	}

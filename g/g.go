@@ -43,6 +43,16 @@ type AppConfig struct {
 			ReservedData1     string `json:"reserved_data_1"`
 		} `json:"commands"`
 	} `json:"tasks"`
+	NotifyAPI struct {
+		ListenPort   int `json:"listen_port"`
+		Applications []struct {
+			ID                string `json:"id"`
+			Title             string `json:"title"`
+			Description       string `json:"description"`
+			APIKey            string `json:"api_key"`
+			DefaultNotifierID string `json:"default_notifier_id"`
+		} `json:"applications"`
+	} `json:"notify_api"`
 }
 
 func InitAppConfig() *AppConfig {
@@ -84,6 +94,18 @@ func InitAppConfig() *AppConfig {
 			if utils.Contains(notifierIDs, c.DefaultNotifierID) == false {
 				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, t.ID, c.ID, c.DefaultNotifierID)
 			}
+		}
+	}
+
+	var applicationIDs []string
+	for _, app := range config.NotifyAPI.Applications {
+		if utils.Contains(applicationIDs, app.ID) == true {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. ApplicationID(%s)가 중복되었습니다.", AppConfigFileName, app.ID)
+		}
+		applicationIDs = append(applicationIDs, app.ID)
+
+		if utils.Contains(notifierIDs, app.DefaultNotifierID) == false {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, app.ID, app.DefaultNotifierID)
 		}
 	}
 
