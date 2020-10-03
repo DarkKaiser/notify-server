@@ -17,6 +17,19 @@ import (
 	"syscall"
 )
 
+const (
+	banner = `
+  _   _         _    _   __          ____
+ | \ | |  ___  | |_ (_) / _| _   _  / ___|   ___  _ __ __   __  ___  _ __
+ |  \| | / _ \ | __|| || |_ | | | | \___ \  / _ \| '__|\ \ / / / _ \| '__|
+ | |\  || (_) || |_ | ||  _|| |_| |  ___) ||  __/| |    \ V / |  __/| |
+ |_| \_| \___/  \__||_||_|   \__, | |____/  \___||_|     \_/   \___||_|
+                             |___/                                       v%s
+                                                        developed by DarkKaiser
+--------------------------------------------------------------------------------
+`
+)
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
 
@@ -27,14 +40,7 @@ func main() {
 	_log_.InitLog(config.Debug, g.AppName, 30.)
 
 	// 아스키아트(https://ko.rakko.tools/tools/68/, 폰트:standard)
-	fmt.Println("  _   _         _    _   __          ____")
-	fmt.Println(" | \\ | |  ___  | |_ (_) / _| _   _  / ___|   ___  _ __ __   __  ___  _ __")
-	fmt.Println(" |  \\| | / _ \\ | __|| || |_ | | | | \\___ \\  / _ \\| '__|\\ \\ / / / _ \\| '__|")
-	fmt.Println(" | |\\  || (_) || |_ | ||  _|| |_| |  ___) ||  __/| |    \\ V / |  __/| |")
-	fmt.Println(" |_| \\_| \\___/  \\__||_||_|   \\__, | |____/  \\___||_|     \\_/   \\___||_|")
-	fmt.Printf("                             |___/                                       v%s\r\n", g.AppVersion)
-	fmt.Println("                                                        developed by DarkKaiser")
-	fmt.Print("--------------------------------------------------------------------------------")
+	fmt.Printf(banner, g.AppVersion)
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(config)
