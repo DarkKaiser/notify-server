@@ -17,8 +17,8 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 	e.Debug = true
 	e.HideBanner = true
 
-	// echo에서 출력되는 로그를 Logrus Logger로 출력하도록 한다.
-	// echo Logger의 인터페이스를 래핑한 struct을 이용하여 Logrus Logger로 보낸다.
+	// echo에서 출력되는 로그를 Logrus Logger로 출력되도록 한다.
+	// echo Logger의 인터페이스를 래핑한 객체를 이용하여 Logrus Logger로 보낸다.
 	e.Logger = notifyMiddleware.Logger{Logger: log.StandardLogger()}
 	e.Use(notifyMiddleware.LogrusLogger())
 
