@@ -32,29 +32,14 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
 	e.Use(middleware.Recover()) // Recover from panics anywhere in the chain
+	e.Use(middleware.Secure())
 
 	// @@@@@
 	//////////////////
 	// Initialize handler
 	h := handlers.NewNotifyHandlers(config, notificationSender)
 
-	e.GET("/api/:message", h.MessageHandler)
-
-	// Router List
-	//getList := e.Group("/api")
-	//{
-	//	getList.GET("[path]", h.MessageHandler)
-	//	//		getList.GET("[path][:pathParameter]", handler.[요청함수])
-	//}
-	//admin := e.Group("/admin")
-	//{
-	//	admin.GET("[path]", handler.[요청함수])
-	//	admin.GET("[path]", handler.[요청함수], auth.[로그인체크함수], auth.[어드민체크함수])
-	//}
-	//login := e.Group("/login")
-	//{
-	//	login.POST("", auth.auth.[로그인함수])
-	//}
+	e.POST("/api/notify/:message", h.MessageNotifyHandler)
 	//////////////////
 
 	return e

@@ -178,7 +178,7 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 		"latency_human": stop.Sub(start).String(),
 		"bytes_in":      bytesIn,
 		"bytes_out":     strconv.FormatInt(res.Size, 10),
-	}).Info("")
+	}).Info("echo log")
 
 	return nil
 }

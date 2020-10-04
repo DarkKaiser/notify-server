@@ -2,54 +2,46 @@ package handlers
 
 import (
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/service/api/models"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo"
 	"net/http"
 )
 
 //
-// application
-//
-type application struct {
-	id                string
-	title             string
-	description       string
-	apiKey            string
-	defaultNotifierID string
-}
-
-//
 // NotifyHandlers
 //
 type NotifyHandlers struct {
-	applications       []*application
+	allowedApplications []*models.AllowedApplication
+
 	notificationSender notification.NotificationSender
 }
 
 func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyHandlers {
 	// 허용된 Application 목록을 구한다.
-	var applications []*application
+	var applications []*models.AllowedApplication
 	for _, app := range config.NotifyAPI.Applications {
-		applications = append(applications, &application{
-			id:                app.ID,
-			title:             app.Title,
-			description:       app.Description,
-			apiKey:            app.APIKey,
-			defaultNotifierID: app.DefaultNotifierID,
+		applications = append(applications, &models.AllowedApplication{
+			Id:                app.ID,
+			Title:             app.Title,
+			Description:       app.Description,
+			ApiKey:            app.APIKey,
+			DefaultNotifierID: app.DefaultNotifierID,
 		})
 	}
 
 	return &NotifyHandlers{
-		applications:       applications,
+		allowedApplications: applications,
+
 		notificationSender: notificationSender,
 	}
 }
 
 // @@@@@
-func (h *NotifyHandlers) MessageHandler(c echo.Context) error {
-	for _, a := range h.applications {
-		if a.id == "lottoPrediction" {
-			h.notificationSender.Notify(a.defaultNotifierID, "title", c.Param("message"), false)
+func (h *NotifyHandlers) MessageNotifyHandler(c echo.Context) error {
+	for _, a := range h.allowedApplications {
+		if a.Id == "lottoPrediction" {
+			h.notificationSender.Notify(a.DefaultNotifierID, "title", c.Param("message"), false)
 			// http://notify-api.darkkaiser.com/api/notify/
 
 			// 허용가능한 ID목록+인증키를 읽어서 메시지를 보내면 체크한다.
