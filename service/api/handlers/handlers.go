@@ -25,7 +25,7 @@ func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.Noti
 			Id:                app.ID,
 			Title:             app.Title,
 			Description:       app.Description,
-			ApiKey:            app.APIKey,
+			APIKey:            app.APIKey,
 			DefaultNotifierID: app.DefaultNotifierID,
 		})
 	}
