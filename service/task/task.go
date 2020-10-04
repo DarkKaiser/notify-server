@@ -422,7 +422,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	log.Debug("Task 서비스 시작중...")
 
 	if s.taskNotificationSender == nil {
-		log.Panicf("TaskNotificationSender 객체가 초기화되지 않았습니다.")
+		log.Panic("TaskNotificationSender 객체가 초기화되지 않았습니다.")
 	}
 
 	if s.running == true {

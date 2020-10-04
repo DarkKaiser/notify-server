@@ -61,6 +61,7 @@ type notificationSendData struct {
 type NotificationSender interface {
 	Notify(notifierID string, title string, message string, errorOccurred bool) bool
 	NotifyToDefault(message string) bool
+	NotifyWithErrorToDefault(message string) bool
 }
 
 //
@@ -102,7 +103,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	log.Debug("Notification 서비스 시작중...")
 
 	if s.taskRunner == nil {
-		log.Panicf("TaskRunner 객체가 초기화되지 않았습니다.")
+		log.Panic("TaskRunner 객체가 초기화되지 않았습니다.")
 	}
 
 	if s.running == true {
@@ -176,6 +177,12 @@ func (s *NotificationService) NotifyToDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 	return s.defaultNotifierHandler.Notify(message, nil)
+}
+
+func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	return s.defaultNotifierHandler.Notify(message, task.NewContext().WithError())
 }
 
 func (s *NotificationService) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
