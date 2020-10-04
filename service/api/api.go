@@ -7,6 +7,7 @@ import (
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
 	log "github.com/sirupsen/logrus"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -65,11 +66,16 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	e := router.New(s.config, s.notificationSender)
 
 	go func(listenPort int) {
+		log.Debug("NotifyAPI 서비스 > http 서버 시작")
 		if err := e.Start(fmt.Sprintf(":%d", listenPort)); err != nil {
-			m := fmt.Sprintf("NotifyAPI RESTful 서비스를 구성하는 중에 치명적인 오류가 발생하였습니다.\r\n\r\n%s", err)
+			if err == http.ErrServerClosed {
+				log.Debug("NotifyAPI 서비스 > http 서버 중지")
+			} else {
+				m := fmt.Sprintf("NotifyAPI RESTful 서비스를 구성하는 중에 치명적인 오류가 발생하였습니다.\r\n\r\n%s", err)
 
-			log.Error(m)
-			s.notificationSender.NotifyWithErrorToDefault(m)
+				log.Error(m)
+				s.notificationSender.NotifyWithErrorToDefault(m)
+			}
 		}
 	}(s.config.NotifyAPI.ListenPort)
 
