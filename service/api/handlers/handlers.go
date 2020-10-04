@@ -19,14 +19,14 @@ type application struct {
 }
 
 //
-// NotifyHandler
+// NotifyHandlers
 //
-type NotifyHandler struct {
+type NotifyHandlers struct {
 	applications       []*application
 	notificationSender notification.NotificationSender
 }
 
-func NewNotifyHandler(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyHandler {
+func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyHandlers {
 	// 허용된 Application 목록을 구한다.
 	var applications []*application
 	for _, app := range config.NotifyAPI.Applications {
@@ -39,14 +39,14 @@ func NewNotifyHandler(config *g.AppConfig, notificationSender notification.Notif
 		})
 	}
 
-	return &NotifyHandler{
+	return &NotifyHandlers{
 		applications:       applications,
 		notificationSender: notificationSender,
 	}
 }
 
 // @@@@@
-func (h *NotifyHandler) MessageHandler(c echo.Context) error {
+func (h *NotifyHandlers) MessageHandler(c echo.Context) error {
 	for _, a := range h.applications {
 		if a.id == "lottoPrediction" {
 			h.notificationSender.Notify(a.defaultNotifierID, "title", c.Param("message"), false)

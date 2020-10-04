@@ -29,7 +29,7 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 	// @@@@@
 	//////////////////
 	// Initialize handler
-	h := handlers.NewNotifyHandler(config, notificationSender)
+	h := handlers.NewNotifyHandlers(config, notificationSender)
 
 	e.GET("/api/:message", h.MessageHandler)
 
