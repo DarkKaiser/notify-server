@@ -9,15 +9,15 @@ import (
 )
 
 //
-// NotifyHandlers
+// NotifyAPIHandlers
 //
-type NotifyHandlers struct {
+type NotifyAPIHandlers struct {
 	allowedApplications []*models.AllowedApplication
 
 	notificationSender notification.NotificationSender
 }
 
-func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyHandlers {
+func NewNotifyAPIHandlers(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyAPIHandlers {
 	// 허용된 Application 목록을 구한다.
 	var applications []*models.AllowedApplication
 	for _, app := range config.NotifyAPI.Applications {
@@ -29,15 +29,15 @@ func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.Noti
 		})
 	}
 
-	return &NotifyHandlers{
+	return &NotifyAPIHandlers{
 		allowedApplications: applications,
 
 		notificationSender: notificationSender,
 	}
 }
 
-// @@@@@
-func (h *NotifyHandlers) MessageNotifyHandler(c echo.Context) error {
+func (h *NotifyAPIHandlers) SendNotifyHandler(c echo.Context) error {
+	// @@@@@
 	m := new(models.TemplateObject)
 	if err := c.Bind(m); err != nil {
 		return err
