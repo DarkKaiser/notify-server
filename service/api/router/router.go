@@ -46,7 +46,7 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 
 		h := handler.NewNotifyAPIHandlers(config, notificationSender)
 
-		grp.POST("/message/send", h.MessageSendHandler)
+		grp.POST("/message/send", h.NotifyMessageSendHandler)
 	}
 
 	return e

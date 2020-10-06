@@ -37,7 +37,7 @@ func NewNotifyAPIHandlers(config *g.AppConfig, notificationSender notification.N
 	}
 }
 
-func (h *NotifyAPIHandlers) MessageSendHandler(c echo.Context) error {
+func (h *NotifyAPIHandlers) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)
 	if err := c.Bind(m); err != nil {
 		return err
