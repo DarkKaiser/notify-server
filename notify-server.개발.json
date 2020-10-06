@@ -63,5 +63,17 @@
 				}
 			]
 		}
-	]
+	],
+	"notify_api": {
+		"api_key": "0098E52B-B8E2-4C72-9CAD-EDBECC9CFF0D",
+		"listen_port": 5340,
+		"applications": [
+			{
+				"id": "lotto-prediction",
+				"title": "알림 > 로또 당첨번호 예측 앱",
+				"description": "",
+				"default_notifier_id": "darkkaiser_notify_bot"
+			}
+		]
+	}
 }

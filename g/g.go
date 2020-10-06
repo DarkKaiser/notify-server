@@ -97,6 +97,10 @@ func InitAppConfig() *AppConfig {
 		}
 	}
 
+	if len(config.NotifyAPI.APIKey) == 0 {
+		log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifyAPI의 APIKey가 입력되지 않았습니다.", AppConfigFileName)
+	}
+
 	var applicationIDs []string
 	for _, app := range config.NotifyAPI.Applications {
 		if utils.Contains(applicationIDs, app.ID) == true {
