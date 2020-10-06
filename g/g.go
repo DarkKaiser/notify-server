@@ -44,12 +44,12 @@ type AppConfig struct {
 		} `json:"commands"`
 	} `json:"tasks"`
 	NotifyAPI struct {
-		ListenPort   int `json:"listen_port"`
+		APIKey       string `json:"api_key"`
+		ListenPort   int    `json:"listen_port"`
 		Applications []struct {
 			ID                string `json:"id"`
 			Title             string `json:"title"`
 			Description       string `json:"description"`
-			APIKey            string `json:"api_key"`
 			DefaultNotifierID string `json:"default_notifier_id"`
 		} `json:"applications"`
 	} `json:"notify_api"`

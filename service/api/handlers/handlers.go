@@ -25,7 +25,6 @@ func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.Noti
 			Id:                app.ID,
 			Title:             app.Title,
 			Description:       app.Description,
-			APIKey:            app.APIKey,
 			DefaultNotifierID: app.DefaultNotifierID,
 		})
 	}
@@ -39,21 +38,18 @@ func NewNotifyHandlers(config *g.AppConfig, notificationSender notification.Noti
 
 // @@@@@
 func (h *NotifyHandlers) MessageNotifyHandler(c echo.Context) error {
-	for _, a := range h.allowedApplications {
-		if a.Id == "lottoPrediction" {
-			h.notificationSender.Notify(a.DefaultNotifierID, "title", c.Param("message"), false)
-			// http://notify-api.darkkaiser.com/api/notify/
-
-			// 허용가능한 ID목록+인증키를 읽어서 메시지를 보내면 체크한다.
-			// 등록되지 않은 id이면 거부한다.
-			// 등록된 id이면 webNotificationSender.Notify(id, notifierid, message, isError)
-			// commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), => json 파일에 저장되어 있는값을 notifier에서 알아서 읽어온다.(notifier.webSenderTitle 등의 이름으로 따로 관리)
-			// => 이렇게 되면 notifier가 추가될때마다 항상 같이 관리가 되어져야 됨, title을 직접 넘김
-			// => webNotificationSender.Notify(notifierid, commandTitle, message, isError)
-			// web -> task -> notifier 순으로 가는건????
-
-			break
-		}
+	m := new(models.TemplateObject)
+	if err := c.Bind(m); err != nil {
+		return err
 	}
-	return c.String(http.StatusOK, "Hello, World!  "+c.Param("message"))
+	return c.JSON(http.StatusOK, m)
+
+	//for _, a := range h.allowedApplications {
+	//	if a.Id == "lottoPrediction" {
+	//		h.notificationSender.Notify(a.DefaultNotifierID, "title", c.Param("message"), false)
+	//		// http://notify-api.darkkaiser.com/api/notify/
+	//		break
+	//	}
+	//}
+	//return c.String(http.StatusOK, "Hello, World!  "+c.Param("message"))
 }

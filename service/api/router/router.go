@@ -36,10 +36,19 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 
 	// @@@@@
 	//////////////////
-	// Initialize handler
-	h := handlers.NewNotifyHandlers(config, notificationSender)
+	// @@@@@
+	e.Use(middleware.KeyAuth(func(key string, c echo.Context) (bool, error) {
+		return key == config.NotifyAPI.APIKey, nil
+	}))
 
-	e.POST("/api/notify/:message", h.MessageNotifyHandler)
+	// Initialize handler
+	group := e.Group("dd")
+	group.Use(middleware.KeyAuth(func(key string, c echo.Context) (bool, error) {
+		return key == config.NotifyAPI.APIKey, nil
+	}))
+
+	h := handlers.NewNotifyHandlers(config, notificationSender)
+	e.POST("/api/notify/send", h.MessageNotifyHandler)
 	//////////////////
 
 	return e

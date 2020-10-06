@@ -69,7 +69,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		log.Debug("NotifyAPI 서비스 > http 서버 시작")
 		if err := e.Start(fmt.Sprintf(":%d", listenPort)); err != nil {
 			if err == http.ErrServerClosed {
-				log.Debug("NotifyAPI 서비스 > http 서버 중지")
+				log.Debug("NotifyAPI 서비스 > http 서버 중지됨")
 			} else {
 				m := fmt.Sprintf("NotifyAPI RESTful 서비스를 구성하는 중에 치명적인 오류가 발생하였습니다.\r\n\r\n%s", err)
 
