@@ -2,7 +2,7 @@ package router
 
 import (
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service/api/handlers"
+	"github.com/darkkaiser/notify-server/service/api/handler"
 	_middleware_ "github.com/darkkaiser/notify-server/service/api/middleware"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo"
@@ -44,9 +44,9 @@ func New(config *g.AppConfig, notificationSender notification.NotificationSender
 			},
 		}))
 
-		h := handlers.NewNotifyAPIHandlers(config, notificationSender)
+		h := handler.NewNotifyAPIHandlers(config, notificationSender)
 
-		grp.POST("/send", h.SendNotifyHandler)
+		grp.POST("/send", h.NotifySendHandler)
 	}
 
 	return e
