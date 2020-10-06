@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -36,24 +37,21 @@ func NewNotifyAPIHandlers(config *g.AppConfig, notificationSender notification.N
 	}
 }
 
-func (h *NotifyAPIHandlers) NotifySendHandler(c echo.Context) error {
-	// @@@@@
-	m := new(model.TemplateObject)
+func (h *NotifyAPIHandlers) MessageSendHandler(c echo.Context) error {
+	m := new(model.NotifyMessage)
 	if err := c.Bind(m); err != nil {
 		return err
 	}
 
-	var title string
-	for _, app := range h.allowedApplications {
-		if app.Id == m.Content.ID {
-			title = app.Title
-			break
+	for _, application := range h.allowedApplications {
+		if application.Id == m.ApplicationID {
+			h.notificationSender.Notify(application.DefaultNotifierID, application.Title, m.Message, m.ErrorOccured)
+
+			return c.JSON(http.StatusOK, map[string]int{
+				"result_code": 0,
+			})
 		}
 	}
-	if len(title) > 0 {
-		// error return
-	}
 
-	h.notificationSender.Notify(m.Content.NotifierID, title, m.Content.Message, m.Content.ErrorOccured)
-	return c.JSON(http.StatusOK, m)
+	return echo.NewHTTPError(http.StatusUnauthorized, fmt.Sprintf("접근이 허용되지 않은 Application입니다(ID:%s)", m.ApplicationID))
 }
