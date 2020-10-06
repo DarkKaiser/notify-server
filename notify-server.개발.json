@@ -79,6 +79,12 @@
 				"title": "알림 > TorrentAD 앱",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
+			},
+			{
+				"id": "reposition-torrent-downloaded-files",
+				"title": "알림 > 토렌트 다운로드 완료파일 위치 옮기기 앱",
+				"description": "",
+				"default_notifier_id": "darkkaiser_notify_bot"
 			}
 		]
 	}
