@@ -4,7 +4,7 @@ package model
 // AllowedApplication
 //
 type AllowedApplication struct {
-	Id                string
+	ID                string
 	Title             string
 	Description       string
 	DefaultNotifierID string

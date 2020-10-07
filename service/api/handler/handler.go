@@ -21,12 +21,12 @@ type NotifyAPIHandlers struct {
 func NewNotifyAPIHandlers(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyAPIHandlers {
 	// 허용된 Application 목록을 구한다.
 	var applications []*model.AllowedApplication
-	for _, app := range config.NotifyAPI.Applications {
+	for _, application := range config.NotifyAPI.Applications {
 		applications = append(applications, &model.AllowedApplication{
-			Id:                app.ID,
-			Title:             app.Title,
-			Description:       app.Description,
-			DefaultNotifierID: app.DefaultNotifierID,
+			ID:                application.ID,
+			Title:             application.Title,
+			Description:       application.Description,
+			DefaultNotifierID: application.DefaultNotifierID,
 		})
 	}
 
@@ -44,7 +44,7 @@ func (h *NotifyAPIHandlers) NotifyMessageSendHandler(c echo.Context) error {
 	}
 
 	for _, application := range h.allowedApplications {
-		if application.Id == m.ApplicationID {
+		if application.ID == m.ApplicationID {
 			h.notificationSender.Notify(application.DefaultNotifierID, application.Title, m.Message, m.ErrorOccured)
 
 			return c.JSON(http.StatusOK, map[string]int{

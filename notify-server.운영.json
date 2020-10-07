@@ -65,8 +65,8 @@
 		}
 	],
 	"notify_api": {
-		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"listen_port": 5340,
+		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"applications": [
 			{
 				"id": "lotto-prediction",
@@ -82,7 +82,7 @@
 			},
 			{
 				"id": "reposition-torrent-downloaded-files",
-				"title": "알림 > 토렌트 다운로드 완료파일 위치 옮기기 앱",
+				"title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
 			}

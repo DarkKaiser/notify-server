@@ -44,8 +44,8 @@ type AppConfig struct {
 		} `json:"commands"`
 	} `json:"tasks"`
 	NotifyAPI struct {
-		APIKey       string `json:"api_key"`
 		ListenPort   int    `json:"listen_port"`
+		APIKey       string `json:"api_key"`
 		Applications []struct {
 			ID                string `json:"id"`
 			Title             string `json:"title"`
