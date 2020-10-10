@@ -84,7 +84,7 @@ func (g *taskInstanceIDGenerator) reverse(s []string) []string {
 //
 // supportedTasks
 //
-type newTaskFunc func(TaskInstanceID, *taskRunData, *g.AppConfig) taskHandler
+type newTaskFunc func(TaskInstanceID, *taskRunData, *g.AppConfig) (taskHandler, error)
 type newTaskDataFunc func() interface{}
 
 var supportedTasks = make(map[TaskID]*supportedTaskConfig)
@@ -498,13 +498,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h := taskConfig.newTaskFn(instanceID, taskRunData, s.config)
+			h, err := taskConfig.newTaskFn(instanceID, taskRunData, s.config)
 			if h == nil {
-				m := "등록되지 않은 작업입니다.😱"
+				log.Error(err)
 
-				log.Error(m)
-
-				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, m, taskRunData.taskCtx.WithError())
+				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.notifierID, err.Error(), taskRunData.taskCtx.WithError())
 
 				continue
 			}

@@ -58,10 +58,12 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot",
-					"reserved_data_1": "/usr/local/lotto-prediction"
+					"default_notifier_id": "darkkaiser_notify_bot"
 				}
-			]
+			],
+			"data": {
+				"app_path": "/usr/local/lotto-prediction"
+			}
 		}
 	],
 	"notify_api": {

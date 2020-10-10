@@ -35,20 +35,26 @@ func init() {
 			newTaskDataFn: func() interface{} { return &lottoPredictionData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) taskHandler {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidLotto {
-				return nil
+				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
-					for _, c := range t.Commands {
-						if taskRunData.taskCommandID == TaskCommandID(c.ID) {
-							appPath = strings.Trim(c.ReservedData1, " ")
-							break
-						}
+					data, ok := t.Data.(map[string]interface{})
+					if ok == false {
+						return nil, errors.New("작업 데이터가 존재하지 않습니다.😱")
 					}
+
+					v, ok := data["app_path"].(string)
+					if ok == false {
+						return nil, errors.New("작업 데이터('app_path')가 존재하지 않습니다.😱")
+					}
+
+					appPath = strings.Trim(v, " ")
+
 					break
 				}
 			}
@@ -78,7 +84,7 @@ func init() {
 				return "", nil, ErrNoImplementationForTaskCommand
 			}
 
-			return task
+			return task, nil
 		},
 	}
 }

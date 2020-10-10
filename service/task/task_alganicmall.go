@@ -56,9 +56,9 @@ func init() {
 			newTaskDataFn: func() interface{} { return &alganicmallWatchAtoCreamData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) taskHandler {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidAlganicMall {
-				return nil
+				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
 
 			task := &alganicMallTask{
@@ -87,7 +87,7 @@ func init() {
 				return "", nil, ErrNoImplementationForTaskCommand
 			}
 
-			return task
+			return task, nil
 		},
 	}
 }
