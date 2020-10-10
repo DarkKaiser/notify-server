@@ -39,9 +39,10 @@ type AppConfig struct {
 			Notifier struct {
 				Usable bool `json:"usable"`
 			} `json:"notifier"`
-			DefaultNotifierID string `json:"default_notifier_id"`
+			DefaultNotifierID string                 `json:"default_notifier_id"`
+			Data              map[string]interface{} `json:"data"`
 		} `json:"commands"`
-		Data interface{} `json:"data"`
+		Data map[string]interface{} `json:"data"`
 	} `json:"tasks"`
 	NotifyAPI struct {
 		ListenPort   int    `json:"listen_port"`

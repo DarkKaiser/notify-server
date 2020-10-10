@@ -23,7 +23,11 @@ const (
 	TcidLottoPrediction TaskCommandID = "Prediction" // 로또 번호 예측
 )
 
-type lottoPredictionData struct{}
+type lottoTaskData struct {
+	AppPath string `json:"app_path"`
+}
+
+type lottoPredictionResultData struct{}
 
 func init() {
 	supportedTasks[TidLotto] = &supportedTaskConfig{
@@ -32,7 +36,7 @@ func init() {
 
 			allowMultipleIntances: false,
 
-			newTaskDataFn: func() interface{} { return &lottoPredictionData{} },
+			newTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
 		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
@@ -43,17 +47,12 @@ func init() {
 			var appPath string
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
-					data, ok := t.Data.(map[string]interface{})
-					if ok == false {
-						return nil, errors.New("작업 데이터가 존재하지 않습니다.😱")
+					taskData := lottoTaskData{}
+					if err := convertMapTypeToStructType(t.Data, &taskData); err != nil {
+						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
 					}
 
-					v, ok := data["app_path"].(string)
-					if ok == false {
-						return nil, errors.New("작업 데이터('app_path')가 존재하지 않습니다.😱")
-					}
-
-					appPath = strings.Trim(v, " ")
+					appPath = strings.Trim(taskData.AppPath, " ")
 
 					break
 				}
@@ -75,10 +74,10 @@ func init() {
 				appPath: appPath,
 			}
 
-			task.runFn = func(taskData interface{}) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidLottoPrediction:
-					return task.runPrediction(taskData)
+					return task.runPrediction(taskResultData)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -96,7 +95,7 @@ type lottoTask struct {
 }
 
 //noinspection GoUnusedParameter
-func (t *lottoTask) runPrediction(taskData interface{}) (message string, changedTaskData interface{}, err error) {
+func (t *lottoTask) runPrediction(taskResultData interface{}) (message string, changedTaskResultData interface{}, err error) {
 	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 
 	var cmdOutBuffer bytes.Buffer

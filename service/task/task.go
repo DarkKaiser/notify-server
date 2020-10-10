@@ -85,7 +85,7 @@ func (g *taskInstanceIDGenerator) reverse(s []string) []string {
 // supportedTasks
 //
 type newTaskFunc func(TaskInstanceID, *taskRunData, *g.AppConfig) (taskHandler, error)
-type newTaskDataFunc func() interface{}
+type newTaskResultDataFunc func() interface{}
 
 var supportedTasks = make(map[TaskID]*supportedTaskConfig)
 
@@ -100,7 +100,7 @@ type supportedTaskCommandConfig struct {
 
 	allowMultipleIntances bool
 
-	newTaskDataFn newTaskDataFunc
+	newTaskResultDataFn newTaskResultDataFunc
 }
 
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
@@ -202,41 +202,41 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		return
 	}
 
-	// TaskData를 초기화하고 읽어들인다.
-	var taskData interface{}
+	// TaskResultData를 초기화하고 읽어들인다.
+	var taskResultData interface{}
 	if taskConfig, exists := supportedTasks[t.ID()]; exists == true {
 		for _, commandConfig := range taskConfig.commandConfigs {
 			if commandConfig.taskCommandID == t.CommandID() {
-				taskData = commandConfig.newTaskDataFn()
+				taskResultData = commandConfig.newTaskResultDataFn()
 				break
 			}
 		}
 	}
-	if taskData == nil {
-		m := fmt.Sprintf("%s\n\n☑ 작업데이터 생성이 실패하였습니다.", errString)
+	if taskResultData == nil {
+		m := fmt.Sprintf("%s\n\n☑ 작업결과데이터 생성이 실패하였습니다.", errString)
 
 		log.Error(m)
 		t.notifyError(taskNotificationSender, m, taskCtx)
 
 		return
 	}
-	err := t.readTaskDataFromFile(taskData)
+	err := t.readTaskResultDataFromFile(taskResultData)
 	if err != nil {
-		m := fmt.Sprintf("작업데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업데이터를 이용하여 작업을 계속 진행합니다.", err)
+		m := fmt.Sprintf("이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다.", err)
 
 		log.Warn(m)
 		t.notify(taskNotificationSender, m, taskCtx)
 	}
 
-	message, changedTaskData, err := t.runFn(taskData)
+	message, changedTaskResultData, err := t.runFn(taskResultData)
 	if err == nil {
 		if len(message) > 0 {
 			t.notify(taskNotificationSender, message, taskCtx)
 		}
 
-		if changedTaskData != nil {
-			if err := t.writeTaskDataToFile(changedTaskData); err != nil {
-				m := fmt.Sprintf("작업이 끝난 작업데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
+		if changedTaskResultData != nil {
+			if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
+				m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
 				log.Warn(m)
 				t.notifyError(taskNotificationSender, m, taskCtx)
@@ -265,7 +265,7 @@ func (t *task) dataFileName() string {
 	return strings.ReplaceAll(filename, "_", "-")
 }
 
-func (t *task) readTaskDataFromFile(v interface{}) error {
+func (t *task) readTaskResultDataFromFile(v interface{}) error {
 	data, err := ioutil.ReadFile(t.dataFileName())
 	if err != nil {
 		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
@@ -279,7 +279,7 @@ func (t *task) readTaskDataFromFile(v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func (t *task) writeTaskDataToFile(v interface{}) error {
+func (t *task) writeTaskResultDataToFile(v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		return err

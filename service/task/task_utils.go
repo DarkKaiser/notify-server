@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
@@ -23,4 +24,15 @@ func httpWebPageDocument(url string) (*goquery.Document, error) {
 	}
 
 	return document, nil
+}
+
+func convertMapTypeToStructType(from map[string]interface{}, to interface{}) error {
+	data, err := json.Marshal(from)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, to); err != nil {
+		return err
+	}
+	return nil
 }

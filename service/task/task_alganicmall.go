@@ -25,14 +25,14 @@ const (
 	alganicmallBaseUrl = "https://www.alganicmall.com/"
 )
 
-type alganicmallWatchNewEventsData struct {
+type alganicmallWatchNewEventsResultData struct {
 	Events []struct {
 		Name string `json:"name"`
 		Url  string `json:"url"`
 	} `json:"events"`
 }
 
-type alganicmallWatchAtoCreamData struct {
+type alganicmallWatchAtoCreamResultData struct {
 	Products []struct {
 		Name  string `json:"name"`
 		Price int    `json:"price"`
@@ -47,13 +47,13 @@ func init() {
 
 			allowMultipleIntances: true,
 
-			newTaskDataFn: func() interface{} { return &alganicmallWatchNewEventsData{} },
+			newTaskResultDataFn: func() interface{} { return &alganicmallWatchNewEventsResultData{} },
 		}, {
 			taskCommandID: TcidAlganicMallWatchAtoCream,
 
 			allowMultipleIntances: true,
 
-			newTaskDataFn: func() interface{} { return &alganicmallWatchAtoCreamData{} },
+			newTaskResultDataFn: func() interface{} { return &alganicmallWatchAtoCreamResultData{} },
 		}},
 
 		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
@@ -75,13 +75,13 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskData interface{}) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					return task.runWatchNewEvents(taskData)
+					return task.runWatchNewEvents(taskResultData)
 
 				case TcidAlganicMallWatchAtoCream:
-					return task.runWatchAtoCream(taskData)
+					return task.runWatchAtoCream(taskResultData)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -96,10 +96,10 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message string, changedTaskData interface{}, err error) {
-	originTaskData, ok := taskData.(*alganicmallWatchNewEventsData)
+func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := taskResultData.(*alganicmallWatchNewEventsResultData)
 	if ok == false {
-		log.Panic("TaskData의 타입 변환이 실패하였습니다.")
+		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
 	// 이벤트 페이지를 읽어온다.
@@ -110,7 +110,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 
 	// 읽어온 이벤트 페이지에서 이벤트 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
-	actualityTaskData := &alganicmallWatchNewEventsData{}
+	actualityTaskResultData := &alganicmallWatchNewEventsResultData{}
 	document.Find("#bl_table #bl_list td.bl_subject > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		name, err0 := euckrDecoder.String(s.Text())
 		if err0 != nil {
@@ -124,7 +124,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 			return false
 		}
 
-		actualityTaskData.Events = append(actualityTaskData.Events, struct {
+		actualityTaskResultData.Events = append(actualityTaskResultData.Events, struct {
 			Name string `json:"name"`
 			Url  string `json:"url"`
 		}{
@@ -141,9 +141,9 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 	// 신규 이벤트 정보를 확인한다.
 	m := ""
 	existsNewEvents := false
-	for _, actualityEvent := range actualityTaskData.Events {
+	for _, actualityEvent := range actualityTaskResultData.Events {
 		isNewEvent := true
-		for _, originEvent := range originTaskData.Events {
+		for _, originEvent := range originTaskResultData.Events {
 			if actualityEvent.Name == originEvent.Name && actualityEvent.Url == originEvent.Url {
 				isNewEvent = false
 				break
@@ -163,14 +163,14 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 
 	if existsNewEvents == true {
 		message = fmt.Sprintf("신규 이벤트가 발생하였습니다.\n\n%s", m)
-		changedTaskData = actualityTaskData
+		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
-			if len(actualityTaskData.Events) == 0 {
+			if len(actualityTaskResultData.Events) == 0 {
 				message = "엘가닉몰에 등록된 이벤트가 하나도 없습니다."
 			} else {
 				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
-				for _, actualityEvent := range actualityTaskData.Events {
+				for _, actualityEvent := range actualityTaskResultData.Events {
 					message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEvent.Name, actualityEvent.Url)
 				}
 			}
@@ -181,13 +181,13 @@ func (t *alganicMallTask) runWatchNewEvents(taskData interface{}) (message strin
 		return "", nil, nil
 	}
 
-	return message, changedTaskData, nil
+	return message, changedTaskResultData, nil
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string, changedTaskData interface{}, err error) {
-	originTaskData, ok := taskData.(*alganicmallWatchAtoCreamData)
+func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := taskResultData.(*alganicmallWatchAtoCreamResultData)
 	if ok == false {
-		log.Panic("TaskData의 타입 변환이 실패하였습니다.")
+		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
 	// 제품 페이지를 읽어온다.
@@ -200,7 +200,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 
 	// 읽어온 제품 페이지에서 제품 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
-	actualityTaskData := &alganicmallWatchAtoCreamData{}
+	actualityTaskResultData := &alganicmallWatchAtoCreamResultData{}
 	document.Find("table.product_table").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		productSelection := s.Find("td")
 
@@ -248,7 +248,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 			return false
 		}
 
-		actualityTaskData.Products = append(actualityTaskData.Products, struct {
+		actualityTaskResultData.Products = append(actualityTaskResultData.Products, struct {
 			Name  string `json:"name"`
 			Price int    `json:"price"`
 			Url   string `json:"url"`
@@ -267,9 +267,9 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 	// 변경된 제품 정보를 확인한다.
 	m := ""
 	modifiedProducts := false
-	for _, actualityProduct := range actualityTaskData.Products {
+	for _, actualityProduct := range actualityTaskResultData.Products {
 		isNewProduct := true
-		for _, originProduct := range originTaskData.Products {
+		for _, originProduct := range originTaskResultData.Products {
 			if actualityProduct.Name == originProduct.Name && actualityProduct.Url == originProduct.Url {
 				isNewProduct = false
 
@@ -301,14 +301,14 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 
 	if modifiedProducts == true {
 		message = fmt.Sprintf("아토크림에 대한 정보가 변경되었습니다.\n\n%s", m)
-		changedTaskData = actualityTaskData
+		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
-			if len(actualityTaskData.Products) == 0 {
+			if len(actualityTaskResultData.Products) == 0 {
 				message = "엘가닉몰에 아토크림에 대한 정보가 하나도 없습니다."
 			} else {
 				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:"
-				for _, actualityProduct := range actualityTaskData.Products {
+				for _, actualityProduct := range actualityTaskResultData.Products {
 					message = fmt.Sprintf("%s\n\n☞ %s %s원\n%s", message, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
 				}
 			}
@@ -319,5 +319,5 @@ func (t *alganicMallTask) runWatchAtoCream(taskData interface{}) (message string
 		return "", nil, nil
 	}
 
-	return message, changedTaskData, nil
+	return message, changedTaskResultData, nil
 }
