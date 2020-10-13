@@ -2,6 +2,7 @@ package task
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
@@ -27,6 +28,17 @@ type lottoTaskData struct {
 	AppPath string `json:"app_path"`
 }
 
+func (d *lottoTaskData) fillFromMap(m map[string]interface{}) error {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, d); err != nil {
+		return err
+	}
+	return nil
+}
+
 type lottoPredictionResultData struct{}
 
 func init() {
@@ -48,7 +60,7 @@ func init() {
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					taskData := lottoTaskData{}
-					if err := convertMapTypeToStructType(t.Data, &taskData); err != nil {
+					if err := taskData.fillFromMap(t.Data); err != nil {
 						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
 					}
 
