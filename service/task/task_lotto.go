@@ -86,10 +86,10 @@ func init() {
 				appPath: appPath,
 			}
 
-			task.runFn = func(taskResultData interface{}) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidLottoPrediction:
-					return task.runPrediction(taskResultData)
+					return task.runPrediction()
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -106,8 +106,7 @@ type lottoTask struct {
 	appPath string
 }
 
-//noinspection GoUnusedParameter
-func (t *lottoTask) runPrediction(taskResultData interface{}) (message string, changedTaskResultData interface{}, err error) {
+func (t *lottoTask) runPrediction() (message string, changedTaskResultData interface{}, err error) {
 	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 
 	var cmdOutBuffer bytes.Buffer

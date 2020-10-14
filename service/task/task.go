@@ -121,7 +121,7 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*s
 //
 // task
 //
-type runFunc func(interface{}) (string, interface{}, error)
+type runFunc func(interface{}, bool) (string, interface{}, error)
 
 type task struct {
 	id         TaskID
@@ -228,7 +228,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		t.notify(taskNotificationSender, m, taskCtx)
 	}
 
-	message, changedTaskResultData, err := t.runFn(taskResultData)
+	message, changedTaskResultData, err := t.runFn(taskResultData, taskNotificationSender.IsSupportedHTMLMessage(t.notifierID))
 	if err == nil {
 		if len(message) > 0 {
 			t.notify(taskNotificationSender, message, taskCtx)
@@ -366,6 +366,8 @@ type TaskRunner interface {
 type TaskNotificationSender interface {
 	NotifyToDefault(message string) bool
 	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
+
+	IsSupportedHTMLMessage(notifierID string) bool
 }
 
 //

@@ -17,13 +17,19 @@ type NotifierID string
 type notifier struct {
 	id NotifierID
 
+	isSupportedHTMLMessage bool
+
 	notificationSendC chan *notificationSendData
 }
 
 type notifierHandler interface {
 	ID() NotifierID
+
 	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
+
 	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
+
+	IsSupportedHTMLMessage() bool
 }
 
 func (n *notifier) ID() NotifierID {
@@ -45,6 +51,10 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 	}
 
 	return true
+}
+
+func (n *notifier) IsSupportedHTMLMessage() bool {
+	return n.isSupportedHTMLMessage
 }
 
 //
@@ -201,6 +211,20 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 	log.Error(m)
 
 	s.defaultNotifierHandler.Notify(m, task.NewContext().WithError())
+
+	return false
+}
+
+func (s *NotificationService) IsSupportedHTMLMessage(notifierID string) bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+
+	id := NotifierID(notifierID)
+	for _, h := range s.notifierHandlers {
+		if h.ID() == id {
+			return h.IsSupportedHTMLMessage()
+		}
+	}
 
 	return false
 }

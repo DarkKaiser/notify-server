@@ -44,6 +44,8 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 		notifier: notifier{
 			id: id,
 
+			isSupportedHTMLMessage: true,
+
 			notificationSendC: make(chan *notificationSendData, 10),
 		},
 
@@ -98,8 +100,6 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 	updateC, _ := n.bot.GetUpdatesChan(config)
 
 	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.Self.UserName)
-
-	htmlTagReplacer := strings.NewReplacer("<", "&lt;", ">", "&gt;")
 
 LOOP:
 	for {
@@ -168,7 +168,7 @@ LOOP:
 			}
 
 		case notificationSendData := <-n.notificationSendC:
-			m := htmlTagReplacer.Replace(notificationSendData.message)
+			m := notificationSendData.message
 
 			if notificationSendData.taskCtx == nil {
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
