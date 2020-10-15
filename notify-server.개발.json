@@ -72,7 +72,7 @@
 				{
 					"id": "WatchPrice_KANU",
 					"title": "카누 다크로스트 1.6g 가격 확인",
-					"description": "네이버쇼핑에서 카누 다크로스트 1.6g의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"description": "네이버쇼핑에서 카누 다크로스트 1.6g의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
 						"time_spec": "* * * * *"
@@ -93,7 +93,7 @@
 				{
 					"id": "WatchPrice_PHYTOMES",
 					"title": "피토메스 2종세트 가격 확인",
-					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
 						"time_spec": "* * * * *"
@@ -114,7 +114,7 @@
 				{
 					"id": "WatchPrice_TRUELAC_KIDSUP",
 					"title": "트루락 키즈업 90포(3개월) 가격 확인",
-					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
 						"time_spec": "* * * * *"
