@@ -360,7 +360,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 			if len(actualityTaskResultData.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescMessage)
 			} else {
-				message = fmt.Sprintf("조회 조건에 해당되는 상품들의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:", filtersDescMessage)
+				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:", filtersDescMessage)
 
 				if isSupportedHTMLMessage == true {
 					message += "\n"
