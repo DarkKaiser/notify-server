@@ -20,6 +20,10 @@ type TaskCommandID string
 type TaskInstanceID string
 type TaskRunBy int
 
+// TaskCommandID의 마지막에 들어가는 특별한 문자
+// 이 문자는 환경설정 파일(JSON)에서는 사용되지 않으며 오직 소스코드 상에서만 사용한다.
+const taskCommandIDAnyString string = "*"
+
 const (
 	TaskCtxKeyTitle         = "Title"
 	TaskCtxKeyErrorOccurred = "ErrorOccurred"
@@ -103,11 +107,20 @@ type supportedTaskCommandConfig struct {
 	newTaskResultDataFn newTaskResultDataFunc
 }
 
+func (c *supportedTaskCommandConfig) equalsTaskCommandID(taskCommandID TaskCommandID) bool {
+	if strings.HasSuffix(string(c.taskCommandID), taskCommandIDAnyString) == true {
+		compareLength := len(c.taskCommandID) - len(taskCommandIDAnyString)
+		return len(c.taskCommandID) <= len(taskCommandID) && c.taskCommandID[:compareLength] == taskCommandID[:compareLength]
+	}
+
+	return c.taskCommandID == taskCommandID
+}
+
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*supportedTaskConfig, *supportedTaskCommandConfig, error) {
 	taskConfig, exists := supportedTasks[taskID]
 	if exists == true {
 		for _, commandConfig := range taskConfig.commandConfigs {
-			if commandConfig.taskCommandID == taskCommandID {
+			if commandConfig.equalsTaskCommandID(taskCommandID) == true {
 				return taskConfig, commandConfig, nil
 			}
 		}
@@ -206,7 +219,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	var taskResultData interface{}
 	if taskConfig, exists := supportedTasks[t.ID()]; exists == true {
 		for _, commandConfig := range taskConfig.commandConfigs {
-			if commandConfig.taskCommandID == t.CommandID() {
+			if commandConfig.equalsTaskCommandID(t.CommandID()) == true {
 				taskResultData = commandConfig.newTaskResultDataFn()
 				break
 			}

@@ -15,17 +15,17 @@ import (
 )
 
 const (
+	naverShoppingWatchPriceTaskCommandIDPrefix string = "WatchPrice_"
+
 	// TaskID
 	TidNaverShopping TaskID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
 	// TaskCommandID
-	TcidNaverShoppingWatchPriceKanu          TaskCommandID = "WatchPrice_KANU"           // 네이버쇼핑 가격 확인(카누)
-	TcidNaverShoppingWatchPricePhytomes      TaskCommandID = "WatchPrice_PHYTOMES"       // 네이버쇼핑 가격 확인(피토메스)
-	TcidNaverShoppingWatchPriceTrueLacKidsUp TaskCommandID = "WatchPrice_TRUELAC_KIDSUP" // 네이버쇼핑 가격 확인(트루락 키즈업)
-)
+	TcidNaverShoppingWatchPriceAny = TaskCommandID(naverShoppingWatchPriceTaskCommandIDPrefix + taskCommandIDAnyString) // 네이버쇼핑 가격 확인
 
-// 네이버쇼핑 검색 URL
-const naverShoppingSearchUrl = "https://openapi.naver.com/v1/search/shop.json"
+	// 네이버쇼핑 검색 URL
+	naverShoppingSearchUrl = "https://openapi.naver.com/v1/search/shop.json"
+)
 
 type naverShoppingSearchResultData struct {
 	Total   int `json:"total"`
@@ -110,19 +110,7 @@ type naverShoppingWatchPriceResultData struct {
 func init() {
 	supportedTasks[TidNaverShopping] = &supportedTaskConfig{
 		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidNaverShoppingWatchPriceKanu,
-
-			allowMultipleIntances: true,
-
-			newTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
-		}, {
-			taskCommandID: TcidNaverShoppingWatchPricePhytomes,
-
-			allowMultipleIntances: true,
-
-			newTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
-		}, {
-			taskCommandID: TcidNaverShoppingWatchPriceTrueLacKidsUp,
+			taskCommandID: TcidNaverShoppingWatchPriceAny,
 
 			allowMultipleIntances: true,
 
@@ -167,8 +155,8 @@ func init() {
 			}
 
 			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
-				switch task.CommandID() {
-				case TcidNaverShoppingWatchPriceKanu, TcidNaverShoppingWatchPricePhytomes, TcidNaverShoppingWatchPriceTrueLacKidsUp:
+				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
+				if strings.HasPrefix(string(task.CommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
 					for _, t := range task.config.Tasks {
 						if task.ID() == TaskID(t.ID) {
 							for _, c := range t.Commands {
