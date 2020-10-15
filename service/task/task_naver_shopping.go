@@ -21,7 +21,7 @@ const (
 	// TaskCommandID
 	TcidNaverShoppingWatchPriceKanu          TaskCommandID = "WatchPrice_KANU"           // 네이버쇼핑 가격 확인(카누)
 	TcidNaverShoppingWatchPricePhytomes      TaskCommandID = "WatchPrice_PHYTOMES"       // 네이버쇼핑 가격 확인(피토메스)
-	TcidNaverShoppingWatchPriceTrueLacKidsUp TaskCommandID = "WatchPrice_TrueLAC_KidsUp" // 네이버쇼핑 가격 확인(트루락 키즈업)
+	TcidNaverShoppingWatchPriceTrueLacKidsUp TaskCommandID = "WatchPrice_TRUELAC_KIDSUP" // 네이버쇼핑 가격 확인(트루락 키즈업)
 )
 
 // 네이버쇼핑 검색 URL
@@ -246,14 +246,28 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &naverShoppingWatchPriceResultData{}
-	includedKeywordList := t.splitKeywords(taskCommandData.Filters.IncludedKeywords)
-	excludedKeywordList := t.splitKeywords(taskCommandData.Filters.ExcludedKeywords)
+	includedKeywordList := t.splitKeywords(taskCommandData.Filters.IncludedKeywords, ",")
+	excludedKeywordList := t.splitKeywords(taskCommandData.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
 		for _, k := range includedKeywordList {
-			if strings.Contains(item.Title, k) == false {
-				goto NEXTITEM
+			includedOneOfManyKeywordList := t.splitKeywords(k, "|")
+			if len(includedOneOfManyKeywordList) == 1 {
+				if strings.Contains(item.Title, k) == false {
+					goto NEXTITEM
+				}
+			} else {
+				var contains = false
+				for _, keyword := range includedOneOfManyKeywordList {
+					if strings.Contains(item.Title, keyword) == true {
+						contains = true
+						break
+					}
+				}
+				if contains == false {
+					goto NEXTITEM
+				}
 			}
 		}
 
@@ -367,8 +381,8 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	return message, changedTaskResultData, nil
 }
 
-func (t *naverShoppingTask) splitKeywords(keywords string) []string {
-	keywordList := strings.Split(keywords, ",")
+func (t *naverShoppingTask) splitKeywords(keywords string, sep string) []string {
+	keywordList := strings.Split(keywords, sep)
 
 	var k []string
 	for _, keyword := range keywordList {
