@@ -350,15 +350,17 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		}
 	}
 
+	filtersDescMessage := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", taskCommandData.Query, taskCommandData.Filters.IncludedKeywords, taskCommandData.Filters.ExcludedKeywords, utils.FormatCommas(taskCommandData.Filters.PriceLessThan))
+
 	if modifiedProducts == true {
-		message = fmt.Sprintf("상품에 대한 정보가 변경되었습니다.\n\n%s", m)
+		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescMessage, m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
-				message = "상품에 대한 정보가 하나도 없습니다."
+				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescMessage)
 			} else {
-				message = "상품에 대한 변경된 정보가 없습니다.\n\n현재 상품 정보는 아래와 같습니다:"
+				message = fmt.Sprintf("조회 조건에 해당되는 상품들의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:", filtersDescMessage)
 
 				if isSupportedHTMLMessage == true {
 					message += "\n"

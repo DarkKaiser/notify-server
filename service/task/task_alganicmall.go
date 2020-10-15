@@ -175,7 +175,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Events) == 0 {
-				message = "엘가닉몰에 등록된 이벤트가 하나도 없습니다."
+				message = "등록된 이벤트가 존재하지 않습니다."
 			} else {
 				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
 
@@ -337,7 +337,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
-				message = "엘가닉몰에 아토크림에 대한 정보가 하나도 없습니다."
+				message = "아토크림에 대한 정보가 존재하지 않습니다."
 			} else {
 				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:"
 
