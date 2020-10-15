@@ -16,7 +16,7 @@ import (
 
 const (
 	// TaskID
-	TidNaverShopping TaskID = "NAVER_SHOPPING" // 네이버쇼핑(https://shopping.naver.com/)
+	TidNaverShopping TaskID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
 	// TaskCommandID
 	TcidNaverShoppingWatchPriceKanu          TaskCommandID = "WatchPrice_KANU"           // 네이버쇼핑 가격 확인(카누)
