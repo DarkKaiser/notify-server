@@ -154,17 +154,17 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 			existsNewEvents = true
 
 			if isSupportedHTMLMessage == true {
-				if len(m) > 0 {
-					m = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityEvent.Url, actualityEvent.Name)
-				} else {
-					m = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> 🆕", actualityEvent.Url, actualityEvent.Name)
+				if m != "" {
+					m += "\n"
 				}
+
+				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityEvent.Url, actualityEvent.Name)
 			} else {
-				if len(m) > 0 {
-					m = fmt.Sprintf("%s\n\n☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
-				} else {
-					m = fmt.Sprintf("☞ %s 🆕\n%s", actualityEvent.Name, actualityEvent.Url)
+				if m != "" {
+					m += "\n\n"
 				}
+
+				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
-					message = message + "\n"
+					message += "\n"
 					for _, actualityEvent := range actualityTaskResultData.Events {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityEvent.Url, actualityEvent.Name)
 					}
@@ -294,17 +294,17 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 					modifiedProducts = true
 
 					if isSupportedHTMLMessage == true {
-						if len(m) > 0 {
-							m = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price))
-						} else {
-							m = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price))
+						if m != "" {
+							m += "\n"
 						}
+
+						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price))
 					} else {
-						if len(m) > 0 {
-							m = fmt.Sprintf("%s\n\n☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
-						} else {
-							m = fmt.Sprintf("☞ %s %s원 ⇒ %s원 🔁\n%s", actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
+						if m != "" {
+							m += "\n\n"
 						}
+
+						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
 					}
 				}
 
@@ -316,17 +316,17 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 			modifiedProducts = true
 
 			if isSupportedHTMLMessage == true {
-				if len(m) > 0 {
-					m = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
-				} else {
-					m = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
+				if m != "" {
+					m += "\n"
 				}
+
+				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
 			} else {
-				if len(m) > 0 {
-					m = fmt.Sprintf("%s\n\n☞ %s %s원 🆕\n%s", m, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
-				} else {
-					m = fmt.Sprintf("☞ %s %s원 🆕\n%s", actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
+				if m != "" {
+					m += "\n\n"
 				}
+
+				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
 			}
 		}
 	}
@@ -342,7 +342,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
-					message = message + "\n"
+					message += "\n"
 					for _, actualityProduct := range actualityTaskResultData.Products {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원", message, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
 					}
