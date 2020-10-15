@@ -64,6 +64,79 @@
 			"data": {
 				"app_path": "/usr/local/lotto-prediction"
 			}
+		},
+		{
+			"id": "NAVER_SHOPPING",
+			"title": "네이버쇼핑",
+			"commands": [
+				{
+					"id": "WatchPrice_KANU",
+					"title": "카누 다크로스트 1.6g 가격 확인",
+					"description": "네이버쇼핑에서 카누 다크로스트 1.6g의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "0 * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot",
+					"data": {
+						"query": "카누 다크로스트",
+						"filters": {
+							"included_keywords": "다크, 로스트",
+							"excluded_keywords": "미니, 0.9",
+							"price_less_than": 50000
+						}
+					}
+				},
+				{
+					"id": "WatchPrice_PHYTOMES",
+					"title": "피토메스 2종세트 가격 확인",
+					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "5 * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot",
+					"data": {
+						"query": "피토메스",
+						"filters": {
+							"included_keywords": "2종",
+							"excluded_keywords": "3종",
+							"price_less_than": 36400
+						}
+					}
+				},
+				{
+					"id": "WatchPrice_TRUELAC_KIDSUP",
+					"title": "트루락 키즈업 90포(3개월) 가격 확인",
+					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 제품을 알립니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "10 * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot",
+					"data": {
+						"query": "트루락 키즈업",
+						"filters": {
+							"included_keywords": "트루락, 키즈업, 90포|3개월",
+							"excluded_keywords": "30포, 60포, 1박스, 2박스",
+							"price_less_than": 154500
+						}
+					}
+				}
+			],
+			"data": {
+				"client_id": "w3WkOLxgngQhNC7VD8XX",
+				"client_secret": "e53iKU0iij"
+			}
 		}
 	],
 	"notify_api": {
