@@ -85,7 +85,7 @@
 						"query": "카누 다크로스트",
 						"filters": {
 							"included_keywords": "다크, 로스트",
-							"excluded_keywords": "미니, 0.9",
+							"excluded_keywords": "미니, 0.9, 스위트",
 							"price_less_than": 50000
 						}
 					}
