@@ -160,6 +160,12 @@
 				"title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
+			},
+			{
+				"id": "rss-server",
+				"title": "알림 > RSS 서버",
+				"description": "",
+				"default_notifier_id": "darkkaiser_notify_bot"
 			}
 		]
 	}
