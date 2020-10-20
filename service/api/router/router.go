@@ -2,9 +2,9 @@ package router
 
 import (
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/services/api/handler"
-	_middleware_ "github.com/darkkaiser/notify-server/services/api/middleware"
-	"github.com/darkkaiser/notify-server/services/notification"
+	"github.com/darkkaiser/notify-server/service/api/handler"
+	_middleware_ "github.com/darkkaiser/notify-server/service/api/middleware"
+	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	log "github.com/sirupsen/logrus"
