@@ -3,8 +3,8 @@ package handler
 import (
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service/api/model"
-	"github.com/darkkaiser/notify-server/service/notification"
+	"github.com/darkkaiser/notify-server/services/api/model"
+	"github.com/darkkaiser/notify-server/services/notification"
 	"github.com/labstack/echo"
 	"net/http"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/services/task"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
-	"github.com/darkkaiser/notify-server/service"
-	"github.com/darkkaiser/notify-server/service/api"
-	"github.com/darkkaiser/notify-server/service/notification"
-	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/services/api"
+	"github.com/darkkaiser/notify-server/services/notification"
+	"github.com/darkkaiser/notify-server/services/task"
+	"github.com/darkkaiser/rss-server/services"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
@@ -54,7 +54,7 @@ func main() {
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	for _, s := range []service.Service{taskService, notificationService, notifyAPIService} {
+	for _, s := range []services.Service{taskService, notificationService, notifyAPIService} {
 		serviceStopWaiter.Add(1)
 		s.Run(serviceStopCtx, serviceStopWaiter)
 	}
