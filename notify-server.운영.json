@@ -162,8 +162,8 @@
 				"default_notifier_id": "darkkaiser_notify_bot"
 			},
 			{
-				"id": "rss-server",
-				"title": "알림 > RSS 서버",
+				"id": "rss-feed-server",
+				"title": "알림 > RSS Feed 서버",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
 			}
