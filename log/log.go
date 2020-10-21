@@ -78,7 +78,7 @@ func cleanOutOfLogFiles(appName string, checkDaysAgo float64) {
 			if err == nil {
 				log.Infof("오래된 로그파일 삭제 성공(%s)", filePath)
 			} else {
-				log.Infof("오래된 로그파일 삭제 실패(%s), %s", filePath, err)
+				log.Errorf("오래된 로그파일 삭제 실패(%s), %s", filePath, err)
 			}
 		}
 	}
