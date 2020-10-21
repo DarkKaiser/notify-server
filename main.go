@@ -37,9 +37,9 @@ func main() {
 	config := g.InitAppConfig()
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.InitLog(config.Debug, g.AppName, 30.)
+	_log_.Init(config.Debug, g.AppName, 30.)
 
-	// 아스키아트(https://ko.rakko.tools/tools/68/, 폰트:standard)
+	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
 	fmt.Printf(banner, g.AppVersion)
 
 	// 서비스를 생성하고 초기화한다.

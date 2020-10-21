@@ -34,7 +34,7 @@ func init() {
 	})
 }
 
-func InitLog(debug bool, appName string, checkDaysAgo float64) {
+func Init(debug bool, appName string, checkDaysAgo float64) {
 	if debug == true {
 		return
 	}
