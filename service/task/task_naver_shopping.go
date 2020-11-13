@@ -46,22 +46,11 @@ type naverShoppingTaskData struct {
 	ClientSecret string `json:"client_secret"`
 }
 
-func (d *naverShoppingTaskData) fillFromMap(m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (d *naverShoppingTaskData) validate() error {
-	if len(d.ClientID) == 0 {
+	if d.ClientID == "" {
 		return errors.New("client_id가 입력되지 않았습니다")
 	}
-	if len(d.ClientSecret) == 0 {
+	if d.ClientSecret == "" {
 		return errors.New("client_secret이 입력되지 않았습니다")
 	}
 	return nil
@@ -76,19 +65,8 @@ type naverShoppingWatchPriceTaskCommandData struct {
 	} `json:"filters"`
 }
 
-func (d *naverShoppingWatchPriceTaskCommandData) fillFromMap(m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (d *naverShoppingWatchPriceTaskCommandData) validate() error {
-	if len(d.Query) == 0 {
+	if d.Query == "" {
 		return errors.New("query가 입력되지 않았습니다")
 	}
 	if d.Filters.PriceLessThan <= 0 {
@@ -125,7 +103,7 @@ func init() {
 			taskData := &naverShoppingTaskData{}
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
-					if err := taskData.fillFromMap(t.Data); err != nil {
+					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
 					}
 					break
@@ -162,7 +140,7 @@ func init() {
 							for _, c := range t.Commands {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
-									if err := taskCommandData.fillFromMap(c.Data); err != nil {
+									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 									if err := taskCommandData.validate(); err != nil {
