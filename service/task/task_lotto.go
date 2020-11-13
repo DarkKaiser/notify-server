@@ -135,11 +135,6 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	if err != nil {
 		tickerStopC <- true
 
-		// 작업 진행중에 사용자가 작업을 취소한 경우...
-		if t.IsCanceled() == true {
-			return "", nil, nil
-		}
-
 		return "", nil, err
 	} else {
 		tickerStopC <- true
@@ -179,10 +174,6 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
-	}
 
 	return message, nil, nil
 }

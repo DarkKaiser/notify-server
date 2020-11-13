@@ -172,6 +172,7 @@ type naverShoppingTask struct {
 	clientSecret string
 }
 
+//noinspection GoUnhandledErrorResult
 func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
@@ -340,10 +341,6 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 				}
 			}
 		}
-	}
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
 	}
 
 	return message, changedTaskResultData, nil

@@ -193,10 +193,6 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 		}
 	}
 
-	if t.IsCanceled() == true {
-		return "", nil, nil
-	}
-
 	return message, changedTaskResultData, nil
 }
 
@@ -353,10 +349,6 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 				}
 			}
 		}
-	}
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
 	}
 
 	return message, changedTaskResultData, nil
