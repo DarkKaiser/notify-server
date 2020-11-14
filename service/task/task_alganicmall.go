@@ -157,13 +157,11 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 				if m != "" {
 					m += "\n"
 				}
-
 				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityEvent.Url, actualityEvent.Name)
 			} else {
 				if m != "" {
 					m += "\n\n"
 				}
-
 				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
 			}
 		}
@@ -191,10 +189,6 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 				}
 			}
 		}
-	}
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
 	}
 
 	return message, changedTaskResultData, nil
@@ -297,13 +291,11 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 						if m != "" {
 							m += "\n"
 						}
-
 						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price))
 					} else {
 						if m != "" {
 							m += "\n\n"
 						}
-
 						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
 					}
 				}
@@ -319,13 +311,11 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 				if m != "" {
 					m += "\n"
 				}
-
 				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
 			} else {
 				if m != "" {
 					m += "\n\n"
 				}
-
 				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
 			}
 		}
@@ -353,10 +343,6 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 				}
 			}
 		}
-	}
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
 	}
 
 	return message, changedTaskResultData, nil

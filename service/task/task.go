@@ -241,27 +241,28 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		t.notify(taskNotificationSender, m, taskCtx)
 	}
 
-	message, changedTaskResultData, err := t.runFn(taskResultData, taskNotificationSender.IsSupportedHTMLMessage(t.notifierID))
-	if err == nil {
-		if len(message) > 0 {
-			t.notify(taskNotificationSender, message, taskCtx)
-		}
-
-		if changedTaskResultData != nil {
-			if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
-				m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
-
-				log.Warn(m)
-				t.notifyError(taskNotificationSender, m, taskCtx)
+	if message, changedTaskResultData, err := t.runFn(taskResultData, taskNotificationSender.IsSupportedHTMLMessage(t.notifierID)); t.IsCanceled() == false {
+		if err == nil {
+			if len(message) > 0 {
+				t.notify(taskNotificationSender, message, taskCtx)
 			}
+
+			if changedTaskResultData != nil {
+				if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
+					m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
+
+					log.Warn(m)
+					t.notifyError(taskNotificationSender, m, taskCtx)
+				}
+			}
+		} else {
+			m := fmt.Sprintf("%s\n\n☑ %s", errString, err)
+
+			log.Error(m)
+			t.notifyError(taskNotificationSender, m, taskCtx)
+
+			return
 		}
-	} else {
-		m := fmt.Sprintf("%s\n\n☑ %s", errString, err)
-
-		log.Error(m)
-		t.notifyError(taskNotificationSender, m, taskCtx)
-
-		return
 	}
 }
 

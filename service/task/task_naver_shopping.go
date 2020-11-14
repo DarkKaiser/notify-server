@@ -46,22 +46,11 @@ type naverShoppingTaskData struct {
 	ClientSecret string `json:"client_secret"`
 }
 
-func (d *naverShoppingTaskData) fillFromMap(m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (d *naverShoppingTaskData) validate() error {
-	if len(d.ClientID) == 0 {
+	if d.ClientID == "" {
 		return errors.New("client_id가 입력되지 않았습니다")
 	}
-	if len(d.ClientSecret) == 0 {
+	if d.ClientSecret == "" {
 		return errors.New("client_secret이 입력되지 않았습니다")
 	}
 	return nil
@@ -76,19 +65,8 @@ type naverShoppingWatchPriceTaskCommandData struct {
 	} `json:"filters"`
 }
 
-func (d *naverShoppingWatchPriceTaskCommandData) fillFromMap(m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (d *naverShoppingWatchPriceTaskCommandData) validate() error {
-	if len(d.Query) == 0 {
+	if d.Query == "" {
 		return errors.New("query가 입력되지 않았습니다")
 	}
 	if d.Filters.PriceLessThan <= 0 {
@@ -125,7 +103,7 @@ func init() {
 			taskData := &naverShoppingTaskData{}
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
-					if err := taskData.fillFromMap(t.Data); err != nil {
+					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
 					}
 					break
@@ -162,7 +140,7 @@ func init() {
 							for _, c := range t.Commands {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
-									if err := taskCommandData.fillFromMap(c.Data); err != nil {
+									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 									if err := taskCommandData.validate(); err != nil {
@@ -194,6 +172,7 @@ type naverShoppingTask struct {
 	clientSecret string
 }
 
+//noinspection GoUnhandledErrorResult
 func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
@@ -234,35 +213,13 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &naverShoppingWatchPriceResultData{}
-	includedKeywordList := t.splitKeywords(taskCommandData.Filters.IncludedKeywords, ",")
-	excludedKeywordList := t.splitKeywords(taskCommandData.Filters.ExcludedKeywords, ",")
+	includedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.IncludedKeywords, ",")
+	excludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
-		for _, k := range includedKeywordList {
-			includedOneOfManyKeywordList := t.splitKeywords(k, "|")
-			if len(includedOneOfManyKeywordList) == 1 {
-				if strings.Contains(item.Title, k) == false {
-					goto NEXTITEM
-				}
-			} else {
-				var contains = false
-				for _, keyword := range includedOneOfManyKeywordList {
-					if strings.Contains(item.Title, keyword) == true {
-						contains = true
-						break
-					}
-				}
-				if contains == false {
-					goto NEXTITEM
-				}
-			}
-		}
-
-		for _, k := range excludedKeywordList {
-			if strings.Contains(item.Title, k) == true {
-				goto NEXTITEM
-			}
+		if filter(item.Title, includedKeywords, excludedKeywords) == false {
+			goto NEXTITEM
 		}
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
@@ -304,13 +261,11 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 						if m != "" {
 							m += "\n"
 						}
-
 						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice))
 					} else {
 						if m != "" {
 							m += "\n\n"
 						}
-
 						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
 					}
 				}
@@ -326,13 +281,11 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 				if m != "" {
 					m += "\n"
 				}
-
 				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice))
 			} else {
 				if m != "" {
 					m += "\n\n"
 				}
-
 				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
 			}
 		}
@@ -364,23 +317,5 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		}
 	}
 
-	if t.IsCanceled() == true {
-		return "", nil, nil
-	}
-
 	return message, changedTaskResultData, nil
-}
-
-func (t *naverShoppingTask) splitKeywords(keywords string, sep string) []string {
-	keywordList := strings.Split(keywords, sep)
-
-	var k []string
-	for _, keyword := range keywordList {
-		keyword = strings.TrimSpace(keyword)
-		if keyword != "" {
-			k = append(k, keyword)
-		}
-	}
-
-	return k
 }

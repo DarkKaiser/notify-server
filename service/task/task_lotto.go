@@ -2,7 +2,6 @@ package task
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
@@ -28,17 +27,6 @@ type lottoTaskData struct {
 	AppPath string `json:"app_path"`
 }
 
-func (d *lottoTaskData) fillFromMap(m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
-	return nil
-}
-
 type lottoPredictionResultData struct{}
 
 func init() {
@@ -59,8 +47,8 @@ func init() {
 			var appPath string
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
-					taskData := lottoTaskData{}
-					if err := taskData.fillFromMap(t.Data); err != nil {
+					taskData := &lottoTaskData{}
+					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
 					}
 
@@ -147,11 +135,6 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	if err != nil {
 		tickerStopC <- true
 
-		// 작업 진행중에 사용자가 작업을 취소한 경우...
-		if t.IsCanceled() == true {
-			return "", nil, nil
-		}
-
 		return "", nil, err
 	} else {
 		tickerStopC <- true
@@ -191,10 +174,6 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
 	message += "• " + utils.CleanString(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
-
-	if t.IsCanceled() == true {
-		return "", nil, nil
-	}
 
 	return message, nil, nil
 }
