@@ -261,13 +261,11 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 						if m != "" {
 							m += "\n"
 						}
-
 						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice))
 					} else {
 						if m != "" {
 							m += "\n\n"
 						}
-
 						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
 					}
 				}
@@ -283,13 +281,11 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 				if m != "" {
 					m += "\n"
 				}
-
 				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice))
 			} else {
 				if m != "" {
 					m += "\n\n"
 				}
-
 				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
 			}
 		}
