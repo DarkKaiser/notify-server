@@ -213,35 +213,13 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &naverShoppingWatchPriceResultData{}
-	includedKeywordList := utils.SplitExceptEmptyItems(taskCommandData.Filters.IncludedKeywords, ",")
-	excludedKeywordList := utils.SplitExceptEmptyItems(taskCommandData.Filters.ExcludedKeywords, ",")
+	includedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.IncludedKeywords, ",")
+	excludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
-		for _, k := range includedKeywordList {
-			includedOneOfManyKeywordList := utils.SplitExceptEmptyItems(k, "|")
-			if len(includedOneOfManyKeywordList) == 1 {
-				if strings.Contains(item.Title, k) == false {
-					goto NEXTITEM
-				}
-			} else {
-				var contains = false
-				for _, keyword := range includedOneOfManyKeywordList {
-					if strings.Contains(item.Title, keyword) == true {
-						contains = true
-						break
-					}
-				}
-				if contains == false {
-					goto NEXTITEM
-				}
-			}
-		}
-
-		for _, k := range excludedKeywordList {
-			if strings.Contains(item.Title, k) == true {
-				goto NEXTITEM
-			}
+		if filter(item.Title, includedKeywords, excludedKeywords) == false {
+			goto NEXTITEM
 		}
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
