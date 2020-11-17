@@ -2,7 +2,7 @@ package task
 
 import (
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/robfig/cron"
+	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 	"sync"
 )
