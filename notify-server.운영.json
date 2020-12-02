@@ -102,27 +102,6 @@
 			"title": "네이버쇼핑",
 			"commands": [
 				{
-					"id": "WatchPrice_KANU",
-					"title": "카누 다크로스트 1.6g 가격 확인",
-					"description": "네이버쇼핑에서 카누 다크로스트 1.6g의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
-					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 * * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_notify_bot",
-					"data": {
-						"query": "카누 다크로스트",
-						"filters": {
-							"included_keywords": "다크, 로스트",
-							"excluded_keywords": "미니, 0.9, 스위트",
-							"price_less_than": 50000
-						}
-					}
-				},
-				{
 					"id": "WatchPrice_PHYTOMES",
 					"title": "피토메스 2종세트 가격 확인",
 					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
