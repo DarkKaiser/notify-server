@@ -107,11 +107,14 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	if err != nil {
 		return "", nil, err
 	}
+	if document.Find("div.bbs-table-list > div.fixed-img-collist").Length() <= 0 {
+		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
+	}
 
 	// 읽어온 이벤트 페이지에서 이벤트 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
 	actualityTaskResultData := &alganicmallWatchNewEventsResultData{}
-	document.Find("#bl_table #bl_list td.bl_subject > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	document.Find("div.bbs-table-list > div.fixed-img-collist > ul > li > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		name, err0 := euckrDecoder.String(s.Text())
 		if err0 != nil {
 			err = errors.New(fmt.Sprintf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
@@ -129,7 +132,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 			Url  string `json:"url"`
 		}{
 			Name: utils.CleanString(name),
-			Url:  fmt.Sprintf("%sboard/%s", alganicmallBaseUrl, url),
+			Url:  fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})
 
 		return true
@@ -201,9 +204,12 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 	}
 
 	// 제품 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sshop/shopbrand.html?xcode=005&type=X&mcode=002", alganicmallBaseUrl))
+	document, err := httpWebPageDocument(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl))
 	if err != nil {
 		return "", nil, err
+	}
+	if document.Find("div.item-wrap > div.item-list").Length() <= 0 {
+		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
 	}
 
 	priceReplacer := strings.NewReplacer(",", "", "원", "")
@@ -211,11 +217,11 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 	// 읽어온 제품 페이지에서 제품 정보를 추출한다.
 	euckrDecoder := korean.EUCKR.NewDecoder()
 	actualityTaskResultData := &alganicmallWatchAtoCreamResultData{}
-	document.Find("table.product_table").EachWithBreak(func(i int, s *goquery.Selection) bool {
-		productSelection := s.Find("td")
+	document.Find("div.item-wrap > div.item-list > dl.item").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		productSelection := s
 
 		// 제품명
-		productNameSelection := productSelection.Find("tr > td > a > font.brandbrandname")
+		productNameSelection := productSelection.Find("dd > ul > li:first-child > span")
 		if productNameSelection.Length() != 1 {
 			err = errors.New(fmt.Sprint("제품명 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
 			return false
@@ -230,7 +236,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		}
 
 		// 제품URL
-		productLinkSelection := productSelection.Find("tr > td.Brand_prodtHeight > a")
+		productLinkSelection := productSelection.Find("dt > a")
 		if productLinkSelection.Length() != 1 {
 			err = errors.New(fmt.Sprint("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
 			return false
@@ -242,7 +248,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		}
 
 		// 제품가격
-		productPriceSelection := productSelection.Find("tr > td.brandprice_tr > span.brandprice > span.mk_price")
+		productPriceSelection := productSelection.Find("dd > ul > li > span.price")
 		if productPriceSelection.Length() != 1 {
 			err = errors.New(fmt.Sprint("제품 가격 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
 			return false
