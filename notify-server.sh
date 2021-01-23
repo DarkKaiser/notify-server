@@ -3,7 +3,7 @@
 # 서버명
 SRV_NAME=NotifyServer
 
-cd /usr/local/go-workspace/src/github.com/darkkaiser/notify-server
+cd /usr/local/notify-server
 
 case "$1" in
 stop)
@@ -52,7 +52,7 @@ stop)
     echo "$SRV_NAME가 이미 실행중입니다."
   else
     echo "$SRV_NAME가 실행되었습니다."
-    nohup ./notify-server -D$SRV_NAME 1>/dev/null 2>&1 &
+    nohup /usr/local/notify-server/notify-server -D$SRV_NAME 1>/dev/null 2>&1 &
   fi
 ;;
 esac
