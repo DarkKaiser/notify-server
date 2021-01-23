@@ -54,7 +54,7 @@ pipeline {
                 // Jenkins 작업 위치에 생성되게 되는데 이때 logs 폴더가 존재하지 않아서 서버 실행이 실패하게 된다.
                 sh '''
                     cd /usr/local/notify-server
-                    sudo /usr/local/notify-server/notify-server-restart.sh
+                    sudo -u pi /usr/local/notify-server/notify-server-restart.sh
                 '''
             }
         }
