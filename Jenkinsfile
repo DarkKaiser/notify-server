@@ -10,12 +10,7 @@ pipeline {
 
         stage('준비') {
             steps {
-                script {
-                    try {
-                        sh "rm ./notify-server"
-                    } catch (e) {
-                    }
-                }
+                cleanWs()
             }
         }
 
