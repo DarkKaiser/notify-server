@@ -246,6 +246,13 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 			err = errors.New(fmt.Sprint("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
 			return false
 		}
+		// 제품URL의 마지막 파라메터 'GfDT'가 수시로 변경되기 때문에 해당 파라메터를 제거한다.
+		pos := strings.LastIndex(url, "&")
+		if pos != -1 {
+			if url[pos+1:pos+6] == "GfDT=" {
+				url = url[:pos]
+			}
+		}
 
 		// 제품가격
 		productPriceSelection := productSelection.Find("dd > ul > li > span.price")
