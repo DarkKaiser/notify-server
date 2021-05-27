@@ -9,7 +9,7 @@ import (
 
 const (
 	AppName    string = "notify-server"
-	AppVersion string = "0.1.5"
+	AppVersion string = "1.0.0"
 
 	AppConfigFileName = AppName + ".json"
 )
