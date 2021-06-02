@@ -21,7 +21,7 @@
 					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -34,7 +34,7 @@
 					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -53,7 +53,7 @@
 					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -75,7 +75,7 @@
 					"description": "네이버에 신규 공연정보가 등록되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -107,7 +107,7 @@
 					"description": "네이버쇼핑에서 카누 다크로스트 1.6g의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -128,7 +128,7 @@
 					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -149,7 +149,7 @@
 					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "* * * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
