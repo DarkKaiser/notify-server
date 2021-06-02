@@ -45,13 +45,13 @@ func init() {
 		commandConfigs: []*supportedTaskCommandConfig{{
 			taskCommandID: TcidAlganicMallWatchNewEvents,
 
-			allowMultipleIntances: true,
+			allowMultipleInstances: true,
 
 			newTaskResultDataFn: func() interface{} { return &alganicmallWatchNewEventsResultData{} },
 		}, {
 			taskCommandID: TcidAlganicMallWatchAtoCream,
 
-			allowMultipleIntances: true,
+			allowMultipleInstances: true,
 
 			newTaskResultDataFn: func() interface{} { return &alganicmallWatchAtoCreamResultData{} },
 		}},

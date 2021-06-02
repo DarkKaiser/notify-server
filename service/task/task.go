@@ -102,7 +102,7 @@ type supportedTaskConfig struct {
 type supportedTaskCommandConfig struct {
 	taskCommandID TaskCommandID
 
-	allowMultipleIntances bool
+	allowMultipleInstances bool
 
 	newTaskResultDataFn newTaskResultDataFunc
 }
@@ -484,7 +484,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 
 			// 다중 인스턴스의 생성이 허용되지 않는 Task인 경우, 이미 실행중인 동일한 Task가 있는지 확인한다.
-			if commandConfig.allowMultipleIntances == false {
+			if commandConfig.allowMultipleInstances == false {
 				var alreadyRunTaskHandler taskHandler
 
 				s.runningMu.Lock()

@@ -65,7 +65,7 @@ func init() {
 		commandConfigs: []*supportedTaskCommandConfig{{
 			taskCommandID: TcidNaverWatchNewPerformances,
 
-			allowMultipleIntances: true,
+			allowMultipleInstances: true,
 
 			newTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},

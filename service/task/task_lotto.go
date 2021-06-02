@@ -34,7 +34,7 @@ func init() {
 		commandConfigs: []*supportedTaskCommandConfig{{
 			taskCommandID: TcidLottoPrediction,
 
-			allowMultipleIntances: false,
+			allowMultipleInstances: false,
 
 			newTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},

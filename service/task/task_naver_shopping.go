@@ -90,7 +90,7 @@ func init() {
 		commandConfigs: []*supportedTaskCommandConfig{{
 			taskCommandID: TcidNaverShoppingWatchPriceAny,
 
-			allowMultipleIntances: true,
+			allowMultipleInstances: true,
 
 			newTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},

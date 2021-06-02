@@ -22,7 +22,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 		return
 	}
 
-	s.cron = cron.New(cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())))
+	s.cron = cron.New(cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())), cron.WithSeconds())
 
 	for _, t := range config.Tasks {
 		for _, c := range t.Commands {
