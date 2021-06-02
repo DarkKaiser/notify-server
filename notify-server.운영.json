@@ -148,6 +148,25 @@
 				"client_id": "w3WkOLxgngQhNC7VD8XX",
 				"client_secret": "e53iKU0iij"
 			}
+		},
+		{
+			"id": "COVID19",
+			"title": "코로나19",
+			"commands": [
+				{
+					"id": "WatchResidualVaccine",
+					"title": "코로나19 잔여백신 확인",
+					"description": "코로나19 잔여백신의 수량을 확인하고 이를 알립니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "*/5 * 9-18 * * 1-6"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				}
+			]
 		}
 	],
 	"notify_api": {
