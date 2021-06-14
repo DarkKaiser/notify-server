@@ -20,6 +20,8 @@ const (
 	TcidCovid19WatchResidualVaccine TaskCommandID = "WatchResidualVaccine" // 코로나19 잔여백신 확인
 )
 
+const prefixSelectedMedicalInstitutionOpenURL = "https://m.place.naver.com/rest/vaccine?vaccineFilter=used&selected_place_id="
+
 type covid19WatchResidualVaccineSearchResultData []struct {
 	Data struct {
 		Rests struct {
@@ -41,7 +43,7 @@ type covid19WatchResidualVaccineSearchResultData []struct {
 					CommonAddress        string      `json:"commonAddress"`
 					RoadAddress          string      `json:"roadAddress"`
 					Address              string      `json:"address"`
-					ImageURL             string      `json:"imageUrl"`
+					ImageURL             interface{} `json:"imageUrl"`
 					ImageCount           int         `json:"imageCount"`
 					Tags                 interface{} `json:"tags"`
 					PromotionTitle       interface{} `json:"promotionTitle"`
@@ -59,12 +61,24 @@ type covid19WatchResidualVaccineSearchResultData []struct {
 					BookingBusinessID    interface{} `json:"bookingBusinessId"`
 					BookingVisitID       interface{} `json:"bookingVisitId"`
 					BookingPickupID      interface{} `json:"bookingPickupId"`
-					VaccineQuantity      struct {
-						Quantity                string      `json:"quantity"`
-						QuantityStatus          string      `json:"quantityStatus"`
-						VaccineType             interface{} `json:"vaccineType"`
-						VaccineOrganizationCode string      `json:"vaccineOrganizationCode"`
-						Typename                string      `json:"__typename"`
+					VaccineOpeningHour   struct {
+						StartTime    string `json:"startTime"`
+						EndTime      string `json:"endTime"`
+						IsDayOff     bool   `json:"isDayOff"`
+						StandardTime string `json:"standardTime"`
+						Typename     string `json:"__typename"`
+					} `json:"vaccineOpeningHour"`
+					VaccineQuantity struct {
+						TotalQuantity           int    `json:"totalQuantity"`
+						TotalQuantityStatus     string `json:"totalQuantityStatus"`
+						VaccineOrganizationCode string `json:"vaccineOrganizationCode"`
+						List                    []struct {
+							Quantity       int    `json:"quantity"`
+							QuantityStatus string `json:"quantityStatus"`
+							VaccineType    string `json:"vaccineType"`
+							Typename       string `json:"__typename"`
+						} `json:"list"`
+						Typename string `json:"__typename"`
 					} `json:"vaccineQuantity"`
 					Typename string `json:"__typename"`
 				} `json:"items"`
@@ -186,8 +200,22 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 	//
 	actualityTaskResultData := &covid19WatchResidualVaccineResultData{}
 
+	// 백신 접종을 하러 갈 수 있는 의료기관 ID 목록
+	var yeocheonMedicalInstitutionIDs = []string{"13263626", "11482871", "12080253", "19526949", "13589797", "13263571", "1359325699", "10998196", "13263625", "13263595", "168000943", "13263623", "13263618", "19792738", "13263622", "12794279", "19522666", "13178488", "19530337", "13389513", "13263643", "13263639", "1864819000"}
+
 	for _, item := range searchResultData[0].Data.Rests.Businesses.Items {
-		if quantity, _ := strconv.Atoi(item.VaccineQuantity.Quantity); quantity <= 0 {
+		if item.VaccineQuantity.TotalQuantity <= 0 {
+			continue
+		}
+
+		var findMedicalInstitution = false
+		for _, id := range yeocheonMedicalInstitutionIDs {
+			if item.ID == id {
+				findMedicalInstitution = true
+				break
+			}
+		}
+		if findMedicalInstitution == false {
 			continue
 		}
 
@@ -198,7 +226,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 		}{
 			ID:              item.ID,
 			Name:            item.Name,
-			VaccineQuantity: item.VaccineQuantity.Quantity,
+			VaccineQuantity: strconv.Itoa(item.VaccineQuantity.TotalQuantity),
 		})
 	}
 
@@ -219,9 +247,9 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 						m += "\n"
 					}
 					if actualityMedicalInstitution.VaccineQuantity != originMedicalInstitution.VaccineQuantity {
-						m = fmt.Sprintf("%s☞ <b>%s</b> 잔여백신 %s개 🔁", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
+						m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개 🔁", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
 					} else {
-						m = fmt.Sprintf("%s☞ <b>%s</b> 잔여백신 %s개", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
+						m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
 					}
 				} else {
 					if m != "" {
@@ -245,7 +273,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 				if m != "" {
 					m += "\n"
 				}
-				m = fmt.Sprintf("%s☞ <b>%s</b> 잔여백신 %s개 🆕", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
+				m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개 🆕", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
 			} else {
 				if m != "" {
 					m += "\n\n"
@@ -272,7 +300,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 				if m != "" {
 					m += "\n"
 				}
-				m = fmt.Sprintf("%s☞ <b>%s</b> 잔여백신 0개 🔁", m, originMedicalInstitution.Name)
+				m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 0개 🔁", m, prefixSelectedMedicalInstitutionOpenURL, originMedicalInstitution.ID, originMedicalInstitution.Name)
 			} else {
 				if m != "" {
 					m += "\n\n"
@@ -294,7 +322,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 
 				if isSupportedHTMLMessage == true {
 					for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
-						message = fmt.Sprintf("%s\n☞ <b>%s</b> 잔여백신 %s개", message, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
+						message = fmt.Sprintf("%s\n☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개", message, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
 					}
 				} else {
 					for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
