@@ -169,7 +169,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 	//
 	// 잔여백신이 남아있는 의료기관을 검색한다.
 	//
-	req, err := http.NewRequest("POST", "https://api.place.naver.com/graphql", bytes.NewBufferString("[{\"operationName\":\"vaccineList\",\"variables\":{\"input\":{\"keyword\":\"코로나백신위탁의료기관\",\"x\":\"127.672066\",\"y\":\"34.7635133\"},\"businessesInput\":{\"start\":0,\"display\":100,\"deviceType\":\"mobile\",\"x\":\"127.672066\",\"y\":\"34.7635133\",\"bounds\":\"127.6034014;34.7392187;127.7407305;34.7878008\",\"sortingOrder\":\"distance\"},\"isNmap\":false,\"isBounds\":false},\"query\":\"query vaccineList($input: RestsInput, $businessesInput: RestsBusinessesInput, $isNmap: Boolean!, $isBounds: Boolean!) {\\n  rests(input: $input) {\\n    businesses(input: $businessesInput) {\\n      total\\n      vaccineLastSave\\n      isUpdateDelayed\\n      items {\\n        id\\n        name\\n        dbType\\n        phone\\n        virtualPhone\\n        hasBooking\\n        hasNPay\\n        bookingReviewCount\\n        description\\n        distance\\n        commonAddress\\n        roadAddress\\n        address\\n        imageUrl\\n        imageCount\\n        tags\\n        distance\\n        promotionTitle\\n        category\\n        routeUrl\\n        businessHours\\n        x\\n        y\\n        imageMarker @include(if: $isNmap) {\\n          marker\\n          markerSelected\\n          __typename\\n        }\\n        markerLabel @include(if: $isNmap) {\\n          text\\n          style\\n          __typename\\n        }\\n        isDelivery\\n        isTakeOut\\n        isPreOrder\\n        isTableOrder\\n        naverBookingCategory\\n        bookingDisplayName\\n        bookingBusinessId\\n        bookingVisitId\\n        bookingPickupId\\n        vaccineQuantity {\\n          quantity\\n          quantityStatus\\n          vaccineType\\n          vaccineOrganizationCode\\n          __typename\\n        }\\n        __typename\\n      }\\n      optionsForMap @include(if: $isBounds) {\\n        maxZoom\\n        minZoom\\n        includeMyLocation\\n        maxIncludePoiCount\\n        center\\n        __typename\\n      }\\n      __typename\\n    }\\n    queryResult {\\n      keyword\\n      vaccineFilter\\n      categories\\n      region\\n      isBrandList\\n      filterBooking\\n      hasNearQuery\\n      isPublicMask\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}]"))
+	req, err := http.NewRequest("POST", "https://api.place.naver.com/graphql", bytes.NewBufferString("[{\"operationName\":\"vaccineList\",\"variables\":{\"input\":{\"keyword\":\"코로나백신위탁의료기관\",\"x\":\"127.672066\",\"y\":\"34.7635133\"},\"businessesInput\":{\"start\":0,\"display\":100,\"deviceType\":\"mobile\",\"x\":\"127.672066\",\"y\":\"34.7635133\",\"bounds\":\"127.6034014;34.7392187;127.7407305;34.7878008\",\"sortingOrder\":\"distance\"},\"isNmap\":false,\"isBounds\":false},\"query\":\"query vaccineList($input: RestsInput, $businessesInput: RestsBusinessesInput, $isNmap: Boolean!, $isBounds: Boolean!) {\\n  rests(input: $input) {\\n    businesses(input: $businessesInput) {\\n      total\\n      vaccineLastSave\\n      isUpdateDelayed\\n      items {\\n        id\\n        name\\n        dbType\\n        phone\\n        virtualPhone\\n        hasBooking\\n        hasNPay\\n        bookingReviewCount\\n        description\\n        distance\\n        commonAddress\\n        roadAddress\\n        address\\n        imageUrl\\n        imageCount\\n        tags\\n        distance\\n        promotionTitle\\n        category\\n        routeUrl\\n        businessHours\\n        x\\n        y\\n        imageMarker @include(if: $isNmap) {\\n          marker\\n          markerSelected\\n          __typename\\n        }\\n        markerLabel @include(if: $isNmap) {\\n          text\\n          style\\n          __typename\\n        }\\n        isDelivery\\n        isTakeOut\\n        isPreOrder\\n        isTableOrder\\n        naverBookingCategory\\n        bookingDisplayName\\n        bookingBusinessId\\n        bookingVisitId\\n        bookingPickupId\\n        vaccineOpeningHour {\\n          isDayOff\\n          standardTime\\n          __typename\\n        }\\n        vaccineQuantity {\\n          totalQuantity\\n          totalQuantityStatus\\n          startTime\\n          endTime\\n          vaccineOrganizationCode\\n          list {\\n            quantity\\n            quantityStatus\\n            vaccineType\\n            __typename\\n          }\\n          __typename\\n        }\\n        __typename\\n      }\\n      optionsForMap @include(if: $isBounds) {\\n        maxZoom\\n        minZoom\\n        includeMyLocation\\n        maxIncludePoiCount\\n        center\\n        __typename\\n      }\\n      __typename\\n    }\\n    queryResult {\\n      keyword\\n      vaccineFilter\\n      categories\\n      region\\n      isBrandList\\n      filterBooking\\n      hasNearQuery\\n      isPublicMask\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}]"))
 	if err != nil {
 		return "", nil, err
 	}
@@ -204,34 +204,24 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 	var yeocheonMedicalInstitutionIDs = []string{"13263626", "11482871", "12080253", "19526949", "13589797", "13263571", "1359325699", "10998196", "13263625", "13263595", "168000943", "13263623", "13263618", "19792738", "13263622", "12794279", "19522666", "13178488", "19530337", "13389513", "13263643", "13263639", "1864819000"}
 
 	for _, item := range searchResultData[0].Data.Rests.Businesses.Items {
-		var totalQuantity = 0
-		for _, v := range item.VaccineQuantity.List {
-			totalQuantity += v.Quantity
-		}
-		if totalQuantity <= 0 {
+		if item.VaccineQuantity.TotalQuantity <= 0 {
 			continue
 		}
 
-		var findMedicalInstitution = false
 		for _, id := range yeocheonMedicalInstitutionIDs {
 			if item.ID == id {
-				findMedicalInstitution = true
+				actualityTaskResultData.MedicalInstitutions = append(actualityTaskResultData.MedicalInstitutions, struct {
+					ID              string `json:"id"`
+					Name            string `json:"name"`
+					VaccineQuantity string `json:"vaccine_quantity"`
+				}{
+					ID:              item.ID,
+					Name:            item.Name,
+					VaccineQuantity: strconv.Itoa(item.VaccineQuantity.TotalQuantity),
+				})
 				break
 			}
 		}
-		if findMedicalInstitution == false {
-			continue
-		}
-
-		actualityTaskResultData.MedicalInstitutions = append(actualityTaskResultData.MedicalInstitutions, struct {
-			ID              string `json:"id"`
-			Name            string `json:"name"`
-			VaccineQuantity string `json:"vaccine_quantity"`
-		}{
-			ID:              item.ID,
-			Name:            item.Name,
-			VaccineQuantity: strconv.Itoa(totalQuantity),
-		})
 	}
 
 	//
