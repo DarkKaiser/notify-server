@@ -204,7 +204,11 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 	var yeocheonMedicalInstitutionIDs = []string{"13263626", "11482871", "12080253", "19526949", "13589797", "13263571", "1359325699", "10998196", "13263625", "13263595", "168000943", "13263623", "13263618", "19792738", "13263622", "12794279", "19522666", "13178488", "19530337", "13389513", "13263643", "13263639", "1864819000"}
 
 	for _, item := range searchResultData[0].Data.Rests.Businesses.Items {
-		if item.VaccineQuantity.TotalQuantity <= 0 {
+		var totalQuantity = 0
+		for _, v := range item.VaccineQuantity.List {
+			totalQuantity += v.Quantity
+		}
+		if totalQuantity <= 0 {
 			continue
 		}
 
@@ -226,7 +230,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 		}{
 			ID:              item.ID,
 			Name:            item.Name,
-			VaccineQuantity: strconv.Itoa(item.VaccineQuantity.TotalQuantity),
+			VaccineQuantity: strconv.Itoa(totalQuantity),
 		})
 	}
 
