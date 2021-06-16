@@ -158,7 +158,7 @@
 					"title": "코로나19 잔여백신 확인",
 					"description": "코로나19 잔여백신의 수량을 확인하고 이를 알립니다.",
 					"scheduler": {
-						"runnable": true,
+						"runnable": false,
 						"time_spec": "*/3 * 9-18 * * 1-6"
 					},
 					"notifier": {
