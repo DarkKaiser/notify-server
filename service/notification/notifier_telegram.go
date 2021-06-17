@@ -219,7 +219,7 @@ LOOP:
 					}
 				}
 
-				if errorOccured, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccured == true {
+				if errorOccurred, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccurred == true {
 					m = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m)
 				}
 
