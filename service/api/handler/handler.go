@@ -45,7 +45,7 @@ func (h *NotifyAPIHandlers) NotifyMessageSendHandler(c echo.Context) error {
 
 	for _, application := range h.allowedApplications {
 		if application.ID == m.ApplicationID {
-			h.notificationSender.Notify(application.DefaultNotifierID, application.Title, m.Message, m.ErrorOccured)
+			h.notificationSender.Notify(application.DefaultNotifierID, application.Title, m.Message, m.ErrorOccurred)
 
 			return c.JSON(http.StatusOK, map[string]int{
 				"result_code": 0,
