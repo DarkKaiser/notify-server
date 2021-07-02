@@ -86,7 +86,7 @@
 						"filters": {
 							"title": {
 								"included_keywords": "",
-								"excluded_keywords": "- 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성"
+								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창"
 							},
 							"place": {
 								"included_keywords": "",
