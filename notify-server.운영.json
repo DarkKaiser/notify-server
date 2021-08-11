@@ -162,7 +162,7 @@
 						"time_spec": "*/3 * 9-18 * * 1-6"
 					},
 					"notifier": {
-						"usable": true
+						"usable": false
 					},
 					"default_notifier_id": "darkkaiser_notify_bot"
 				}
