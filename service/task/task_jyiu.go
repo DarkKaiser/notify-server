@@ -139,7 +139,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 			Date  string `json:"date"`
 			Url   string `json:"url"`
 		}{
-			Title: utils.CleanString(as.Eq(1).Text()),
+			Title: utils.CleanString(as.Eq(1).Find("a").Text()),
 			Date:  utils.CleanString(as.Eq(3).Text()),
 			Url:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseUrl, id),
 		})
@@ -180,14 +180,14 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	}
 
 	if existsNewNotice == true {
-		message = fmt.Sprintf("새로운 공지사항이 등록되었습니다.\n\n%s", m)
+		message = fmt.Sprintf("새 공지사항이 등록되었습니다.\n\n%s", m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Notice) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
-				message = "새로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:"
+				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
 					message += "\n"
@@ -279,9 +279,9 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 
 			if isSupportedHTMLMessage == true {
 				if m != "" {
-					m += "\n"
+					m += "\n\n"
 				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityEducation.Url, actualityEducation.Title)
+				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕\n      • 교육기간 : %s\n      • 접수기간 : %s", m, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
 			} else {
 				if m != "" {
 					m += "\n\n"
@@ -292,19 +292,18 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 	}
 
 	if existsNewEducation == true {
-		message = fmt.Sprintf("새로운 교육프로그램이 등록되었습니다.\n\n%s", m)
+		message = fmt.Sprintf("새 교육프로그램이 등록되었습니다.\n\n%s", m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Education) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {
-				message = "새로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:"
+				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
-					message += "\n"
 					for _, actualityEducation := range actualityTaskResultData.Education {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityEducation.Url, actualityEducation.Title)
+						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s</b></a>\n      • 교육기간 : %s\n      • 접수기간 : %s", message, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
 					}
 				} else {
 					for _, actualityEducation := range actualityTaskResultData.Education {
