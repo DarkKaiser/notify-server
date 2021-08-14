@@ -102,34 +102,26 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 공지사항 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("#contents table.bbsList > tbody > tr").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	// 읽어온 공지사항 페이지에서 이벤트 정보를 추출한다.
-	actualityTaskResultData := &jyiuWatchNewNoticeResultData{}
-	document.Find("#contents table.bbsList > tbody > tr").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	// 공지사항 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
+	err = scrapeHTMLDocument(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
-			err = errors.New(fmt.Sprintf("공지사항 데이터 파싱이 실패하였습니다. CSS셀렉터를 확인하세요.(공지사항 컬럼 개수 불일치:%d)", as.Length()))
+			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
 			return false
 		}
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err = errors.New(fmt.Sprint("공지사항 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err = errors.New(fmt.Sprint("공지사항 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		id = id[pos1+1 : pos2]
@@ -149,8 +141,11 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	if err != nil {
 		return "", nil, err
 	}
+	if err0 != nil {
+		return "", nil, err0
+	}
 
-	// 공지사항 새로운 글 정보를 확인한다.
+	// 신규로 등록된 공지사항이 존재하는지 확인한다.
 	m := ""
 	existsNewNotice := false
 	for _, actualityNotice := range actualityTaskResultData.Notice {
@@ -212,34 +207,26 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 교육프로그램 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("div.gms_003001 table.bbsList > tbody > tr").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	// 읽어온 교육프로그램 페이지에서 이벤트 정보를 추출한다.
-	actualityTaskResultData := &jyiuWatchNewEducationResultData{}
-	document.Find("div.gms_003001 table.bbsList > tbody > tr").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
+	err = scrapeHTMLDocument(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
-			err = errors.New(fmt.Sprintf("교육프로그램 데이터 파싱이 실패하였습니다. CSS셀렉터를 확인하세요.(교육프로그램 컬럼 개수 불일치:%d)", as.Length()))
+			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
 			return false
 		}
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err = errors.New(fmt.Sprint("교육프로그램 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err = errors.New(fmt.Sprint("교육프로그램 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		url = url[pos1+1 : pos2]
@@ -260,6 +247,9 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if err0 != nil {
+		return "", nil, err0
 	}
 
 	// 교육프로그램 새로운 글 정보를 확인한다.

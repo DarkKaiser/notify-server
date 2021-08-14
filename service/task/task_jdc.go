@@ -157,20 +157,13 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSuppo
 }
 
 func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCourse, error) {
-	document, err := httpWebPageDocument(url)
-	if err != nil {
-		return nil, err
-	}
-	if document.Find("#content > ul.prdt-list2 > li > a.link").Length() <= 0 {
-		return nil, errors.New("Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.")
-	}
-
-	// 읽어온 페이지에서 온라인교육 강의목록 페이지 URL 정보를 추출한다.
+	// 강의목록 페이지 URL 정보를 추출한다.
+	var err, err0 error
 	var courseURLs = make([]string, 0)
-	document.Find("#content > ul.prdt-list2 > li > a.link").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	err = scrapeHTMLDocument(url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
-			err = errors.New("온라인교육 강의목록 페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 
@@ -181,45 +174,39 @@ func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCour
 	if err != nil {
 		return nil, err
 	}
-
-	var scrapeOnlineEducationCourse = make([]onlineEducationCourse, 0)
+	if err0 != nil {
+		return nil, err0
+	}
 
 	// 온라인교육 강의의 상세정보를 추출한다.
+	var scrapeOnlineEducationCourse = make([]onlineEducationCourse, 0)
 	for _, courseURL := range courseURLs {
-		document, err := httpWebPageDocument(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL))
-		if err != nil {
-			return nil, err
-		}
-		if document.Find("table.prdt-tbl > tbody > tr").Length() <= 0 {
-			return nil, errors.New("Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.")
-		}
-
-		document.Find("table.prdt-tbl > tbody > tr").EachWithBreak(func(i int, s *goquery.Selection) bool {
-			// 온라인교육 강의목록의 컬럼 개수를 확인한다.
+		err = scrapeHTMLDocument(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+			// 강의목록 컬럼 개수를 확인한다.
 			as := s.Find("td")
 			if as.Length() != 3 {
 				if utils.CleanString(as.Text()) == "정보가 없습니다" {
 					return true
 				}
 
-				err = errors.New(fmt.Sprintf("온라인교육 강의목록 페이지의 데이터 파싱이 실패하였습니다. CSS셀렉터를 확인하세요.(강의 컬럼 개수 불일치:%d)", as.Length()))
+				err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
 				return false
 			}
 
 			title1Selection := as.Eq(0).Find("a")
 			if title1Selection.Length() != 1 {
-				err = errors.New(fmt.Sprint("온라인교육 강의목록 페이지에서 교육과정 제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+				err0 = errors.New("교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
 			}
 			title2Selection := as.Eq(0).Find("p")
 			if title2Selection.Length() != 1 {
-				err = errors.New(fmt.Sprint("온라인교육 강의목록 페이지에서 교육과정 제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+				err0 = errors.New("교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
 			}
 
 			courseDetailURL, exists := title1Selection.Attr("href")
 			if exists == false {
-				err = errors.New("온라인교육 강의목록 페이지에서 강의상세 페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+				err0 = errors.New("강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
 			}
 			// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.
@@ -240,6 +227,9 @@ func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCour
 		})
 		if err != nil {
 			return nil, err
+		}
+		if err0 != nil {
+			return nil, err0
 		}
 	}
 
