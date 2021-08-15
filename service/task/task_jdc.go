@@ -22,7 +22,7 @@ const (
 	jdcBaseUrl = "http://전남디지털역량.com/"
 )
 
-type onlineEducationCourse struct {
+type jdcOnlineEducationCourse struct {
 	Title1         string `json:"title1"`
 	Title2         string `json:"title2"`
 	TrainingPeriod string `json:"training_period"`
@@ -30,7 +30,7 @@ type onlineEducationCourse struct {
 }
 
 type jdcWatchNewOnlineEducationResultData struct {
-	OnlineEducationCourse []onlineEducationCourse `json:"online_education_course"`
+	OnlineEducationCourses []*jdcOnlineEducationCourse `json:"online_education_courses"`
 }
 
 func init() {
@@ -89,24 +89,24 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSuppo
 	actualityTaskResultData := jdcWatchNewOnlineEducationResultData{}
 
 	// 등록된 비대면 온라인 특별교육/정규교육 강의 정보를 읽어온다.
-	scrapedOnlineEducationCourse, err := t.scrapeOnlineEducationCourse(fmt.Sprintf("%sproduct/list?type=digital_edu", jdcBaseUrl))
+	scrapedOnlineEducationCourses, err := t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=digital_edu", jdcBaseUrl))
 	if err != nil {
 		return "", nil, err
 	}
-	actualityTaskResultData.OnlineEducationCourse = append(actualityTaskResultData.OnlineEducationCourse, scrapedOnlineEducationCourse...)
+	actualityTaskResultData.OnlineEducationCourses = append(actualityTaskResultData.OnlineEducationCourses, scrapedOnlineEducationCourses...)
 
-	scrapedOnlineEducationCourse, err = t.scrapeOnlineEducationCourse(fmt.Sprintf("%sproduct/list?type=untact_edu", jdcBaseUrl))
+	scrapedOnlineEducationCourses, err = t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=untact_edu", jdcBaseUrl))
 	if err != nil {
 		return "", nil, err
 	}
-	actualityTaskResultData.OnlineEducationCourse = append(actualityTaskResultData.OnlineEducationCourse, scrapedOnlineEducationCourse...)
+	actualityTaskResultData.OnlineEducationCourses = append(actualityTaskResultData.OnlineEducationCourses, scrapedOnlineEducationCourses...)
 
 	// 새로운 강의 정보를 확인한다.
 	m := ""
 	existsNewCourse := false
-	for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourse {
+	for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
 		isNewCourse := true
-		for _, originEducationCourse := range originTaskResultData.OnlineEducationCourse {
+		for _, originEducationCourse := range originTaskResultData.OnlineEducationCourses {
 			if actualityEducationCourse.Title1 == originEducationCourse.Title1 && actualityEducationCourse.Title2 == originEducationCourse.Title2 && actualityEducationCourse.TrainingPeriod == originEducationCourse.TrainingPeriod {
 				isNewCourse = false
 				break
@@ -135,17 +135,17 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSuppo
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
-			if len(actualityTaskResultData.OnlineEducationCourse) == 0 {
+			if len(actualityTaskResultData.OnlineEducationCourses) == 0 {
 				message = "등록된 온라인교육 강의가 존재하지 않습니다."
 			} else {
 				message = "새롭게 등록된 온라인교육 강의가 없습니다.\n\n현재 등록된 온라인교육 강의는 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
-					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourse {
+					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
 						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s &gt; %s</b></a>\n      • 교육기간 : %s", message, actualityEducationCourse.Url, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.TrainingPeriod)
 					}
 				} else {
-					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourse {
+					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
 						message = fmt.Sprintf("%s\n\n☞ %s > %s\n%s", message, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.Url)
 					}
 				}
@@ -156,7 +156,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSuppo
 	return message, changedTaskResultData, nil
 }
 
-func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCourse, error) {
+func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducationCourse, error) {
 	// 강의목록 페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
@@ -179,7 +179,7 @@ func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCour
 	}
 
 	// 온라인교육 강의의 상세정보를 추출한다.
-	var scrapeOnlineEducationCourse = make([]onlineEducationCourse, 0)
+	var scrapeOnlineEducationCourses = make([]*jdcOnlineEducationCourse, 0)
 	for _, courseURL := range courseURLs {
 		err = scrapeHTMLDocument(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
 			// 강의목록 컬럼 개수를 확인한다.
@@ -216,7 +216,7 @@ func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCour
 				courseDetailURL = ""
 			}
 
-			scrapeOnlineEducationCourse = append(scrapeOnlineEducationCourse, onlineEducationCourse{
+			scrapeOnlineEducationCourses = append(scrapeOnlineEducationCourses, &jdcOnlineEducationCourse{
 				Title1:         utils.CleanString(title1Selection.Text()),
 				Title2:         utils.CleanString(title2Selection.Text()),
 				TrainingPeriod: utils.CleanString(as.Eq(1).Text()),
@@ -233,5 +233,5 @@ func (t *jdcTask) scrapeOnlineEducationCourse(url string) ([]onlineEducationCour
 		}
 	}
 
-	return scrapeOnlineEducationCourse, nil
+	return scrapeOnlineEducationCourses, nil
 }

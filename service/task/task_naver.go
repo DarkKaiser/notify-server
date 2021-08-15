@@ -51,13 +51,15 @@ func (d *naverWatchNewPerformancesTaskCommandData) validate() error {
 	return nil
 }
 
+type naverPerformance struct {
+	Title     string `json:"title"`
+	Period    string `json:"period"`
+	Place     string `json:"place"`
+	Thumbnail string `json:"thumbnail"`
+}
+
 type naverWatchNewPerformancesResultData struct {
-	Performances []struct {
-		Title     string `json:"title"`
-		Period    string `json:"period"`
-		Place     string `json:"place"`
-		Thumbnail string `json:"thumbnail"`
-	} `json:"performances"`
+	Performances []*naverPerformance `json:"performances"`
 }
 
 func init() {
@@ -221,12 +223,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 				return true
 			}
 
-			actualityTaskResultData.Performances = append(actualityTaskResultData.Performances, struct {
-				Title     string `json:"title"`
-				Period    string `json:"period"`
-				Place     string `json:"place"`
-				Thumbnail string `json:"thumbnail"`
-			}{
+			actualityTaskResultData.Performances = append(actualityTaskResultData.Performances, &naverPerformance{
 				Title:     title,
 				Period:    period,
 				Place:     place,

@@ -100,12 +100,14 @@ type covid19WatchResidualVaccineSearchResultData []struct {
 	} `json:"data"`
 }
 
+type covid19MedicalInstitution struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	VaccineQuantity string `json:"vaccine_quantity"`
+}
+
 type covid19WatchResidualVaccineResultData struct {
-	MedicalInstitutions []struct {
-		ID              string `json:"id"`
-		Name            string `json:"name"`
-		VaccineQuantity string `json:"vaccine_quantity"`
-	} `json:"medical_institutions"`
+	MedicalInstitutions []*covid19MedicalInstitution `json:"medical_institutions"`
 }
 
 func init() {
@@ -210,11 +212,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 
 		for _, id := range yeocheonMedicalInstitutionIDs {
 			if item.ID == id {
-				actualityTaskResultData.MedicalInstitutions = append(actualityTaskResultData.MedicalInstitutions, struct {
-					ID              string `json:"id"`
-					Name            string `json:"name"`
-					VaccineQuantity string `json:"vaccine_quantity"`
-				}{
+				actualityTaskResultData.MedicalInstitutions = append(actualityTaskResultData.MedicalInstitutions, &covid19MedicalInstitution{
 					ID:              item.ID,
 					Name:            item.Name,
 					VaccineQuantity: strconv.Itoa(item.VaccineQuantity.TotalQuantity),

@@ -75,14 +75,16 @@ func (d *naverShoppingWatchPriceTaskCommandData) validate() error {
 	return nil
 }
 
+type naverShoppingProduct struct {
+	Title       string `json:"title"`
+	Link        string `json:"link"`
+	LowPrice    int    `json:"lprice"`
+	ProductID   string `json:"productId"`
+	ProductType string `json:"productType"`
+}
+
 type naverShoppingWatchPriceResultData struct {
-	Products []struct {
-		Title       string `json:"title"`
-		Link        string `json:"link"`
-		LowPrice    int    `json:"lprice"`
-		ProductID   string `json:"productId"`
-		ProductType string `json:"productType"`
-	} `json:"products"`
+	Products []*naverShoppingProduct `json:"products"`
 }
 
 func init() {
@@ -224,13 +226,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
 		if lowPrice > 0 && lowPrice < taskCommandData.Filters.PriceLessThan {
-			actualityTaskResultData.Products = append(actualityTaskResultData.Products, struct {
-				Title       string `json:"title"`
-				Link        string `json:"link"`
-				LowPrice    int    `json:"lprice"`
-				ProductID   string `json:"productId"`
-				ProductType string `json:"productType"`
-			}{
+			actualityTaskResultData.Products = append(actualityTaskResultData.Products, &naverShoppingProduct{
 				Title:       item.Title,
 				Link:        item.Link,
 				LowPrice:    lowPrice,

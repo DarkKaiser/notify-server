@@ -25,19 +25,23 @@ const (
 	alganicmallBaseUrl = "https://www.alganicmall.com/"
 )
 
+type alganicmallEvent struct {
+	Name string `json:"name"`
+	Url  string `json:"url"`
+}
+
 type alganicmallWatchNewEventsResultData struct {
-	Events []struct {
-		Name string `json:"name"`
-		Url  string `json:"url"`
-	} `json:"events"`
+	Events []*alganicmallEvent `json:"events"`
+}
+
+type alganicmallProduct struct {
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Url   string `json:"url"`
 }
 
 type alganicmallWatchAtoCreamResultData struct {
-	Products []struct {
-		Name  string `json:"name"`
-		Price int    `json:"price"`
-		Url   string `json:"url"`
-	} `json:"products"`
+	Products []*alganicmallProduct `json:"products"`
 }
 
 func init() {
@@ -119,10 +123,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 			return false
 		}
 
-		actualityTaskResultData.Events = append(actualityTaskResultData.Events, struct {
-			Name string `json:"name"`
-			Url  string `json:"url"`
-		}{
+		actualityTaskResultData.Events = append(actualityTaskResultData.Events, &alganicmallEvent{
 			Name: utils.CleanString(name),
 			Url:  fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})
@@ -257,11 +258,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 			return false
 		}
 
-		actualityTaskResultData.Products = append(actualityTaskResultData.Products, struct {
-			Name  string `json:"name"`
-			Price int    `json:"price"`
-			Url   string `json:"url"`
-		}{
+		actualityTaskResultData.Products = append(actualityTaskResultData.Products, &alganicmallProduct{
 			Name:  utils.CleanString(name),
 			Price: price,
 			Url:   fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
