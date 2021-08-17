@@ -109,7 +109,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
-	err = scrapeHTMLDocument(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
@@ -210,7 +210,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
-	err = scrapeHTMLDocument(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {

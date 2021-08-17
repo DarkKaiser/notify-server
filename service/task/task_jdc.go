@@ -160,7 +160,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	// 강의목록 페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
-	err = scrapeHTMLDocument(url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
+	err = webScrape(url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
 			err0 = errors.New("강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
@@ -181,7 +181,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	// 온라인교육 강의의 상세정보를 추출한다.
 	var scrapeOnlineEducationCourses = make([]*jdcOnlineEducationCourse, 0)
 	for _, courseURL := range courseURLs {
-		err = scrapeHTMLDocument(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+		err = webScrape(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
 			// 강의목록 컬럼 개수를 확인한다.
 			as := s.Find("td")
 			if as.Length() != 3 {

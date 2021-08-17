@@ -1,14 +1,11 @@
 package task
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -184,29 +181,12 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	//
 	// 상품에 대한 정보를 검색한다.
 	//
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query)), nil)
-	if err != nil {
-		return "", nil, err
+	var header = map[string]string{
+		"X-Naver-Client-Id":     t.clientID,
+		"X-Naver-Client-Secret": t.clientSecret,
 	}
-	req.Header.Set("X-Naver-Client-Id", t.clientID)
-	req.Header.Set("X-Naver-Client-Secret", t.clientSecret)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, errors.New(fmt.Sprintf("Web 페이지 접근이 실패하였습니다.(%s)", resp.Status))
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", nil, err
-	}
-
-	searchResultData := naverShoppingSearchResultData{}
-	err = json.Unmarshal(bodyBytes, &searchResultData)
+	var searchResultData = &naverShoppingSearchResultData{}
+	err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query)), header, searchResultData)
 	if err != nil {
 		return "", nil, err
 	}

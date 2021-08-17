@@ -110,7 +110,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	var err0 error
 	var euckrDecoder = korean.EUCKR.NewDecoder()
 	var actualityTaskResultData = &alganicmallWatchNewEventsResultData{}
-	err = scrapeHTMLDocument(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl), "div.bbs-table-list > div.fixed-img-collist > ul > li > a", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl), "div.bbs-table-list > div.fixed-img-collist > ul > li > a", func(i int, s *goquery.Selection) bool {
 		name, _err_ := euckrDecoder.String(s.Text())
 		if _err_ != nil {
 			err0 = fmt.Errorf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
@@ -204,7 +204,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 	var euckrDecoder = korean.EUCKR.NewDecoder()
 	var priceReplacer = strings.NewReplacer(",", "", "원", "")
 	var actualityTaskResultData = &alganicmallWatchAtoCreamResultData{}
-	err = scrapeHTMLDocument(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl), "div.item-wrap > div.item-list > dl.item", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl), "div.item-wrap > div.item-list > dl.item", func(i int, s *goquery.Selection) bool {
 		productSelection := s
 
 		// 제품명

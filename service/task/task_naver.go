@@ -1,7 +1,6 @@
 package task
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
@@ -9,8 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 	"html/template"
-	"io/ioutil"
-	"net/http"
 	"net/url"
 	"strings"
 )
@@ -146,33 +143,19 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	// 전라도 지역 공연정보를 읽어온다.
 	searchStartPerformancePos := 1
 	for {
-		resp, err0 := http.Get(fmt.Sprintf("https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=PerformListAPI&where=nexearch&pkid=269&q=%s&so=&start=%d", url.QueryEscape(taskCommandData.Query), searchStartPerformancePos))
-		if err0 != nil {
-			return "", nil, fmt.Errorf("Web 페이지 접근이 실패하였습니다.(error:%s)", err0)
-		}
-		if resp.StatusCode != http.StatusOK {
-			return "", nil, fmt.Errorf("Web 페이지 접근이 실패하였습니다.(%s)", resp.Status)
+		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
+		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=PerformListAPI&where=nexearch&pkid=269&q=%s&so=&start=%d", url.QueryEscape(taskCommandData.Query), searchStartPerformancePos), nil, searchResultData)
+		if err != nil {
+			return "", nil, err
 		}
 
-		bodyBytes, err0 := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err0 != nil {
-			return "", nil, fmt.Errorf("응답 데이터 읽기가 실패하였습니다.(error:%s)", err0)
-		}
-
-		var searchResultData naverWatchNewPerformancesSearchResultData
-		err0 = json.Unmarshal(bodyBytes, &searchResultData)
-		if err0 != nil {
-			return "", nil, fmt.Errorf("응답 데이터의 JSON 변환이 실패하였습니다.(error:%s)", err0)
-		}
-
-		document, err0 := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.List[0].Html))
-		if err0 != nil {
-			return "", nil, fmt.Errorf("HTML 파싱이 실패하였습니다.(error:%s)", err0)
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.List[0].Html))
+		if err != nil {
+			return "", nil, fmt.Errorf("불러온 페이지의 데이터 파싱이 실패하였습니다.(error:%s)", err)
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.
-		ps := document.Find("ul > li")
+		ps := doc.Find("ul > li")
 		ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
 			// 제목
 			pis := s.Find("div.list_title a.tit")
