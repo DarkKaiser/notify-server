@@ -79,13 +79,13 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					return task.runWatchNewEvents(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewEvents(taskResultData, supportHTMLMessage)
 
 				case TcidAlganicMallWatchAtoCream:
-					return task.runWatchAtoCream(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchAtoCream(taskResultData, supportHTMLMessage)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -100,7 +100,7 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*alganicmallWatchNewEventsResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -152,7 +152,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 		if isNewEvent == true {
 			existsNewEvents = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -176,7 +176,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 			} else {
 				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					message += "\n"
 					for _, actualityEvent := range actualityTaskResultData.Events {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityEvent.Url, actualityEvent.Name)
@@ -193,7 +193,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	return message, changedTaskResultData, nil
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*alganicmallWatchAtoCreamResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -286,7 +286,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 				if actualityProduct.Price != originProduct.Price {
 					modifiedProducts = true
 
-					if isSupportedHTMLMessage == true {
+					if supportHTMLMessage == true {
 						if m != "" {
 							m += "\n"
 						}
@@ -306,7 +306,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		if isNewProduct == true {
 			modifiedProducts = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -330,7 +330,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 			} else {
 				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:"
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					message += "\n"
 					for _, actualityProduct := range actualityTaskResultData.Products {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원", message, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))

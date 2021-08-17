@@ -44,7 +44,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 		notifier: notifier{
 			id: id,
 
-			isSupportedHTMLMessage: true,
+			supportHTMLMessage: true,
 
 			notificationSendC: make(chan *notificationSendData, 10),
 		},

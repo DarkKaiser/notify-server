@@ -90,7 +90,7 @@ func init() {
 				config: config,
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range task.config.Tasks {
@@ -105,7 +105,7 @@ func init() {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 
-									return task.runWatchNewPerformances(taskCommandData, taskResultData, isSupportedHTMLMessage)
+									return task.runWatchNewPerformances(taskCommandData, taskResultData, supportHTMLMessage)
 								}
 							}
 							break
@@ -128,7 +128,7 @@ type naverTask struct {
 }
 
 //noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -237,7 +237,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 
 		existsNewPerformances = true
 
-		if isSupportedHTMLMessage == true {
+		if supportHTMLMessage == true {
 			if m != "" {
 				m += "\n\n"
 			}
@@ -262,7 +262,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			} else {
 				message = "신규 공연정보가 없습니다.\n\n현재 진행중인 공연정보는 아래와 같습니다:"
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					for _, actualityPerformance := range actualityTaskResultData.Performances {
 						message = fmt.Sprintf("%s\n\n☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>\n      • 일정 : %s\n      • 장소 : %s", message, url.QueryEscape(actualityPerformance.Title), template.HTMLEscapeString(actualityPerformance.Title), actualityPerformance.Period, actualityPerformance.Place)
 					}

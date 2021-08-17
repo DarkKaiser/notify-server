@@ -131,7 +131,7 @@ func init() {
 				clientSecret: taskData.ClientSecret,
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(task.CommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
 					for _, t := range task.config.Tasks {
@@ -146,7 +146,7 @@ func init() {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 
-									return task.runWatchPrice(taskCommandData, taskResultData, isSupportedHTMLMessage)
+									return task.runWatchPrice(taskCommandData, taskResultData, supportHTMLMessage)
 								}
 							}
 							break
@@ -172,7 +172,7 @@ type naverShoppingTask struct {
 }
 
 //noinspection GoUnhandledErrorResult
-func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -233,7 +233,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 				if actualityProduct.LowPrice != originProduct.LowPrice {
 					modifiedProducts = true
 
-					if isSupportedHTMLMessage == true {
+					if supportHTMLMessage == true {
 						if m != "" {
 							m += "\n"
 						}
@@ -253,7 +253,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		if isNewProduct == true {
 			modifiedProducts = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -279,7 +279,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 			} else {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:", filtersDescMessage)
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					message += "\n"
 					for _, actualityProduct := range actualityTaskResultData.Products {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원", message, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice))

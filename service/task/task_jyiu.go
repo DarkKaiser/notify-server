@@ -79,13 +79,13 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidJyiuWatchNewNotice:
-					return task.runWatchNewNotice(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewNotice(taskResultData, supportHTMLMessage)
 
 				case TcidJyiuWatchNewEducation:
-					return task.runWatchNewEducation(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewEducation(taskResultData, supportHTMLMessage)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -100,7 +100,7 @@ type jyiuTask struct {
 	task
 }
 
-func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewNoticeResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -160,7 +160,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 		if isNewNotice == true {
 			existsNewNotice = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -184,7 +184,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 			} else {
 				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:"
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					message += "\n"
 					for _, actualityNotice := range actualityTaskResultData.Notices {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityNotice.Url, actualityNotice.Title)
@@ -201,7 +201,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	return message, changedTaskResultData, nil
 }
 
-func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewEducationResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -262,7 +262,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 		if isNewEducation == true {
 			existsNewEducation = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n\n"
 				}
@@ -286,7 +286,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 			} else {
 				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:"
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					for _, actualityEducation := range actualityTaskResultData.Educations {
 						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s</b></a>\n      • 교육기간 : %s\n      • 접수기간 : %s", message, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
 					}

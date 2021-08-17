@@ -138,10 +138,10 @@ func init() {
 				config: config,
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidCovid19WatchResidualVaccine:
-					return task.runWatchResidualVaccine(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchResidualVaccine(taskResultData, supportHTMLMessage)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -159,7 +159,7 @@ type covid19Task struct {
 }
 
 //noinspection GoUnhandledErrorResult
-func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*covid19WatchResidualVaccineResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -212,7 +212,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 				isNewMedicalInstitution = false
 				existMedicalInstitutions = true
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					if m != "" {
 						m += "\n"
 					}
@@ -239,7 +239,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 		if isNewMedicalInstitution == true {
 			existMedicalInstitutions = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -266,7 +266,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 		if isNewMedicalInstitution == true {
 			existMedicalInstitutions = true
 
-			if isSupportedHTMLMessage == true {
+			if supportHTMLMessage == true {
 				if m != "" {
 					m += "\n"
 				}
@@ -290,7 +290,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 			} else {
 				message = fmt.Sprintf("코로나19 잔여백신에 대한 정보는 아래와 같습니다:\n")
 
-				if isSupportedHTMLMessage == true {
+				if supportHTMLMessage == true {
 					for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개", message, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
 					}
