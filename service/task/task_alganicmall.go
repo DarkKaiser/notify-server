@@ -25,19 +25,23 @@ const (
 	alganicmallBaseUrl = "https://www.alganicmall.com/"
 )
 
+type alganicmallEvent struct {
+	Name string `json:"name"`
+	Url  string `json:"url"`
+}
+
 type alganicmallWatchNewEventsResultData struct {
-	Events []struct {
-		Name string `json:"name"`
-		Url  string `json:"url"`
-	} `json:"events"`
+	Events []*alganicmallEvent `json:"events"`
+}
+
+type alganicmallProduct struct {
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Url   string `json:"url"`
 }
 
 type alganicmallWatchAtoCreamResultData struct {
-	Products []struct {
-		Name  string `json:"name"`
-		Price int    `json:"price"`
-		Url   string `json:"url"`
-	} `json:"products"`
+	Products []*alganicmallProduct `json:"products"`
 }
 
 func init() {
@@ -102,35 +106,24 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 이벤트 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("div.bbs-table-list > div.fixed-img-collist").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	// 읽어온 이벤트 페이지에서 이벤트 정보를 추출한다.
-	euckrDecoder := korean.EUCKR.NewDecoder()
-	actualityTaskResultData := &alganicmallWatchNewEventsResultData{}
-	document.Find("div.bbs-table-list > div.fixed-img-collist > ul > li > a").EachWithBreak(func(i int, s *goquery.Selection) bool {
-		name, err0 := euckrDecoder.String(s.Text())
-		if err0 != nil {
-			err = errors.New(fmt.Sprintf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
+	// 이벤트 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var euckrDecoder = korean.EUCKR.NewDecoder()
+	var actualityTaskResultData = &alganicmallWatchNewEventsResultData{}
+	err = webScrape(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl), "div.bbs-table-list > div.fixed-img-collist > ul > li > a", func(i int, s *goquery.Selection) bool {
+		name, _err_ := euckrDecoder.String(s.Text())
+		if _err_ != nil {
+			err0 = fmt.Errorf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
 
 		url, exists := s.Attr("href")
 		if exists == false {
-			err = errors.New(fmt.Sprint("이벤트 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("이벤트 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 
-		actualityTaskResultData.Events = append(actualityTaskResultData.Events, struct {
-			Name string `json:"name"`
-			Url  string `json:"url"`
-		}{
+		actualityTaskResultData.Events = append(actualityTaskResultData.Events, &alganicmallEvent{
 			Name: utils.CleanString(name),
 			Url:  fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})
@@ -139,6 +132,9 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if err0 != nil {
+		return "", nil, err0
 	}
 
 	// 신규 이벤트 정보를 확인한다.
@@ -203,32 +199,23 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 제품 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("div.item-wrap > div.item-list").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	priceReplacer := strings.NewReplacer(",", "", "원", "")
-
-	// 읽어온 제품 페이지에서 제품 정보를 추출한다.
-	euckrDecoder := korean.EUCKR.NewDecoder()
-	actualityTaskResultData := &alganicmallWatchAtoCreamResultData{}
-	document.Find("div.item-wrap > div.item-list > dl.item").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	// 제품 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var euckrDecoder = korean.EUCKR.NewDecoder()
+	var priceReplacer = strings.NewReplacer(",", "", "원", "")
+	var actualityTaskResultData = &alganicmallWatchAtoCreamResultData{}
+	err = webScrape(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl), "div.item-wrap > div.item-list > dl.item", func(i int, s *goquery.Selection) bool {
 		productSelection := s
 
 		// 제품명
 		productNameSelection := productSelection.Find("dd > ul > li:first-child > span")
 		if productNameSelection.Length() != 1 {
-			err = errors.New(fmt.Sprint("제품명 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("제품명 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
-		name, err0 := euckrDecoder.String(productNameSelection.Text())
-		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
+		name, _err_ := euckrDecoder.String(productNameSelection.Text())
+		if _err_ != nil {
+			err0 = fmt.Errorf("제품명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
 		if strings.Contains(name, "아토크림") == false {
@@ -238,12 +225,12 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		// 제품URL
 		productLinkSelection := productSelection.Find("dt > a")
 		if productLinkSelection.Length() != 1 {
-			err = errors.New(fmt.Sprint("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		url, exists := productLinkSelection.Attr("href")
 		if exists == false {
-			err = errors.New(fmt.Sprint("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		// 제품URL의 마지막 파라메터 'GfDT'가 수시로 변경되기 때문에 해당 파라메터를 제거한다.
@@ -257,25 +244,21 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 		// 제품가격
 		productPriceSelection := productSelection.Find("dd > ul > li > span.price")
 		if productPriceSelection.Length() != 1 {
-			err = errors.New(fmt.Sprint("제품 가격 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("제품 가격 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
-		productPriceString, err0 := euckrDecoder.String(productPriceSelection.Text())
-		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", err0))
+		productPriceString, _err_ := euckrDecoder.String(productPriceSelection.Text())
+		if _err_ != nil {
+			err0 = fmt.Errorf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
-		price, err0 := strconv.Atoi(utils.CleanString(priceReplacer.Replace(productPriceString)))
-		if err0 != nil {
-			err = errors.New(fmt.Sprintf("제품 가격의 숫자 변환이 실패하였습니다.(error:%s)", err0))
+		price, _err_ := strconv.Atoi(utils.CleanString(priceReplacer.Replace(productPriceString)))
+		if _err_ != nil {
+			err0 = fmt.Errorf("제품 가격의 숫자 변환이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
 
-		actualityTaskResultData.Products = append(actualityTaskResultData.Products, struct {
-			Name  string `json:"name"`
-			Price int    `json:"price"`
-			Url   string `json:"url"`
-		}{
+		actualityTaskResultData.Products = append(actualityTaskResultData.Products, &alganicmallProduct{
 			Name:  utils.CleanString(name),
 			Price: price,
 			Url:   fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
@@ -285,6 +268,9 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 	})
 	if err != nil {
 		return "", nil, err
+	}
+	if err0 != nil {
+		return "", nil, err0
 	}
 
 	// 변경된 제품 정보를 확인한다.

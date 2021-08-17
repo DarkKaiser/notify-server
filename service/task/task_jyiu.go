@@ -23,21 +23,25 @@ const (
 	jyiuBaseUrl = "https://www.jyiu.or.kr/"
 )
 
+type jyiuNotice struct {
+	Title string `json:"title"`
+	Date  string `json:"date"`
+	Url   string `json:"url"`
+}
+
 type jyiuWatchNewNoticeResultData struct {
-	Notice []struct {
-		Title string `json:"title"`
-		Date  string `json:"date"`
-		Url   string `json:"url"`
-	} `json:"notice"`
+	Notices []*jyiuNotice `json:"notices"`
+}
+
+type jyiuEducation struct {
+	Title            string `json:"title"`
+	TrainingPeriod   string `json:"training_period"`
+	AcceptancePeriod string `json:"acceptance_period"`
+	Url              string `json:"url"`
 }
 
 type jyiuWatchNewEducationResultData struct {
-	Education []struct {
-		Title            string `json:"title"`
-		TrainingPeriod   string `json:"training_period"`
-		AcceptancePeriod string `json:"acceptance_period"`
-		Url              string `json:"url"`
-	} `json:"education"`
+	Educations []*jyiuEducation `json:"educations"`
 }
 
 func init() {
@@ -102,43 +106,31 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 공지사항 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("#contents table.bbsList > tbody > tr").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	// 읽어온 공지사항 페이지에서 이벤트 정보를 추출한다.
-	actualityTaskResultData := &jyiuWatchNewNoticeResultData{}
-	document.Find("#contents table.bbsList > tbody > tr").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	// 공지사항 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
+	err = webScrape(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
-			err = errors.New(fmt.Sprintf("공지사항 데이터 파싱이 실패하였습니다. CSS셀렉터를 확인하세요.(공지사항 컬럼 개수 불일치:%d)", as.Length()))
+			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
 			return false
 		}
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err = errors.New(fmt.Sprint("공지사항 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err = errors.New(fmt.Sprint("공지사항 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		id = id[pos1+1 : pos2]
 
-		actualityTaskResultData.Notice = append(actualityTaskResultData.Notice, struct {
-			Title string `json:"title"`
-			Date  string `json:"date"`
-			Url   string `json:"url"`
-		}{
+		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
 			Title: utils.CleanString(as.Eq(1).Find("a").Text()),
 			Date:  utils.CleanString(as.Eq(3).Text()),
 			Url:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseUrl, id),
@@ -149,13 +141,16 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	if err != nil {
 		return "", nil, err
 	}
+	if err0 != nil {
+		return "", nil, err0
+	}
 
-	// 공지사항 새로운 글 정보를 확인한다.
+	// 신규로 등록된 공지사항이 존재하는지 확인한다.
 	m := ""
 	existsNewNotice := false
-	for _, actualityNotice := range actualityTaskResultData.Notice {
+	for _, actualityNotice := range actualityTaskResultData.Notices {
 		isNewNotice := true
-		for _, originNotice := range originTaskResultData.Notice {
+		for _, originNotice := range originTaskResultData.Notices {
 			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.Url == originNotice.Url {
 				isNewNotice = false
 				break
@@ -184,18 +179,18 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
-			if len(actualityTaskResultData.Notice) == 0 {
+			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
 				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
 					message += "\n"
-					for _, actualityNotice := range actualityTaskResultData.Notice {
+					for _, actualityNotice := range actualityTaskResultData.Notices {
 						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityNotice.Url, actualityNotice.Title)
 					}
 				} else {
-					for _, actualityNotice := range actualityTaskResultData.Notice {
+					for _, actualityNotice := range actualityTaskResultData.Notices {
 						message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityNotice.Title, actualityNotice.Url)
 					}
 				}
@@ -212,44 +207,31 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	// 교육프로그램 페이지를 읽어온다.
-	document, err := httpWebPageDocument(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl))
-	if err != nil {
-		return "", nil, err
-	}
-	if document.Find("div.gms_003001 table.bbsList > tbody > tr").Length() <= 0 {
-		return "Web 페이지의 구조가 변경되었습니다. CSS셀렉터를 수정하세요.", nil, nil
-	}
-
-	// 읽어온 교육프로그램 페이지에서 이벤트 정보를 추출한다.
-	actualityTaskResultData := &jyiuWatchNewEducationResultData{}
-	document.Find("div.gms_003001 table.bbsList > tbody > tr").EachWithBreak(func(i int, s *goquery.Selection) bool {
+	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
+	var err0 error
+	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
+	err = webScrape(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
-			err = errors.New(fmt.Sprintf("교육프로그램 데이터 파싱이 실패하였습니다. CSS셀렉터를 확인하세요.(교육프로그램 컬럼 개수 불일치:%d)", as.Length()))
+			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
 			return false
 		}
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err = errors.New(fmt.Sprint("교육프로그램 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err = errors.New(fmt.Sprint("교육프로그램 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요."))
+			err0 = errors.New("상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 			return false
 		}
 		url = url[pos1+1 : pos2]
 
-		actualityTaskResultData.Education = append(actualityTaskResultData.Education, struct {
-			Title            string `json:"title"`
-			TrainingPeriod   string `json:"training_period"`
-			AcceptancePeriod string `json:"acceptance_period"`
-			Url              string `json:"url"`
-		}{
+		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
 			Title:            utils.CleanString(as.Eq(2).Text()),
 			TrainingPeriod:   utils.CleanString(as.Eq(4).Text()),
 			AcceptancePeriod: utils.CleanString(as.Eq(5).Text()),
@@ -261,13 +243,16 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 	if err != nil {
 		return "", nil, err
 	}
+	if err0 != nil {
+		return "", nil, err0
+	}
 
 	// 교육프로그램 새로운 글 정보를 확인한다.
 	m := ""
 	existsNewEducation := false
-	for _, actualityEducation := range actualityTaskResultData.Education {
+	for _, actualityEducation := range actualityTaskResultData.Educations {
 		isNewEducation := true
-		for _, originEducation := range originTaskResultData.Education {
+		for _, originEducation := range originTaskResultData.Educations {
 			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.Url == originEducation.Url {
 				isNewEducation = false
 				break
@@ -296,17 +281,17 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
-			if len(actualityTaskResultData.Education) == 0 {
+			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {
 				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:"
 
 				if isSupportedHTMLMessage == true {
-					for _, actualityEducation := range actualityTaskResultData.Education {
+					for _, actualityEducation := range actualityTaskResultData.Educations {
 						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s</b></a>\n      • 교육기간 : %s\n      • 접수기간 : %s", message, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
 					}
 				} else {
-					for _, actualityEducation := range actualityTaskResultData.Education {
+					for _, actualityEducation := range actualityTaskResultData.Educations {
 						message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEducation.Title, actualityEducation.Url)
 					}
 				}
