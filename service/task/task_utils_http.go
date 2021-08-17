@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -53,8 +54,8 @@ func webScrape(url string, selector string, f func(int, *goquery.Selection) bool
 }
 
 //noinspection GoUnhandledErrorResult
-func unmarshalFromResponseJSONData(method, url string, header map[string]string, v interface{}) error {
-	req, err := http.NewRequest(method, url, nil)
+func unmarshalFromResponseJSONData(method, url string, header map[string]string, body io.Reader, v interface{}) error {
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
 	}

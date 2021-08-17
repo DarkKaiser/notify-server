@@ -186,7 +186,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		"X-Naver-Client-Secret": t.clientSecret,
 	}
 	var searchResultData = &naverShoppingSearchResultData{}
-	err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query)), header, searchResultData)
+	err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query)), header, nil, searchResultData)
 	if err != nil {
 		return "", nil, err
 	}

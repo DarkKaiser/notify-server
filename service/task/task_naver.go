@@ -144,7 +144,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	searchStartPerformancePos := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=PerformListAPI&where=nexearch&pkid=269&q=%s&so=&start=%d", url.QueryEscape(taskCommandData.Query), searchStartPerformancePos), nil, searchResultData)
+		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=PerformListAPI&where=nexearch&pkid=269&q=%s&so=&start=%d", url.QueryEscape(taskCommandData.Query), searchStartPerformancePos), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}

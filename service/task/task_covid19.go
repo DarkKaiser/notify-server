@@ -2,13 +2,10 @@ package task
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"net/http"
 	"strconv"
 )
 
@@ -171,28 +168,9 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, isSupp
 	//
 	// 잔여백신이 남아있는 의료기관을 검색한다.
 	//
-	req, err := http.NewRequest("POST", "https://api.place.naver.com/graphql", bytes.NewBufferString("[{\"operationName\":\"vaccineList\",\"variables\":{\"input\":{\"keyword\":\"코로나백신위탁의료기관\",\"x\":\"127.672066\",\"y\":\"34.7635133\"},\"businessesInput\":{\"start\":0,\"display\":100,\"deviceType\":\"mobile\",\"x\":\"127.672066\",\"y\":\"34.7635133\",\"bounds\":\"127.6034014;34.7392187;127.7407305;34.7878008\",\"sortingOrder\":\"distance\"},\"isNmap\":false,\"isBounds\":false},\"query\":\"query vaccineList($input: RestsInput, $businessesInput: RestsBusinessesInput, $isNmap: Boolean!, $isBounds: Boolean!) {\\n  rests(input: $input) {\\n    businesses(input: $businessesInput) {\\n      total\\n      vaccineLastSave\\n      isUpdateDelayed\\n      items {\\n        id\\n        name\\n        dbType\\n        phone\\n        virtualPhone\\n        hasBooking\\n        hasNPay\\n        bookingReviewCount\\n        description\\n        distance\\n        commonAddress\\n        roadAddress\\n        address\\n        imageUrl\\n        imageCount\\n        tags\\n        distance\\n        promotionTitle\\n        category\\n        routeUrl\\n        businessHours\\n        x\\n        y\\n        imageMarker @include(if: $isNmap) {\\n          marker\\n          markerSelected\\n          __typename\\n        }\\n        markerLabel @include(if: $isNmap) {\\n          text\\n          style\\n          __typename\\n        }\\n        isDelivery\\n        isTakeOut\\n        isPreOrder\\n        isTableOrder\\n        naverBookingCategory\\n        bookingDisplayName\\n        bookingBusinessId\\n        bookingVisitId\\n        bookingPickupId\\n        vaccineOpeningHour {\\n          isDayOff\\n          standardTime\\n          __typename\\n        }\\n        vaccineQuantity {\\n          totalQuantity\\n          totalQuantityStatus\\n          startTime\\n          endTime\\n          vaccineOrganizationCode\\n          list {\\n            quantity\\n            quantityStatus\\n            vaccineType\\n            __typename\\n          }\\n          __typename\\n        }\\n        __typename\\n      }\\n      optionsForMap @include(if: $isBounds) {\\n        maxZoom\\n        minZoom\\n        includeMyLocation\\n        maxIncludePoiCount\\n        center\\n        __typename\\n      }\\n      __typename\\n    }\\n    queryResult {\\n      keyword\\n      vaccineFilter\\n      categories\\n      region\\n      isBrandList\\n      filterBooking\\n      hasNearQuery\\n      isPublicMask\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}]"))
-	if err != nil {
-		return "", nil, err
-	}
-	req.Header.Add("content-type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, errors.New(fmt.Sprintf("Web 페이지 접근이 실패하였습니다.(%s)", resp.Status))
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", nil, err
-	}
-
-	searchResultData := covid19WatchResidualVaccineSearchResultData{}
-	err = json.Unmarshal(bodyBytes, &searchResultData)
+	var header = map[string]string{"content-type": "application/json"}
+	var searchResultData = covid19WatchResidualVaccineSearchResultData{}
+	err = unmarshalFromResponseJSONData("POST", "https://api.place.naver.com/graphql", header, bytes.NewBufferString("[{\"operationName\":\"vaccineList\",\"variables\":{\"input\":{\"keyword\":\"코로나백신위탁의료기관\",\"x\":\"127.672066\",\"y\":\"34.7635133\"},\"businessesInput\":{\"start\":0,\"display\":100,\"deviceType\":\"mobile\",\"x\":\"127.672066\",\"y\":\"34.7635133\",\"bounds\":\"127.6034014;34.7392187;127.7407305;34.7878008\",\"sortingOrder\":\"distance\"},\"isNmap\":false,\"isBounds\":false},\"query\":\"query vaccineList($input: RestsInput, $businessesInput: RestsBusinessesInput, $isNmap: Boolean!, $isBounds: Boolean!) {\\n  rests(input: $input) {\\n    businesses(input: $businessesInput) {\\n      total\\n      vaccineLastSave\\n      isUpdateDelayed\\n      items {\\n        id\\n        name\\n        dbType\\n        phone\\n        virtualPhone\\n        hasBooking\\n        hasNPay\\n        bookingReviewCount\\n        description\\n        distance\\n        commonAddress\\n        roadAddress\\n        address\\n        imageUrl\\n        imageCount\\n        tags\\n        distance\\n        promotionTitle\\n        category\\n        routeUrl\\n        businessHours\\n        x\\n        y\\n        imageMarker @include(if: $isNmap) {\\n          marker\\n          markerSelected\\n          __typename\\n        }\\n        markerLabel @include(if: $isNmap) {\\n          text\\n          style\\n          __typename\\n        }\\n        isDelivery\\n        isTakeOut\\n        isPreOrder\\n        isTableOrder\\n        naverBookingCategory\\n        bookingDisplayName\\n        bookingBusinessId\\n        bookingVisitId\\n        bookingPickupId\\n        vaccineOpeningHour {\\n          isDayOff\\n          standardTime\\n          __typename\\n        }\\n        vaccineQuantity {\\n          totalQuantity\\n          totalQuantityStatus\\n          startTime\\n          endTime\\n          vaccineOrganizationCode\\n          list {\\n            quantity\\n            quantityStatus\\n            vaccineType\\n            __typename\\n          }\\n          __typename\\n        }\\n        __typename\\n      }\\n      optionsForMap @include(if: $isBounds) {\\n        maxZoom\\n        minZoom\\n        includeMyLocation\\n        maxIncludePoiCount\\n        center\\n        __typename\\n      }\\n      __typename\\n    }\\n    queryResult {\\n      keyword\\n      vaccineFilter\\n      categories\\n      region\\n      isBrandList\\n      filterBooking\\n      hasNearQuery\\n      isPublicMask\\n      __typename\\n    }\\n    __typename\\n  }\\n}\\n\"}]"), &searchResultData)
 	if err != nil {
 		return "", nil, err
 	}
