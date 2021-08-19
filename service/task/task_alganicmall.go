@@ -30,6 +30,13 @@ type alganicmallEvent struct {
 	Url  string `json:"url"`
 }
 
+func (e *alganicmallEvent) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", e.Url, e.Name, mark)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Name, mark, e.Url))
+}
+
 type alganicmallWatchNewEventsResultData struct {
 	Events []*alganicmallEvent `json:"events"`
 }
@@ -38,6 +45,13 @@ type alganicmallProduct struct {
 	Name  string `json:"name"`
 	Price int    `json:"price"`
 	Url   string `json:"url"`
+}
+
+func (p *alganicmallProduct) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Url, p.Name, utils.FormatCommas(p.Price), mark)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Name, utils.FormatCommas(p.Price), mark, p.Url))
 }
 
 type alganicmallWatchAtoCreamResultData struct {
@@ -79,13 +93,13 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidAlganicMallWatchNewEvents:
-					return task.runWatchNewEvents(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewEvents(taskResultData, messageTypeHTML)
 
 				case TcidAlganicMallWatchAtoCream:
-					return task.runWatchAtoCream(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchAtoCream(taskResultData, messageTypeHTML)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -100,7 +114,7 @@ type alganicMallTask struct {
 	task
 }
 
-func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*alganicmallWatchNewEventsResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -139,53 +153,49 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 
 	// 신규 이벤트 정보를 확인한다.
 	m := ""
-	existsNewEvents := false
-	for _, actualityEvent := range actualityTaskResultData.Events {
-		isNewEvent := true
-		for _, originEvent := range originTaskResultData.Events {
+	lineSpacing := "\n\n"
+	if messageTypeHTML == true {
+		lineSpacing = "\n"
+	}
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Events, originTaskResultData.Events, func(selem, telem interface{}) (bool, error) {
+		actualityEvent, ok1 := selem.(*alganicmallEvent)
+		originEvent, ok2 := telem.(*alganicmallEvent)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityEvent.Name == originEvent.Name && actualityEvent.Url == originEvent.Url {
-				isNewEvent = false
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityEvent := selem.(*alganicmallEvent)
 
-		if isNewEvent == true {
-			existsNewEvents = true
-
-			if isSupportedHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityEvent.Url, actualityEvent.Name)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityEvent.Name, actualityEvent.Url)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		m += actualityEvent.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existsNewEvents == true {
-		message = fmt.Sprintf("신규 이벤트가 발생하였습니다.\n\n%s", m)
+	if m != "" {
+		message = "새로운 이벤트가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Events) == 0 {
 				message = "등록된 이벤트가 존재하지 않습니다."
 			} else {
-				message = "신규 이벤트가 없습니다.\n\n현재 진행중인 이벤트는 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					message += "\n"
-					for _, actualityEvent := range actualityTaskResultData.Events {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityEvent.Url, actualityEvent.Name)
+				for _, actualityEvent := range actualityTaskResultData.Events {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityEvent := range actualityTaskResultData.Events {
-						message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEvent.Name, actualityEvent.Url)
-					}
+					m += actualityEvent.String(messageTypeHTML, "")
 				}
+
+				message = "신규로 등록된 이벤트가이 없습니다.\n\n현재 등록된 이벤트는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}
@@ -193,7 +203,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, isSuppor
 	return message, changedTaskResultData, nil
 }
 
-func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*alganicmallWatchAtoCreamResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -275,71 +285,59 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, isSupport
 
 	// 변경된 제품 정보를 확인한다.
 	m := ""
-	modifiedProducts := false
-	for _, actualityProduct := range actualityTaskResultData.Products {
-		isNewProduct := true
-		for _, originProduct := range originTaskResultData.Products {
+	lineSpacing := "\n\n"
+	if messageTypeHTML == true {
+		lineSpacing = "\n"
+	}
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
+		actualityProduct, ok1 := selem.(*alganicmallProduct)
+		originProduct, ok2 := telem.(*alganicmallProduct)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityProduct.Name == originProduct.Name && actualityProduct.Url == originProduct.Url {
-				isNewProduct = false
-
-				// 동일한 제품인데 가격이 변경되었는지 확인한다.
-				if actualityProduct.Price != originProduct.Price {
-					modifiedProducts = true
-
-					if isSupportedHTMLMessage == true {
-						if m != "" {
-							m += "\n"
-						}
-						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price))
-					} else {
-						if m != "" {
-							m += "\n\n"
-						}
-						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Name, utils.FormatCommas(originProduct.Price), utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
-					}
-				}
-
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, func(selem, telem interface{}) {
+		actualityProduct := selem.(*alganicmallProduct)
+		originProduct := telem.(*alganicmallProduct)
 
-		if isNewProduct == true {
-			modifiedProducts = true
-
-			if isSupportedHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
+		if actualityProduct.Price != originProduct.Price {
+			if m != "" {
+				m += lineSpacing
 			}
+			m += originProduct.String(messageTypeHTML, fmt.Sprintf(" ⇒ %s원 🔁", utils.FormatCommas(actualityProduct.Price)))
 		}
+	}, func(selem interface{}) {
+		actualityProduct := selem.(*alganicmallProduct)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityProduct.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if modifiedProducts == true {
-		message = fmt.Sprintf("아토크림에 대한 정보가 변경되었습니다.\n\n%s", m)
+	if m != "" {
+		message = "아토크림에 대한 정보가 변경되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = "아토크림에 대한 정보가 존재하지 않습니다."
 			} else {
-				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					message += "\n"
-					for _, actualityProduct := range actualityTaskResultData.Products {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원", message, actualityProduct.Url, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price))
+				for _, actualityProduct := range actualityTaskResultData.Products {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityProduct := range actualityTaskResultData.Products {
-						message = fmt.Sprintf("%s\n\n☞ %s %s원\n%s", message, actualityProduct.Name, utils.FormatCommas(actualityProduct.Price), actualityProduct.Url)
-					}
+					m += actualityProduct.String(messageTypeHTML, "")
 				}
+
+				message = "아토크림에 대한 변경된 정보가 없습니다.\n\n현재 아토크림에 대한 정보는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}

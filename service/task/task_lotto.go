@@ -74,7 +74,7 @@ func init() {
 				appPath: appPath,
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, _ bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidLottoPrediction:
 					return task.runPrediction()

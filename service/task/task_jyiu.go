@@ -29,6 +29,13 @@ type jyiuNotice struct {
 	Url   string `json:"url"`
 }
 
+func (n *jyiuNotice) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", n.Url, n.Title, mark)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", n.Title, mark, n.Url))
+}
+
 type jyiuWatchNewNoticeResultData struct {
 	Notices []*jyiuNotice `json:"notices"`
 }
@@ -38,6 +45,13 @@ type jyiuEducation struct {
 	TrainingPeriod   string `json:"training_period"`
 	AcceptancePeriod string `json:"acceptance_period"`
 	Url              string `json:"url"`
+}
+
+func (e *jyiuEducation) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s\n      • 교육기간 : %s\n      • 접수기간 : %s", e.Url, e.Title, mark, e.TrainingPeriod, e.AcceptancePeriod)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Title, mark, e.Url))
 }
 
 type jyiuWatchNewEducationResultData struct {
@@ -79,13 +93,13 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidJyiuWatchNewNotice:
-					return task.runWatchNewNotice(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewNotice(taskResultData, messageTypeHTML)
 
 				case TcidJyiuWatchNewEducation:
-					return task.runWatchNewEducation(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewEducation(taskResultData, messageTypeHTML)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -100,7 +114,7 @@ type jyiuTask struct {
 	task
 }
 
-func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewNoticeResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -147,53 +161,49 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 
 	// 신규로 등록된 공지사항이 존재하는지 확인한다.
 	m := ""
-	existsNewNotice := false
-	for _, actualityNotice := range actualityTaskResultData.Notices {
-		isNewNotice := true
-		for _, originNotice := range originTaskResultData.Notices {
+	lineSpacing := "\n\n"
+	if messageTypeHTML == true {
+		lineSpacing = "\n"
+	}
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Notices, originTaskResultData.Notices, func(selem, telem interface{}) (bool, error) {
+		actualityNotice, ok1 := selem.(*jyiuNotice)
+		originNotice, ok2 := telem.(*jyiuNotice)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.Url == originNotice.Url {
-				isNewNotice = false
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityNotice := selem.(*jyiuNotice)
 
-		if isNewNotice == true {
-			existsNewNotice = true
-
-			if isSupportedHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕", m, actualityNotice.Url, actualityNotice.Title)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityNotice.Title, actualityNotice.Url)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		m += actualityNotice.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existsNewNotice == true {
-		message = fmt.Sprintf("새 공지사항이 등록되었습니다.\n\n%s", m)
+	if m != "" {
+		message = "새로운 공지사항이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
-				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					message += "\n"
-					for _, actualityNotice := range actualityTaskResultData.Notices {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a>", message, actualityNotice.Url, actualityNotice.Title)
+				for _, actualityNotice := range actualityTaskResultData.Notices {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityNotice := range actualityTaskResultData.Notices {
-						message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityNotice.Title, actualityNotice.Url)
-					}
+					m += actualityNotice.String(messageTypeHTML, "")
 				}
+
+				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:\n\n" + m
 			}
 		}
 	}
@@ -201,7 +211,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, isSupportedHTML
 	return message, changedTaskResultData, nil
 }
 
-func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewEducationResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -249,52 +259,46 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, isSupportedH
 
 	// 교육프로그램 새로운 글 정보를 확인한다.
 	m := ""
-	existsNewEducation := false
-	for _, actualityEducation := range actualityTaskResultData.Educations {
-		isNewEducation := true
-		for _, originEducation := range originTaskResultData.Educations {
+	lineSpacing := "\n\n"
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Educations, originTaskResultData.Educations, func(selem, telem interface{}) (bool, error) {
+		actualityEducation, ok1 := selem.(*jyiuEducation)
+		originEducation, ok2 := telem.(*jyiuEducation)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.Url == originEducation.Url {
-				isNewEducation = false
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityEducation := selem.(*jyiuEducation)
 
-		if isNewEducation == true {
-			existsNewEducation = true
-
-			if isSupportedHTMLMessage == true {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> 🆕\n      • 교육기간 : %s\n      • 접수기간 : %s", m, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s 🆕\n%s", m, actualityEducation.Title, actualityEducation.Url)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		m += actualityEducation.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existsNewEducation == true {
-		message = fmt.Sprintf("새 교육프로그램이 등록되었습니다.\n\n%s", m)
+	if m != "" {
+		message = "새로운 교육프로그램이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {
-				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					for _, actualityEducation := range actualityTaskResultData.Educations {
-						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s</b></a>\n      • 교육기간 : %s\n      • 접수기간 : %s", message, actualityEducation.Url, actualityEducation.Title, actualityEducation.TrainingPeriod, actualityEducation.AcceptancePeriod)
+				for _, actualityEducation := range actualityTaskResultData.Educations {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityEducation := range actualityTaskResultData.Educations {
-						message = fmt.Sprintf("%s\n\n☞ %s\n%s", message, actualityEducation.Title, actualityEducation.Url)
-					}
+					m += actualityEducation.String(messageTypeHTML, "")
 				}
+
+				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:\n\n" + m
 			}
 		}
 	}

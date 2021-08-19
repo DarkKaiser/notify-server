@@ -55,6 +55,13 @@ type naverPerformance struct {
 	Thumbnail string `json:"thumbnail"`
 }
 
+func (p *naverPerformance) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 일정 : %s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Period, p.Place)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 일정 : %s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Period, p.Place))
+}
+
 type naverWatchNewPerformancesResultData struct {
 	Performances []*naverPerformance `json:"performances"`
 }
@@ -90,7 +97,7 @@ func init() {
 				config: config,
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range task.config.Tasks {
@@ -105,7 +112,7 @@ func init() {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 
-									return task.runWatchNewPerformances(taskCommandData, taskResultData, isSupportedHTMLMessage)
+									return task.runWatchNewPerformances(taskCommandData, taskResultData, messageTypeHTML)
 								}
 							}
 							break
@@ -128,7 +135,7 @@ type naverTask struct {
 }
 
 //noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -226,51 +233,47 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	}
 
 	// 신규 공연정보를 확인한다.
-	var m = ""
-	var existsNewPerformances = false
-	for _, actualityPerformance := range actualityTaskResultData.Performances {
-		for _, originPerformance := range originTaskResultData.Performances {
-			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Period == originPerformance.Period && actualityPerformance.Place == originPerformance.Place {
-				goto NEXTITEM
-			}
-		}
-
-		existsNewPerformances = true
-
-		if isSupportedHTMLMessage == true {
-			if m != "" {
-				m += "\n\n"
-			}
-			m = fmt.Sprintf("%s☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a> 🆕\n      • 일정 : %s\n      • 장소 : %s", m, url.QueryEscape(actualityPerformance.Title), template.HTMLEscapeString(actualityPerformance.Title), actualityPerformance.Period, actualityPerformance.Place)
+	m := ""
+	lineSpacing := "\n\n"
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
+		actualityPerformance, ok1 := selem.(*naverPerformance)
+		originPerformance, ok2 := telem.(*naverPerformance)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
 		} else {
-			if m != "" {
-				m += "\n\n"
+			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Period == originPerformance.Period && actualityPerformance.Place == originPerformance.Place {
+				return true, nil
 			}
-			m = fmt.Sprintf("%s☞ %s 🆕\n      • 일정 : %s\n      • 장소 : %s", m, template.HTMLEscapeString(actualityPerformance.Title), actualityPerformance.Period, actualityPerformance.Place)
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityPerformance := selem.(*naverPerformance)
 
-	NEXTITEM:
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityPerformance.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existsNewPerformances == true {
-		message = fmt.Sprintf("신규 공연정보가 등록되었습니다.\n\n%s", m)
+	if m != "" {
+		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {
-				message = "신규 공연정보가 없습니다.\n\n현재 진행중인 공연정보는 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					for _, actualityPerformance := range actualityTaskResultData.Performances {
-						message = fmt.Sprintf("%s\n\n☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>\n      • 일정 : %s\n      • 장소 : %s", message, url.QueryEscape(actualityPerformance.Title), template.HTMLEscapeString(actualityPerformance.Title), actualityPerformance.Period, actualityPerformance.Place)
+				for _, actualityPerformance := range actualityTaskResultData.Performances {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityPerformance := range actualityTaskResultData.Performances {
-						message = fmt.Sprintf("%s\n\n☞ %s\n      • 일정 : %s\n      • 장소 : %s", message, template.HTMLEscapeString(actualityPerformance.Title), actualityPerformance.Period, actualityPerformance.Place)
-					}
+					m += actualityPerformance.String(messageTypeHTML, "")
 				}
+
+				message = "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}

@@ -29,6 +29,13 @@ type jdcOnlineEducationCourse struct {
 	Url            string `json:"url"`
 }
 
+func (c *jdcOnlineEducationCourse) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s &gt; %s</b></a>%s\n      • 교육기간 : %s", c.Url, c.Title1, c.Title2, mark, c.TrainingPeriod)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s > %s%s\n%s", c.Title1, c.Title2, mark, c.Url))
+}
+
 type jdcWatchNewOnlineEducationResultData struct {
 	OnlineEducationCourses []*jdcOnlineEducationCourse `json:"online_education_courses"`
 }
@@ -62,10 +69,10 @@ func init() {
 				},
 			}
 
-			task.runFn = func(taskResultData interface{}, isSupportedHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidJdcWatchNewOnlineEducation:
-					return task.runWatchNewOnlineEducation(taskResultData, isSupportedHTMLMessage)
+					return task.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -80,7 +87,7 @@ type jdcTask struct {
 	task
 }
 
-func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSupportedHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jdcWatchNewOnlineEducationResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -103,52 +110,46 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, isSuppo
 
 	// 새로운 강의 정보를 확인한다.
 	m := ""
-	existsNewCourse := false
-	for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
-		isNewCourse := true
-		for _, originEducationCourse := range originTaskResultData.OnlineEducationCourses {
+	lineSpacing := "\n\n"
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.OnlineEducationCourses, originTaskResultData.OnlineEducationCourses, func(selem, telem interface{}) (bool, error) {
+		actualityEducationCourse, ok1 := selem.(*jdcOnlineEducationCourse)
+		originEducationCourse, ok2 := telem.(*jdcOnlineEducationCourse)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityEducationCourse.Title1 == originEducationCourse.Title1 && actualityEducationCourse.Title2 == originEducationCourse.Title2 && actualityEducationCourse.TrainingPeriod == originEducationCourse.TrainingPeriod {
-				isNewCourse = false
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityEducationCourse := selem.(*jdcOnlineEducationCourse)
 
-		if isNewCourse == true {
-			existsNewCourse = true
-
-			if isSupportedHTMLMessage == true {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s &gt; %s</b></a> 🆕\n      • 교육기간 : %s", m, actualityEducationCourse.Url, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.TrainingPeriod)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s > %s 🆕\n%s", m, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.Url)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		m += actualityEducationCourse.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existsNewCourse == true {
-		message = fmt.Sprintf("새로운 온라인교육 강의가 등록되었습니다.\n\n%s", m)
+	if m != "" {
+		message = "새로운 온라인교육 강의가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.OnlineEducationCourses) == 0 {
 				message = "등록된 온라인교육 강의가 존재하지 않습니다."
 			} else {
-				message = "새롭게 등록된 온라인교육 강의가 없습니다.\n\n현재 등록된 온라인교육 강의는 아래와 같습니다:"
-
-				if isSupportedHTMLMessage == true {
-					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
-						message = fmt.Sprintf("%s\n\n☞ <a href=\"%s\"><b>%s &gt; %s</b></a>\n      • 교육기간 : %s", message, actualityEducationCourse.Url, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.TrainingPeriod)
+				for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
-						message = fmt.Sprintf("%s\n\n☞ %s > %s\n%s", message, actualityEducationCourse.Title1, actualityEducationCourse.Title2, actualityEducationCourse.Url)
-					}
+					m += actualityEducationCourse.String(messageTypeHTML, "")
 				}
+
+				message = "신규로 등록된 온라인교육 강의가 없습니다.\n\n현재 등록된 온라인교육 강의는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}
