@@ -111,13 +111,27 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 	// 새로운 강의 정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	for _, actualityEducationCourse := range actualityTaskResultData.OnlineEducationCourses {
-		if t.findOnlineEducationCourse(originTaskResultData.OnlineEducationCourses, actualityEducationCourse) == nil {
-			if m != "" {
-				m += lineSpacing
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.OnlineEducationCourses, originTaskResultData.OnlineEducationCourses, func(selem, telem interface{}) (bool, error) {
+		actualityEducationCourse, ok1 := selem.(*jdcOnlineEducationCourse)
+		originEducationCourse, ok2 := telem.(*jdcOnlineEducationCourse)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
+			if actualityEducationCourse.Title1 == originEducationCourse.Title1 && actualityEducationCourse.Title2 == originEducationCourse.Title2 && actualityEducationCourse.TrainingPeriod == originEducationCourse.TrainingPeriod {
+				return true, nil
 			}
-			m += actualityEducationCourse.String(messageTypeHTML, " 🆕")
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityEducationCourse := selem.(*jdcOnlineEducationCourse)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityEducationCourse.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
 	if m != "" {
@@ -221,13 +235,4 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	}
 
 	return scrapeOnlineEducationCourses, nil
-}
-
-func (t *jdcTask) findOnlineEducationCourse(elems []*jdcOnlineEducationCourse, x *jdcOnlineEducationCourse) *jdcOnlineEducationCourse {
-	for _, elem := range elems {
-		if elem.Title1 == x.Title1 && elem.Title2 == x.Title2 && elem.TrainingPeriod == x.TrainingPeriod {
-			return elem
-		}
-	}
-	return nil
 }

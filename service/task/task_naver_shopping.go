@@ -80,6 +80,13 @@ type naverShoppingProduct struct {
 	ProductType string `json:"productType"`
 }
 
+func (p *naverShoppingProduct) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, utils.FormatCommas(p.LowPrice), mark)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, utils.FormatCommas(p.LowPrice), mark, p.Link))
+}
+
 type naverShoppingWatchPriceResultData struct {
 	Products []*naverShoppingProduct `json:"products"`
 }
@@ -131,7 +138,7 @@ func init() {
 				clientSecret: taskData.ClientSecret,
 			}
 
-			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(task.CommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
 					for _, t := range task.config.Tasks {
@@ -146,7 +153,7 @@ func init() {
 										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
 									}
 
-									return task.runWatchPrice(taskCommandData, taskResultData, supportHTMLMessage)
+									return task.runWatchPrice(taskCommandData, taskResultData, messageTypeHTML)
 								}
 							}
 							break
@@ -172,7 +179,7 @@ type naverShoppingTask struct {
 }
 
 //noinspection GoUnhandledErrorResult
-func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -222,73 +229,61 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 필터링 된 상품 정보를 확인한다.
 	//
 	m := ""
-	modifiedProducts := false
-	for _, actualityProduct := range actualityTaskResultData.Products {
-		isNewProduct := true
-		for _, originProduct := range originTaskResultData.Products {
+	lineSpacing := "\n\n"
+	if messageTypeHTML == true {
+		lineSpacing = "\n"
+	}
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
+		actualityProduct, ok1 := selem.(*naverShoppingProduct)
+		originProduct, ok2 := telem.(*naverShoppingProduct)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityProduct.Link == originProduct.Link {
-				isNewProduct = false
-
-				// 동일한 상품인데 가격이 변경되었는지 확인한다.
-				if actualityProduct.LowPrice != originProduct.LowPrice {
-					modifiedProducts = true
-
-					if supportHTMLMessage == true {
-						if m != "" {
-							m += "\n"
-						}
-						m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 ⇒ %s원 🔁", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice))
-					} else {
-						if m != "" {
-							m += "\n\n"
-						}
-						m = fmt.Sprintf("%s☞ %s %s원 ⇒ %s원 🔁\n%s", m, actualityProduct.Title, utils.FormatCommas(originProduct.LowPrice), utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
-					}
-				}
-
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, func(selem, telem interface{}) {
+		actualityProduct := selem.(*naverShoppingProduct)
+		originProduct := telem.(*naverShoppingProduct)
 
-		if isNewProduct == true {
-			modifiedProducts = true
-
-			if supportHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s\"><b>%s</b></a> %s원 🆕", m, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice))
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s %s원 🆕\n%s", m, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
+		if actualityProduct.LowPrice != originProduct.LowPrice {
+			if m != "" {
+				m += lineSpacing
 			}
+			m += originProduct.String(messageTypeHTML, fmt.Sprintf(" ⇒ %s원 🔁", utils.FormatCommas(actualityProduct.LowPrice)))
 		}
+	}, func(selem interface{}) {
+		actualityProduct := selem.(*naverShoppingProduct)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityProduct.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	filtersDescMessage := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", taskCommandData.Query, taskCommandData.Filters.IncludedKeywords, taskCommandData.Filters.ExcludedKeywords, utils.FormatCommas(taskCommandData.Filters.PriceLessThan))
+	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", taskCommandData.Query, taskCommandData.Filters.IncludedKeywords, taskCommandData.Filters.ExcludedKeywords, utils.FormatCommas(taskCommandData.Filters.PriceLessThan))
 
-	if modifiedProducts == true {
-		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescMessage, m)
+	if m != "" {
+		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
-				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescMessage)
+				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {
-				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:", filtersDescMessage)
-
-				if supportHTMLMessage == true {
-					message += "\n"
-					for _, actualityProduct := range actualityTaskResultData.Products {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s\"><b>%s</b></a> %s원", message, actualityProduct.Link, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice))
+				for _, actualityProduct := range actualityTaskResultData.Products {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityProduct := range actualityTaskResultData.Products {
-						message = fmt.Sprintf("%s\n\n☞ %s %s원\n%s", message, actualityProduct.Title, utils.FormatCommas(actualityProduct.LowPrice), actualityProduct.Link)
-					}
+					m += actualityProduct.String(messageTypeHTML, "")
 				}
+
+				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, m)
 			}
 		}
 	}

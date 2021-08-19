@@ -235,13 +235,27 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	// 신규 공연정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	for _, actualityPerformance := range actualityTaskResultData.Performances {
-		if t.findPerformance(originTaskResultData.Performances, actualityPerformance) == nil {
-			if m != "" {
-				m += lineSpacing
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
+		actualityPerformance, ok1 := selem.(*naverPerformance)
+		originPerformance, ok2 := telem.(*naverPerformance)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
+			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Period == originPerformance.Period && actualityPerformance.Place == originPerformance.Place {
+				return true, nil
 			}
-			m += actualityPerformance.String(messageTypeHTML, " 🆕")
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityPerformance := selem.(*naverPerformance)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityPerformance.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
 	if m != "" {
@@ -265,13 +279,4 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	}
 
 	return message, changedTaskResultData, nil
-}
-
-func (t *naverTask) findPerformance(elems []*naverPerformance, x *naverPerformance) *naverPerformance {
-	for _, elem := range elems {
-		if elem.Title == x.Title && elem.Period == x.Period && elem.Place == x.Place {
-			return elem
-		}
-	}
-	return nil
 }

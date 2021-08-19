@@ -165,13 +165,27 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	if messageTypeHTML == true {
 		lineSpacing = "\n"
 	}
-	for _, actualityNotice := range actualityTaskResultData.Notices {
-		if t.findNotice(originTaskResultData.Notices, actualityNotice) == nil {
-			if m != "" {
-				m += lineSpacing
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Notices, originTaskResultData.Notices, func(selem, telem interface{}) (bool, error) {
+		actualityNotice, ok1 := selem.(*jyiuNotice)
+		originNotice, ok2 := telem.(*jyiuNotice)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
+			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.Url == originNotice.Url {
+				return true, nil
 			}
-			m += actualityNotice.String(messageTypeHTML, " 🆕")
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityNotice := selem.(*jyiuNotice)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityNotice.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
 	if m != "" {
@@ -195,15 +209,6 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	}
 
 	return message, changedTaskResultData, nil
-}
-
-func (t *jyiuTask) findNotice(elems []*jyiuNotice, x *jyiuNotice) *jyiuNotice {
-	for _, elem := range elems {
-		if elem.Title == x.Title && elem.Date == x.Date && elem.Url == x.Url {
-			return elem
-		}
-	}
-	return nil
 }
 
 func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
@@ -255,13 +260,27 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	// 교육프로그램 새로운 글 정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	for _, actualityEducation := range actualityTaskResultData.Educations {
-		if t.findEducation(originTaskResultData.Educations, actualityEducation) == nil {
-			if m != "" {
-				m += lineSpacing
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Educations, originTaskResultData.Educations, func(selem, telem interface{}) (bool, error) {
+		actualityEducation, ok1 := selem.(*jyiuEducation)
+		originEducation, ok2 := telem.(*jyiuEducation)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
+			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.Url == originEducation.Url {
+				return true, nil
 			}
-			m += actualityEducation.String(messageTypeHTML, " 🆕")
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		actualityEducation := selem.(*jyiuEducation)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityEducation.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
 	if m != "" {
@@ -285,13 +304,4 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	}
 
 	return message, changedTaskResultData, nil
-}
-
-func (t *jyiuTask) findEducation(elems []*jyiuEducation, x *jyiuEducation) *jyiuEducation {
-	for _, elem := range elems {
-		if elem.Title == x.Title && elem.TrainingPeriod == x.TrainingPeriod && elem.AcceptancePeriod == x.AcceptancePeriod && elem.Url == x.Url {
-			return elem
-		}
-	}
-	return nil
 }

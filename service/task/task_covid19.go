@@ -7,6 +7,7 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	log "github.com/sirupsen/logrus"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -103,6 +104,13 @@ type covid19MedicalInstitution struct {
 	VaccineQuantity string `json:"vaccine_quantity"`
 }
 
+func (mi *covid19MedicalInstitution) String(messageTypeHTML bool, mark string) string {
+	if messageTypeHTML == true {
+		return fmt.Sprintf("☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개%s", prefixSelectedMedicalInstitutionOpenURL, mi.ID, mi.Name, mi.VaccineQuantity, mark)
+	}
+	return strings.TrimSpace(fmt.Sprintf("☞ %s 잔여백신 %s개%s", mi.Name, mi.VaccineQuantity, mark))
+}
+
 type covid19WatchResidualVaccineResultData struct {
 	MedicalInstitutions []*covid19MedicalInstitution `json:"medical_institutions"`
 }
@@ -138,10 +146,10 @@ func init() {
 				config: config,
 			}
 
-			task.runFn = func(taskResultData interface{}, supportHTMLMessage bool) (string, interface{}, error) {
+			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidCovid19WatchResidualVaccine:
-					return task.runWatchResidualVaccine(taskResultData, supportHTMLMessage)
+					return task.runWatchResidualVaccine(taskResultData, messageTypeHTML)
 				}
 
 				return "", nil, ErrNoImplementationForTaskCommand
@@ -159,7 +167,7 @@ type covid19Task struct {
 }
 
 //noinspection GoUnhandledErrorResult
-func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, supportHTMLMessage bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*covid19WatchResidualVaccineResultData)
 	if ok == false {
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
@@ -204,101 +212,86 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, suppor
 	// 검색된 잔여백신 정보를 확인한다.
 	//
 	m := ""
-	existMedicalInstitutions := false
-	for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
-		isNewMedicalInstitution := true
-		for _, originMedicalInstitution := range originTaskResultData.MedicalInstitutions {
+	lineSpacing := "\n\n"
+	if messageTypeHTML == true {
+		lineSpacing = "\n"
+	}
+	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.MedicalInstitutions, originTaskResultData.MedicalInstitutions, func(selem, telem interface{}) (bool, error) {
+		actualityMedicalInstitution, ok1 := selem.(*covid19MedicalInstitution)
+		originMedicalInstitution, ok2 := telem.(*covid19MedicalInstitution)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if actualityMedicalInstitution.ID == originMedicalInstitution.ID {
-				isNewMedicalInstitution = false
-				existMedicalInstitutions = true
-
-				if supportHTMLMessage == true {
-					if m != "" {
-						m += "\n"
-					}
-					if actualityMedicalInstitution.VaccineQuantity != originMedicalInstitution.VaccineQuantity {
-						m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개 🔁", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-					} else {
-						m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-					}
-				} else {
-					if m != "" {
-						m += "\n\n"
-					}
-					if actualityMedicalInstitution.VaccineQuantity != originMedicalInstitution.VaccineQuantity {
-						m = fmt.Sprintf("%s☞ %s 잔여백신 %s개 🔁", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-					} else {
-						m = fmt.Sprintf("%s☞ %s 잔여백신 %s개", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-					}
-				}
-
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, func(selem, telem interface{}) {
+		actualityMedicalInstitution := selem.(*covid19MedicalInstitution)
+		originMedicalInstitution := telem.(*covid19MedicalInstitution)
 
-		if isNewMedicalInstitution == true {
-			existMedicalInstitutions = true
-
-			if supportHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개 🆕", m, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s 잔여백신 %s개 🆕", m, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		if actualityMedicalInstitution.VaccineQuantity != originMedicalInstitution.VaccineQuantity {
+			m += actualityMedicalInstitution.String(messageTypeHTML, " 🔁")
+		} else {
+			m += actualityMedicalInstitution.String(messageTypeHTML, "")
+		}
+	}, func(selem interface{}) {
+		actualityMedicalInstitution := selem.(*covid19MedicalInstitution)
+
+		if m != "" {
+			m += lineSpacing
+		}
+		m += actualityMedicalInstitution.String(messageTypeHTML, " 🆕")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
 	// 백신 갯수가 n개에서 0개로 변경된 의료기관 정보도 출력한다.
-	for _, originMedicalInstitution := range originTaskResultData.MedicalInstitutions {
-		isNewMedicalInstitution := true
-		for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
+	err = eachSourceElementIsInTargetElementOrNot(originTaskResultData.MedicalInstitutions, actualityTaskResultData.MedicalInstitutions, func(selem, telem interface{}) (bool, error) {
+		originMedicalInstitution, ok1 := selem.(*covid19MedicalInstitution)
+		actualityMedicalInstitution, ok2 := telem.(*covid19MedicalInstitution)
+		if ok1 == false || ok2 == false {
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+		} else {
 			if originMedicalInstitution.ID == actualityMedicalInstitution.ID {
-				isNewMedicalInstitution = false
-				break
+				return true, nil
 			}
 		}
+		return false, nil
+	}, nil, func(selem interface{}) {
+		originMedicalInstitution := selem.(*covid19MedicalInstitution)
 
-		if isNewMedicalInstitution == true {
-			existMedicalInstitutions = true
-
-			if supportHTMLMessage == true {
-				if m != "" {
-					m += "\n"
-				}
-				m = fmt.Sprintf("%s☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 0개 🔁", m, prefixSelectedMedicalInstitutionOpenURL, originMedicalInstitution.ID, originMedicalInstitution.Name)
-			} else {
-				if m != "" {
-					m += "\n\n"
-				}
-				m = fmt.Sprintf("%s☞ %s 잔여백신 0개 🔁", m, originMedicalInstitution.Name)
-			}
+		if m != "" {
+			m += lineSpacing
 		}
+		originMedicalInstitution.VaccineQuantity = "0"
+		m += originMedicalInstitution.String(messageTypeHTML, " 🔁")
+	})
+	if err != nil {
+		return "", nil, err
 	}
 
-	if existMedicalInstitutions == true {
-		message = fmt.Sprintf("코로나19 잔여백신에 대한 정보는 아래와 같습니다:\n\n%s", m)
+	if m != "" {
+		message = "코로나19 잔여백신에 대한 정보는 아래와 같습니다:\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.MedicalInstitutions) == 0 {
 				message = fmt.Sprintf("코로나19 잔여백신이 없습니다.")
 			} else {
-				message = fmt.Sprintf("코로나19 잔여백신에 대한 정보는 아래와 같습니다:\n")
-
-				if supportHTMLMessage == true {
-					for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
-						message = fmt.Sprintf("%s\n☞ <a href=\"%s%s\"><b>%s</b></a> 잔여백신 %s개", message, prefixSelectedMedicalInstitutionOpenURL, actualityMedicalInstitution.ID, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
+				for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
+					if m != "" {
+						m += lineSpacing
 					}
-				} else {
-					for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
-						message = fmt.Sprintf("%s\n☞ %s 잔여백신 %s개", message, actualityMedicalInstitution.Name, actualityMedicalInstitution.VaccineQuantity)
-					}
+					m += actualityMedicalInstitution.String(messageTypeHTML, "")
 				}
+
+				message = "코로나19 잔여백신에 대한 정보는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}
