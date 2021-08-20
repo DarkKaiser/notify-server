@@ -27,6 +27,7 @@ type jdcOnlineEducationCourse struct {
 	Title2         string `json:"title2"`
 	TrainingPeriod string `json:"training_period"`
 	Url            string `json:"url"`
+	Err            error
 }
 
 func (c *jdcOnlineEducationCourse) String(messageTypeHTML bool, mark string) string {
@@ -158,7 +159,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 }
 
 func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducationCourse, error) {
-	// 강의목록 페이지 URL 정보를 추출한다.
+	// 온라인교육 강의 목록페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
 	err = webScrape(url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
@@ -179,60 +180,84 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 		return nil, err0
 	}
 
-	// 온라인교육 강의의 상세정보를 추출한다.
-	var scrapeOnlineEducationCourses = make([]*jdcOnlineEducationCourse, 0)
+	// 온라인교육 강의의 커리큘럼을 추출한다.
+	curriculumWebScrapeDoneC := make(chan []*jdcOnlineEducationCourse, 50)
 	for _, courseURL := range courseURLs {
-		err = webScrape(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseURL), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
-			// 강의목록 컬럼 개수를 확인한다.
-			as := s.Find("td")
-			if as.Length() != 3 {
-				if utils.CleanString(as.Text()) == "정보가 없습니다" {
-					return true
-				}
+		go t.scrapeOnlineEducationCourseCurriculums(courseURL, curriculumWebScrapeDoneC)
+	}
 
-				err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
-				return false
-			}
+	scrapeOnlineEducationCourses := make([]*jdcOnlineEducationCourse, 0)
+	for i := 0; i < len(courseURLs); i++ {
+		onlineEducationCourseCurriculums := <-curriculumWebScrapeDoneC
 
-			title1Selection := as.Eq(0).Find("a")
-			if title1Selection.Length() != 1 {
-				err0 = errors.New("교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
-				return false
+		// 스크랩중에 오류가 발생하였는지 확인한다.
+		for _, curriculum := range onlineEducationCourseCurriculums {
+			if curriculum.Err != nil {
+				return nil, err
 			}
-			title2Selection := as.Eq(0).Find("p")
-			if title2Selection.Length() != 1 {
-				err0 = errors.New("교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
-				return false
-			}
-
-			courseDetailURL, exists := title1Selection.Attr("href")
-			if exists == false {
-				err0 = errors.New("강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
-				return false
-			}
-			// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.
-			if strings.Index(courseDetailURL, "javascript:alert('") == -1 {
-				courseDetailURL = fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseDetailURL)
-			} else {
-				courseDetailURL = ""
-			}
-
-			scrapeOnlineEducationCourses = append(scrapeOnlineEducationCourses, &jdcOnlineEducationCourse{
-				Title1:         utils.CleanString(title1Selection.Text()),
-				Title2:         utils.CleanString(title2Selection.Text()),
-				TrainingPeriod: utils.CleanString(as.Eq(1).Text()),
-				Url:            courseDetailURL,
-			})
-
-			return true
-		})
-		if err != nil {
-			return nil, err
 		}
-		if err0 != nil {
-			return nil, err0
-		}
+
+		scrapeOnlineEducationCourses = append(scrapeOnlineEducationCourses, onlineEducationCourseCurriculums...)
 	}
 
 	return scrapeOnlineEducationCourses, nil
+}
+
+func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumWebScrapeDoneC chan<- []*jdcOnlineEducationCourse) {
+	var err0 error
+	var onlineEducationCourseCurriculums = make([]*jdcOnlineEducationCourse, 0)
+
+	err := webScrape(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+		// 강의목록 컬럼 개수를 확인한다.
+		as := s.Find("td")
+		if as.Length() != 3 {
+			if utils.CleanString(as.Text()) == "정보가 없습니다" {
+				return true
+			}
+
+			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
+			return false
+		}
+
+		title1Selection := as.Eq(0).Find("a")
+		if title1Selection.Length() != 1 {
+			err0 = errors.New("교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			return false
+		}
+		title2Selection := as.Eq(0).Find("p")
+		if title2Selection.Length() != 1 {
+			err0 = errors.New("교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			return false
+		}
+
+		courseDetailURL, exists := title1Selection.Attr("href")
+		if exists == false {
+			err0 = errors.New("강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			return false
+		}
+		// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.
+		if strings.Index(courseDetailURL, "javascript:alert('") == -1 {
+			courseDetailURL = fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseDetailURL)
+		} else {
+			courseDetailURL = ""
+		}
+
+		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{
+			Title1:         utils.CleanString(title1Selection.Text()),
+			Title2:         utils.CleanString(title2Selection.Text()),
+			TrainingPeriod: utils.CleanString(as.Eq(1).Text()),
+			Url:            courseDetailURL,
+			Err:            nil,
+		})
+
+		return true
+	})
+	if err != nil {
+		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{Err: err})
+	}
+	if err0 != nil {
+		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{Err: err0})
+	}
+
+	curriculumWebScrapeDoneC <- onlineEducationCourseCurriculums
 }
