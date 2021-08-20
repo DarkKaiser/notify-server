@@ -195,7 +195,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 					m += actualityEvent.String(messageTypeHTML, "")
 				}
 
-				message = "신규로 등록된 이벤트가이 없습니다.\n\n현재 등록된 이벤트는 아래와 같습니다:\n\n" + m
+				message = "신규로 등록된 이벤트가 없습니다.\n\n현재 등록된 이벤트는 아래와 같습니다:\n\n" + m
 			}
 		}
 	}
