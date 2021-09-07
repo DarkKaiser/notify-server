@@ -211,7 +211,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {
-			if utils.CleanString(as.Text()) == "정보가 없습니다" {
+			if utils.Trim(as.Text()) == "정보가 없습니다" {
 				return true
 			}
 
@@ -243,9 +243,9 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		}
 
 		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{
-			Title1:         utils.CleanString(title1Selection.Text()),
-			Title2:         utils.CleanString(title2Selection.Text()),
-			TrainingPeriod: utils.CleanString(as.Eq(1).Text()),
+			Title1:         utils.Trim(title1Selection.Text()),
+			Title2:         utils.Trim(title2Selection.Text()),
+			TrainingPeriod: utils.Trim(as.Eq(1).Text()),
 			Url:            courseDetailURL,
 			Err:            nil,
 		})

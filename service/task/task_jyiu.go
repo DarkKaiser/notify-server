@@ -145,8 +145,8 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		id = id[pos1+1 : pos2]
 
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
-			Title: utils.CleanString(as.Eq(1).Find("a").Text()),
-			Date:  utils.CleanString(as.Eq(3).Text()),
+			Title: utils.Trim(as.Eq(1).Find("a").Text()),
+			Date:  utils.Trim(as.Eq(3).Text()),
 			Url:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseUrl, id),
 		})
 
@@ -242,9 +242,9 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		url = url[pos1+1 : pos2]
 
 		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
-			Title:            utils.CleanString(as.Eq(2).Text()),
-			TrainingPeriod:   utils.CleanString(as.Eq(4).Text()),
-			AcceptancePeriod: utils.CleanString(as.Eq(5).Text()),
+			Title:            utils.Trim(as.Eq(2).Text()),
+			TrainingPeriod:   utils.Trim(as.Eq(4).Text()),
+			AcceptancePeriod: utils.Trim(as.Eq(5).Text()),
 			Url:              fmt.Sprintf("%s%s", jyiuBaseUrl, url),
 		})
 
