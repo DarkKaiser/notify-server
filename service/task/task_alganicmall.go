@@ -138,7 +138,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 		}
 
 		actualityTaskResultData.Events = append(actualityTaskResultData.Events, &alganicmallEvent{
-			Name: utils.CleanString(name),
+			Name: utils.Trim(name),
 			Url:  fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})
 
@@ -262,14 +262,14 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 			err0 = fmt.Errorf("제품 가격의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
-		price, _err_ := strconv.Atoi(utils.CleanString(priceReplacer.Replace(productPriceString)))
+		price, _err_ := strconv.Atoi(utils.Trim(priceReplacer.Replace(productPriceString)))
 		if _err_ != nil {
 			err0 = fmt.Errorf("제품 가격의 숫자 변환이 실패하였습니다.(error:%s)", _err_)
 			return false
 		}
 
 		actualityTaskResultData.Products = append(actualityTaskResultData.Products, &alganicmallProduct{
-			Name:  utils.CleanString(name),
+			Name:  utils.Trim(name),
 			Price: price,
 			Url:   fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
 		})

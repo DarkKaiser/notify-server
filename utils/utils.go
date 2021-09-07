@@ -32,7 +32,7 @@ func Contains(list []string, item string) bool {
 	return false
 }
 
-func CleanString(s string) string {
+func Trim(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
