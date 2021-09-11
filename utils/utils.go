@@ -36,6 +36,36 @@ func Trim(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
+func TrimMultiLine(s string) string {
+	var ret []string
+	var appendedEmptyLine bool
+
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		trimLine := Trim(line)
+		if trimLine != "" {
+			appendedEmptyLine = false
+			ret = append(ret, trimLine)
+		} else {
+			if appendedEmptyLine == false {
+				appendedEmptyLine = true
+				ret = append(ret, "")
+			}
+		}
+	}
+
+	if len(ret) >= 2 {
+		if ret[0] == "" {
+			ret = ret[1:]
+		}
+		if ret[len(ret)-1] == "" {
+			ret = ret[:len(ret)-1]
+		}
+	}
+
+	return strings.Join(ret, "\r\n")
+}
+
 func FormatCommas(num int) string {
 	str := fmt.Sprintf("%d", num)
 	re := regexp.MustCompile("(\\d+)(\\d{3})")
@@ -46,7 +76,7 @@ func FormatCommas(num int) string {
 	return str
 }
 
-func SplitExceptEmptyItems(s string, sep string) []string {
+func SplitExceptEmptyItems(s, sep string) []string {
 	tokens := strings.Split(s, sep)
 
 	var t []string
