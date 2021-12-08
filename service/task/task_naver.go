@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
@@ -230,6 +231,8 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		if searchStartPerformancePos > searchResultData.Total || ps.Length() == 0 {
 			break
 		}
+
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// 신규 공연정보를 확인한다.
