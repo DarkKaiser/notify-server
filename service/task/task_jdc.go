@@ -174,6 +174,11 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 		return true
 	})
 	if err != nil {
+		// 온라인교육 강의 데이터가 없는지 확인한다.
+		if sel, _ := newHTMLDocumentSelection(url, "#content > div.no-data2"); sel != nil {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 	if err0 != nil {
