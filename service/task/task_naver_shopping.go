@@ -6,6 +6,7 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -188,14 +189,34 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	//
 	// 상품에 대한 정보를 검색한다.
 	//
-	var header = map[string]string{
-		"X-Naver-Client-Id":     t.clientID,
-		"X-Naver-Client-Secret": t.clientSecret,
-	}
-	var searchResultData = &naverShoppingSearchResultData{}
-	err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query)), header, nil, searchResultData)
-	if err != nil {
-		return "", nil, err
+	const maxSearchableItemCount = 100 // 한번에 검색 가능한 상품의 최대 갯수
+	var (
+		header = map[string]string{
+			"X-Naver-Client-Id":     t.clientID,
+			"X-Naver-Client-Secret": t.clientSecret,
+		}
+		searchResultItemStartNo    = 1
+		searchResultItemTotalCount = math.MaxInt
+
+		searchResultData = &naverShoppingSearchResultData{}
+	)
+	for searchResultItemStartNo < searchResultItemTotalCount {
+		var _searchResultData_ = &naverShoppingSearchResultData{}
+		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		if err != nil {
+			return "", nil, err
+		}
+
+		if searchResultItemTotalCount == math.MaxInt {
+			searchResultData.Total = _searchResultData_.Total
+			searchResultData.Start = _searchResultData_.Start
+			searchResultData.Display = _searchResultData_.Display
+
+			searchResultItemTotalCount = _searchResultData_.Total
+		}
+		searchResultData.Items = append(searchResultData.Items, _searchResultData_.Items...)
+
+		searchResultItemStartNo += maxSearchableItemCount
 	}
 
 	//
