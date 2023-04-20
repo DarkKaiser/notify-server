@@ -12,60 +12,6 @@
 	},
 	"tasks": [
 		{
-			"id": "ALGANICMALL",
-			"title": "엘가닉몰",
-			"commands": [
-				{
-					"id": "WatchNewEvents",
-					"title": "신규 이벤트 확인",
-					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 9 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_notify_bot"
-				},
-				{
-					"id": "WatchAtoCream",
-					"title": "아토크림 정보 변경 확인",
-					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 9 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_notify_bot"
-				}
-			]
-		},
-		{
-			"id": "LOTTO",
-			"title": "로또",
-			"commands": [
-				{
-					"id": "Prediction",
-					"title": "로또 당첨번호 예측",
-					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 8 * * 0"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_notify_bot"
-				}
-			],
-			"data": {
-				"app_path": "/usr/local/lotto-prediction"
-			}
-		},
-		{
 			"id": "NAVER",
 			"title": "네이버",
 			"commands": [
@@ -86,7 +32,7 @@
 						"filters": {
 							"title": {
 								"included_keywords": "",
-								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순"
+								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순, - 영광, - 장성, - 진도, - 구미"
 							},
 							"place": {
 								"included_keywords": "",
@@ -182,6 +128,60 @@
 			]
 		},
 		{
+			"id": "LOTTO",
+			"title": "로또",
+			"commands": [
+				{
+					"id": "Prediction",
+					"title": "로또 당첨번호 예측",
+					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
+					"scheduler": {
+						"runnable": false,
+						"time_spec": "0 0 8 * * 0"
+					},
+					"notifier": {
+						"usable": false
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				}
+			],
+			"data": {
+				"app_path": "/usr/local/lotto-prediction"
+			}
+		},
+		{
+			"id": "ALGANICMALL",
+			"title": "엘가닉몰",
+			"commands": [
+				{
+					"id": "WatchNewEvents",
+					"title": "신규 이벤트 확인",
+					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": false,
+						"time_spec": "0 0 9 * * *"
+					},
+					"notifier": {
+						"usable": false
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				},
+				{
+					"id": "WatchAtoCream",
+					"title": "아토크림 정보 변경 확인",
+					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": false,
+						"time_spec": "0 0 9 * * *"
+					},
+					"notifier": {
+						"usable": false
+					},
+					"default_notifier_id": "darkkaiser_notify_bot"
+				}
+			]
+		},
+		{
 			"id": "JDC",
 			"title": "전남디지털역량교육",
 			"commands": [
@@ -225,14 +225,14 @@
 		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"applications": [
 			{
-				"id": "lotto-prediction",
-				"title": "알림 > 로또 당첨번호 예측 앱",
+				"id": "torrentad",
+				"title": "알림 > TorrentAD 앱",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
 			},
 			{
-				"id": "torrentad",
-				"title": "알림 > TorrentAD 앱",
+				"id": "rss-feed-server",
+				"title": "알림 > RSS Feed 서버",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
 			},
@@ -243,8 +243,8 @@
 				"default_notifier_id": "darkkaiser_notify_bot"
 			},
 			{
-				"id": "rss-feed-server",
-				"title": "알림 > RSS Feed 서버",
+				"id": "lotto-prediction",
+				"title": "알림 > 로또 당첨번호 예측 앱",
 				"description": "",
 				"default_notifier_id": "darkkaiser_notify_bot"
 			}
