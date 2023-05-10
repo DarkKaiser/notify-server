@@ -86,9 +86,12 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	go func(listenPort int) {
 		log.Debugf("NotifyAPI 서비스 > http 서버(:%d) 시작", listenPort)
 
-		// @@@@@ tls server 구성
 		var err error
-		err = e.Start(fmt.Sprintf(":%d", listenPort))
+		if s.config.NotifyAPI.WS.TLSServer == true {
+			err = e.StartTLS(fmt.Sprintf(":%d", listenPort), s.config.NotifyAPI.WS.TLSCertFile, s.config.NotifyAPI.WS.TLSKeyFile)
+		} else {
+			err = e.Start(fmt.Sprintf(":%d", listenPort))
+		}
 
 		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
 		if err == http.ErrServerClosed {
@@ -100,7 +103,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 			s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", m, err))
 		}
-	}(s.config.NotifyAPI.ListenPort)
+	}(s.config.NotifyAPI.WS.ListenPort)
 
 	select {
 	case <-serviceStopCtx.Done():
