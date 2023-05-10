@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
+	"github.com/labstack/echo"
+	"github.com/labstack/echo/middleware"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"sync"
@@ -63,19 +66,39 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
-	e := router.New(s.config, s.notificationSender)
+	e := router.New()
+	grp := e.Group("/api/notify")
+	{
+		// @@@@@ api key 변경
+		grp.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
+			KeyLookup:  "header:Authorization",
+			AuthScheme: "Bearer",
+			Validator: func(key string, c echo.Context) (bool, error) {
+				return key == s.config.NotifyAPI.APIKey, nil
+			},
+		}))
+
+		handler := handler.NewHandler(s.config, s.notificationSender)
+
+		grp.POST("/message/send", handler.NotifyMessageSendHandler)
+	}
 
 	go func(listenPort int) {
-		log.Debug("NotifyAPI 서비스 > http 서버 시작")
-		if err := e.Start(fmt.Sprintf(":%d", listenPort)); err != nil {
-			if err == http.ErrServerClosed {
-				log.Debug("NotifyAPI 서비스 > http 서버 중지됨")
-			} else {
-				m := fmt.Sprintf("NotifyAPI RESTful 서비스를 구성하는 중에 치명적인 오류가 발생하였습니다.\r\n\r\n%s", err)
+		log.Debugf("NotifyAPI 서비스 > http 서버(:%d) 시작", listenPort)
 
-				log.Error(m)
-				s.notificationSender.NotifyWithErrorToDefault(m)
-			}
+		// @@@@@ tls server 구성
+		var err error
+		err = e.Start(fmt.Sprintf(":%d", listenPort))
+
+		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
+		if err == http.ErrServerClosed {
+			log.Debug("NotifyAPI 서비스 > http 서버 중지됨")
+		} else {
+			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
+
+			log.Errorf("%s (error:%s)", m, err)
+
+			s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", m, err))
 		}
 	}(s.config.NotifyAPI.ListenPort)
 

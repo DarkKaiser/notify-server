@@ -1,11 +1,11 @@
 {
-	"debug": false,
+	"debug": true,
 	"notifiers": {
 		"default_notifier_id": "darkkaiser_notify_bot",
 		"telegrams": [
 			{
 				"id": "darkkaiser_notify_bot",
-				"token": "635513176:AAGjq5LaW0eFm--WjCCxstSoyb0SeVNmezo",
+				"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
 				"chat_id": 297396697
 			}
 		]
@@ -20,8 +20,8 @@
 					"title": "신규 공연정보 확인",
 					"description": "네이버에 신규 공연정보가 등록되었는지를 확인합니다.",
 					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 1 9 * * *"
+						"runnable": false,
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -52,8 +52,8 @@
 					"title": "피토메스 2종세트 가격 확인",
 					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 5 * * * *"
+						"runnable": false,
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -73,8 +73,8 @@
 					"title": "트루락 키즈업 90포(3개월) 가격 확인",
 					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 10 * * * *"
+						"runnable": false,
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -104,8 +104,8 @@
 					"title": "공지사항 새글 확인",
 					"description": "전남여수산학융합원 공지사항에 새로운 글이 등록되었는지를 확인합니다.",
 					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 3 9-18 * * *"
+						"runnable": false,
+						"time_spec": "*/1 * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -117,8 +117,8 @@
 					"title": "신규 교육프로그램 확인",
 					"description": "전남여수산학융합원에 신규 교육프로그램 정보가 등록되었는지를 확인합니다.",
 					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 4 9-18 * * *"
+						"runnable": false,
+						"time_spec": "*/1 * * * * *"
 					},
 					"notifier": {
 						"usable": true
@@ -137,7 +137,7 @@
 					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "0 0 8 * * 0"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": false
@@ -146,7 +146,7 @@
 				}
 			],
 			"data": {
-				"app_path": "/usr/local/lotto-prediction"
+				"app_path": "F:\\Solutions-Private\\lotto-prediction\\dist"
 			}
 		},
 		{
@@ -159,7 +159,7 @@
 					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "0 0 9 * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": false
@@ -172,7 +172,7 @@
 					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "0 0 9 * * *"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": false
@@ -191,7 +191,7 @@
 					"description": "전남디지털역량교육 비대면 온라인 특별/정규교육에 새로운 교육이 등록되었는지를 확인합니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "0 6 9-18 * * *"
+						"time_spec": "*/5 * * * * *"
 					},
 					"notifier": {
 						"usable": false
@@ -210,7 +210,7 @@
 					"description": "코로나19 잔여백신의 수량을 확인하고 이를 알립니다.",
 					"scheduler": {
 						"runnable": false,
-						"time_spec": "*/3 * 9-18 * * 1-6"
+						"time_spec": "* * * * * *"
 					},
 					"notifier": {
 						"usable": false

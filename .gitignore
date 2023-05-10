@@ -21,5 +21,4 @@ logs/
 .idea/
 
 /notify-server
-/notify-server.json
 /notify-server-task-*.json
