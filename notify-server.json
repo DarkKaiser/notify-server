@@ -221,7 +221,12 @@
 		}
 	],
 	"notify_api": {
-		"listen_port": 5340,
+		"ws": {
+			"tls_server": false,
+			"tls_cert_file": "",
+			"tls_key_file": "",
+			"listen_port": 2443
+		},
 		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"applications": [
 			{

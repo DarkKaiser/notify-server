@@ -5,6 +5,7 @@ import (
 	"github.com/darkkaiser/notify-server/utils"
 	"io/ioutil"
 	"log"
+	"strings"
 )
 
 const (
@@ -45,7 +46,12 @@ type AppConfig struct {
 		Data map[string]interface{} `json:"data"`
 	} `json:"tasks"`
 	NotifyAPI struct {
-		ListenPort   int    `json:"listen_port"`
+		WS struct {
+			TLSServer   bool   `json:"tls_server"`
+			TLSCertFile string `json:"tls_cert_file"`
+			TLSKeyFile  string `json:"tls_key_file"`
+			ListenPort  int    `json:"listen_port"`
+		} `json:"ws"`
 		APIKey       string `json:"api_key"`
 		Applications []struct {
 			ID                string `json:"id"`
@@ -95,6 +101,15 @@ func InitAppConfig() *AppConfig {
 			if utils.Contains(notifierIDs, c.DefaultNotifierID) == false {
 				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, t.ID, c.ID, c.DefaultNotifierID)
 			}
+		}
+	}
+
+	if config.NotifyAPI.WS.TLSServer == true {
+		if strings.TrimSpace(config.NotifyAPI.WS.TLSCertFile) == "" {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Cert 파일 경로가 입력되지 않았습니다.", AppConfigFileName)
+		}
+		if strings.TrimSpace(config.NotifyAPI.WS.TLSKeyFile) == "" {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Key 파일 경로가 입력되지 않았습니다.", AppConfigFileName)
 		}
 	}
 

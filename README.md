@@ -10,4 +10,4 @@
 
 ## 실행
 라즈베리파이 재부팅시 자동으로 실행되도록 crontab에 등록되어 있습니다.   
-`@reboot sleep 20 && su - pi -c /usr/local/notify-server/notify-server.sh`
+`@reboot sleep 20 && /usr/local/notify-server/notify-server.sh`
