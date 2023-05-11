@@ -51,9 +51,9 @@ pipeline {
                     sudo cp -f ./secrets/notify-server.운영.json /usr/local/notify-server/notify-server.json
 
                     sudo chown pi:staff /usr/local/notify-server/notify-server
+                    sudo chown pi:staff /usr/local/notify-server/notify-server.sh
+                    sudo chown pi:staff /usr/local/notify-server/notify-server-restart.sh
                     sudo chown pi:staff /usr/local/notify-server/notify-server.json
-                    sudo chown root:staff /usr/local/notify-server/notify-server.sh
-                    sudo chown root:staff /usr/local/notify-server/notify-server-restart.sh
                 '''
             }
         }

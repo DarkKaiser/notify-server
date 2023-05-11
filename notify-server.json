@@ -225,7 +225,7 @@
 			"tls_server": false,
 			"tls_cert_file": "",
 			"tls_key_file": "",
-			"listen_port": 2443
+			"listen_port": 80
 		},
 		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"applications": [
