@@ -21,9 +21,9 @@ type AppConfig struct {
 	Notifiers struct {
 		DefaultNotifierID string `json:"default_notifier_id"`
 		Telegrams         []struct {
-			ID     string `json:"id"`
-			Token  string `json:"token"`
-			ChatID int64  `json:"chat_id"`
+			ID       string `json:"id"`
+			BotToken string `json:"bot_token"`
+			ChatID   int64  `json:"chat_id"`
 		} `json:"telegrams"`
 	} `json:"notifiers"`
 	Tasks []struct {
