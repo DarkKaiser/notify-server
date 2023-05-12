@@ -5,7 +5,7 @@
 		"telegrams": [
 			{
 				"id": "darkkaiser_test_bot",
-				"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
+				"bot_token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
 				"chat_id": 297396697
 			}
 		]

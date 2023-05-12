@@ -126,7 +126,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
-		h := newTelegramNotifier(NotifierID(telegram.ID), telegram.Token, telegram.ChatID, s.config)
+		h := newTelegramNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)

@@ -39,7 +39,7 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
-func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.AppConfig) notifierHandler {
+func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
@@ -81,7 +81,7 @@ func newTelegramNotifier(id NotifierID, token string, chatID int64, config *g.Ap
 
 	// 텔레그램 봇을 생성한다.
 	var err error
-	notifier.bot, err = tgbotapi.NewBotAPI(token)
+	notifier.bot, err = tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
 	}
