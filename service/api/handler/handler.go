@@ -24,6 +24,7 @@ func NewHandler(config *g.AppConfig, notificationSender notification.Notificatio
 			Title:             application.Title,
 			Description:       application.Description,
 			DefaultNotifierID: application.DefaultNotifierID,
+			AppKey:            application.AppKey,
 		})
 	}
 

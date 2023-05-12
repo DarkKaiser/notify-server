@@ -8,4 +8,5 @@ type AllowedApplication struct {
 	Title             string
 	Description       string
 	DefaultNotifierID string
+	AppKey            string
 }

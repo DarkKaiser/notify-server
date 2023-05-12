@@ -52,12 +52,12 @@ type AppConfig struct {
 			TLSKeyFile  string `json:"tls_key_file"`
 			ListenPort  int    `json:"listen_port"`
 		} `json:"ws"`
-		APIKey       string `json:"api_key"`
 		Applications []struct {
 			ID                string `json:"id"`
 			Title             string `json:"title"`
 			Description       string `json:"description"`
 			DefaultNotifierID string `json:"default_notifier_id"`
+			AppKey            string `json:"app_key"`
 		} `json:"applications"`
 	} `json:"notify_api"`
 }
@@ -113,10 +113,6 @@ func InitAppConfig() *AppConfig {
 		}
 	}
 
-	if len(config.NotifyAPI.APIKey) == 0 {
-		log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifyAPI의 APIKey가 입력되지 않았습니다.", AppConfigFileName)
-	}
-
 	var applicationIDs []string
 	for _, app := range config.NotifyAPI.Applications {
 		if utils.Contains(applicationIDs, app.ID) == true {
@@ -126,6 +122,10 @@ func InitAppConfig() *AppConfig {
 
 		if utils.Contains(notifierIDs, app.DefaultNotifierID) == false {
 			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, app.ID, app.DefaultNotifierID)
+		}
+
+		if len(app.AppKey) == 0 {
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. %s Application의 APP_KEY가 입력되지 않았습니다.", AppConfigFileName, app.ID)
 		}
 	}
 

@@ -227,31 +227,34 @@
 			"tls_key_file": "",
 			"listen_port": 80
 		},
-		"api_key": "MDA5OEU1MkItQjhFMi00QzcyLTlDQUQtRURCRUNDOUNGRjBE",
 		"applications": [
 			{
 				"id": "torrentad",
 				"title": "알림 > TorrentAD 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot"
+				"default_notifier_id": "darkkaiser_test_bot",
+				"app_key": "{APP_KEY}"
 			},
 			{
 				"id": "rss-feed-server",
 				"title": "알림 > RSS Feed 서버",
 				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot"
+				"default_notifier_id": "darkkaiser_test_bot",
+				"app_key": "{APP_KEY}"
 			},
 			{
 				"id": "reposition-torrent-downloaded-files",
 				"title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot"
+				"default_notifier_id": "darkkaiser_test_bot",
+				"app_key": "{APP_KEY}"
 			},
 			{
 				"id": "lotto-prediction",
 				"title": "알림 > 로또 당첨번호 예측 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot"
+				"default_notifier_id": "darkkaiser_test_bot",
+				"app_key": "{APP_KEY}"
 			}
 		]
 	}
