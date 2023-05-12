@@ -1,10 +1,10 @@
 {
 	"debug": true,
 	"notifiers": {
-		"default_notifier_id": "darkkaiser_notify_bot",
+		"default_notifier_id": "darkkaiser_test_bot",
 		"telegrams": [
 			{
-				"id": "darkkaiser_notify_bot",
+				"id": "darkkaiser_test_bot",
 				"token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
 				"chat_id": 297396697
 			}
@@ -26,7 +26,7 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot",
+					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
 						"query": "  전라 공연",
 						"filters": {
@@ -58,7 +58,7 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot",
+					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
 						"query": "피토메스",
 						"filters": {
@@ -79,7 +79,7 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot",
+					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
 						"query": "트루락 키즈업",
 						"filters": {
@@ -110,7 +110,7 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				},
 				{
 					"id": "WatchNewEducation",
@@ -123,7 +123,7 @@
 					"notifier": {
 						"usable": true
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				}
 			]
 		},
@@ -142,7 +142,7 @@
 					"notifier": {
 						"usable": false
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				}
 			],
 			"data": {
@@ -164,7 +164,7 @@
 					"notifier": {
 						"usable": false
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				},
 				{
 					"id": "WatchAtoCream",
@@ -177,7 +177,7 @@
 					"notifier": {
 						"usable": false
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				}
 			]
 		},
@@ -196,7 +196,7 @@
 					"notifier": {
 						"usable": false
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				}
 			]
 		},
@@ -215,7 +215,7 @@
 					"notifier": {
 						"usable": false
 					},
-					"default_notifier_id": "darkkaiser_notify_bot"
+					"default_notifier_id": "darkkaiser_test_bot"
 				}
 			]
 		}
@@ -233,25 +233,25 @@
 				"id": "torrentad",
 				"title": "알림 > TorrentAD 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_notify_bot"
+				"default_notifier_id": "darkkaiser_test_bot"
 			},
 			{
 				"id": "rss-feed-server",
 				"title": "알림 > RSS Feed 서버",
 				"description": "",
-				"default_notifier_id": "darkkaiser_notify_bot"
+				"default_notifier_id": "darkkaiser_test_bot"
 			},
 			{
 				"id": "reposition-torrent-downloaded-files",
 				"title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_notify_bot"
+				"default_notifier_id": "darkkaiser_test_bot"
 			},
 			{
 				"id": "lotto-prediction",
 				"title": "알림 > 로또 당첨번호 예측 앱",
 				"description": "",
-				"default_notifier_id": "darkkaiser_notify_bot"
+				"default_notifier_id": "darkkaiser_test_bot"
 			}
 		]
 	}
