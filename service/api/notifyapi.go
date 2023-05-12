@@ -8,7 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"sync"
@@ -66,21 +65,16 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
+	handler := handler.NewHandler(s.config, s.notificationSender)
+
 	e := router.New()
 	grp := e.Group("/api/notify")
 	{
-		// @@@@@ api key 변경
-		grp.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
-			KeyLookup:  "header:Authorization",
-			AuthScheme: "Bearer",
-			Validator: func(key string, c echo.Context) (bool, error) {
-				return key == s.config.NotifyAPI.APIKey, nil
-			},
-		}))
-
-		handler := handler.NewHandler(s.config, s.notificationSender)
-
 		grp.POST("/message/send", handler.NotifyMessageSendHandler)
+	}
+
+	echo.NotFoundHandler = func(c echo.Context) error {
+		return echo.NewHTTPError(http.StatusNotFound, fmt.Sprintf("페이지를 찾을 수 없습니다."))
 	}
 
 	go func(listenPort int) {
