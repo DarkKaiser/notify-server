@@ -75,6 +75,8 @@ pipeline {
     post {
         success {
             script {
+                echo env.TELEGRAM_BOT_TOKEN
+                
                 // telegramSend(message: '【 알림 > Jenkins > ' + env.PROJECT_NAME + ' 】\n\n빌드 작업이 성공하였습니다.\n\n' + env.BUILD_URL, chatId=297396697)
                 telegramSend(message: '【 알림 > Jenkins > 빌드 작업이 성공하였습니다.', chatId=297396697)
                 sh '''
