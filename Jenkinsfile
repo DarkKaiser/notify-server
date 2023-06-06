@@ -36,14 +36,14 @@ pipeline {
             }
         }
 
-        stage('빌드') {
-            steps {
+        //stage('빌드') {
+        //    steps {
                 //sh "/usr/local/go/bin/go build"
-            }
-        }
+        //    }
+        //}
 
-        stage('배포') {
-            steps {
+        //stage('배포') {
+        //    steps {
                 //sh '''
                 //    sudo cp -f ./notify-server /usr/local/notify-server/
                 //    sudo cp -f ./notify-server.sh /usr/local/notify-server/
@@ -55,11 +55,11 @@ pipeline {
                 //    sudo chown pi:staff /usr/local/notify-server/notify-server-restart.sh
                 //    sudo chown pi:staff /usr/local/notify-server/notify-server.json
                 //'''
-            }
-        }
+        //    }
+        //}
 
-        stage('서버 재시작') {
-            steps {
+        //stage('서버 재시작') {
+        //    steps {
                 // 경로를 이동하지 않고 서버를 재시작하게 되면 로그 파일의 생성 위치가
                 // '/usr/local/notify-server/logs'에 생성되는게 아니라 Jenkins 작업 위치에 생성되게 되는데
                 // 이때 'logs' 폴더가 존재하지 않으므로 서버 실행이 실패하게 된다.
@@ -67,8 +67,8 @@ pipeline {
                 //    cd /usr/local/notify-server
                 //    sudo -u pi /usr/local/notify-server/notify-server-restart.sh
                 //'''
-            }
-        }
+        //    }
+        //}
 
     }
 
