@@ -75,7 +75,10 @@ pipeline {
     post {
         success {
             script {
-                telegramSend(message: '【 알림 > Jenkins > ' + env.PROJECT_NAME + ' 】\n\n빌드 작업이 성공하였습니다.\n\n' + env.BUILD_URL, chatId=297396697)
+                // telegramSend(message: '【 알림 > Jenkins > ' + env.PROJECT_NAME + ' 】\n\n빌드 작업이 성공하였습니다.\n\n' + env.BUILD_URL, chatId=297396697)
+                sh '''
+                    curl -s -X POST https://api.telegram.org/bot1550645495:AAGsszvqxsCTANl1nGkjY-26x3Vma4ARFNo/sendMessage -d chat_id=297396697 -d text="your message"
+                '''
             }
         }
         failure {
