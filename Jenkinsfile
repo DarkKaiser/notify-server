@@ -14,7 +14,7 @@ pipeline {
             }
         }
 
-        stage('체크아웃') {
+        stage('소스 체크아웃') {
             steps {
                 checkout([
                     $class: 'GitSCM',
@@ -35,57 +35,55 @@ pipeline {
                 ])
             }
         }
-
-        stage('빌드') {
+        
+        stage('도커 이미지 빌드') {
             steps {
-                sh "/usr/local/go/bin/go build"
+                sh "docker build -t darkkaiser/notify-server ."
             }
         }
 
-        stage('배포') {
+        stage('도커 컨테이너 실행') {
             steps {
                 sh '''
-                    sudo cp -f ./notify-server /usr/local/notify-server/
-                    sudo cp -f ./notify-server.sh /usr/local/notify-server/
-                    sudo cp -f ./notify-server-restart.sh /usr/local/notify-server/
-                    sudo cp -f ./secrets/notify-server.운영.json /usr/local/notify-server/notify-server.json
+                    docker ps -q --filter name=notify-server | grep -q . && docker container stop notify-server && docker container rm notify-server
 
-                    sudo chown pi:staff /usr/local/notify-server/notify-server
-                    sudo chown pi:staff /usr/local/notify-server/notify-server.sh
-                    sudo chown pi:staff /usr/local/notify-server/notify-server-restart.sh
-                    sudo chown pi:staff /usr/local/notify-server/notify-server.json
+                    docker run -d --name notify-server \
+                               -e TZ=Asia/Seoul \
+                               -v /usr/local/docker/notify-server:/usr/local/app \
+                               -v /etc/letsencrypt/:/etc/letsencrypt/ \
+                               -p 2443:2443 \
+                               --restart="always" \
+                               darkkaiser/notify-server
                 '''
             }
         }
 
-        stage('서버 재시작') {
+        stage('도커 이미지 정리') {
             steps {
-                // 경로를 이동하지 않고 서버를 재시작하게 되면 로그 파일의 생성 위치가
-                // '/usr/local/notify-server/logs'에 생성되는게 아니라 Jenkins 작업 위치에 생성되게 되는데
-                // 이때 'logs' 폴더가 존재하지 않으므로 서버 실행이 실패하게 된다.
-                sh '''
-                    cd /usr/local/notify-server
-                    sudo -u pi /usr/local/notify-server/notify-server-restart.sh
-                '''
+                sh 'docker images -qf dangling=true | xargs -I{} docker rmi {}'
             }
         }
-
+        
     }
 
     post {
+
         success {
             script {
-                telegramSend(message: '【 알림 > Jenkins > ' + env.PROJECT_NAME + ' 】\n\n빌드 작업이 성공하였습니다.\n\n' + env.BUILD_URL)
+                sh "curl -s -X POST https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage -d chat_id=${env.TELEGRAM_CHAT_ID} -d text='【 알림 > Jenkins > ${env.PROJECT_NAME} 】\n\n빌드 작업이 성공하였습니다.\n\n${env.BUILD_URL}'"
             }
         }
+
         failure {
             script {
-                telegramSend(message: '【 알림 > Jenkins > ' + env.PROJECT_NAME + ' 】\n\n빌드 작업이 실패하였습니다.\n\n' + env.BUILD_URL)
+                sh "curl -s -X POST https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage -d chat_id=${env.TELEGRAM_CHAT_ID} -d text='【 알림 > Jenkins > ${env.PROJECT_NAME} 】\n\n빌드 작업이 실패하였습니다.\n\n${env.BUILD_URL}'"
             }
         }
+
         always {
             cleanWs()
         }
+
     }
 
 }
