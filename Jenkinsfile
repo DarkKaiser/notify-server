@@ -48,12 +48,12 @@ pipeline {
                     docker ps -q --filter name=notify-server | grep -q . && docker container stop notify-server && docker container rm notify-server
 
                     docker run -d --name notify-server \
-                               -e TZ=Asia/Seoul \
-                               -v /usr/local/docker/notify-server:/usr/local/app \
-                               -v /etc/letsencrypt/:/etc/letsencrypt/ \
-                               -p 2443:2443 \
-                               --restart="always" \
-                               darkkaiser/notify-server
+                                  -e TZ=Asia/Seoul \
+                                  -v /usr/local/docker/notify-server:/usr/local/app \
+                                  -v /etc/letsencrypt/:/etc/letsencrypt/ \
+                                  -p 2443:2443 \
+                                  --restart="always" \
+                                  darkkaiser/notify-server
                 '''
             }
         }
