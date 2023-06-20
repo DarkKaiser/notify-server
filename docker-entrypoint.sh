@@ -13,7 +13,7 @@ fi
 
 if [ -f "$LATEST_APP_CONFIG_FILE" ]; then
   mv -f $LATEST_APP_CONFIG_FILE $APP_PATH
-  chown +1000:staff APP_CONFIG_FILE
+  chown +1000:staff $APP_CONFIG_FILE
 fi
 
 exec "$@"
