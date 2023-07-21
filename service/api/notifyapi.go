@@ -68,9 +68,9 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	handler := handler.NewHandler(s.config, s.notificationSender)
 
 	e := router.New()
-	grp := e.Group("/api/notify")
+	grp := e.Group("/api/v1")
 	{
-		grp.POST("/message/send", handler.NotifyMessageSendHandler)
+		grp.POST("/notice/message", handler.NotifyMessageSendHandler)
 	}
 
 	echo.NotFoundHandler = func(c echo.Context) error {
