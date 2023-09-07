@@ -1,6 +1,6 @@
 # NotifyServer
 
-<a href="https://github.com/DarkKaiser/notify-server/LICENSE">
+<a href="https://github.com/DarkKaiser/notify-server/blob/master/LICENSE">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" target="_blank" />
 </a>
 
