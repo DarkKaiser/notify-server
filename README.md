@@ -1,9 +1,8 @@
 # NotifyServer
 
 <p>
-  <img src="https://img.shields.io/badge/Go-00ADD8?style=square&amp;logo=Go&amp;logoColor=white" />
-  <img src="https://img.shields.io/badge/JSON-000000?style=square&amp;logo=json&amp;logoColor=white">
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=square&amp;logo=Docker&amp;logoColor=white">
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=flat&amp;logo=Go&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&amp;logo=Docker&amp;logoColor=white">
   <a href="https://github.com/DarkKaiser/notify-server/blob/master/LICENSE">
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" target="_blank" />
   </a>
