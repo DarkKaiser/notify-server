@@ -1,8 +1,13 @@
 # NotifyServer
 
-<a href="https://github.com/DarkKaiser/notify-server/blob/master/LICENSE">
-  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" target="_blank" />
-</a>
+<p>
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=square&amp;logo=Go&amp;logoColor=white" />
+  <img src="https://img.shields.io/badge/JSON-000000?style=square&amp;logo=json&amp;logoColor=white">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=square&amp;logo=Docker&amp;logoColor=white">
+  <a href="https://github.com/DarkKaiser/notify-server/blob/master/LICENSE">
+    <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" target="_blank" />
+  </a>
+</p>
 
 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알립니다.
 
