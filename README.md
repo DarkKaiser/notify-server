@@ -8,15 +8,11 @@
 
 ## Build
 
-NotifyServer의 도커 이미지를 생성합니다.
-
 ```bash
 docker build -t darkkaiser/notify-server .
 ```
 
 ## Run
-
-NotifyServer의 도커 컨테이너를 모두 제거하고 다시 실행합니다.
 
 ```bash
 docker ps -q --filter name=notify-server | grep -q . && docker container stop notify-server && docker container rm notify-server
