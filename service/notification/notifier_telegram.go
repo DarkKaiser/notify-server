@@ -6,7 +6,7 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	log "github.com/sirupsen/logrus"
 	"strings"
 	"sync"
@@ -97,7 +97,7 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 	config := tgbotapi.NewUpdate(0)
 	config.Timeout = 60
 
-	updateC, _ := n.bot.GetUpdatesChan(config)
+	updateC := n.bot.GetUpdatesChan(config)
 
 	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.Self.UserName)
 
