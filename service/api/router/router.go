@@ -2,8 +2,8 @@ package router
 
 import (
 	_middleware_ "github.com/darkkaiser/notify-server/service/api/middleware"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 )
