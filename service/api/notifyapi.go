@@ -7,16 +7,14 @@ import (
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"sync"
 	"time"
 )
 
-//
 // NotifyAPIService
-//
 type NotifyAPIService struct {
 	config *g.AppConfig
 
