@@ -26,7 +26,7 @@ docker ps -q --filter name=notify-server | grep -q . && docker container stop no
 docker run -d --name notify-server \
               -e TZ=Asia/Seoul \
               -v /usr/local/docker/notify-server:/usr/local/app \
-              -v /etc/letsencrypt/:/etc/letsencrypt/ \
+              -v /usr/local/docker/nginx-proxy-manager/letsencrypt:/etc/letsencrypt:ro \
               -p 2443:2443 \
               --restart="always" \
               darkkaiser/notify-server
@@ -41,5 +41,5 @@ Feel free to check [issues page](https://github.com/DarkKaiser/notify-server/iss
 
 👤 **DarkKaiser**
 
-- Blog: [@DarkKaiser](http://www.darkkaiser.com)
+- Blog: [@DarkKaiser](https://www.darkkaiser.com)
 - Github: [@DarkKaiser](https://github.com/DarkKaiser)

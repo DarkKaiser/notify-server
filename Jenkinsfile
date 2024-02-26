@@ -50,7 +50,7 @@ pipeline {
                     docker run -d --name notify-server \
                                   -e TZ=Asia/Seoul \
                                   -v /usr/local/docker/notify-server:/usr/local/app \
-                                  -v /etc/letsencrypt/:/etc/letsencrypt/ \
+                                  -v /usr/local/docker/nginx-proxy-manager/letsencrypt:/etc/letsencrypt:ro \
                                   -p 2443:2443 \
                                   --restart="always" \
                                   darkkaiser/notify-server
