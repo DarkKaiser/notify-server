@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
-//noinspection GoUnhandledErrorResult
+// noinspection GoUnhandledErrorResult
 func newHTMLDocument(url string) (*goquery.Document, error) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -36,7 +35,7 @@ func newHTMLDocumentSelection(url string, selector string) (*goquery.Selection, 
 
 	sel := doc.Find(selector)
 	if sel.Length() <= 0 {
-		return nil, fmt.Errorf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.", url)
+		return nil, fmt.Errorf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요", url)
 	}
 
 	return sel, nil
@@ -53,7 +52,7 @@ func webScrape(url string, selector string, f func(int, *goquery.Selection) bool
 	return nil
 }
 
-//noinspection GoUnhandledErrorResult
+// noinspection GoUnhandledErrorResult
 func unmarshalFromResponseJSONData(method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
@@ -72,7 +71,7 @@ func unmarshalFromResponseJSONData(method, url string, header map[string]string,
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("불러온 페이지(%s) 데이터를 읽을 수 없습니다.(error:%s)", url, err)
 	}

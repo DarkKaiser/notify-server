@@ -3,8 +3,8 @@ package g
 import (
 	"encoding/json"
 	"github.com/darkkaiser/notify-server/utils"
-	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -63,7 +63,7 @@ type AppConfig struct {
 }
 
 func InitAppConfig() *AppConfig {
-	data, err := ioutil.ReadFile(AppConfigFileName)
+	data, err := os.ReadFile(AppConfigFileName)
 	utils.CheckErr(err)
 
 	var config AppConfig

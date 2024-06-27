@@ -28,15 +28,15 @@ func takeSliceArg(x interface{}) ([]interface{}, bool) {
 
 func eachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn equalFunc, onFoundFn onFoundFunc, onNotFoundFn onNotFoundFunc) error {
 	if equalFn == nil {
-		return errors.New("equalFn()이 할당되지 않았습니다.")
+		return errors.New("equalFn()이 할당되지 않았습니다")
 	}
 	sourceSlice, ok := takeSliceArg(source)
 	if ok == false {
-		return errors.New("Source 인자의 Slice 타입 변환이 실패하였습니다.")
+		return errors.New("source 인자의 Slice 타입 변환이 실패하였습니다")
 	}
 	targetSlice, ok := takeSliceArg(target)
 	if ok == false {
-		return errors.New("Target 인자의 Slice 타입 변환이 실패하였습니다.")
+		return errors.New("target 인자의 Slice 타입 변환이 실패하였습니다")
 	}
 
 	for _, sourceElemment := range sourceSlice {

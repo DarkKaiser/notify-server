@@ -8,7 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -45,9 +44,7 @@ var (
 	ErrNoImplementationForTaskCommand = errors.New("작업 커맨드에 대한 구현이 없습니다")
 )
 
-//
 // taskInstanceIDGenerator
-//
 type taskInstanceIDGenerator struct {
 }
 
@@ -85,9 +82,7 @@ func (g *taskInstanceIDGenerator) reverse(s []string) []string {
 	return s
 }
 
-//
 // supportedTasks
-//
 type newTaskFunc func(TaskInstanceID, *taskRunData, *g.AppConfig) (taskHandler, error)
 type newTaskResultDataFunc func() interface{}
 
@@ -131,9 +126,7 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*s
 	return nil, nil, ErrNotSupportedTask
 }
 
-//
 // task
-//
 type runFunc func(interface{}, bool) (string, interface{}, error)
 
 type task struct {
@@ -280,10 +273,11 @@ func (t *task) dataFileName() string {
 }
 
 func (t *task) readTaskResultDataFromFile(v interface{}) error {
-	data, err := ioutil.ReadFile(t.dataFileName())
+	data, err := os.ReadFile(t.dataFileName())
 	if err != nil {
 		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
-		if _, ok := err.(*os.PathError); ok {
+		var pathError *os.PathError
+		if errors.As(err, &pathError) == true {
 			return nil
 		}
 
@@ -299,12 +293,10 @@ func (t *task) writeTaskResultDataToFile(v interface{}) error {
 		return err
 	}
 
-	return ioutil.WriteFile(t.dataFileName(), data, os.FileMode(0644))
+	return os.WriteFile(t.dataFileName(), data, os.FileMode(0644))
 }
 
-//
 // TaskContext
-//
 type TaskContext interface {
 	With(key, val interface{}) TaskContext
 	WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext
@@ -349,9 +341,7 @@ func (c *taskContext) Value(key interface{}) interface{} {
 	return c.ctx.Value(key)
 }
 
-//
 // taskRunData
-//
 type taskRunData struct {
 	taskID        TaskID
 	taskCommandID TaskCommandID
@@ -365,18 +355,14 @@ type taskRunData struct {
 	taskRunBy TaskRunBy
 }
 
-//
 // TaskRunner
-//
 type TaskRunner interface {
 	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
 	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
 	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
-//
 // TaskNotificationSender
-//
 type TaskNotificationSender interface {
 	NotifyToDefault(message string) bool
 	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
@@ -384,9 +370,7 @@ type TaskNotificationSender interface {
 	SupportHTMLMessage(notifierID string) bool
 }
 
-//
 // TaskService
-//
 type TaskService struct {
 	config *g.AppConfig
 

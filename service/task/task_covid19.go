@@ -166,7 +166,7 @@ type covid19Task struct {
 	config *g.AppConfig
 }
 
-//noinspection GoUnhandledErrorResult
+// noinspection GoUnhandledErrorResult
 func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*covid19WatchResidualVaccineResultData)
 	if ok == false {
@@ -220,7 +220,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, messag
 		actualityMedicalInstitution, ok1 := selem.(*covid19MedicalInstitution)
 		originMedicalInstitution, ok2 := telem.(*covid19MedicalInstitution)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityMedicalInstitution.ID == originMedicalInstitution.ID {
 				return true, nil
@@ -256,7 +256,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, messag
 		originMedicalInstitution, ok1 := selem.(*covid19MedicalInstitution)
 		actualityMedicalInstitution, ok2 := telem.(*covid19MedicalInstitution)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if originMedicalInstitution.ID == actualityMedicalInstitution.ID {
 				return true, nil
