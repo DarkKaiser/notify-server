@@ -133,7 +133,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 
 		url, exists := s.Attr("href")
 		if exists == false {
-			err0 = errors.New("이벤트 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("이벤트 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
@@ -161,7 +161,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 		actualityEvent, ok1 := selem.(*alganicmallEvent)
 		originEvent, ok2 := telem.(*alganicmallEvent)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityEvent.Name == originEvent.Name && actualityEvent.Url == originEvent.Url {
 				return true, nil
@@ -220,7 +220,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		// 제품명
 		productNameSelection := productSelection.Find("dd > ul > li:first-child > span")
 		if productNameSelection.Length() != 1 {
-			err0 = errors.New("제품명 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("제품명 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		name, _err_ := euckrDecoder.String(productNameSelection.Text())
@@ -235,12 +235,12 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		// 제품URL
 		productLinkSelection := productSelection.Find("dt > a")
 		if productLinkSelection.Length() != 1 {
-			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		url, exists := productLinkSelection.Attr("href")
 		if exists == false {
-			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("제품 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		// 제품URL의 마지막 파라메터 'GfDT'가 수시로 변경되기 때문에 해당 파라메터를 제거한다.
@@ -254,7 +254,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		// 제품가격
 		productPriceSelection := productSelection.Find("dd > ul > li > span.price")
 		if productPriceSelection.Length() != 1 {
-			err0 = errors.New("제품 가격 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+			err0 = errors.New("제품 가격 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		productPriceString, _err_ := euckrDecoder.String(productPriceSelection.Text())
@@ -293,7 +293,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		actualityProduct, ok1 := selem.(*alganicmallProduct)
 		originProduct, ok2 := telem.(*alganicmallProduct)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityProduct.Name == originProduct.Name && actualityProduct.Url == originProduct.Url {
 				return true, nil

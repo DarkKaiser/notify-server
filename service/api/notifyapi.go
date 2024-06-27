@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/api/handler"
@@ -63,12 +64,12 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
-	handler := handler.NewHandler(s.config, s.notificationSender)
+	h := handler.NewHandler(s.config, s.notificationSender)
 
 	e := router.New()
 	grp := e.Group("/api/v1")
 	{
-		grp.POST("/notice/message", handler.NotifyMessageSendHandler)
+		grp.POST("/notice/message", h.NotifyMessageSendHandler)
 	}
 
 	echo.NotFoundHandler = func(c echo.Context) error {
@@ -86,7 +87,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		}
 
 		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
-		if err == http.ErrServerClosed {
+		if errors.Is(err, http.ErrServerClosed) == true {
 			log.Debug("NotifyAPI 서비스 > http 서버 중지됨")
 		} else {
 			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."

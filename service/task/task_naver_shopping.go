@@ -179,7 +179,7 @@ type naverShoppingTask struct {
 	clientSecret string
 }
 
-//noinspection GoUnhandledErrorResult
+// noinspection GoUnhandledErrorResult
 func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
@@ -258,7 +258,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		actualityProduct, ok1 := selem.(*naverShoppingProduct)
 		originProduct, ok2 := telem.(*naverShoppingProduct)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityProduct.Link == originProduct.Link {
 				return true, nil

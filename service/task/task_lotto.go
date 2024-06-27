@@ -7,7 +7,6 @@ import (
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -154,7 +153,7 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	analysisFilePath = string([]rune(analysisFilePath)[3:]) // '경로:' 문자열을 제거한다.
 
 	// 당첨번호 예측 결과 파일을 읽어들인다.
-	data, err := ioutil.ReadFile(analysisFilePath)
+	data, err := os.ReadFile(analysisFilePath)
 	if err != nil {
 		return "", nil, err
 	}
