@@ -28,7 +28,7 @@
 					},
 					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
-						"query": "  전라 공연",
+						"query": "jl",
 						"filters": {
 							"title": {
 								"included_keywords": "",
