@@ -22,10 +22,7 @@ const (
 )
 
 type naverWatchNewPerformancesSearchResultData struct {
-	Total int `json:"total"`
-	List  []struct {
-		Html string `json:"html"`
-	} `json:"list"`
+	Html string `json:"html"`
 }
 
 type naverWatchNewPerformancesTaskCommandData struct {
@@ -51,16 +48,15 @@ func (d *naverWatchNewPerformancesTaskCommandData) validate() error {
 
 type naverPerformance struct {
 	Title     string `json:"title"`
-	Period    string `json:"period"`
 	Place     string `json:"place"`
 	Thumbnail string `json:"thumbnail"`
 }
 
 func (p *naverPerformance) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 일정 : %s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Period, p.Place)
+		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 일정 : %s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Period, p.Place))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Place))
 }
 
 type naverWatchNewPerformancesResultData struct {
@@ -135,7 +131,7 @@ type naverTask struct {
 	config *g.AppConfig
 }
 
-//noinspection GoUnhandledErrorResult,GoErrorStringFormat
+// noinspection GoUnhandledErrorResult,GoErrorStringFormat
 func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
 	if ok == false {
@@ -149,15 +145,15 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	placeExcludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
-	searchStartPerformancePos := 1
+	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=PerformListAPI&where=nexearch&pkid=269&q=%s&so=&start=%d", url.QueryEscape(taskCommandData.Query), searchStartPerformancePos), nil, nil, searchResultData)
+		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(taskCommandData.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.List[0].Html))
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.Html))
 		if err != nil {
 			return "", nil, fmt.Errorf("불러온 페이지의 데이터 파싱이 실패하였습니다.(error:%s)", err)
 		}
@@ -166,31 +162,15 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		ps := doc.Find("ul > li")
 		ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
 			// 제목
-			pis := s.Find("div.list_title a.tit")
+			pis := s.Find("div.item > div.title_box > strong.name")
 			if pis.Length() != 1 {
 				err = errors.New("공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
 			}
 			title := strings.TrimSpace(pis.Text())
 
-			// 기간
-			pis = s.Find("div.list_title > span.period")
-			if pis.Length() != 1 {
-				err = errors.New("공연 기간 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
-				return false
-			}
-			period := strings.TrimSpace(pis.Text())
-
-			period = strings.Replace(period, ".", "년 ", 1)
-			period = strings.Replace(period, ".", "월 ", 1)
-			period = strings.Replace(period, ".", "일", 1)
-			period = strings.Replace(period, ".", "년 ", 1)
-			period = strings.Replace(period, ".", "월 ", 1)
-			period = strings.Replace(period, ".", "일", 1)
-			period = strings.Replace(period, "~", " ~ ", 1)
-
 			// 장소
-			pis = s.Find("div.list_title > span.list_cate")
+			pis = s.Find("div.item > div.title_box > span.sub_text")
 			if pis.Length() != 1 {
 				err = errors.New("공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
@@ -198,7 +178,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			place := strings.TrimSpace(pis.Text())
 
 			// 썸네일 이미지
-			pis = s.Find("div.list_thumb > a > img")
+			pis = s.Find("div.item > div.thumb > img")
 			if pis.Length() != 1 {
 				err = errors.New("공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
 				return false
@@ -216,7 +196,6 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 
 			actualityTaskResultData.Performances = append(actualityTaskResultData.Performances, &naverPerformance{
 				Title:     title,
-				Period:    period,
 				Place:     place,
 				Thumbnail: thumbnail,
 			})
@@ -227,8 +206,10 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			return "", nil, err
 		}
 
-		searchStartPerformancePos += ps.Length()
-		if searchStartPerformancePos > searchResultData.Total || ps.Length() == 0 {
+		searchPerformancePageIndex += 1
+
+		// 불러온 데이터가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
+		if ps.Length() == 0 {
 			break
 		}
 
@@ -244,7 +225,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		if ok1 == false || ok2 == false {
 			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
 		} else {
-			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Period == originPerformance.Period && actualityPerformance.Place == originPerformance.Place {
+			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
 				return true, nil
 			}
 		}
