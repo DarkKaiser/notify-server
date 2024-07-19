@@ -213,6 +213,12 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 			searchResultData.Display = _searchResultData_.Display
 
 			searchResultItemTotalCount = _searchResultData_.Total
+
+			// 최대 1000건의 데이터를 읽어들이도록 한다.
+			if searchResultData.Total > 1000 {
+				searchResultData.Total = 1000
+				searchResultItemTotalCount = 1000
+			}
 		}
 		searchResultData.Items = append(searchResultData.Items, _searchResultData_.Items...)
 
