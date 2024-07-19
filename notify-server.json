@@ -123,10 +123,10 @@
 					},
 					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
-						"query": "큐냅 TR 004",
+						"query": "큐냅 TR-004",
 						"filters": {
-							"included_keywords": "",
-							"excluded_keywords": "어댑터",
+							"included_keywords": "TR, 004",
+							"excluded_keywords": "어댑터, 002",
 							"price_less_than": 337000
 						}
 					}
