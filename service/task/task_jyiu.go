@@ -8,6 +8,7 @@ import (
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -144,8 +145,13 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		}
 		id = id[pos1+1 : pos2]
 
+		title := utils.Trim(as.Eq(1).Find("a").Text())
+		if utf8.ValidString(title) == false {
+			title = "[ 게시글 제목 한글 깨짐 ]"
+		}
+
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
-			Title: utils.Trim(as.Eq(1).Find("a").Text()),
+			Title: title,
 			Date:  utils.Trim(as.Eq(3).Text()),
 			Url:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseUrl, id),
 		})
@@ -241,8 +247,13 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		}
 		url = url[pos1+1 : pos2]
 
+		title := utils.Trim(as.Eq(2).Text())
+		if utf8.ValidString(title) == false {
+			title = "[ 게시글 제목 한글 깨짐 ]"
+		}
+
 		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
-			Title:            utils.Trim(as.Eq(2).Text()),
+			Title:            title,
 			TrainingPeriod:   utils.Trim(as.Eq(4).Text()),
 			AcceptancePeriod: utils.Trim(as.Eq(5).Text()),
 			Url:              fmt.Sprintf("%s%s", jyiuBaseUrl, url),
