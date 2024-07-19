@@ -147,7 +147,14 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 
 		title := utils.Trim(as.Eq(1).Find("a").Text())
 		if utf8.ValidString(title) == false {
-			title = "[ 게시글 제목 한글 깨짐 ]"
+			title0 := ""
+			for _, v := range title {
+				if utf8.ValidString(string(v)) == false {
+					break
+				}
+				title0 += string(v)
+			}
+			title = title0
 		}
 
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
@@ -249,7 +256,14 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 
 		title := utils.Trim(as.Eq(2).Text())
 		if utf8.ValidString(title) == false {
-			title = "[ 게시글 제목 한글 깨짐 ]"
+			title0 := ""
+			for _, v := range title {
+				if utf8.ValidString(string(v)) == false {
+					break
+				}
+				title0 += string(v)
+			}
+			title = title0
 		}
 
 		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
