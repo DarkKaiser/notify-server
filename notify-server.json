@@ -94,11 +94,11 @@
 					"title": "큐냅 TR-002 가격 확인",
 					"description": "네이버쇼핑에서 큐냅 TR-002의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
-						"runnable": true,
+						"runnable": false,
 						"time_spec": "0 15 * * * *"
 					},
 					"notifier": {
-						"usable": true
+						"usable": false
 					},
 					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
@@ -115,11 +115,11 @@
 					"title": "큐냅 TR-004 가격 확인",
 					"description": "네이버쇼핑에서 큐냅 TR-004의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
 					"scheduler": {
-						"runnable": true,
+						"runnable": false,
 						"time_spec": "0 20 * * * *"
 					},
 					"notifier": {
-						"usable": true
+						"usable": false
 					},
 					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
