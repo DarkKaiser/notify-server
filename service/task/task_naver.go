@@ -21,10 +21,6 @@ const (
 	TcidNaverWatchNewPerformances TaskCommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
-type naverWatchNewPerformancesSearchResultData struct {
-	Html string `json:"html"`
-}
-
 type naverWatchNewPerformancesTaskCommandData struct {
 	Query   string `json:"query"`
 	Filters struct {
@@ -44,6 +40,10 @@ func (d *naverWatchNewPerformancesTaskCommandData) validate() error {
 		return errors.New("query가 입력되지 않았습니다")
 	}
 	return nil
+}
+
+type naverWatchNewPerformancesSearchResultData struct {
+	Html string `json:"html"`
 }
 
 type naverPerformance struct {

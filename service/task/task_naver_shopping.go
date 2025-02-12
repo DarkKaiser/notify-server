@@ -25,20 +25,6 @@ const (
 	naverShoppingSearchUrl = "https://openapi.naver.com/v1/search/shop.json"
 )
 
-type naverShoppingSearchResultData struct {
-	Total   int `json:"total"`
-	Start   int `json:"start"`
-	Display int `json:"display"`
-	Items   []struct {
-		Title       string `json:"title"`
-		Link        string `json:"link"`
-		LowPrice    string `json:"lprice"`
-		MallName    string `json:"mallName"`
-		ProductID   string `json:"productId"`
-		ProductType string `json:"productType"`
-	} `json:"items"`
-}
-
 type naverShoppingTaskData struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
@@ -71,6 +57,20 @@ func (d *naverShoppingWatchPriceTaskCommandData) validate() error {
 		return errors.New("price_less_than에 0 이하의 값이 입력되었습니다")
 	}
 	return nil
+}
+
+type naverShoppingWatchPriceSearchResultData struct {
+	Total   int `json:"total"`
+	Start   int `json:"start"`
+	Display int `json:"display"`
+	Items   []struct {
+		Title       string `json:"title"`
+		Link        string `json:"link"`
+		LowPrice    string `json:"lprice"`
+		MallName    string `json:"mallName"`
+		ProductID   string `json:"productId"`
+		ProductType string `json:"productType"`
+	} `json:"items"`
 }
 
 type naverShoppingProduct struct {
@@ -198,10 +198,10 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		searchResultItemStartNo    = 1
 		searchResultItemTotalCount = math.MaxInt
 
-		searchResultData = &naverShoppingSearchResultData{}
+		searchResultData = &naverShoppingWatchPriceSearchResultData{}
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
-		var _searchResultData_ = &naverShoppingSearchResultData{}
+		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
 		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
