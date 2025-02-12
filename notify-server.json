@@ -88,48 +88,6 @@
 							"price_less_than": 154500
 						}
 					}
-				},
-				{
-					"id": "WatchPrice_QNAP_TR002",
-					"title": "큐냅 TR-002 가격 확인",
-					"description": "네이버쇼핑에서 큐냅 TR-002의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 15 * * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"query": "큐냅 TR 002",
-						"filters": {
-							"included_keywords": "",
-							"excluded_keywords": "어댑터",
-							"price_less_than": 236000
-						}
-					}
-				},
-				{
-					"id": "WatchPrice_QNAP_TR004",
-					"title": "큐냅 TR-004 가격 확인",
-					"description": "네이버쇼핑에서 큐냅 TR-004의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 20 * * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"query": "큐냅 TR-004",
-						"filters": {
-							"included_keywords": "TR, 004",
-							"excluded_keywords": "어댑터, 002",
-							"price_less_than": 337000
-						}
-					}
 				}
 			],
 			"data": {
