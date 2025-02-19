@@ -18,6 +18,9 @@ const (
 
 	telegramBotCommandSeparator        = "_"
 	telegramBotCommandInitialCharacter = "/"
+
+	// 한번에 보낼 수 있는 텔레그램 메시지의 최대 길이
+	telegramMessageMaxLength = 3900
 )
 
 type telegramBotCommand struct {
@@ -223,11 +226,45 @@ LOOP:
 					m = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m)
 				}
 
-				messageConfig := tgbotapi.NewMessage(n.chatID, m)
-				messageConfig.ParseMode = tgbotapi.ModeHTML
+				if len(m) <= telegramMessageMaxLength {
+					messageConfig := tgbotapi.NewMessage(n.chatID, m)
+					messageConfig.ParseMode = tgbotapi.ModeHTML
 
-				if _, err := n.bot.Send(messageConfig); err != nil {
-					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+					if _, err := n.bot.Send(messageConfig); err != nil {
+						log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+					}
+				} else {
+					// 메시지를 줄 단위로 분할한다.
+					lines := strings.Split(m, "\n")
+
+					var messageChunk string
+					for _, line := range lines {
+						// 보낼 메시지 길이와 새로 추가될 메시지의 길이를 합산하여 최대 길이를 초과하는지 확인한다.
+						if len(messageChunk)+len(line)+1 > telegramMessageMaxLength {
+							messageConfig := tgbotapi.NewMessage(n.chatID, messageChunk)
+							messageConfig.ParseMode = tgbotapi.ModeHTML
+
+							if _, err := n.bot.Send(messageConfig); err != nil {
+								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+							}
+
+							messageChunk = line
+						} else {
+							if len(messageChunk) > 0 {
+								messageChunk += "\n"
+							}
+							messageChunk += line
+						}
+					}
+
+					if len(messageChunk) > 0 {
+						messageConfig := tgbotapi.NewMessage(n.chatID, messageChunk)
+						messageConfig.ParseMode = tgbotapi.ModeHTML
+
+						if _, err := n.bot.Send(messageConfig); err != nil {
+							log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+						}
+					}
 				}
 			}
 
