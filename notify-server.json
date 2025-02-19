@@ -96,6 +96,28 @@
 			}
 		},
 		{
+			"id": "KURLY",
+			"title": "마켓컬리",
+			"commands": [
+				{
+					"id": "WatchProductPrice",
+					"title": "상품 가격 변동 확인",
+					"description": "마켓컬리에서 등록된 상품의 가격이 변동되었는지를 확인합니다.",
+					"scheduler": {
+						"runnable": true,
+						"time_spec": "0 * * * * *"
+					},
+					"notifier": {
+						"usable": true
+					},
+					"default_notifier_id": "darkkaiser_test_bot",
+					"data": {
+						"watch_products_file": "notify-server-task-kurly-watch-product-list.csv"
+					}
+				}
+			]
+		},
+		{
 			"id": "JYIU",
 			"title": "전남여수산학융합원",
 			"commands": [
