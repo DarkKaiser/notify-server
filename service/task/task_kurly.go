@@ -4,15 +4,16 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"html/template"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -292,7 +293,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			product.Name = utils.Trim(ps.Text())
 
 			// 상품 가격을 추출한다.
-			ps = sel.Find("h2.css-1kp9nkg > span")
+			ps = sel.Find("h2.css-xrp7wx > span")
 			if ps.Length() == 2 /* 가격, 단위(원) */ {
 				// 가격
 				product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
@@ -313,7 +314,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 				}
 
 				// 가격
-				ps = sel.Find("span.css-kg1jq3 > span")
+				ps = sel.Find("span.css-vm5ulh > span")
 				if ps.Length() != 1 /* 가격 + 단위(원) */ {
 					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
 				}
