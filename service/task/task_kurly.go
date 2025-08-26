@@ -293,24 +293,34 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			product.Name = utils.Trim(ps.Text())
 
 			// 상품 가격을 추출한다.
-			ps = sel.Find("h2.css-xrp7wx > span")
-			if ps.Length() == 2 /* 가격, 단위(원) */ {
+			ps = sel.Find("h2.css-xrp7wx > span.css-51s4yr")
+			if ps.Length() == 0 /* 가격, 단위(원) */ {
+				ps = sel.Find("h2.css-xrp7wx > div.css-17115gn > span")
+				if ps.Length() != 2 /* 가격 + 단위(원) */ {
+					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+				}
+
 				// 가격
 				product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
 				if err != nil {
 					return "", nil, fmt.Errorf("상품 가격의 숫자 변환이 실패하였습니다.(error:%s)", err)
 				}
-			} else if ps.Length() == 3 /* 할인율, 할인 가격, 단위(원) */ {
-				// 할인 가격
-				product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(1).Text(), ",", ""))
-				if err != nil {
-					return "", nil, fmt.Errorf("상품 할인 가격의 숫자 변환이 실패하였습니다.(error:%s)", err)
-				}
-
+			} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
 				// 할인율
 				product.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
 				if err != nil {
 					return "", nil, fmt.Errorf("상품 할인율의 숫자 변환이 실패하였습니다.(error:%s)", err)
+				}
+
+				// 할인 가격
+				ps = sel.Find("h2.css-xrp7wx > div.css-17115gn > span")
+				if ps.Length() != 2 /* 가격 + 단위(원) */ {
+					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+				}
+
+				product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
+				if err != nil {
+					return "", nil, fmt.Errorf("상품 할인 가격의 숫자 변환이 실패하였습니다.(error:%s)", err)
 				}
 
 				// 가격
