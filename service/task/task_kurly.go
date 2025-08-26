@@ -286,7 +286,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			}
 
 			// 상품 이름을 확인한다.
-			ps := sel.Find("div.css-cbt3cb > div.css-1ycm4va > div.css-1qy9c46 > h1")
+			ps := sel.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
 			if ps.Length() != 1 {
 				return "", nil, fmt.Errorf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
 			}
