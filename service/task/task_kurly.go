@@ -293,9 +293,9 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			product.Name = utils.Trim(ps.Text())
 
 			// 상품 가격을 추출한다.
-			ps = sel.Find("h2.css-xrp7wx > span.css-51s4yr")
+			ps = sel.Find("h2.css-xrp7wx > span.css-8h3us8")
 			if ps.Length() == 0 /* 가격, 단위(원) */ {
-				ps = sel.Find("h2.css-xrp7wx > div.css-17115gn > span")
+				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
 					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
 				}
@@ -313,7 +313,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 				}
 
 				// 할인 가격
-				ps = sel.Find("h2.css-xrp7wx > div.css-17115gn > span")
+				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
 					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
 				}
@@ -324,7 +324,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 				}
 
 				// 가격
-				ps = sel.Find("span.css-vm5ulh > span")
+				ps = sel.Find("span.css-1s96j0s > span")
 				if ps.Length() != 1 /* 가격 + 단위(원) */ {
 					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
 				}
