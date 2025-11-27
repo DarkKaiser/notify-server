@@ -21,7 +21,7 @@ type notifier struct {
 	notificationSendC chan *notificationSendData
 }
 
-type notifierHandler interface {
+type NotifierHandler interface {
 	ID() NotifierID
 
 	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
@@ -76,14 +76,14 @@ type NotificationService struct {
 	running   bool
 	runningMu sync.Mutex
 
-	defaultNotifierHandler notifierHandler
-	notifierHandlers       []notifierHandler
+	defaultNotifierHandler NotifierHandler
+	notifierHandlers       []NotifierHandler
 
 	taskRunner task.TaskRunner
 
 	notificationStopWaiter *sync.WaitGroup
 
-	newNotifier func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler
+	newNotifier func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler
 }
 
 func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
@@ -101,6 +101,10 @@ func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationSe
 
 		newNotifier: newTelegramNotifier,
 	}
+}
+
+func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler) {
+	s.newNotifier = newNotifierFn
 }
 
 func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {

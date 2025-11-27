@@ -61,7 +61,7 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
-func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler {
+func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
@@ -73,7 +73,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g
 
 // newTelegramNotifierWithBot is an internal constructor that accepts a TelegramBot interface.
 // This is useful for testing.
-func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, config *g.AppConfig) notifierHandler {
+func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, config *g.AppConfig) NotifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
