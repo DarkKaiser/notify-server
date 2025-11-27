@@ -3,13 +3,14 @@ package notification
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	log "github.com/sirupsen/logrus"
-	"strings"
-	"sync"
 )
 
 const (
@@ -22,6 +23,24 @@ const (
 	// 한번에 보낼 수 있는 텔레그램 메시지의 최대 길이
 	telegramMessageMaxLength = 3900
 )
+
+// TelegramBot defines the interface for interacting with the Telegram Bot API.
+// This allows for mocking in tests.
+type TelegramBot interface {
+	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
+	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
+	StopReceivingUpdates()
+	GetSelf() tgbotapi.User
+}
+
+// telegramBotWrapper wraps the actual tgbotapi.BotAPI to implement the TelegramBot interface.
+type telegramBotWrapper struct {
+	*tgbotapi.BotAPI
+}
+
+func (w *telegramBotWrapper) GetSelf() tgbotapi.User {
+	return w.Self
+}
 
 type telegramBotCommand struct {
 	command            string
@@ -37,12 +56,24 @@ type telegramNotifier struct {
 
 	chatID int64
 
-	bot *tgbotapi.BotAPI
+	bot TelegramBot
 
 	botCommands []telegramBotCommand
 }
 
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler {
+	bot, err := tgbotapi.NewBotAPI(botToken)
+	if err != nil {
+		log.Panic(err)
+	}
+	bot.Debug = true
+
+	return newTelegramNotifierWithBot(id, &telegramBotWrapper{BotAPI: bot}, chatID, config)
+}
+
+// newTelegramNotifierWithBot is an internal constructor that accepts a TelegramBot interface.
+// This is useful for testing.
+func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, config *g.AppConfig) notifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
@@ -53,6 +84,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g
 		},
 
 		chatID: chatID,
+		bot:    bot,
 	}
 
 	// Bot Command를 초기화합니다.
@@ -82,15 +114,6 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g
 		},
 	)
 
-	// 텔레그램 봇을 생성한다.
-	var err error
-	notifier.bot, err = tgbotapi.NewBotAPI(botToken)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	notifier.bot.Debug = true
-
 	return notifier
 }
 
@@ -102,7 +125,7 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 
 	updateC := n.bot.GetUpdatesChan(config)
 
-	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.Self.UserName)
+	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.GetSelf().UserName)
 
 LOOP:
 	for {
@@ -122,7 +145,7 @@ LOOP:
 				command := update.Message.Text[1:]
 
 				if command == telegramBotCommandHelp {
-					m := fmt.Sprintf("입력 가능한 명령어는 아래와 같습니다:\n\n")
+					m := "입력 가능한 명령어는 아래와 같습니다:\n\n"
 					for i, botCommand := range n.botCommands {
 						if i != 0 {
 							m += "\n\n"
