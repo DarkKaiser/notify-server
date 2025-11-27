@@ -3,17 +3,16 @@ package notification
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
-	"sync"
 )
 
 type NotifierID string
 
-//
 // notifier
-//
 type notifier struct {
 	id NotifierID
 
@@ -57,26 +56,20 @@ func (n *notifier) SupportHTMLMessage() bool {
 	return n.supportHTMLMessage
 }
 
-//
 // notificationSendData
-//
 type notificationSendData struct {
 	message string
 	taskCtx task.TaskContext
 }
 
-//
 // NotificationSender
-//
 type NotificationSender interface {
 	Notify(notifierID string, title string, message string, errorOccurred bool) bool
 	NotifyToDefault(message string) bool
 	NotifyWithErrorToDefault(message string) bool
 }
 
-//
 // NotificationService
-//
 type NotificationService struct {
 	config *g.AppConfig
 

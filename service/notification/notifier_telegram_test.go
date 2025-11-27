@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -322,6 +323,248 @@ func TestTelegramNotifier_Notify_ErrorContext(t *testing.T) {
 		WithError()
 
 	notifier.Notify("Error occurred", taskCtx)
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	cancel()
+	wg.Wait()
+
+	// Assertions
+	mockBot.AssertExpectations(t)
+}
+
+func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
+	// Setup
+	mockBot := &MockTelegramBot{
+		updatesChan: make(chan tgbotapi.Update, 1),
+	}
+	mockTaskRunner := &MockTaskRunner{}
+	chatID := int64(12345)
+	config := &g.AppConfig{}
+
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+
+	// Expectations
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
+	mockBot.On("GetUpdatesChan", mock.Anything).Return(nil)
+	mockBot.On("StopReceivingUpdates").Return()
+
+	// Expect TaskCancel to be called
+	mockTaskRunner.On("TaskCancel", task.TaskInstanceID("1234")).Return(true)
+
+	// Run
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go notifier.Run(mockTaskRunner, ctx, wg)
+
+	// Trigger Cancel Command: /cancel_1234
+	mockBot.updatesChan <- tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: chatID},
+			Text: "/cancel_1234",
+		},
+	}
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	cancel()
+	wg.Wait()
+
+	// Assertions
+	mockBot.AssertExpectations(t)
+	mockTaskRunner.AssertExpectations(t)
+}
+
+func TestTelegramNotifier_Run_UnknownCommand(t *testing.T) {
+	// Setup
+	mockBot := &MockTelegramBot{
+		updatesChan: make(chan tgbotapi.Update, 1),
+	}
+	mockTaskRunner := &MockTaskRunner{}
+	chatID := int64(12345)
+	config := &g.AppConfig{}
+
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+
+	// Expectations
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
+	mockBot.On("GetUpdatesChan", mock.Anything).Return(nil)
+
+	// Expect a reply about unknown command
+	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+		msg, ok := c.(tgbotapi.MessageConfig)
+		return ok && msg.ChatID == chatID && msg.Text != "" // Check if text is sent
+	})).Return(tgbotapi.Message{}, nil)
+
+	mockBot.On("StopReceivingUpdates").Return()
+
+	// Run
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go notifier.Run(mockTaskRunner, ctx, wg)
+
+	// Trigger Unknown Command
+	mockBot.updatesChan <- tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: chatID},
+			Text: "/unknown_command",
+		},
+	}
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	cancel()
+	wg.Wait()
+
+	// Assertions
+	mockBot.AssertExpectations(t)
+}
+
+func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
+	// Setup
+	mockBot := &MockTelegramBot{
+		updatesChan: make(chan tgbotapi.Update, 1),
+	}
+	mockTaskRunner := &MockTaskRunner{}
+	chatID := int64(12345)
+
+	// Construct config with a task command
+	config := &g.AppConfig{
+		Tasks: []struct {
+			ID       string `json:"id"`
+			Title    string `json:"title"`
+			Commands []struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Scheduler   struct {
+					Runnable bool   `json:"runnable"`
+					TimeSpec string `json:"time_spec"`
+				} `json:"scheduler"`
+				Notifier struct {
+					Usable bool `json:"usable"`
+				} `json:"notifier"`
+				DefaultNotifierID string                 `json:"default_notifier_id"`
+				Data              map[string]interface{} `json:"data"`
+			} `json:"commands"`
+			Data map[string]interface{} `json:"data"`
+		}{
+			{
+				ID:    "test_task",
+				Title: "Test Task",
+				Commands: []struct {
+					ID          string `json:"id"`
+					Title       string `json:"title"`
+					Description string `json:"description"`
+					Scheduler   struct {
+						Runnable bool   `json:"runnable"`
+						TimeSpec string `json:"time_spec"`
+					} `json:"scheduler"`
+					Notifier struct {
+						Usable bool `json:"usable"`
+					} `json:"notifier"`
+					DefaultNotifierID string                 `json:"default_notifier_id"`
+					Data              map[string]interface{} `json:"data"`
+				}{
+					{
+						ID:          "run",
+						Title:       "Run Task",
+						Description: "Runs the test task",
+						Notifier: struct {
+							Usable bool `json:"usable"`
+						}{Usable: true},
+					},
+				},
+			},
+		},
+	}
+
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+
+	// Expectations
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
+	mockBot.On("GetUpdatesChan", mock.Anything).Return(nil)
+	mockBot.On("StopReceivingUpdates").Return()
+
+	// Expect TaskRun to be called
+	// Command format: /task_id_command_id -> /test_task_run
+	mockTaskRunner.On("TaskRun", task.TaskID("test_task"), task.TaskCommandID("run"), "test-notifier", true, task.TaskRunByUser).Return(true)
+
+	// Run
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go notifier.Run(mockTaskRunner, ctx, wg)
+
+	// Trigger Task Command
+	mockBot.updatesChan <- tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: chatID},
+			Text: "/test_task_run",
+		},
+	}
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	cancel()
+	wg.Wait()
+
+	// Assertions
+	mockBot.AssertExpectations(t)
+	mockTaskRunner.AssertExpectations(t)
+}
+
+func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
+	// Setup
+	mockBot := &MockTelegramBot{
+		updatesChan: make(chan tgbotapi.Update),
+	}
+	mockTaskRunner := &MockTaskRunner{}
+	chatID := int64(12345)
+	config := &g.AppConfig{}
+
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+
+	// Expectations
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
+	mockBot.On("GetUpdatesChan", mock.Anything).Return(nil)
+
+	// Expect message with elapsed time
+	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+		msg, ok := c.(tgbotapi.MessageConfig)
+		// Check for elapsed time string "1시간 1분 1초" (3661 seconds)
+		return ok && msg.ParseMode == "HTML" &&
+			(strings.Contains(msg.Text, "1시간") || strings.Contains(msg.Text, "1분") || strings.Contains(msg.Text, "1초"))
+	})).Return(tgbotapi.Message{}, nil)
+
+	mockBot.On("StopReceivingUpdates").Return()
+
+	// Run
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go notifier.Run(mockTaskRunner, ctx, wg)
+
+	// Send Notification with Elapsed Time
+	taskCtx := task.NewContext().
+		With(task.TaskCtxKeyTaskInstanceID, task.TaskInstanceID("1234")).
+		With(task.TaskCtxKeyElapsedTimeAfterRun, int64(3661)) // 1h 1m 1s
+
+	notifier.Notify("Task Completed", taskCtx)
 
 	// Wait for processing
 	time.Sleep(100 * time.Millisecond)
