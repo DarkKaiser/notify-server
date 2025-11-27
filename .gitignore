@@ -23,3 +23,4 @@ logs/
 /notify-server
 /notify-server-task-*.json
 notify-server-task-kurly-watch-product-list.csv
+test_results.txt
