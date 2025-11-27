@@ -23,3 +23,12 @@ logs/
 /notify-server
 /notify-server-task-*.json
 notify-server-task-kurly-watch-product-list.csv
+test_results.txt
+coverage
+coverage_final
+log_coverage
+notification_coverage
+task_coverage
+task_coverage_detail
+task_coverage_final
+task_scheduler_coverage

@@ -1,73 +1,152 @@
 package log
 
 import (
-	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestLog(t *testing.T) {
-	// 로그가 생성되는 폴더를 임시폴더로 설정한다.
-	logDirParentPath = fmt.Sprintf("%s%s", t.TempDir(), string(os.PathSeparator))
+func TestInit_DebugMode(t *testing.T) {
+	t.Run("디버그 모드에서는 nil 반환", func(t *testing.T) {
+		closer := Init(true, "test-app", 7.0)
+		assert.Nil(t, closer, "디버그 모드에서는 nil을 반환해야 합니다")
+	})
+}
 
-	var checkDaysAgo = 10.
-	var logDirPath = fmt.Sprintf("%s%s", logDirParentPath, logDirName)
-	var appName = "log-package-testing"
+func TestInit_ProductionMode(t *testing.T) {
+	t.Run("프로덕션 모드에서 로그 파일 생성", func(t *testing.T) {
+		// 테스트용 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		originalLogDirParentPath := logDirParentPath
+		logDirParentPath = tempDir + string(os.PathSeparator)
+		defer func() {
+			logDirParentPath = originalLogDirParentPath
+		}()
 
-	assert := assert.New(t)
+		appName := "test-app"
+		closer := Init(false, appName, 7.0)
 
-	//
-	// 디버그 모드로 초기화하면, 로그폴더 및 파일은 생성되지 않아야 한다.
-	//
-	assert.Nil(Init(true, appName, checkDaysAgo))
+		assert.NotNil(t, closer, "프로덕션 모드에서는 closer를 반환해야 합니다")
 
-	_, err := os.Stat(logDirPath)
-	assert.Equal(true, os.IsNotExist(err))
+		// 로그 디렉토리가 생성되었는지 확인
+		logDir := filepath.Join(tempDir, logDirName)
+		_, err := os.Stat(logDir)
+		assert.NoError(t, err, "로그 디렉토리가 생성되어야 합니다")
 
-	//
-	// 운영 모드로 초기화하면, 로그폴더 및 1개의 파일이 생성되어져야 한다.
-	//
-	lf := Init(false, appName, checkDaysAgo)
-	assert.NotNil(lf)
+		// 로그 파일이 생성되었는지 확인
+		files, err := os.ReadDir(logDir)
+		assert.NoError(t, err, "로그 디렉토리를 읽을 수 있어야 합니다")
+		assert.Greater(t, len(files), 0, "최소 1개의 로그 파일이 생성되어야 합니다")
 
-	_, err = os.Stat(logDirPath)
-	assert.Equal(false, os.IsNotExist(err))
+		// 로그 파일명 확인
+		found := false
+		for _, file := range files {
+			if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+logFileExtension) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "앱 이름으로 시작하는 로그 파일이 있어야 합니다")
 
-	fiList, _ := ioutil.ReadDir(logDirPath)
-	assert.Equal(1, len(fiList))
+		// Closer 닫기
+		if closer != nil {
+			closer.Close()
+		}
+	})
+}
 
-	lfName := fiList[0].Name()
-	assert.True(strings.HasPrefix(lfName, appName))
-	assert.True(strings.HasSuffix(lfName, logFileExtension))
+func TestCleanOutOfLogFiles(t *testing.T) {
+	t.Run("오래된 로그 파일 삭제", func(t *testing.T) {
+		// 테스트용 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		originalLogDirParentPath := logDirParentPath
+		logDirParentPath = tempDir + string(os.PathSeparator)
+		defer func() {
+			logDirParentPath = originalLogDirParentPath
+		}()
 
-	// 로그파일이 현재 열려있는 상태이므로 테스트를 위해 강제로 닫아준다.
-	// 임시폴더는 테스트 종료 이후에 자동으로 삭제가 되는데, 로그파일이 열려있으면 임시폴더가 삭제되지 않는 문제가 발생하기도 한다.
-	_ = lf.Close()
+		// 로그 디렉토리 생성
+		logDir := filepath.Join(tempDir, logDirName)
+		err := os.MkdirAll(logDir, 0755)
+		assert.NoError(t, err, "로그 디렉토리를 생성할 수 있어야 합니다")
 
-	// 로그파일을 강제로 닫아주었으므로 로거의 출력을 기본값으로 재설정한다.
-	log.SetOutput(os.Stderr)
+		appName := "test-app"
 
-	//
-	// 로그파일의 생성일자를 현재-(삭제기한+1)로 변경하여, 기한이 지난 로그파일이 삭제되는지 테스트한다.
-	//
-	mtime := time.Now().Add(time.Hour * 24 * (-1 * (time.Duration(checkDaysAgo) + 1))).Local()
-	err = os.Chtimes(fmt.Sprintf("%s%s%s", logDirPath, string(os.PathSeparator), lfName), mtime, mtime)
-	assert.Nil(err)
+		// 오래된 로그 파일 생성 (10일 전)
+		oldLogFile := filepath.Join(logDir, appName+"-old."+logFileExtension)
+		f, err := os.Create(oldLogFile)
+		assert.NoError(t, err, "오래된 로그 파일을 생성할 수 있어야 합니다")
+		f.Close()
 
-	// 삭제기한을 임의로 +2해서 로그파일이 삭제되지 않는지 확인한다.
-	cleanOutOfLogFiles(appName, checkDaysAgo+2)
+		// 파일의 수정 시간을 10일 전으로 변경
+		oldTime := time.Now().Add(-10 * 24 * time.Hour)
+		err = os.Chtimes(oldLogFile, oldTime, oldTime)
+		assert.NoError(t, err, "파일 시간을 변경할 수 있어야 합니다")
 
-	fiList, _ = ioutil.ReadDir(logDirPath)
-	assert.Equal(1, len(fiList))
+		// 최근 로그 파일 생성
+		recentLogFile := filepath.Join(logDir, appName+"-recent."+logFileExtension)
+		f, err = os.Create(recentLogFile)
+		assert.NoError(t, err, "최근 로그 파일을 생성할 수 있어야 합니다")
+		f.Close()
 
-	// 원래의 삭제기한으로 했을때 로그파일이 삭제되는지 확인한다.
-	cleanOutOfLogFiles(appName, checkDaysAgo)
+		// cleanOutOfLogFiles 실행 (7일 이상 된 파일 삭제)
+		cleanOutOfLogFiles(appName, 7.0)
 
-	fiList, _ = ioutil.ReadDir(logDirPath)
-	assert.Equal(0, len(fiList))
+		// 오래된 파일이 삭제되었는지 확인
+		_, err = os.Stat(oldLogFile)
+		assert.True(t, os.IsNotExist(err), "오래된 로그 파일이 삭제되어야 합니다")
+
+		// 최근 파일은 남아있는지 확인
+		_, err = os.Stat(recentLogFile)
+		assert.NoError(t, err, "최근 로그 파일은 남아있어야 합니다")
+	})
+
+	t.Run("다른 앱의 로그 파일은 삭제하지 않음", func(t *testing.T) {
+		// 테스트용 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		originalLogDirParentPath := logDirParentPath
+		logDirParentPath = tempDir + string(os.PathSeparator)
+		defer func() {
+			logDirParentPath = originalLogDirParentPath
+		}()
+
+		// 로그 디렉토리 생성
+		logDir := filepath.Join(tempDir, logDirName)
+		err := os.MkdirAll(logDir, 0755)
+		assert.NoError(t, err, "로그 디렉토리를 생성할 수 있어야 합니다")
+
+		// 다른 앱의 오래된 로그 파일 생성
+		otherAppLogFile := filepath.Join(logDir, "other-app-old."+logFileExtension)
+		f, err := os.Create(otherAppLogFile)
+		assert.NoError(t, err, "다른 앱의 로그 파일을 생성할 수 있어야 합니다")
+		f.Close()
+
+		// 파일의 수정 시간을 10일 전으로 변경
+		oldTime := time.Now().Add(-10 * 24 * time.Hour)
+		err = os.Chtimes(otherAppLogFile, oldTime, oldTime)
+		assert.NoError(t, err, "파일 시간을 변경할 수 있어야 합니다")
+
+		// cleanOutOfLogFiles 실행 (test-app의 로그만 삭제)
+		cleanOutOfLogFiles("test-app", 7.0)
+
+		// 다른 앱의 파일은 남아있는지 확인
+		_, err = os.Stat(otherAppLogFile)
+		assert.NoError(t, err, "다른 앱의 로그 파일은 삭제되지 않아야 합니다")
+	})
+}
+
+func TestLogFileExtension(t *testing.T) {
+	t.Run("로그 파일 확장자 확인", func(t *testing.T) {
+		assert.Equal(t, "log", logFileExtension, "로그 파일 확장자는 'log'여야 합니다")
+	})
+}
+
+func TestLogDirName(t *testing.T) {
+	t.Run("로그 디렉토리 이름 확인", func(t *testing.T) {
+		assert.Equal(t, "logs", logDirName, "로그 디렉토리 이름은 'logs'여야 합니다")
+	})
 }

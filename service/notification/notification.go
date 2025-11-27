@@ -3,17 +3,16 @@ package notification
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
-	"sync"
 )
 
 type NotifierID string
 
-//
 // notifier
-//
 type notifier struct {
 	id NotifierID
 
@@ -22,7 +21,7 @@ type notifier struct {
 	notificationSendC chan *notificationSendData
 }
 
-type notifierHandler interface {
+type NotifierHandler interface {
 	ID() NotifierID
 
 	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
@@ -57,38 +56,34 @@ func (n *notifier) SupportHTMLMessage() bool {
 	return n.supportHTMLMessage
 }
 
-//
 // notificationSendData
-//
 type notificationSendData struct {
 	message string
 	taskCtx task.TaskContext
 }
 
-//
 // NotificationSender
-//
 type NotificationSender interface {
 	Notify(notifierID string, title string, message string, errorOccurred bool) bool
 	NotifyToDefault(message string) bool
 	NotifyWithErrorToDefault(message string) bool
 }
 
-//
 // NotificationService
-//
 type NotificationService struct {
 	config *g.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
 
-	defaultNotifierHandler notifierHandler
-	notifierHandlers       []notifierHandler
+	defaultNotifierHandler NotifierHandler
+	notifierHandlers       []NotifierHandler
 
 	taskRunner task.TaskRunner
 
 	notificationStopWaiter *sync.WaitGroup
+
+	newNotifier func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler
 }
 
 func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
@@ -103,7 +98,13 @@ func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationSe
 		taskRunner: taskRunner,
 
 		notificationStopWaiter: &sync.WaitGroup{},
+
+		newNotifier: newTelegramNotifier,
 	}
+}
+
+func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler) {
+	s.newNotifier = newNotifierFn
 }
 
 func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
@@ -126,7 +127,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
-		h := newTelegramNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
+		h := s.newNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)

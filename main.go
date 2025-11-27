@@ -3,6 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"runtime"
+	"sync"
+	"syscall"
+
 	"github.com/darkkaiser/notify-server/g"
 	_log_ "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
@@ -10,11 +16,6 @@ import (
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"os/signal"
-	"runtime"
-	"sync"
-	"syscall"
 )
 
 const (
@@ -60,7 +61,7 @@ func main() {
 	}
 
 	// Handle sigterm and await termC signal
-	termC := make(chan os.Signal)
+	termC := make(chan os.Signal, 1)
 	signal.Notify(termC, syscall.SIGINT, syscall.SIGTERM)
 
 	<-termC // Blocks here until interrupted
