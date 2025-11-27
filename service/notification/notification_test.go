@@ -4,7 +4,9 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
@@ -95,6 +97,22 @@ func TestNotifier_Notify(t *testing.T) {
 			t.Error("채널에 데이터가 전송되지 않았습니다")
 		}
 	})
+
+	t.Run("Panic 복구 테스트", func(t *testing.T) {
+		// 닫힌 채널로 panic 유발
+		sendC := make(chan *notificationSendData)
+		close(sendC)
+
+		n := &notifier{
+			id:                 NotifierID("test-id"),
+			supportHTMLMessage: true,
+			notificationSendC:  sendC,
+		}
+
+		succeeded := n.Notify("test message", nil)
+
+		assert.False(t, succeeded, "Panic 발생 시 false를 반환해야 합니다")
+	})
 }
 
 func TestNotificationSendData(t *testing.T) {
@@ -136,6 +154,180 @@ func TestNotificationService_SupportHTMLMessage(t *testing.T) {
 	})
 }
 
+// 새로운 테스트: NewService
+func TestNotificationService_NewService(t *testing.T) {
+	t.Run("서비스 생성", func(t *testing.T) {
+		config := &g.AppConfig{}
+		mockTaskRunner := &mockTaskRunner{}
+
+		service := NewService(config, mockTaskRunner)
+
+		assert.NotNil(t, service, "서비스가 생성되어야 합니다")
+		assert.Equal(t, config, service.config, "Config가 설정되어야 합니다")
+		assert.Equal(t, mockTaskRunner, service.taskRunner, "TaskRunner가 설정되어야 합니다")
+		assert.False(t, service.running, "초기에는 실행 중이 아니어야 합니다")
+		assert.NotNil(t, service.notificationStopWaiter, "WaitGroup이 초기화되어야 합니다")
+	})
+}
+
+// 새로운 테스트: Notify
+func TestNotificationService_Notify(t *testing.T) {
+	t.Run("정상적인 알림 전송", func(t *testing.T) {
+		mockNotifier := &mockNotifierHandler{
+			id:                 NotifierID("test-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			notifierHandlers: []notifierHandler{mockNotifier},
+			running:          true,
+		}
+
+		result := service.Notify("test-notifier", "Test Title", "Test message", false)
+
+		assert.True(t, result, "알림 전송이 성공해야 합니다")
+		assert.Equal(t, 1, len(mockNotifier.notifyCalls), "Notify가 1번 호출되어야 합니다")
+		assert.Equal(t, "Test message", mockNotifier.notifyCalls[0].message, "메시지가 일치해야 합니다")
+	})
+
+	t.Run("에러 플래그와 함께 알림 전송", func(t *testing.T) {
+		mockNotifier := &mockNotifierHandler{
+			id:                 NotifierID("test-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			notifierHandlers: []notifierHandler{mockNotifier},
+			running:          true,
+		}
+
+		result := service.Notify("test-notifier", "Error Title", "Error message", true)
+
+		assert.True(t, result, "알림 전송이 성공해야 합니다")
+		assert.Equal(t, 1, len(mockNotifier.notifyCalls), "Notify가 1번 호출되어야 합니다")
+		// TaskContext에 에러 플래그가 설정되어야 함
+		assert.NotNil(t, mockNotifier.notifyCalls[0].taskCtx, "TaskContext가 있어야 합니다")
+	})
+}
+
+// 새로운 테스트: NotifyToDefault
+func TestNotificationService_NotifyToDefault(t *testing.T) {
+	t.Run("기본 Notifier로 알림 전송", func(t *testing.T) {
+		mockNotifier := &mockNotifierHandler{
+			id:                 NotifierID("default-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			defaultNotifierHandler: mockNotifier,
+			notifierHandlers:       []notifierHandler{mockNotifier},
+			running:                true,
+		}
+
+		result := service.NotifyToDefault("Default message")
+
+		assert.True(t, result, "기본 알림 전송이 성공해야 합니다")
+		assert.Equal(t, 1, len(mockNotifier.notifyCalls), "Notify가 1번 호출되어야 합니다")
+		assert.Equal(t, "Default message", mockNotifier.notifyCalls[0].message, "메시지가 일치해야 합니다")
+	})
+}
+
+// 새로운 테스트: NotifyWithErrorToDefault
+func TestNotificationService_NotifyWithErrorToDefault(t *testing.T) {
+	t.Run("기본 Notifier로 에러 알림 전송", func(t *testing.T) {
+		mockNotifier := &mockNotifierHandler{
+			id:                 NotifierID("default-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			defaultNotifierHandler: mockNotifier,
+			notifierHandlers:       []notifierHandler{mockNotifier},
+			running:                true,
+		}
+
+		result := service.NotifyWithErrorToDefault("Error message")
+
+		assert.True(t, result, "에러 알림 전송이 성공해야 합니다")
+		assert.Equal(t, 1, len(mockNotifier.notifyCalls), "Notify가 1번 호출되어야 합니다")
+		assert.Equal(t, "Error message", mockNotifier.notifyCalls[0].message, "메시지가 일치해야 합니다")
+		assert.NotNil(t, mockNotifier.notifyCalls[0].taskCtx, "TaskContext가 있어야 합니다")
+	})
+}
+
+// 새로운 테스트: NotifyWithTaskContext
+func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
+	t.Run("TaskContext와 함께 알림 전송", func(t *testing.T) {
+		mockNotifier := &mockNotifierHandler{
+			id:                 NotifierID("test-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			notifierHandlers: []notifierHandler{mockNotifier},
+			running:          true,
+		}
+
+		taskCtx := task.NewContext().
+			WithTask(task.TaskID("TEST"), task.TaskCommandID("TEST_CMD")).
+			With(task.TaskCtxKeyTitle, "Test Task")
+
+		result := service.NotifyWithTaskContext("test-notifier", "Test message", taskCtx)
+
+		assert.True(t, result, "알림 전송이 성공해야 합니다")
+		assert.Equal(t, 1, len(mockNotifier.notifyCalls), "Notify가 1번 호출되어야 합니다")
+		assert.Equal(t, "Test message", mockNotifier.notifyCalls[0].message, "메시지가 일치해야 합니다")
+		assert.Equal(t, taskCtx, mockNotifier.notifyCalls[0].taskCtx, "TaskContext가 일치해야 합니다")
+	})
+
+	t.Run("존재하지 않는 Notifier로 알림 전송", func(t *testing.T) {
+		mockDefaultNotifier := &mockNotifierHandler{
+			id:                 NotifierID("default-notifier"),
+			supportHTMLMessage: true,
+		}
+
+		service := &NotificationService{
+			defaultNotifierHandler: mockDefaultNotifier,
+			notifierHandlers:       []notifierHandler{mockDefaultNotifier},
+			running:                true,
+		}
+
+		taskCtx := task.NewContext()
+		result := service.NotifyWithTaskContext("non-existent", "Test message", taskCtx)
+
+		assert.False(t, result, "존재하지 않는 Notifier로의 알림은 실패해야 합니다")
+		// 기본 Notifier로 에러 메시지가 전송되어야 함
+		assert.Equal(t, 1, len(mockDefaultNotifier.notifyCalls), "기본 Notifier로 에러 메시지가 전송되어야 합니다")
+	})
+}
+
+// 새로운 테스트: 여러 Notifier 관리
+func TestNotificationService_MultipleNotifiers(t *testing.T) {
+	t.Run("여러 Notifier 중 특정 Notifier로 알림 전송", func(t *testing.T) {
+		mockNotifier1 := &mockNotifierHandler{
+			id:                 NotifierID("notifier1"),
+			supportHTMLMessage: true,
+		}
+		mockNotifier2 := &mockNotifierHandler{
+			id:                 NotifierID("notifier2"),
+			supportHTMLMessage: false,
+		}
+
+		service := &NotificationService{
+			defaultNotifierHandler: mockNotifier1,
+			notifierHandlers:       []notifierHandler{mockNotifier1, mockNotifier2},
+			running:                true,
+		}
+
+		// notifier2로 알림 전송
+		result := service.NotifyWithTaskContext("notifier2", "Message to notifier2", task.NewContext())
+
+		assert.True(t, result, "알림 전송이 성공해야 합니다")
+		assert.Equal(t, 0, len(mockNotifier1.notifyCalls), "notifier1은 호출되지 않아야 합니다")
+		assert.Equal(t, 1, len(mockNotifier2.notifyCalls), "notifier2가 호출되어야 합니다")
+	})
+}
+
 // mockNotifierHandler는 테스트용 notifierHandler 구현체입니다.
 type mockNotifierHandler struct {
 	id                 NotifierID
@@ -161,9 +353,72 @@ func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) b
 }
 
 func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
-	// Mock implementation - do nothing
+	defer notificationStopWaiter.Done()
+	<-notificationStopCtx.Done()
 }
 
 func (m *mockNotifierHandler) SupportHTMLMessage() bool {
 	return m.supportHTMLMessage
+}
+
+// mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
+type mockTaskRunner struct{}
+
+func (m *mockTaskRunner) TaskRun(taskID task.TaskID, taskCommandID task.TaskCommandID, notifierID string, manualRun bool, runType task.TaskRunBy) bool {
+	return true
+}
+
+func (m *mockTaskRunner) TaskRunWithContext(taskID task.TaskID, taskCommandID task.TaskCommandID, taskCtx task.TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) bool {
+	return true
+}
+
+func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
+	return true
+}
+
+func TestNotificationService_Run(t *testing.T) {
+	t.Run("서비스 시작 및 중지", func(t *testing.T) {
+		config := &g.AppConfig{}
+		// Setup config with default notifier
+		config.Notifiers.DefaultNotifierID = "default-notifier"
+		config.Notifiers.Telegrams = []struct {
+			ID       string `json:"id"`
+			BotToken string `json:"bot_token"`
+			ChatID   int64  `json:"chat_id"`
+		}{
+			{
+				ID:       "default-notifier",
+				BotToken: "test-token",
+				ChatID:   12345,
+			},
+		}
+
+		mockTaskRunner := &mockTaskRunner{}
+		service := NewService(config, mockTaskRunner)
+
+		// Mock createNotifier
+		service.newNotifier = func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler {
+			return &mockNotifierHandler{
+				id:                 id,
+				supportHTMLMessage: true,
+			}
+		}
+
+		// Run service
+		ctx, cancel := context.WithCancel(context.Background())
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go service.Run(ctx, wg)
+
+		// Wait a bit for service to start
+		time.Sleep(100 * time.Millisecond)
+
+		// Check if running by sending a notification
+		assert.True(t, service.NotifyToDefault("test"), "서비스가 실행 중이어야 합니다")
+
+		// Stop service
+		cancel()
+		wg.Wait()
+	})
 }

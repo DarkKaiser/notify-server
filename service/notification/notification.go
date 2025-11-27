@@ -82,6 +82,8 @@ type NotificationService struct {
 	taskRunner task.TaskRunner
 
 	notificationStopWaiter *sync.WaitGroup
+
+	newNotifier func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) notifierHandler
 }
 
 func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
@@ -96,6 +98,8 @@ func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationSe
 		taskRunner: taskRunner,
 
 		notificationStopWaiter: &sync.WaitGroup{},
+
+		newNotifier: newTelegramNotifier,
 	}
 }
 
@@ -119,7 +123,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	// Telegram Notifier의 작업을 시작한다.
 	for _, telegram := range s.config.Notifiers.Telegrams {
-		h := newTelegramNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
+		h := s.newNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)
