@@ -167,10 +167,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 
 									return task.runWatchProductPrice(taskCommandData, taskResultData, messageTypeHTML)

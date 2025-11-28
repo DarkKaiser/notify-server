@@ -3,13 +3,14 @@ package task
 import (
 	"errors"
 	"fmt"
-	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"math"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -111,13 +112,13 @@ func init() {
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
-						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
+						return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
 					}
 					break
 				}
 			}
 			if err := taskData.validate(); err != nil {
-				return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
+				return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
 			}
 
 			task := &naverShoppingTask{
@@ -148,10 +149,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 
 									return task.runWatchPrice(taskCommandData, taskResultData, messageTypeHTML)

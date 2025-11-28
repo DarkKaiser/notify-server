@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/darkkaiser/notify-server/g"
-	log "github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
+
+	"github.com/darkkaiser/notify-server/g"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -282,7 +283,7 @@ func (t *covid19Task) runWatchResidualVaccine(taskResultData interface{}, messag
 	} else {
 		if t.runBy == TaskRunByUser {
 			if len(actualityTaskResultData.MedicalInstitutions) == 0 {
-				message = fmt.Sprintf("코로나19 잔여백신이 없습니다.")
+				message = "코로나19 잔여백신이 없습니다."
 			} else {
 				for _, actualityMedicalInstitution := range actualityTaskResultData.MedicalInstitutions {
 					if m != "" {
