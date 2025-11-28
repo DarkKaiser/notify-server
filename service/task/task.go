@@ -145,6 +145,8 @@ type task struct {
 	runTime time.Time
 
 	runFn runFunc
+
+	fetcher Fetcher
 }
 
 type taskHandler interface {

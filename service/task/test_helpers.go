@@ -1,6 +1,9 @@
 package task
 
 import (
+	"bytes"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -137,8 +140,8 @@ func (m *MockHTTPFetcher) SetError(url string, err error) {
 	m.Errors[url] = err
 }
 
-// Fetch Mock HTTP 요청을 수행합니다.
-func (m *MockHTTPFetcher) Fetch(url string) ([]byte, error) {
+// Get Mock HTTP Get 요청을 수행합니다.
+func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -151,12 +154,23 @@ func (m *MockHTTPFetcher) Fetch(url string) ([]byte, error) {
 	}
 
 	// 응답이 설정되어 있으면 응답 반환
-	if response, ok := m.Responses[url]; ok {
-		return response, nil
+	if responseBody, ok := m.Responses[url]; ok {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(responseBody)),
+		}, nil
 	}
 
-	// 설정되지 않은 URL은 빈 응답 반환
-	return []byte{}, nil
+	// 설정되지 않은 URL은 404 반환 (또는 빈 응답)
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(bytes.NewReader([]byte{})),
+	}, nil
+}
+
+// Do Mock HTTP 요청을 수행합니다.
+func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
+	return m.Get(req.URL.String())
 }
 
 // GetRequestedURLs 요청된 URL 목록을 반환합니다.

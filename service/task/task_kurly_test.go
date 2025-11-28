@@ -275,3 +275,150 @@ func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
 		assert.Equal(t, 0, len(duplicate), "중복 상품이 없어야 합니다")
 	})
 }
+
+func TestKurlyWatchProductPriceTaskCommandData_Validate_ErrorCases(t *testing.T) {
+	t.Run("빈 파일 경로", func(t *testing.T) {
+		data := &kurlyWatchProductPriceTaskCommandData{
+			WatchProductsFile: "",
+		}
+
+		err := data.validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다")
+	})
+
+	t.Run("잘못된 파일 확장자", func(t *testing.T) {
+		testCases := []string{
+			"test.txt",
+			"test.xlsx",
+			"test.json",
+			"test",
+		}
+
+		for _, filename := range testCases {
+			data := &kurlyWatchProductPriceTaskCommandData{
+				WatchProductsFile: filename,
+			}
+
+			err := data.validate()
+			assert.Error(t, err, "파일 확장자가 CSV가 아니면 에러가 발생해야 합니다: %s", filename)
+		}
+	})
+}
+
+func TestKurlyProduct_UpdateLowestPrice_EdgeCases(t *testing.T) {
+	t.Run("가격이 0인 경우", func(t *testing.T) {
+		product := &kurlyProduct{
+			Price:           0,
+			DiscountedPrice: 0,
+			LowestPrice:     0,
+		}
+
+		product.updateLowestPrice()
+
+		// 가격이 0이면 최저가가 업데이트되지 않아야 함
+		assert.Equal(t, 0, product.LowestPrice)
+	})
+}
+
+func TestKurlyTask_NormalizeDuplicateProducts_EdgeCases(t *testing.T) {
+	task := &kurlyTask{}
+
+	t.Run("빈 입력", func(t *testing.T) {
+		products := [][]string{}
+
+		distinct, duplicate := task.normalizeDuplicateProducts(products)
+
+		assert.Equal(t, 0, len(distinct))
+		assert.Equal(t, 0, len(duplicate))
+	})
+
+	t.Run("모두 빈 행인 경우", func(t *testing.T) {
+		products := [][]string{
+			{},
+			{},
+			{},
+		}
+
+		distinct, duplicate := task.normalizeDuplicateProducts(products)
+
+		assert.Equal(t, 0, len(distinct))
+		assert.Equal(t, 0, len(duplicate))
+	})
+
+	t.Run("모두 중복인 경우", func(t *testing.T) {
+		products := [][]string{
+			{"12345", "상품1", "1"},
+			{"12345", "상품1 중복1", "1"},
+			{"12345", "상품1 중복2", "1"},
+		}
+
+		distinct, duplicate := task.normalizeDuplicateProducts(products)
+
+		assert.Equal(t, 1, len(distinct), "첫 번째 항목만 distinct에 포함되어야 합니다")
+		assert.Equal(t, 2, len(duplicate), "나머지는 모두 중복이어야 합니다")
+	})
+
+	t.Run("불완전한 행 처리", func(t *testing.T) {
+		products := [][]string{
+			{"12345", "상품1", "1"},
+			{"67890"}, // 컬럼이 부족한 행
+			{"11111", "상품3", "1"},
+		}
+
+		distinct, duplicate := task.normalizeDuplicateProducts(products)
+
+		// 불완전한 행도 처리되어야 함
+		assert.Equal(t, 3, len(distinct))
+		assert.Equal(t, 0, len(duplicate))
+	})
+}
+
+func TestKurlyProduct_String_EdgeCases(t *testing.T) {
+	t.Run("특수 문자가 포함된 상품명 - HTML", func(t *testing.T) {
+		product := &kurlyProduct{
+			No:    12345,
+			Name:  "<script>alert('test')</script>",
+			Price: 10000,
+		}
+
+		result := product.String(true, "", nil)
+
+		// HTML 이스케이프 처리 확인
+		assert.NotContains(t, result, "<script>", "스크립트 태그가 이스케이프되어야 합니다")
+		assert.Contains(t, result, "&lt;script&gt;", "이스케이프된 형태로 포함되어야 합니다")
+	})
+
+	t.Run("매우 긴 상품명", func(t *testing.T) {
+		longName := string(make([]byte, 1000))
+		for i := range longName {
+			longName = longName[:i] + "가"
+		}
+
+		product := &kurlyProduct{
+			No:    12345,
+			Name:  longName[:500], // 500자 상품명
+			Price: 10000,
+		}
+
+		result := product.String(false, "", nil)
+
+		assert.Contains(t, result, "10,000원")
+		assert.Greater(t, len(result), 500, "긴 상품명도 처리할 수 있어야 합니다")
+	})
+
+	t.Run("가격이 매우 큰 경우", func(t *testing.T) {
+		product := &kurlyProduct{
+			No:              12345,
+			Name:            "고가 상품",
+			Price:           999999999,
+			DiscountedPrice: 888888888,
+			DiscountRate:    11,
+		}
+
+		result := product.String(false, "", nil)
+
+		assert.Contains(t, result, "999,999,999원", "큰 가격도 올바르게 포맷되어야 합니다")
+		assert.Contains(t, result, "888,888,888원", "큰 할인 가격도 올바르게 포맷되어야 합니다")
+	})
+}

@@ -3,14 +3,33 @@ package task
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"io"
 	"net/http"
+
+	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html/charset"
 )
 
+// Fetcher interface for network requests
+type Fetcher interface {
+	Get(url string) (*http.Response, error)
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// HTTPFetcher implementation using http.DefaultClient
+type HTTPFetcher struct{}
+
+func (h *HTTPFetcher) Get(url string) (*http.Response, error) {
+	return http.Get(url)
+}
+
+func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
+	return http.DefaultClient.Do(req)
+}
+
 // noinspection GoUnhandledErrorResult
-func newHTMLDocument(url string) (*goquery.Document, error) {
-	resp, err := http.Get(url)
+func newHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
+	resp, err := fetcher.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
 	}
@@ -27,8 +46,8 @@ func newHTMLDocument(url string) (*goquery.Document, error) {
 	return doc, nil
 }
 
-func newHTMLDocumentSelection(url string, selector string) (*goquery.Selection, error) {
-	doc, err := newHTMLDocument(url)
+func newHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
+	doc, err := newHTMLDocument(fetcher, url)
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +60,8 @@ func newHTMLDocumentSelection(url string, selector string) (*goquery.Selection, 
 	return sel, nil
 }
 
-func webScrape(url string, selector string, f func(int, *goquery.Selection) bool) error {
-	sel, err := newHTMLDocumentSelection(url, selector)
+func webScrape(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
+	sel, err := newHTMLDocumentSelection(fetcher, url, selector)
 	if err != nil {
 		return err
 	}
@@ -53,7 +72,7 @@ func webScrape(url string, selector string, f func(int, *goquery.Selection) bool
 }
 
 // noinspection GoUnhandledErrorResult
-func unmarshalFromResponseJSONData(method, url string, header map[string]string, body io.Reader, v interface{}) error {
+func unmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
@@ -62,7 +81,7 @@ func unmarshalFromResponseJSONData(method, url string, header map[string]string,
 		req.Header.Set(key, value)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := fetcher.Do(req)
 	if err != nil {
 		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
 	}

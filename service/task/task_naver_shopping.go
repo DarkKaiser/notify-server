@@ -132,6 +132,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 
 				config: config,
@@ -203,7 +205,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = unmarshalFromResponseJSONData(t.fetcher, "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}

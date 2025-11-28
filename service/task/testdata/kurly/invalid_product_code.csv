@@ -1,0 +1,4 @@
+no,name,watch_status
+12345,테스트 상품 1,1
+67890,테스트 상품 2,1
+invalid_number,잘못된 상품,1

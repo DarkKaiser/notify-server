@@ -153,6 +153,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 
 				config: config,
@@ -247,7 +249,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		// 상품 페이지를 읽어들인다.
 		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
-		doc, err := newHTMLDocument(productDetailPageURL)
+		doc, err := newHTMLDocument(t.fetcher, productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}
