@@ -23,7 +23,7 @@ const (
 	TcidNaverShoppingWatchPriceAny = TaskCommandID(naverShoppingWatchPriceTaskCommandIDPrefix + taskCommandIDAnyString) // 네이버쇼핑 가격 확인
 
 	// 네이버쇼핑 검색 URL
-	naverShoppingSearchUrl = "https://openapi.naver.com/v1/search/shop.json"
+	naverShoppingSearchURL = "https://openapi.naver.com/v1/search/shop.json"
 )
 
 type naverShoppingTaskData struct {
@@ -203,7 +203,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}

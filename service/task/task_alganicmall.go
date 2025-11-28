@@ -3,13 +3,14 @@ package task
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/text/encoding/korean"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -22,19 +23,19 @@ const (
 )
 
 const (
-	alganicmallBaseUrl = "https://www.alganicmall.com/"
+	alganicmallBaseURL = "https://www.alganicmall.com/"
 )
 
 type alganicmallEvent struct {
 	Name string `json:"name"`
-	Url  string `json:"url"`
+	URL  string `json:"url"`
 }
 
 func (e *alganicmallEvent) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", e.Url, e.Name, mark)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", e.URL, e.Name, mark)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Name, mark, e.Url))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Name, mark, e.URL))
 }
 
 type alganicmallWatchNewEventsResultData struct {
@@ -44,14 +45,14 @@ type alganicmallWatchNewEventsResultData struct {
 type alganicmallProduct struct {
 	Name  string `json:"name"`
 	Price int    `json:"price"`
-	Url   string `json:"url"`
+	URL   string `json:"url"`
 }
 
 func (p *alganicmallProduct) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Url, p.Name, utils.FormatCommas(p.Price), mark)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.URL, p.Name, utils.FormatCommas(p.Price), mark)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Name, utils.FormatCommas(p.Price), mark, p.Url))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Name, utils.FormatCommas(p.Price), mark, p.URL))
 }
 
 type alganicmallWatchAtoCreamResultData struct {
@@ -124,7 +125,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 	var err0 error
 	var euckrDecoder = korean.EUCKR.NewDecoder()
 	var actualityTaskResultData = &alganicmallWatchNewEventsResultData{}
-	err = webScrape(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseUrl), "div.bbs-table-list > div.fixed-img-collist > ul > li > a", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sboard/board.html?code=alganic_image1", alganicmallBaseURL), "div.bbs-table-list > div.fixed-img-collist > ul > li > a", func(i int, s *goquery.Selection) bool {
 		name, _err_ := euckrDecoder.String(s.Text())
 		if _err_ != nil {
 			err0 = fmt.Errorf("이벤트명의 문자열 변환(EUC-KR to UTF-8)이 실패하였습니다.(error:%s)", _err_)
@@ -139,7 +140,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 
 		actualityTaskResultData.Events = append(actualityTaskResultData.Events, &alganicmallEvent{
 			Name: utils.Trim(name),
-			Url:  fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
+			URL:  fmt.Sprintf("%s%s", alganicmallBaseURL, url),
 		})
 
 		return true
@@ -163,7 +164,7 @@ func (t *alganicMallTask) runWatchNewEvents(taskResultData interface{}, messageT
 		if ok1 == false || ok2 == false {
 			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
-			if actualityEvent.Name == originEvent.Name && actualityEvent.Url == originEvent.Url {
+			if actualityEvent.Name == originEvent.Name && actualityEvent.URL == originEvent.URL {
 				return true, nil
 			}
 		}
@@ -214,7 +215,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 	var euckrDecoder = korean.EUCKR.NewDecoder()
 	var priceReplacer = strings.NewReplacer(",", "", "원", "")
 	var actualityTaskResultData = &alganicmallWatchAtoCreamResultData{}
-	err = webScrape(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseUrl), "div.item-wrap > div.item-list > dl.item", func(i int, s *goquery.Selection) bool {
+	err = webScrape(fmt.Sprintf("%sshop/shopbrand.html?xcode=020&type=Y", alganicmallBaseURL), "div.item-wrap > div.item-list > dl.item", func(i int, s *goquery.Selection) bool {
 		productSelection := s
 
 		// 제품명
@@ -271,7 +272,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		actualityTaskResultData.Products = append(actualityTaskResultData.Products, &alganicmallProduct{
 			Name:  utils.Trim(name),
 			Price: price,
-			Url:   fmt.Sprintf("%s%s", alganicmallBaseUrl, url),
+			URL:   fmt.Sprintf("%s%s", alganicmallBaseURL, url),
 		})
 
 		return true
@@ -295,7 +296,7 @@ func (t *alganicMallTask) runWatchAtoCream(taskResultData interface{}, messageTy
 		if ok1 == false || ok2 == false {
 			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
-			if actualityProduct.Name == originProduct.Name && actualityProduct.Url == originProduct.Url {
+			if actualityProduct.Name == originProduct.Name && actualityProduct.URL == originProduct.URL {
 				return true, nil
 			}
 		}

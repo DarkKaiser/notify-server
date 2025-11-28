@@ -1,0 +1,23 @@
+{
+  "total": 100,
+  "start": 1,
+  "display": 10,
+  "items": [
+    {
+      "title": "테스트 상품 1",
+      "link": "https://shopping.naver.com/product/1",
+      "lprice": "10000",
+      "mallName": "테스트몰",
+      "productId": "1",
+      "productType": "1"
+    },
+    {
+      "title": "테스트 상품 2",
+      "link": "https://shopping.naver.com/product/2",
+      "lprice": "20000",
+      "mallName": "테스트몰2",
+      "productId": "2",
+      "productType": "1"
+    }
+  ]
+}

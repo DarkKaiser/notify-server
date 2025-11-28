@@ -31,7 +31,7 @@ type covid19WatchResidualVaccineSearchResultData []struct {
 				Items           []struct {
 					ID                   string      `json:"id"`
 					Name                 string      `json:"name"`
-					DbType               string      `json:"dbType"`
+					DBType               string      `json:"dbType"`
 					Phone                string      `json:"phone"`
 					VirtualPhone         interface{} `json:"virtualPhone"`
 					HasBooking           bool        `json:"hasBooking"`

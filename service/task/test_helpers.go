@@ -102,6 +102,83 @@ func (m *MockTaskNotificationSender) GetSupportHTMLMessageCallCount() int {
 	return len(m.SupportHTMLMessageCalls)
 }
 
+// MockHTTPFetcher HTTP 요청을 Mock하는 구조체입니다.
+type MockHTTPFetcher struct {
+	mu sync.Mutex
+
+	// URL별 응답 설정
+	Responses map[string][]byte // URL -> 응답 바이트
+	Errors    map[string]error  // URL -> 에러
+
+	// 호출 기록
+	RequestedURLs []string
+}
+
+// NewMockHTTPFetcher 새로운 MockHTTPFetcher를 생성합니다.
+func NewMockHTTPFetcher() *MockHTTPFetcher {
+	return &MockHTTPFetcher{
+		Responses:     make(map[string][]byte),
+		Errors:        make(map[string]error),
+		RequestedURLs: make([]string, 0),
+	}
+}
+
+// SetResponse 특정 URL에 대한 응답을 설정합니다.
+func (m *MockHTTPFetcher) SetResponse(url string, response []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Responses[url] = response
+}
+
+// SetError 특정 URL에 대한 에러를 설정합니다.
+func (m *MockHTTPFetcher) SetError(url string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Errors[url] = err
+}
+
+// Fetch Mock HTTP 요청을 수행합니다.
+func (m *MockHTTPFetcher) Fetch(url string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 호출 기록 저장
+	m.RequestedURLs = append(m.RequestedURLs, url)
+
+	// 에러가 설정되어 있으면 에러 반환
+	if err, ok := m.Errors[url]; ok {
+		return nil, err
+	}
+
+	// 응답이 설정되어 있으면 응답 반환
+	if response, ok := m.Responses[url]; ok {
+		return response, nil
+	}
+
+	// 설정되지 않은 URL은 빈 응답 반환
+	return []byte{}, nil
+}
+
+// GetRequestedURLs 요청된 URL 목록을 반환합니다.
+func (m *MockHTTPFetcher) GetRequestedURLs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	urls := make([]string, len(m.RequestedURLs))
+	copy(urls, m.RequestedURLs)
+	return urls
+}
+
+// Reset 모든 설정과 기록을 초기화합니다.
+func (m *MockHTTPFetcher) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.Responses = make(map[string][]byte)
+	m.Errors = make(map[string]error)
+	m.RequestedURLs = make([]string, 0)
+}
+
 // TestHelpers - 테스트 헬퍼 함수들
 
 // CreateTestTask 테스트용 Task 인스턴스를 생성합니다.
@@ -206,6 +283,19 @@ func removeFileIfExists(filename string) error {
 	return os.Remove(filename)
 }
 
+// CreateTestCSVFile 테스트용 CSV 파일을 생성합니다.
+func CreateTestCSVFile(t *testing.T, filename string, content string) string {
+	tempDir := CreateTestTempDir(t)
+	filePath := filepath.Join(tempDir, filename)
+
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("테스트 CSV 파일 생성 실패: %v", err)
+	}
+
+	return filePath
+}
+
 // CreateTestTempDir 테스트용 임시 디렉토리를 생성합니다.
 // 테스트 종료 시 자동으로 정리됩니다.
 func CreateTestTempDir(t *testing.T) string {
@@ -220,6 +310,12 @@ func CreateTestTempDir(t *testing.T) string {
 	})
 
 	return tempDir
+}
+
+// LoadTestDataAsString testdata 디렉토리에서 파일을 문자열로 로드합니다.
+func LoadTestDataAsString(t *testing.T, filename string) string {
+	data := LoadTestData(t, filename)
+	return string(data)
 }
 
 // LoadTestData testdata 디렉토리에서 파일을 로드합니다.

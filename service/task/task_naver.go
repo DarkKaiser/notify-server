@@ -44,7 +44,7 @@ func (d *naverWatchNewPerformancesTaskCommandData) validate() error {
 }
 
 type naverWatchNewPerformancesSearchResultData struct {
-	Html string `json:"html"`
+	HTML string `json:"html"`
 }
 
 type naverPerformance struct {
@@ -154,7 +154,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			return "", nil, err
 		}
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.Html))
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
 			return "", nil, fmt.Errorf("불러온 페이지의 데이터 파싱이 실패하였습니다.(error:%s)", err)
 		}
