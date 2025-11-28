@@ -32,3 +32,4 @@ task_coverage
 task_coverage_detail
 task_coverage_final
 task_scheduler_coverage
+service/task/notify-server-task-test-task-test-command.json
