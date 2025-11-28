@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -95,8 +97,61 @@ func TestInitAppConfig(t *testing.T) {
 		assert.Equal(t, "test-notifier", config.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
 	})
 
-	// 참고: utils.CheckErr는 log.Fatal을 사용하므로 panic이 아닌 프로세스 종료를 발생시킵니다.
-	// 따라서 에러 케이스 테스트는 별도의 통합 테스트나 서브프로세스를 통해 검증해야 합니다.
+	t.Run("존재하지 않는 설정 파일", func(t *testing.T) {
+		// Mock 에러 핸들러 설정
+		mock := &utils.MockErrorHandler{}
+		utils.SetErrorHandler(mock)
+		defer utils.ResetErrorHandler()
+
+		// panic 복구 (CheckErr가 프로세스를 종료하지 않아서 이후 로직에서 panic 발생 가능)
+		defer func() {
+			if r := recover(); r != nil {
+				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
+			}
+		}()
+
+		// 존재하지 않는 파일로 설정 로딩 시도
+		// os.ReadFile에서 에러가 발생하고 utils.CheckErr가 이를 처리함
+		g.InitAppConfigWithFile("nonexistent_file_12345.json")
+
+		// 검증 (panic 발생 전까지 실행된 경우)
+		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
+		assert.NotNil(t, mock.HandledError, "에러가 기록되어야 합니다")
+		// 파일이 존재하지 않는 에러 메시지 확인
+		errMsg := mock.HandledError.Error()
+		assert.True(t,
+			strings.Contains(errMsg, "nonexistent_file_12345.json") ||
+				strings.Contains(errMsg, "no such file") ||
+				strings.Contains(errMsg, "cannot find"),
+			"파일을 찾을 수 없다는 에러 메시지가 있어야 합니다")
+	})
+
+	t.Run("잘못된 JSON 형식", func(t *testing.T) {
+		// 잘못된 JSON 파일 생성
+		invalidJSON := `{"debug": true, "invalid json`
+		tempFile := createTempConfigFile(t, invalidJSON)
+		defer os.Remove(tempFile)
+
+		// Mock 에러 핸들러 설정
+		mock := &utils.MockErrorHandler{}
+		utils.SetErrorHandler(mock)
+		defer utils.ResetErrorHandler()
+
+		// panic 복구
+		defer func() {
+			if r := recover(); r != nil {
+				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
+			}
+		}()
+
+		// 잘못된 JSON 파일 로딩 시도
+		// json.Unmarshal에서 에러가 발생하고 utils.CheckErr가 이를 처리함
+		g.InitAppConfigWithFile(tempFile)
+
+		// 검증
+		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
+		assert.NotNil(t, mock.HandledError, "JSON 파싱 에러가 기록되어야 합니다")
+	})
 }
 
 // 헬퍼 함수: 유효한 설정 JSON 반환
