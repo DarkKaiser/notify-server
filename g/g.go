@@ -2,10 +2,11 @@ package g
 
 import (
 	"encoding/json"
-	"github.com/darkkaiser/notify-server/utils"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/darkkaiser/notify-server/utils"
 )
 
 const (
@@ -63,7 +64,13 @@ type AppConfig struct {
 }
 
 func InitAppConfig() *AppConfig {
-	data, err := os.ReadFile(AppConfigFileName)
+	return InitAppConfigWithFile(AppConfigFileName)
+}
+
+// InitAppConfigWithFile은 지정된 파일에서 설정을 로드합니다.
+// 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
+func InitAppConfigWithFile(filename string) *AppConfig {
+	data, err := os.ReadFile(filename)
 	utils.CheckErr(err)
 
 	var config AppConfig
@@ -76,56 +83,56 @@ func InitAppConfig() *AppConfig {
 	var notifierIDs []string
 	for _, telegram := range config.Notifiers.Telegrams {
 		if utils.Contains(notifierIDs, telegram.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifierID(%s)가 중복되었습니다.", AppConfigFileName, telegram.ID)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifierID(%s)가 중복되었습니다.", filename, telegram.ID)
 		}
 		notifierIDs = append(notifierIDs, telegram.ID)
 	}
 	if utils.Contains(notifierIDs, config.Notifiers.DefaultNotifierID) == false {
-		log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, config.Notifiers.DefaultNotifierID)
+		log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다.", filename, config.Notifiers.DefaultNotifierID)
 	}
 
 	var taskIDs []string
 	for _, t := range config.Tasks {
 		if utils.Contains(taskIDs, t.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. TaskID(%s)가 중복되었습니다.", AppConfigFileName, t.ID)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. TaskID(%s)가 중복되었습니다.", filename, t.ID)
 		}
 		taskIDs = append(taskIDs, t.ID)
 
 		var commandIDs []string
 		for _, c := range t.Commands {
 			if utils.Contains(commandIDs, c.ID) == true {
-				log.Panicf("%s 파일의 내용이 유효하지 않습니다. CommandID(%s)가 중복되었습니다.", AppConfigFileName, c.ID)
+				log.Panicf("%s 파일의 내용이 유효하지 않습니다. CommandID(%s)가 중복되었습니다.", filename, c.ID)
 			}
 			commandIDs = append(commandIDs, c.ID)
 
 			if utils.Contains(notifierIDs, c.DefaultNotifierID) == false {
-				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, t.ID, c.ID, c.DefaultNotifierID)
+				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", filename, t.ID, c.ID, c.DefaultNotifierID)
 			}
 		}
 	}
 
 	if config.NotifyAPI.WS.TLSServer == true {
 		if strings.TrimSpace(config.NotifyAPI.WS.TLSCertFile) == "" {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Cert 파일 경로가 입력되지 않았습니다.", AppConfigFileName)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Cert 파일 경로가 입력되지 않았습니다.", filename)
 		}
 		if strings.TrimSpace(config.NotifyAPI.WS.TLSKeyFile) == "" {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Key 파일 경로가 입력되지 않았습니다.", AppConfigFileName)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Key 파일 경로가 입력되지 않았습니다.", filename)
 		}
 	}
 
 	var applicationIDs []string
 	for _, app := range config.NotifyAPI.Applications {
 		if utils.Contains(applicationIDs, app.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. ApplicationID(%s)가 중복되었습니다.", AppConfigFileName, app.ID)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. ApplicationID(%s)가 중복되었습니다.", filename, app.ID)
 		}
 		applicationIDs = append(applicationIDs, app.ID)
 
 		if utils.Contains(notifierIDs, app.DefaultNotifierID) == false {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다.", AppConfigFileName, app.ID, app.DefaultNotifierID)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다.", filename, app.ID, app.DefaultNotifierID)
 		}
 
 		if len(app.AppKey) == 0 {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. %s Application의 APP_KEY가 입력되지 않았습니다.", AppConfigFileName, app.ID)
+			log.Panicf("%s 파일의 내용이 유효하지 않습니다. %s Application의 APP_KEY가 입력되지 않았습니다.", filename, app.ID)
 		}
 	}
 

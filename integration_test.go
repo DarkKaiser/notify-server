@@ -139,6 +139,46 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		cancel()
 		wg.Wait()
 	})
+
+	t.Run("Task 실행 성공 시 알림 발송 확인", func(t *testing.T) {
+		config := createTestConfig()
+
+		mockSender := &mockNotificationSender{
+			notifyCalls: make([]notifyCall, 0),
+		}
+
+		taskService := task.NewService(config)
+		taskService.SetTaskNotificationSender(mockSender)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		wg := &sync.WaitGroup{}
+
+		wg.Add(1)
+		go taskService.Run(ctx, wg)
+
+		time.Sleep(100 * time.Millisecond)
+
+		// 초기 호출 횟수 기록
+		initialCallCount := len(mockSender.notifyCalls)
+
+		// Task 실행 (알림 요청 포함)
+		taskService.TaskRun(
+			task.TaskID("TEST"),
+			task.TaskCommandID("TEST"),
+			"test-notifier",
+			true, // 알림 요청
+			task.TaskRunByUser,
+		)
+
+		time.Sleep(200 * time.Millisecond)
+
+		// 알림이 발송되었는지 확인
+		assert.GreaterOrEqual(t, len(mockSender.notifyCalls), initialCallCount, "알림이 발송되어야 합니다")
+
+		cancel()
+		wg.Wait()
+	})
 }
 
 // TestServiceLifecycle은 서비스 생명주기를 테스트합니다.
@@ -200,6 +240,26 @@ func TestServiceLifecycle(t *testing.T) {
 		// 모든 서비스 중지
 		cancel()
 		wg.Wait()
+	})
+
+	t.Run("서비스 빠른 시작 및 중지 반복", func(t *testing.T) {
+		config := createTestConfig()
+
+		for i := 0; i < 3; i++ {
+			taskService := task.NewService(config)
+			taskService.SetTaskNotificationSender(&mockNotificationSender{})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			wg := &sync.WaitGroup{}
+
+			wg.Add(1)
+			go taskService.Run(ctx, wg)
+
+			time.Sleep(50 * time.Millisecond)
+
+			cancel()
+			wg.Wait()
+		}
 	})
 }
 

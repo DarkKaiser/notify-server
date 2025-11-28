@@ -79,9 +79,29 @@ func TestApplicationMetadata(t *testing.T) {
 
 // TestInitAppConfig은 설정 파일 로딩을 테스트합니다.
 func TestInitAppConfig(t *testing.T) {
-	// 임시 설정 파일 생성
-	tempConfigFile := "temp_config.json"
-	configContent := `{
+	t.Run("유효한 설정 파일 로딩", func(t *testing.T) {
+		// 임시 설정 파일 생성
+		tempFile := createTempConfigFile(t, validConfigJSON())
+		defer os.Remove(tempFile)
+
+		// 설정 로딩
+		config := g.InitAppConfigWithFile(tempFile)
+
+		// 검증
+		assert.NotNil(t, config, "설정이 로드되어야 합니다")
+		assert.True(t, config.Debug, "Debug 모드가 활성화되어야 합니다")
+		assert.Equal(t, "test-notifier", config.Notifiers.DefaultNotifierID, "기본 NotifierID가 일치해야 합니다")
+		assert.Equal(t, 1, len(config.Notifiers.Telegrams), "Telegram notifier가 1개 있어야 합니다")
+		assert.Equal(t, "test-notifier", config.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
+	})
+
+	// 참고: utils.CheckErr는 log.Fatal을 사용하므로 panic이 아닌 프로세스 종료를 발생시킵니다.
+	// 따라서 에러 케이스 테스트는 별도의 통합 테스트나 서브프로세스를 통해 검증해야 합니다.
+}
+
+// 헬퍼 함수: 유효한 설정 JSON 반환
+func validConfigJSON() string {
+	return `{
 		"debug": true,
 		"notifiers": {
 			"default_notifier_id": "test-notifier",
@@ -102,28 +122,18 @@ func TestInitAppConfig(t *testing.T) {
 			"applications": []
 		}
 	}`
+}
 
-	err := os.WriteFile(tempConfigFile, []byte(configContent), 0644)
-	assert.NoError(t, err, "임시 설정 파일 생성 실패")
-	defer os.Remove(tempConfigFile)
+// 헬퍼 함수: 임시 설정 파일 생성
+func createTempConfigFile(t *testing.T, content string) string {
+	tempFile, err := os.CreateTemp("", "test_config_*.json")
+	assert.NoError(t, err, "임시 파일 생성 실패")
 
-	// 기존 설정 파일 이름 백업 및 변경
-	// originalConfigFileName := g.AppConfigFileName
-	// g 패키지의 상수를 변경할 수 없으므로 (const), 이 테스트는
-	// g.InitAppConfig가 g.AppConfigFileName을 사용한다는 점 때문에
-	// 실제 환경에서는 g.AppConfigFileName을 변경할 수 있는 방법이 필요하거나
-	// InitAppConfig가 파일명을 인자로 받아야 함.
-	// 현재 구조상 InitAppConfig는 인자가 없으므로,
-	// 이 테스트는 g.AppConfigFileName이 가리키는 파일이 존재해야만 성공함.
-	// 따라서 여기서는 파일 생성/삭제 테스트만 수행하거나,
-	// g.InitAppConfig를 리팩토링해야 함.
+	_, err = tempFile.WriteString(content)
+	assert.NoError(t, err, "임시 파일 쓰기 실패")
 
-	// 리팩토링 없이 테스트하기 위해, 현재 디렉토리에 notify-server.json이 있다면 그것을 백업하고
-	// 테스트 후 복구하는 방식을 사용해야 함.
-	// 하지만 병렬 테스트 시 문제가 될 수 있음.
+	err = tempFile.Close()
+	assert.NoError(t, err, "임시 파일 닫기 실패")
 
-	// 대안: g.InitAppConfigWithFile(filename string) 함수를 추가하고 그것을 테스트.
-	// 여기서는 일단 파일 생성/삭제만 확인하고 로직은 생략 (리팩토링 범위가 커짐)
-
-	t.Log("g.InitAppConfig 테스트는 파일명 의존성으로 인해 생략합니다.")
+	return tempFile.Name()
 }
