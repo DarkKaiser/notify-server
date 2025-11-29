@@ -27,25 +27,7 @@ type AppConfig struct {
 			ChatID   int64  `json:"chat_id"`
 		} `json:"telegrams"`
 	} `json:"notifiers"`
-	Tasks []struct {
-		ID       string `json:"id"`
-		Title    string `json:"title"`
-		Commands []struct {
-			ID          string `json:"id"`
-			Title       string `json:"title"`
-			Description string `json:"description"`
-			Scheduler   struct {
-				Runnable bool   `json:"runnable"`
-				TimeSpec string `json:"time_spec"`
-			} `json:"scheduler"`
-			Notifier struct {
-				Usable bool `json:"usable"`
-			} `json:"notifier"`
-			DefaultNotifierID string                 `json:"default_notifier_id"`
-			Data              map[string]interface{} `json:"data"`
-		} `json:"commands"`
-		Data map[string]interface{} `json:"data"`
-	} `json:"tasks"`
+	Tasks     []TaskConfig `json:"tasks"`
 	NotifyAPI struct {
 		WS struct {
 			TLSServer   bool   `json:"tls_server"`
@@ -61,6 +43,28 @@ type AppConfig struct {
 			AppKey            string `json:"app_key"`
 		} `json:"applications"`
 	} `json:"notify_api"`
+}
+
+type TaskConfig struct {
+	ID       string                 `json:"id"`
+	Title    string                 `json:"title"`
+	Commands []TaskCommandConfig    `json:"commands"`
+	Data     map[string]interface{} `json:"data"`
+}
+
+type TaskCommandConfig struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Scheduler   struct {
+		Runnable bool   `json:"runnable"`
+		TimeSpec string `json:"time_spec"`
+	} `json:"scheduler"`
+	Notifier struct {
+		Usable bool `json:"usable"`
+	} `json:"notifier"`
+	DefaultNotifierID string                 `json:"default_notifier_id"`
+	Data              map[string]interface{} `json:"data"`
 }
 
 func InitAppConfig() *AppConfig {

@@ -386,25 +386,7 @@ func createTestConfig() *g.AppConfig {
 				TLSServer:  false,
 			},
 		},
-		Tasks: []struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Commands []struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			} `json:"commands"`
-			Data map[string]interface{} `json:"data"`
-		}{},
+		Tasks: []g.TaskConfig{},
 	}
 }
 
@@ -505,42 +487,11 @@ func TestFullFlow_SchedulerToNotification(t *testing.T) {
 	t.Run("스케줄러에 의한 작업 실행 및 알림 발송", func(t *testing.T) {
 		// 1. 설정 생성 (자주 실행되는 작업 포함)
 		config := createTestConfig()
-		config.Tasks = []struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Commands []struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			} `json:"commands"`
-			Data map[string]interface{} `json:"data"`
-		}{
+		config.Tasks = []g.TaskConfig{
 			{
 				ID:    "IntegrationTask",
 				Title: "통합 테스트 작업",
-				Commands: []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				}{
+				Commands: []g.TaskCommandConfig{
 					{
 						ID:    "Run",
 						Title: "실행",
