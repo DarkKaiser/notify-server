@@ -11,7 +11,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -138,7 +137,7 @@ type naverTask struct {
 func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerformancesTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
 	if ok == false {
-		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
+		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverWatchNewPerformancesResultData, got: %T)", taskResultData)
 	}
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}

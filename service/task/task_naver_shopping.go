@@ -10,7 +10,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -186,7 +185,7 @@ type naverShoppingTask struct {
 func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
-		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
+		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", taskResultData)
 	}
 
 	//

@@ -1,10 +1,12 @@
 package task
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
-	"sync"
 )
 
 type scheduler struct {
@@ -46,7 +48,13 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 			})
 
 			if err != nil {
-				log.Panic(err)
+				m := fmt.Sprintf("Cron 스케줄 파싱 실패 (Task: %s, Command: %s, TimeSpec: %s): %v", t.ID, c.ID, c.Scheduler.TimeSpec, err)
+
+				log.Error(m)
+
+				taskNotificationSender.NotifyWithTaskContext(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
+
+				continue // 해당 스케줄은 건너뛰고 계속 진행
 			}
 		}
 	}
