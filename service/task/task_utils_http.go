@@ -38,7 +38,12 @@ func newHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	}
 	defer resp.Body.Close()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	utf8Reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, fmt.Errorf("페이지(%s)의 인코딩 변환이 실패하였습니다.(error:%s)", url, err)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(utf8Reader)
 	if err != nil {
 		return nil, fmt.Errorf("불러온 페이지(%s)의 데이터 파싱이 실패하였습니다.(error:%s)", url, err)
 	}
