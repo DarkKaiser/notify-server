@@ -46,13 +46,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 
 	// Test Config
 	config := &g.AppConfig{}
-	config.NotifyAPI.Applications = []struct {
-		ID                string `json:"id"`
-		Title             string `json:"title"`
-		Description       string `json:"description"`
-		DefaultNotifierID string `json:"default_notifier_id"`
-		AppKey            string `json:"app_key"`
-	}{
+	config.NotifyAPI.Applications = []g.ApplicationConfig{
 		{
 			ID:                "test-app",
 			Title:             "Test App",

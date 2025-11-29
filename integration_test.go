@@ -340,20 +340,9 @@ func TestEndToEndScenario(t *testing.T) {
 func createTestConfig() *g.AppConfig {
 	return &g.AppConfig{
 		Debug: true,
-		Notifiers: struct {
-			DefaultNotifierID string `json:"default_notifier_id"`
-			Telegrams         []struct {
-				ID       string `json:"id"`
-				BotToken string `json:"bot_token"`
-				ChatID   int64  `json:"chat_id"`
-			} `json:"telegrams"`
-		}{
+		Notifiers: g.NotifierConfig{
 			DefaultNotifierID: "test-notifier",
-			Telegrams: []struct {
-				ID       string `json:"id"`
-				BotToken string `json:"bot_token"`
-				ChatID   int64  `json:"chat_id"`
-			}{
+			Telegrams: []g.TelegramConfig{
 				{
 					ID:       "test-notifier",
 					BotToken: "test-token",
@@ -361,27 +350,8 @@ func createTestConfig() *g.AppConfig {
 				},
 			},
 		},
-		NotifyAPI: struct {
-			WS struct {
-				TLSServer   bool   `json:"tls_server"`
-				TLSCertFile string `json:"tls_cert_file"`
-				TLSKeyFile  string `json:"tls_key_file"`
-				ListenPort  int    `json:"listen_port"`
-			} `json:"ws"`
-			Applications []struct {
-				ID                string `json:"id"`
-				Title             string `json:"title"`
-				Description       string `json:"description"`
-				DefaultNotifierID string `json:"default_notifier_id"`
-				AppKey            string `json:"app_key"`
-			} `json:"applications"`
-		}{
-			WS: struct {
-				TLSServer   bool   `json:"tls_server"`
-				TLSCertFile string `json:"tls_cert_file"`
-				TLSKeyFile  string `json:"tls_key_file"`
-				ListenPort  int    `json:"listen_port"`
-			}{
+		NotifyAPI: g.NotifyAPIConfig{
+			WS: g.WSConfig{
 				ListenPort: 18080,
 				TLSServer:  false,
 			},
@@ -393,11 +363,7 @@ func createTestConfig() *g.AppConfig {
 func createTestConfigWithNotifier() *g.AppConfig {
 	config := createTestConfig()
 	config.Notifiers.DefaultNotifierID = "default-notifier"
-	config.Notifiers.Telegrams = []struct {
-		ID       string `json:"id"`
-		BotToken string `json:"bot_token"`
-		ChatID   int64  `json:"chat_id"`
-	}{
+	config.Notifiers.Telegrams = []g.TelegramConfig{
 		{
 			ID:       "default-notifier",
 			BotToken: "test-token",

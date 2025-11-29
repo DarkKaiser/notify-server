@@ -160,13 +160,9 @@ func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	// nil NotificationSender로 시작 시도 - panic이 발생해야 함
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("nil NotificationSender로 시작 시 panic이 발생해야 합니다")
-		}
-		wg.Done()
-	}()
+	// nil NotificationSender로 시작 시도 - error가 반환되어야 함
+	err := service.Run(ctx, wg)
 
-	service.Run(ctx, wg)
+	assert.Error(t, err, "nil NotificationSender로 시작 시 error가 반환되어야 합니다")
+	assert.Contains(t, err.Error(), "NotificationSender", "에러 메시지에 NotificationSender가 포함되어야 합니다")
 }

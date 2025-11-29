@@ -55,9 +55,15 @@ func main() {
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	for _, s := range []service.Service{taskService, notificationService, notifyAPIService} {
+	services := []service.Service{taskService, notificationService, notifyAPIService}
+	for _, s := range services {
 		serviceStopWaiter.Add(1)
-		s.Run(serviceStopCtx, serviceStopWaiter)
+		if err := s.Run(serviceStopCtx, serviceStopWaiter); err != nil {
+			log.Errorf("서비스 시작 실패: %v", err)
+			cancel() // 다른 서비스들도 종료
+			serviceStopWaiter.Wait()
+			log.Fatal("서비스 초기화 실패로 프로그램을 종료합니다")
+		}
 	}
 
 	// Handle sigterm and await termC signal

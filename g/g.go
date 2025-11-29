@@ -2,6 +2,7 @@ package g
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -14,35 +15,30 @@ const (
 	AppVersion string = "0.0.3"
 
 	AppConfigFileName = AppName + ".json"
+
+	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
+	DefaultMaxRetries = 3
+	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
+	DefaultRetryDelay = "2s"
 )
 
-// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
-type AppConfig struct {
-	Debug     bool `json:"debug"`
-	Notifiers struct {
-		DefaultNotifierID string `json:"default_notifier_id"`
-		Telegrams         []struct {
-			ID       string `json:"id"`
-			BotToken string `json:"bot_token"`
-			ChatID   int64  `json:"chat_id"`
-		} `json:"telegrams"`
-	} `json:"notifiers"`
-	Tasks     []TaskConfig `json:"tasks"`
-	NotifyAPI struct {
-		WS struct {
-			TLSServer   bool   `json:"tls_server"`
-			TLSCertFile string `json:"tls_cert_file"`
-			TLSKeyFile  string `json:"tls_key_file"`
-			ListenPort  int    `json:"listen_port"`
-		} `json:"ws"`
-		Applications []struct {
-			ID                string `json:"id"`
-			Title             string `json:"title"`
-			Description       string `json:"description"`
-			DefaultNotifierID string `json:"default_notifier_id"`
-			AppKey            string `json:"app_key"`
-		} `json:"applications"`
-	} `json:"notify_api"`
+// HTTPRetryConfig HTTP 재시도 설정 구조체
+type HTTPRetryConfig struct {
+	MaxRetries int    `json:"max_retries"`
+	RetryDelay string `json:"retry_delay"`
+}
+
+// NotifierConfig 알림 설정 구조체
+type NotifierConfig struct {
+	DefaultNotifierID string           `json:"default_notifier_id"`
+	Telegrams         []TelegramConfig `json:"telegrams"`
+}
+
+// TelegramConfig 텔레그램 알림 설정 구조체
+type TelegramConfig struct {
+	ID       string `json:"id"`
+	BotToken string `json:"bot_token"`
+	ChatID   int64  `json:"chat_id"`
 }
 
 type TaskConfig struct {
@@ -67,11 +63,43 @@ type TaskCommandConfig struct {
 	Data              map[string]interface{} `json:"data"`
 }
 
+// NotifyAPIConfig 알림 API 설정 구조체
+type NotifyAPIConfig struct {
+	WS           WSConfig            `json:"ws"`
+	Applications []ApplicationConfig `json:"applications"`
+}
+
+// WSConfig 웹서버 설정 구조체
+type WSConfig struct {
+	TLSServer   bool   `json:"tls_server"`
+	TLSCertFile string `json:"tls_cert_file"`
+	TLSKeyFile  string `json:"tls_key_file"`
+	ListenPort  int    `json:"listen_port"`
+}
+
+// ApplicationConfig 애플리케이션 설정 구조체
+type ApplicationConfig struct {
+	ID                string `json:"id"`
+	Title             string `json:"title"`
+	Description       string `json:"description"`
+	DefaultNotifierID string `json:"default_notifier_id"`
+	AppKey            string `json:"app_key"`
+}
+
+// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
+type AppConfig struct {
+	Debug     bool            `json:"debug"`
+	HTTPRetry HTTPRetryConfig `json:"http_retry"`
+	Notifiers NotifierConfig  `json:"notifiers"`
+	Tasks     []TaskConfig    `json:"tasks"`
+	NotifyAPI NotifyAPIConfig `json:"notify_api"`
+}
+
 func InitAppConfig() *AppConfig {
 	return InitAppConfigWithFile(AppConfigFileName)
 }
 
-// InitAppConfigWithFile은 지정된 파일에서 설정을 로드합니다.
+// InitAppConfigWithFile 지정된 파일에서 설정을 로드합니다.
 // 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
 func InitAppConfigWithFile(filename string) *AppConfig {
 	data, err := os.ReadFile(filename)
@@ -81,64 +109,115 @@ func InitAppConfigWithFile(filename string) *AppConfig {
 	err = json.Unmarshal(data, &config)
 	utils.CheckErr(err)
 
+	// HTTP Retry 설정 기본값 적용
+	if config.HTTPRetry.MaxRetries == 0 {
+		config.HTTPRetry.MaxRetries = DefaultMaxRetries
+	}
+	if config.HTTPRetry.RetryDelay == "" {
+		config.HTTPRetry.RetryDelay = DefaultRetryDelay
+	}
+
 	//
 	// 파일 내용에 대해 유효성 검사를 한다.
 	//
-	var notifierIDs []string
-	for _, telegram := range config.Notifiers.Telegrams {
-		if utils.Contains(notifierIDs, telegram.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. NotifierID(%s)가 중복되었습니다.", filename, telegram.ID)
-		}
-		notifierIDs = append(notifierIDs, telegram.ID)
-	}
-	if utils.Contains(notifierIDs, config.Notifiers.DefaultNotifierID) == false {
-		log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다.", filename, config.Notifiers.DefaultNotifierID)
+	if err := config.Validate(); err != nil {
+		log.Panicf("%s 파일의 내용이 유효하지 않습니다. %v", filename, err)
 	}
 
+	return &config
+}
+
+// Validate AppConfig의 유효성을 검사합니다.
+func (c *AppConfig) Validate() error {
+	// Notifiers 유효성 검사
+	notifierIDs, err := c.Notifiers.Validate()
+	if err != nil {
+		return err
+	}
+
+	// Tasks 유효성 검사
+	if err := c.validateTasks(notifierIDs); err != nil {
+		return err
+	}
+
+	// NotifyAPI 유효성 검사
+	if err := c.NotifyAPI.Validate(notifierIDs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateTasks Task 설정의 유효성을 검사합니다.
+func (c *AppConfig) validateTasks(notifierIDs []string) error {
 	var taskIDs []string
-	for _, t := range config.Tasks {
-		if utils.Contains(taskIDs, t.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. TaskID(%s)가 중복되었습니다.", filename, t.ID)
+	for _, t := range c.Tasks {
+		if utils.Contains(taskIDs, t.ID) {
+			return fmt.Errorf("TaskID(%s)가 중복되었습니다", t.ID)
 		}
 		taskIDs = append(taskIDs, t.ID)
 
 		var commandIDs []string
-		for _, c := range t.Commands {
-			if utils.Contains(commandIDs, c.ID) == true {
-				log.Panicf("%s 파일의 내용이 유효하지 않습니다. CommandID(%s)가 중복되었습니다.", filename, c.ID)
+		for _, cmd := range t.Commands {
+			if utils.Contains(commandIDs, cmd.ID) {
+				return fmt.Errorf("CommandID(%s)가 중복되었습니다", cmd.ID)
 			}
-			commandIDs = append(commandIDs, c.ID)
+			commandIDs = append(commandIDs, cmd.ID)
 
-			if utils.Contains(notifierIDs, c.DefaultNotifierID) == false {
-				log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다.", filename, t.ID, c.ID, c.DefaultNotifierID)
+			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
+				return fmt.Errorf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID)
 			}
 		}
 	}
+	return nil
+}
 
-	if config.NotifyAPI.WS.TLSServer == true {
-		if strings.TrimSpace(config.NotifyAPI.WS.TLSCertFile) == "" {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Cert 파일 경로가 입력되지 않았습니다.", filename)
+// Validate NotifierConfig의 유효성을 검사합니다.
+// 유효한 NotifierID 목록을 반환합니다.
+func (c *NotifierConfig) Validate() ([]string, error) {
+	var notifierIDs []string
+	for _, telegram := range c.Telegrams {
+		if utils.Contains(notifierIDs, telegram.ID) {
+			return nil, fmt.Errorf("NotifierID(%s)가 중복되었습니다", telegram.ID)
 		}
-		if strings.TrimSpace(config.NotifyAPI.WS.TLSKeyFile) == "" {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 웹서버의 Key 파일 경로가 입력되지 않았습니다.", filename)
+		notifierIDs = append(notifierIDs, telegram.ID)
+	}
+
+	if !utils.Contains(notifierIDs, c.DefaultNotifierID) {
+		return nil, fmt.Errorf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID)
+	}
+
+	return notifierIDs, nil
+}
+
+// Validate NotifyAPIConfig의 유효성을 검사합니다.
+func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
+	// WS 설정 검사
+	if c.WS.TLSServer {
+		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
+			return fmt.Errorf("웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+		}
+		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
+			return fmt.Errorf("웹서버의 Key 파일 경로가 입력되지 않았습니다")
 		}
 	}
 
+	// Applications 설정 검사
 	var applicationIDs []string
-	for _, app := range config.NotifyAPI.Applications {
-		if utils.Contains(applicationIDs, app.ID) == true {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. ApplicationID(%s)가 중복되었습니다.", filename, app.ID)
+	for _, app := range c.Applications {
+		if utils.Contains(applicationIDs, app.ID) {
+			return fmt.Errorf("ApplicationID(%s)가 중복되었습니다", app.ID)
 		}
 		applicationIDs = append(applicationIDs, app.ID)
 
-		if utils.Contains(notifierIDs, app.DefaultNotifierID) == false {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. 전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다.", filename, app.ID, app.DefaultNotifierID)
+		if !utils.Contains(notifierIDs, app.DefaultNotifierID) {
+			return fmt.Errorf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID)
 		}
 
 		if len(app.AppKey) == 0 {
-			log.Panicf("%s 파일의 내용이 유효하지 않습니다. %s Application의 APP_KEY가 입력되지 않았습니다.", filename, app.ID)
+			return fmt.Errorf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID)
 		}
 	}
 
-	return &config
+	return nil
 }

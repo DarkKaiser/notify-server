@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -93,9 +93,15 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: &HTTPFetcher{},
+					fetcher: nil,
 				},
 			}
+
+			retryDelay, err := time.ParseDuration(config.HTTPRetry.RetryDelay)
+			if err != nil {
+				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
+			}
+			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, config.HTTPRetry.MaxRetries, retryDelay)
 
 			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
@@ -121,7 +127,7 @@ type jyiuTask struct {
 func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewNoticeResultData)
 	if ok == false {
-		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
+		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", taskResultData)
 	}
 
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
@@ -230,7 +236,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jyiuWatchNewEducationResultData)
 	if ok == false {
-		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
+		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", taskResultData)
 	}
 
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.

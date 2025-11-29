@@ -37,14 +37,16 @@ func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.No
 	}
 }
 
-func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("NotifyAPI 서비스 시작중...")
 
 	if s.notificationSender == nil {
-		log.Panic("NotificationSender 객체가 초기화되지 않았습니다.")
+		defer serviceStopWaiter.Done()
+
+		return errors.New("NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
@@ -52,7 +54,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 		log.Warn("NotifyAPI 서비스가 이미 시작됨!!!")
 
-		return
+		return nil
 	}
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
@@ -60,6 +62,8 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	s.running = true
 
 	log.Debug("NotifyAPI 서비스 시작됨")
+
+	return nil
 }
 
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
@@ -77,7 +81,14 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		return echo.NewHTTPError(http.StatusNotFound, "페이지를 찾을 수 없습니다.")
 	}
 
+	// httpServerDone은 HTTP 서버 고루틴이 종료될 때까지 대기하기 위한 채널이다.
+	// 서비스 종료 시 s.notificationSender를 nil로 설정하기 전에 HTTP 서버가 완전히 종료되었음을 보장하여
+	// 경쟁 상태(Race Condition)를 방지한다.
+	httpServerDone := make(chan struct{})
+
 	go func(listenPort int) {
+		defer close(httpServerDone)
+
 		log.Debugf("NotifyAPI 서비스 > http 서버(:%d) 시작", listenPort)
 
 		var err error
@@ -110,6 +121,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		if err := e.Shutdown(ctx); err != nil {
 			log.Error(err)
 		}
+
+		<-httpServerDone
 
 		s.runningMu.Lock()
 		s.running = false

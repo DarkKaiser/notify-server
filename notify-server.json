@@ -1,5 +1,9 @@
 {
 	"debug": false,
+	"http_retry": {
+		"max_retries": 3,
+		"retry_delay": "2s"
+	},
 	"notifiers": {
 		"default_notifier_id": "darkkaiser_test_bot",
 		"telegrams": [

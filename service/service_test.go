@@ -15,13 +15,15 @@ type mockService struct {
 	runCount  int
 }
 
-func (m *mockService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (m *mockService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	defer serviceStopWaiter.Done()
 	m.runCalled = true
 	m.runCount++
 
 	// 서비스가 중지될 때까지 대기
 	<-serviceStopCtx.Done()
+
+	return nil
 }
 
 func TestServiceInterface(t *testing.T) {
