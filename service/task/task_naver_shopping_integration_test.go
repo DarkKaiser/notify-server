@@ -12,24 +12,11 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	mockFetcher := NewMockHTTPFetcher()
 
 	// 테스트용 JSON 응답 생성
+	// 테스트용 JSON 응답 생성
 	productTitle := "테스트 상품"
-	productLprice := "10000"
 	productLink := "https://example.com/product/123"
-	productImage := "https://example.com/image.jpg"
-	productMallName := "테스트몰"
 
-	jsonContent := fmt.Sprintf(`{
-		"total": 1,
-		"start": 1,
-		"display": 1,
-		"items": [{
-			"title": "%s",
-			"lprice": "%s",
-			"link": "%s",
-			"image": "%s",
-			"mallName": "%s"
-		}]
-	}`, productTitle, productLprice, productLink, productImage, productMallName)
+	jsonContent := LoadTestDataAsString(t, "naver/shopping_search_result.json")
 
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))

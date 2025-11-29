@@ -1,0 +1,16 @@
+{
+  "total": 1,
+  "start": 1,
+  "display": 1,
+  "items": [
+    {
+      "title": "테스트 상품",
+      "lprice": "10000",
+      "link": "https://example.com/product/123",
+      "image": "https://example.com/image.jpg",
+      "mallName": "테스트몰",
+      "productId": "12345",
+      "productType": "1"
+    }
+  ]
+}
