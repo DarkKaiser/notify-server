@@ -23,6 +23,55 @@ const (
 	TcidLottoPrediction TaskCommandID = "Prediction" // 로또 번호 예측
 )
 
+// CommandProcess 실행 중인 프로세스를 추상화하는 인터페이스
+type CommandProcess interface {
+	Wait() error
+	Kill() error
+	Output() string
+}
+
+// CommandExecutor 외부 명령 실행을 추상화하는 인터페이스
+type CommandExecutor interface {
+	StartCommand(name string, args ...string) (CommandProcess, error)
+}
+
+// defaultCommandProcess exec.Cmd를 래핑한 기본 프로세스 구현
+type defaultCommandProcess struct {
+	cmd       *exec.Cmd
+	outBuffer *bytes.Buffer
+}
+
+func (p *defaultCommandProcess) Wait() error {
+	return p.cmd.Wait()
+}
+
+func (p *defaultCommandProcess) Kill() error {
+	return p.cmd.Process.Signal(os.Kill)
+}
+
+func (p *defaultCommandProcess) Output() string {
+	return p.outBuffer.String()
+}
+
+// DefaultCommandExecutor 기본 명령 실행기 (os/exec 사용)
+type DefaultCommandExecutor struct{}
+
+func (e *DefaultCommandExecutor) StartCommand(name string, args ...string) (CommandProcess, error) {
+	cmd := exec.Command(name, args...)
+	var outBuffer bytes.Buffer
+	cmd.Stdout = &outBuffer
+
+	err := cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	return &defaultCommandProcess{
+		cmd:       cmd,
+		outBuffer: &outBuffer,
+	}, nil
+}
+
 type lottoTaskData struct {
 	AppPath string `json:"app_path"`
 }
@@ -72,6 +121,8 @@ func init() {
 				},
 
 				appPath: appPath,
+
+				executor: &DefaultCommandExecutor{},
 			}
 
 			task.runFn = func(taskResultData interface{}, _ bool) (string, interface{}, error) {
@@ -92,16 +143,13 @@ type lottoTask struct {
 	task
 
 	appPath string
+
+	executor CommandExecutor
 }
 
 func (t *lottoTask) runPrediction() (message string, changedTaskResultData interface{}, err error) {
-	cmd := exec.Command("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
-
-	var cmdOutBuffer bytes.Buffer
-	cmd.Stdout = &cmdOutBuffer
-
 	// 비동기적으로 작업을 시작한다.
-	err = cmd.Start()
+	process, err := t.executor.StartCommand("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 	if err != nil {
 		return "", nil, err
 	}
@@ -110,13 +158,13 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	ticker := time.NewTicker(time.Millisecond * 500)
 	tickerStopC := make(chan bool, 1)
 
-	go func(ticker *time.Ticker, cmd *exec.Cmd) {
+	go func(ticker *time.Ticker, process CommandProcess) {
 		for {
 			select {
 			case <-ticker.C:
-				if t.IsCanceled() == true {
+				if t.IsCanceled() {
 					ticker.Stop()
-					err0 := cmd.Process.Signal(os.Kill)
+					err0 := process.Kill()
 					if err0 != nil {
 						log.Errorf("사용자 요청으로 작업을 취소하는 중에 실행중인 외부 프로그램의 종료가 실패하였습니다.(error:%s)", err0)
 					}
@@ -128,19 +176,17 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 				return
 			}
 		}
-	}(ticker, cmd)
+	}(ticker, process)
 
 	// 작업이 완료될 때까지 대기한다.
-	err = cmd.Wait()
-	if err != nil {
-		tickerStopC <- true
+	err = process.Wait()
+	tickerStopC <- true
 
+	if err != nil {
 		return "", nil, err
-	} else {
-		tickerStopC <- true
 	}
 
-	cmdOutString := cmdOutBuffer.String()
+	cmdOutString := process.Output()
 
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
 	analysisFilePath := regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`).FindString(cmdOutString)

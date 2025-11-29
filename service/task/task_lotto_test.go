@@ -146,3 +146,177 @@ func TestLottoTask_MessageFormatting(t *testing.T) {
 		assert.Contains(t, message, "•", "불릿 포인트가 포함되어야 합니다")
 	})
 }
+
+// Mock implementations for testing
+
+// MockCommandProcess 테스트용 프로세스 mock
+type MockCommandProcess struct {
+	waitErr    error
+	killErr    error
+	output     string
+	killCalled bool
+}
+
+func (m *MockCommandProcess) Wait() error {
+	return m.waitErr
+}
+
+func (m *MockCommandProcess) Kill() error {
+	m.killCalled = true
+	return m.killErr
+}
+
+func (m *MockCommandProcess) Output() string {
+	return m.output
+}
+
+// MockCommandExecutor 테스트용 executor mock
+type MockCommandExecutor struct {
+	process *MockCommandProcess
+	err     error
+}
+
+func (m *MockCommandExecutor) StartCommand(name string, args ...string) (CommandProcess, error) {
+	return m.process, m.err
+}
+
+func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
+	t.Run("Mock Executor로 정상 실행 테스트", func(t *testing.T) {
+		// 테스트 결과 파일 생성
+		tempDir := CreateTestTempDir(t)
+		resultPath := filepath.Join(tempDir, "result.log")
+		testContent := LoadTestData(t, "lotto/prediction_result.log")
+		err := os.WriteFile(resultPath, testContent, 0644)
+		assert.NoError(t, err)
+
+		// Mock 출력 생성
+		mockOutput := "로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:" + resultPath + ")"
+
+		mockProcess := &MockCommandProcess{
+			waitErr: nil,
+			output:  mockOutput,
+		}
+
+		mockExecutor := &MockCommandExecutor{
+			process: mockProcess,
+			err:     nil,
+		}
+
+		// lottoTask 생성
+		task := &lottoTask{
+			task: task{
+				id:        TidLotto,
+				commandID: TcidLottoPrediction,
+				canceled:  false,
+			},
+			appPath:  "/test/path",
+			executor: mockExecutor,
+		}
+
+		// runPrediction 실행
+		message, changedData, err := task.runPrediction()
+
+		assert.NoError(t, err, "정상 실행 시 에러가 없어야 합니다")
+		assert.Nil(t, changedData, "changedData는 nil이어야 합니다")
+		assert.Contains(t, message, "당첨번호1", "메시지에 당첨번호가 포함되어야 합니다")
+		assert.False(t, mockProcess.killCalled, "정상 실행 시 Kill이 호출되지 않아야 합니다")
+	})
+}
+
+func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
+	t.Run("StartCommand 실패 테스트", func(t *testing.T) {
+		mockExecutor := &MockCommandExecutor{
+			process: nil,
+			err:     assert.AnError,
+		}
+
+		task := &lottoTask{
+			task: task{
+				id:        TidLotto,
+				commandID: TcidLottoPrediction,
+				canceled:  false,
+			},
+			appPath:  "/test/path",
+			executor: mockExecutor,
+		}
+
+		_, _, err := task.runPrediction()
+
+		assert.Error(t, err, "StartCommand 실패 시 에러가 발생해야 합니다")
+	})
+}
+
+func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
+	t.Run("Wait 실패 테스트", func(t *testing.T) {
+		mockProcess := &MockCommandProcess{
+			waitErr: assert.AnError,
+			output:  "",
+		}
+
+		mockExecutor := &MockCommandExecutor{
+			process: mockProcess,
+			err:     nil,
+		}
+
+		task := &lottoTask{
+			task: task{
+				id:        TidLotto,
+				commandID: TcidLottoPrediction,
+				canceled:  false,
+			},
+			appPath:  "/test/path",
+			executor: mockExecutor,
+		}
+
+		_, _, err := task.runPrediction()
+
+		assert.Error(t, err, "Wait 실패 시 에러가 발생해야 합니다")
+	})
+}
+
+func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
+	t.Run("잘못된 출력 형식 테스트", func(t *testing.T) {
+		mockProcess := &MockCommandProcess{
+			waitErr: nil,
+			output:  "Invalid output without completion message",
+		}
+
+		mockExecutor := &MockCommandExecutor{
+			process: mockProcess,
+			err:     nil,
+		}
+
+		task := &lottoTask{
+			task: task{
+				id:        TidLotto,
+				commandID: TcidLottoPrediction,
+				canceled:  false,
+			},
+			appPath:  "/test/path",
+			executor: mockExecutor,
+		}
+
+		_, _, err := task.runPrediction()
+
+		assert.Error(t, err, "잘못된 출력 형식 시 에러가 발생해야 합니다")
+		assert.Contains(t, err.Error(), "정상적으로 완료되었는지 확인할 수 없습니다", "적절한 에러 메시지가 반환되어야 합니다")
+	})
+}
+
+func TestDefaultCommandExecutor_RealExecution(t *testing.T) {
+	t.Run("DefaultCommandExecutor 실제 실행 테스트", func(t *testing.T) {
+		executor := &DefaultCommandExecutor{}
+
+		// Windows에서는 cmd /c echo를 사용
+		process, err := executor.StartCommand("cmd", "/c", "echo", "test")
+
+		assert.NoError(t, err, "echo 명령 실행이 성공해야 합니다")
+		assert.NotNil(t, process, "프로세스가 생성되어야 합니다")
+
+		err = process.Wait()
+		assert.NoError(t, err, "Wait이 성공해야 합니다")
+
+		output := process.Output()
+		assert.Contains(t, output, "test", "출력에 'test'가 포함되어야 합니다")
+	})
+}
