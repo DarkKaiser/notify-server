@@ -14,11 +14,20 @@ const (
 	AppVersion string = "0.0.3"
 
 	AppConfigFileName = AppName + ".json"
+
+	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
+	DefaultMaxRetries = 3
+	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
+	DefaultRetryDelay = "2s"
 )
 
 // Convert JSON to Go struct : https://mholt.github.io/json-to-go/
 type AppConfig struct {
 	Debug     bool `json:"debug"`
+	HTTPRetry struct {
+		MaxRetries int    `json:"max_retries"`
+		RetryDelay string `json:"retry_delay"`
+	} `json:"http_retry"`
 	Notifiers struct {
 		DefaultNotifierID string `json:"default_notifier_id"`
 		Telegrams         []struct {
@@ -71,7 +80,7 @@ func InitAppConfig() *AppConfig {
 	return InitAppConfigWithFile(AppConfigFileName)
 }
 
-// InitAppConfigWithFile은 지정된 파일에서 설정을 로드합니다.
+// InitAppConfigWithFile 지정된 파일에서 설정을 로드합니다.
 // 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
 func InitAppConfigWithFile(filename string) *AppConfig {
 	data, err := os.ReadFile(filename)
@@ -80,6 +89,14 @@ func InitAppConfigWithFile(filename string) *AppConfig {
 	var config AppConfig
 	err = json.Unmarshal(data, &config)
 	utils.CheckErr(err)
+
+	// HTTP Retry 설정 기본값 적용
+	if config.HTTPRetry.MaxRetries == 0 {
+		config.HTTPRetry.MaxRetries = DefaultMaxRetries
+	}
+	if config.HTTPRetry.RetryDelay == "" {
+		config.HTTPRetry.RetryDelay = DefaultRetryDelay
+	}
 
 	//
 	// 파일 내용에 대해 유효성 검사를 한다.

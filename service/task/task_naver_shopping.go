@@ -133,7 +133,7 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: NewRetryFetcher(&HTTPFetcher{}, 3, time.Second*2),
+					fetcher: nil,
 				},
 
 				config: config,
@@ -141,6 +141,12 @@ func init() {
 				clientID:     taskData.ClientID,
 				clientSecret: taskData.ClientSecret,
 			}
+
+			retryDelay, err := time.ParseDuration(config.HTTPRetry.RetryDelay)
+			if err != nil {
+				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
+			}
+			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, config.HTTPRetry.MaxRetries, retryDelay)
 
 			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
