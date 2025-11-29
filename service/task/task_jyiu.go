@@ -3,12 +3,13 @@ package task
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"unicode/utf8"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
-	"strings"
-	"unicode/utf8"
 )
 
 const (
@@ -21,20 +22,20 @@ const (
 )
 
 const (
-	jyiuBaseUrl = "https://www.jyiu.or.kr/"
+	jyiuBaseURL = "https://www.jyiu.or.kr/"
 )
 
 type jyiuNotice struct {
 	Title string `json:"title"`
 	Date  string `json:"date"`
-	Url   string `json:"url"`
+	URL   string `json:"url"`
 }
 
 func (n *jyiuNotice) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", n.Url, n.Title, mark)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", n.URL, n.Title, mark)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", n.Title, mark, n.Url))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", n.Title, mark, n.URL))
 }
 
 type jyiuWatchNewNoticeResultData struct {
@@ -45,14 +46,14 @@ type jyiuEducation struct {
 	Title            string `json:"title"`
 	TrainingPeriod   string `json:"training_period"`
 	AcceptancePeriod string `json:"acceptance_period"`
-	Url              string `json:"url"`
+	URL              string `json:"url"`
 }
 
 func (e *jyiuEducation) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s\n      • 교육기간 : %s\n      • 접수기간 : %s", e.Url, e.Title, mark, e.TrainingPeriod, e.AcceptancePeriod)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s\n      • 교육기간 : %s\n      • 접수기간 : %s", e.URL, e.Title, mark, e.TrainingPeriod, e.AcceptancePeriod)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Title, mark, e.Url))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n%s", e.Title, mark, e.URL))
 }
 
 type jyiuWatchNewEducationResultData struct {
@@ -91,6 +92,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 			}
 
@@ -124,7 +127,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
-	err = webScrape(fmt.Sprintf("%sgms_005001/", jyiuBaseUrl), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = webScrape(t.fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
@@ -160,7 +163,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
 			Title: title,
 			Date:  utils.Trim(as.Eq(3).Text()),
-			Url:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseUrl, id),
+			URL:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseURL, id),
 		})
 
 		return true
@@ -184,7 +187,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		if ok1 == false || ok2 == false {
 			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
-			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.Url == originNotice.Url {
+			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.URL == originNotice.URL {
 				return true, nil
 			}
 		}
@@ -233,7 +236,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
-	err = webScrape(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseUrl), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = webScrape(t.fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
@@ -270,7 +273,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 			Title:            title,
 			TrainingPeriod:   utils.Trim(as.Eq(4).Text()),
 			AcceptancePeriod: utils.Trim(as.Eq(5).Text()),
-			Url:              fmt.Sprintf("%s%s", jyiuBaseUrl, url),
+			URL:              fmt.Sprintf("%s%s", jyiuBaseURL, url),
 		})
 
 		return true
@@ -291,7 +294,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		if ok1 == false || ok2 == false {
 			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
-			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.Url == originEducation.Url {
+			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.URL == originEducation.URL {
 				return true, nil
 			}
 		}

@@ -23,7 +23,7 @@ const (
 )
 
 const (
-	kurlyBaseUrl = "https://www.kurly.com/"
+	kurlyBaseURL = "https://www.kurly.com/"
 )
 
 // watchProductColumn 감시할 상품 목록의 헤더
@@ -84,7 +84,7 @@ func (p *kurlyProduct) String(messageTypeHTML bool, mark string, previousProduct
 	// 상품 이름
 	var name string
 	if messageTypeHTML == true {
-		name = fmt.Sprintf("☞ <a href=\"%sgoods/%d\"><b>%s</b></a>%s", kurlyBaseUrl, p.No, template.HTMLEscapeString(p.Name), mark)
+		name = fmt.Sprintf("☞ <a href=\"%sgoods/%d\"><b>%s</b></a>%s", kurlyBaseURL, p.No, template.HTMLEscapeString(p.Name), mark)
 	} else {
 		name = fmt.Sprintf("☞ %s%s", template.HTMLEscapeString(p.Name), mark)
 	}
@@ -153,6 +153,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 
 				config: config,
@@ -167,10 +169,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 
 									return task.runWatchProductPrice(taskCommandData, taskResultData, messageTypeHTML)
@@ -246,8 +248,8 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		}
 
 		// 상품 페이지를 읽어들인다.
-		productDetailPageUrl := fmt.Sprintf("%sgoods/%d", kurlyBaseUrl, no)
-		doc, err := newHTMLDocument(productDetailPageUrl)
+		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
+		doc, err := newHTMLDocument(t.fetcher, productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}
@@ -255,11 +257,11 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		// 읽어들인 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출한다.
 		html, err := doc.Html()
 		if err != nil {
-			return "", nil, fmt.Errorf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다.(error:%s)", productDetailPageUrl, err)
+			return "", nil, fmt.Errorf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err)
 		}
 		match := re1.FindStringSubmatch(html)
 		if len(match) < 2 {
-			return "", nil, fmt.Errorf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageUrl, err)
+			return "", nil, fmt.Errorf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err)
 		}
 		jsonProductData := match[1]
 
@@ -282,13 +284,13 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		if product.IsUnknownProduct == false {
 			sel := doc.Find("#product-atf > section.css-1ua1wyk")
 			if sel.Length() != 1 {
-				return "", nil, fmt.Errorf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(상품정보 섹션 추출 실패)", productDetailPageUrl)
+				return "", nil, fmt.Errorf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(상품정보 섹션 추출 실패)", productDetailPageURL)
 			}
 
 			// 상품 이름을 확인한다.
 			ps := sel.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
 			if ps.Length() != 1 {
-				return "", nil, fmt.Errorf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+				return "", nil, fmt.Errorf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL)
 			}
 			product.Name = utils.Trim(ps.Text())
 
@@ -297,7 +299,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			if ps.Length() == 0 /* 가격, 단위(원) */ {
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL)
 				}
 
 				// 가격
@@ -315,7 +317,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 				// 할인 가격
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL)
 				}
 
 				product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
@@ -326,11 +328,11 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 				// 가격
 				ps = sel.Find("span.css-1s96j0s > span")
 				if ps.Length() != 1 /* 가격 + 단위(원) */ {
-					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+					return "", nil, fmt.Errorf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL)
 				}
-				product.Price, err = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
+				product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
 			} else {
-				return "", nil, fmt.Errorf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageUrl)
+				return "", nil, fmt.Errorf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL)
 			}
 		}
 
@@ -425,7 +427,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		productName := template.HTMLEscapeString(strings.TrimSpace(product[WatchProductColumnName]))
 
 		if messageTypeHTML == true {
-			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseUrl, productNo, productName))
+			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseURL, productNo, productName))
 		} else {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
 		}
@@ -445,7 +447,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[WatchProductColumnName]))
 
 					if messageTypeHTML == true {
-						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseUrl, productNo, productName))
+						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseURL, productNo, productName))
 					} else {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
 					}

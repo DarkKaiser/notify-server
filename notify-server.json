@@ -172,38 +172,6 @@
 			}
 		},
 		{
-			"id": "ALGANICMALL",
-			"title": "엘가닉몰",
-			"commands": [
-				{
-					"id": "WatchNewEvents",
-					"title": "신규 이벤트 확인",
-					"description": "엘가닉몰에 신규 이벤트가 발생되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 9 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				},
-				{
-					"id": "WatchAtoCream",
-					"title": "아토크림 정보 변경 확인",
-					"description": "엘가닉몰에 아토크림에 대한 정보가 변경되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 9 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				}
-			]
-		},
-		{
 			"id": "JDC",
 			"title": "전남디지털역량교육",
 			"commands": [
@@ -214,25 +182,6 @@
 					"scheduler": {
 						"runnable": false,
 						"time_spec": "0 6 9-18 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				}
-			]
-		},
-		{
-			"id": "COVID19",
-			"title": "코로나19",
-			"commands": [
-				{
-					"id": "WatchResidualVaccine",
-					"title": "코로나19 잔여백신 확인",
-					"description": "코로나19 잔여백신의 수량을 확인하고 이를 알립니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "*/3 * 9-18 * * 1-6"
 					},
 					"notifier": {
 						"usable": false

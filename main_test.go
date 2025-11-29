@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,9 +81,82 @@ func TestApplicationMetadata(t *testing.T) {
 
 // TestInitAppConfig은 설정 파일 로딩을 테스트합니다.
 func TestInitAppConfig(t *testing.T) {
-	// 임시 설정 파일 생성
-	tempConfigFile := "temp_config.json"
-	configContent := `{
+	t.Run("유효한 설정 파일 로딩", func(t *testing.T) {
+		// 임시 설정 파일 생성
+		tempFile := createTempConfigFile(t, validConfigJSON())
+		defer os.Remove(tempFile)
+
+		// 설정 로딩
+		config := g.InitAppConfigWithFile(tempFile)
+
+		// 검증
+		assert.NotNil(t, config, "설정이 로드되어야 합니다")
+		assert.True(t, config.Debug, "Debug 모드가 활성화되어야 합니다")
+		assert.Equal(t, "test-notifier", config.Notifiers.DefaultNotifierID, "기본 NotifierID가 일치해야 합니다")
+		assert.Equal(t, 1, len(config.Notifiers.Telegrams), "Telegram notifier가 1개 있어야 합니다")
+		assert.Equal(t, "test-notifier", config.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
+	})
+
+	t.Run("존재하지 않는 설정 파일", func(t *testing.T) {
+		// Mock 에러 핸들러 설정
+		mock := &utils.MockErrorHandler{}
+		utils.SetErrorHandler(mock)
+		defer utils.ResetErrorHandler()
+
+		// panic 복구 (CheckErr가 프로세스를 종료하지 않아서 이후 로직에서 panic 발생 가능)
+		defer func() {
+			if r := recover(); r != nil {
+				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
+			}
+		}()
+
+		// 존재하지 않는 파일로 설정 로딩 시도
+		// os.ReadFile에서 에러가 발생하고 utils.CheckErr가 이를 처리함
+		g.InitAppConfigWithFile("nonexistent_file_12345.json")
+
+		// 검증 (panic 발생 전까지 실행된 경우)
+		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
+		assert.NotNil(t, mock.HandledError, "에러가 기록되어야 합니다")
+		// 파일이 존재하지 않는 에러 메시지 확인
+		errMsg := mock.HandledError.Error()
+		assert.True(t,
+			strings.Contains(errMsg, "nonexistent_file_12345.json") ||
+				strings.Contains(errMsg, "no such file") ||
+				strings.Contains(errMsg, "cannot find"),
+			"파일을 찾을 수 없다는 에러 메시지가 있어야 합니다")
+	})
+
+	t.Run("잘못된 JSON 형식", func(t *testing.T) {
+		// 잘못된 JSON 파일 생성
+		invalidJSON := `{"debug": true, "invalid json`
+		tempFile := createTempConfigFile(t, invalidJSON)
+		defer os.Remove(tempFile)
+
+		// Mock 에러 핸들러 설정
+		mock := &utils.MockErrorHandler{}
+		utils.SetErrorHandler(mock)
+		defer utils.ResetErrorHandler()
+
+		// panic 복구
+		defer func() {
+			if r := recover(); r != nil {
+				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
+			}
+		}()
+
+		// 잘못된 JSON 파일 로딩 시도
+		// json.Unmarshal에서 에러가 발생하고 utils.CheckErr가 이를 처리함
+		g.InitAppConfigWithFile(tempFile)
+
+		// 검증
+		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
+		assert.NotNil(t, mock.HandledError, "JSON 파싱 에러가 기록되어야 합니다")
+	})
+}
+
+// 헬퍼 함수: 유효한 설정 JSON 반환
+func validConfigJSON() string {
+	return `{
 		"debug": true,
 		"notifiers": {
 			"default_notifier_id": "test-notifier",
@@ -102,28 +177,18 @@ func TestInitAppConfig(t *testing.T) {
 			"applications": []
 		}
 	}`
+}
 
-	err := os.WriteFile(tempConfigFile, []byte(configContent), 0644)
-	assert.NoError(t, err, "임시 설정 파일 생성 실패")
-	defer os.Remove(tempConfigFile)
+// 헬퍼 함수: 임시 설정 파일 생성
+func createTempConfigFile(t *testing.T, content string) string {
+	tempFile, err := os.CreateTemp("", "test_config_*.json")
+	assert.NoError(t, err, "임시 파일 생성 실패")
 
-	// 기존 설정 파일 이름 백업 및 변경
-	// originalConfigFileName := g.AppConfigFileName
-	// g 패키지의 상수를 변경할 수 없으므로 (const), 이 테스트는
-	// g.InitAppConfig가 g.AppConfigFileName을 사용한다는 점 때문에
-	// 실제 환경에서는 g.AppConfigFileName을 변경할 수 있는 방법이 필요하거나
-	// InitAppConfig가 파일명을 인자로 받아야 함.
-	// 현재 구조상 InitAppConfig는 인자가 없으므로,
-	// 이 테스트는 g.AppConfigFileName이 가리키는 파일이 존재해야만 성공함.
-	// 따라서 여기서는 파일 생성/삭제 테스트만 수행하거나,
-	// g.InitAppConfig를 리팩토링해야 함.
+	_, err = tempFile.WriteString(content)
+	assert.NoError(t, err, "임시 파일 쓰기 실패")
 
-	// 리팩토링 없이 테스트하기 위해, 현재 디렉토리에 notify-server.json이 있다면 그것을 백업하고
-	// 테스트 후 복구하는 방식을 사용해야 함.
-	// 하지만 병렬 테스트 시 문제가 될 수 있음.
+	err = tempFile.Close()
+	assert.NoError(t, err, "임시 파일 닫기 실패")
 
-	// 대안: g.InitAppConfigWithFile(filename string) 함수를 추가하고 그것을 테스트.
-	// 여기서는 일단 파일 생성/삭제만 확인하고 로직은 생략 (리팩토링 범위가 커짐)
-
-	t.Log("g.InitAppConfig 테스트는 파일명 의존성으로 인해 생략합니다.")
+	return tempFile.Name()
 }

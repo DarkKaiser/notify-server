@@ -3,14 +3,15 @@ package task
 import (
 	"errors"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"html/template"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -43,7 +44,7 @@ func (d *naverWatchNewPerformancesTaskCommandData) validate() error {
 }
 
 type naverWatchNewPerformancesSearchResultData struct {
-	Html string `json:"html"`
+	HTML string `json:"html"`
 }
 
 type naverPerformance struct {
@@ -89,6 +90,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 
 				config: config,
@@ -103,10 +106,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverWatchNewPerformancesTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 
 									return task.runWatchNewPerformances(taskCommandData, taskResultData, messageTypeHTML)
@@ -148,12 +151,12 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(taskCommandData.Query)), nil, nil, searchResultData)
+		err = unmarshalFromResponseJSONData(t.fetcher, "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(taskCommandData.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.Html))
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
 			return "", nil, fmt.Errorf("불러온 페이지의 데이터 파싱이 실패하였습니다.(error:%s)", err)
 		}
@@ -164,7 +167,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			// 제목
 			pis := s.Find("div.item > div.title_box > strong.name")
 			if pis.Length() != 1 {
-				err = errors.New("공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+				err = errors.New("공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			title := strings.TrimSpace(pis.Text())
@@ -172,7 +175,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			// 장소
 			pis = s.Find("div.item > div.title_box > span.sub_text")
 			if pis.Length() != 1 {
-				err = errors.New("공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+				err = errors.New("공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			place := strings.TrimSpace(pis.Text())
@@ -180,12 +183,12 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			// 썸네일 이미지
 			pis = s.Find("div.item > div.thumb > img")
 			if pis.Length() != 1 {
-				err = errors.New("공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+				err = errors.New("공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			thumbnailSrc, exists := pis.Attr("src")
 			if exists == false {
-				err = errors.New("공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요.")
+				err = errors.New("공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
@@ -223,7 +226,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		actualityPerformance, ok1 := selem.(*naverPerformance)
 		originPerformance, ok2 := telem.(*naverPerformance)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다.")
+			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
 				return true, nil

@@ -3,11 +3,12 @@ package task
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
-	"strings"
 )
 
 const (
@@ -19,22 +20,22 @@ const (
 )
 
 const (
-	jdcBaseUrl = "http://전남디지털역량.com/"
+	jdcBaseURL = "http://전남디지털역량.com/"
 )
 
 type jdcOnlineEducationCourse struct {
 	Title1         string `json:"title1"`
 	Title2         string `json:"title2"`
 	TrainingPeriod string `json:"training_period"`
-	Url            string `json:"url"`
+	URL            string `json:"url"`
 	Err            error
 }
 
 func (c *jdcOnlineEducationCourse) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s &gt; %s</b></a>%s\n      • 교육기간 : %s", c.Url, c.Title1, c.Title2, mark, c.TrainingPeriod)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s &gt; %s</b></a>%s\n      • 교육기간 : %s", c.URL, c.Title1, c.Title2, mark, c.TrainingPeriod)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s > %s%s\n%s", c.Title1, c.Title2, mark, c.Url))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s > %s%s\n%s", c.Title1, c.Title2, mark, c.URL))
 }
 
 type jdcWatchNewOnlineEducationResultData struct {
@@ -67,6 +68,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 			}
 
@@ -94,16 +97,16 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		log.Panic("TaskResultData의 타입 변환이 실패하였습니다.")
 	}
 
-	actualityTaskResultData := jdcWatchNewOnlineEducationResultData{}
+	actualityTaskResultData := &jdcWatchNewOnlineEducationResultData{}
 
 	// 등록된 비대면 온라인 특별교육/정규교육 강의 정보를 읽어온다.
-	scrapedOnlineEducationCourses, err := t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=digital_edu", jdcBaseUrl))
+	scrapedOnlineEducationCourses, err := t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=digital_edu", jdcBaseURL))
 	if err != nil {
 		return "", nil, err
 	}
 	actualityTaskResultData.OnlineEducationCourses = append(actualityTaskResultData.OnlineEducationCourses, scrapedOnlineEducationCourses...)
 
-	scrapedOnlineEducationCourses, err = t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=untact_edu", jdcBaseUrl))
+	scrapedOnlineEducationCourses, err = t.scrapeOnlineEducationCourses(fmt.Sprintf("%sproduct/list?type=untact_edu", jdcBaseURL))
 	if err != nil {
 		return "", nil, err
 	}
@@ -162,7 +165,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	// 온라인교육 강의 목록페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
-	err = webScrape(url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
+	err = webScrape(t.fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
 			err0 = errors.New("강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
@@ -175,7 +178,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	})
 	if err != nil {
 		// 온라인교육 강의 데이터가 없는지 확인한다.
-		if sel, _ := newHTMLDocumentSelection(url, "#content > div.no-data2"); sel != nil {
+		if sel, _ := newHTMLDocumentSelection(t.fetcher, url, "#content > div.no-data2"); sel != nil {
 			return nil, nil
 		}
 
@@ -212,7 +215,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 	var err0 error
 	var onlineEducationCourseCurriculums = make([]*jdcOnlineEducationCourse, 0)
 
-	err := webScrape(fmt.Sprintf("%sproduct/%s", jdcBaseUrl, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err := webScrape(t.fetcher, fmt.Sprintf("%sproduct/%s", jdcBaseURL, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {
@@ -241,8 +244,8 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 			return false
 		}
 		// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.
-		if strings.Index(courseDetailURL, "javascript:alert('") == -1 {
-			courseDetailURL = fmt.Sprintf("%sproduct/%s", jdcBaseUrl, courseDetailURL)
+		if !strings.Contains(courseDetailURL, "javascript:alert('") {
+			courseDetailURL = fmt.Sprintf("%sproduct/%s", jdcBaseURL, courseDetailURL)
 		} else {
 			courseDetailURL = ""
 		}
@@ -251,7 +254,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 			Title1:         utils.Trim(title1Selection.Text()),
 			Title2:         utils.Trim(title2Selection.Text()),
 			TrainingPeriod: utils.Trim(as.Eq(1).Text()),
-			Url:            courseDetailURL,
+			URL:            courseDetailURL,
 			Err:            nil,
 		})
 

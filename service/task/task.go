@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 type TaskID string
@@ -23,14 +24,16 @@ type TaskRunBy int
 // 이 문자는 환경설정 파일(JSON)에서는 사용되지 않으며 오직 소스코드 상에서만 사용한다.
 const taskCommandIDAnyString string = "*"
 
-const (
-	TaskCtxKeyTitle         = "Title"
-	TaskCtxKeyErrorOccurred = "ErrorOccurred"
+type taskContextKey string
 
-	TaskCtxKeyTaskID              = "Task.TaskID"
-	TaskCtxKeyTaskCommandID       = "Task.TaskCommandID"
-	TaskCtxKeyTaskInstanceID      = "Task.TaskInstanceID"
-	TaskCtxKeyElapsedTimeAfterRun = "Task.ElapsedTimeAfterRun"
+const (
+	TaskCtxKeyTitle         taskContextKey = "Title"
+	TaskCtxKeyErrorOccurred taskContextKey = "ErrorOccurred"
+
+	TaskCtxKeyTaskID              taskContextKey = "Task.TaskID"
+	TaskCtxKeyTaskCommandID       taskContextKey = "Task.TaskCommandID"
+	TaskCtxKeyTaskInstanceID      taskContextKey = "Task.TaskInstanceID"
+	TaskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
 )
 
 const (
@@ -142,6 +145,8 @@ type task struct {
 	runTime time.Time
 
 	runFn runFunc
+
+	fetcher Fetcher
 }
 
 type taskHandler interface {
@@ -184,7 +189,7 @@ func (t *task) IsCanceled() bool {
 }
 
 func (t *task) ElapsedTimeAfterRun() int64 {
-	return int64(time.Now().Sub(t.runTime).Seconds())
+	return int64(time.Since(t.runTime).Seconds())
 }
 
 func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {

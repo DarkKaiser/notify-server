@@ -3,13 +3,14 @@ package task
 import (
 	"errors"
 	"fmt"
-	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"math"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -22,7 +23,7 @@ const (
 	TcidNaverShoppingWatchPriceAny = TaskCommandID(naverShoppingWatchPriceTaskCommandIDPrefix + taskCommandIDAnyString) // 네이버쇼핑 가격 확인
 
 	// 네이버쇼핑 검색 URL
-	naverShoppingSearchUrl = "https://openapi.naver.com/v1/search/shop.json"
+	naverShoppingSearchURL = "https://openapi.naver.com/v1/search/shop.json"
 )
 
 type naverShoppingTaskData struct {
@@ -111,13 +112,13 @@ func init() {
 			for _, t := range config.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
-						return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
+						return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
 					}
 					break
 				}
 			}
 			if err := taskData.validate(); err != nil {
-				return nil, errors.New(fmt.Sprintf("작업 데이터가 유효하지 않습니다.(error:%s)", err))
+				return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
 			}
 
 			task := &naverShoppingTask{
@@ -131,6 +132,8 @@ func init() {
 					canceled: false,
 
 					runBy: taskRunData.taskRunBy,
+
+					fetcher: &HTTPFetcher{},
 				},
 
 				config: config,
@@ -148,10 +151,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, errors.New(fmt.Sprintf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err))
+										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
 									}
 
 									return task.runWatchPrice(taskCommandData, taskResultData, messageTypeHTML)
@@ -202,7 +205,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
-		err = unmarshalFromResponseJSONData("GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchUrl, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = unmarshalFromResponseJSONData(t.fetcher, "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}
