@@ -107,14 +107,16 @@ func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, b
 	s.newNotifier = newNotifierFn
 }
 
-func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Notification 서비스 시작중...")
 
 	if s.taskRunner == nil {
-		log.Panic("TaskRunner 객체가 초기화되지 않았습니다.")
+		defer serviceStopWaiter.Done()
+
+		return fmt.Errorf("TaskRunner 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
@@ -122,7 +124,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 		log.Warn("Notification 서비스가 이미 시작됨!!!")
 
-		return
+		return nil
 	}
 
 	// Telegram Notifier의 작업을 시작한다.
@@ -144,7 +146,9 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 		}
 	}
 	if s.defaultNotifierHandler == nil {
-		log.Panicf("기본 NotifierID('%s')를 찾을 수 없습니다.", s.config.Notifiers.DefaultNotifierID)
+		defer serviceStopWaiter.Done()
+
+		return fmt.Errorf("기본 NotifierID('%s')를 찾을 수 없습니다", s.config.Notifiers.DefaultNotifierID)
 	}
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
@@ -152,6 +156,8 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	s.running = true
 
 	log.Debug("Notification 서비스 시작됨")
+
+	return nil
 }
 
 func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {

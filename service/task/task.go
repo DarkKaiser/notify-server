@@ -420,14 +420,16 @@ func NewService(config *g.AppConfig) *TaskService {
 	}
 }
 
-func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("Task 서비스 시작중...")
 
 	if s.taskNotificationSender == nil {
-		log.Panic("TaskNotificationSender 객체가 초기화되지 않았습니다.")
+		defer serviceStopWaiter.Done()
+
+		return errors.New("TaskNotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
@@ -435,7 +437,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 
 		log.Warn("Task 서비스가 이미 시작됨!!!")
 
-		return
+		return nil
 	}
 
 	// Task 스케쥴러를 시작한다.
@@ -446,6 +448,8 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	s.running = true
 
 	log.Debug("Task 서비스 시작됨")
+
+	return nil
 }
 
 func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {

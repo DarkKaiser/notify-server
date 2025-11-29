@@ -37,14 +37,16 @@ func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.No
 	}
 }
 
-func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	log.Debug("NotifyAPI 서비스 시작중...")
 
 	if s.notificationSender == nil {
-		log.Panic("NotificationSender 객체가 초기화되지 않았습니다.")
+		defer serviceStopWaiter.Done()
+
+		return errors.New("NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
@@ -52,7 +54,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 		log.Warn("NotifyAPI 서비스가 이미 시작됨!!!")
 
-		return
+		return nil
 	}
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
@@ -60,6 +62,8 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	s.running = true
 
 	log.Debug("NotifyAPI 서비스 시작됨")
+
+	return nil
 }
 
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
