@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/g"
@@ -68,7 +69,7 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: &HTTPFetcher{},
+					fetcher: NewRetryFetcher(&HTTPFetcher{}, 3, time.Second*2),
 				},
 			}
 

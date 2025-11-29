@@ -81,7 +81,14 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		return echo.NewHTTPError(http.StatusNotFound, "페이지를 찾을 수 없습니다.")
 	}
 
+	// httpServerDone은 HTTP 서버 고루틴이 종료될 때까지 대기하기 위한 채널이다.
+	// 서비스 종료 시 s.notificationSender를 nil로 설정하기 전에 HTTP 서버가 완전히 종료되었음을 보장하여
+	// 경쟁 상태(Race Condition)를 방지한다.
+	httpServerDone := make(chan struct{})
+
 	go func(listenPort int) {
+		defer close(httpServerDone)
+
 		log.Debugf("NotifyAPI 서비스 > http 서버(:%d) 시작", listenPort)
 
 		var err error
@@ -114,6 +121,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		if err := e.Shutdown(ctx); err != nil {
 			log.Error(err)
 		}
+
+		<-httpServerDone
 
 		s.runningMu.Lock()
 		s.running = false

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
@@ -92,7 +93,7 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: &HTTPFetcher{},
+					fetcher: NewRetryFetcher(&HTTPFetcher{}, 3, time.Second*2),
 				},
 			}
 

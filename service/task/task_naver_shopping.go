@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/utils"
@@ -132,7 +133,7 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: &HTTPFetcher{},
+					fetcher: NewRetryFetcher(&HTTPFetcher{}, 3, time.Second*2),
 				},
 
 				config: config,

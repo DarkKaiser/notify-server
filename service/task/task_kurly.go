@@ -153,7 +153,7 @@ func init() {
 
 					runBy: taskRunData.taskRunBy,
 
-					fetcher: &HTTPFetcher{},
+					fetcher: NewRetryFetcher(&HTTPFetcher{}, 3, time.Second*2),
 				},
 
 				config: config,
