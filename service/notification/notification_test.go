@@ -381,11 +381,7 @@ func TestNotificationService_Run(t *testing.T) {
 		config := &g.AppConfig{}
 		// Setup config with default notifier
 		config.Notifiers.DefaultNotifierID = "default-notifier"
-		config.Notifiers.Telegrams = []struct {
-			ID       string `json:"id"`
-			BotToken string `json:"bot_token"`
-			ChatID   int64  `json:"chat_id"`
-		}{
+		config.Notifiers.Telegrams = []g.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",
@@ -425,11 +421,7 @@ func TestNotificationService_Run(t *testing.T) {
 	t.Run("이미 실행 중인 서비스 재시작 시도", func(t *testing.T) {
 		config := &g.AppConfig{}
 		config.Notifiers.DefaultNotifierID = "default-notifier"
-		config.Notifiers.Telegrams = []struct {
-			ID       string `json:"id"`
-			BotToken string `json:"bot_token"`
-			ChatID   int64  `json:"chat_id"`
-		}{
+		config.Notifiers.Telegrams = []g.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",
@@ -470,11 +462,7 @@ func TestNotificationService_Run(t *testing.T) {
 	t.Run("여러 Notifier 등록", func(t *testing.T) {
 		config := &g.AppConfig{}
 		config.Notifiers.DefaultNotifierID = "notifier1"
-		config.Notifiers.Telegrams = []struct {
-			ID       string `json:"id"`
-			BotToken string `json:"bot_token"`
-			ChatID   int64  `json:"chat_id"`
-		}{
+		config.Notifiers.Telegrams = []g.TelegramConfig{
 			{
 				ID:       "notifier1",
 				BotToken: "token1",
@@ -514,11 +502,7 @@ func TestNotificationService_Run(t *testing.T) {
 	t.Run("run0 함수 - 정상 종료 및 리소스 정리", func(t *testing.T) {
 		config := &g.AppConfig{}
 		config.Notifiers.DefaultNotifierID = "default-notifier"
-		config.Notifiers.Telegrams = []struct {
-			ID       string `json:"id"`
-			BotToken string `json:"bot_token"`
-			ChatID   int64  `json:"chat_id"`
-		}{
+		config.Notifiers.Telegrams = []g.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",

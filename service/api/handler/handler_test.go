@@ -11,13 +11,7 @@ import (
 func TestNewHandler(t *testing.T) {
 	t.Run("핸들러 생성", func(t *testing.T) {
 		config := &g.AppConfig{}
-		config.NotifyAPI.Applications = []struct {
-			ID                string `json:"id"`
-			Title             string `json:"title"`
-			Description       string `json:"description"`
-			DefaultNotifierID string `json:"default_notifier_id"`
-			AppKey            string `json:"app_key"`
-		}{
+		config.NotifyAPI.Applications = []g.ApplicationConfig{
 			{
 				ID:                "test-app",
 				Title:             "Test Application",
@@ -38,13 +32,7 @@ func TestNewHandler(t *testing.T) {
 
 	t.Run("여러 애플리케이션 등록", func(t *testing.T) {
 		config := &g.AppConfig{}
-		config.NotifyAPI.Applications = []struct {
-			ID                string `json:"id"`
-			Title             string `json:"title"`
-			Description       string `json:"description"`
-			DefaultNotifierID string `json:"default_notifier_id"`
-			AppKey            string `json:"app_key"`
-		}{
+		config.NotifyAPI.Applications = []g.ApplicationConfig{
 			{
 				ID:                "app1",
 				Title:             "Application 1",

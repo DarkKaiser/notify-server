@@ -211,20 +211,9 @@ func CreateTestTask(id TaskID, commandID TaskCommandID, instanceID TaskInstanceI
 func CreateTestConfig() *g.AppConfig {
 	return &g.AppConfig{
 		Debug: true,
-		Notifiers: struct {
-			DefaultNotifierID string `json:"default_notifier_id"`
-			Telegrams         []struct {
-				ID       string `json:"id"`
-				BotToken string `json:"bot_token"`
-				ChatID   int64  `json:"chat_id"`
-			} `json:"telegrams"`
-		}{
+		Notifiers: g.NotifierConfig{
 			DefaultNotifierID: "test-notifier",
-			Telegrams: []struct {
-				ID       string `json:"id"`
-				BotToken string `json:"bot_token"`
-				ChatID   int64  `json:"chat_id"`
-			}{
+			Telegrams: []g.TelegramConfig{
 				{
 					ID:       "test-notifier",
 					BotToken: "test-token",
@@ -233,27 +222,8 @@ func CreateTestConfig() *g.AppConfig {
 			},
 		},
 		Tasks: []g.TaskConfig{},
-		NotifyAPI: struct {
-			WS struct {
-				TLSServer   bool   `json:"tls_server"`
-				TLSCertFile string `json:"tls_cert_file"`
-				TLSKeyFile  string `json:"tls_key_file"`
-				ListenPort  int    `json:"listen_port"`
-			} `json:"ws"`
-			Applications []struct {
-				ID                string `json:"id"`
-				Title             string `json:"title"`
-				Description       string `json:"description"`
-				DefaultNotifierID string `json:"default_notifier_id"`
-				AppKey            string `json:"app_key"`
-			} `json:"applications"`
-		}{
-			WS: struct {
-				TLSServer   bool   `json:"tls_server"`
-				TLSCertFile string `json:"tls_cert_file"`
-				TLSKeyFile  string `json:"tls_key_file"`
-				ListenPort  int    `json:"listen_port"`
-			}{
+		NotifyAPI: g.NotifyAPIConfig{
+			WS: g.WSConfig{
 				TLSServer:  false,
 				ListenPort: 18080,
 			},
