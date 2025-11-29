@@ -232,25 +232,7 @@ func CreateTestConfig() *g.AppConfig {
 				},
 			},
 		},
-		Tasks: []struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Commands []struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			} `json:"commands"`
-			Data map[string]interface{} `json:"data"`
-		}{},
+		Tasks: []g.TaskConfig{},
 		NotifyAPI: struct {
 			WS struct {
 				TLSServer   bool   `json:"tls_server"`
@@ -362,45 +344,14 @@ func CreateTestConfigWithTasks(tasks []struct {
 
 	// Tasks 추가
 	for _, task := range tasks {
-		configTask := struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Commands []struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			} `json:"commands"`
-			Data map[string]interface{} `json:"data"`
-		}{
+		configTask := g.TaskConfig{
 			ID:    task.ID,
 			Title: task.Title,
 		}
 
 		// Commands 추가
 		for _, cmd := range task.Commands {
-			configCmd := struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			}{
+			configCmd := g.TaskCommandConfig{
 				ID:    cmd.ID,
 				Title: cmd.Title,
 				Scheduler: struct {

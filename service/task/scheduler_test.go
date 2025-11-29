@@ -71,42 +71,11 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockRunner := &mockTaskRunner{}
 
 		config := &g.AppConfig{
-			Tasks: []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Commands []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				} `json:"commands"`
-				Data map[string]interface{} `json:"data"`
-			}{
+			Tasks: []g.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []struct {
-						ID          string `json:"id"`
-						Title       string `json:"title"`
-						Description string `json:"description"`
-						Scheduler   struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						} `json:"scheduler"`
-						Notifier struct {
-							Usable bool `json:"usable"`
-						} `json:"notifier"`
-						DefaultNotifierID string                 `json:"default_notifier_id"`
-						Data              map[string]interface{} `json:"data"`
-					}{
+					Commands: []g.TaskCommandConfig{
 						{
 							ID:    "RunnableCommand",
 							Title: "실행 가능한 명령",
@@ -155,42 +124,11 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockRunner := &mockTaskRunner{}
 
 		config := &g.AppConfig{
-			Tasks: []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Commands []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				} `json:"commands"`
-				Data map[string]interface{} `json:"data"`
-			}{
+			Tasks: []g.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []struct {
-						ID          string `json:"id"`
-						Title       string `json:"title"`
-						Description string `json:"description"`
-						Scheduler   struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						} `json:"scheduler"`
-						Notifier struct {
-							Usable bool `json:"usable"`
-						} `json:"notifier"`
-						DefaultNotifierID string                 `json:"default_notifier_id"`
-						Data              map[string]interface{} `json:"data"`
-					}{
+					Commands: []g.TaskCommandConfig{
 						{
 							ID:    "QuickCommand",
 							Title: "빠른 실행 명령",
@@ -237,42 +175,11 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockRunner := &mockTaskRunnerWithFailure{} // 실패하는 TaskRunner
 
 		config := &g.AppConfig{
-			Tasks: []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Commands []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				} `json:"commands"`
-				Data map[string]interface{} `json:"data"`
-			}{
+			Tasks: []g.TaskConfig{
 				{
 					ID:    "FailTask",
 					Title: "실패 작업",
-					Commands: []struct {
-						ID          string `json:"id"`
-						Title       string `json:"title"`
-						Description string `json:"description"`
-						Scheduler   struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						} `json:"scheduler"`
-						Notifier struct {
-							Usable bool `json:"usable"`
-						} `json:"notifier"`
-						DefaultNotifierID string                 `json:"default_notifier_id"`
-						Data              map[string]interface{} `json:"data"`
-					}{
+					Commands: []g.TaskCommandConfig{
 						{
 							ID:    "FailCommand",
 							Title: "실패 명령",

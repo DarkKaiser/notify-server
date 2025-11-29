@@ -440,42 +440,11 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 
 	// Construct config with a task command
 	config := &g.AppConfig{
-		Tasks: []struct {
-			ID       string `json:"id"`
-			Title    string `json:"title"`
-			Commands []struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Scheduler   struct {
-					Runnable bool   `json:"runnable"`
-					TimeSpec string `json:"time_spec"`
-				} `json:"scheduler"`
-				Notifier struct {
-					Usable bool `json:"usable"`
-				} `json:"notifier"`
-				DefaultNotifierID string                 `json:"default_notifier_id"`
-				Data              map[string]interface{} `json:"data"`
-			} `json:"commands"`
-			Data map[string]interface{} `json:"data"`
-		}{
+		Tasks: []g.TaskConfig{
 			{
 				ID:    "test_task",
 				Title: "Test Task",
-				Commands: []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				}{
+				Commands: []g.TaskCommandConfig{
 					{
 						ID:          "run",
 						Title:       "Run Task",
@@ -625,42 +594,11 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 		chatID := int64(12345)
 
 		config := &g.AppConfig{
-			Tasks: []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Commands []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				} `json:"commands"`
-				Data map[string]interface{} `json:"data"`
-			}{
+			Tasks: []g.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []struct {
-						ID          string `json:"id"`
-						Title       string `json:"title"`
-						Description string `json:"description"`
-						Scheduler   struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						} `json:"scheduler"`
-						Notifier struct {
-							Usable bool `json:"usable"`
-						} `json:"notifier"`
-						DefaultNotifierID string                 `json:"default_notifier_id"`
-						Data              map[string]interface{} `json:"data"`
-					}{
+					Commands: []g.TaskCommandConfig{
 						{
 							ID:          "Run",
 							Title:       "실행",
@@ -705,25 +643,7 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 		}
 		chatID := int64(12345)
 		config := &g.AppConfig{
-			Tasks: []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Commands []struct {
-					ID          string `json:"id"`
-					Title       string `json:"title"`
-					Description string `json:"description"`
-					Scheduler   struct {
-						Runnable bool   `json:"runnable"`
-						TimeSpec string `json:"time_spec"`
-					} `json:"scheduler"`
-					Notifier struct {
-						Usable bool `json:"usable"`
-					} `json:"notifier"`
-					DefaultNotifierID string                 `json:"default_notifier_id"`
-					Data              map[string]interface{} `json:"data"`
-				} `json:"commands"`
-				Data map[string]interface{} `json:"data"`
-			}{},
+			Tasks: []g.TaskConfig{},
 		}
 
 		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config).(*telegramNotifier)
