@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,6 +31,15 @@ func TestInit_ProductionMode(t *testing.T) {
 		appName := "test-app"
 		closer := Init(false, appName, 7.0)
 
+		// 테스트 종료 시 로거를 표준 출력으로 복원하여 다른 테스트에 영향을 주지 않도록 함
+		defer func() {
+			if closer != nil {
+				closer.Close()
+				// 로거를 표준 출력으로 복원
+				log.SetOutput(os.Stdout)
+			}
+		}()
+
 		assert.NotNil(t, closer, "프로덕션 모드에서는 closer를 반환해야 합니다")
 
 		// 로그 디렉토리가 생성되었는지 확인
@@ -51,11 +61,6 @@ func TestInit_ProductionMode(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "앱 이름으로 시작하는 로그 파일이 있어야 합니다")
-
-		// Closer 닫기
-		if closer != nil {
-			closer.Close()
-		}
 	})
 }
 
