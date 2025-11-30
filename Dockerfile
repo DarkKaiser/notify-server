@@ -2,7 +2,6 @@
 # 1. Build Image
 # ------------------------------------------
 FROM golang:1.23.4-alpine AS builder
-# FROM golang:1.23.4-bullseye AS builder
 
 ARG APP_NAME=notify-server
 ARG TARGETARCH=arm64
@@ -17,10 +16,10 @@ ENV GO111MODULE=on
 # RUN apk add --no-cache git
 
 # golangci-lint 설치 (공식 이미지에서 바이너리 복사)
-# COPY --from=golangci/golangci-lint:v1.55.2 /usr/bin/golangci-lint /usr/bin/golangci-lint
+COPY --from=golangci/golangci-lint:v1.55.2 /usr/bin/golangci-lint /usr/bin/golangci-lint
 
 # 린트 검사 실행 (실패 시 빌드 중단)
-# RUN golangci-lint run ./...
+RUN golangci-lint run ./...
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a -ldflags="-s -w" -o ${APP_NAME} .
 
@@ -28,7 +27,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a -ldflags="-s -w" -
 # 2. Production Image
 # ------------------------------------------
 FROM alpine:latest
-# FROM debian:bullseye
 
 ARG APP_NAME=notify-server
 
