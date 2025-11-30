@@ -2,11 +2,24 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
-	"net/http"
 )
 
+// NotifyMessageSendHandler godoc
+// @Summary 알림 메시지 전송
+// @Description 외부 애플리케이션에서 알림 메시지를 전송합니다.
+// @Tags Notification
+// @Accept json
+// @Produce json
+// @Param app_key query string true "Application Key"
+// @Param message body model.NotifyMessage true "알림 메시지 정보"
+// @Success 200 {object} map[string]int
+// @Failure 400 {object} echo.HTTPError
+// @Failure 401 {object} echo.HTTPError
+// @Router /notice/message [post]
 func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)
 	if err := c.Bind(m); err != nil {

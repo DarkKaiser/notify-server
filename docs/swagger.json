@@ -1,0 +1,100 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알리는 서버입니다.",
+        "title": "Notify Server API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "DarkKaiser",
+            "url": "https://github.com/DarkKaiser",
+            "email": "darkkaiser@gmail.com"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://github.com/DarkKaiser/notify-server/blob/master/LICENSE"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:2443",
+    "basePath": "/api/v1",
+    "paths": {
+        "/notice/message": {
+            "post": {
+                "description": "외부 애플리케이션에서 알림 메시지를 전송합니다.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notification"
+                ],
+                "summary": "알림 메시지 전송",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Application Key",
+                        "name": "app_key",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "알림 메시지 정보",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.NotifyMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/echo.HTTPError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/echo.HTTPError"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "echo.HTTPError": {
+            "type": "object",
+            "properties": {
+                "message": {}
+            }
+        },
+        "model.NotifyMessage": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "error_occurred": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

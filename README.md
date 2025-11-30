@@ -97,6 +97,21 @@ graph TD
 
 - URL: `http://localhost:2443/swagger/index.html`
 
+## 📖 Task 문서
+
+지원하는 Task의 상세 설명과 설정 방법은 다음 문서를 참고하세요:
+
+- [Task 상세 문서](docs/TASKS.md)
+
+지원하는 Task 목록:
+
+- **JDC** - 전남디지털역량교육 모니터링
+- **JYIU** - 전남여수산학융합원 공지사항 및 교육 모니터링
+- **KURLY** - 마켓컬리 상품 가격 모니터링
+- **LOTTO** - 로또 번호 예측
+- **NAVER** - 네이버 공연 정보 모니터링
+- **NS** - 네이버쇼핑 가격 모니터링
+
 ## 🤝 Contributing
 
 Contributions, issues and feature requests are welcome.<br />

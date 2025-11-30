@@ -8,12 +8,14 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/darkkaiser/notify-server/docs"
 	"github.com/darkkaiser/notify-server/g"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 // NotifyAPIService
@@ -76,6 +78,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	{
 		grp.POST("/notice/message", h.NotifyMessageSendHandler)
 	}
+
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	echo.NotFoundHandler = func(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "페이지를 찾을 수 없습니다.")
