@@ -1,0 +1,67 @@
+basePath: /api/v1
+definitions:
+  echo.HTTPError:
+    properties:
+      message: {}
+    type: object
+  model.NotifyMessage:
+    properties:
+      application_id:
+        type: string
+      error_occurred:
+        type: boolean
+      message:
+        type: string
+    type: object
+host: localhost:2443
+info:
+  contact:
+    email: darkkaiser@gmail.com
+    name: DarkKaiser
+    url: https://github.com/DarkKaiser
+  description: 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알리는 서버입니다.
+  license:
+    name: MIT
+    url: https://github.com/DarkKaiser/notify-server/blob/master/LICENSE
+  termsOfService: http://swagger.io/terms/
+  title: Notify Server API
+  version: "1.0"
+paths:
+  /notice/message:
+    post:
+      consumes:
+      - application/json
+      description: 외부 애플리케이션에서 알림 메시지를 전송합니다.
+      parameters:
+      - description: Application Key
+        in: query
+        name: app_key
+        required: true
+        type: string
+      - description: 알림 메시지 정보
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/model.NotifyMessage'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/echo.HTTPError'
+      summary: 알림 메시지 전송
+      tags:
+      - Notification
+swagger: "2.0"

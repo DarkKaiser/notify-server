@@ -18,6 +18,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// @title Notify Server API
+// @version 1.0
+// @description 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알리는 서버입니다.
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name DarkKaiser
+// @contact.url https://github.com/DarkKaiser
+// @contact.email darkkaiser@gmail.com
+
+// @license.name MIT
+// @license.url https://github.com/DarkKaiser/notify-server/blob/master/LICENSE
+
+// @host localhost:2443
+// @BasePath /api/v1
+
 const (
 	banner = `
   _   _         _    _   __          ____
