@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -305,10 +306,23 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 
 func TestDefaultCommandExecutor_RealExecution(t *testing.T) {
 	t.Run("DefaultCommandExecutor 실제 실행 테스트", func(t *testing.T) {
+		// 이 테스트는 실제 외부 명령어를 실행하므로 short 모드에서는 건너뜁니다.
+		if testing.Short() {
+			t.Skip("short 모드에서는 실제 명령어 실행 테스트를 건너뜁니다")
+		}
+
 		executor := &DefaultCommandExecutor{}
 
-		// Windows에서는 cmd /c echo를 사용
-		process, err := executor.StartCommand("cmd", "/c", "echo", "test")
+		// 운영체제에 따라 다른 명령어 사용
+		var process CommandProcess
+		var err error
+
+		// Windows에서는 cmd /c echo를, Linux/Unix에서는 sh -c echo를 사용
+		if runtime.GOOS == "windows" {
+			process, err = executor.StartCommand("cmd", "/c", "echo", "test")
+		} else {
+			process, err = executor.StartCommand("sh", "-c", "echo test")
+		}
 
 		assert.NoError(t, err, "echo 명령 실행이 성공해야 합니다")
 		assert.NotNil(t, process, "프로세스가 생성되어야 합니다")
