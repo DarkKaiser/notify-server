@@ -28,7 +28,7 @@ graph TD
 
     subgraph Notify Server
         API -->|Send Notification| NotificationService
-        TaskService -->|Execute| Tasks[Tasks (Scraping, etc.)]
+        TaskService -->|Execute| Tasks["Tasks (Scraping, etc.)"]
         Tasks -->|Result| NotificationService
         NotificationService -->|Push| Telegram[Telegram Bot]
     end
