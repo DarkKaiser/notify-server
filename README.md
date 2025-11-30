@@ -1,6 +1,6 @@
 # NotifyServer
 
-<p>
+<p align="center">
   <img src="https://img.shields.io/badge/Go-00ADD8?style=flat&logo=Go&logoColor=white" />
   <img src="https://img.shields.io/badge/jenkins-%232C5263.svg?style=flat&logo=jenkins&logoColor=white">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=Docker&logoColor=white">
@@ -10,7 +10,7 @@
   </a>
 </p>
 
-외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알립니다.
+NotifyServer는 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 텔레그램 등을 통해 알리는 서버입니다.
 
 ## Build
 
