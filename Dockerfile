@@ -53,6 +53,17 @@ ARG APP_NAME=notify-server
 
 # 필수 패키지 설치 (bash, ca-certificates, tzdata)
 RUN apk --no-cache add bash ca-certificates tzdata
+# OCI 표준 레이블 추가
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+    org.opencontainers.image.authors="DarkKaiser" \
+    org.opencontainers.image.url="https://github.com/DarkKaiser/notify-server" \
+    org.opencontainers.image.source="https://github.com/DarkKaiser/notify-server" \
+    org.opencontainers.image.version="${GIT_COMMIT}" \
+    org.opencontainers.image.revision="${GIT_COMMIT}" \
+    org.opencontainers.image.title="Notify Server" \
+    org.opencontainers.image.description="웹 페이지 스크래핑 및 RSS 피드 제공 서버" \
+    build.number="${BUILD_NUMBER}"
+
 
 WORKDIR /docker-entrypoint/dist/
 
