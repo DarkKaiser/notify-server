@@ -28,7 +28,12 @@ func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= f.maxRetries; i++ {
 		if i > 0 {
-			log.Warnf("HTTP 요청 실패, 재시도 중... (%d/%d) URL: %s", i, f.maxRetries, url)
+			log.WithFields(log.Fields{
+				"url":         url,
+				"retry":       i,
+				"max_retries": f.maxRetries,
+			}).Warn("HTTP 요청 실패, 재시도 중")
+
 			time.Sleep(f.retryDelay)
 		}
 
@@ -53,7 +58,12 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= f.maxRetries; i++ {
 		if i > 0 {
-			log.Warnf("HTTP 요청 실패, 재시도 중... (%d/%d) URL: %s", i, f.maxRetries, req.URL.String())
+			log.WithFields(log.Fields{
+				"url":         req.URL.String(),
+				"retry":       i,
+				"max_retries": f.maxRetries,
+			}).Warn("HTTP 요청 실패, 재시도 중")
+
 			time.Sleep(f.retryDelay)
 		}
 

@@ -65,6 +65,72 @@ graph TD
      darkkaiser/notify-server
    ```
 
+## � 개발 도구
+
+### 코드 품질 관리
+
+프로젝트는 다음 도구들을 사용하여 코드 품질을 관리합니다:
+
+- **golangci-lint**: 프로젝트 맞춤형 린트 규칙 적용 (`.golangci.yml`)
+
+  ```bash
+  golangci-lint run ./...
+  ```
+
+- **Docker 빌드 최적화**: `.dockerignore`로 불필요한 파일 제외
+  - 테스트 파일, 로그, IDE 설정 등 제외
+  - 빌드 속도 향상 및 이미지 크기 감소
+
+### 빌드 메타데이터
+
+빌드된 바이너리와 Docker 이미지에는 다음 정보가 포함됩니다:
+
+- Git 커밋 해시
+- 빌드 날짜 및 시간
+- 빌드 번호
+
+실행 중인 애플리케이션에서 확인:
+
+```bash
+# 로그에서 빌드 정보 확인
+docker logs notify-server | grep "빌드 정보"
+
+# Docker 이미지 레이블 확인
+docker inspect darkkaiser/notify-server:latest | grep -A 10 Labels
+```
+
+## 🔧 CI/CD
+
+### Jenkins 파이프라인
+
+프로젝트는 Jenkins를 통한 자동화된 CI/CD 파이프라인을 제공합니다:
+
+**주요 기능:**
+
+- ✅ 환경 변수 검증 (빌드 시작 전)
+- ✅ 자동 테스트 및 golangci-lint 검사
+- ✅ Docker 이미지 빌드 (Git 커밋 해시로 태그)
+- ✅ 자동 배포 및 컨테이너 재시작
+- ✅ Telegram 알림 (성공/실패)
+
+**빌드 결과:**
+
+- `darkkaiser/notify-server:latest` - 최신 이미지
+- `darkkaiser/notify-server:{커밋해시}` - 버전별 이미지
+
+### 로컬 개발
+
+```bash
+# 테스트 실행
+go test ./... -v
+
+# 린트 검사
+golangci-lint run ./...
+
+# 로컬 빌드
+go build -o notify-server .
+```
+
 ## 📝 설정 가이드
 
 `notify-server.json` 파일을 통해 서버 동작을 설정합니다.

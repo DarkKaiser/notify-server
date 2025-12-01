@@ -108,7 +108,11 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		} else {
 			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 
-			log.Errorf("%s (error:%s)", m, err)
+			log.WithFields(log.Fields{
+				"component": "api",
+				"port":      s.config.NotifyAPI.WS.ListenPort,
+				"error":     err,
+			}).Error(m)
 
 			s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", m, err))
 		}

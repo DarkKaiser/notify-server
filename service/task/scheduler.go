@@ -41,7 +41,11 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 				if taskRunner.TaskRun(taskID, taskCommandID, defaultNotifierID, false, TaskRunByScheduler) == false {
 					m := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 
-					log.Error(m)
+					log.WithFields(log.Fields{
+						"task_id":    taskID,
+						"command_id": taskCommandID,
+						"run_by":     TaskRunByScheduler,
+					}).Error(m)
 
 					taskNotificationSender.NotifyWithTaskContext(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
 				}
@@ -50,7 +54,12 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 			if err != nil {
 				m := fmt.Sprintf("Cron 스케줄 파싱 실패 (Task: %s, Command: %s, TimeSpec: %s): %v", t.ID, c.ID, c.Scheduler.TimeSpec, err)
 
-				log.Error(m)
+				log.WithFields(log.Fields{
+					"task_id":    taskID,
+					"command_id": taskCommandID,
+					"time_spec":  c.Scheduler.TimeSpec,
+					"error":      err,
+				}).Error(m)
 
 				taskNotificationSender.NotifyWithTaskContext(defaultNotifierID, m, NewContext().WithTask(taskID, taskCommandID).WithError())
 
