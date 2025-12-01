@@ -1,0 +1,57 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck # 에러 체크 누락 검사
+    - gosimple # 코드 단순화 제안
+    - govet # Go vet 검사
+    - ineffassign # 비효율적인 할당 검사
+    - staticcheck # 정적 분석
+    - unused # 사용되지 않는 코드 검사
+    - gofmt # 코드 포맷팅 검사
+    - goimports # import 정리 검사
+    - misspell # 오타 검사
+    - revive # 코드 품질 검사
+    - gosec # 보안 취약점 검사
+    - bodyclose # HTTP response body close 검사
+    - noctx # HTTP request에 context 전달 검사
+    - unparam # 사용되지 않는 함수 파라미터 검사
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    check-shadowing: true
+
+  revive:
+    confidence: 0.8
+
+  gosec:
+    excludes:
+      - G404 # weak random number generator (테스트에서 사용 가능)
+
+issues:
+  exclude-rules:
+    # 테스트 파일에서는 일부 규칙 완화
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+
+    # main.go에서는 일부 규칙 완화
+    - path: main\.go
+      linters:
+        - errcheck
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true

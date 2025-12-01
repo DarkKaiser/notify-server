@@ -33,6 +33,13 @@ import (
 // @host localhost:2443
 // @BasePath /api/v1
 
+// 빌드 정보 변수 (Dockerfile의 ldflags로 주입됨)
+var (
+	Version     = "dev"     // Git 커밋 해시
+	BuildDate   = "unknown" // 빌드 날짜
+	BuildNumber = "0"       // 빌드 번호
+)
+
 const (
 	banner = `
   _   _         _    _   __          ____
@@ -57,6 +64,10 @@ func main() {
 
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
 	fmt.Printf(banner, g.AppVersion)
+
+	// 빌드 정보 출력
+	log.Infof("빌드 정보 - 버전: %s, 빌드 날짜: %s, 빌드 번호: %s", Version, BuildDate, BuildNumber)
+	log.Infof("Go 버전: %s, OS/Arch: %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(config)
