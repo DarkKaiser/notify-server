@@ -121,7 +121,6 @@ pipeline {
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
                             -t darkkaiser/notify-server:latest \\
-                            -t darkkaiser/notify-server:${env.GIT_COMMIT_SHORT} \\
                             .
                     """
                     echo "이미지 빌드 완료"
