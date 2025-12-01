@@ -66,7 +66,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
     build.number="${BUILD_NUMBER}"
 
 # 필수 패키지 설치 및 사용자 생성을 하나의 레이어로 통합
-RUN apk --no-cache add bash ca-certificates tzdata wget && \
+RUN apk --no-cache add bash ca-certificates tzdata wget jq && \
     addgroup -g 1000 appuser && \
     adduser -D -u 1000 -G appuser appuser && \
     mkdir -p /docker-entrypoint/dist /usr/local/app && \
