@@ -19,8 +19,20 @@ import (
 )
 
 // @title Notify Server API
-// @version 1.0
-// @description 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알리는 서버입니다.
+// @version 1.0.0
+// @description 웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.
+// @description
+// @description 이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.
+// @description
+// @description ## 주요 기능
+// @description - 알림 메시지 전송
+// @description - 다양한 알림 채널 지원 (Telegram 등)
+// @description - 애플리케이션별 인증 및 권한 관리
+// @description
+// @description ## 인증 방법
+// @description API 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
+// @description 설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록한 후 사용하세요.
+
 // @termsOfService http://swagger.io/terms/
 
 // @contact.name DarkKaiser
@@ -30,7 +42,16 @@ import (
 // @license.name MIT
 // @license.url https://github.com/DarkKaiser/notify-server/blob/master/LICENSE
 
+// @host api.darkkaiser.com:2443
 // @BasePath /api/v1
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in query
+// @name app_key
+// @description Application Key for authentication
+
+// @externalDocs.description GitHub Repository
+// @externalDocs.url https://github.com/DarkKaiser/notify-server
 
 // 빌드 정보 변수 (Dockerfile의 ldflags로 주입됨)
 var (

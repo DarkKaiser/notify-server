@@ -10,15 +10,27 @@ import (
 
 // NotifyMessageSendHandler godoc
 // @Summary 알림 메시지 전송
-// @Description 외부 애플리케이션에서 알림 메시지를 전송합니다.
+// @Description 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.
+// @Description
+// @Description 이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
+// @Description 설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록해야 합니다.
+// @Description
+// @Description ## 사용 예시
+// @Description ```bash
+// @Description curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-app-key" \
+// @Description   -H "Content-Type: application/json" \
+// @Description   -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
+// @Description ```
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Param app_key query string true "Application Key"
+// @Param app_key query string true "Application Key (인증용)" example(your-app-key-here)
 // @Param message body model.NotifyMessage true "알림 메시지 정보"
-// @Success 200 {object} model.SuccessResponse
-// @Failure 400 {object} model.ErrorResponse "Bad Request"
-// @Failure 401 {object} model.ErrorResponse "Unauthorized"
+// @Success 200 {object} model.SuccessResponse "성공"
+// @Failure 400 {object} model.ErrorResponse "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)"
+// @Failure 401 {object} model.ErrorResponse "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)"
+// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
+// @Security ApiKeyAuth
 // @Router /notice/message [post]
 func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)
