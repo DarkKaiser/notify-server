@@ -51,8 +51,6 @@ ARG BUILD_DATE=unknown
 ARG BUILD_NUMBER=unknown
 ARG APP_NAME=notify-server
 
-# 필수 패키지 설치 (bash, ca-certificates, tzdata)
-RUN apk --no-cache add bash ca-certificates tzdata
 # OCI 표준 레이블 추가
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.authors="DarkKaiser" \
@@ -64,24 +62,37 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.description="웹 페이지 스크래핑 및 RSS 피드 제공 서버" \
     build.number="${BUILD_NUMBER}"
 
+# 필수 패키지 설치 및 사용자 생성을 하나의 레이어로 통합
+RUN apk --no-cache add bash ca-certificates tzdata wget && \
+    addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser && \
+    mkdir -p /docker-entrypoint/dist /usr/local/app && \
+    chown -R appuser:appuser /docker-entrypoint /usr/local/app
 
 WORKDIR /docker-entrypoint/dist/
 
-# 빌드 결과물 복사
-COPY --from=builder /go/src/app/${APP_NAME} .
+# 빌드 결과물 복사 (권한 설정 포함)
+COPY --from=builder --chown=appuser:appuser /go/src/app/${APP_NAME} .
 
 # SSL 인증서 복사
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# 스크립트 및 설정 복사
-COPY docker-entrypoint.sh /docker-entrypoint/
-RUN chmod +x /docker-entrypoint/docker-entrypoint.sh
+# 스크립트 복사 및 실행 권한 부여
+COPY --chown=appuser:appuser --chmod=755 docker-entrypoint.sh /docker-entrypoint/
 
-COPY ./secrets/${APP_NAME}.운영.json /docker-entrypoint/dist/${APP_NAME}.json
+# 설정 파일 복사
+COPY --chown=appuser:appuser ./secrets/${APP_NAME}.운영.json /docker-entrypoint/dist/${APP_NAME}.json
 
 # 작업 디렉토리 변경
 WORKDIR /usr/local/app/
 
+# 비루트 사용자로 전환
+USER appuser
+
+# 헬스체크 추가 (SSL 인증서 검증 비활성화)
+# 자체 서명 인증서를 사용하는 경우에도 작동하도록 --no-check-certificate 옵션 추가
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:2443/ || exit 1
 
 # 포트 노출
 EXPOSE 2443
