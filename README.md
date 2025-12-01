@@ -1,23 +1,41 @@
 # NotifyServer
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-00ADD8?style=flat&logo=Go&logoColor=white" />
-  <img src="https://img.shields.io/badge/jenkins-%232C5263.svg?style=flat&logo=jenkins&logoColor=white">
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=Docker&logoColor=white">
-  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black">
-  <a href="https://github.com/DarkKaiser/notify-server/blob/master/LICENSE">
-    <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" target="_blank" />
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=Go&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-Enabled-2496ED?style=flat&logo=Docker&logoColor=white">
+  <img src="https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?style=flat&logo=Jenkins&logoColor=white">
+  <img src="https://img.shields.io/badge/Alpine-3.20-0D597F?style=flat&logo=Alpine-Linux&logoColor=white">
+  <a href="LICENSE">
+    <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" target="_blank" />
   </a>
 </p>
 
-NotifyServer는 외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 텔레그램 등을 통해 알리는 서버입니다.
+NotifyServer는 웹 스크래핑, 스케줄링, 외부 API 연동을 통해 다양한 정보를 수집하고, 텔레그램 등 메신저로 알림을 전송하는 통합 알림 서버입니다.
+
+## 📚 목차
+
+- [주요 기능](#-주요-기능)
+- [아키텍처](#-아키텍처)
+- [기술 스택](#-기술-스택)
+- [시작하기](#-시작하기)
+  - [전제 조건](#전제-조건)
+  - [Docker로 실행](#docker로-실행)
+  - [로컬에서 실행](#로컬에서-실행)
+- [설정 가이드](#-설정-가이드)
+- [API 문서](#-api-문서)
+- [개발 가이드](#-개발-가이드)
+- [CI/CD](#-cicd)
 
 ## 🌟 주요 기능
 
-- **다양한 알림 채널**: 텔레그램 등 다양한 메신저 지원 (확장 가능)
-- **스케줄링**: Cron 표현식을 사용한 정기적인 작업 실행
+- **다양한 알림 채널**: 텔레그램 봇 연동 (확장 가능한 구조)
+- **강력한 스케줄링**: Cron 표현식을 사용한 정기적인 작업 실행
+- **웹 스크래핑**:
+  - 쇼핑몰 가격 변동 감지 (네이버 쇼핑, 마켓컬리)
+  - 공지사항 모니터링 (학교, 관공서)
+  - 로또 번호 예측 및 당첨 확인
 - **REST API**: 외부 애플리케이션 연동을 위한 API 제공
-- **웹 스크래핑**: 웹 페이지 변동 감지 및 알림 (Lotto, 쇼핑몰 가격 등)
+- **상태 모니터링**: 헬스체크 및 Swagger API 문서 제공
 
 ## 🏗 아키텍처
 
@@ -36,6 +54,15 @@ graph TD
     Telegram -->|Message| UserDevice[User Device]
 ```
 
+## 🛠 기술 스택
+
+- **Language**: Go 1.23
+- **Web Framework**: Echo v4
+- **Documentation**: Swagger (Swaggo)
+- **Container**: Docker (Alpine 3.20)
+- **CI/CD**: Jenkins
+- **Linting**: golangci-lint
+
 ## 🚀 시작하기
 
 ### 전제 조건
@@ -43,7 +70,7 @@ graph TD
 - Docker & Docker Compose
 - Go 1.23+ (로컬 개발 시)
 
-### 설치 및 실행 (Docker)
+### Docker로 실행
 
 1. **이미지 빌드**
 
@@ -54,82 +81,37 @@ graph TD
 2. **컨테이너 실행**
 
    ```bash
-   docker ps -q --filter name=notify-server | grep -q . && docker container stop notify-server && docker container rm notify-server
+   # 기존 컨테이너 정리 및 실행
+   docker rm -f notify-server || true
 
    docker run -d --name notify-server \
      -e TZ=Asia/Seoul \
-     -v /usr/local/docker/notify-server:/usr/local/app \
-     -v /usr/local/docker/nginx-proxy-manager/letsencrypt:/etc/letsencrypt:ro \
+     -v $(pwd)/secrets:/usr/local/app/secrets \
+     -v $(pwd)/logs:/usr/local/app/logs \
      -p 2443:2443 \
      --restart="always" \
      darkkaiser/notify-server
    ```
 
-## � 개발 도구
+### 로컬에서 실행
 
-### 코드 품질 관리
+1. **의존성 설치**
 
-프로젝트는 다음 도구들을 사용하여 코드 품질을 관리합니다:
+   ```bash
+   go mod download
+   ```
 
-- **golangci-lint**: 프로젝트 맞춤형 린트 규칙 적용 (`.golangci.yml`)
+2. **Swagger 문서 생성**
 
-  ```bash
-  golangci-lint run ./...
-  ```
+   ```bash
+   swag init
+   ```
 
-- **Docker 빌드 최적화**: `.dockerignore`로 불필요한 파일 제외
-  - 테스트 파일, 로그, IDE 설정 등 제외
-  - 빌드 속도 향상 및 이미지 크기 감소
+3. **서버 실행**
 
-### 빌드 메타데이터
-
-빌드된 바이너리와 Docker 이미지에는 다음 정보가 포함됩니다:
-
-- Git 커밋 해시
-- 빌드 날짜 및 시간
-- 빌드 번호
-
-실행 중인 애플리케이션에서 확인:
-
-```bash
-# 로그에서 빌드 정보 확인
-docker logs notify-server | grep "빌드 정보"
-
-# Docker 이미지 레이블 확인
-docker inspect darkkaiser/notify-server:latest | grep -A 10 Labels
-```
-
-## 🔧 CI/CD
-
-### Jenkins 파이프라인
-
-프로젝트는 Jenkins를 통한 자동화된 CI/CD 파이프라인을 제공합니다:
-
-**주요 기능:**
-
-- ✅ 환경 변수 검증 (빌드 시작 전)
-- ✅ 자동 테스트 및 golangci-lint 검사
-- ✅ Docker 이미지 빌드 (Git 커밋 해시로 태그)
-- ✅ 자동 배포 및 컨테이너 재시작
-- ✅ Telegram 알림 (성공/실패)
-
-**빌드 결과:**
-
-- `darkkaiser/notify-server:latest` - 최신 이미지
-- `darkkaiser/notify-server:{커밋해시}` - 버전별 이미지
-
-### 로컬 개발
-
-```bash
-# 테스트 실행
-go test ./... -v
-
-# 린트 검사
-golangci-lint run ./...
-
-# 로컬 빌드
-go build -o notify-server .
-```
+   ```bash
+   go run main.go
+   ```
 
 ## 📝 설정 가이드
 
@@ -159,24 +141,61 @@ go build -o notify-server .
 
 ## 📚 API 문서
 
-서버가 실행 중일 때 다음 주소에서 Swagger UI를 통해 API 문서를 확인할 수 있습니다.
+서버가 실행 중일 때 Swagger UI를 통해 API 문서를 확인하고 테스트할 수 있습니다.
 
-- URL: `http://localhost:2443/swagger/index.html`
+- **Swagger UI**: `https://api.darkkaiser.com::2443/swagger/index.html`
+- **Health Check**: `https://api.darkkaiser.com::2443/swagger/index.html` (200 OK)
 
-## 📖 Task 문서
+## 💻 개발 가이드
 
-지원하는 Task의 상세 설명과 설정 방법은 다음 문서를 참고하세요:
+### 코드 품질 관리
 
-- [Task 상세 문서](docs/TASKS.md)
+프로젝트는 `golangci-lint`를 사용하여 코드 품질을 유지합니다.
 
-지원하는 Task 목록:
+```bash
+# 린트 검사 실행
+golangci-lint run ./...
+```
 
-- **JDC** - 전남디지털역량교육 모니터링
-- **JYIU** - 전남여수산학융합원 공지사항 및 교육 모니터링
-- **KURLY** - 마켓컬리 상품 가격 모니터링
-- **LOTTO** - 로또 번호 예측
-- **NAVER** - 네이버 공연 정보 모니터링
-- **NS** - 네이버쇼핑 가격 모니터링
+### 테스트 실행
+
+```bash
+# 전체 테스트 실행
+go test ./... -v
+```
+
+### 빌드
+
+```bash
+# 바이너리 빌드
+go build -o notify-server .
+```
+
+## 🔧 CI/CD
+
+Jenkins를 통해 자동화된 빌드 및 배포 파이프라인이 구축되어 있습니다.
+
+### 파이프라인 단계
+
+1. **환경 검증**: 필수 환경 변수 확인
+2. **테스트 & 린트**: `go test` 및 `golangci-lint` 실행
+3. **빌드**: Docker 이미지 빌드 (Git 커밋 해시 태그)
+4. **배포**: 컨테이너 자동 재시작
+5. **알림**: Telegram으로 빌드 결과 전송
+
+### 빌드 메타데이터
+
+빌드된 이미지에는 다음 정보가 포함됩니다:
+
+- Git 커밋 해시 (`GIT_COMMIT`)
+- 빌드 시간 (`BUILD_DATE`)
+- 빌드 번호 (`BUILD_NUMBER`)
+
+확인 방법:
+
+```bash
+docker inspect darkkaiser/notify-server:latest | grep Labels -A 10
+```
 
 ## 🤝 Contributing
 

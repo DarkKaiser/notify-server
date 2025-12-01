@@ -17,8 +17,8 @@ import (
 // @Param app_key query string true "Application Key"
 // @Param message body model.NotifyMessage true "알림 메시지 정보"
 // @Success 200 {object} map[string]int
-// @Failure 400 {object} map[string]string "Bad Request"
-// @Failure 401 {object} map[string]string "Unauthorized"
+// @Failure 400 {object} model.ErrorResponse "Bad Request"
+// @Failure 401 {object} model.ErrorResponse "Unauthorized"
 // @Router /notice/message [post]
 func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)

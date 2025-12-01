@@ -30,7 +30,6 @@ import (
 // @license.name MIT
 // @license.url https://github.com/DarkKaiser/notify-server/blob/master/LICENSE
 
-// @host localhost:2443
 // @BasePath /api/v1
 
 // 빌드 정보 변수 (Dockerfile의 ldflags로 주입됨)
