@@ -94,7 +94,7 @@ USER appuser
 # 헬스체크 추가 (SSL 인증서 검증 비활성화)
 # 자체 서명 인증서를 사용하는 경우에도 작동하도록 --no-check-certificate 옵션 추가
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://api.darkkaiser.com:2443/swagger/index.html || exit 1
+    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:2443/swagger/doc.json || exit 1
 
 # 포트 노출
 EXPOSE 2443

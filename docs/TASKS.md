@@ -4,12 +4,28 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
 
 ## 📋 목차
 
+- [Task 목록 요약](#task-목록-요약)
 - [JDC - 전남디지털역량교육](#jdc---전남디지털역량교육)
 - [JYIU - 전남여수산학융합원](#jyiu---전남여수산학융합원)
 - [KURLY - 마켓컬리](#kurly---마켓컬리)
 - [LOTTO - 로또 번호 예측](#lotto---로또-번호-예측)
 - [NAVER - 네이버 공연정보](#naver---네이버-공연정보)
 - [NS - 네이버쇼핑](#ns---네이버쇼핑)
+- [공통 설정](#-공통-설정)
+- [전체 설정 예시](#-전체-설정-예시)
+
+---
+
+## Task 목록 요약
+
+| Task ID   | 설명               | 주요 기능                          | 웹사이트                                          |
+| --------- | ------------------ | ---------------------------------- | ------------------------------------------------- |
+| **JDC**   | 전남디지털역량교육 | 신규 온라인 교육 과정 모니터링     | [전남디지털역량.com](http://전남디지털역량.com/)  |
+| **JYIU**  | 전남여수산학융합원 | 공지사항 및 교육 프로그램 모니터링 | [jyiu.or.kr](https://www.jyiu.or.kr/)             |
+| **KURLY** | 마켓컬리           | 상품 가격 변동 추적                | [kurly.com](https://www.kurly.com/)               |
+| **LOTTO** | 로또 번호 예측     | 외부 Java 프로그램 실행            | -                                                 |
+| **NAVER** | 네이버 공연정보    | 공연 정보 검색 및 알림             | [search.naver.com](https://search.naver.com/)     |
+| **NS**    | 네이버쇼핑         | 상품 최저가 모니터링               | [shopping.naver.com](https://shopping.naver.com/) |
 
 ---
 
@@ -97,9 +113,13 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
 
 ```json
 {
-  "id": "WatchNewEducation",
-  "cron": "0 10 * * *",
-  "notifier_id": "my-telegram"
+  "commands": [
+    {
+      "id": "WatchNewEducation",
+      "cron": "0 10 * * *",
+      "notifier_id": "my-telegram"
+    }
+  ]
 }
 ```
 
@@ -142,7 +162,7 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
       "cron": "0 8,20 * * *",
       "notifier_id": "my-telegram",
       "data": {
-        "watch_products_file": "/path/to/watch_products.csv"
+        "watch_products_file": "/usr/local/app/kurly_products.csv"
       }
     }
   ]
@@ -201,7 +221,7 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
     }
   ],
   "data": {
-    "app_path": "/path/to/lotto/app/"
+    "app_path": "/usr/local/app/lotto/"
   }
 }
 ```
@@ -357,10 +377,13 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
 
 **예시:**
 
-- `0 9 * * *` - 매일 오전 9시
-- `0 */2 * * *` - 2시간마다
-- `0 9,18 * * *` - 매일 오전 9시와 오후 6시
-- `0 10 * * 6` - 매주 토요일 오전 10시
+| Cron 표현식    | 설명                     |
+| -------------- | ------------------------ |
+| `0 9 * * *`    | 매일 오전 9시            |
+| `0 */2 * * *`  | 2시간마다                |
+| `0 9,18 * * *` | 매일 오전 9시와 오후 6시 |
+| `0 10 * * 6`   | 매주 토요일 오전 10시    |
+| `*/30 * * * *` | 30분마다                 |
 
 ### Notifier 설정
 
@@ -421,13 +444,63 @@ NotifyServer는 다양한 웹 스크래핑 및 자동화 작업을 지원합니�
           }
         }
       ]
+    },
+    {
+      "id": "NS",
+      "title": "네이버쇼핑 가격 모니터링",
+      "commands": [
+        {
+          "id": "WatchPrice_노트북",
+          "cron": "0 */6 * * *",
+          "data": {
+            "query": "LG 그램 17",
+            "filters": {
+              "included_keywords": "2024,신형",
+              "excluded_keywords": "중고,리퍼",
+              "price_less_than": 2000000
+            }
+          }
+        }
+      ],
+      "data": {
+        "client_id": "YOUR_NAVER_CLIENT_ID",
+        "client_secret": "YOUR_NAVER_CLIENT_SECRET"
+      }
     }
   ],
   "notify_api": {
     "ws": {
       "listen_port": 2443,
-      "tls_server": false
-    }
+      "tls_server": true,
+      "tls_cert_file": "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
+      "tls_key_file": "/etc/letsencrypt/live/yourdomain.com/privkey.pem"
+    },
+    "allowed_applications": [
+      {
+        "id": "my-app",
+        "title": "My Application",
+        "app_key": "YOUR_APP_KEY",
+        "default_notifier_id": "my-telegram"
+      }
+    ]
   }
 }
 ```
+
+---
+
+## 🚀 빠른 시작
+
+1. **설정 파일 생성**: `notify-server.json` 파일을 생성하고 위 예시를 참고하여 작성
+2. **Telegram 봇 설정**: [@BotFather](https://t.me/botfather)에서 봇 생성 및 토큰 발급
+3. **Chat ID 확인**: [@userinfobot](https://t.me/userinfobot)에서 Chat ID 확인
+4. **서버 실행**: Docker 또는 로컬에서 서버 실행
+5. **로그 확인**: 스케줄에 따라 Task가 실행되는지 확인
+
+---
+
+## 📚 추가 정보
+
+- **API 문서**: [Swagger UI](https://your-domain:2443/swagger/index.html)
+- **GitHub**: [notify-server](https://github.com/DarkKaiser/notify-server)
+- **이슈 리포트**: [Issues](https://github.com/DarkKaiser/notify-server/issues)
