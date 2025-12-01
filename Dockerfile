@@ -19,12 +19,13 @@ RUN go mod download
 # 소스 코드 복사
 COPY . .
 
-# Alpine에서 빌드 시 필요한 패키지 설치
-RUN apk add --no-cache git
+# 빌드 도구 설치 및 Swagger 문서 생성 (레이어 최적화)
+RUN apk add --no-cache git && \
+    go install github.com/swaggo/swag/cmd/swag@latest && \
+    swag init
 
-# Swagger 문서 생성
-RUN go install github.com/swaggo/swag/cmd/swag@latest
-RUN swag init
+# 테스트 실행 (빌드 전 품질 검증)
+RUN go test ./... -v -coverprofile=coverage.out
 
 # golangci-lint 설치 및 실행
 # 현재 다수의 린트 오류(errcheck, gosimple 등)로 인해 비활성화
@@ -94,9 +95,10 @@ WORKDIR /usr/local/app/
 USER appuser
 
 # 헬스체크 추가
-# wget을 사용하여 Swagger UI 페이지 접근 확인 (GET 메서드 사용)
-# --spider는 HEAD 메서드를 사용하여 405 에러가 발생하므로 -O /dev/null 사용
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+# wget -O /dev/null을 사용하여 GET 메서드로 Swagger UI 페이지 접근 확인
+# (--spider 옵션은 HEAD 메서드를 사용하여 405 에러가 발생하므로 사용하지 않음)
+# 간격: 20초, 타임아웃: 5초, 시작 대기: 30초, 재시도: 3회
+HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
     CMD wget -q -O /dev/null --no-check-certificate https://localhost:2443/swagger/index.html || exit 1
 
 # 포트 노출

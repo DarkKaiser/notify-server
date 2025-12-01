@@ -5,6 +5,8 @@ pipeline {
     environment {
         PROJECT_NAME = "NotifyServer"
         BUILD_TIMESTAMP = sh(script: "date -u +'%Y-%m-%dT%H:%M:%SZ'", returnStdout: true).trim()
+        DOCKER_IMAGE_NAME = "darkkaiser/notify-server"
+        COVERAGE_THRESHOLD = "50"
     }
 
     stages {
@@ -82,8 +84,26 @@ pipeline {
                             -t notify-server:test .
                     """
                     
-                    echo "테스트 실행 중..."
-                    sh 'docker run --rm notify-server:test go test ./... -v'
+                    echo "테스트 커버리지 추출 중..."
+                    sh '''
+                        # 컨테이너에서 커버리지 파일 추출
+                        docker create --name temp-coverage notify-server:test
+                        docker cp temp-coverage:/go/src/app/coverage.out ./coverage.out || echo "커버리지 파일을 찾을 수 없습니다."
+                        docker rm temp-coverage
+                    '''
+                    
+                    // 커버리지 리포트 생성 (선택적)
+                    if (fileExists('coverage.out')) {
+                        echo "테스트 커버리지 분석 중..."
+                        sh '''
+                            # 커버리지 요약 출력
+                            docker run --rm -v $(pwd)/coverage.out:/coverage.out notify-server:test \\
+                                go tool cover -func=/coverage.out | tail -n 1
+                        '''
+                        
+                        // 커버리지 파일 아카이빙
+                        archiveArtifacts artifacts: 'coverage.out', allowEmptyArchive: true
+                    }
                 }
             }
         }
@@ -115,15 +135,22 @@ pipeline {
             steps {
                 script {
                     echo "프로덕션 이미지 빌드 중..."
+                    
+                    // 버전 태그 생성 (빌드 번호 + 커밋 해시) - 시간순 정렬 가능
+                    env.VERSION_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                    
                     sh """
                         docker build \\
                             --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \\
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
-                            -t darkkaiser/notify-server:latest \\
+                            -t ${env.DOCKER_IMAGE_NAME}:latest \\
+                            -t ${env.DOCKER_IMAGE_NAME}:${env.VERSION_TAG} \\
                             .
                     """
+                    
                     echo "이미지 빌드 완료"
+                    echo "생성된 태그: latest, ${env.VERSION_TAG}"
                 }
             }
         }
@@ -145,15 +172,16 @@ pipeline {
                     
                     // 새 컨테이너 실행
                     echo "새 컨테이너 시작 중..."
-                    sh '''
+                    echo "사용할 이미지: ${env.DOCKER_IMAGE_NAME}:latest (빌드 버전: ${env.VERSION_TAG})"
+                    sh """
                         docker run -d --name notify-server \\
                                       -e TZ=Asia/Seoul \\
                                       -v /usr/local/docker/notify-server:/usr/local/app \\
                                       -v /usr/local/docker/nginx-proxy-manager/letsencrypt:/etc/letsencrypt:ro \\
                                       -p 2443:2443 \\
-                                      --restart="always" \\
-                                      darkkaiser/notify-server:latest
-                    '''
+                                      --restart=\"always\" \\
+                                      ${env.DOCKER_IMAGE_NAME}:latest
+                    """
                     
                     // 컨테이너 상태 확인
                     sh '''
@@ -167,8 +195,21 @@ pipeline {
 
         stage('도커 이미지 정리') {
             steps {
-                // dangling 이미지 정리
-                sh 'docker images -qf dangling=true | xargs -r docker rmi || echo "정리할 dangling 이미지가 없습니다."'
+                script {
+                    echo "이전 버전 이미지 정리 중..."
+                    
+                    // dangling 이미지 정리
+                    sh 'docker images -qf dangling=true | xargs -r docker rmi || echo "정리할 dangling 이미지가 없습니다."'
+                    
+                    // 오래된 버전 이미지 정리 (최근 5개 버전만 유지)
+                    sh """
+                        docker images ${env.DOCKER_IMAGE_NAME} --format '{{.Tag}}' | \\
+                        grep -E '^[0-9]+-[a-f0-9]+$' | \\
+                        sort -t- -k1 -n -r | \\
+                        tail -n +6 | \\
+                        xargs -r -I {} docker rmi ${env.DOCKER_IMAGE_NAME}:{} || echo "정리할 오래된 이미지가 없습니다."
+                    """
+                }
             }
         }
         
@@ -184,6 +225,7 @@ pipeline {
 
 커밋: ${env.GIT_COMMIT_SHORT}
 빌드: #${env.BUILD_NUMBER}
+버전: ${env.VERSION_TAG}
 시간: ${env.BUILD_TIMESTAMP}
 
 ${env.BUILD_URL}"""
