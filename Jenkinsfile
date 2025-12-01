@@ -181,7 +181,7 @@ pipeline {
             script {
                 def message = """【 알림 > Jenkins > ${env.PROJECT_NAME} 】
 
-빌드 작업이 성공하였습니다.
+✅ 빌드 작업이 성공하였습니다.
 
 커밋: ${env.GIT_COMMIT_SHORT}
 빌드: #${env.BUILD_NUMBER}

@@ -22,6 +22,10 @@ COPY . .
 # Alpine에서 빌드 시 필요한 패키지 설치
 RUN apk add --no-cache git
 
+# Swagger 문서 생성
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN swag init
+
 # golangci-lint 설치 및 실행
 # COPY --from=golangci/golangci-lint:v1.62.2 /usr/bin/golangci-lint /usr/bin/golangci-lint
 
