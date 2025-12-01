@@ -154,7 +154,10 @@ LOOP:
 					}
 
 					if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-						log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+						log.WithFields(log.Fields{
+							"notifier_id": n.ID(),
+							"error":       err,
+						}).Error("알림메시지 발송 실패")
 					}
 
 					continue
@@ -190,7 +193,10 @@ LOOP:
 
 			m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요.", update.Message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 			if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-				log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+				log.WithFields(log.Fields{
+					"notifier_id": n.ID(),
+					"error":       err,
+				}).Error("알림메시지 발송 실패")
 			}
 
 		case notificationSendData := <-n.notificationSendC:
@@ -254,7 +260,10 @@ LOOP:
 					messageConfig.ParseMode = tgbotapi.ModeHTML
 
 					if _, err := n.bot.Send(messageConfig); err != nil {
-						log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+						log.WithFields(log.Fields{
+							"notifier_id": n.ID(),
+							"error":       err,
+						}).Error("알림메시지 발송 실패")
 					}
 				} else {
 					// 메시지를 줄 단위로 분할한다.
@@ -268,7 +277,10 @@ LOOP:
 							messageConfig.ParseMode = tgbotapi.ModeHTML
 
 							if _, err := n.bot.Send(messageConfig); err != nil {
-								log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+								log.WithFields(log.Fields{
+									"notifier_id": n.ID(),
+									"error":       err,
+								}).Error("알림메시지 발송 실패")
 							}
 
 							messageChunk = line
@@ -285,7 +297,10 @@ LOOP:
 						messageConfig.ParseMode = tgbotapi.ModeHTML
 
 						if _, err := n.bot.Send(messageConfig); err != nil {
-							log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+							log.WithFields(log.Fields{
+								"notifier_id": n.ID(),
+								"error":       err,
+							}).Error("알림메시지 발송 실패")
 						}
 					}
 				}

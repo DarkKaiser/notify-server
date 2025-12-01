@@ -458,7 +458,11 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	for {
 		select {
 		case taskRunData := <-s.taskRunC:
-			log.Debugf("새로운 '%s::%s' Task 실행 요청 수신", taskRunData.taskID, taskRunData.taskCommandID)
+			log.WithFields(log.Fields{
+				"task_id":    taskRunData.taskID,
+				"command_id": taskRunData.taskCommandID,
+				"run_by":     taskRunData.taskRunBy,
+			}).Debug("새로운 Task 실행 요청 수신")
 
 			if taskRunData.taskCtx == nil {
 				taskRunData.taskCtx = NewContext()
@@ -530,11 +534,17 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case instanceID := <-s.taskDoneC:
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				log.Debugf("'%s::%s' Task의 작업이 완료되었습니다.(TaskInstanceID:%s)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+				log.WithFields(log.Fields{
+					"task_id":     taskHandler.ID(),
+					"command_id":  taskHandler.CommandID(),
+					"instance_id": instanceID,
+				}).Debug("Task 작업 완료")
 
 				delete(s.taskHandlers, instanceID)
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업완료 메시지가 수신되었습니다.(TaskInstanceID:%s)", instanceID)
+				log.WithFields(log.Fields{
+					"instance_id": instanceID,
+				}).Warn("등록되지 않은 Task에 대한 작업완료 메시지 수신")
 			}
 			s.runningMu.Unlock()
 
@@ -543,11 +553,17 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
 				taskHandler.Cancel()
 
-				log.Debugf("'%s::%s' Task의 작업이 취소되었습니다.(TaskInstanceID:%s)", taskHandler.ID(), taskHandler.CommandID(), instanceID)
+				log.WithFields(log.Fields{
+					"task_id":     taskHandler.ID(),
+					"command_id":  taskHandler.CommandID(),
+					"instance_id": instanceID,
+				}).Debug("Task 작업 취소")
 
 				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
 			} else {
-				log.Warnf("등록되지 않은 Task에 대한 작업취소 요청 메시지가 수신되었습니다.(TaskInstanceID:%s)", instanceID)
+				log.WithFields(log.Fields{
+					"instance_id": instanceID,
+				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
 				s.taskNotificationSender.NotifyToDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
 			}
@@ -596,7 +612,11 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("'%s::%s' Task 실행 요청중에 panic이 발생하였습니다.(panic:%s", taskID, taskCommandID, r)
+			log.WithFields(log.Fields{
+				"task_id":    taskID,
+				"command_id": taskCommandID,
+				"panic":      r,
+			}).Error("Task 실행 요청중에 panic 발생")
 		}
 	}()
 
@@ -621,7 +641,10 @@ func (s *TaskService) TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("Task 취소 요청중에 panic이 발생하였습니다.(TaskInstanceID:%s, panic:%s", taskInstanceID, r)
+			log.WithFields(log.Fields{
+				"instance_id": taskInstanceID,
+				"panic":       r,
+			}).Error("Task 취소 요청중에 panic 발생")
 		}
 	}()
 

@@ -12,9 +12,37 @@ import (
 )
 
 func TestInit_DebugMode(t *testing.T) {
-	t.Run("디버그 모드에서는 nil 반환", func(t *testing.T) {
-		closer := Init(true, "test-app", 7.0)
-		assert.Nil(t, closer, "디버그 모드에서는 nil을 반환해야 합니다")
+	t.Run("디버그 모드에서도 로그 파일 생성", func(t *testing.T) {
+		// 테스트용 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		originalLogDirParentPath := logDirParentPath
+		logDirParentPath = tempDir + string(os.PathSeparator)
+		defer func() {
+			logDirParentPath = originalLogDirParentPath
+		}()
+
+		appName := "test-app"
+		closer := Init(true, appName, 7.0)
+
+		// 테스트 종료 시 로거를 표준 출력으로 복원
+		defer func() {
+			if closer != nil {
+				closer.Close()
+				log.SetOutput(os.Stdout)
+			}
+		}()
+
+		assert.NotNil(t, closer, "디버그 모드에서도 closer를 반환해야 합니다")
+
+		// 로그 디렉토리가 생성되었는지 확인
+		logDir := filepath.Join(tempDir, logDirName)
+		_, err := os.Stat(logDir)
+		assert.NoError(t, err, "로그 디렉토리가 생성되어야 합니다")
+
+		// 로그 파일이 생성되었는지 확인
+		files, err := os.ReadDir(logDir)
+		assert.NoError(t, err, "로그 디렉토리를 읽을 수 있어야 합니다")
+		assert.Greater(t, len(files), 0, "최소 1개의 로그 파일이 생성되어야 합니다")
 	})
 }
 

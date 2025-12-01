@@ -40,7 +40,11 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.Errorf("알림메시지 발송중에 panic이 발생하였습니다.(NotifierID:%s, Message:%s, panic:%s", n.ID(), message, r)
+			log.WithFields(log.Fields{
+				"notifier_id":    n.ID(),
+				"message_length": len(message),
+				"panic":          r,
+			}).Error("알림메시지 발송중에 panic 발생")
 		}
 	}()
 

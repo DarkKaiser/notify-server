@@ -166,7 +166,11 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 					ticker.Stop()
 					err0 := process.Kill()
 					if err0 != nil {
-						log.Errorf("사용자 요청으로 작업을 취소하는 중에 실행중인 외부 프로그램의 종료가 실패하였습니다.(error:%s)", err0)
+						log.WithFields(log.Fields{
+							"task_id":    t.ID(),
+							"command_id": t.CommandID(),
+							"error":      err0,
+						}).Error("작업 취소 중 외부 프로그램 종료 실패")
 					}
 					return
 				}

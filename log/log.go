@@ -2,8 +2,6 @@ package log
 
 import (
 	"fmt"
-	"github.com/darkkaiser/notify-server/utils"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/fs"
 	"math"
@@ -11,6 +9,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/darkkaiser/notify-server/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -40,8 +41,14 @@ func init() {
 }
 
 func Init(debug bool, appName string, checkDaysAgo float64) io.Closer {
+	// Debug 모드에 따라 로그 레벨 설정
+	// - Debug 모드: Trace 레벨 (모든 로그 출력)
+	// - 운영 모드: Info 레벨 (Info, Warn, Error, Fatal만 출력)
 	if debug == true {
-		return nil
+		log.SetLevel(log.TraceLevel)
+	} else {
+		// 운영 환경에서는 Info 레벨 이상만 출력
+		log.SetLevel(log.InfoLevel)
 	}
 
 	var logDirPath = fmt.Sprintf("%s%s", logDirParentPath, logDirName)
