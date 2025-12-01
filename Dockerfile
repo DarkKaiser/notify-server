@@ -74,14 +74,16 @@ WORKDIR /docker-entrypoint/dist/
 # 빌드 결과물 복사 (권한 설정 포함)
 COPY --from=builder --chown=appuser:appuser /go/src/app/${APP_NAME} .
 
-# SSL 인증서 복사
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-
 # 스크립트 복사 및 실행 권한 부여
 COPY --chown=appuser:appuser --chmod=755 docker-entrypoint.sh /docker-entrypoint/
 
 # 설정 파일 복사
 COPY --chown=appuser:appuser ./secrets/${APP_NAME}.운영.json /docker-entrypoint/dist/${APP_NAME}.json
+
+# SSL 인증서 복사 (불필요)
+# Alpine 이미지에서는 'apk add ca-certificates'를 통해 이미 최신 인증서가 설치되므로
+# 빌더 이미지에서 별도로 복사할 필요가 없습니다.
+# COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # 작업 디렉토리 변경
 WORKDIR /usr/local/app/
@@ -91,8 +93,8 @@ USER appuser
 
 # 헬스체크 추가 (SSL 인증서 검증 비활성화)
 # 자체 서명 인증서를 사용하는 경우에도 작동하도록 --no-check-certificate 옵션 추가
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:2443/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:2443/ || exit 1
 
 # 포트 노출
 EXPOSE 2443
