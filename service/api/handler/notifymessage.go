@@ -16,7 +16,7 @@ import (
 // @Produce json
 // @Param app_key query string true "Application Key"
 // @Param message body model.NotifyMessage true "알림 메시지 정보"
-// @Success 200 {object} map[string]int
+// @Success 200 {object} model.SuccessResponse
 // @Failure 400 {object} model.ErrorResponse "Bad Request"
 // @Failure 401 {object} model.ErrorResponse "Unauthorized"
 // @Router /notice/message [post]
