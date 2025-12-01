@@ -79,7 +79,11 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		grp.POST("/notice/message", h.NotifyMessageSendHandler)
 	}
 
-	e.GET("/swagger/*", echoSwagger.WrapHandler)
+	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(
+		echoSwagger.URL("/swagger/doc.json"),
+		echoSwagger.DeepLinking(true),
+		echoSwagger.DocExpansion("list"),
+	))
 
 	echo.NotFoundHandler = func(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "페이지를 찾을 수 없습니다.")

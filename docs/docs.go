@@ -26,7 +26,12 @@ const docTemplate = `{
     "paths": {
         "/notice/message": {
             "post": {
-                "description": "외부 애플리케이션에서 알림 메시지를 전송합니다.",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록해야 합니다.\n\n## 사용 예시\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notice/message?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
                 "consumes": [
                     "application/json"
                 ],
@@ -40,7 +45,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Application Key",
+                        "example": "your-app-key-here",
+                        "description": "Application Key (인증용)",
                         "name": "app_key",
                         "in": "query",
                         "required": true
@@ -57,24 +63,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "성공",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "integer"
-                            }
+                            "$ref": "#/definitions/model.SuccessResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)",
                         "schema": {
-                            "$ref": "#/definitions/echo.HTTPError"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)",
                         "schema": {
-                            "$ref": "#/definitions/echo.HTTPError"
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "서버 내부 오류",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -82,37 +91,74 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "echo.HTTPError": {
+        "model.ErrorResponse": {
             "type": "object",
             "properties": {
-                "message": {}
+                "message": {
+                    "description": "에러 메시지 (에러 발생 원인 및 해결 방법 포함)",
+                    "type": "string",
+                    "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
+                }
             }
         },
         "model.NotifyMessage": {
             "type": "object",
+            "required": [
+                "application_id",
+                "message"
+            ],
             "properties": {
                 "application_id": {
-                    "type": "string"
+                    "description": "애플리케이션 ID (설정 파일의 allowed_applications에 등록된 ID)",
+                    "type": "string",
+                    "example": "my-app"
                 },
                 "error_occurred": {
-                    "type": "boolean"
+                    "description": "에러 발생 여부 (true인 경우 에러 알림으로 표시됨)",
+                    "type": "boolean",
+                    "example": false
                 },
                 "message": {
-                    "type": "string"
+                    "description": "알림 메시지 내용 (최대 4096자, 마크다운 형식 지원)",
+                    "type": "string",
+                    "maxLength": 4096,
+                    "example": "서버에서 중요한 이벤트가 발생했습니다."
+                }
+            }
+        },
+        "model.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "result_code": {
+                    "description": "결과 코드 (0: 성공, 0이 아닌 값: 실패)",
+                    "type": "integer",
+                    "example": 0
                 }
             }
         }
+    },
+    "securityDefinitions": {
+        "ApiKeyAuth": {
+            "description": "Application Key for authentication",
+            "type": "apiKey",
+            "name": "app_key",
+            "in": "query"
+        }
+    },
+    "externalDocs": {
+        "description": "GitHub Repository",
+        "url": "https://github.com/DarkKaiser/notify-server"
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:2443",
+	Version:          "1.0.0",
+	Host:             "api.darkkaiser.com:2443",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Notify Server API",
-	Description:      "외부 프로그램으로부터 수신된 메시지 및 등록된 태스크들의 실행 결과를 알리는 서버입니다.",
+	Description:      "웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.\n\n이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.\n\n## 주요 기능\n- 알림 메시지 전송\n- 다양한 알림 채널 지원 (Telegram 등)\n- 애플리케이션별 인증 및 권한 관리\n\n## 인증 방법\nAPI 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록한 후 사용하세요.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
