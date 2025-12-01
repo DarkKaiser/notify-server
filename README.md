@@ -169,6 +169,50 @@ go run main.go
 
 자세한 Task 설정은 [TASKS.md](docs/TASKS.md)를 참조하세요.
 
+### API 인증 플로우
+
+NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어그램은 인증 과정을 보여줍니다.
+
+![인증 플로우](docs/auth-flow.png)
+
+**인증 단계**:
+
+1. **사전 준비**: `notify-server.json`의 `allowed_applications`에 애플리케이션 등록
+2. **API 호출**: Query Parameter로 `app_key` 전달
+3. **인증 검증**:
+   - `application_id` 확인
+   - `app_key` 일치 여부 확인
+4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송
+
+**설정 예시**:
+
+```json
+{
+  "notify_api": {
+    "allowed_applications": [
+      {
+        "id": "my-app",
+        "title": "My Application",
+        "app_key": "your-secret-key-here",
+        "default_notifier_id": "my-telegram"
+      }
+    ]
+  }
+}
+```
+
+**API 호출 예시**:
+
+```bash
+curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "application_id": "my-app",
+    "message": "테스트 메시지입니다.",
+    "error_occurred": false
+  }'
+```
+
 ## API 문서
 
 서버 실행 후 Swagger UI를 통해 API 문서를 확인할 수 있습니다.
