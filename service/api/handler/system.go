@@ -7,6 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
+	log "github.com/sirupsen/logrus"
 )
 
 var serverStartTime = time.Now()
@@ -22,6 +23,11 @@ var serverStartTime = time.Now()
 // @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
+	log.WithFields(log.Fields{
+		"component": "api.handler",
+		"endpoint":  "/health",
+	}).Debug("헬스체크 요청")
+
 	uptime := int64(time.Since(serverStartTime).Seconds())
 
 	return c.JSON(http.StatusOK, model.HealthResponse{
@@ -42,6 +48,11 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
+	log.WithFields(log.Fields{
+		"component": "api.handler",
+		"endpoint":  "/version",
+	}).Debug("버전 정보 요청")
+
 	return c.JSON(http.StatusOK, model.VersionResponse{
 		Version:     h.version,
 		BuildDate:   h.buildDate,

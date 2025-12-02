@@ -72,7 +72,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotifi
 
 	s.running = true
 
-	log.Debug("Task 스케쥴러 시작됨")
+	log.Info("Task 스케쥴러 시작됨")
 }
 
 func (s *scheduler) Stop() {
@@ -88,5 +88,5 @@ func (s *scheduler) Stop() {
 
 	s.running = false
 
-	log.Debug("Task 스케쥴러 중지됨")
+	log.Info("Task 스케쥴러 중지됨")
 }

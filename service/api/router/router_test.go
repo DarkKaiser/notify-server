@@ -90,4 +90,20 @@ func TestRouterMiddlewares(t *testing.T) {
 		// 500 에러가 반환되는지 확인 (panic이 recover되었다는 의미)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	})
+
+	t.Run("RequestID 미들웨어 확인", func(t *testing.T) {
+		e := New()
+
+		e.GET("/test", func(c echo.Context) error {
+			return c.String(http.StatusOK, "ok")
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		// X-Request-ID 헤더가 존재하는지 확인
+		assert.NotEmpty(t, rec.Header().Get(echo.HeaderXRequestID))
+	})
 }

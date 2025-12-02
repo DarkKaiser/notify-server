@@ -27,11 +27,12 @@ func New() *echo.Echo {
 		}))
 	*/
 
+	e.Use(middleware.RequestID())                          // Request ID Middleware
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // CORS Middleware
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
-	e.Use(middleware.Recover()) // Recover from panics anywhere in the chain
+	e.Use(_middleware_.LogrusRecover()) // Recover from panics anywhere in the chain
 	e.Use(middleware.Secure())
 
 	return e
