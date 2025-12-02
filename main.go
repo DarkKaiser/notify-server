@@ -99,8 +99,15 @@ func main() {
 	fmt.Printf(banner, g.AppVersion)
 
 	// 빌드 정보 출력
-	log.Infof("빌드 정보 - 버전: %s, 빌드 날짜: %s, 빌드 번호: %s", Version, BuildDate, BuildNumber)
-	log.Infof("Go 버전: %s, OS/Arch: %s/%s", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	log.WithFields(log.Fields{
+		"component":    "main",
+		"version":      Version,
+		"build_date":   BuildDate,
+		"build_number": BuildNumber,
+		"go_version":   runtime.Version(),
+		"os":           runtime.GOOS,
+		"arch":         runtime.GOARCH,
+	}).Info("빌드 정보")
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(config)
@@ -118,9 +125,14 @@ func main() {
 	for _, s := range services {
 		serviceStopWaiter.Add(1)
 		if err := s.Run(serviceStopCtx, serviceStopWaiter); err != nil {
-			log.Errorf("서비스 시작 실패: %v", err)
+			log.WithFields(log.Fields{
+				"component": "main",
+				"error":     err,
+			}).Error("서비스 초기화 실패")
+
 			cancel() // 다른 서비스들도 종료
 			serviceStopWaiter.Wait()
+
 			log.Fatal("서비스 초기화 실패로 프로그램을 종료합니다")
 		}
 	}

@@ -63,7 +63,9 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	if s.running == true {
 		defer serviceStopWaiter.Done()
 
-		log.Warn("NotifyAPI 서비스가 이미 시작됨!!!")
+		log.WithFields(log.Fields{
+			"component": "api.service",
+		}).Warn("NotifyAPI 서비스가 이미 시작됨!!!")
 
 		return nil
 	}
@@ -117,7 +119,10 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	go func(listenPort int) {
 		defer close(httpServerDone)
 
-		log.Debugf("NotifyAPI 서비스 > http 서버(:%d) 시작", listenPort)
+		log.WithFields(log.Fields{
+			"component": "api.service",
+			"port":      listenPort,
+		}).Debug("NotifyAPI 서비스 > http 서버 시작")
 
 		var err error
 		if s.config.NotifyAPI.WS.TLSServer == true {
@@ -151,7 +156,10 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		defer cancel()
 
 		if err := e.Shutdown(ctx); err != nil {
-			log.Error(err)
+			log.WithFields(log.Fields{
+				"component": "api.service",
+				"error":     err,
+			}).Error(err)
 		}
 
 		<-httpServerDone

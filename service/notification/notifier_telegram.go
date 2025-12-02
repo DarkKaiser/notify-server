@@ -125,7 +125,11 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 
 	updateC := n.bot.GetUpdatesChan(config)
 
-	log.Debugf("'%s' Telegram Notifier의 작업이 시작됨(Authorized on account %s)", n.ID(), n.bot.GetSelf().UserName)
+	log.WithFields(log.Fields{
+		"component":    "notification.telegram",
+		"notifier_id":  n.ID(),
+		"bot_username": n.bot.GetSelf().UserName,
+	}).Debug("Telegram Notifier의 작업이 시작됨")
 
 LOOP:
 	for {
@@ -204,7 +208,11 @@ LOOP:
 
 			if notificationSendData.taskCtx == nil {
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-					log.Errorf("알림메시지 발송이 실패하였습니다.(error:%s)", err)
+					log.WithFields(log.Fields{
+						"component":   "notification.telegram",
+						"notifier_id": n.ID(),
+						"error":       err,
+					}).Error("알림메시지 발송이 실패하였습니다")
 				}
 			} else {
 				title, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTitle).(string)
@@ -314,7 +322,10 @@ LOOP:
 			n.bot = nil
 			n.notificationSendC = nil
 
-			log.Debugf("'%s' Telegram Notifier의 작업이 중지됨", n.ID())
+			log.WithFields(log.Fields{
+				"component":   "notification.telegram",
+				"notifier_id": n.ID(),
+			}).Debug("Telegram Notifier의 작업이 중지됨")
 
 			return
 		}
