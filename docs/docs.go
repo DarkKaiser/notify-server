@@ -24,6 +24,26 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/health": {
+            "get": {
+                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "서버 상태 확인",
+                "responses": {
+                    "200": {
+                        "description": "서버 정상",
+                        "schema": {
+                            "$ref": "#/definitions/model.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/notice/message": {
             "post": {
                 "security": [
@@ -88,6 +108,26 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/version": {
+            "get": {
+                "description": "서버의 빌드 정보를 반환합니다.\n\nGit 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전 등의 정보를 제공합니다.\n이 정보는 디버깅 및 버전 확인에 유용합니다.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "서버 버전 정보",
+                "responses": {
+                    "200": {
+                        "description": "버전 정보",
+                        "schema": {
+                            "$ref": "#/definitions/model.VersionResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -98,6 +138,21 @@ const docTemplate = `{
                     "description": "에러 메시지 (에러 발생 원인 및 해결 방법 포함)",
                     "type": "string",
                     "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
+                }
+            }
+        },
+        "model.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "description": "서버 상태 (healthy, unhealthy)",
+                    "type": "string",
+                    "example": "healthy"
+                },
+                "uptime": {
+                    "description": "서버 가동 시간 (초)",
+                    "type": "integer",
+                    "example": 3600
                 }
             }
         },
@@ -135,6 +190,31 @@ const docTemplate = `{
                     "example": 0
                 }
             }
+        },
+        "model.VersionResponse": {
+            "type": "object",
+            "properties": {
+                "build_date": {
+                    "description": "빌드 날짜 (UTC)",
+                    "type": "string",
+                    "example": "2025-12-01T14:00:00Z"
+                },
+                "build_number": {
+                    "description": "빌드 번호",
+                    "type": "string",
+                    "example": "100"
+                },
+                "go_version": {
+                    "description": "Go 버전",
+                    "type": "string",
+                    "example": "go1.23.4"
+                },
+                "version": {
+                    "description": "Git 커밋 해시",
+                    "type": "string",
+                    "example": "abc1234"
+                }
+            }
         }
     },
     "securityDefinitions": {
@@ -146,8 +226,8 @@ const docTemplate = `{
         }
     },
     "externalDocs": {
-        "description": "GitHub Repository",
-        "url": "https://github.com/DarkKaiser/notify-server"
+        "description": "API 인증 가이드 (인증 플로우 다이어그램 포함)",
+        "url": "https://github.com/DarkKaiser/notify-server#api-인증-플로우"
     }
 }`
 
@@ -158,7 +238,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "Notify Server API",
-	Description:      "웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.\n\n이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.\n\n## 주요 기능\n- 알림 메시지 전송\n- 다양한 알림 채널 지원 (Telegram 등)\n- 애플리케이션별 인증 및 권한 관리\n\n## 인증 방법\nAPI 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록한 후 사용하세요.",
+	Description:      "웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.\n\n이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.\n\n## 주요 기능\n- 알림 메시지 전송\n- 다양한 알림 채널 지원 (Telegram 등)\n- 애플리케이션별 인증 및 권한 관리\n\n## 인증 방법\nAPI 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록한 후 사용하세요.\n\n## 인증 플로우\n1. **사전 준비**: notify-server.json의 allowed_applications에 애플리케이션 등록\n- application_id, app_key, default_notifier_id 설정\n2. **API 호출**: Query Parameter로 app_key 전달\n- POST /api/v1/notice/message?app_key=YOUR_KEY\n3. **인증 검증**: 서버에서 application_id와 app_key 확인\n- 미등록 앱: 401 Unauthorized\n- 잘못된 app_key: 401 Unauthorized\n4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송\n- 성공: 200 OK\n\n자세한 인증 플로우 다이어그램은 GitHub README를 참조하세요.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

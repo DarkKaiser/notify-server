@@ -138,6 +138,10 @@ go run main.go
 ```json
 {
   "debug": true,
+  "http_retry": {
+    "max_retries": 3,
+    "retry_delay": "2s"
+  },
   "notifiers": {
     "default_notifier_id": "my-telegram",
     "telegrams": [
@@ -148,26 +152,108 @@ go run main.go
       }
     ]
   },
+  "tasks": [
+    {
+      "id": "my-task",
+      "title": "My Task",
+      "commands": [
+        {
+          "id": "my-command",
+          "title": "My Command",
+          "description": "My Command Description",
+          "scheduler": {
+            "runnable": true,
+            "time_spec": "* * * * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "my-telegram"
+        }
+      ]
+    }
+  ],
   "notify_api": {
     "ws": {
-      "listen_port": 2443,
-      "tls_server": false
-    }
+      "tls_server": false,
+      "tls_cert_file": "",
+      "tls_key_file": "",
+      "listen_port": 2443
+    },
+    "applications": [
+      {
+        "id": "my-app",
+        "title": "My Application",
+        "description": "My Application Description",
+        "default_notifier_id": "my-telegram",
+        "app_key": "your-secret-key-here"
+      }
+    ]
   }
 }
 ```
 
 ### 주요 설정 항목
 
-| 항목                            | 설명               | 필수   |
-| ------------------------------- | ------------------ | ------ |
-| `debug`                         | 디버그 모드 활성화 | 아니오 |
-| `notifiers.default_notifier_id` | 기본 알림 채널 ID  | 예     |
-| `notifiers.telegrams`           | Telegram 봇 설정   | 예     |
-| `notify_api.ws.listen_port`     | API 서버 포트      | 예     |
-| `notify_api.ws.tls_server`      | HTTPS 사용 여부    | 아니오 |
+| 항목                            | 설명                            | 필수             |
+| ------------------------------- | ------------------------------- | ---------------- |
+| `debug`                         | 디버그 모드 활성화              | 아니오           |
+| `http_retry.max_retries`        | HTTP 요청 최대 재시도 횟수      | 아니오           |
+| `http_retry.retry_delay`        | 재시도 대기 시간                | 아니오           |
+| `notifiers.default_notifier_id` | 기본 알림 채널 ID               | 예               |
+| `notifiers.telegrams`           | Telegram 봇 설정                | 예               |
+| `tasks`                         | 실행할 작업 목록                | 예               |
+| `notify_api.ws.listen_port`     | API 서버 포트                   | 예               |
+| `notify_api.ws.tls_server`      | HTTPS 사용 여부                 | 아니오           |
+| `notify_api.ws.tls_cert_file`   | TLS 인증서 파일 경로            | HTTPS 사용 시 예 |
+| `notify_api.ws.tls_key_file`    | TLS 키 파일 경로                | HTTPS 사용 시 예 |
+| `notify_api.applications`       | API 접근 허용 애플리케이션 목록 | 예               |
 
 자세한 Task 설정은 [TASKS.md](docs/TASKS.md)를 참조하세요.
+
+### API 인증 플로우
+
+NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어그램은 인증 과정을 보여줍니다.
+
+![인증 플로우](docs/auth-flow.png)
+
+**인증 단계**:
+
+1. **사전 준비**: `notify-server.json`의 `allowed_applications`에 애플리케이션 등록
+2. **API 호출**: Query Parameter로 `app_key` 전달
+3. **인증 검증**:
+   - `application_id` 확인
+   - `app_key` 일치 여부 확인
+4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송
+
+**설정 예시**:
+
+```json
+{
+  "notify_api": {
+    "allowed_applications": [
+      {
+        "id": "my-app",
+        "title": "My Application",
+        "app_key": "your-secret-key-here",
+        "default_notifier_id": "my-telegram"
+      }
+    ]
+  }
+}
+```
+
+**API 호출 예시**:
+
+```bash
+curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "application_id": "my-app",
+    "message": "테스트 메시지입니다.",
+    "error_occurred": false
+  }'
+```
 
 ## API 문서
 

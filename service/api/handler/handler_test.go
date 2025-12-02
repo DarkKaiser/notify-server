@@ -22,7 +22,7 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender)
+		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 1, len(handler.allowedApplications), "1개의 애플리케이션이 등록되어야 합니다")
@@ -50,7 +50,7 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender)
+		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 2, len(handler.allowedApplications), "2개의 애플리케이션이 등록되어야 합니다")
@@ -60,7 +60,7 @@ func TestNewHandler(t *testing.T) {
 		config := &g.AppConfig{}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender)
+		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 0, len(handler.allowedApplications), "애플리케이션이 없어야 합니다")

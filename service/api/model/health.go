@@ -1,0 +1,9 @@
+package model
+
+// HealthResponse 서버 상태 응답 모델
+type HealthResponse struct {
+	// 서버 상태 (healthy, unhealthy)
+	Status string `json:"status" example:"healthy"`
+	// 서버 가동 시간 (초)
+	Uptime int64 `json:"uptime" example:"3600"`
+}

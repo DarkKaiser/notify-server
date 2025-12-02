@@ -6,16 +6,19 @@ import (
 	"github.com/darkkaiser/notify-server/service/notification"
 )
 
-//
 // Handler
-//
 type Handler struct {
 	allowedApplications []*model.AllowedApplication
 
 	notificationSender notification.NotificationSender
+
+	// 빌드 정보
+	version     string
+	buildDate   string
+	buildNumber string
 }
 
-func NewHandler(config *g.AppConfig, notificationSender notification.NotificationSender) *Handler {
+func NewHandler(config *g.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *Handler {
 	// 허용된 Application 목록을 구한다.
 	var applications []*model.AllowedApplication
 	for _, application := range config.NotifyAPI.Applications {
@@ -32,5 +35,9 @@ func NewHandler(config *g.AppConfig, notificationSender notification.Notificatio
 		allowedApplications: applications,
 
 		notificationSender: notificationSender,
+
+		version:     version,
+		buildDate:   buildDate,
+		buildNumber: buildNumber,
 	}
 }
