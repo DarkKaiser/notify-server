@@ -18,7 +18,8 @@ var serverStartTime = time.Now()
 // @Description 이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.
 // @Tags System
 // @Produce json
-// @Success 200 {object} model.HealthResponse "서버 정상"
+// @Success 200 {object} model.HealthResponse "서버 정상" example({"status":"healthy","uptime":3600})
+// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	uptime := int64(time.Since(serverStartTime).Seconds())
@@ -37,7 +38,8 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Description 이 정보는 디버깅 및 버전 확인에 유용합니다.
 // @Tags System
 // @Produce json
-// @Success 200 {object} model.VersionResponse "버전 정보"
+// @Success 200 {object} model.VersionResponse "버전 정보" example({"version":"abc1234","build_date":"2025-12-01T14:00:00Z","build_number":"100","go_version":"go1.23.4"})
+// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, model.VersionResponse{
