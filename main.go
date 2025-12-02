@@ -90,7 +90,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
 
 	// 환경설정 정보를 읽어들인다.
-	config, err := g.InitAppConfig()
+	appConfig, err := g.InitAppConfig()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"component": "main",
@@ -99,7 +99,7 @@ func main() {
 	}
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.Init(config.Debug, g.AppName, 30.)
+	_log_.Init(appConfig.Debug, g.AppName, 30.)
 
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
 	fmt.Printf(banner, g.AppVersion)
@@ -116,9 +116,9 @@ func main() {
 	}).Info("빌드 정보")
 
 	// 서비스를 생성하고 초기화한다.
-	taskService := task.NewService(config)
-	notificationService := notification.NewService(config, taskService)
-	notifyAPIService := api.NewNotifyAPIService(config, notificationService, Version, BuildDate, BuildNumber)
+	taskService := task.NewService(appConfig)
+	notificationService := notification.NewService(appConfig, taskService)
+	notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, Version, BuildDate, BuildNumber)
 
 	taskService.SetTaskNotificationSender(notificationService)
 

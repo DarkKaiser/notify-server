@@ -45,8 +45,8 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 	mockSender := &MockNotificationSender{}
 
 	// Test Config
-	config := &g.AppConfig{}
-	config.NotifyAPI.Applications = []g.ApplicationConfig{
+	appConfig := &g.AppConfig{}
+	appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
 		{
 			ID:                "test-app",
 			Title:             "Test App",
@@ -55,11 +55,9 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 			AppKey:            "valid-key",
 		},
 	}
+	h := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
-	h := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
-
-	t.Run("유효한 요청", func(t *testing.T) {
-		// Request Body
+	t.Run("정상적인 메시지 전송", func(t *testing.T) {
 		reqBody := model.NotifyMessage{
 			ApplicationID: "test-app",
 			Message:       "Test Message",

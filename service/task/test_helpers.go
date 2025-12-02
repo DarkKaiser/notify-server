@@ -310,7 +310,7 @@ func CreateTestConfigWithTasks(tasks []struct {
 		DefaultNotifierID string
 	}
 }) *g.AppConfig {
-	config := CreateTestConfig()
+	appConfig := CreateTestConfig()
 
 	// Tasks 추가
 	for _, task := range tasks {
@@ -337,8 +337,8 @@ func CreateTestConfigWithTasks(tasks []struct {
 			configTask.Commands = append(configTask.Commands, configCmd)
 		}
 
-		config.Tasks = append(config.Tasks, configTask)
+		appConfig.Tasks = append(appConfig.Tasks, configTask)
 	}
 
-	return config
+	return appConfig
 }

@@ -86,24 +86,24 @@ func TestInitAppConfig(t *testing.T) {
 		defer os.Remove(tempFile)
 
 		// 설정 로딩
-		config, err := g.InitAppConfigWithFile(tempFile)
+		appConfig, err := g.InitAppConfigWithFile(tempFile)
 		assert.NoError(t, err)
 
 		// 검증
-		assert.NotNil(t, config, "설정이 로드되어야 합니다")
-		assert.True(t, config.Debug, "Debug 모드가 활성화되어야 합니다")
-		assert.Equal(t, "test-notifier", config.Notifiers.DefaultNotifierID, "기본 NotifierID가 일치해야 합니다")
-		assert.Equal(t, 1, len(config.Notifiers.Telegrams), "Telegram notifier가 1개 있어야 합니다")
-		assert.Equal(t, "test-notifier", config.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
+		assert.NotNil(t, appConfig, "설정이 로드되어야 합니다")
+		assert.True(t, appConfig.Debug, "Debug 모드가 활성화되어야 합니다")
+		assert.Equal(t, "test-notifier", appConfig.Notifiers.DefaultNotifierID, "기본 NotifierID가 일치해야 합니다")
+		assert.Equal(t, 1, len(appConfig.Notifiers.Telegrams), "Telegram notifier가 1개 있어야 합니다")
+		assert.Equal(t, "test-notifier", appConfig.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
 	})
 
 	t.Run("존재하지 않는 설정 파일", func(t *testing.T) {
 		// 존재하지 않는 파일로 설정 로딩 시도
-		config, err := g.InitAppConfigWithFile("nonexistent_file_12345.json")
+		appConfig, err := g.InitAppConfigWithFile("nonexistent_file_12345.json")
 
 		// 검증
 		assert.Error(t, err, "에러가 반환되어야 합니다")
-		assert.Nil(t, config, "설정 객체는 nil이어야 합니다")
+		assert.Nil(t, appConfig, "설정 객체는 nil이어야 합니다")
 
 		// 파일이 존재하지 않는 에러 메시지 확인
 		errMsg := err.Error()
@@ -121,11 +121,11 @@ func TestInitAppConfig(t *testing.T) {
 		defer os.Remove(tempFile)
 
 		// 잘못된 JSON 파일 로딩 시도
-		config, err := g.InitAppConfigWithFile(tempFile)
+		appConfig, err := g.InitAppConfigWithFile(tempFile)
 
 		// 검증
 		assert.Error(t, err, "JSON 파싱 에러가 반환되어야 합니다")
-		assert.Nil(t, config, "설정 객체는 nil이어야 합니다")
+		assert.Nil(t, appConfig, "설정 객체는 nil이어야 합니다")
 	})
 }
 

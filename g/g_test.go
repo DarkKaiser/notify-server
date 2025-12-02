@@ -77,14 +77,14 @@ func TestInitAppConfig_ValidConfig(t *testing.T) {
 		}()
 
 		// 설정 로드 테스트
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.NoError(t, err)
 
-		assert.NotNil(t, config, "설정이 로드되어야 합니다")
-		assert.True(t, config.Debug, "Debug 모드가 활성화되어야 합니다")
-		assert.Equal(t, "test-telegram", config.Notifiers.DefaultNotifierID, "기본 Notifier ID가 일치해야 합니다")
-		assert.Equal(t, 1, len(config.Notifiers.Telegrams), "Telegram 설정이 1개여야 합니다")
-		assert.Equal(t, 1, len(config.NotifyAPI.Applications), "Application이 1개여야 합니다")
+		assert.NotNil(t, appConfig, "설정이 로드되어야 합니다")
+		assert.True(t, appConfig.Debug, "Debug 모드가 활성화되어야 합니다")
+		assert.Equal(t, "test-telegram", appConfig.Notifiers.DefaultNotifierID, "기본 Notifier ID가 일치해야 합니다")
+		assert.Equal(t, 1, len(appConfig.Notifiers.Telegrams), "Telegram 설정이 1개여야 합니다")
+		assert.Equal(t, 1, len(appConfig.NotifyAPI.Applications), "Application이 1개여야 합니다")
 	})
 }
 
@@ -122,9 +122,9 @@ func TestInitAppConfig_DuplicateNotifierID(t *testing.T) {
 		os.WriteFile(AppConfigFileName, data, 0644)
 
 		// Should return error due to duplicate notifier ID
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "중복된 Notifier ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -156,9 +156,9 @@ func TestInitAppConfig_InvalidDefaultNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "존재하지 않는 기본 Notifier ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -197,9 +197,9 @@ func TestInitAppConfig_DuplicateTaskID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "중복된 Task ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -244,9 +244,9 @@ func TestInitAppConfig_DuplicateCommandID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "중복된 Command ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -286,9 +286,9 @@ func TestInitAppConfig_InvalidCommandNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "존재하지 않는 Command Notifier ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -321,9 +321,9 @@ func TestInitAppConfig_TLSServerMissingCertFile(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "TLS Cert 파일 누락으로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -356,9 +356,9 @@ func TestInitAppConfig_TLSServerMissingKeyFile(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "TLS Key 파일 누락으로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -399,9 +399,9 @@ func TestInitAppConfig_DuplicateApplicationID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "중복된 Application ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -436,9 +436,9 @@ func TestInitAppConfig_InvalidApplicationNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "존재하지 않는 Application Notifier ID로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
@@ -473,23 +473,23 @@ func TestInitAppConfig_MissingAppKey(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		config, err := InitAppConfig()
+		appConfig, err := InitAppConfig()
 		assert.Error(t, err, "AppKey 누락으로 인해 에러가 발생해야 합니다")
-		assert.Nil(t, config)
+		assert.Nil(t, appConfig)
 	})
 }
 
 func TestAppConfig_Structure(t *testing.T) {
 	t.Run("AppConfig 구조체 필드 확인", func(t *testing.T) {
-		config := &AppConfig{}
+		appConfig := &AppConfig{}
 
 		// 구조체가 정상적으로 생성되는지 확인
-		assert.NotNil(t, config, "AppConfig 구조체가 생성되어야 합니다")
+		assert.NotNil(t, appConfig, "AppConfig 구조체가 생성되어야 합니다")
 
 		// 기본값 확인
-		assert.False(t, config.Debug, "Debug 기본값은 false여야 합니다")
-		assert.Empty(t, config.Notifiers.DefaultNotifierID, "기본 Notifier ID는 비어있어야 합니다")
-		assert.Empty(t, config.Tasks, "Tasks는 비어있어야 합니다")
+		assert.False(t, appConfig.Debug, "Debug 기본값은 false여야 합니다")
+		assert.Empty(t, appConfig.Notifiers.DefaultNotifierID, "기본 Notifier ID는 비어있어야 합니다")
+		assert.Empty(t, appConfig.Tasks, "Tasks는 비어있어야 합니다")
 	})
 }
 
@@ -519,15 +519,15 @@ func TestAppConfig_JSONMarshaling(t *testing.T) {
 			}
 		}`
 
-		var config AppConfig
-		err := json.Unmarshal([]byte(jsonData), &config)
+		var appConfig AppConfig
+		err := json.Unmarshal([]byte(jsonData), &appConfig)
 
 		assert.NoError(t, err, "JSON 언마샬링이 성공해야 합니다")
-		assert.True(t, config.Debug, "Debug가 true여야 합니다")
-		assert.Equal(t, "telegram1", config.Notifiers.DefaultNotifierID, "Notifier ID가 일치해야 합니다")
-		assert.Equal(t, "telegram1", config.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
-		assert.Equal(t, "token123", config.Notifiers.Telegrams[0].BotToken, "Bot Token이 일치해야 합니다")
-		assert.Equal(t, int64(123456), config.Notifiers.Telegrams[0].ChatID, "Chat ID가 일치해야 합니다")
+		assert.True(t, appConfig.Debug, "Debug가 true여야 합니다")
+		assert.Equal(t, "telegram1", appConfig.Notifiers.DefaultNotifierID, "Notifier ID가 일치해야 합니다")
+		assert.Equal(t, "telegram1", appConfig.Notifiers.Telegrams[0].ID, "Telegram ID가 일치해야 합니다")
+		assert.Equal(t, "token123", appConfig.Notifiers.Telegrams[0].BotToken, "Bot Token이 일치해야 합니다")
+		assert.Equal(t, int64(123456), appConfig.Notifiers.Telegrams[0].ChatID, "Chat ID가 일치해야 합니다")
 	})
 }
 

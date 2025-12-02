@@ -136,7 +136,7 @@ func init() {
 			newTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *g.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidKurly {
 				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
@@ -156,19 +156,19 @@ func init() {
 					fetcher: nil,
 				},
 
-				config: config,
+				appConfig: appConfig,
 			}
 
-			retryDelay, err := time.ParseDuration(config.HTTPRetry.RetryDelay)
+			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, config.HTTPRetry.MaxRetries, retryDelay)
+			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidKurlyWatchProductPrice:
-					for _, t := range task.config.Tasks {
+					for _, t := range task.appConfig.Tasks {
 						if task.ID() == TaskID(t.ID) {
 							for _, c := range t.Commands {
 								if task.CommandID() == TaskCommandID(c.ID) {
@@ -199,7 +199,7 @@ func init() {
 type kurlyTask struct {
 	task
 
-	config *g.AppConfig
+	appConfig *g.AppConfig
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat

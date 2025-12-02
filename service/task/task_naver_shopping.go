@@ -103,13 +103,13 @@ func init() {
 			newTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *g.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidNaverShopping {
 				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
 
 			taskData := &naverShoppingTaskData{}
-			for _, t := range config.Tasks {
+			for _, t := range appConfig.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
@@ -136,22 +136,22 @@ func init() {
 					fetcher: nil,
 				},
 
-				config: config,
+				appConfig: appConfig,
 
 				clientID:     taskData.ClientID,
 				clientSecret: taskData.ClientSecret,
 			}
 
-			retryDelay, err := time.ParseDuration(config.HTTPRetry.RetryDelay)
+			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, config.HTTPRetry.MaxRetries, retryDelay)
+			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(task.CommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
-					for _, t := range task.config.Tasks {
+					for _, t := range task.appConfig.Tasks {
 						if task.ID() == TaskID(t.ID) {
 							for _, c := range t.Commands {
 								if task.CommandID() == TaskCommandID(c.ID) {
@@ -182,7 +182,7 @@ func init() {
 type naverShoppingTask struct {
 	task
 
-	config *g.AppConfig
+	appConfig *g.AppConfig
 
 	clientID     string
 	clientSecret string

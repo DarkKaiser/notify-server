@@ -119,7 +119,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				commandID: TcidNaverWatchNewPerformances,
 				fetcher:   mockFetcher,
 			},
-			config: &g.AppConfig{
+			appConfig: &g.AppConfig{
 				Tasks: []g.TaskConfig{
 					{
 						ID: string(TidNaver),
@@ -188,7 +188,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				commandID: TcidNaverWatchNewPerformances,
 				fetcher:   mockFetcher,
 			},
-			config: &g.AppConfig{
+			appConfig: &g.AppConfig{
 				Tasks: []g.TaskConfig{
 					{
 						ID: string(TidNaver),

@@ -61,19 +61,19 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
-func newTelegramNotifier(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler {
+func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
 	}
 	bot.Debug = true
 
-	return newTelegramNotifierWithBot(id, &telegramBotWrapper{BotAPI: bot}, chatID, config)
+	return newTelegramNotifierWithBot(id, &telegramBotWrapper{BotAPI: bot}, chatID, appConfig)
 }
 
 // newTelegramNotifierWithBot is an internal constructor that accepts a TelegramBot interface.
 // This is useful for testing.
-func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, config *g.AppConfig) NotifierHandler {
+func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, appConfig *g.AppConfig) NotifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,
@@ -88,7 +88,7 @@ func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, co
 	}
 
 	// Bot Command를 초기화합니다.
-	for _, t := range config.Tasks {
+	for _, t := range appConfig.Tasks {
 		for _, c := range t.Commands {
 			if c.Notifier.Usable == false {
 				continue

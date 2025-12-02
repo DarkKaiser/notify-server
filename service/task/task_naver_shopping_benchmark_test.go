@@ -43,7 +43,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	mockFetcher.SetResponse(url1, []byte(searchResultJSON))
 
 	// 2. Task 초기화
-	config := &g.AppConfig{
+	appConfig := &g.AppConfig{
 		Tasks: []g.TaskConfig{
 			{
 				ID: string(TidNaverShopping),
@@ -71,7 +71,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 			notifierID: "test-notifier",
 			fetcher:    mockFetcher,
 		},
-		config:       config,
+		appConfig:    appConfig,
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}

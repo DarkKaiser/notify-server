@@ -415,7 +415,7 @@ type TaskNotificationSender interface {
 
 // TaskService
 type TaskService struct {
-	config *g.AppConfig
+	appConfig *g.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -435,9 +435,9 @@ type TaskService struct {
 	taskStopWaiter *sync.WaitGroup
 }
 
-func NewService(config *g.AppConfig) *TaskService {
+func NewService(appConfig *g.AppConfig) *TaskService {
 	return &TaskService{
-		config: config,
+		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
@@ -481,7 +481,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	}
 
 	// Task 스케쥴러를 시작한다.
-	s.scheduler.Start(s.config, s, s.taskNotificationSender)
+	s.scheduler.Start(s.appConfig, s, s.taskNotificationSender)
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
 
@@ -556,7 +556,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h, err := taskConfig.newTaskFn(instanceID, taskRunData, s.config)
+			h, err := taskConfig.newTaskFn(instanceID, taskRunData, s.appConfig)
 			if h == nil {
 				log.WithFields(log.Fields{
 					"component":  "task.service",

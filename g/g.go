@@ -106,28 +106,28 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 		return nil, err
 	}
 
-	var config AppConfig
-	err = json.Unmarshal(data, &config)
+	var appConfig AppConfig
+	err = json.Unmarshal(data, &appConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// HTTP Retry 설정 기본값 적용
-	if config.HTTPRetry.MaxRetries == 0 {
-		config.HTTPRetry.MaxRetries = DefaultMaxRetries
+	if appConfig.HTTPRetry.MaxRetries == 0 {
+		appConfig.HTTPRetry.MaxRetries = DefaultMaxRetries
 	}
-	if config.HTTPRetry.RetryDelay == "" {
-		config.HTTPRetry.RetryDelay = DefaultRetryDelay
+	if appConfig.HTTPRetry.RetryDelay == "" {
+		appConfig.HTTPRetry.RetryDelay = DefaultRetryDelay
 	}
 
 	//
 	// 파일 내용에 대해 유효성 검사를 한다.
 	//
-	if err := config.Validate(); err != nil {
+	if err := appConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("%s 파일의 내용이 유효하지 않습니다. %v", filename, err)
 	}
 
-	return &config, nil
+	return &appConfig, nil
 }
 
 // Validate AppConfig의 유효성을 검사합니다.

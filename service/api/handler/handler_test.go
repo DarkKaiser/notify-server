@@ -10,8 +10,8 @@ import (
 
 func TestNewHandler(t *testing.T) {
 	t.Run("핸들러 생성", func(t *testing.T) {
-		config := &g.AppConfig{}
-		config.NotifyAPI.Applications = []g.ApplicationConfig{
+		appConfig := &g.AppConfig{}
+		appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
 			{
 				ID:                "test-app",
 				Title:             "Test Application",
@@ -22,7 +22,7 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 1, len(handler.allowedApplications), "1개의 애플리케이션이 등록되어야 합니다")
@@ -31,8 +31,8 @@ func TestNewHandler(t *testing.T) {
 	})
 
 	t.Run("여러 애플리케이션 등록", func(t *testing.T) {
-		config := &g.AppConfig{}
-		config.NotifyAPI.Applications = []g.ApplicationConfig{
+		appConfig := &g.AppConfig{}
+		appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
 			{
 				ID:                "app1",
 				Title:             "Application 1",
@@ -50,17 +50,17 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 2, len(handler.allowedApplications), "2개의 애플리케이션이 등록되어야 합니다")
 	})
 
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
-		config := &g.AppConfig{}
+		appConfig := &g.AppConfig{}
 
 		mockSender := &mockNotificationSender{}
-		handler := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 0, len(handler.allowedApplications), "애플리케이션이 없어야 합니다")

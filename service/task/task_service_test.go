@@ -12,14 +12,14 @@ import (
 
 func TestNewService(t *testing.T) {
 	// 테스트용 설정
-	config := &g.AppConfig{}
+	appConfig := &g.AppConfig{}
 
 	// 서비스 생성
-	service := NewService(config)
+	service := NewService(appConfig)
 
 	// 검증
 	require.NotNil(t, service, "서비스가 생성되어야 합니다")
-	require.Equal(t, config, service.config, "설정이 올바르게 설정되어야 합니다")
+	require.Equal(t, appConfig, service.appConfig, "설정이 올바르게 설정되어야 합니다")
 	require.False(t, service.running, "초기 상태에서는 실행 중이 아니어야 합니다")
 	require.NotNil(t, service.taskHandlers, "taskHandlers가 초기화되어야 합니다")
 	require.NotNil(t, service.taskRunC, "taskRunC 채널이 초기화되어야 합니다")
@@ -29,8 +29,8 @@ func TestNewService(t *testing.T) {
 }
 
 func TestTaskService_SetTaskNotificationSender(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 
 	mockSender := NewMockTaskNotificationSender()
 
@@ -42,8 +42,8 @@ func TestTaskService_SetTaskNotificationSender(t *testing.T) {
 }
 
 func TestTaskService_TaskRun_Success(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 
@@ -73,8 +73,8 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 
@@ -107,8 +107,8 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskCancel_Success(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 
@@ -135,8 +135,8 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 
@@ -171,8 +171,8 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 }
 
 func TestTaskService_Concurrency(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 
@@ -219,8 +219,8 @@ func TestTaskService_Concurrency(t *testing.T) {
 }
 
 func TestTaskService_CancelConcurrency(t *testing.T) {
-	config := &g.AppConfig{}
-	service := NewService(config)
+	appConfig := &g.AppConfig{}
+	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
 

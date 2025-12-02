@@ -88,13 +88,13 @@ func init() {
 			newTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *g.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidLotto {
 				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
-			for _, t := range config.Tasks {
+			for _, t := range appConfig.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					taskData := &lottoTaskData{}
 					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {

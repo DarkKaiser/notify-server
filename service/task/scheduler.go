@@ -16,7 +16,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskExecutor, taskNotificationSender TaskNotificationSender) {
+func (s *scheduler) Start(appConfig *g.AppConfig, taskRunner TaskExecutor, taskNotificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -26,7 +26,7 @@ func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskExecutor, taskNoti
 
 	s.cron = cron.New(cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())), cron.WithSeconds())
 
-	for _, t := range config.Tasks {
+	for _, t := range appConfig.Tasks {
 		for _, c := range t.Commands {
 			if c.Scheduler.Runnable == false {
 				continue

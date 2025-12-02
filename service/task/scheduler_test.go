@@ -18,16 +18,16 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockRunner := &mockTaskRunner{}
 
 		// 빈 설정으로 시작
-		config := &g.AppConfig{}
+		appConfig := &g.AppConfig{}
 
 		// 스케줄러 시작
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 
 		// 스케줄러 중지
 		s.Stop()
 
 		// 중지 후 다시 시작 가능한지 확인
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 		s.Stop()
 	})
 
@@ -35,14 +35,14 @@ func TestScheduler_StartStop(t *testing.T) {
 		s := &scheduler{}
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
-		config := &g.AppConfig{}
+		appConfig := &g.AppConfig{}
 
 		// 첫 번째 시작
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 		assert.True(t, s.running, "스케줄러가 실행 중이어야 합니다")
 
 		// 두 번째 시작 시도 (중복)
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 		assert.True(t, s.running, "스케줄러가 여전히 실행 중이어야 합니다")
 
 		// 정리
@@ -53,10 +53,10 @@ func TestScheduler_StartStop(t *testing.T) {
 		s := &scheduler{}
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
-		config := &g.AppConfig{}
+		appConfig := &g.AppConfig{}
 
 		// 시작 후 중지
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 		s.Stop()
 		assert.False(t, s.running, "스케줄러가 중지되어야 합니다")
 
@@ -70,7 +70,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
 
-		config := &g.AppConfig{
+		appConfig := &g.AppConfig{
 			Tasks: []g.TaskConfig{
 				{
 					ID:    "TestTask",
@@ -106,7 +106,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		}
 
 		// 스케줄러 시작
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 		assert.True(t, s.running, "스케줄러가 실행 중이어야 합니다")
 		assert.NotNil(t, s.cron, "cron 객체가 생성되어야 합니다")
 
@@ -123,7 +123,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
 
-		config := &g.AppConfig{
+		appConfig := &g.AppConfig{
 			Tasks: []g.TaskConfig{
 				{
 					ID:    "TestTask",
@@ -147,7 +147,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		}
 
 		// 스케줄러 시작
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 
 		// 스케줄이 실행될 때까지 대기 (최대 2초)
 		time.Sleep(2 * time.Second)
@@ -174,7 +174,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunnerWithFailure{} // 실패하는 TaskRunner
 
-		config := &g.AppConfig{
+		appConfig := &g.AppConfig{
 			Tasks: []g.TaskConfig{
 				{
 					ID:    "FailTask",
@@ -198,7 +198,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		}
 
 		// 스케줄러 시작
-		s.Start(config, mockRunner, mockSender)
+		s.Start(appConfig, mockRunner, mockSender)
 
 		// 스케줄이 실행되고 실패할 때까지 대기
 		time.Sleep(2 * time.Second)

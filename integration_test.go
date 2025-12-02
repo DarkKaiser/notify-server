@@ -17,21 +17,21 @@ import (
 func TestServicesIntegration(t *testing.T) {
 	t.Run("서비스 초기화 및 시작", func(t *testing.T) {
 		// 테스트용 설정 생성
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
 		// 서비스 생성
-		taskService := task.NewService(config)
-		notificationService := notification.NewService(config, taskService)
+		taskService := task.NewService(appConfig)
+		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, config *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
 			}
 		})
 
-		notifyAPIService := api.NewNotifyAPIService(config, notificationService, "test-version", "test-date", "test-build")
+		notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, "test-version", "test-date", "test-build")
 
 		// 서비스 검증
 		assert.NotNil(t, taskService, "TaskService가 생성되어야 합니다")
@@ -60,12 +60,12 @@ func TestServicesIntegration(t *testing.T) {
 	})
 
 	t.Run("서비스 중복 시작 방지", func(t *testing.T) {
-		config := createTestConfig()
-		taskService := task.NewService(config)
-		notificationService := notification.NewService(config, taskService)
+		appConfig := createTestConfig()
+		taskService := task.NewService(appConfig)
+		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, config *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -98,14 +98,14 @@ func TestServicesIntegration(t *testing.T) {
 // TestTaskToNotificationFlow는 Task에서 Notification으로의 흐름을 테스트합니다.
 func TestTaskToNotificationFlow(t *testing.T) {
 	t.Run("Task 실행 시 알림 발송", func(t *testing.T) {
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
 		// Mock Notification Sender 생성
 		mockSender := &mockNotificationSender{
 			notifyCalls: make([]notifyCall, 0),
 		}
 
-		taskService := task.NewService(config)
+		taskService := task.NewService(appConfig)
 		taskService.SetTaskNotificationSender(mockSender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -141,13 +141,13 @@ func TestTaskToNotificationFlow(t *testing.T) {
 	})
 
 	t.Run("Task 실행 성공 시 알림 발송 확인", func(t *testing.T) {
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
 		mockSender := &mockNotificationSender{
 			notifyCalls: make([]notifyCall, 0),
 		}
 
-		taskService := task.NewService(config)
+		taskService := task.NewService(appConfig)
 		taskService.SetTaskNotificationSender(mockSender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -184,13 +184,13 @@ func TestTaskToNotificationFlow(t *testing.T) {
 // TestServiceLifecycle은 서비스 생명주기를 테스트합니다.
 func TestServiceLifecycle(t *testing.T) {
 	t.Run("서비스 시작 및 정상 종료", func(t *testing.T) {
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
-		taskService := task.NewService(config)
-		notificationService := notification.NewService(config, taskService)
+		taskService := task.NewService(appConfig)
+		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, config *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -217,12 +217,12 @@ func TestServiceLifecycle(t *testing.T) {
 	})
 
 	t.Run("여러 서비스 동시 시작 및 종료", func(t *testing.T) {
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
 		// 여러 서비스 생성
 		services := make([]*task.TaskService, 3)
 		for i := 0; i < 3; i++ {
-			services[i] = task.NewService(config)
+			services[i] = task.NewService(appConfig)
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -243,10 +243,10 @@ func TestServiceLifecycle(t *testing.T) {
 	})
 
 	t.Run("서비스 빠른 시작 및 중지 반복", func(t *testing.T) {
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
 		for i := 0; i < 3; i++ {
-			taskService := task.NewService(config)
+			taskService := task.NewService(appConfig)
 			taskService.SetTaskNotificationSender(&mockNotificationSender{})
 
 			ctx, cancel := context.WithCancel(context.Background())
@@ -266,13 +266,13 @@ func TestServiceLifecycle(t *testing.T) {
 // TestNotificationServiceIntegration은 NotificationService 통합을 테스트합니다.
 func TestNotificationServiceIntegration(t *testing.T) {
 	t.Run("NotificationService 생성 및 초기화", func(t *testing.T) {
-		config := createTestConfigWithNotifier()
+		appConfig := createTestConfigWithNotifier()
 
 		mockTaskRunner := &mockTaskRunner{}
-		notificationService := notification.NewService(config, mockTaskRunner)
+		notificationService := notification.NewService(appConfig, mockTaskRunner)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, config *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -303,9 +303,9 @@ func TestEndToEndScenario(t *testing.T) {
 	t.Run("전체 워크플로우", func(t *testing.T) {
 		// 이 테스트는 실제 Task가 등록되어 있어야 하므로
 		// 기본적인 서비스 연동만 확인
-		config := createTestConfig()
+		appConfig := createTestConfig()
 
-		taskService := task.NewService(config)
+		taskService := task.NewService(appConfig)
 		mockSender := &mockNotificationSender{
 			notifyCalls: make([]notifyCall, 0),
 		}
@@ -361,16 +361,16 @@ func createTestConfig() *g.AppConfig {
 }
 
 func createTestConfigWithNotifier() *g.AppConfig {
-	config := createTestConfig()
-	config.Notifiers.DefaultNotifierID = "default-notifier"
-	config.Notifiers.Telegrams = []g.TelegramConfig{
+	appConfig := createTestConfig()
+	appConfig.Notifiers.DefaultNotifierID = "default-notifier"
+	appConfig.Notifiers.Telegrams = []g.TelegramConfig{
 		{
 			ID:       "default-notifier",
 			BotToken: "test-token",
 			ChatID:   12345,
 		},
 	}
-	return config
+	return appConfig
 }
 
 // mockNotificationSender는 테스트용 TaskNotificationSender 구현체입니다.
@@ -452,8 +452,8 @@ func (m *mockNotifierHandler) SupportHTMLMessage() bool {
 func TestFullFlow_SchedulerToNotification(t *testing.T) {
 	t.Run("스케줄러에 의한 작업 실행 및 알림 발송", func(t *testing.T) {
 		// 1. 설정 생성 (자주 실행되는 작업 포함)
-		config := createTestConfig()
-		config.Tasks = []g.TaskConfig{
+		appConfig := createTestConfig()
+		appConfig.Tasks = []g.TaskConfig{
 			{
 				ID:    "IntegrationTask",
 				Title: "통합 테스트 작업",
@@ -478,7 +478,7 @@ func TestFullFlow_SchedulerToNotification(t *testing.T) {
 		}
 
 		// 2. 서비스 초기화
-		taskService := task.NewService(config)
+		taskService := task.NewService(appConfig)
 
 		// Mock Notification Sender 사용 (알림 수신 확인용)
 		mockSender := &mockNotificationSender{
