@@ -31,10 +31,10 @@ import (
 // @description
 // @description ## 인증 방법
 // @description API 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
-// @description 설정 파일(notify-server.json)의 allowed_applications에 애플리케이션을 등록한 후 사용하세요.
+// @description 설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록한 후 사용하세요.
 // @description
 // @description ## 인증 플로우
-// @description 1. **사전 준비**: notify-server.json의 allowed_applications에 애플리케이션 등록
+// @description 1. **사전 준비**: notify-server.json의 notify_api.applications에 애플리케이션 등록
 // @description    - application_id, app_key, default_notifier_id 설정
 // @description 2. **API 호출**: Query Parameter로 app_key 전달
 // @description    - POST /api/v1/notice/message?app_key=YOUR_KEY

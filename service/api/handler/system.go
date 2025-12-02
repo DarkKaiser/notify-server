@@ -19,6 +19,7 @@ var serverStartTime = time.Now()
 // @Tags System
 // @Produce json
 // @Success 200 {object} model.HealthResponse "서버 정상"
+// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	uptime := int64(time.Since(serverStartTime).Seconds())
@@ -38,6 +39,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Tags System
 // @Produce json
 // @Success 200 {object} model.VersionResponse "버전 정보"
+// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, model.VersionResponse{
