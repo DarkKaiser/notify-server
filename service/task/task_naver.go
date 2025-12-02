@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/utils"
 )
 
@@ -73,7 +73,7 @@ func init() {
 			newTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, config *g.AppConfig) (taskHandler, error) {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidNaver {
 				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
@@ -93,19 +93,19 @@ func init() {
 					fetcher: nil,
 				},
 
-				config: config,
+				appConfig: appConfig,
 			}
 
-			retryDelay, err := time.ParseDuration(config.HTTPRetry.RetryDelay)
+			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
 			if err != nil {
-				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
+				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, config.HTTPRetry.MaxRetries, retryDelay)
+			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch task.CommandID() {
 				case TcidNaverWatchNewPerformances:
-					for _, t := range task.config.Tasks {
+					for _, t := range task.appConfig.Tasks {
 						if task.ID() == TaskID(t.ID) {
 							for _, c := range t.Commands {
 								if task.CommandID() == TaskCommandID(c.ID) {
@@ -136,7 +136,7 @@ func init() {
 type naverTask struct {
 	task
 
-	config *g.AppConfig
+	appConfig *config.AppConfig
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat

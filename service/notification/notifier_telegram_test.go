@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -67,9 +67,9 @@ func TestTelegramNotifier_Run_HelpCommand(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -113,9 +113,9 @@ func TestTelegramNotifier_Notify_LongMessage(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Create a long message (>3900 chars) with newlines
 	longMessage := ""
@@ -160,9 +160,9 @@ func TestTelegramNotifier_Notify_HTMLMessage(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	htmlMessage := "<b>Bold</b> and <i>Italic</i> text"
 
@@ -203,9 +203,9 @@ func TestTelegramNotifier_Notify_SendError(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -240,9 +240,9 @@ func TestTelegramNotifier_SupportHTMLMessage(t *testing.T) {
 		updatesChan: make(chan tgbotapi.Update),
 	}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Test
 	result := notifier.SupportHTMLMessage()
@@ -258,9 +258,9 @@ func TestTelegramNotifier_Notify_WithTaskContext(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -300,9 +300,9 @@ func TestTelegramNotifier_Notify_ErrorContext(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -342,9 +342,9 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -388,9 +388,9 @@ func TestTelegramNotifier_Run_UnknownCommand(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -439,12 +439,12 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	chatID := int64(12345)
 
 	// Construct config with a task command
-	config := &g.AppConfig{
-		Tasks: []g.TaskConfig{
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
 			{
 				ID:    "test_task",
 				Title: "Test Task",
-				Commands: []g.TaskCommandConfig{
+				Commands: []config.TaskCommandConfig{
 					{
 						ID:          "run",
 						Title:       "Run Task",
@@ -452,13 +452,14 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 						Notifier: struct {
 							Usable bool `json:"usable"`
 						}{Usable: true},
+						DefaultNotifierID: "test-notifier",
 					},
 				},
 			},
 		},
 	}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -503,9 +504,9 @@ func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
 	}
 	mockTaskRunner := &MockTaskRunner{}
 	chatID := int64(12345)
-	config := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
-	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -577,9 +578,9 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 			updatesChan: make(chan tgbotapi.Update),
 		}
 		chatID := int64(12345)
-		config := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 
-		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config)
+		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 		// Verify
 		assert.NotNil(t, notifier, "Notifier가 생성되어야 합니다")
@@ -593,12 +594,12 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 		}
 		chatID := int64(12345)
 
-		config := &g.AppConfig{
-			Tasks: []g.TaskConfig{
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []g.TaskCommandConfig{
+					Commands: []config.TaskCommandConfig{
 						{
 							ID:          "Run",
 							Title:       "실행",
@@ -606,6 +607,7 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 							Notifier: struct {
 								Usable bool `json:"usable"`
 							}{Usable: true},
+							DefaultNotifierID: "test-notifier",
 						},
 						{
 							ID:          "Stop",
@@ -614,13 +616,14 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 							Notifier: struct {
 								Usable bool `json:"usable"`
 							}{Usable: false}, // Usable이 false인 경우
+							DefaultNotifierID: "test-notifier",
 						},
 					},
 				},
 			},
 		}
 
-		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config).(*telegramNotifier)
+		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig).(*telegramNotifier)
 
 		// Verify
 		assert.NotNil(t, notifier, "Notifier가 생성되어야 합니다")
@@ -642,11 +645,11 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 			updatesChan: make(chan tgbotapi.Update),
 		}
 		chatID := int64(12345)
-		config := &g.AppConfig{
-			Tasks: []g.TaskConfig{},
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{},
 		}
 
-		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, config).(*telegramNotifier)
+		notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig).(*telegramNotifier)
 
 		// Verify - help 명령어만 등록되어야 함
 		assert.Equal(t, 1, len(notifier.botCommands), "help 명령어만 등록되어야 합니다")

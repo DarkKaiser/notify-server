@@ -9,7 +9,7 @@ import (
 	"time"
 
 	_ "github.com/darkkaiser/notify-server/docs"
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -20,7 +20,7 @@ import (
 
 // NotifyAPIService
 type NotifyAPIService struct {
-	config *g.AppConfig
+	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -33,9 +33,9 @@ type NotifyAPIService struct {
 	buildNumber string
 }
 
-func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
+func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
 	return &NotifyAPIService{
-		config: config,
+		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
@@ -83,7 +83,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	defer serviceStopWaiter.Done()
 
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
-	h := handler.NewHandler(s.config, s.notificationSender, s.version, s.buildDate, s.buildNumber)
+	h := handler.NewHandler(s.appConfig, s.notificationSender, s.version, s.buildDate, s.buildNumber)
 
 	e := router.New()
 
@@ -125,8 +125,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		}).Debug("NotifyAPI 서비스 > http 서버 시작")
 
 		var err error
-		if s.config.NotifyAPI.WS.TLSServer == true {
-			err = e.StartTLS(fmt.Sprintf(":%d", listenPort), s.config.NotifyAPI.WS.TLSCertFile, s.config.NotifyAPI.WS.TLSKeyFile)
+		if s.appConfig.NotifyAPI.WS.TLSServer == true {
+			err = e.StartTLS(fmt.Sprintf(":%d", listenPort), s.appConfig.NotifyAPI.WS.TLSCertFile, s.appConfig.NotifyAPI.WS.TLSKeyFile)
 		} else {
 			err = e.Start(fmt.Sprintf(":%d", listenPort))
 		}
@@ -139,13 +139,13 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 			log.WithFields(log.Fields{
 				"component": "api.service",
-				"port":      s.config.NotifyAPI.WS.ListenPort,
+				"port":      s.appConfig.NotifyAPI.WS.ListenPort,
 				"error":     err,
 			}).Error(m)
 
 			s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", m, err))
 		}
-	}(s.config.NotifyAPI.WS.ListenPort)
+	}(s.appConfig.NotifyAPI.WS.ListenPort)
 
 	select {
 	case <-serviceStopCtx.Done():

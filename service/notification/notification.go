@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
@@ -75,7 +75,7 @@ type NotificationSender interface {
 
 // NotificationService
 type NotificationService struct {
-	config *g.AppConfig
+	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -87,12 +87,12 @@ type NotificationService struct {
 
 	notificationStopWaiter *sync.WaitGroup
 
-	newNotifier func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler
+	newNotifier func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler
 }
 
-func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
+func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *NotificationService {
 	return &NotificationService{
-		config: config,
+		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
@@ -107,7 +107,7 @@ func NewService(config *g.AppConfig, taskRunner task.TaskRunner) *NotificationSe
 	}
 }
 
-func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, config *g.AppConfig) NotifierHandler) {
+func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler) {
 	s.newNotifier = newNotifierFn
 }
 
@@ -134,8 +134,8 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	}
 
 	// Telegram Notifier의 작업을 시작한다.
-	for _, telegram := range s.config.Notifiers.Telegrams {
-		h := s.newNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.config)
+	for _, telegram := range s.appConfig.Notifiers.Telegrams {
+		h := s.newNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.appConfig)
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)
@@ -149,7 +149,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	// 기본 Notifier를 구한다.
 	for _, h := range s.notifierHandlers {
-		if h.ID() == NotifierID(s.config.Notifiers.DefaultNotifierID) {
+		if h.ID() == NotifierID(s.appConfig.Notifiers.DefaultNotifierID) {
 			s.defaultNotifierHandler = h
 			break
 		}
@@ -157,7 +157,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	if s.defaultNotifierHandler == nil {
 		defer serviceStopWaiter.Done()
 
-		return fmt.Errorf("기본 NotifierID('%s')를 찾을 수 없습니다", s.config.Notifiers.DefaultNotifierID)
+		return fmt.Errorf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID)
 	}
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)

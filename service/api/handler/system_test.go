@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +20,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := NewHandler(&g.AppConfig{}, nil, "1.0.0", "2024-01-01", "100")
+	h := NewHandler(&config.AppConfig{}, nil, "1.0.0", "2024-01-01", "100")
 
 	// Assertions
 	if assert.NoError(t, h.HealthCheckHandler(c)) {
@@ -44,7 +44,7 @@ func TestHandler_VersionHandler(t *testing.T) {
 	version := "1.0.0"
 	buildDate := "2024-01-01"
 	buildNumber := "100"
-	h := NewHandler(&g.AppConfig{}, nil, version, buildDate, buildNumber)
+	h := NewHandler(&config.AppConfig{}, nil, version, buildDate, buildNumber)
 
 	// Assertions
 	if assert.NoError(t, h.VersionHandler(c)) {

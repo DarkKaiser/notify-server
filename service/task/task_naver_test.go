@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -119,11 +119,11 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				commandID: TcidNaverWatchNewPerformances,
 				fetcher:   mockFetcher,
 			},
-			config: &g.AppConfig{
-				Tasks: []g.TaskConfig{
+			appConfig: &config.AppConfig{
+				Tasks: []config.TaskConfig{
 					{
 						ID: string(TidNaver),
-						Commands: []g.TaskCommandConfig{
+						Commands: []config.TaskCommandConfig{
 							{
 								ID: string(TcidNaverWatchNewPerformances),
 								Data: map[string]interface{}{
@@ -188,11 +188,11 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				commandID: TcidNaverWatchNewPerformances,
 				fetcher:   mockFetcher,
 			},
-			config: &g.AppConfig{
-				Tasks: []g.TaskConfig{
+			appConfig: &config.AppConfig{
+				Tasks: []config.TaskConfig{
 					{
 						ID: string(TidNaver),
-						Commands: []g.TaskCommandConfig{
+						Commands: []config.TaskCommandConfig{
 							{
 								ID: string(TcidNaverWatchNewPerformances),
 								Data: map[string]interface{}{

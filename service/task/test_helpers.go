@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 )
 
 // MockTaskNotificationSender 테스트용 TaskNotificationSender 구현체입니다.
@@ -208,12 +208,12 @@ func CreateTestTask(id TaskID, commandID TaskCommandID, instanceID TaskInstanceI
 }
 
 // CreateTestConfig 테스트용 AppConfig를 생성합니다.
-func CreateTestConfig() *g.AppConfig {
-	return &g.AppConfig{
+func CreateTestConfig() *config.AppConfig {
+	return &config.AppConfig{
 		Debug: true,
-		Notifiers: g.NotifierConfig{
+		Notifiers: config.NotifierConfig{
 			DefaultNotifierID: "test-notifier",
-			Telegrams: []g.TelegramConfig{
+			Telegrams: []config.TelegramConfig{
 				{
 					ID:       "test-notifier",
 					BotToken: "test-token",
@@ -221,9 +221,9 @@ func CreateTestConfig() *g.AppConfig {
 				},
 			},
 		},
-		Tasks: []g.TaskConfig{},
-		NotifyAPI: g.NotifyAPIConfig{
-			WS: g.WSConfig{
+		Tasks: []config.TaskConfig{},
+		NotifyAPI: config.NotifyAPIConfig{
+			WS: config.WSConfig{
 				TLSServer:  false,
 				ListenPort: 18080,
 			},
@@ -309,19 +309,19 @@ func CreateTestConfigWithTasks(tasks []struct {
 		TimeSpec          string
 		DefaultNotifierID string
 	}
-}) *g.AppConfig {
-	config := CreateTestConfig()
+}) *config.AppConfig {
+	appConfig := CreateTestConfig()
 
 	// Tasks 추가
 	for _, task := range tasks {
-		configTask := g.TaskConfig{
+		configTask := config.TaskConfig{
 			ID:    task.ID,
 			Title: task.Title,
 		}
 
 		// Commands 추가
 		for _, cmd := range task.Commands {
-			configCmd := g.TaskCommandConfig{
+			configCmd := config.TaskCommandConfig{
 				ID:    cmd.ID,
 				Title: cmd.Title,
 				Scheduler: struct {
@@ -337,8 +337,8 @@ func CreateTestConfigWithTasks(tasks []struct {
 			configTask.Commands = append(configTask.Commands, configCmd)
 		}
 
-		config.Tasks = append(config.Tasks, configTask)
+		appConfig.Tasks = append(appConfig.Tasks, configTask)
 	}
 
-	return config
+	return appConfig
 }
