@@ -99,7 +99,7 @@ USER appuser
 # (--spider 옵션은 HEAD 메서드를 사용하여 405 에러가 발생하므로 사용하지 않음)
 # 간격: 20초, 타임아웃: 5초, 시작 대기: 30초, 재시도: 3회
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
-    CMD wget -q -O /dev/null --no-check-certificate https://localhost:2443/swagger/index.html || exit 1
+    CMD wget -q -O - http://localhost:2443/health || exit 1
 
 # 포트 노출
 EXPOSE 2443

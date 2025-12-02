@@ -56,7 +56,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 		},
 	}
 
-	h := NewHandler(config, mockSender)
+	h := NewHandler(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 	t.Run("유효한 요청", func(t *testing.T) {
 		// Request Body

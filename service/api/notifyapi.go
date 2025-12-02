@@ -26,9 +26,14 @@ type NotifyAPIService struct {
 	runningMu sync.Mutex
 
 	notificationSender notification.NotificationSender
+
+	// 빌드 정보
+	version     string
+	buildDate   string
+	buildNumber string
 }
 
-func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.NotificationSender) *NotifyAPIService {
+func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
 	return &NotifyAPIService{
 		config: config,
 
@@ -36,6 +41,10 @@ func NewNotifyAPIService(config *g.AppConfig, notificationSender notification.No
 		runningMu: sync.Mutex{},
 
 		notificationSender: notificationSender,
+
+		version:     version,
+		buildDate:   buildDate,
+		buildNumber: buildNumber,
 	}
 }
 
@@ -71,17 +80,28 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
-	h := handler.NewHandler(s.config, s.notificationSender)
+	// main.go에서 전달받은 빌드 정보를 Handler에 전달
+	h := handler.NewHandler(s.config, s.notificationSender, s.version, s.buildDate, s.buildNumber)
 
 	e := router.New()
+
+	// System 엔드포인트 (인증 불필요)
+	e.GET("/health", h.HealthCheckHandler)
+	e.GET("/version", h.VersionHandler)
+
+	// API v1 엔드포인트
 	grp := e.Group("/api/v1")
 	{
 		grp.POST("/notice/message", h.NotifyMessageSendHandler)
 	}
 
+	// Swagger UI 설정
 	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(
+		// Swagger 문서 JSON 파일 위치 지정
 		echoSwagger.URL("/swagger/doc.json"),
+		// 딥 링크 활성화 (특정 API로 바로 이동 가능한 URL 지원)
 		echoSwagger.DeepLinking(true),
+		// 문서 로드 시 태그(Tag) 목록만 펼침 상태로 표시 ("list", "full", "none")
 		echoSwagger.DocExpansion("list"),
 	))
 
