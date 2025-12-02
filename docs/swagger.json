@@ -16,29 +16,9 @@
         "version": "1.0.0"
     },
     "host": "api.darkkaiser.com:2443",
-    "basePath": "/api/v1",
+    "basePath": "/",
     "paths": {
-        "/health": {
-            "get": {
-                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "System"
-                ],
-                "summary": "서버 상태 확인",
-                "responses": {
-                    "200": {
-                        "description": "서버 정상",
-                        "schema": {
-                            "$ref": "#/definitions/model.HealthResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/notice/message": {
+        "/api/v1/notice/message": {
             "post": {
                 "security": [
                     {
@@ -98,6 +78,26 @@
                         "description": "서버 내부 오류",
                         "schema": {
                             "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "서버 상태 확인",
+                "responses": {
+                    "200": {
+                        "description": "서버 정상",
+                        "schema": {
+                            "$ref": "#/definitions/model.HealthResponse"
                         }
                     }
                 }

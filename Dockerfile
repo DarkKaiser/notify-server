@@ -95,11 +95,11 @@ WORKDIR /usr/local/app/
 USER appuser
 
 # 헬스체크 추가
-# wget -O /dev/null을 사용하여 GET 메서드로 Swagger UI 페이지 접근 확인
-# (--spider 옵션은 HEAD 메서드를 사용하여 405 에러가 발생하므로 사용하지 않음)
+# /health 엔드포인트를 사용하여 서버 상태 확인
+# HTTPS를 먼저 시도하고 실패하면 HTTP로 fallback (TLS 설정에 따라 자동 대응)
 # 간격: 20초, 타임아웃: 5초, 시작 대기: 30초, 재시도: 3회
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
-    CMD wget -q -O - http://localhost:2443/health || exit 1
+    CMD wget -q --no-check-certificate -O - https://localhost:2443/health || wget -q -O - http://localhost:2443/health || exit 1
 
 # 포트 노출
 EXPOSE 2443

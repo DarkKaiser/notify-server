@@ -31,7 +31,7 @@ import (
 // @Failure 401 {object} model.ErrorResponse "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)"
 // @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Security ApiKeyAuth
-// @Router /notice/message [post]
+// @Router /api/v1/notice/message [post]
 func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)
 	if err := c.Bind(m); err != nil {

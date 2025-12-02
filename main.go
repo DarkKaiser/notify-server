@@ -56,7 +56,7 @@ import (
 // @license.url https://github.com/DarkKaiser/notify-server/blob/master/LICENSE
 
 // @host api.darkkaiser.com:2443
-// @BasePath /api/v1
+// @BasePath /
 
 // @securityDefinitions.apikey ApiKeyAuth
 // @in query
