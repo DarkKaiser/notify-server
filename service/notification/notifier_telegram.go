@@ -269,9 +269,15 @@ LOOP:
 
 					if _, err := n.bot.Send(messageConfig); err != nil {
 						log.WithFields(log.Fields{
+							"component":   "notification.telegram",
 							"notifier_id": n.ID(),
 							"error":       err,
 						}).Error("알림메시지 발송 실패")
+					} else {
+						log.WithFields(log.Fields{
+							"component":   "notification.telegram",
+							"notifier_id": n.ID(),
+						}).Info("알림메시지 발송 성공")
 					}
 				} else {
 					// 메시지를 줄 단위로 분할한다.

@@ -115,7 +115,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Debug("Notification 서비스 시작중...")
+	log.Info("Notification 서비스 시작중...")
 
 	if s.taskRunner == nil {
 		defer serviceStopWaiter.Done()
@@ -164,7 +164,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	s.running = true
 
-	log.Debug("Notification 서비스 시작됨")
+	log.Info("Notification 서비스 시작됨")
 
 	return nil
 }
@@ -174,7 +174,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 
 	select {
 	case <-serviceStopCtx.Done():
-		log.Debug("Notification 서비스 중지중...")
+		log.Info("Notification 서비스 중지중...")
 
 		// 등록된 모든 Notifier의 작업이 중지될때까지 대기한다.
 		s.notificationStopWaiter.Wait()
@@ -186,7 +186,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 		s.defaultNotifierHandler = nil
 		s.runningMu.Unlock()
 
-		log.Debug("Notification 서비스 중지됨")
+		log.Info("Notification 서비스 중지됨")
 	}
 }
 

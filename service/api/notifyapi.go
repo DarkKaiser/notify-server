@@ -52,7 +52,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Debug("NotifyAPI 서비스 시작중...")
+	log.Info("NotifyAPI 서비스 시작중...")
 
 	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
@@ -74,7 +74,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 	s.running = true
 
-	log.Debug("NotifyAPI 서비스 시작됨")
+	log.Info("NotifyAPI 서비스 시작됨")
 
 	return nil
 }
@@ -133,12 +133,12 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
 		if errors.Is(err, http.ErrServerClosed) == true {
-			log.Debug("NotifyAPI 서비스 > http 서버 중지됨")
+			log.Info("NotifyAPI 서비스 > http 서버 중지됨")
 		} else {
 			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 
 			log.WithFields(log.Fields{
-				"component": "api",
+				"component": "api.service",
 				"port":      s.config.NotifyAPI.WS.ListenPort,
 				"error":     err,
 			}).Error(m)
@@ -149,7 +149,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 	select {
 	case <-serviceStopCtx.Done():
-		log.Debug("NotifyAPI 서비스 중지중...")
+		log.Info("NotifyAPI 서비스 중지중...")
 
 		// 웹서버를 종료한다.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -169,6 +169,6 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		s.notificationSender = nil
 		s.runningMu.Unlock()
 
-		log.Debug("NotifyAPI 서비스 중지됨")
+		log.Info("NotifyAPI 서비스 중지됨")
 	}
 }

@@ -208,7 +208,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)
 
 		log.WithFields(log.Fields{
-			"component":  "task",
+			"component":  "task.executor",
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 		}).Error(m)
@@ -232,7 +232,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		m := fmt.Sprintf("%s\n\n☑ 작업결과데이터 생성이 실패하였습니다.", errString)
 
 		log.WithFields(log.Fields{
-			"component":  "task",
+			"component":  "task.executor",
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 		}).Error(m)
@@ -246,7 +246,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		m := fmt.Sprintf("이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다.", err)
 
 		log.WithFields(log.Fields{
-			"component":  "task",
+			"component":  "task.executor",
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 			"error":      err,
@@ -266,7 +266,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 					m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
 					log.WithFields(log.Fields{
-						"component":  "task",
+						"component":  "task.executor",
 						"task_id":    t.ID(),
 						"command_id": t.CommandID(),
 						"error":      err,
@@ -279,7 +279,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			m := fmt.Sprintf("%s\n\n☑ %s", errString, err)
 
 			log.WithFields(log.Fields{
-				"component":  "task",
+				"component":  "task.executor",
 				"task_id":    t.ID(),
 				"command_id": t.CommandID(),
 				"error":      err,
@@ -452,7 +452,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Debug("Task 서비스 시작중...")
+	log.Info("Task 서비스 시작중...")
 
 	if s.taskNotificationSender == nil {
 		defer serviceStopWaiter.Done()
@@ -477,7 +477,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 
 	s.running = true
 
-	log.Debug("Task 서비스 시작됨")
+	log.Info("Task 서비스 시작됨")
 
 	return nil
 }
@@ -610,7 +610,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 		case <-serviceStopCtx.Done():
-			log.Debug("Task 서비스 중지중...")
+			log.Info("Task 서비스 중지중...")
 
 			// Task 스케쥴러를 중지한다.
 			s.scheduler.Stop()
@@ -636,7 +636,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskNotificationSender = nil
 			s.runningMu.Unlock()
 
-			log.Debug("Task 서비스 중지됨")
+			log.Info("Task 서비스 중지됨")
 
 			return
 		}

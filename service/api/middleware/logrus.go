@@ -1,12 +1,13 @@
 package middleware
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/gommon/log"
-	"github.com/sirupsen/logrus"
 	"io"
 	"strconv"
 	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/gommon/log"
+	"github.com/sirupsen/logrus"
 )
 
 type Logger struct {
@@ -182,6 +183,7 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 		"latency_human": stop.Sub(start).String(),
 		"bytes_in":      bytesIn,
 		"bytes_out":     strconv.FormatInt(res.Size, 10),
+		"request_id":    res.Header().Get(echo.HeaderXRequestID),
 	}).Info("echo log")
 
 	return nil
