@@ -77,7 +77,8 @@ func TestInitAppConfig_ValidConfig(t *testing.T) {
 		}()
 
 		// 설정 로드 테스트
-		config := InitAppConfig()
+		config, err := InitAppConfig()
+		assert.NoError(t, err)
 
 		assert.NotNil(t, config, "설정이 로드되어야 합니다")
 		assert.True(t, config.Debug, "Debug 모드가 활성화되어야 합니다")
@@ -120,10 +121,10 @@ func TestInitAppConfig_DuplicateNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		// Should panic due to duplicate notifier ID
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "중복된 Notifier ID로 인해 panic이 발생해야 합니다")
+		// Should return error due to duplicate notifier ID
+		config, err := InitAppConfig()
+		assert.Error(t, err, "중복된 Notifier ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -155,9 +156,9 @@ func TestInitAppConfig_InvalidDefaultNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "존재하지 않는 기본 Notifier ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "존재하지 않는 기본 Notifier ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -196,9 +197,9 @@ func TestInitAppConfig_DuplicateTaskID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "중복된 Task ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "중복된 Task ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -243,9 +244,9 @@ func TestInitAppConfig_DuplicateCommandID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "중복된 Command ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "중복된 Command ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -285,9 +286,9 @@ func TestInitAppConfig_InvalidCommandNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "존재하지 않는 Command Notifier ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "존재하지 않는 Command Notifier ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -320,9 +321,9 @@ func TestInitAppConfig_TLSServerMissingCertFile(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "TLS Cert 파일 누락으로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "TLS Cert 파일 누락으로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -355,9 +356,9 @@ func TestInitAppConfig_TLSServerMissingKeyFile(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "TLS Key 파일 누락으로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "TLS Key 파일 누락으로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -398,9 +399,9 @@ func TestInitAppConfig_DuplicateApplicationID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "중복된 Application ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "중복된 Application ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -435,9 +436,9 @@ func TestInitAppConfig_InvalidApplicationNotifierID(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "존재하지 않는 Application Notifier ID로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "존재하지 않는 Application Notifier ID로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 
@@ -472,9 +473,9 @@ func TestInitAppConfig_MissingAppKey(t *testing.T) {
 
 		os.WriteFile(AppConfigFileName, data, 0644)
 
-		assert.Panics(t, func() {
-			InitAppConfig()
-		}, "AppKey 누락으로 인해 panic이 발생해야 합니다")
+		config, err := InitAppConfig()
+		assert.Error(t, err, "AppKey 누락으로 인해 에러가 발생해야 합니다")
+		assert.Nil(t, config)
 	})
 }
 

@@ -388,11 +388,21 @@ type taskRunData struct {
 	taskRunBy TaskRunBy
 }
 
-// TaskRunner
-type TaskRunner interface {
+// TaskExecutor
+type TaskExecutor interface {
 	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
 	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
+}
+
+// TaskCanceler
+type TaskCanceler interface {
 	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
+}
+
+// TaskRunner
+type TaskRunner interface {
+	TaskExecutor
+	TaskCanceler
 }
 
 // TaskNotificationSender

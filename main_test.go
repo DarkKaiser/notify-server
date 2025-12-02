@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/g"
-	"github.com/darkkaiser/notify-server/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -87,7 +86,8 @@ func TestInitAppConfig(t *testing.T) {
 		defer os.Remove(tempFile)
 
 		// 설정 로딩
-		config := g.InitAppConfigWithFile(tempFile)
+		config, err := g.InitAppConfigWithFile(tempFile)
+		assert.NoError(t, err)
 
 		// 검증
 		assert.NotNil(t, config, "설정이 로드되어야 합니다")
@@ -98,27 +98,15 @@ func TestInitAppConfig(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 설정 파일", func(t *testing.T) {
-		// Mock 에러 핸들러 설정
-		mock := &utils.MockErrorHandler{}
-		utils.SetErrorHandler(mock)
-		defer utils.ResetErrorHandler()
-
-		// panic 복구 (CheckErr가 프로세스를 종료하지 않아서 이후 로직에서 panic 발생 가능)
-		defer func() {
-			if r := recover(); r != nil {
-				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
-			}
-		}()
-
 		// 존재하지 않는 파일로 설정 로딩 시도
-		// os.ReadFile에서 에러가 발생하고 utils.CheckErr가 이를 처리함
-		g.InitAppConfigWithFile("nonexistent_file_12345.json")
+		config, err := g.InitAppConfigWithFile("nonexistent_file_12345.json")
 
-		// 검증 (panic 발생 전까지 실행된 경우)
-		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
-		assert.NotNil(t, mock.HandledError, "에러가 기록되어야 합니다")
+		// 검증
+		assert.Error(t, err, "에러가 반환되어야 합니다")
+		assert.Nil(t, config, "설정 객체는 nil이어야 합니다")
+
 		// 파일이 존재하지 않는 에러 메시지 확인
-		errMsg := mock.HandledError.Error()
+		errMsg := err.Error()
 		assert.True(t,
 			strings.Contains(errMsg, "nonexistent_file_12345.json") ||
 				strings.Contains(errMsg, "no such file") ||
@@ -132,25 +120,12 @@ func TestInitAppConfig(t *testing.T) {
 		tempFile := createTempConfigFile(t, invalidJSON)
 		defer os.Remove(tempFile)
 
-		// Mock 에러 핸들러 설정
-		mock := &utils.MockErrorHandler{}
-		utils.SetErrorHandler(mock)
-		defer utils.ResetErrorHandler()
-
-		// panic 복구
-		defer func() {
-			if r := recover(); r != nil {
-				// panic이 발생해도 CheckErr가 호출되었는지 확인하면 됨
-			}
-		}()
-
 		// 잘못된 JSON 파일 로딩 시도
-		// json.Unmarshal에서 에러가 발생하고 utils.CheckErr가 이를 처리함
-		g.InitAppConfigWithFile(tempFile)
+		config, err := g.InitAppConfigWithFile(tempFile)
 
 		// 검증
-		assert.True(t, mock.Called, "에러 핸들러가 호출되어야 합니다")
-		assert.NotNil(t, mock.HandledError, "JSON 파싱 에러가 기록되어야 합니다")
+		assert.Error(t, err, "JSON 파싱 에러가 반환되어야 합니다")
+		assert.Nil(t, config, "설정 객체는 nil이어야 합니다")
 	})
 }
 
