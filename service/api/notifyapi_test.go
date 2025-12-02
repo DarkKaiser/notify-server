@@ -32,7 +32,7 @@ func TestNotifyAPIService_Run(t *testing.T) {
 	config.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(config, mockSender)
+	service := NewNotifyAPIService(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -71,7 +71,7 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 	config.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(config, mockSender)
+	service := NewNotifyAPIService(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -111,7 +111,7 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 	config.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(config, mockSender)
+	service := NewNotifyAPIService(config, mockSender, "1.0.0", "2024-01-01", "100")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -152,7 +152,7 @@ func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
 	config.NotifyAPI.WS.ListenPort = 18083
 	config.NotifyAPI.WS.TLSServer = false
 
-	service := NewNotifyAPIService(config, nil)
+	service := NewNotifyAPIService(config, nil, "1.0.0", "2024-01-01", "100")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
