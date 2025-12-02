@@ -16,7 +16,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskRunner, taskNotificationSender TaskNotificationSender) {
+func (s *scheduler) Start(config *g.AppConfig, taskRunner TaskExecutor, taskNotificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
