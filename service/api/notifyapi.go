@@ -9,7 +9,7 @@ import (
 	"time"
 
 	_ "github.com/darkkaiser/notify-server/docs"
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -20,7 +20,7 @@ import (
 
 // NotifyAPIService
 type NotifyAPIService struct {
-	appConfig *g.AppConfig
+	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -33,7 +33,7 @@ type NotifyAPIService struct {
 	buildNumber string
 }
 
-func NewNotifyAPIService(appConfig *g.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
+func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
 	return &NotifyAPIService{
 		appConfig: appConfig,
 

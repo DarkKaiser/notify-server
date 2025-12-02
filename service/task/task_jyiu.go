@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/utils"
 )
 
@@ -76,7 +76,7 @@ func init() {
 			newTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *g.AppConfig) (taskHandler, error) {
+		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidJyiu {
 				return nil, errors.New("등록되지 않은 작업입니다.😱")
 			}
@@ -99,7 +99,7 @@ func init() {
 
 			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
 			if err != nil {
-				retryDelay, _ = time.ParseDuration(g.DefaultRetryDelay)
+				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
 			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 

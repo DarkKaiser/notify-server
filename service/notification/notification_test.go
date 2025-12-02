@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
@@ -157,7 +157,7 @@ func TestNotificationService_SupportHTMLMessage(t *testing.T) {
 // 새로운 테스트: NewService
 func TestNotificationService_NewService(t *testing.T) {
 	t.Run("서비스 생성", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 		mockTaskRunner := &mockTaskRunner{}
 
 		service := NewService(appConfig, mockTaskRunner)
@@ -378,10 +378,10 @@ func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
 
 func TestNotificationService_Run(t *testing.T) {
 	t.Run("서비스 시작 및 중지", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 		// Setup config with default notifier
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
-		appConfig.Notifiers.Telegrams = []g.TelegramConfig{
+		appConfig.Notifiers.Telegrams = []config.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",
@@ -393,7 +393,7 @@ func TestNotificationService_Run(t *testing.T) {
 		service := NewService(appConfig, mockTaskRunner)
 
 		// Mock createNotifier
-		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -419,9 +419,9 @@ func TestNotificationService_Run(t *testing.T) {
 	})
 
 	t.Run("이미 실행 중인 서비스 재시작 시도", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
-		appConfig.Notifiers.Telegrams = []g.TelegramConfig{
+		appConfig.Notifiers.Telegrams = []config.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",
@@ -432,7 +432,7 @@ func TestNotificationService_Run(t *testing.T) {
 		mockTaskRunner := &mockTaskRunner{}
 		service := NewService(appConfig, mockTaskRunner)
 
-		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -460,9 +460,9 @@ func TestNotificationService_Run(t *testing.T) {
 	})
 
 	t.Run("여러 Notifier 등록", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "notifier1"
-		appConfig.Notifiers.Telegrams = []g.TelegramConfig{
+		appConfig.Notifiers.Telegrams = []config.TelegramConfig{
 			{
 				ID:       "notifier1",
 				BotToken: "token1",
@@ -478,7 +478,7 @@ func TestNotificationService_Run(t *testing.T) {
 		mockTaskRunner := &mockTaskRunner{}
 		service := NewService(appConfig, mockTaskRunner)
 
-		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -500,9 +500,9 @@ func TestNotificationService_Run(t *testing.T) {
 	})
 
 	t.Run("run0 함수 - 정상 종료 및 리소스 정리", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
-		appConfig.Notifiers.Telegrams = []g.TelegramConfig{
+		appConfig.Notifiers.Telegrams = []config.TelegramConfig{
 			{
 				ID:       "default-notifier",
 				BotToken: "test-token",
@@ -513,7 +513,7 @@ func TestNotificationService_Run(t *testing.T) {
 		mockTaskRunner := &mockTaskRunner{}
 		service := NewService(appConfig, mockTaskRunner)
 
-		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,

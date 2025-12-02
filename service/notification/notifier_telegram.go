@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -61,7 +61,7 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
-func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
@@ -73,7 +73,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 
 // newTelegramNotifierWithBot is an internal constructor that accepts a TelegramBot interface.
 // This is useful for testing.
-func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, appConfig *g.AppConfig) NotifierHandler {
+func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 	notifier := &telegramNotifier{
 		notifier: notifier{
 			id: id,

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )
@@ -86,7 +86,7 @@ func (g *taskInstanceIDGenerator) reverse(s []string) []string {
 }
 
 // supportedTasks
-type newTaskFunc func(TaskInstanceID, *taskRunData, *g.AppConfig) (taskHandler, error)
+type newTaskFunc func(TaskInstanceID, *taskRunData, *config.AppConfig) (taskHandler, error)
 type newTaskResultDataFunc func() interface{}
 
 var supportedTasks = make(map[TaskID]*supportedTaskConfig)
@@ -301,7 +301,7 @@ func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m stri
 }
 
 func (t *task) dataFileName() string {
-	filename := fmt.Sprintf("%s-task-%s-%s.json", g.AppName, utils.ToSnakeCase(string(t.ID())), utils.ToSnakeCase(string(t.CommandID())))
+	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, utils.ToSnakeCase(string(t.ID())), utils.ToSnakeCase(string(t.CommandID())))
 	return strings.ReplaceAll(filename, "_", "-")
 }
 
@@ -415,7 +415,7 @@ type TaskNotificationSender interface {
 
 // TaskService
 type TaskService struct {
-	appConfig *g.AppConfig
+	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -435,7 +435,7 @@ type TaskService struct {
 	taskStopWaiter *sync.WaitGroup
 }
 
-func NewService(appConfig *g.AppConfig) *TaskService {
+func NewService(appConfig *config.AppConfig) *TaskService {
 	return &TaskService{
 		appConfig: appConfig,
 

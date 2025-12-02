@@ -3,15 +3,15 @@ package handler
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewHandler(t *testing.T) {
 	t.Run("핸들러 생성", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
-		appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
+		appConfig := &config.AppConfig{}
+		appConfig.NotifyAPI.Applications = []config.ApplicationConfig{
 			{
 				ID:                "test-app",
 				Title:             "Test Application",
@@ -31,8 +31,8 @@ func TestNewHandler(t *testing.T) {
 	})
 
 	t.Run("여러 애플리케이션 등록", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
-		appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
+		appConfig := &config.AppConfig{}
+		appConfig.NotifyAPI.Applications = []config.ApplicationConfig{
 			{
 				ID:                "app1",
 				Title:             "Application 1",
@@ -57,7 +57,7 @@ func TestNewHandler(t *testing.T) {
 	})
 
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 
 		mockSender := &mockNotificationSender{}
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")

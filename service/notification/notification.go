@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
@@ -75,7 +75,7 @@ type NotificationSender interface {
 
 // NotificationService
 type NotificationService struct {
-	appConfig *g.AppConfig
+	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
@@ -87,10 +87,10 @@ type NotificationService struct {
 
 	notificationStopWaiter *sync.WaitGroup
 
-	newNotifier func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler
+	newNotifier func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler
 }
 
-func NewService(appConfig *g.AppConfig, taskRunner task.TaskRunner) *NotificationService {
+func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *NotificationService {
 	return &NotificationService{
 		appConfig: appConfig,
 
@@ -107,7 +107,7 @@ func NewService(appConfig *g.AppConfig, taskRunner task.TaskRunner) *Notificatio
 	}
 }
 
-func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) NotifierHandler) {
+func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler) {
 	s.newNotifier = newNotifierFn
 }
 

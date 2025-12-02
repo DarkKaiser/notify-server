@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,7 +27,7 @@ func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
 
 // TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
 func TestNotifyAPIService_Run(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = 18080 // 테스트용 포트
 	appConfig.NotifyAPI.WS.TLSServer = false
 
@@ -66,7 +66,7 @@ func TestNotifyAPIService_Run(t *testing.T) {
 
 // TestNotifyAPIService_GracefulShutdown은 우아한 종료를 테스트합니다.
 func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = 18081 // 다른 포트 사용
 	appConfig.NotifyAPI.WS.TLSServer = false
 
@@ -106,7 +106,7 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 
 // TestNotifyAPIService_DuplicateRun은 중복 시작 방지를 테스트합니다.
 func TestNotifyAPIService_DuplicateRun(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = 18082
 	appConfig.NotifyAPI.WS.TLSServer = false
 
@@ -148,7 +148,7 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 
 // TestNotifyAPIService_NilNotificationSender는 nil NotificationSender 처리를 테스트합니다.
 func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = 18083
 	appConfig.NotifyAPI.WS.TLSServer = false
 

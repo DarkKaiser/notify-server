@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -45,8 +45,8 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 	mockSender := &MockNotificationSender{}
 
 	// Test Config
-	appConfig := &g.AppConfig{}
-	appConfig.NotifyAPI.Applications = []g.ApplicationConfig{
+	appConfig := &config.AppConfig{}
+	appConfig.NotifyAPI.Applications = []config.ApplicationConfig{
 		{
 			ID:                "test-app",
 			Title:             "Test App",

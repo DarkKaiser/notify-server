@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockRunner := &mockTaskRunner{}
 
 		// 빈 설정으로 시작
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 
 		// 스케줄러 시작
 		s.Start(appConfig, mockRunner, mockSender)
@@ -35,7 +35,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		s := &scheduler{}
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 
 		// 첫 번째 시작
 		s.Start(appConfig, mockRunner, mockSender)
@@ -53,7 +53,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		s := &scheduler{}
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
-		appConfig := &g.AppConfig{}
+		appConfig := &config.AppConfig{}
 
 		// 시작 후 중지
 		s.Start(appConfig, mockRunner, mockSender)
@@ -70,12 +70,12 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
 
-		appConfig := &g.AppConfig{
-			Tasks: []g.TaskConfig{
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []g.TaskCommandConfig{
+					Commands: []config.TaskCommandConfig{
 						{
 							ID:    "RunnableCommand",
 							Title: "실행 가능한 명령",
@@ -123,12 +123,12 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunner{}
 
-		appConfig := &g.AppConfig{
-			Tasks: []g.TaskConfig{
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{
 				{
 					ID:    "TestTask",
 					Title: "테스트 작업",
-					Commands: []g.TaskCommandConfig{
+					Commands: []config.TaskCommandConfig{
 						{
 							ID:    "QuickCommand",
 							Title: "빠른 실행 명령",
@@ -174,12 +174,12 @@ func TestScheduler_StartStop(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		mockRunner := &mockTaskRunnerWithFailure{} // 실패하는 TaskRunner
 
-		appConfig := &g.AppConfig{
-			Tasks: []g.TaskConfig{
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{
 				{
 					ID:    "FailTask",
 					Title: "실패 작업",
-					Commands: []g.TaskCommandConfig{
+					Commands: []config.TaskCommandConfig{
 						{
 							ID:    "FailCommand",
 							Title: "실패 명령",

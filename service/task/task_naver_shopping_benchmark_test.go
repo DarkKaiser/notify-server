@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 )
 
 func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
@@ -43,11 +43,11 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	mockFetcher.SetResponse(url1, []byte(searchResultJSON))
 
 	// 2. Task 초기화
-	appConfig := &g.AppConfig{
-		Tasks: []g.TaskConfig{
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
 			{
 				ID: string(TidNaverShopping),
-				Commands: []g.TaskCommandConfig{
+				Commands: []config.TaskCommandConfig{
 					{
 						ID: string(TcidNaverShoppingWatchPriceAny), // 실제로는 접두사 매칭
 						Data: map[string]interface{}{

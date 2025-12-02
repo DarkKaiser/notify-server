@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )
@@ -16,7 +16,7 @@ type scheduler struct {
 	runningMu sync.Mutex
 }
 
-func (s *scheduler) Start(appConfig *g.AppConfig, taskRunner TaskExecutor, taskNotificationSender TaskNotificationSender) {
+func (s *scheduler) Start(appConfig *config.AppConfig, taskRunner TaskExecutor, taskNotificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewService(t *testing.T) {
 	// 테스트용 설정
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 
 	// 서비스 생성
 	service := NewService(appConfig)
@@ -29,7 +29,7 @@ func TestNewService(t *testing.T) {
 }
 
 func TestTaskService_SetTaskNotificationSender(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 
 	mockSender := NewMockTaskNotificationSender()
@@ -42,7 +42,7 @@ func TestTaskService_SetTaskNotificationSender(t *testing.T) {
 }
 
 func TestTaskService_TaskRun_Success(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
@@ -73,7 +73,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
@@ -107,7 +107,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskCancel_Success(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
@@ -135,7 +135,7 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 }
 
 func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
@@ -171,7 +171,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 }
 
 func TestTaskService_Concurrency(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)
@@ -219,7 +219,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 }
 
 func TestTaskService_CancelConcurrency(t *testing.T) {
-	appConfig := &g.AppConfig{}
+	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockTaskNotificationSender()
 	service.SetTaskNotificationSender(mockSender)

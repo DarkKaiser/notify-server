@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/g"
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
@@ -24,7 +24,7 @@ func TestServicesIntegration(t *testing.T) {
 		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -65,7 +65,7 @@ func TestServicesIntegration(t *testing.T) {
 		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -190,7 +190,7 @@ func TestServiceLifecycle(t *testing.T) {
 		notificationService := notification.NewService(appConfig, taskService)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -272,7 +272,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		notificationService := notification.NewService(appConfig, mockTaskRunner)
 
 		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *g.AppConfig) notification.NotifierHandler {
+		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
 				id:                 id,
 				supportHTMLMessage: true,
@@ -337,12 +337,12 @@ func TestEndToEndScenario(t *testing.T) {
 }
 
 // 헬퍼 함수 및 Mock 객체
-func createTestConfig() *g.AppConfig {
-	return &g.AppConfig{
+func createTestConfig() *config.AppConfig {
+	return &config.AppConfig{
 		Debug: true,
-		Notifiers: g.NotifierConfig{
+		Notifiers: config.NotifierConfig{
 			DefaultNotifierID: "test-notifier",
-			Telegrams: []g.TelegramConfig{
+			Telegrams: []config.TelegramConfig{
 				{
 					ID:       "test-notifier",
 					BotToken: "test-token",
@@ -350,20 +350,20 @@ func createTestConfig() *g.AppConfig {
 				},
 			},
 		},
-		NotifyAPI: g.NotifyAPIConfig{
-			WS: g.WSConfig{
+		NotifyAPI: config.NotifyAPIConfig{
+			WS: config.WSConfig{
 				ListenPort: 18080,
 				TLSServer:  false,
 			},
 		},
-		Tasks: []g.TaskConfig{},
+		Tasks: []config.TaskConfig{},
 	}
 }
 
-func createTestConfigWithNotifier() *g.AppConfig {
+func createTestConfigWithNotifier() *config.AppConfig {
 	appConfig := createTestConfig()
 	appConfig.Notifiers.DefaultNotifierID = "default-notifier"
-	appConfig.Notifiers.Telegrams = []g.TelegramConfig{
+	appConfig.Notifiers.Telegrams = []config.TelegramConfig{
 		{
 			ID:       "default-notifier",
 			BotToken: "test-token",
@@ -453,11 +453,11 @@ func TestFullFlow_SchedulerToNotification(t *testing.T) {
 	t.Run("스케줄러에 의한 작업 실행 및 알림 발송", func(t *testing.T) {
 		// 1. 설정 생성 (자주 실행되는 작업 포함)
 		appConfig := createTestConfig()
-		appConfig.Tasks = []g.TaskConfig{
+		appConfig.Tasks = []config.TaskConfig{
 			{
 				ID:    "IntegrationTask",
 				Title: "통합 테스트 작업",
-				Commands: []g.TaskCommandConfig{
+				Commands: []config.TaskCommandConfig{
 					{
 						ID:    "Run",
 						Title: "실행",
