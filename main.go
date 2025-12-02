@@ -90,7 +90,13 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
 
 	// 환경설정 정보를 읽어들인다.
-	config := g.InitAppConfig()
+	config, err := g.InitAppConfig()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"component": "main",
+			"error":     err,
+		}).Fatal("환경설정 로드 실패")
+	}
 
 	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
 	_log_.Init(config.Debug, g.AppName, 30.)

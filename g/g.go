@@ -3,7 +3,6 @@ package g
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -95,19 +94,23 @@ type AppConfig struct {
 	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
-func InitAppConfig() *AppConfig {
+func InitAppConfig() (*AppConfig, error) {
 	return InitAppConfigWithFile(AppConfigFileName)
 }
 
 // InitAppConfigWithFile 지정된 파일에서 설정을 로드합니다.
 // 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
-func InitAppConfigWithFile(filename string) *AppConfig {
+func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	data, err := os.ReadFile(filename)
-	utils.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 
 	var config AppConfig
 	err = json.Unmarshal(data, &config)
-	utils.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 
 	// HTTP Retry 설정 기본값 적용
 	if config.HTTPRetry.MaxRetries == 0 {
@@ -121,10 +124,10 @@ func InitAppConfigWithFile(filename string) *AppConfig {
 	// 파일 내용에 대해 유효성 검사를 한다.
 	//
 	if err := config.Validate(); err != nil {
-		log.Panicf("%s 파일의 내용이 유효하지 않습니다. %v", filename, err)
+		return nil, fmt.Errorf("%s 파일의 내용이 유효하지 않습니다. %v", filename, err)
 	}
 
-	return &config
+	return &config, nil
 }
 
 // Validate AppConfig의 유효성을 검사합니다.

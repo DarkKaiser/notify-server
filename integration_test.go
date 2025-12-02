@@ -31,7 +31,7 @@ func TestServicesIntegration(t *testing.T) {
 			}
 		})
 
-		notifyAPIService := api.NewNotifyAPIService(config, notificationService)
+		notifyAPIService := api.NewNotifyAPIService(config, notificationService, "test-version", "test-date", "test-build")
 
 		// 서비스 검증
 		assert.NotNil(t, taskService, "TaskService가 생성되어야 합니다")
