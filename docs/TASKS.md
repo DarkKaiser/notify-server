@@ -46,12 +46,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "JDC",
-  "title": "전남디지털역량 신규 교육 확인",
+  "title": "전남디지털역량교육",
   "commands": [
     {
       "id": "WatchNewOnlineEducation",
-      "cron": "0 9,18 * * *",
-      "notifier_id": "my-telegram"
+      "title": "신규 비대면 온라인 특별/정규교육 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 6 9-18 * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram"
     }
   ]
 }
@@ -59,10 +66,10 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 **설정 옵션**
 
-| 옵션          | 설명                    | 필수   | 기본값         |
-| ------------- | ----------------------- | ------ | -------------- |
-| `cron`        | 실행 주기 (Cron 표현식) | 예     | -              |
-| `notifier_id` | 알림 채널 ID            | 아니오 | 기본 알림 채널 |
+| 옵션                  | 설명                    | 필수   | 기본값         |
+| --------------------- | ----------------------- | ------ | -------------- |
+| `scheduler.time_spec` | 실행 주기 (Cron 표현식) | 예     | -              |
+| `default_notifier_id` | 알림 채널 ID            | 아니오 | 기본 알림 채널 |
 
 **알림 내용**
 
@@ -91,18 +98,23 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "JYIU",
-  "title": "전남여수산학융합원 모니터링",
+  "title": "전남여수산학융합원",
   "commands": [
     {
       "id": "WatchNewNotice",
-      "cron": "0 */2 * * *",
-      "notifier_id": "my-telegram"
+      "title": "공지사항 새글 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 3 9-18 * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram"
     }
   ]
 }
 ```
-
-**권장 설정**: 2시간마다 확인 (`0 */2 * * *`)
 
 #### WatchNewEducation
 
@@ -115,14 +127,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
   "commands": [
     {
       "id": "WatchNewEducation",
-      "cron": "0 10 * * *",
-      "notifier_id": "my-telegram"
+      "title": "신규 교육프로그램 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 4 9-18 * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram"
     }
   ]
 }
 ```
-
-**권장 설정**: 매일 오전 10시 (`0 10 * * *`)
 
 **알림 내용**
 
@@ -152,12 +169,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "KURLY",
-  "title": "마켓컬리 가격 모니터링",
+  "title": "마켓컬리",
   "commands": [
     {
       "id": "WatchProductPrice",
-      "cron": "0 8,20 * * *",
-      "notifier_id": "my-telegram",
+      "title": "상품 가격 변동 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 0,15,30,45 9-23 * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram",
       "data": {
         "watch_products_file": "/usr/local/app/kurly_products.csv"
       }
@@ -170,8 +194,8 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 | 옵션                  | 설명                           | 필수 | 예시                                |
 | --------------------- | ------------------------------ | ---- | ----------------------------------- |
+| `scheduler.time_spec` | 가격 확인 주기                 | 예   | `0 0,15,30,45 9-23 * * *`           |
 | `watch_products_file` | 감시할 상품 목록 CSV 파일 경로 | 예   | `/usr/local/app/kurly_products.csv` |
-| `cron`                | 가격 확인 주기                 | 예   | `0 8,20 * * *`                      |
 
 **감시 상품 파일 형식 (CSV)**
 
@@ -214,12 +238,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "LOTTO",
-  "title": "로또 번호 예측",
+  "title": "로또",
   "commands": [
     {
       "id": "Prediction",
-      "cron": "0 10 * * 6",
-      "notifier_id": "my-telegram"
+      "title": "로또 당첨번호 예측",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 0 8 * * 0"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram"
     }
   ],
   "data": {
@@ -233,8 +264,6 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 | 옵션       | 설명                                      | 필수 |
 | ---------- | ----------------------------------------- | ---- |
 | `app_path` | 로또 예측 Java 애플리케이션 디렉토리 경로 | 예   |
-
-**권장 설정**: 매주 토요일 오전 10시 (`0 10 * * 6`)
 
 **알림 내용**
 
@@ -261,12 +290,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "NAVER",
-  "title": "네이버 공연 모니터링",
+  "title": "네이버",
   "commands": [
     {
       "id": "WatchNewPerformances",
-      "cron": "0 9 * * *",
-      "notifier_id": "my-telegram",
+      "title": "신규 공연정보 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 1 9 * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram",
       "data": {
         "query": "뮤지컬",
         "filters": {
@@ -323,12 +359,19 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ```json
 {
   "id": "NS",
-  "title": "네이버쇼핑 가격 모니터링",
+  "title": "네이버쇼핑",
   "commands": [
     {
       "id": "WatchPrice_노트북",
-      "cron": "0 */6 * * *",
-      "notifier_id": "my-telegram",
+      "title": "노트북 최저가 확인",
+      "scheduler": {
+        "runnable": true,
+        "time_spec": "0 5 * * * *"
+      },
+      "notifier": {
+        "usable": true
+      },
+      "default_notifier_id": "my-telegram",
       "data": {
         "query": "LG 그램 17",
         "filters": {
@@ -375,7 +418,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 ### Cron 표현식
 
-모든 Task는 Cron 표현식을 사용하여 실행 스케줄을 설정합니다.
+모든 Task는 `scheduler.time_spec` 필드에 Cron 표현식을 사용하여 실행 스케줄을 설정합니다.
 
 **형식**: `분 시 일 월 요일`
 
@@ -393,7 +436,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 ### Notifier 설정
 
-각 Command는 `notifier_id`를 지정하여 알림을 전송할 채널을 선택합니다.
+각 Command는 `default_notifier_id`를 지정하여 알림을 전송할 채널을 선택합니다. 또한 `notifier.usable`을 통해 알림 사용 여부를 제어할 수 있습니다.
 
 ```json
 {
@@ -443,7 +486,15 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
       "commands": [
         {
           "id": "WatchNewOnlineEducation",
-          "cron": "0 9,18 * * *"
+          "title": "신규 온라인 교육 확인",
+          "scheduler": {
+            "runnable": true,
+            "time_spec": "0 9,18 * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "my-telegram"
         }
       ]
     },
@@ -453,7 +504,15 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
       "commands": [
         {
           "id": "WatchProductPrice",
-          "cron": "0 8,20 * * *",
+          "title": "상품 가격 변동 확인",
+          "scheduler": {
+            "runnable": true,
+            "time_spec": "0 8,20 * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "my-telegram",
           "data": {
             "watch_products_file": "/usr/local/app/kurly_products.csv"
           }
@@ -466,7 +525,15 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
       "commands": [
         {
           "id": "WatchPrice_노트북",
-          "cron": "0 */6 * * *",
+          "title": "노트북 최저가 확인",
+          "scheduler": {
+            "runnable": true,
+            "time_spec": "0 */6 * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "my-telegram",
           "data": {
             "query": "LG 그램 17",
             "filters": {
@@ -485,10 +552,10 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
   ],
   "notify_api": {
     "ws": {
-      "listen_port": 2443,
       "tls_server": true,
       "tls_cert_file": "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
-      "tls_key_file": "/etc/letsencrypt/live/yourdomain.com/privkey.pem"
+      "tls_key_file": "/etc/letsencrypt/live/yourdomain.com/privkey.pem",
+      "listen_port": 2443
     },
     "allowed_applications": [
       {

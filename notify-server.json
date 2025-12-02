@@ -36,7 +36,7 @@
 						"filters": {
 							"title": {
 								"included_keywords": "",
-								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순, - 영광, - 장성, - 진도, - 구미, - 담양"
+								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순, - 영광, - 장성, - 진도, - 구미, - 담양, - 부안, - 강진"
 							},
 							"place": {
 								"included_keywords": "",
@@ -89,7 +89,7 @@
 						"filters": {
 							"included_keywords": "트루락, 키즈업, 90포|3개월|3박스",
 							"excluded_keywords": "30포, 60포, 1박스, 2박스",
-							"price_less_than": 154500
+							"price_less_than": 150000
 						}
 					}
 				}
