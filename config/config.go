@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -191,6 +192,47 @@ func validateFileExists(path string, warnOnly bool) error {
 	return nil
 }
 
+// validateURL URL 형식의 유효성을 검사합니다.
+func validateURL(urlStr string) error {
+	if urlStr == "" {
+		return nil
+	}
+
+	// URL 파싱
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("잘못된 URL 형식입니다: %s (에러: %v)", urlStr, err)
+	}
+
+	// Scheme 검증 (http 또는 https만 허용)
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("URL은 http 또는 https 스키마를 사용해야 합니다: %s", urlStr)
+	}
+
+	// Host 검증
+	if parsedURL.Host == "" {
+		return fmt.Errorf("URL에 호스트가 없습니다: %s", urlStr)
+	}
+
+	return nil
+}
+
+// validateFileOrURL 파일 경로 또는 URL의 유효성을 검사합니다.
+// warnOnly가 true면 경고만 출력하고 에러는 반환하지 않습니다.
+func validateFileOrURL(path string, warnOnly bool) error {
+	if path == "" {
+		return nil
+	}
+
+	// URL 형식인지 확인
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return validateURL(path)
+	}
+
+	// 파일 경로로 검증
+	return validateFileExists(path, warnOnly)
+}
+
 // Validate AppConfig의 유효성을 검사합니다.
 func (c *AppConfig) Validate() error {
 	// HTTP Retry 설정 검증
@@ -282,9 +324,9 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 			return fmt.Errorf("웹서버의 Key 파일 경로가 입력되지 않았습니다")
 		}
 
-		// TLS 인증서 파일 존재 여부 검증 (경고만)
-		validateFileExists(c.WS.TLSCertFile, true)
-		validateFileExists(c.WS.TLSKeyFile, true)
+		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
+		validateFileOrURL(c.WS.TLSCertFile, true)
+		validateFileOrURL(c.WS.TLSKeyFile, true)
 	}
 
 	// Applications 설정 검사
