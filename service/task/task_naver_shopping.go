@@ -238,8 +238,8 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &naverShoppingWatchPriceResultData{}
-	includedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.IncludedKeywords, ",")
-	excludedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.ExcludedKeywords, ",")
+	includedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.IncludedKeywords, ",")
+	excludedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {

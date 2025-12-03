@@ -147,10 +147,10 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	}
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
-	titleIncludedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := strutils.SplitExceptEmptyItems(taskCommandData.Filters.Place.ExcludedKeywords, ",")
+	titleIncludedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.Title.IncludedKeywords, ",")
+	titleExcludedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.Title.ExcludedKeywords, ",")
+	placeIncludedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.Place.IncludedKeywords, ",")
+	placeExcludedKeywords := strutils.SplitNonEmpty(taskCommandData.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
 	searchPerformancePageIndex := 1

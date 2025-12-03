@@ -81,7 +81,7 @@ func fillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
 
 func filter(s string, includedKeywords, excludedKeywords []string) bool {
 	for _, k := range includedKeywords {
-		includedOneOfManyKeywords := strutils.SplitExceptEmptyItems(k, "|")
+		includedOneOfManyKeywords := strutils.SplitNonEmpty(k, "|")
 		if len(includedOneOfManyKeywords) == 1 {
 			if strings.Contains(s, k) == false {
 				return false

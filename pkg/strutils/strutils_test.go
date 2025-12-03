@@ -132,7 +132,7 @@ func TestFormatCommas(t *testing.T) {
 	}
 }
 
-func TestSplitExceptEmptyItems(t *testing.T) {
+func TestSplitNonEmpty(t *testing.T) {
 	var notAssign []string
 
 	cases := []struct {
@@ -150,6 +150,6 @@ func TestSplitExceptEmptyItems(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(t, c.expected, SplitExceptEmptyItems(c.s, c.sep))
+		assert.Equal(t, c.expected, SplitNonEmpty(c.s, c.sep))
 	}
 }
