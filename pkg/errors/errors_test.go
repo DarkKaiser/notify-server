@@ -19,7 +19,7 @@ func TestWrap(t *testing.T) {
 	err := Wrap(originalErr, ErrInternal, "internal error")
 
 	assert.Error(t, err)
-	assert.Equal(t, "internal error", err.Error())
+	assert.Equal(t, "internal error: original error", err.Error())
 	assert.Equal(t, ErrInternal, GetType(err))
 	assert.Equal(t, originalErr, Cause(err))
 	assert.Equal(t, originalErr, errors.Unwrap(err))
