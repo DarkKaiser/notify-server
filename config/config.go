@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/darkkaiser/notify-server/utils"
+	"github.com/robfig/cron/v3"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -129,8 +132,72 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	return &appConfig, nil
 }
 
+// validateCronExpression Cron 표현식의 유효성을 검사합니다.
+func validateCronExpression(spec string) error {
+	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	_, err := parser.Parse(spec)
+	if err != nil {
+		return fmt.Errorf("잘못된 Cron 표현식입니다: %s (에러: %v)", spec, err)
+	}
+	return nil
+}
+
+// validatePort 포트 번호의 유효성을 검사합니다.
+func validatePort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port)
+	}
+	if port < 1024 {
+		// 경고만 로그로 출력 (에러는 아님)
+		log.WithFields(log.Fields{
+			"component": "config",
+			"port":      port,
+		}).Warn("1-1023 포트는 시스템 예약 포트입니다. 권한이 필요할 수 있습니다")
+	}
+	return nil
+}
+
+// validateDuration duration 문자열의 유효성을 검사합니다.
+func validateDuration(d string) error {
+	_, err := time.ParseDuration(d)
+	if err != nil {
+		return fmt.Errorf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d)
+	}
+	return nil
+}
+
+// validateFileExists 파일 존재 여부를 검사합니다 (선택적).
+// warnOnly가 true면 경고만 출력하고 에러는 반환하지 않습니다.
+func validateFileExists(path string, warnOnly bool) error {
+	if path == "" {
+		return nil // 빈 경로는 검사하지 않음
+	}
+
+	_, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			errMsg := fmt.Errorf("파일이 존재하지 않습니다: %s", path)
+			if warnOnly {
+				log.WithFields(log.Fields{
+					"component": "config",
+					"file_path": path,
+				}).Warn(errMsg.Error())
+				return nil
+			}
+			return errMsg
+		}
+		return fmt.Errorf("파일 접근 오류: %s (에러: %v)", path, err)
+	}
+	return nil
+}
+
 // Validate AppConfig의 유효성을 검사합니다.
 func (c *AppConfig) Validate() error {
+	// HTTP Retry 설정 검증
+	if err := validateDuration(c.HTTPRetry.RetryDelay); err != nil {
+		return fmt.Errorf("HTTP Retry 설정 오류: %v", err)
+	}
+
 	// Notifiers 유효성 검사
 	notifierIDs, err := c.Notifiers.Validate()
 	if err != nil {
@@ -169,6 +236,13 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
 				return fmt.Errorf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID)
 			}
+
+			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
+			if cmd.Scheduler.Runnable {
+				if err := validateCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+					return fmt.Errorf("%s::%s Task의 Scheduler 설정 오류: %v", t.ID, cmd.ID, err)
+				}
+			}
 		}
 	}
 	return nil
@@ -194,6 +268,11 @@ func (c *NotifierConfig) Validate() ([]string, error) {
 
 // Validate NotifyAPIConfig의 유효성을 검사합니다.
 func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
+	// 포트 번호 검증
+	if err := validatePort(c.WS.ListenPort); err != nil {
+		return fmt.Errorf("웹서버 포트 설정 오류: %v", err)
+	}
+
 	// WS 설정 검사
 	if c.WS.TLSServer {
 		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
@@ -202,6 +281,10 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
 			return fmt.Errorf("웹서버의 Key 파일 경로가 입력되지 않았습니다")
 		}
+
+		// TLS 인증서 파일 존재 여부 검증 (경고만)
+		validateFileExists(c.WS.TLSCertFile, true)
+		validateFileExists(c.WS.TLSKeyFile, true)
 	}
 
 	// Applications 설정 검사
