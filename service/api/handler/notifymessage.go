@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	applog "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -53,7 +53,7 @@ func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 				applog.WithComponentAndFields("api.handler", log.Fields{
 					"endpoint":         "/api/v1/notice/message",
 					"application_id":   m.ApplicationID,
-					"received_app_key": applog.MaskAppKey(appKey),
+					"received_app_key": applog.MaskSensitiveData(appKey),
 				}).Warn("APP_KEY 불일치")
 
 				return echo.NewHTTPError(http.StatusUnauthorized, fmt.Sprintf("APP_KEY가 유효하지 않습니다.(ID:%s)", m.ApplicationID))

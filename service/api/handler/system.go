@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	applog "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
