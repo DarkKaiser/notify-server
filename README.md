@@ -296,6 +296,14 @@ notify-server/
   - `ERROR`: 시스템 에러, 작업 실패
   - `FATAL`: 치명적 오류 (서버 종료)
 
+### 에러 처리
+
+`notify-server`는 `pkg/errors` 패키지를 사용하여 일관된 에러 처리를 지원합니다.
+
+- **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal` 등 명확한 에러 타입을 정의하여 사용합니다.
+- **에러 래핑**: `apperrors.Wrap`을 사용하여 원인 에러와 컨텍스트 정보를 함께 전달합니다.
+- **에러 확인**: `apperrors.Is`, `apperrors.As`를 사용하여 에러 타입과 원인을 안전하게 확인합니다.
+
 ### 코드 품질 관리
 
 ```bash
