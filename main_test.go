@@ -12,8 +12,11 @@ import (
 
 // TestAppVersion은 애플리케이션 버전이 설정되어 있는지 확인합니다.
 func TestAppVersion(t *testing.T) {
-	assert.NotEmpty(t, config.AppVersion, "애플리케이션 버전이 설정되어야 합니다")
-	assert.Regexp(t, `^\d+\.\d+\.\d+$`, config.AppVersion, "버전은 x.y.z 형식이어야 합니다")
+	assert.NotEmpty(t, Version, "애플리케이션 버전이 설정되어야 합니다")
+	// Version은 기본값이 "dev"이므로 정규식 검사는 "dev" 또는 Git Tag 형식(vX.Y.Z...)이어야 함
+	if Version != "dev" {
+		assert.Regexp(t, `^v?\d+\.\d+\.\d+(?:-.*)?$`, Version, "버전은 Semantic Versioning 형식이어야 합니다")
+	}
 }
 
 // TestAppName은 애플리케이션 이름이 설정되어 있는지 확인합니다.
@@ -24,16 +27,16 @@ func TestAppName(t *testing.T) {
 
 // TestBannerFormat은 배너 형식이 올바른지 확인합니다.
 func TestBannerFormat(t *testing.T) {
-	assert.Contains(t, banner, "v%s", "배너에 버전 플레이스홀더가 있어야 합니다")
+	assert.Contains(t, banner, "%s", "배너에 버전 플레이스홀더가 있어야 합니다")
 	assert.Contains(t, banner, "DarkKaiser", "배너에 개발자 이름이 있어야 합니다")
 	assert.NotEmpty(t, banner, "배너가 비어있지 않아야 합니다")
 }
 
 // TestBannerOutput은 배너 출력이 정상적으로 작동하는지 확인합니다.
 func TestBannerOutput(t *testing.T) {
-	formattedBanner := fmt.Sprintf(banner, config.AppVersion)
+	formattedBanner := fmt.Sprintf(banner, Version)
 
-	assert.Contains(t, formattedBanner, config.AppVersion, "포맷된 배너에 버전이 포함되어야 합니다")
+	assert.Contains(t, formattedBanner, Version, "포맷된 배너에 버전이 포함되어야 합니다")
 	assert.Contains(t, formattedBanner, "DarkKaiser", "포맷된 배너에 개발자 이름이 포함되어야 합니다")
 	assert.NotContains(t, formattedBanner, "%s", "포맷된 배너에 플레이스홀더가 남아있지 않아야 합니다")
 }
@@ -65,11 +68,10 @@ func TestEnvironmentSetup(t *testing.T) {
 func TestApplicationMetadata(t *testing.T) {
 	t.Run("버전 형식", func(t *testing.T) {
 		// 버전이 비어있지 않고 올바른 형식인지 확인
-		assert.NotEmpty(t, config.AppVersion, "버전이 설정되어야 합니다")
+		assert.NotEmpty(t, Version, "버전이 설정되어야 합니다")
 
-		// 간단한 버전 형식 검증 (예: "0.0.3")
-		versionParts := len(config.AppVersion)
-		assert.Greater(t, versionParts, 4, "버전 문자열이 최소 길이를 만족해야 합니다")
+		// 간단한 버전 형식 검증 (예: "0.0.3" or "dev")
+		assert.NotEmpty(t, Version, "버전 문자열이 비어있지 않아야 합니다")
 	})
 
 	t.Run("애플리케이션 이름", func(t *testing.T) {

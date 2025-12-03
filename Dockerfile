@@ -5,6 +5,7 @@ FROM golang:1.23.4-alpine AS builder
 
 # 빌드 메타데이터 인자
 ARG GIT_COMMIT=unknown
+ARG GIT_VERSION=unknown
 ARG BUILD_DATE=unknown
 ARG BUILD_NUMBER=unknown
 ARG APP_NAME=notify-server
@@ -38,7 +39,7 @@ RUN go test ./... -v -coverprofile=coverage.out
 # 빌드 정보를 바이너리에 주입
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a \
     -ldflags="-s -w \
-    -X 'main.Version=${GIT_COMMIT}' \
+    -X 'main.Version=${GIT_VERSION}' \
     -X 'main.BuildDate=${BUILD_DATE}' \
     -X 'main.BuildNumber=${BUILD_NUMBER}'" \
     -o ${APP_NAME} .
@@ -50,6 +51,7 @@ FROM alpine:3.20
 
 # 빌드 메타데이터 인자
 ARG GIT_COMMIT=unknown
+ARG GIT_VERSION=unknown
 ARG BUILD_DATE=unknown
 ARG BUILD_NUMBER=unknown
 ARG APP_NAME=notify-server
@@ -59,7 +61,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.authors="DarkKaiser" \
     org.opencontainers.image.url="https://github.com/DarkKaiser/notify-server" \
     org.opencontainers.image.source="https://github.com/DarkKaiser/notify-server" \
-    org.opencontainers.image.version="${GIT_COMMIT}" \
+    org.opencontainers.image.version="${GIT_VERSION}" \
     org.opencontainers.image.revision="${GIT_COMMIT}" \
     org.opencontainers.image.title="Notify Server" \
     org.opencontainers.image.description="웹 페이지 스크래핑 및 RSS 피드 제공 서버" \

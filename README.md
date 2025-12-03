@@ -268,15 +268,19 @@ curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-ke
 
 ```
 notify-server/
-├── service/
-│   ├── api/           # REST API 서비스
-│   ├── notification/  # 알림 서비스 (Telegram 등)
-│   └── task/          # 스크래핑 및 작업 서비스
-├── g/                 # 전역 설정 및 유틸리티
+├── config/            # 환경설정 관리
+├── docs/              # 문서 (TASKS.md, Swagger 등)
 ├── log/               # 로깅 유틸리티
-├── docs/              # 문서
-│   └── TASKS.md       # Task 상세 문서
-└── secrets/           # 설정 파일 (Git 제외)
+├── logs/              # 로그 파일 저장소 (Git 제외)
+├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
+├── service/           # 비즈니스 로직
+│   ├── api/           # REST API 서버
+│   ├── notification/  # 알림 발송 (Telegram 등)
+│   └── task/          # 스케줄링 및 스크래핑 작업
+├── utils/             # 공통 유틸리티
+├── main.go            # 애플리케이션 진입점
+├── notify-server.json # 기본 설정 파일
+└── Dockerfile         # Docker 빌드 설정
 ```
 
 ### 코드 품질 관리

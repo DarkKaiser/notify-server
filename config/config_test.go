@@ -11,7 +11,7 @@ import (
 func TestAppConstants(t *testing.T) {
 	t.Run("앱 상수 확인", func(t *testing.T) {
 		assert.Equal(t, "notify-server", AppName, "AppName이 일치해야 합니다")
-		assert.NotEmpty(t, AppVersion, "AppVersion이 비어있지 않아야 합니다")
+
 		assert.Equal(t, "notify-server.json", AppConfigFileName, "AppConfigFileName이 일치해야 합니다")
 	})
 }

@@ -62,7 +62,11 @@ pipeline {
                     env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.GIT_COMMIT_FULL = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
                     
+                    // 태그 정보가 없으면 커밋 해시만 반환 (--always)
+                    env.GIT_VERSION = sh(script: "git describe --tags --always --dirty", returnStdout: true).trim()
+                    
                     echo "Git 정보:"
+                    echo "  버전: ${env.GIT_VERSION}"
                     echo "  커밋: ${env.GIT_COMMIT_SHORT} (${env.GIT_COMMIT_FULL})"
                     echo "  빌드: #${env.BUILD_NUMBER}"
                 }
@@ -79,6 +83,7 @@ pipeline {
                     sh """
                         docker build --target builder \\
                             --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \\
+                            --build-arg GIT_VERSION=${env.GIT_VERSION} \\
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
                             -t notify-server:test .
@@ -136,12 +141,13 @@ pipeline {
                 script {
                     echo "프로덕션 이미지 빌드 중..."
                     
-                    // 버전 태그 생성 (빌드 번호 + 커밋 해시) - 시간순 정렬 가능
-                    env.VERSION_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                    // 버전 태그 생성 (Git Version 사용)
+                    env.VERSION_TAG = "${env.GIT_VERSION}"
                     
                     sh """
                         docker build \\
                             --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \\
+                            --build-arg GIT_VERSION=${env.GIT_VERSION} \\
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
                             -t ${env.DOCKER_IMAGE_NAME}:latest \\
@@ -204,8 +210,7 @@ pipeline {
                     // 오래된 버전 이미지 정리 (최근 5개 버전만 유지)
                     sh """
                         docker images ${env.DOCKER_IMAGE_NAME} --format '{{.Tag}}' | \\
-                        grep -E '^[0-9]+-[a-f0-9]+\$' | \\
-                        sort -t- -k1 -n -r | \\
+                        grep -v '^latest$' | \\
                         tail -n +6 | \\
                         xargs -r -I {} docker rmi ${env.DOCKER_IMAGE_NAME}:{} || echo "정리할 오래된 이미지가 없습니다."
                     """

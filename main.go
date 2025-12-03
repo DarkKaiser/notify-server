@@ -80,15 +80,13 @@ const (
  |  \| | / _ \ | __|| || |_ | | | | \___ \  / _ \| '__|\ \ / / / _ \| '__|
  | |\  || (_) || |_ | ||  _|| |_| |  ___) ||  __/| |    \ V / |  __/| |
  |_| \_| \___/  \__||_||_|   \__, | |____/  \___||_|     \_/   \___||_|
-                             |___/                                       v%s
+                             |___/                           %s
                                                         developed by DarkKaiser
 --------------------------------------------------------------------------------
 `
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU()) // 모든 CPU 사용
-
 	// 환경설정 정보를 읽어들인다.
 	appConfig, err := config.InitAppConfig()
 	if err != nil {
@@ -102,7 +100,7 @@ func main() {
 	_log_.Init(appConfig.Debug, config.AppName, 30.)
 
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
-	fmt.Printf(banner, config.AppVersion)
+	fmt.Printf(banner, Version)
 
 	// 빌드 정보 출력
 	log.WithFields(log.Fields{
