@@ -10,7 +10,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/utils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
 const (
@@ -147,10 +147,10 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	}
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
-	titleIncludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := utils.SplitExceptEmptyItems(taskCommandData.Filters.Place.ExcludedKeywords, ",")
+	titleIncludedKeywords := strutil.SplitExceptEmptyItems(taskCommandData.Filters.Title.IncludedKeywords, ",")
+	titleExcludedKeywords := strutil.SplitExceptEmptyItems(taskCommandData.Filters.Title.ExcludedKeywords, ",")
+	placeIncludedKeywords := strutil.SplitExceptEmptyItems(taskCommandData.Filters.Place.IncludedKeywords, ",")
+	placeExcludedKeywords := strutil.SplitExceptEmptyItems(taskCommandData.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
 	searchPerformancePageIndex := 1

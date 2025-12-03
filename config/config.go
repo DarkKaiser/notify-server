@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/validation"
-	"github.com/darkkaiser/notify-server/utils"
 )
 
 const (
@@ -74,7 +74,7 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 			}
 			commandIDs = append(commandIDs, cmd.ID)
 
-			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
+			if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
 				return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
 			}
 
@@ -112,7 +112,7 @@ func (c *NotifierConfig) Validate() ([]string, error) {
 		notifierIDs = append(notifierIDs, telegram.ID)
 	}
 
-	if !utils.Contains(notifierIDs, c.DefaultNotifierID) {
+	if !slices.Contains(notifierIDs, c.DefaultNotifierID) {
 		return nil, apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
 	}
 
@@ -185,7 +185,7 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		}
 		applicationIDs = append(applicationIDs, app.ID)
 
-		if !utils.Contains(notifierIDs, app.DefaultNotifierID) {
+		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
 			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}
 

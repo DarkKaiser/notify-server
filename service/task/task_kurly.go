@@ -12,7 +12,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/utils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
 const (
@@ -71,13 +71,13 @@ func (p *kurlyProduct) String(messageTypeHTML bool, mark string, previousProduct
 	formatPrice := func(price, discountedPrice, discountRate int) string {
 		// 할인 가격이 없거나 가격과 동일하면 그냥 가격을 반환한다.
 		if discountedPrice == 0 || discountedPrice == price {
-			return fmt.Sprintf("%s원", utils.FormatCommas(price))
+			return fmt.Sprintf("%s원", strutil.FormatCommas(price))
 		}
 
 		if messageTypeHTML == true {
-			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", utils.FormatCommas(price), utils.FormatCommas(discountedPrice), discountRate)
+			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 		}
-		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", utils.FormatCommas(price), utils.FormatCommas(discountedPrice), discountRate)
+		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 	}
 
 	// 상품 이름
@@ -297,7 +297,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			if ps.Length() != 1 {
 				return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
-			product.Name = utils.Trim(ps.Text())
+			product.Name = strutil.Trim(ps.Text())
 
 			// 상품 가격을 추출한다.
 			ps = sel.Find("h2.css-xrp7wx > span.css-8h3us8")
