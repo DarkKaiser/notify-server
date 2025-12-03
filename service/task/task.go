@@ -12,6 +12,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )
@@ -43,9 +44,9 @@ const (
 )
 
 var (
-	ErrNotSupportedTask               = errors.New("지원되지 않는 작업입니다")
-	ErrNotSupportedCommand            = errors.New("지원되지 않는 작업 커맨드입니다")
-	ErrNoImplementationForTaskCommand = errors.New("작업 커맨드에 대한 구현이 없습니다")
+	ErrNotSupportedTask               = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
+	ErrNotSupportedCommand            = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
+	ErrNoImplementationForTaskCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
 )
 
 // taskInstanceIDGenerator
@@ -310,7 +311,7 @@ func (t *task) readTaskResultDataFromFile(v interface{}) error {
 			return nil
 		}
 
-		return err
+		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일을 읽는데 실패했습니다")
 	}
 
 	return json.Unmarshal(data, v)
@@ -319,10 +320,14 @@ func (t *task) readTaskResultDataFromFile(v interface{}) error {
 func (t *task) writeTaskResultDataToFile(v interface{}) error {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
-		return err
+		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 마샬링에 실패했습니다")
 	}
 
-	return os.WriteFile(t.dataFileName(), data, os.FileMode(0644))
+	if err := os.WriteFile(t.dataFileName(), data, os.FileMode(0644)); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일 쓰기에 실패했습니다")
+	}
+
+	return nil
 }
 
 // TaskContext
@@ -463,7 +468,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	if s.taskNotificationSender == nil {
 		defer serviceStopWaiter.Done()
 
-		return errors.New("TaskNotificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "TaskNotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {

@@ -1,7 +1,6 @@
 package task
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/utils"
 )
 
@@ -33,10 +33,10 @@ type naverShoppingTaskData struct {
 
 func (d *naverShoppingTaskData) validate() error {
 	if d.ClientID == "" {
-		return errors.New("client_id가 입력되지 않았습니다")
+		return apperrors.New(apperrors.ErrInvalidInput, "client_id가 입력되지 않았습니다")
 	}
 	if d.ClientSecret == "" {
-		return errors.New("client_secret이 입력되지 않았습니다")
+		return apperrors.New(apperrors.ErrInvalidInput, "client_secret이 입력되지 않았습니다")
 	}
 	return nil
 }
@@ -52,10 +52,10 @@ type naverShoppingWatchPriceTaskCommandData struct {
 
 func (d *naverShoppingWatchPriceTaskCommandData) validate() error {
 	if d.Query == "" {
-		return errors.New("query가 입력되지 않았습니다")
+		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
 	}
 	if d.Filters.PriceLessThan <= 0 {
-		return errors.New("price_less_than에 0 이하의 값이 입력되었습니다")
+		return apperrors.New(apperrors.ErrInvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
 	}
 	return nil
 }
@@ -105,20 +105,20 @@ func init() {
 
 		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidNaverShopping {
-				return nil, errors.New("등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			taskData := &naverShoppingTaskData{}
 			for _, t := range appConfig.Tasks {
 				if taskRunData.taskID == TaskID(t.ID) {
 					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
-						return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
+						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
 					break
 				}
 			}
 			if err := taskData.validate(); err != nil {
-				return nil, fmt.Errorf("작업 데이터가 유효하지 않습니다.(error:%s)", err)
+				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 			}
 
 			task := &naverShoppingTask{
@@ -157,10 +157,10 @@ func init() {
 								if task.CommandID() == TaskCommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
 									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
-										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
+										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 									if err := taskCommandData.validate(); err != nil {
-										return "", nil, fmt.Errorf("작업 커맨드 데이터가 유효하지 않습니다.(error:%s)", err)
+										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
 									return task.runWatchPrice(taskCommandData, taskResultData, messageTypeHTML)
@@ -192,7 +192,7 @@ type naverShoppingTask struct {
 func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPriceTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
 	if ok == false {
-		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", taskResultData)
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", taskResultData))
 	}
 
 	//
@@ -273,7 +273,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		actualityProduct, ok1 := selem.(*naverShoppingProduct)
 		originProduct, ok2 := telem.(*naverShoppingProduct)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
+			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityProduct.Link == originProduct.Link {
 				return true, nil

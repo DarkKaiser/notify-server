@@ -1,13 +1,13 @@
 package task
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/utils"
 )
 
@@ -54,7 +54,7 @@ func init() {
 
 		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
 			if taskRunData.taskID != TidJdc {
-				return nil, errors.New("등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			task := &jdcTask{
@@ -100,7 +100,7 @@ type jdcTask struct {
 func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*jdcWatchNewOnlineEducationResultData)
 	if ok == false {
-		return "", nil, fmt.Errorf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", taskResultData)
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", taskResultData))
 	}
 
 	actualityTaskResultData := &jdcWatchNewOnlineEducationResultData{}
@@ -125,7 +125,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		actualityEducationCourse, ok1 := selem.(*jdcOnlineEducationCourse)
 		originEducationCourse, ok2 := telem.(*jdcOnlineEducationCourse)
 		if ok1 == false || ok2 == false {
-			return false, errors.New("selem/telem의 타입 변환이 실패하였습니다")
+			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
 		} else {
 			if actualityEducationCourse.Title1 == originEducationCourse.Title1 && actualityEducationCourse.Title2 == originEducationCourse.Title2 && actualityEducationCourse.TrainingPeriod == originEducationCourse.TrainingPeriod {
 				return true, nil
@@ -174,7 +174,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	err = webScrape(t.fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
-			err0 = errors.New("강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
@@ -229,24 +229,24 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 				return true
 			}
 
-			err0 = fmt.Errorf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length())
+			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
 			return false
 		}
 
 		title1Selection := as.Eq(0).Find("a")
 		if title1Selection.Length() != 1 {
-			err0 = errors.New("교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		title2Selection := as.Eq(0).Find("p")
 		if title2Selection.Length() != 1 {
-			err0 = errors.New("교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
 		courseDetailURL, exists := title1Selection.Attr("href")
 		if exists == false {
-			err0 = errors.New("강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.

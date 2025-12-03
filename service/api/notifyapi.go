@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	_ "github.com/darkkaiser/notify-server/docs"
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -58,7 +59,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
 
-		return errors.New("NotificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {

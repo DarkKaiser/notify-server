@@ -7,6 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
@@ -121,7 +122,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	if s.taskRunner == nil {
 		defer serviceStopWaiter.Done()
 
-		return fmt.Errorf("TaskRunner 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "TaskRunner 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
@@ -155,7 +156,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	if s.defaultNotifierHandler == nil {
 		defer serviceStopWaiter.Done()
 
-		return fmt.Errorf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID)
+		return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID))
 	}
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
