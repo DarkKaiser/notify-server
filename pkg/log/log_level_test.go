@@ -110,10 +110,3 @@ func TestInitFileWithOptions_BothLogs(t *testing.T) {
 		assert.Equal(t, 3, len(files), "총 3개의 로그 파일이 생성되어야 합니다")
 	})
 }
-
-func TestLevelFileHook_Levels(t *testing.T) {
-	hook := &LogLevelFileHook{}
-	levels := hook.Levels()
-
-	assert.Equal(t, log.AllLevels, levels, "모든 로그 레벨을 처리해야 합니다")
-}

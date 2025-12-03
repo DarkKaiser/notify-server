@@ -27,6 +27,9 @@ const (
 
 	// 로그 파일의 확장자
 	defaultLogFileExtension = "log"
+
+	// 로그 파일명에 사용되는 타임스탬프 포맷
+	timestampFormat = "20060102150405"
 )
 
 // InitFileOptions 로그 파일 초기화 옵션입니다.
@@ -70,7 +73,7 @@ func InitFileWithOptions(appName string, retentionDays float64, opts InitFileOpt
 		log.WithError(err).Fatal("로그 디렉토리 생성 실패")
 	}
 
-	timestamp := time.Now().Format("20060102150405")
+	timestamp := time.Now().Format(timestampFormat)
 
 	// 메인 로그 파일 생성
 	mainLogFile, err := createLogFile(logDirectoryPath, appName, timestamp, "")
@@ -186,6 +189,12 @@ func removeExpiredLogFiles(appName string, retentionDays float64) {
 		// 파일 정보 가져오기
 		fileInfo, err := entry.Info()
 		if err != nil {
+			log.WithFields(log.Fields{
+				"component": "log",
+				"file_name": fileName,
+				"error":     err,
+			}).Warn("로그 파일 정보 읽기 실패")
+
 			continue
 		}
 

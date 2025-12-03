@@ -26,14 +26,16 @@ func (hook *LogLevelFileHook) Fire(entry *log.Entry) error {
 	switch entry.Level {
 	case log.ErrorLevel, log.FatalLevel, log.PanicLevel:
 		writer = hook.criticalWriter
+		if writer == nil {
+			return nil
+		}
 	case log.DebugLevel, log.TraceLevel:
 		writer = hook.verboseWriter
+		if writer == nil {
+			return nil
+		}
 	default:
 		return nil // Info, Warn은 메인 파일에만 기록
-	}
-
-	if writer == nil {
-		return nil
 	}
 
 	// 로그 포맷팅 및 기록

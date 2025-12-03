@@ -31,14 +31,15 @@ func (mc *multiCloser) Close() error {
 		}
 	}
 
-	// 모든 파일 닫기
+	// 모든 파일 닫기 (첫 번째 에러를 기록하되, 모든 파일을 닫음)
+	var firstErr error
 	for _, closer := range mc.closers {
 		if closer != nil {
-			if err := closer.Close(); err != nil {
-				return err
+			if err := closer.Close(); err != nil && firstErr == nil {
+				firstErr = err
 			}
 		}
 	}
 
-	return nil
+	return firstErr
 }
