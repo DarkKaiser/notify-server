@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/utils"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
@@ -150,9 +151,8 @@ func validatePort(port int) error {
 	}
 	if port < 1024 {
 		// 경고만 로그로 출력 (에러는 아님)
-		log.WithFields(log.Fields{
-			"component": "config",
-			"port":      port,
+		applog.WithComponentAndFields("config", log.Fields{
+			"port": port,
 		}).Warn("1-1023 포트는 시스템 예약 포트입니다. 권한이 필요할 수 있습니다")
 	}
 	return nil
@@ -179,8 +179,7 @@ func validateFileExists(path string, warnOnly bool) error {
 		if os.IsNotExist(err) {
 			errMsg := fmt.Errorf("파일이 존재하지 않습니다: %s", path)
 			if warnOnly {
-				log.WithFields(log.Fields{
-					"component": "config",
+				applog.WithComponentAndFields("config", log.Fields{
 					"file_path": path,
 				}).Warn(errMsg.Error())
 				return nil

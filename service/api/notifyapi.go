@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/darkkaiser/notify-server/docs"
 	"github.com/darkkaiser/notify-server/config"
+	_ "github.com/darkkaiser/notify-server/docs"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -52,7 +53,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Info("NotifyAPI 서비스 시작중...")
+	applog.WithComponent("api.service").Info("NotifyAPI 서비스 시작중...")
 
 	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
@@ -63,9 +64,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	if s.running == true {
 		defer serviceStopWaiter.Done()
 
-		log.WithFields(log.Fields{
-			"component": "api.service",
-		}).Warn("NotifyAPI 서비스가 이미 시작됨!!!")
+		applog.WithComponent("api.service").Warn("NotifyAPI 서비스가 이미 시작됨!!!")
 
 		return nil
 	}
@@ -74,7 +73,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 	s.running = true
 
-	log.Info("NotifyAPI 서비스 시작됨")
+	applog.WithComponent("api.service").Info("NotifyAPI 서비스 시작됨")
 
 	return nil
 }
@@ -119,9 +118,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	go func(listenPort int) {
 		defer close(httpServerDone)
 
-		log.WithFields(log.Fields{
-			"component": "api.service",
-			"port":      listenPort,
+		applog.WithComponentAndFields("api.service", log.Fields{
+			"port": listenPort,
 		}).Debug("NotifyAPI 서비스 > http 서버 시작")
 
 		var err error
@@ -133,14 +131,13 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
 		if errors.Is(err, http.ErrServerClosed) == true {
-			log.Info("NotifyAPI 서비스 > http 서버 중지됨")
+			applog.WithComponent("api.service").Info("NotifyAPI 서비스 > http 서버 중지됨")
 		} else {
 			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 
-			log.WithFields(log.Fields{
-				"component": "api.service",
-				"port":      s.appConfig.NotifyAPI.WS.ListenPort,
-				"error":     err,
+			applog.WithComponentAndFields("api.service", log.Fields{
+				"port":  s.appConfig.NotifyAPI.WS.ListenPort,
+				"error": err,
 			}).Error(m)
 
 			s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", m, err))
@@ -149,16 +146,15 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 
 	select {
 	case <-serviceStopCtx.Done():
-		log.Info("NotifyAPI 서비스 중지중...")
+		applog.WithComponent("api.service").Info("NotifyAPI 서비스 중지중...")
 
 		// 웹서버를 종료한다.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		if err := e.Shutdown(ctx); err != nil {
-			log.WithFields(log.Fields{
-				"component": "api.service",
-				"error":     err,
+			applog.WithComponentAndFields("api.service", log.Fields{
+				"error": err,
 			}).Error(err)
 		}
 
@@ -169,6 +165,6 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		s.notificationSender = nil
 		s.runningMu.Unlock()
 
-		log.Info("NotifyAPI 서비스 중지됨")
+		applog.WithComponent("api.service").Info("NotifyAPI 서비스 중지됨")
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -58,14 +57,18 @@ func InitFile(appName string, checkDaysAgo float64) io.Closer {
 	// 로그 파일이 쌓이는 폴더를 생성한다.
 	_, err := os.Stat(logDirPath)
 	if os.IsNotExist(err) == true {
-		utils.CheckErr(os.MkdirAll(logDirPath, 0755))
+		if err := os.MkdirAll(logDirPath, 0755); err != nil {
+			log.WithError(err).Fatal("로그 디렉토리 생성 실패")
+		}
 	}
 
 	// 로그 파일을 생성한다.
 	t := time.Now()
 	logFilePath := fmt.Sprintf("%s%s%s-%d%02d%02d%02d%02d%02d.%s", logDirPath, string(os.PathSeparator), appName, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), logFileExtension)
 	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	utils.CheckErr(err)
+	if err != nil {
+		log.WithError(err).Fatal("로그 파일 생성 실패")
+	}
 
 	log.SetOutput(logFile)
 
@@ -128,4 +131,49 @@ func cleanOutOfLogFiles(appName string, checkDaysAgo float64) {
 			}
 		}
 	}
+}
+
+// MaskSensitiveData 민감한 정보를 마스킹합니다.
+// 토큰, 키 등의 민감 정보를 안전하게 로깅하기 위해 사용합니다.
+func MaskSensitiveData(data string) string {
+	if data == "" {
+		return ""
+	}
+
+	// 3자 이하는 전체 마스킹
+	if len(data) <= 3 {
+		return "***"
+	}
+
+	// 앞 4자만 표시하고 나머지는 마스킹
+	if len(data) <= 12 {
+		return data[:4] + "***"
+	}
+
+	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
+	return data[:4] + "***" + data[len(data)-4:]
+}
+
+// MaskBotToken 텔레그램 봇 토큰을 마스킹합니다.
+func MaskBotToken(token string) string {
+	return MaskSensitiveData(token)
+}
+
+// MaskAppKey 애플리케이션 키를 마스킹합니다.
+func MaskAppKey(key string) string {
+	return MaskSensitiveData(key)
+}
+
+// WithComponent component 필드를 포함한 로그 Entry를 반환합니다.
+// 모든 로그에 component 필드를 일관되게 추가하기 위해 사용합니다.
+func WithComponent(component string) *log.Entry {
+	return log.WithFields(log.Fields{
+		"component": component,
+	})
+}
+
+// WithComponentAndFields component 필드와 추가 필드를 포함한 로그 Entry를 반환합니다.
+func WithComponentAndFields(component string, fields log.Fields) *log.Entry {
+	fields["component"] = component
+	return log.WithFields(fields)
 }

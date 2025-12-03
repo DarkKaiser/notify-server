@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )
@@ -207,8 +208,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	if t.runFn == nil {
 		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)
 
-		log.WithFields(log.Fields{
-			"component":  "task.executor",
+		applog.WithComponentAndFields("task.executor", log.Fields{
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 		}).Error(m)
@@ -231,8 +231,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	if taskResultData == nil {
 		m := fmt.Sprintf("%s\n\n☑ 작업결과데이터 생성이 실패하였습니다.", errString)
 
-		log.WithFields(log.Fields{
-			"component":  "task.executor",
+		applog.WithComponentAndFields("task.executor", log.Fields{
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 		}).Error(m)
@@ -245,8 +244,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 	if err != nil {
 		m := fmt.Sprintf("이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다.", err)
 
-		log.WithFields(log.Fields{
-			"component":  "task.executor",
+		applog.WithComponentAndFields("task.executor", log.Fields{
 			"task_id":    t.ID(),
 			"command_id": t.CommandID(),
 			"error":      err,
@@ -265,8 +263,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 				if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
 					m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
-					log.WithFields(log.Fields{
-						"component":  "task.executor",
+					applog.WithComponentAndFields("task.executor", log.Fields{
 						"task_id":    t.ID(),
 						"command_id": t.CommandID(),
 						"error":      err,
@@ -278,8 +275,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		} else {
 			m := fmt.Sprintf("%s\n\n☑ %s", errString, err)
 
-			log.WithFields(log.Fields{
-				"component":  "task.executor",
+			applog.WithComponentAndFields("task.executor", log.Fields{
 				"task_id":    t.ID(),
 				"command_id": t.CommandID(),
 				"error":      err,
@@ -462,7 +458,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Info("Task 서비스 시작중...")
+	applog.WithComponent("task.service").Info("Task 서비스 시작중...")
 
 	if s.taskNotificationSender == nil {
 		defer serviceStopWaiter.Done()
@@ -473,9 +469,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 	if s.running == true {
 		defer serviceStopWaiter.Done()
 
-		log.WithFields(log.Fields{
-			"component": "task.service",
-		}).Warn("Task 서비스가 이미 시작됨!!!")
+		applog.WithComponent("task.service").Warn("Task 서비스가 이미 시작됨!!!")
 
 		return nil
 	}
@@ -487,7 +481,7 @@ func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *syn
 
 	s.running = true
 
-	log.Info("Task 서비스 시작됨")
+	applog.WithComponent("task.service").Info("Task 서비스 시작됨")
 
 	return nil
 }
@@ -498,7 +492,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	for {
 		select {
 		case taskRunData := <-s.taskRunC:
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    taskRunData.taskID,
 				"command_id": taskRunData.taskCommandID,
 				"run_by":     taskRunData.taskRunBy,
@@ -513,8 +507,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if err != nil {
 				m := "등록되지 않은 작업입니다.😱"
 
-				log.WithFields(log.Fields{
-					"component":  "task.service",
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    taskRunData.taskID,
 					"command_id": taskRunData.taskCommandID,
 					"error":      err,
@@ -558,8 +551,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 			h, err := taskConfig.newTaskFn(instanceID, taskRunData, s.appConfig)
 			if h == nil {
-				log.WithFields(log.Fields{
-					"component":  "task.service",
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    taskRunData.taskID,
 					"command_id": taskRunData.taskCommandID,
 					"error":      err,
@@ -584,7 +576,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 		case instanceID := <-s.taskDoneC:
 			s.runningMu.Lock()
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":     taskHandler.ID(),
 					"command_id":  taskHandler.CommandID(),
 					"instance_id": instanceID,
@@ -592,7 +584,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				delete(s.taskHandlers, instanceID)
 			} else {
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,
 				}).Warn("등록되지 않은 Task에 대한 작업완료 메시지 수신")
 			}
@@ -603,7 +595,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
 				taskHandler.Cancel()
 
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":     taskHandler.ID(),
 					"command_id":  taskHandler.CommandID(),
 					"instance_id": instanceID,
@@ -611,7 +603,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.NotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.ID(), taskHandler.CommandID()))
 			} else {
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,
 				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
@@ -620,7 +612,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 		case <-serviceStopCtx.Done():
-			log.Info("Task 서비스 중지중...")
+			applog.WithComponent("task.service").Info("Task 서비스 중지중...")
 
 			// Task 스케쥴러를 중지한다.
 			s.scheduler.Stop()
@@ -646,7 +638,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskNotificationSender = nil
 			s.runningMu.Unlock()
 
-			log.Info("Task 서비스 중지됨")
+			applog.WithComponent("task.service").Info("Task 서비스 중지됨")
 
 			return
 		}
@@ -662,7 +654,7 @@ func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskComman
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    taskID,
 				"command_id": taskCommandID,
 				"panic":      r,
@@ -691,7 +683,7 @@ func (s *TaskService) TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("task.service", log.Fields{
 				"instance_id": taskInstanceID,
 				"panic":       r,
 			}).Error("Task 취소 요청중에 panic 발생")

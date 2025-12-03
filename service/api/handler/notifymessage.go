@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service/api/model"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -36,10 +37,9 @@ import (
 func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	m := new(model.NotifyMessage)
 	if err := c.Bind(m); err != nil {
-		log.WithFields(log.Fields{
-			"component": "api.handler",
-			"endpoint":  "/api/v1/notice/message",
-			"error":     err,
+		applog.WithComponentAndFields("api.handler", log.Fields{
+			"endpoint": "/api/v1/notice/message",
+			"error":    err,
 		}).Warn("요청 바인딩 실패")
 
 		return err
@@ -50,17 +50,16 @@ func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 	for _, application := range h.allowedApplications {
 		if application.ID == m.ApplicationID {
 			if application.AppKey != appKey {
-				log.WithFields(log.Fields{
-					"component":      "api.handler",
-					"endpoint":       "/api/v1/notice/message",
-					"application_id": m.ApplicationID,
+				applog.WithComponentAndFields("api.handler", log.Fields{
+					"endpoint":         "/api/v1/notice/message",
+					"application_id":   m.ApplicationID,
+					"received_app_key": applog.MaskAppKey(appKey),
 				}).Warn("APP_KEY 불일치")
 
 				return echo.NewHTTPError(http.StatusUnauthorized, fmt.Sprintf("APP_KEY가 유효하지 않습니다.(ID:%s)", m.ApplicationID))
 			}
 
-			log.WithFields(log.Fields{
-				"component":      "api.handler",
+			applog.WithComponentAndFields("api.handler", log.Fields{
 				"endpoint":       "/api/v1/notice/message",
 				"application_id": m.ApplicationID,
 				"notifier_id":    application.DefaultNotifierID,
@@ -74,8 +73,7 @@ func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 		}
 	}
 
-	log.WithFields(log.Fields{
-		"component":      "api.handler",
+	applog.WithComponentAndFields("api.handler", log.Fields{
 		"endpoint":       "/api/v1/notice/message",
 		"application_id": m.ApplicationID,
 	}).Warn("미등록 Application 접근 시도")

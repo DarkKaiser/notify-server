@@ -99,9 +99,8 @@ func main() {
 	// 환경설정 정보를 읽어들인다.
 	appConfig, err := config.InitAppConfig()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"component": "main",
-			"error":     err,
+		applog.WithComponentAndFields("main", log.Fields{
+			"error": err,
 		}).Fatal("환경설정 로드 실패")
 	}
 
@@ -112,8 +111,7 @@ func main() {
 	fmt.Printf(banner, Version)
 
 	// 빌드 정보 출력
-	log.WithFields(log.Fields{
-		"component":    "main",
+	applog.WithComponentAndFields("main", log.Fields{
 		"version":      Version,
 		"build_date":   BuildDate,
 		"build_number": BuildNumber,
@@ -138,9 +136,8 @@ func main() {
 	for _, s := range services {
 		serviceStopWaiter.Add(1)
 		if err := s.Run(serviceStopCtx, serviceStopWaiter); err != nil {
-			log.WithFields(log.Fields{
-				"component": "main",
-				"error":     err,
+			applog.WithComponentAndFields("main", log.Fields{
+				"error": err,
 			}).Error("서비스 초기화 실패")
 
 			cancel() // 다른 서비스들도 종료
@@ -157,7 +154,7 @@ func main() {
 	<-termC // Blocks here until interrupted
 
 	// Handle shutdown
-	log.Info("Shutdown signal received")
+	applog.WithComponent("main").Info("Shutdown signal received")
 	cancel()                 // Signal cancellation to context.Context
 	serviceStopWaiter.Wait() // Block here until are workers are done
 }

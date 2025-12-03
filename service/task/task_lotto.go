@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )
@@ -166,7 +167,7 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 					ticker.Stop()
 					err0 := process.Kill()
 					if err0 != nil {
-						log.WithFields(log.Fields{
+						applog.WithComponentAndFields("task.lotto", log.Fields{
 							"task_id":    t.ID(),
 							"command_id": t.CommandID(),
 							"error":      err0,

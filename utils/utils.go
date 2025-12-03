@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	applog "github.com/darkkaiser/notify-server/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,9 +20,8 @@ type FatalErrorHandler struct{}
 // Handle 에러가 있을 경우 log.Fatal을 호출하여 프로세스를 종료합니다.
 func (h *FatalErrorHandler) Handle(err error) {
 	if err != nil {
-		log.WithFields(log.Fields{
-			"component": "utils",
-			"error":     err,
+		applog.WithComponentAndFields("utils", log.Fields{
+			"error": err,
 		}).Fatal("치명적인 오류 발생")
 	}
 }

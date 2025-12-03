@@ -586,7 +586,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ### Task가 실행되지 않는 경우
 
 1. Cron 표현식 확인: [crontab.guru](https://crontab.guru/)에서 검증
-2. 로그 확인: `docker logs notify-server | grep "Task ID"`
+2. 로그 확인: `docker logs notify-server | grep "Task ID"` (민감 정보는 마스킹되어 출력됩니다)
 3. 설정 파일 검증: JSON 형식이 올바른지 확인
 
 ### 알림이 전송되지 않는 경우

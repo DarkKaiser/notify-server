@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/config"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
@@ -40,7 +41,7 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 		if r := recover(); r != nil {
 			succeeded = false
 
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("notification.service", log.Fields{
 				"notifier_id":    n.ID(),
 				"message_length": len(message),
 				"panic":          r,
@@ -115,7 +116,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	log.Info("Notification 서비스 시작중...")
+	applog.WithComponent("notification.service").Info("Notification 서비스 시작중...")
 
 	if s.taskRunner == nil {
 		defer serviceStopWaiter.Done()
@@ -126,9 +127,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 	if s.running == true {
 		defer serviceStopWaiter.Done()
 
-		log.WithFields(log.Fields{
-			"component": "notification.service",
-		}).Warn("Notification 서비스가 이미 시작됨!!!")
+		applog.WithComponent("notification.service").Warn("Notification 서비스가 이미 시작됨!!!")
 
 		return nil
 	}
@@ -141,8 +140,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 		s.notificationStopWaiter.Add(1)
 		go h.Run(s.taskRunner, serviceStopCtx, s.notificationStopWaiter)
 
-		log.WithFields(log.Fields{
-			"component":   "notification.service",
+		applog.WithComponentAndFields("notification.service", log.Fields{
 			"notifier_id": telegram.ID,
 		}).Debug("Telegram Notifier가 Notification 서비스에 등록됨")
 	}
@@ -164,7 +162,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 	s.running = true
 
-	log.Info("Notification 서비스 시작됨")
+	applog.WithComponent("notification.service").Info("Notification 서비스 시작됨")
 
 	return nil
 }
@@ -174,7 +172,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 
 	select {
 	case <-serviceStopCtx.Done():
-		log.Info("Notification 서비스 중지중...")
+		applog.WithComponent("notification.service").Info("Notification 서비스 중지중...")
 
 		// 등록된 모든 Notifier의 작업이 중지될때까지 대기한다.
 		s.notificationStopWaiter.Wait()
@@ -186,7 +184,7 @@ func (s *NotificationService) run0(serviceStopCtx context.Context, serviceStopWa
 		s.defaultNotifierHandler = nil
 		s.runningMu.Unlock()
 
-		log.Info("Notification 서비스 중지됨")
+		applog.WithComponent("notification.service").Info("Notification 서비스 중지됨")
 	}
 }
 
@@ -224,8 +222,7 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 
 	m := fmt.Sprintf("알 수 없는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
 
-	log.WithFields(log.Fields{
-		"component":   "notification.service",
+	applog.WithComponentAndFields("notification.service", log.Fields{
 		"notifier_id": notifierID,
 	}).Error(m)
 
