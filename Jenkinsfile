@@ -210,7 +210,7 @@ pipeline {
                     // 오래된 버전 이미지 정리 (최근 5개 버전만 유지)
                     sh """
                         docker images ${env.DOCKER_IMAGE_NAME} --format '{{.Tag}}' | \\
-                        grep -v '^latest$' | \\
+                        grep -v '^latest\$' | \\
                         tail -n +6 | \\
                         xargs -r -I {} docker rmi ${env.DOCKER_IMAGE_NAME}:{} || echo "정리할 오래된 이미지가 없습니다."
                     """
