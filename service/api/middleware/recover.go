@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -21,8 +22,7 @@ func LogrusRecover() echo.MiddlewareFunc {
 					stack := make([]byte, 4<<10) // 4KB
 					length := runtime.Stack(stack, false)
 
-					log.WithFields(log.Fields{
-						"component":  "api.middleware",
+					applog.WithComponentAndFields("api.middleware", log.Fields{
 						"error":      err,
 						"stack":      string(stack[:length]),
 						"request_id": c.Response().Header().Get(echo.HeaderXRequestID),

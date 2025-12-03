@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	applog "github.com/darkkaiser/notify-server/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,7 +29,7 @@ func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= f.maxRetries; i++ {
 		if i > 0 {
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("task.fetcher", log.Fields{
 				"url":         url,
 				"retry":       i,
 				"max_retries": f.maxRetries,
@@ -58,7 +59,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= f.maxRetries; i++ {
 		if i > 0 {
-			log.WithFields(log.Fields{
+			applog.WithComponentAndFields("task.fetcher", log.Fields{
 				"url":         req.URL.String(),
 				"retry":       i,
 				"max_retries": f.maxRetries,

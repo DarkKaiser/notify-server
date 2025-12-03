@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/config"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -62,6 +63,10 @@ type telegramNotifier struct {
 }
 
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
+	applog.WithComponentAndFields("notification.telegram", log.Fields{
+		"bot_token": applog.MaskBotToken(botToken),
+	}).Debug("Telegram Bot 초기화 시도")
+
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
@@ -125,8 +130,7 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 
 	updateC := n.bot.GetUpdatesChan(config)
 
-	log.WithFields(log.Fields{
-		"component":    "notification.telegram",
+	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"notifier_id":  n.ID(),
 		"bot_username": n.bot.GetSelf().UserName,
 	}).Debug("Telegram Notifier의 작업이 시작됨")
@@ -158,7 +162,7 @@ LOOP:
 					}
 
 					if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-						log.WithFields(log.Fields{
+						applog.WithComponentAndFields("notification.telegram", log.Fields{
 							"notifier_id": n.ID(),
 							"error":       err,
 						}).Error("알림메시지 발송 실패")
@@ -197,7 +201,7 @@ LOOP:
 
 			m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요.", update.Message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 			if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("notification.telegram", log.Fields{
 					"notifier_id": n.ID(),
 					"error":       err,
 				}).Error("알림메시지 발송 실패")
@@ -208,8 +212,7 @@ LOOP:
 
 			if notificationSendData.taskCtx == nil {
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
-					log.WithFields(log.Fields{
-						"component":   "notification.telegram",
+					applog.WithComponentAndFields("notification.telegram", log.Fields{
 						"notifier_id": n.ID(),
 						"error":       err,
 					}).Error("알림메시지 발송이 실패하였습니다")
@@ -268,14 +271,12 @@ LOOP:
 					messageConfig.ParseMode = tgbotapi.ModeHTML
 
 					if _, err := n.bot.Send(messageConfig); err != nil {
-						log.WithFields(log.Fields{
-							"component":   "notification.telegram",
+						applog.WithComponentAndFields("notification.telegram", log.Fields{
 							"notifier_id": n.ID(),
 							"error":       err,
 						}).Error("알림메시지 발송 실패")
 					} else {
-						log.WithFields(log.Fields{
-							"component":   "notification.telegram",
+						applog.WithComponentAndFields("notification.telegram", log.Fields{
 							"notifier_id": n.ID(),
 						}).Info("알림메시지 발송 성공")
 					}
@@ -291,7 +292,7 @@ LOOP:
 							messageConfig.ParseMode = tgbotapi.ModeHTML
 
 							if _, err := n.bot.Send(messageConfig); err != nil {
-								log.WithFields(log.Fields{
+								applog.WithComponentAndFields("notification.telegram", log.Fields{
 									"notifier_id": n.ID(),
 									"error":       err,
 								}).Error("알림메시지 발송 실패")
@@ -311,7 +312,7 @@ LOOP:
 						messageConfig.ParseMode = tgbotapi.ModeHTML
 
 						if _, err := n.bot.Send(messageConfig); err != nil {
-							log.WithFields(log.Fields{
+							applog.WithComponentAndFields("notification.telegram", log.Fields{
 								"notifier_id": n.ID(),
 								"error":       err,
 							}).Error("알림메시지 발송 실패")
@@ -328,8 +329,7 @@ LOOP:
 			n.bot = nil
 			n.notificationSendC = nil
 
-			log.WithFields(log.Fields{
-				"component":   "notification.telegram",
+			applog.WithComponentAndFields("notification.telegram", log.Fields{
 				"notifier_id": n.ID(),
 			}).Debug("Telegram Notifier의 작업이 중지됨")
 

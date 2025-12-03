@@ -34,13 +34,13 @@ definitions:
         maxLength: 4096
         type: string
     required:
-      - application_id
-      - message
+    - application_id
+    - message
     type: object
   model.SuccessResponse:
     properties:
       result_code:
-        description: "결과 코드 (0: 성공, 0이 아닌 값: 실패)"
+        description: '결과 코드 (0: 성공, 0이 아닌 값: 실패)'
         example: 0
         type: integer
     type: object
@@ -108,7 +108,7 @@ paths:
   /api/v1/notice/message:
     post:
       consumes:
-        - application/json
+      - application/json
       description: |-
         외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.
 
@@ -120,42 +120,42 @@ paths:
         curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-app-key" -H "Content-Type: application/json" -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
         ```
       parameters:
-        - description: Application Key (인증용)
-          example: your-app-key-here
-          in: query
-          name: app_key
-          required: true
-          type: string
-        - description: 알림 메시지 정보
-          in: body
-          name: message
-          required: true
-          schema:
-            $ref: "#/definitions/model.NotifyMessage"
+      - description: Application Key (인증용)
+        example: your-app-key-here
+        in: query
+        name: app_key
+        required: true
+        type: string
+      - description: 알림 메시지 정보
+        in: body
+        name: message
+        required: true
+        schema:
+          $ref: '#/definitions/model.NotifyMessage'
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: 성공
           schema:
-            $ref: "#/definitions/model.SuccessResponse"
+            $ref: '#/definitions/model.SuccessResponse'
         "400":
           description: 잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)
           schema:
-            $ref: "#/definitions/model.ErrorResponse"
+            $ref: '#/definitions/model.ErrorResponse'
         "401":
           description: 인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)
           schema:
-            $ref: "#/definitions/model.ErrorResponse"
+            $ref: '#/definitions/model.ErrorResponse'
         "500":
           description: 서버 내부 오류
           schema:
-            $ref: "#/definitions/model.ErrorResponse"
+            $ref: '#/definitions/model.ErrorResponse'
       security:
-        - ApiKeyAuth: []
+      - ApiKeyAuth: []
       summary: 알림 메시지 전송
       tags:
-        - Notification
+      - Notification
   /health:
     get:
       description: |-
@@ -163,19 +163,19 @@ paths:
 
         이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: 서버 정상
           schema:
-            $ref: "#/definitions/model.HealthResponse"
+            $ref: '#/definitions/model.HealthResponse'
         "500":
           description: 서버 내부 오류
           schema:
-            $ref: "#/definitions/model.ErrorResponse"
+            $ref: '#/definitions/model.ErrorResponse'
       summary: 서버 상태 확인
       tags:
-        - System
+      - System
   /version:
     get:
       description: |-
@@ -184,19 +184,19 @@ paths:
         Git 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전 등의 정보를 제공합니다.
         이 정보는 디버깅 및 버전 확인에 유용합니다.
       produces:
-        - application/json
+      - application/json
       responses:
         "200":
           description: 버전 정보
           schema:
-            $ref: "#/definitions/model.VersionResponse"
+            $ref: '#/definitions/model.VersionResponse'
         "500":
           description: 서버 내부 오류
           schema:
-            $ref: "#/definitions/model.ErrorResponse"
+            $ref: '#/definitions/model.ErrorResponse'
       summary: 서버 버전 정보
       tags:
-        - System
+      - System
 securityDefinitions:
   ApiKeyAuth:
     description: Application Key for authentication

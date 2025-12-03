@@ -183,3 +183,38 @@ func TestLogDirName(t *testing.T) {
 		assert.Equal(t, "logs", logDirName, "로그 디렉토리 이름은 'logs'여야 합니다")
 	})
 }
+
+func TestMaskSensitiveData(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"빈 문자열", "", ""},
+		{"3자 이하 (1자)", "a", "***"},
+		{"3자 이하 (3자)", "abc", "***"},
+		{"12자 이하 (4자)", "abcd", "abcd***"},
+		{"12자 이하 (12자)", "123456789012", "1234***"},
+		{"긴 문자열 (토큰)", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz", "1234***wxyz"},
+		{"긴 문자열 (일반)", "this_is_a_very_long_secret_key", "this***_key"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MaskSensitiveData(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestMaskBotToken(t *testing.T) {
+	token := "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+	expected := "1234***wxyz"
+	assert.Equal(t, expected, MaskBotToken(token))
+}
+
+func TestMaskAppKey(t *testing.T) {
+	key := "secret-app-key-12345"
+	expected := "secr***2345"
+	assert.Equal(t, expected, MaskAppKey(key))
+}

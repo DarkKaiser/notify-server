@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/config"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )
@@ -41,7 +42,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskRunner TaskExecutor, 
 				if taskRunner.TaskRun(taskID, taskCommandID, defaultNotifierID, false, TaskRunByScheduler) == false {
 					m := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 
-					log.WithFields(log.Fields{
+					applog.WithComponentAndFields("task.scheduler", log.Fields{
 						"task_id":    taskID,
 						"command_id": taskCommandID,
 						"run_by":     TaskRunByScheduler,
@@ -54,7 +55,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskRunner TaskExecutor, 
 			if err != nil {
 				m := fmt.Sprintf("Cron 스케줄 파싱 실패 (Task: %s, Command: %s, TimeSpec: %s): %v", t.ID, c.ID, c.Scheduler.TimeSpec, err)
 
-				log.WithFields(log.Fields{
+				applog.WithComponentAndFields("task.scheduler", log.Fields{
 					"task_id":    taskID,
 					"command_id": taskCommandID,
 					"time_spec":  c.Scheduler.TimeSpec,
@@ -72,7 +73,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskRunner TaskExecutor, 
 
 	s.running = true
 
-	log.Info("Task 스케쥴러 시작됨")
+	applog.WithComponent("task.scheduler").Info("Task 스케쥴러 시작됨")
 }
 
 func (s *scheduler) Stop() {
@@ -88,5 +89,5 @@ func (s *scheduler) Stop() {
 
 	s.running = false
 
-	log.Info("Task 스케쥴러 중지됨")
+	applog.WithComponent("task.scheduler").Info("Task 스케쥴러 중지됨")
 }
