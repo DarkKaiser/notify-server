@@ -15,6 +15,7 @@ import (
 
 var (
 	logDirParentPath = ""
+	callerPathPrefix = ""
 )
 
 const (
@@ -27,11 +28,9 @@ func init() {
 	log.SetReportCaller(true)
 	log.SetFormatter(&log.TextFormatter{
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
-			const shortPath = "github.com/darkkaiser"
-
 			function = fmt.Sprintf("%s(line:%d)", frame.Function, frame.Line)
-			if strings.HasPrefix(function, shortPath) == true {
-				function = "..." + function[len(shortPath):]
+			if callerPathPrefix != "" && strings.HasPrefix(function, callerPathPrefix) {
+				function = "..." + function[len(callerPathPrefix):]
 			}
 
 			return
@@ -87,6 +86,13 @@ func SetDebugMode(debug bool) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+}
+
+// SetCallerPathPrefix 호출자 정보에서 축약할 경로 prefix를 설정합니다.
+// main() 함수 초기에 호출하여 호출자 경로 표시를 커스터마이징할 수 있습니다.
+// 예제: SetCallerPathPrefix("github.com/darkkaiser")
+func SetCallerPathPrefix(prefix string) {
+	callerPathPrefix = prefix
 }
 
 func cleanOutOfLogFiles(appName string, checkDaysAgo float64) {
@@ -152,16 +158,6 @@ func MaskSensitiveData(data string) string {
 
 	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
 	return data[:4] + "***" + data[len(data)-4:]
-}
-
-// MaskBotToken 텔레그램 봇 토큰을 마스킹합니다.
-func MaskBotToken(token string) string {
-	return MaskSensitiveData(token)
-}
-
-// MaskAppKey 애플리케이션 키를 마스킹합니다.
-func MaskAppKey(key string) string {
-	return MaskSensitiveData(key)
 }
 
 // WithComponent component 필드를 포함한 로그 Entry를 반환합니다.

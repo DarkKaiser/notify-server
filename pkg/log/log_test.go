@@ -206,15 +206,3 @@ func TestMaskSensitiveData(t *testing.T) {
 		})
 	}
 }
-
-func TestMaskBotToken(t *testing.T) {
-	token := "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-	expected := "1234***wxyz"
-	assert.Equal(t, expected, MaskBotToken(token))
-}
-
-func TestMaskAppKey(t *testing.T) {
-	key := "secret-app-key-12345"
-	expected := "secr***2345"
-	assert.Equal(t, expected, MaskAppKey(key))
-}

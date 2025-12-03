@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	applog "github.com/darkkaiser/notify-server/log"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
 

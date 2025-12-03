@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/config"
-	applog "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service"
 	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -92,6 +92,9 @@ const (
 )
 
 func main() {
+	// Caller Path Prefix 설정
+	applog.SetCallerPathPrefix("github.com/darkkaiser")
+
 	// 로그 파일 출력을 먼저 초기화한다. (환경설정 로드 전)
 	// 이렇게 하면 환경설정 로드 실패 시에도 에러가 로그 파일에 기록된다.
 	applog.InitFile(config.AppName, LogRetentionDays)

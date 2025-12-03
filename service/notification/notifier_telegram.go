@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/config"
-	applog "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -64,7 +64,7 @@ type telegramNotifier struct {
 
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
-		"bot_token": applog.MaskBotToken(botToken),
+		"bot_token": applog.MaskSensitiveData(botToken),
 	}).Debug("Telegram Bot 초기화 시도")
 
 	bot, err := tgbotapi.NewBotAPI(botToken)

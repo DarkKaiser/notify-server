@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	applog "github.com/darkkaiser/notify-server/log"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/utils"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"

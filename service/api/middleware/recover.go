@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"runtime"
 
-	applog "github.com/darkkaiser/notify-server/log"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )

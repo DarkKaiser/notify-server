@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
-	applog "github.com/darkkaiser/notify-server/log"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/utils"
 	log "github.com/sirupsen/logrus"
 )

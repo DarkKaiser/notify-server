@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	applog "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
 

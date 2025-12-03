@@ -10,8 +10,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	_ "github.com/darkkaiser/notify-server/docs"
-	applog "github.com/darkkaiser/notify-server/log"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/router"
 	"github.com/darkkaiser/notify-server/service/notification"
