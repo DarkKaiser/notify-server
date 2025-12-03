@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/config"
-	_log_ "github.com/darkkaiser/notify-server/log"
+	applog "github.com/darkkaiser/notify-server/log"
 	"github.com/darkkaiser/notify-server/service"
 	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
@@ -74,6 +74,11 @@ var (
 )
 
 const (
+	// 로그 파일 보관 기간(일)
+	LogRetentionDays = 30.0
+)
+
+const (
 	banner = `
   _   _         _    _   __          ____
  | \ | |  ___  | |_ (_) / _| _   _  / ___|   ___  _ __ __   __  ___  _ __
@@ -87,6 +92,10 @@ const (
 )
 
 func main() {
+	// 로그 파일 출력을 먼저 초기화한다. (환경설정 로드 전)
+	// 이렇게 하면 환경설정 로드 실패 시에도 에러가 로그 파일에 기록된다.
+	applog.InitFile(config.AppName, LogRetentionDays)
+
 	// 환경설정 정보를 읽어들인다.
 	appConfig, err := config.InitAppConfig()
 	if err != nil {
@@ -96,8 +105,8 @@ func main() {
 		}).Fatal("환경설정 로드 실패")
 	}
 
-	// 로그를 초기화하고, 일정 시간이 지난 로그 파일을 모두 삭제한다.
-	_log_.Init(appConfig.Debug, config.AppName, 30.)
+	// Debug 모드에 따라 로그 레벨을 설정한다.
+	applog.SetDebugMode(appConfig.Debug)
 
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
 	fmt.Printf(banner, Version)
