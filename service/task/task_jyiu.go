@@ -9,7 +9,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 )
 
 const (
@@ -154,7 +154,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		}
 		id = id[pos1+1 : pos2]
 
-		title := strutil.Trim(as.Eq(1).Find("a").Text())
+		title := strutils.Trim(as.Eq(1).Find("a").Text())
 		if utf8.ValidString(title) == false {
 			title0 := ""
 			for _, v := range title {
@@ -168,7 +168,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
 			Title: title,
-			Date:  strutil.Trim(as.Eq(3).Text()),
+			Date:  strutils.Trim(as.Eq(3).Text()),
 			URL:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseURL, id),
 		})
 
@@ -263,7 +263,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		}
 		url = url[pos1+1 : pos2]
 
-		title := strutil.Trim(as.Eq(2).Text())
+		title := strutils.Trim(as.Eq(2).Text())
 		if utf8.ValidString(title) == false {
 			title0 := ""
 			for _, v := range title {
@@ -277,8 +277,8 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 
 		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
 			Title:            title,
-			TrainingPeriod:   strutil.Trim(as.Eq(4).Text()),
-			AcceptancePeriod: strutil.Trim(as.Eq(5).Text()),
+			TrainingPeriod:   strutils.Trim(as.Eq(4).Text()),
+			AcceptancePeriod: strutils.Trim(as.Eq(5).Text()),
 			URL:              fmt.Sprintf("%s%s", jyiuBaseURL, url),
 		})
 

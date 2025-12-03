@@ -8,7 +8,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 )
 
 const (
@@ -225,7 +225,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {
-			if strutil.Trim(as.Text()) == "정보가 없습니다" {
+			if strutils.Trim(as.Text()) == "정보가 없습니다" {
 				return true
 			}
 
@@ -257,9 +257,9 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		}
 
 		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{
-			Title1:         strutil.Trim(title1Selection.Text()),
-			Title2:         strutil.Trim(title2Selection.Text()),
-			TrainingPeriod: strutil.Trim(as.Eq(1).Text()),
+			Title1:         strutils.Trim(title1Selection.Text()),
+			Title2:         strutils.Trim(title2Selection.Text()),
+			TrainingPeriod: strutils.Trim(as.Eq(1).Text()),
 			URL:            courseDetailURL,
 			Err:            nil,
 		})

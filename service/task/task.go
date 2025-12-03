@@ -13,7 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -298,7 +298,7 @@ func (t *task) notifyError(taskNotificationSender TaskNotificationSender, m stri
 }
 
 func (t *task) dataFileName() string {
-	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutil.ToSnakeCase(string(t.ID())), strutil.ToSnakeCase(string(t.CommandID())))
+	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutils.ToSnakeCase(string(t.ID())), strutils.ToSnakeCase(string(t.CommandID())))
 	return strings.ReplaceAll(filename, "_", "-")
 }
 

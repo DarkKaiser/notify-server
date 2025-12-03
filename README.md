@@ -273,8 +273,8 @@ notify-server/
 ├── pkg/               # 재사용 가능한 패키지
 │   ├── errors/        # 커스텀 에러 타입
 │   ├── log/           # 로깅 유틸리티
-│   ├── strutil/       # 문자열 유틸리티 함수
-│   └── validation/    # 검증 함수 (Cron, Port, Duration 등)
+│   ├── strutils/      # 문자열 유틸리티 함수
+│   └── validations/   # 검증 함수 (Cron, Port, Duration 등)
 ├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
 ├── service/           # 비즈니스 로직

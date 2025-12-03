@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 )
 
 type equalFunc func(selem, telem interface{}) (bool, error)
@@ -81,7 +81,7 @@ func fillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
 
 func filter(s string, includedKeywords, excludedKeywords []string) bool {
 	for _, k := range includedKeywords {
-		includedOneOfManyKeywords := strutil.SplitExceptEmptyItems(k, "|")
+		includedOneOfManyKeywords := strutils.SplitExceptEmptyItems(k, "|")
 		if len(includedOneOfManyKeywords) == 1 {
 			if strings.Contains(s, k) == false {
 				return false
