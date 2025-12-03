@@ -2,6 +2,7 @@ package errors
 
 import (
 	"errors"
+	"fmt"
 )
 
 // ErrorType 에러의 종류를 나타내는 타입
@@ -30,6 +31,9 @@ type AppError struct {
 }
 
 func (e *AppError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
+	}
 	return e.Message
 }
 

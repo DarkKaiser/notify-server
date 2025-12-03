@@ -6,6 +6,7 @@ import (
 	"time"
 
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,11 +49,11 @@ func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 			// 500번대 에러인 경우 body를 닫고 재시도
 			resp.Body.Close()
 			if err == nil {
-				lastErr = fmt.Errorf("HTTP status %s", resp.Status)
+				lastErr = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
 			}
 		}
 	}
-	return nil, fmt.Errorf("max retries exceeded: %v", lastErr)
+	return nil, apperrors.Wrap(lastErr, apperrors.ErrTaskExecutionFailed, "max retries exceeded")
 }
 
 func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
@@ -87,9 +88,9 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 		if resp != nil {
 			resp.Body.Close()
 			if err == nil {
-				lastErr = fmt.Errorf("HTTP status %s", resp.Status)
+				lastErr = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
 			}
 		}
 	}
-	return nil, fmt.Errorf("max retries exceeded: %v", lastErr)
+	return nil, apperrors.Wrap(lastErr, apperrors.ErrTaskExecutionFailed, "max retries exceeded")
 }
