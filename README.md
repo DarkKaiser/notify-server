@@ -1,7 +1,7 @@
 # NotifyServer
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=Go&logoColor=white" />
+  <img src="https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=Go&logoColor=white" />
   <img src="https://img.shields.io/badge/Docker-Enabled-2496ED?style=flat&logo=Docker&logoColor=white">
   <img src="https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?style=flat&logo=Jenkins&logoColor=white">
   <img src="https://img.shields.io/badge/Alpine-3.20-0D597F?style=flat&logo=Alpine-Linux&logoColor=white">
@@ -68,7 +68,7 @@ graph TD
 
 | 카테고리      | 기술             | 버전        |
 | ------------- | ---------------- | ----------- |
-| 언어          | Go               | 1.23+       |
+| 언어          | Go               | 1.24+       |
 | 웹 프레임워크 | Echo             | v4          |
 | 스케줄러      | Cron             | v3          |
 | 문서화        | Swagger (Swaggo) | Latest      |
@@ -81,7 +81,7 @@ graph TD
 ### 전제 조건
 
 - Docker & Docker Compose
-- Go 1.23+ (로컬 개발 시)
+- Go 1.24+ (로컬 개발 시)
 - Telegram 봇 토큰 ([@BotFather](https://t.me/botfather)에서 발급)
 - Telegram Chat ID ([@userinfobot](https://t.me/userinfobot)에서 확인)
 

@@ -9,5 +9,5 @@ type VersionResponse struct {
 	// 빌드 번호
 	BuildNumber string `json:"build_number" example:"100"`
 	// Go 버전
-	GoVersion string `json:"go_version" example:"go1.23.4"`
+	GoVersion string `json:"go_version" example:"go1.24.0"`
 }

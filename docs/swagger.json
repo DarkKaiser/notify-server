@@ -213,7 +213,7 @@
                 "go_version": {
                     "description": "Go 버전",
                     "type": "string",
-                    "example": "go1.23.4"
+                    "example": "go1.24.0"
                 },
                 "version": {
                     "description": "Git 커밋 해시",

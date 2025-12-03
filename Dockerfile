@@ -1,7 +1,7 @@
 # ------------------------------------------
 # 1. Build Image
 # ------------------------------------------
-FROM golang:1.23.4-alpine AS builder
+FROM golang:1.24.0-alpine AS builder
 
 # 빌드 메타데이터 인자
 ARG GIT_COMMIT=unknown

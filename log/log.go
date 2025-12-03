@@ -40,17 +40,19 @@ func init() {
 	})
 }
 
+// Init 로그 파일 출력과 Debug 모드를 한 번에 초기화합니다.
+// Deprecated: 대신 InitFile()과 SetDebugMode()를 순차적으로 호출하세요.
+// 이렇게 하면 환경설정 로드 전에 로그 파일 출력을 먼저 활성화할 수 있습니다.
 func Init(debug bool, appName string, checkDaysAgo float64) io.Closer {
-	// Debug 모드에 따라 로그 레벨 설정
-	// - Debug 모드: Trace 레벨 (모든 로그 출력)
-	// - 운영 모드: Info 레벨 (Info, Warn, Error, Fatal만 출력)
-	if debug == true {
-		log.SetLevel(log.TraceLevel)
-	} else {
-		// 운영 환경에서는 Info 레벨 이상만 출력
-		log.SetLevel(log.InfoLevel)
-	}
+	logFile := InitFile(appName, checkDaysAgo)
+	SetDebugMode(debug)
+	return logFile
+}
 
+// InitFile 로그 파일 출력을 초기화합니다.
+// 이 함수는 환경설정 로드 전에 호출하여 모든 로그가 파일에 기록되도록 합니다.
+// Debug 모드 설정은 SetDebugMode()를 통해 별도로 수행합니다.
+func InitFile(appName string, checkDaysAgo float64) io.Closer {
 	var logDirPath = fmt.Sprintf("%s%s", logDirParentPath, logDirName)
 
 	// 로그 파일이 쌓이는 폴더를 생성한다.
@@ -71,6 +73,17 @@ func Init(debug bool, appName string, checkDaysAgo float64) io.Closer {
 	cleanOutOfLogFiles(appName, checkDaysAgo)
 
 	return logFile
+}
+
+// SetDebugMode Debug 모드에 따라 로그 레벨을 설정합니다.
+// - Debug 모드: Trace 레벨 (모든 로그 출력)
+// - 운영 모드: Info 레벨 (Info, Warn, Error, Fatal만 출력)
+func SetDebugMode(debug bool) {
+	if debug {
+		log.SetLevel(log.TraceLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 }
 
 func cleanOutOfLogFiles(appName string, checkDaysAgo float64) {
