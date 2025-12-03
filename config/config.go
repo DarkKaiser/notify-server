@@ -9,6 +9,7 @@ import (
 	"time"
 
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/utils"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
@@ -128,7 +129,7 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	// 파일 내용에 대해 유효성 검사를 한다.
 	//
 	if err := appConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("%s 파일의 내용이 유효하지 않습니다. %v", filename, err)
+		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s 파일의 내용이 유효하지 않습니다", filename))
 	}
 
 	return &appConfig, nil
@@ -139,7 +140,7 @@ func validateCronExpression(spec string) error {
 	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 	_, err := parser.Parse(spec)
 	if err != nil {
-		return fmt.Errorf("잘못된 Cron 표현식입니다: %s (에러: %v)", spec, err)
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 Cron 표현식입니다: %s", spec))
 	}
 	return nil
 }
@@ -147,7 +148,7 @@ func validateCronExpression(spec string) error {
 // validatePort 포트 번호의 유효성을 검사합니다.
 func validatePort(port int) error {
 	if port < 1 || port > 65535 {
-		return fmt.Errorf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port)
+		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port))
 	}
 	if port < 1024 {
 		// 경고만 로그로 출력 (에러는 아님)
@@ -162,7 +163,7 @@ func validatePort(port int) error {
 func validateDuration(d string) error {
 	_, err := time.ParseDuration(d)
 	if err != nil {
-		return fmt.Errorf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d)
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d))
 	}
 	return nil
 }
@@ -177,7 +178,7 @@ func validateFileExists(path string, warnOnly bool) error {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			errMsg := fmt.Errorf("파일이 존재하지 않습니다: %s", path)
+			errMsg := apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("파일이 존재하지 않습니다: %s", path))
 			if warnOnly {
 				applog.WithComponentAndFields("config", log.Fields{
 					"file_path": path,
@@ -186,7 +187,7 @@ func validateFileExists(path string, warnOnly bool) error {
 			}
 			return errMsg
 		}
-		return fmt.Errorf("파일 접근 오류: %s (에러: %v)", path, err)
+		return apperrors.Wrap(err, apperrors.ErrInternal, fmt.Sprintf("파일 접근 오류: %s", path))
 	}
 	return nil
 }
@@ -200,17 +201,17 @@ func validateURL(urlStr string) error {
 	// URL 파싱
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		return fmt.Errorf("잘못된 URL 형식입니다: %s (에러: %v)", urlStr, err)
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 URL 형식입니다: %s", urlStr))
 	}
 
 	// Scheme 검증 (http 또는 https만 허용)
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("URL은 http 또는 https 스키마를 사용해야 합니다: %s", urlStr)
+		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("URL은 http 또는 https 스키마를 사용해야 합니다: %s", urlStr))
 	}
 
 	// Host 검증
 	if parsedURL.Host == "" {
-		return fmt.Errorf("URL에 호스트가 없습니다: %s", urlStr)
+		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("URL에 호스트가 없습니다: %s", urlStr))
 	}
 
 	return nil
@@ -236,7 +237,7 @@ func validateFileOrURL(path string, warnOnly bool) error {
 func (c *AppConfig) Validate() error {
 	// HTTP Retry 설정 검증
 	if err := validateDuration(c.HTTPRetry.RetryDelay); err != nil {
-		return fmt.Errorf("HTTP Retry 설정 오류: %v", err)
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
 	}
 
 	// Notifiers 유효성 검사
@@ -263,25 +264,25 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 	var taskIDs []string
 	for _, t := range c.Tasks {
 		if utils.Contains(taskIDs, t.ID) {
-			return fmt.Errorf("TaskID(%s)가 중복되었습니다", t.ID)
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("TaskID(%s)가 중복되었습니다", t.ID))
 		}
 		taskIDs = append(taskIDs, t.ID)
 
 		var commandIDs []string
 		for _, cmd := range t.Commands {
 			if utils.Contains(commandIDs, cmd.ID) {
-				return fmt.Errorf("CommandID(%s)가 중복되었습니다", cmd.ID)
+				return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("CommandID(%s)가 중복되었습니다", cmd.ID))
 			}
 			commandIDs = append(commandIDs, cmd.ID)
 
 			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
-				return fmt.Errorf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID)
+				return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
 			}
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
 				if err := validateCronExpression(cmd.Scheduler.TimeSpec); err != nil {
-					return fmt.Errorf("%s::%s Task의 Scheduler 설정 오류: %v", t.ID, cmd.ID, err)
+					return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
 		}
@@ -295,13 +296,13 @@ func (c *NotifierConfig) Validate() ([]string, error) {
 	var notifierIDs []string
 	for _, telegram := range c.Telegrams {
 		if utils.Contains(notifierIDs, telegram.ID) {
-			return nil, fmt.Errorf("NotifierID(%s)가 중복되었습니다", telegram.ID)
+			return nil, apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("NotifierID(%s)가 중복되었습니다", telegram.ID))
 		}
 		notifierIDs = append(notifierIDs, telegram.ID)
 	}
 
 	if !utils.Contains(notifierIDs, c.DefaultNotifierID) {
-		return nil, fmt.Errorf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID)
+		return nil, apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
 	}
 
 	return notifierIDs, nil
@@ -311,16 +312,16 @@ func (c *NotifierConfig) Validate() ([]string, error) {
 func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 	// 포트 번호 검증
 	if err := validatePort(c.WS.ListenPort); err != nil {
-		return fmt.Errorf("웹서버 포트 설정 오류: %v", err)
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
 	}
 
 	// WS 설정 검사
 	if c.WS.TLSServer {
 		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
-			return fmt.Errorf("웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
 		}
 		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
-			return fmt.Errorf("웹서버의 Key 파일 경로가 입력되지 않았습니다")
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
 		}
 
 		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
@@ -332,16 +333,16 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 	var applicationIDs []string
 	for _, app := range c.Applications {
 		if utils.Contains(applicationIDs, app.ID) {
-			return fmt.Errorf("ApplicationID(%s)가 중복되었습니다", app.ID)
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("ApplicationID(%s)가 중복되었습니다", app.ID))
 		}
 		applicationIDs = append(applicationIDs, app.ID)
 
 		if !utils.Contains(notifierIDs, app.DefaultNotifierID) {
-			return fmt.Errorf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID)
+			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}
 
 		if len(app.AppKey) == 0 {
-			return fmt.Errorf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID)
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
 		}
 	}
 

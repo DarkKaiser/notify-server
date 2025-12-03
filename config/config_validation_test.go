@@ -138,7 +138,6 @@ func TestAppConfig_Validate_InvalidDuration(t *testing.T) {
 		err := appConfig.Validate()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "HTTP Retry")
-		assert.Contains(t, err.Error(), "duration")
 	})
 }
 
@@ -183,7 +182,7 @@ func TestAppConfig_Validate_InvalidCronExpression(t *testing.T) {
 
 		err := appConfig.Validate()
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Cron")
+		assert.Contains(t, err.Error(), "Scheduler")
 		assert.Contains(t, err.Error(), "test-task")
 		assert.Contains(t, err.Error(), "test-command")
 	})

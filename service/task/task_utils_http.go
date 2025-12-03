@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/PuerkitoBio/goquery"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"golang.org/x/net/html/charset"
 )
 
@@ -31,21 +32,21 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 func newHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	resp, err := fetcher.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
+		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status)
+		return nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
 	}
 	defer resp.Body.Close()
 
 	utf8Reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
 	if err != nil {
-		return nil, fmt.Errorf("페이지(%s)의 인코딩 변환이 실패하였습니다.(error:%s)", url, err)
+		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s)의 인코딩 변환이 실패하였습니다.", url))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(utf8Reader)
 	if err != nil {
-		return nil, fmt.Errorf("불러온 페이지(%s)의 데이터 파싱이 실패하였습니다.(error:%s)", url, err)
+		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 데이터 파싱이 실패하였습니다.", url))
 	}
 
 	return doc, nil
@@ -59,7 +60,7 @@ func newHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*go
 
 	sel := doc.Find(selector)
 	if sel.Length() <= 0 {
-		return nil, fmt.Errorf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요", url)
+		return nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요", url))
 	}
 
 	return sel, nil
@@ -80,7 +81,7 @@ func webScrape(fetcher Fetcher, url string, selector string, f func(int, *goquer
 func unmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
+		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	for key, value := range header {
 		req.Header.Set(key, value)
@@ -88,20 +89,20 @@ func unmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header m
 
 	resp, err := fetcher.Do(req)
 	if err != nil {
-		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(error:%s)", url, err)
+		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status)
+		return apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("불러온 페이지(%s) 데이터를 읽을 수 없습니다.(error:%s)", url, err)
+		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s) 데이터를 읽을 수 없습니다.", url))
 	}
 
 	if err = json.Unmarshal(bodyBytes, v); err != nil {
-		return fmt.Errorf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.(error:%s)", url, err)
+		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.", url))
 	}
 
 	return nil

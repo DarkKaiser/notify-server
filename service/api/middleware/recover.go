@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	applog "github.com/darkkaiser/notify-server/log"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -16,7 +17,7 @@ func LogrusRecover() echo.MiddlewareFunc {
 				if r := recover(); r != nil {
 					err, ok := r.(error)
 					if !ok {
-						err = fmt.Errorf("%v", r)
+						err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("%v", r))
 					}
 
 					stack := make([]byte, 4<<10) // 4KB
