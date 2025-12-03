@@ -113,3 +113,13 @@ func ValidateURL(urlStr string) error {
 
 	return nil
 }
+
+// ValidateNoDuplicate 목록에 중복된 값이 없는지 검사합니다.
+func ValidateNoDuplicate(list []string, value, valueType string) error {
+	for _, item := range list {
+		if item == value {
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s(%s)가 중복되었습니다", valueType, value))
+		}
+	}
+	return nil
+}

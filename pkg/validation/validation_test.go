@@ -166,3 +166,37 @@ func TestValidateFileExistsOrURL(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateNoDuplicate(t *testing.T) {
+	tests := []struct {
+		name      string
+		list      []string
+		value     string
+		valueType string
+		wantErr   bool
+	}{
+		{"빈 목록에 추가", []string{}, "id1", "TestID", false},
+		{"중복되지 않은 ID 추가", []string{"id1", "id2"}, "id3", "TestID", false},
+		{"중복된 ID 추가", []string{"id1", "id2", "id3"}, "id2", "TestID", true},
+		{"첫 번째 ID와 중복", []string{"id1", "id2"}, "id1", "TaskID", true},
+		{"마지막 ID와 중복", []string{"id1", "id2", "id3"}, "id3", "CommandID", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateNoDuplicate(tt.list, tt.value, tt.valueType)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateNoDuplicate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.wantErr {
+				// 에러 메시지에 valueType과 value가 포함되어 있는지 확인
+				if !assert.Contains(t, err.Error(), tt.valueType) {
+					t.Errorf("에러 메시지에 valueType(%s)이 포함되어야 합니다", tt.valueType)
+				}
+				if !assert.Contains(t, err.Error(), tt.value) {
+					t.Errorf("에러 메시지에 value(%s)가 포함되어야 합니다", tt.value)
+				}
+			}
+		})
+	}
+}

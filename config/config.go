@@ -18,9 +18,76 @@ const (
 
 	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
 	DefaultMaxRetries = 3
+
 	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
 	DefaultRetryDelay = "2s"
 )
+
+// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
+type AppConfig struct {
+	Debug     bool            `json:"debug"`
+	HTTPRetry HTTPRetryConfig `json:"http_retry"`
+	Notifiers NotifierConfig  `json:"notifiers"`
+	Tasks     []TaskConfig    `json:"tasks"`
+	NotifyAPI NotifyAPIConfig `json:"notify_api"`
+}
+
+// Validate AppConfig의 유효성을 검사합니다.
+func (c *AppConfig) Validate() error {
+	// HTTP Retry 설정 검증
+	if err := validation.ValidateDuration(c.HTTPRetry.RetryDelay); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
+	}
+
+	// Notifiers 유효성 검사
+	notifierIDs, err := c.Notifiers.Validate()
+	if err != nil {
+		return err
+	}
+
+	// Tasks 유효성 검사
+	if err := c.validateTasks(notifierIDs); err != nil {
+		return err
+	}
+
+	// NotifyAPI 유효성 검사
+	if err := c.NotifyAPI.Validate(notifierIDs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateTasks Task 설정의 유효성을 검사합니다.
+func (c *AppConfig) validateTasks(notifierIDs []string) error {
+	var taskIDs []string
+	for _, t := range c.Tasks {
+		if err := validation.ValidateNoDuplicate(taskIDs, t.ID, "TaskID"); err != nil {
+			return err
+		}
+		taskIDs = append(taskIDs, t.ID)
+
+		var commandIDs []string
+		for _, cmd := range t.Commands {
+			if err := validation.ValidateNoDuplicate(commandIDs, cmd.ID, "CommandID"); err != nil {
+				return err
+			}
+			commandIDs = append(commandIDs, cmd.ID)
+
+			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
+				return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
+			}
+
+			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
+			if cmd.Scheduler.Runnable {
+				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+					return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // HTTPRetryConfig HTTP 재시도 설정 구조체
 type HTTPRetryConfig struct {
@@ -34,6 +101,24 @@ type NotifierConfig struct {
 	Telegrams         []TelegramConfig `json:"telegrams"`
 }
 
+// Validate NotifierConfig의 유효성을 검사합니다.
+// 유효한 NotifierID 목록을 반환합니다.
+func (c *NotifierConfig) Validate() ([]string, error) {
+	var notifierIDs []string
+	for _, telegram := range c.Telegrams {
+		if err := validation.ValidateNoDuplicate(notifierIDs, telegram.ID, "NotifierID"); err != nil {
+			return nil, err
+		}
+		notifierIDs = append(notifierIDs, telegram.ID)
+	}
+
+	if !utils.Contains(notifierIDs, c.DefaultNotifierID) {
+		return nil, apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
+	}
+
+	return notifierIDs, nil
+}
+
 // TelegramConfig 텔레그램 알림 설정 구조체
 type TelegramConfig struct {
 	ID       string `json:"id"`
@@ -41,6 +126,7 @@ type TelegramConfig struct {
 	ChatID   int64  `json:"chat_id"`
 }
 
+// TaskConfig Task 설정 구조체
 type TaskConfig struct {
 	ID       string                 `json:"id"`
 	Title    string                 `json:"title"`
@@ -48,6 +134,7 @@ type TaskConfig struct {
 	Data     map[string]interface{} `json:"data"`
 }
 
+// TaskCommandConfig Task 명령 설정 구조체
 type TaskCommandConfig struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
@@ -69,6 +156,47 @@ type NotifyAPIConfig struct {
 	Applications []ApplicationConfig `json:"applications"`
 }
 
+// Validate NotifyAPIConfig의 유효성을 검사합니다.
+func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
+	// 포트 번호 검증
+	if err := validation.ValidatePort(c.WS.ListenPort); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
+	}
+
+	// WS 설정 검사
+	if c.WS.TLSServer {
+		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+		}
+		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
+		}
+
+		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
+		_ = validation.ValidateFileExistsOrURL(c.WS.TLSCertFile, true)
+		_ = validation.ValidateFileExistsOrURL(c.WS.TLSKeyFile, true)
+	}
+
+	// Applications 설정 검사
+	var applicationIDs []string
+	for _, app := range c.Applications {
+		if err := validation.ValidateNoDuplicate(applicationIDs, app.ID, "ApplicationID"); err != nil {
+			return err
+		}
+		applicationIDs = append(applicationIDs, app.ID)
+
+		if !utils.Contains(notifierIDs, app.DefaultNotifierID) {
+			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
+		}
+
+		if app.AppKey == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
+		}
+	}
+
+	return nil
+}
+
 // WSConfig 웹서버 설정 구조체
 type WSConfig struct {
 	TLSServer   bool   `json:"tls_server"`
@@ -84,15 +212,6 @@ type ApplicationConfig struct {
 	Description       string `json:"description"`
 	DefaultNotifierID string `json:"default_notifier_id"`
 	AppKey            string `json:"app_key"`
-}
-
-// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
-type AppConfig struct {
-	Debug     bool            `json:"debug"`
-	HTTPRetry HTTPRetryConfig `json:"http_retry"`
-	Notifiers NotifierConfig  `json:"notifiers"`
-	Tasks     []TaskConfig    `json:"tasks"`
-	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
 func InitAppConfig() (*AppConfig, error) {
@@ -129,120 +248,4 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	}
 
 	return &appConfig, nil
-}
-
-// Validate AppConfig의 유효성을 검사합니다.
-func (c *AppConfig) Validate() error {
-	// HTTP Retry 설정 검증
-	if err := validation.ValidateDuration(c.HTTPRetry.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
-	}
-
-	// Notifiers 유효성 검사
-	notifierIDs, err := c.Notifiers.Validate()
-	if err != nil {
-		return err
-	}
-
-	// Tasks 유효성 검사
-	if err := c.validateTasks(notifierIDs); err != nil {
-		return err
-	}
-
-	// NotifyAPI 유효성 검사
-	if err := c.NotifyAPI.Validate(notifierIDs); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// validateTasks Task 설정의 유효성을 검사합니다.
-func (c *AppConfig) validateTasks(notifierIDs []string) error {
-	var taskIDs []string
-	for _, t := range c.Tasks {
-		if utils.Contains(taskIDs, t.ID) {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("TaskID(%s)가 중복되었습니다", t.ID))
-		}
-		taskIDs = append(taskIDs, t.ID)
-
-		var commandIDs []string
-		for _, cmd := range t.Commands {
-			if utils.Contains(commandIDs, cmd.ID) {
-				return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("CommandID(%s)가 중복되었습니다", cmd.ID))
-			}
-			commandIDs = append(commandIDs, cmd.ID)
-
-			if !utils.Contains(notifierIDs, cmd.DefaultNotifierID) {
-				return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
-			}
-
-			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
-			if cmd.Scheduler.Runnable {
-				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
-					return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// Validate NotifierConfig의 유효성을 검사합니다.
-// 유효한 NotifierID 목록을 반환합니다.
-func (c *NotifierConfig) Validate() ([]string, error) {
-	var notifierIDs []string
-	for _, telegram := range c.Telegrams {
-		if utils.Contains(notifierIDs, telegram.ID) {
-			return nil, apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("NotifierID(%s)가 중복되었습니다", telegram.ID))
-		}
-		notifierIDs = append(notifierIDs, telegram.ID)
-	}
-
-	if !utils.Contains(notifierIDs, c.DefaultNotifierID) {
-		return nil, apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
-	}
-
-	return notifierIDs, nil
-}
-
-// Validate NotifyAPIConfig의 유효성을 검사합니다.
-func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
-	// 포트 번호 검증
-	if err := validation.ValidatePort(c.WS.ListenPort); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
-	}
-
-	// WS 설정 검사
-	if c.WS.TLSServer {
-		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
-		}
-		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
-		}
-
-		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
-		validation.ValidateFileExistsOrURL(c.WS.TLSCertFile, true)
-		validation.ValidateFileExistsOrURL(c.WS.TLSKeyFile, true)
-	}
-
-	// Applications 설정 검사
-	var applicationIDs []string
-	for _, app := range c.Applications {
-		if utils.Contains(applicationIDs, app.ID) {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("ApplicationID(%s)가 중복되었습니다", app.ID))
-		}
-		applicationIDs = append(applicationIDs, app.ID)
-
-		if !utils.Contains(notifierIDs, app.DefaultNotifierID) {
-			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
-		}
-
-		if len(app.AppKey) == 0 {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
-		}
-	}
-
-	return nil
 }
