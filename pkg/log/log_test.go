@@ -22,7 +22,8 @@ func TestInit_DebugMode(t *testing.T) {
 		}()
 
 		appName := "test-app"
-		closer := Init(true, appName, 7.0)
+		closer := InitFile(appName, 7.0)
+		SetDebugMode(true)
 
 		// 테스트 종료 시 로거를 표준 출력으로 복원
 		defer func() {
@@ -57,7 +58,8 @@ func TestInit_ProductionMode(t *testing.T) {
 		}()
 
 		appName := "test-app"
-		closer := Init(false, appName, 7.0)
+		closer := InitFile(appName, 7.0)
+		SetDebugMode(false)
 
 		// 테스트 종료 시 로거를 표준 출력으로 복원하여 다른 테스트에 영향을 주지 않도록 함
 		defer func() {

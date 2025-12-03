@@ -97,7 +97,11 @@ func main() {
 
 	// 로그 파일 출력을 먼저 초기화한다. (환경설정 로드 전)
 	// 이렇게 하면 환경설정 로드 실패 시에도 에러가 로그 파일에 기록된다.
-	applog.InitFile(config.AppName, LogRetentionDays)
+	appLogCloser := applog.InitFileWithOptions(config.AppName, LogRetentionDays, applog.InitFileOptions{
+		EnableCriticalLog: true,
+		EnableVerboseLog:  true,
+	})
+	defer appLogCloser.Close()
 
 	// 환경설정 정보를 읽어들인다.
 	appConfig, err := config.InitAppConfig()
