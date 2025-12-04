@@ -77,7 +77,10 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "app_key가 유효하지 않습니다")
+
+			errResp, ok := he.Message.(model.ErrorResponse)
+			assert.True(t, ok)
+			assert.Contains(t, errResp.Message, "app_key가 유효하지 않습니다")
 		}
 	})
 
@@ -99,7 +102,10 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "접근이 허용되지 않은 application_id")
+
+			errResp, ok := he.Message.(model.ErrorResponse)
+			assert.True(t, ok)
+			assert.Contains(t, errResp.Message, "접근이 허용되지 않은 application_id")
 		}
 	})
 
