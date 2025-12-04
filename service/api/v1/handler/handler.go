@@ -24,3 +24,17 @@ func NewHandler(appConfig *config.AppConfig, notificationSender notification.Not
 		buildInfo: buildInfo,
 	}
 }
+
+func loadApplicationsFromConfig(appConfig *config.AppConfig) map[string]*Application {
+	applications := make(map[string]*Application)
+	for _, application := range appConfig.NotifyAPI.Applications {
+		applications[application.ID] = &Application{
+			ID:                application.ID,
+			Title:             application.Title,
+			Description:       application.Description,
+			DefaultNotifierID: application.DefaultNotifierID,
+			AppKey:            application.AppKey,
+		}
+	}
+	return applications
+}
