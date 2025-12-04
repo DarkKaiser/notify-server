@@ -491,7 +491,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
           "title": "신규 온라인 교육 확인",
           "scheduler": {
             "runnable": true,
-            "time_spec": "0 9,18 * * *"
+            "time_spec": "0 0 9,18 * * *"
           },
           "notifier": {
             "usable": true
@@ -509,7 +509,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
           "title": "상품 가격 변동 확인",
           "scheduler": {
             "runnable": true,
-            "time_spec": "0 8,20 * * *"
+            "time_spec": "0 0 8,20 * * *"
           },
           "notifier": {
             "usable": true
@@ -530,7 +530,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
           "title": "노트북 최저가 확인",
           "scheduler": {
             "runnable": true,
-            "time_spec": "0 */6 * * *"
+            "time_spec": "0 0 */6 * * *"
           },
           "notifier": {
             "usable": true

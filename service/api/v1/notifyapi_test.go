@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,11 +29,15 @@ func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
 // TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
 func TestNotifyAPIService_Run(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18080 // 테스트용 포트
+	appConfig.NotifyAPI.WS.ListenPort = 18081
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,11 +72,15 @@ func TestNotifyAPIService_Run(t *testing.T) {
 // TestNotifyAPIService_GracefulShutdown은 우아한 종료를 테스트합니다.
 func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18081 // 다른 포트 사용
+	appConfig.NotifyAPI.WS.ListenPort = 18082
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -107,11 +116,15 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 // TestNotifyAPIService_DuplicateRun은 중복 시작 방지를 테스트합니다.
 func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18082
+	appConfig.NotifyAPI.WS.ListenPort = 18083
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -149,10 +162,14 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 // TestNotifyAPIService_NilNotificationSender는 nil NotificationSender 처리를 테스트합니다.
 func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18083
+	appConfig.NotifyAPI.WS.ListenPort = 18084
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	service := NewNotifyAPIService(appConfig, nil, "1.0.0", "2024-01-01", "100")
+	service := NewNotifyAPIService(appConfig, nil, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

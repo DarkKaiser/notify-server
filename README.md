@@ -263,6 +263,15 @@ curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-ke
 
 - **Swagger UI**: `https://api.darkkaiser.com:2443/swagger/index.html`
 - **Health Check**: `https://api.darkkaiser.com:2443/health`
+- **Version Info**: `https://api.darkkaiser.com:2443/version`
+
+### 주요 엔드포인트
+
+| 엔드포인트               | 메서드 | 설명                                          | 인증 필요    |
+| ------------------------ | ------ | --------------------------------------------- | ------------ |
+| `/health`                | GET    | 서버 상태 확인 (uptime, 의존성 상태)          | 아니오       |
+| `/version`               | GET    | 빌드 정보 확인 (Git 커밋, 빌드 날짜, Go 버전) | 아니오       |
+| `/api/v1/notice/message` | POST   | 알림 메시지 전송                              | 예 (App Key) |
 
 ## 개발 가이드
 
@@ -273,6 +282,7 @@ notify-server/
 ├── config/            # 환경설정 관리
 ├── docs/              # 문서 (TASKS.md, Swagger 등)
 ├── pkg/               # 재사용 가능한 패키지
+│   ├── common/        # 공통 타입 및 구조체 (BuildInfo 등)
 │   ├── errors/        # 커스텀 에러 타입
 │   ├── log/           # 로깅 유틸리티
 │   ├── strutils/      # 문자열 유틸리티 함수

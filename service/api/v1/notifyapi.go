@@ -10,10 +10,11 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	_ "github.com/darkkaiser/notify-server/docs"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/handler"
-	"github.com/darkkaiser/notify-server/service/api/router"
+	"github.com/darkkaiser/notify-server/service/api/v1/handler"
+	"github.com/darkkaiser/notify-server/service/api/v1/router"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -29,13 +30,10 @@ type NotifyAPIService struct {
 
 	notificationSender notification.NotificationSender
 
-	// 빌드 정보
-	version     string
-	buildDate   string
-	buildNumber string
+	buildInfo common.BuildInfo
 }
 
-func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *NotifyAPIService {
+func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notification.NotificationSender, buildInfo common.BuildInfo) *NotifyAPIService {
 	return &NotifyAPIService{
 		appConfig: appConfig,
 
@@ -44,9 +42,7 @@ func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notific
 
 		notificationSender: notificationSender,
 
-		version:     version,
-		buildDate:   buildDate,
-		buildNumber: buildNumber,
+		buildInfo: buildInfo,
 	}
 }
 
@@ -62,7 +58,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
-	if s.running == true {
+	if s.running {
 		defer serviceStopWaiter.Done()
 
 		applog.WithComponent("api.service").Warn("NotifyAPI 서비스가 이미 시작됨!!!")
@@ -83,7 +79,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	defer serviceStopWaiter.Done()
 
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
-	h := handler.NewHandler(s.appConfig, s.notificationSender, s.version, s.buildDate, s.buildNumber)
+	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
 	e := router.New()
 
@@ -94,7 +90,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// API v1 엔드포인트
 	grp := e.Group("/api/v1")
 	{
-		grp.POST("/notice/message", h.NotifyMessageSendHandler)
+		grp.POST("/notice/message", h.SendNotifyMessageHandler)
 	}
 
 	// Swagger UI 설정
@@ -124,14 +120,14 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 		}).Debug("NotifyAPI 서비스 > http 서버 시작")
 
 		var err error
-		if s.appConfig.NotifyAPI.WS.TLSServer == true {
+		if s.appConfig.NotifyAPI.WS.TLSServer {
 			err = e.StartTLS(fmt.Sprintf(":%d", listenPort), s.appConfig.NotifyAPI.WS.TLSCertFile, s.appConfig.NotifyAPI.WS.TLSKeyFile)
 		} else {
 			err = e.Start(fmt.Sprintf(":%d", listenPort))
 		}
 
 		// Start(), StartTLS() 함수는 항상 nil이 아닌 error를 반환한다.
-		if errors.Is(err, http.ErrServerClosed) == true {
+		if errors.Is(err, http.ErrServerClosed) {
 			applog.WithComponent("api.service").Info("NotifyAPI 서비스 > http 서버 중지됨")
 		} else {
 			m := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."

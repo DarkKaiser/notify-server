@@ -8,38 +8,13 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/service/api/model"
+	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationSender is a mock implementation of NotificationSender
-type MockNotificationSender struct {
-	NotifyCalled      bool
-	LastNotifierID    string
-	LastTitle         string
-	LastMessage       string
-	LastErrorOccurred bool
-}
-
-func (m *MockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	m.NotifyCalled = true
-	m.LastNotifierID = notifierID
-	m.LastTitle = title
-	m.LastMessage = message
-	m.LastErrorOccurred = errorOccurred
-	return true
-}
-
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
-	return true
-}
-
-func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
-	return true
-}
-
-func TestHandler_NotifyMessageSendHandler(t *testing.T) {
+func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockSender := &MockNotificationSender{}
@@ -55,10 +30,14 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 			AppKey:            "valid-key",
 		},
 	}
-	h := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+	h := NewHandler(appConfig, mockSender, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 			ErrorOccurred: false,
@@ -71,7 +50,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		if assert.NoError(t, h.NotifyMessageSendHandler(c)) {
+		if assert.NoError(t, h.SendNotifyMessageHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.True(t, mockSender.NotifyCalled)
 			assert.Equal(t, "test-notifier", mockSender.LastNotifierID)
@@ -81,7 +60,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 	})
 
 	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 		}
@@ -93,17 +72,17 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.NotifyMessageSendHandler(c)
+		err := h.SendNotifyMessageHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "APP_KEY가 유효하지 않습니다")
+			assert.Contains(t, he.Message, "app_key가 유효하지 않습니다")
 		}
 	})
 
 	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "unknown-app",
 			Message:       "Test Message",
 		}
@@ -115,12 +94,12 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.NotifyMessageSendHandler(c)
+		err := h.SendNotifyMessageHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "접근이 허용되지 않은 Application입니다")
+			assert.Contains(t, he.Message, "접근이 허용되지 않은 application_id")
 		}
 	})
 
@@ -131,7 +110,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.NotifyMessageSendHandler(c)
+		err := h.SendNotifyMessageHandler(c)
 		assert.Error(t, err)
 	})
 }

@@ -3,7 +3,7 @@ package router
 import (
 	"net/http"
 
-	_middleware_ "github.com/darkkaiser/notify-server/service/api/middleware"
+	_middleware_ "github.com/darkkaiser/notify-server/service/api/v1/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"

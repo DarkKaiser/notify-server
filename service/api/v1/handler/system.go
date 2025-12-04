@@ -6,9 +6,18 @@ import (
 	"time"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	// Health Check 상태 상수
+	statusHealthy   = "healthy"
+	statusUnhealthy = "unhealthy"
+
+	// 의존성 서비스 키
+	dependencyNotificationService = "notification_service"
 )
 
 var serverStartTime = time.Now()
@@ -18,6 +27,11 @@ var serverStartTime = time.Now()
 // @Description 서버가 정상적으로 동작하는지 확인합니다.
 // @Description
 // @Description 이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.
+// @Description
+// @Description ## 응답 필드
+// @Description - status: 전체 서버 상태 (healthy, unhealthy)
+// @Description - uptime: 서버 가동 시간 (초)
+// @Description - dependencies: 의존성 서비스 상태 (notification_service 등)
 // @Tags System
 // @Produce json
 // @Success 200 {object} model.HealthResponse "서버 정상"
@@ -30,9 +44,35 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 
 	uptime := int64(time.Since(serverStartTime).Seconds())
 
+	// 의존성 상태 체크
+	deps := make(map[string]model.DependencyStatus)
+
+	// NotificationSender 상태 체크
+	if h.notificationSender != nil {
+		deps[dependencyNotificationService] = model.DependencyStatus{
+			Status:  statusHealthy,
+			Message: "정상 작동 중",
+		}
+	} else {
+		deps[dependencyNotificationService] = model.DependencyStatus{
+			Status:  statusUnhealthy,
+			Message: "서비스가 초기화되지 않음",
+		}
+	}
+
+	// 전체 상태 결정
+	overallStatus := statusHealthy
+	for _, dep := range deps {
+		if dep.Status != statusHealthy {
+			overallStatus = statusUnhealthy
+			break
+		}
+	}
+
 	return c.JSON(http.StatusOK, model.HealthResponse{
-		Status: "healthy",
-		Uptime: uptime,
+		Status:       overallStatus,
+		Uptime:       uptime,
+		Dependencies: deps,
 	})
 }
 
@@ -53,9 +93,9 @@ func (h *Handler) VersionHandler(c echo.Context) error {
 	}).Debug("버전 정보 요청")
 
 	return c.JSON(http.StatusOK, model.VersionResponse{
-		Version:     h.version,
-		BuildDate:   h.buildDate,
-		BuildNumber: h.buildNumber,
+		Version:     h.buildInfo.Version,
+		BuildDate:   h.buildInfo.BuildDate,
+		BuildNumber: h.buildInfo.BuildNumber,
 		GoVersion:   runtime.Version(),
 	})
 }

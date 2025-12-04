@@ -1,5 +1,20 @@
 basePath: /
 definitions:
+  model.DependencyStatus:
+    properties:
+      latency_ms:
+        description: 응답 시간 (밀리초, 선택적)
+        example: 5
+        type: integer
+      message:
+        description: 추가 메시지 (선택적)
+        example: 정상 작동 중
+        type: string
+      status:
+        description: 상태 (healthy, unhealthy, unknown)
+        example: healthy
+        type: string
+    type: object
   model.ErrorResponse:
     properties:
       message:
@@ -9,6 +24,11 @@ definitions:
     type: object
   model.HealthResponse:
     properties:
+      dependencies:
+        additionalProperties:
+          $ref: '#/definitions/model.DependencyStatus'
+        description: 의존성 상태 (선택적)
+        type: object
       status:
         description: 서버 상태 (healthy, unhealthy)
         example: healthy
@@ -18,7 +38,7 @@ definitions:
         example: 3600
         type: integer
     type: object
-  model.NotifyMessage:
+  model.NotifyMessageRequest:
     properties:
       application_id:
         description: 애플리케이션 ID (설정 파일의 notify_api.applications에 등록된 ID)
@@ -131,7 +151,7 @@ paths:
         name: message
         required: true
         schema:
-          $ref: '#/definitions/model.NotifyMessage'
+          $ref: '#/definitions/model.NotifyMessageRequest'
       produces:
       - application/json
       responses:
@@ -162,6 +182,11 @@ paths:
         서버가 정상적으로 동작하는지 확인합니다.
 
         이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.
+
+        ## 응답 필드
+        - status: 전체 서버 상태 (healthy, unhealthy)
+        - uptime: 서버 가동 시간 (초)
+        - dependencies: 의존성 서비스 상태 (notification_service 등)
       produces:
       - application/json
       responses:
