@@ -135,6 +135,8 @@ go run main.go
 
 `notify-server.json` 파일을 통해 서버를 설정합니다.
 
+> **참고**: 이 프로젝트는 robfig/cron v3를 사용하며, Cron 표현식은 **6필드 형식**(초 분 시 일 월 요일)을 따릅니다.
+
 ```json
 {
   "debug": true,
@@ -219,7 +221,7 @@ NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어�
 
 **인증 단계**:
 
-1. **사전 준비**: `notify-server.json`의 `allowed_applications`에 애플리케이션 등록
+1. **사전 준비**: `notify-server.json`의 `notify_api.applications`에 애플리케이션 등록
 2. **API 호출**: Query Parameter로 `app_key` 전달
 3. **인증 검증**:
    - `application_id` 확인
@@ -231,7 +233,7 @@ NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어�
 ```json
 {
   "notify_api": {
-    "allowed_applications": [
+    "applications": [
       {
         "id": "my-app",
         "title": "My Application",
