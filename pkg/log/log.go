@@ -27,6 +27,9 @@ const (
 
 	// 로그 파일의 확장자
 	defaultLogFileExtension = "log"
+
+	// 로그 파일명에 사용되는 타임스탬프 포맷
+	timestampFormat = "20060102150405"
 )
 
 // InitFileOptions 로그 파일 초기화 옵션입니다.
@@ -70,7 +73,7 @@ func InitFileWithOptions(appName string, retentionDays float64, opts InitFileOpt
 		log.WithError(err).Fatal("로그 디렉토리 생성 실패")
 	}
 
-	timestamp := time.Now().Format("20060102150405")
+	timestamp := time.Now().Format(timestampFormat)
 
 	// 메인 로그 파일 생성
 	mainLogFile, err := createLogFile(logDirectoryPath, appName, timestamp, "")
@@ -80,12 +83,12 @@ func InitFileWithOptions(appName string, retentionDays float64, opts InitFileOpt
 	log.SetOutput(mainLogFile)
 
 	// 레벨별 로그 파일 생성 및 Hook 등록
-	var hook *LogLevelFileHook
-	var errorLogFile, debugLogFile *os.File
+	var hook *LogLevelHook
+	var criticalLogFile, verboseLogFile *os.File
 
 	if opts.EnableCriticalLog {
 		// Error, Fatal, Panic 레벨을 저장할 파일
-		errorLogFile, err = createLogFile(logDirectoryPath, appName, timestamp, "error")
+		criticalLogFile, err = createLogFile(logDirectoryPath, appName, timestamp, "critical")
 		if err != nil {
 			log.WithError(err).Fatal("에러 로그 파일 생성 실패")
 		}
@@ -93,16 +96,16 @@ func InitFileWithOptions(appName string, retentionDays float64, opts InitFileOpt
 
 	if opts.EnableVerboseLog {
 		// Debug, Trace 레벨을 저장할 파일
-		debugLogFile, err = createLogFile(logDirectoryPath, appName, timestamp, "debug")
+		verboseLogFile, err = createLogFile(logDirectoryPath, appName, timestamp, "verbose")
 		if err != nil {
 			log.WithError(err).Fatal("디버그 로그 파일 생성 실패")
 		}
 	}
 
-	if errorLogFile != nil || debugLogFile != nil {
-		hook = &LogLevelFileHook{
-			criticalWriter: errorLogFile,
-			verboseWriter:  debugLogFile,
+	if criticalLogFile != nil || verboseLogFile != nil {
+		hook = &LogLevelHook{
+			criticalWriter: criticalLogFile,
+			verboseWriter:  verboseLogFile,
 			formatter:      log.StandardLogger().Formatter,
 		}
 		log.AddHook(hook)
@@ -112,7 +115,7 @@ func InitFileWithOptions(appName string, retentionDays float64, opts InitFileOpt
 	removeExpiredLogFiles(appName, retentionDays)
 
 	return &multiCloser{
-		closers: []io.Closer{mainLogFile, errorLogFile, debugLogFile},
+		closers: []io.Closer{mainLogFile, criticalLogFile, verboseLogFile},
 		hook:    hook,
 	}
 }
@@ -186,6 +189,12 @@ func removeExpiredLogFiles(appName string, retentionDays float64) {
 		// 파일 정보 가져오기
 		fileInfo, err := entry.Info()
 		if err != nil {
+			log.WithFields(log.Fields{
+				"component": "log",
+				"file_name": fileName,
+				"error":     err,
+			}).Warn("로그 파일 정보 읽기 실패")
+
 			continue
 		}
 

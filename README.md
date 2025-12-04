@@ -270,14 +270,17 @@ curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-ke
 notify-server/
 ├── config/            # 환경설정 관리
 ├── docs/              # 문서 (TASKS.md, Swagger 등)
-├── log/               # 로깅 유틸리티
+├── pkg/               # 재사용 가능한 패키지
+│   ├── errors/        # 커스텀 에러 타입
+│   ├── log/           # 로깅 유틸리티
+│   ├── strutils/      # 문자열 유틸리티 함수
+│   └── validations/   # 검증 함수 (Cron, Port, Duration 등)
 ├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
 ├── service/           # 비즈니스 로직
 │   ├── api/           # REST API 서버
 │   ├── notification/  # 알림 발송 (Telegram 등)
 │   └── task/          # 스케줄링 및 스크래핑 작업
-├── utils/             # 공통 유틸리티
 ├── main.go            # 애플리케이션 진입점
 ├── notify-server.json # 기본 설정 파일
 └── Dockerfile         # Docker 빌드 설정
@@ -300,9 +303,22 @@ notify-server/
 
 `notify-server`는 `pkg/errors` 패키지를 사용하여 일관된 에러 처리를 지원합니다.
 
-- **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal` 등 명확한 에러 타입을 정의하여 사용합니다.
+- **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal`, `ErrSystem` 등 명확한 에러 타입을 정의하여 사용합니다.
 - **에러 래핑**: `apperrors.Wrap`을 사용하여 원인 에러와 컨텍스트 정보를 함께 전달합니다.
 - **에러 확인**: `apperrors.Is`, `apperrors.As`를 사용하여 에러 타입과 원인을 안전하게 확인합니다.
+- **에러 핸들링**: `apperrors.CheckErr`를 사용하여 에러 발생 시 설정된 핸들러(기본값: Fatal)를 통해 처리합니다.
+
+### 검증 시스템
+
+`pkg/validations` 패키지는 설정 값 검증을 위한 재사용 가능한 함수들을 제공합니다.
+
+- **Cron 표현식 검증**: `ValidateRobfigCronExpression` - robfig/cron 패키지 기반, 초 단위 포함 7필드 형식 지원
+- **포트 번호 검증**: `ValidatePort` - TCP/UDP 포트 범위(1-65535) 검증, 시스템 예약 포트 경고
+- **Duration 검증**: `ValidateDuration` - Go duration 문자열 형식 검증 (예: "2s", "100ms", "1m")
+- **파일 존재 검증**: `ValidateFileExists` - 파일 경로 존재 여부 확인
+- **URL 검증**: `ValidateURL` - HTTP/HTTPS URL 형식 검증
+- **파일/URL 검증**: `ValidateFileExistsOrURL` - 파일 또는 URL 유효성 검증
+- **중복 검증**: `ValidateNoDuplicate` - 목록 내 중복 값 검사
 
 ### 코드 품질 관리
 

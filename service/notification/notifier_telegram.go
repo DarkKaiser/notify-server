@@ -8,8 +8,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 	"github.com/darkkaiser/notify-server/service/task"
-	"github.com/darkkaiser/notify-server/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	log "github.com/sirupsen/logrus"
 )
@@ -101,7 +101,7 @@ func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, ap
 
 			notifier.botCommands = append(notifier.botCommands,
 				telegramBotCommand{
-					command:            fmt.Sprintf("%s_%s", utils.ToSnakeCase(t.ID), utils.ToSnakeCase(c.ID)),
+					command:            fmt.Sprintf("%s_%s", strutils.ToSnakeCase(t.ID), strutils.ToSnakeCase(c.ID)),
 					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title),
 					commandDescription: c.Description,
 
