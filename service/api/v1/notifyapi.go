@@ -82,10 +82,9 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
 	// Router 생성 시 설정 전달
-	// TODO: CORS AllowOrigins를 설정 파일에서 관리하도록 개선 필요
 	e := router.New(router.Config{
 		Debug:        s.appConfig.Debug,
-		AllowOrigins: []string{"*"}, // 현재는 모든 Origin 허용, 프로덕션에서는 특정 도메인만 허용 필요
+		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
 	// System 엔드포인트 (인증 불필요)

@@ -153,6 +153,7 @@ type TaskCommandConfig struct {
 // NotifyAPIConfig 알림 API 설정 구조체
 type NotifyAPIConfig struct {
 	WS           WSConfig            `json:"ws"`
+	CORS         CORSConfig          `json:"cors"`
 	Applications []ApplicationConfig `json:"applications"`
 }
 
@@ -175,6 +176,11 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
 		_ = validations.ValidateFileExistsOrURL(c.WS.TLSCertFile, true)
 		_ = validations.ValidateFileExistsOrURL(c.WS.TLSKeyFile, true)
+	}
+
+	// CORS 설정 검사
+	if err := c.CORS.Validate(); err != nil {
+		return err
 	}
 
 	// Applications 설정 검사
@@ -203,6 +209,19 @@ type WSConfig struct {
 	TLSCertFile string `json:"tls_cert_file"`
 	TLSKeyFile  string `json:"tls_key_file"`
 	ListenPort  int    `json:"listen_port"`
+}
+
+// CORSConfig CORS 설정 구조체
+type CORSConfig struct {
+	AllowOrigins []string `json:"allow_origins"`
+}
+
+// Validate CORS 설정의 유효성을 검사합니다.
+func (c *CORSConfig) Validate() error {
+	if len(c.AllowOrigins) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "CORS AllowOrigins 설정이 비어있습니다")
+	}
+	return nil
 }
 
 // ApplicationConfig 애플리케이션 설정 구조체
