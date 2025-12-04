@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/darkkaiser/notify-server/service/notification"
 )
 
@@ -11,20 +12,15 @@ type Handler struct {
 
 	notificationSender notification.NotificationSender
 
-	// 빌드 정보
-	version     string
-	buildDate   string
-	buildNumber string
+	buildInfo common.BuildInfo
 }
 
-func NewHandler(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *Handler {
+func NewHandler(appConfig *config.AppConfig, notificationSender notification.NotificationSender, buildInfo common.BuildInfo) *Handler {
 	return &Handler{
 		applications: loadApplicationsFromConfig(appConfig),
 
 		notificationSender: notificationSender,
 
-		version:     version,
-		buildDate:   buildDate,
-		buildNumber: buildNumber,
+		buildInfo: buildInfo,
 	}
 }

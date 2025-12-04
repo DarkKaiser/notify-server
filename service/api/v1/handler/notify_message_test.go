@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,11 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			AppKey:            "valid-key",
 		},
 	}
-	h := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+	h := NewHandler(appConfig, mockSender, common.BuildInfo{
+		Version:     "1.0.0",
+		BuildDate:   "2024-01-01",
+		BuildNumber: "100",
+	})
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
 		reqBody := model.NotifyMessageRequest{

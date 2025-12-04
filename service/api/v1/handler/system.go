@@ -93,9 +93,9 @@ func (h *Handler) VersionHandler(c echo.Context) error {
 	}).Debug("버전 정보 요청")
 
 	return c.JSON(http.StatusOK, model.VersionResponse{
-		Version:     h.version,
-		BuildDate:   h.buildDate,
-		BuildNumber: h.buildNumber,
+		Version:     h.buildInfo.Version,
+		BuildDate:   h.buildInfo.BuildDate,
+		BuildNumber: h.buildInfo.BuildNumber,
 		GoVersion:   runtime.Version(),
 	})
 }

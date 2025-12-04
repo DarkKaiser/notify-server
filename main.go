@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service"
 	apiv1 "github.com/darkkaiser/notify-server/service/api/v1"
@@ -130,7 +131,11 @@ func main() {
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	notifyAPIService := apiv1.NewNotifyAPIService(appConfig, notificationService, Version, BuildDate, BuildNumber)
+	notifyAPIService := apiv1.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
+		Version:     Version,
+		BuildDate:   BuildDate,
+		BuildNumber: BuildNumber,
+	})
 
 	taskService.SetTaskNotificationSender(notificationService)
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,7 +22,11 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &MockNotificationSender{}
-		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, common.BuildInfo{
+			Version:     "1.0.0",
+			BuildDate:   "2024-01-01",
+			BuildNumber: "100",
+		})
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 1, len(handler.applications), "1개의 애플리케이션이 등록되어야 합니다")
@@ -49,7 +54,11 @@ func TestNewHandler(t *testing.T) {
 		}
 
 		mockSender := &MockNotificationSender{}
-		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, common.BuildInfo{
+			Version:     "1.0.0",
+			BuildDate:   "2024-01-01",
+			BuildNumber: "100",
+		})
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 2, len(handler.applications), "2개의 애플리케이션이 등록되어야 합니다")
@@ -59,7 +68,11 @@ func TestNewHandler(t *testing.T) {
 		appConfig := &config.AppConfig{}
 
 		mockSender := &MockNotificationSender{}
-		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
+		handler := NewHandler(appConfig, mockSender, common.BuildInfo{
+			Version:     "1.0.0",
+			BuildDate:   "2024-01-01",
+			BuildNumber: "100",
+		})
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 0, len(handler.applications), "애플리케이션이 없어야 합니다")
