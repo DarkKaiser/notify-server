@@ -5,6 +5,7 @@ import (
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/v1/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -94,7 +95,7 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 }
 
 // findAndAuthenticateApplication 애플리케이션을 찾고 인증을 수행합니다
-func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*Application, error) {
+func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*domain.Application, error) {
 	app, ok := h.applications[applicationID]
 	if !ok {
 		return nil, newUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))

@@ -5,6 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -81,7 +82,7 @@ func TestNewHandler(t *testing.T) {
 
 func TestApplication(t *testing.T) {
 	t.Run("Application 구조체 생성", func(t *testing.T) {
-		app := &Application{
+		app := &domain.Application{
 			ID:                "test-app",
 			Title:             "Test Application",
 			Description:       "Test Description",
@@ -97,7 +98,7 @@ func TestApplication(t *testing.T) {
 	})
 
 	t.Run("빈 Application", func(t *testing.T) {
-		app := &Application{}
+		app := &domain.Application{}
 
 		assert.Empty(t, app.ID, "ID가 비어있어야 합니다")
 		assert.Empty(t, app.Title, "Title이 비어있어야 합니다")
