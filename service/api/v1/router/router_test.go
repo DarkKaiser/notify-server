@@ -10,16 +10,33 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	t.Run("라우터 생성", func(t *testing.T) {
-		e := New()
+	t.Run("라우터 생성 - Debug 모드 활성화", func(t *testing.T) {
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
 		assert.True(t, e.Debug, "Debug 모드가 활성화되어야 합니다")
 		assert.True(t, e.HideBanner, "Banner가 숨겨져야 합니다")
 	})
 
+	t.Run("라우터 생성 - Debug 모드 비활성화", func(t *testing.T) {
+		e := New(Config{
+			Debug:        false,
+			AllowOrigins: []string{"http://example.com"},
+		})
+
+		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
+		assert.False(t, e.Debug, "Debug 모드가 비활성화되어야 합니다")
+		assert.True(t, e.HideBanner, "Banner가 숨겨져야 합니다")
+	})
+
 	t.Run("미들웨어 설정 확인", func(t *testing.T) {
-		e := New()
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		// Echo 인스턴스가 정상적으로 생성되었는지 확인
 		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
@@ -29,7 +46,10 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("기본 라우트 테스트", func(t *testing.T) {
-		e := New()
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		// 테스트 라우트 추가
 		e.GET("/test", func(c echo.Context) error {
@@ -52,7 +72,10 @@ func TestNew(t *testing.T) {
 
 func TestRouterMiddlewares(t *testing.T) {
 	t.Run("CORS 미들웨어 확인", func(t *testing.T) {
-		e := New()
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		// 테스트용 핸들러 등록
 		e.GET("/test", func(c echo.Context) error {
@@ -73,7 +96,10 @@ func TestRouterMiddlewares(t *testing.T) {
 	})
 
 	t.Run("Recover 미들웨어 확인", func(t *testing.T) {
-		e := New()
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		// Panic이 발생해도 서버가 다운되지 않는지 테스트
 		e.GET("/panic", func(c echo.Context) error {
@@ -92,7 +118,10 @@ func TestRouterMiddlewares(t *testing.T) {
 	})
 
 	t.Run("RequestID 미들웨어 확인", func(t *testing.T) {
-		e := New()
+		e := New(Config{
+			Debug:        true,
+			AllowOrigins: []string{"*"},
+		})
 
 		e.GET("/test", func(c echo.Context) error {
 			return c.String(http.StatusOK, "ok")

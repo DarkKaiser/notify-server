@@ -1,4 +1,4 @@
-package model
+package request
 
 // NotifyMessageRequest 알림 메시지 요청 모델
 type NotifyMessageRequest struct {

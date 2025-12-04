@@ -1,4 +1,4 @@
-package model
+package response
 
 // ErrorResponse 에러 응답 모델
 type ErrorResponse struct {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -76,5 +77,33 @@ func TestNewHandler(t *testing.T) {
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 0, len(handler.applications), "애플리케이션이 없어야 합니다")
+	})
+}
+
+func TestApplication(t *testing.T) {
+	t.Run("Application 구조체 생성", func(t *testing.T) {
+		app := &domain.Application{
+			ID:                "test-app",
+			Title:             "Test Application",
+			Description:       "Test Description",
+			DefaultNotifierID: "test-notifier",
+			AppKey:            "secret-key-123",
+		}
+
+		assert.Equal(t, "test-app", app.ID, "ID가 일치해야 합니다")
+		assert.Equal(t, "Test Application", app.Title, "Title이 일치해야 합니다")
+		assert.Equal(t, "Test Description", app.Description, "Description이 일치해야 합니다")
+		assert.Equal(t, "test-notifier", app.DefaultNotifierID, "DefaultNotifierID가 일치해야 합니다")
+		assert.Equal(t, "secret-key-123", app.AppKey, "AppKey가 일치해야 합니다")
+	})
+
+	t.Run("빈 Application", func(t *testing.T) {
+		app := &domain.Application{}
+
+		assert.Empty(t, app.ID, "ID가 비어있어야 합니다")
+		assert.Empty(t, app.Title, "Title이 비어있어야 합니다")
+		assert.Empty(t, app.Description, "Description이 비어있어야 합니다")
+		assert.Empty(t, app.DefaultNotifierID, "DefaultNotifierID가 비어있어야 합니다")
+		assert.Empty(t, app.AppKey, "AppKey가 비어있어야 합니다")
 	})
 }

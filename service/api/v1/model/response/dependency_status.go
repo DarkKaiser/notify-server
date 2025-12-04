@@ -1,4 +1,4 @@
-package model
+package response
 
 // DependencyStatus 의존성 상태 모델
 type DependencyStatus struct {

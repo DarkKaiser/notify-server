@@ -9,7 +9,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -31,7 +31,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	if assert.NoError(t, h.HealthCheckHandler(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var response model.HealthResponse
+		var response response.HealthResponse
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
@@ -66,7 +66,7 @@ func TestHandler_VersionHandler(t *testing.T) {
 	if assert.NoError(t, h.VersionHandler(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var response model.VersionResponse
+		var response response.VersionResponse
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		assert.NoError(t, err)
 		assert.Equal(t, version, response.Version)

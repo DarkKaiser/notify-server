@@ -10,10 +10,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Logger는 Echo의 log.Logger 인터페이스를 구현하는 Logrus 어댑터입니다.
+// 이 어댑터 패턴을 통해 Echo 프레임워크가 Logrus를 사용하여 로깅할 수 있도록 합니다.
+//
+// Echo는 자체 Logger 인터페이스(github.com/labstack/gommon/log.Logger)를 정의하고 있으며,
+// 이 인터페이스의 모든 메서드를 구현해야 Echo와 통합할 수 있습니다.
+// 아래의 메서드들은 대부분 Logrus의 해당 메서드로 단순 위임하는 보일러플레이트 코드입니다.
 type Logger struct {
 	*logrus.Logger
 }
 
+// Output 현재 출력 Writer를 반환합니다.
 func (l Logger) Output() io.Writer {
 	return l.Out
 }
@@ -27,9 +34,10 @@ func (l Logger) Prefix() string {
 }
 
 func (l Logger) SetPrefix(string) {
-	// do nothing
+	// Echo의 Prefix 기능은 사용하지 않음
 }
 
+// Level Logrus의 로그 레벨을 Echo의 로그 레벨로 변환합니다.
 func (l Logger) Level() log.Lvl {
 	switch l.Logger.Level {
 	case logrus.DebugLevel:
@@ -48,6 +56,7 @@ func (l Logger) Level() log.Lvl {
 	return log.OFF
 }
 
+// SetLevel Echo의 로그 레벨을 Logrus의 로그 레벨로 변환하여 설정합니다.
 func (l Logger) SetLevel(lvl log.Lvl) {
 	switch lvl {
 	case log.DEBUG:
@@ -63,8 +72,11 @@ func (l Logger) SetLevel(lvl log.Lvl) {
 }
 
 func (l Logger) SetHeader(string) {
-	// do nothing
+	// Echo의 Header 기능은 사용하지 않음
 }
+
+// 아래 메서드들은 Echo의 Logger 인터페이스 요구사항을 충족하기 위해
+// Logrus의 해당 메서드로 단순 위임합니다.
 
 func (l Logger) Print(i ...interface{}) {
 	logrus.Print(i...)
@@ -150,6 +162,8 @@ func (l Logger) Panicj(j log.JSON) {
 	logrus.WithFields(logrus.Fields(j)).Panic()
 }
 
+// logrusMiddlewareHandler HTTP 요청/응답 정보를 Logrus로 로깅하는 미들웨어 핸들러입니다.
+// 요청 처리 시간, 상태 코드, IP 주소 등의 정보를 구조화된 로그로 기록합니다.
 func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 	req := c.Request()
 	res := c.Response()
@@ -195,6 +209,8 @@ func logrusLogger(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+// LogrusLogger Echo 미들웨어로 사용할 수 있는 Logrus 로거를 반환합니다.
+// router.New()에서 이 미들웨어를 등록하여 모든 HTTP 요청을 로깅합니다.
 func LogrusLogger() echo.MiddlewareFunc {
 	return logrusLogger
 }

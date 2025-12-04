@@ -81,7 +81,11 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
-	e := router.New()
+	// Router 생성 시 설정 전달
+	e := router.New(router.Config{
+		Debug:        s.appConfig.Debug,
+		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
+	})
 
 	// System 엔드포인트 (인증 불필요)
 	e.GET("/health", h.HealthCheckHandler)

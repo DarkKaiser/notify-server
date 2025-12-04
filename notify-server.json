@@ -202,6 +202,9 @@
 			"tls_key_file": "",
 			"listen_port": 2443
 		},
+		"cors": {
+			"allow_origins": ["*"]
+		},
 		"applications": [
 			{
 				"id": "torrentad",
