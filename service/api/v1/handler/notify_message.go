@@ -94,20 +94,20 @@ func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
 }
 
 // findAndAuthenticateApplication 애플리케이션을 찾고 인증을 수행합니다
-func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*model.AllowedApplication, error) {
-	for _, app := range h.allowedApplications {
-		if app.ID == applicationID {
-			if app.AppKey != appKey {
-				applog.WithComponentAndFields("api.handler", log.Fields{
-					"application_id":   applicationID,
-					"received_app_key": applog.MaskSensitiveData(appKey),
-				}).Warn("APP_KEY 불일치")
-
-				return nil, newUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
-			}
-			return app, nil
-		}
+func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*Application, error) {
+	app, ok := h.applications[applicationID]
+	if !ok {
+		return nil, newUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
 	}
 
-	return nil, newUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
+	if app.AppKey != appKey {
+		applog.WithComponentAndFields("api.handler", log.Fields{
+			"application_id":   applicationID,
+			"received_app_key": applog.MaskSensitiveData(appKey),
+		}).Warn("APP_KEY 불일치")
+
+		return nil, newUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
+	}
+
+	return app, nil
 }

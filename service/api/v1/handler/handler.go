@@ -2,13 +2,12 @@ package handler
 
 import (
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/darkkaiser/notify-server/service/notification"
 )
 
 // Handler
 type Handler struct {
-	allowedApplications []*model.AllowedApplication
+	applications map[string]*Application
 
 	notificationSender notification.NotificationSender
 
@@ -20,19 +19,8 @@ type Handler struct {
 
 func NewHandler(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *Handler {
 	// 허용된 Application 목록을 구한다.
-	var applications []*model.AllowedApplication
-	for _, application := range appConfig.NotifyAPI.Applications {
-		applications = append(applications, &model.AllowedApplication{
-			ID:                application.ID,
-			Title:             application.Title,
-			Description:       application.Description,
-			DefaultNotifierID: application.DefaultNotifierID,
-			AppKey:            application.AppKey,
-		})
-	}
-
 	return &Handler{
-		allowedApplications: applications,
+		applications: loadApplicationsFromConfig(appConfig),
 
 		notificationSender: notificationSender,
 
@@ -40,4 +28,18 @@ func NewHandler(appConfig *config.AppConfig, notificationSender notification.Not
 		buildDate:   buildDate,
 		buildNumber: buildNumber,
 	}
+}
+
+func loadApplicationsFromConfig(appConfig *config.AppConfig) map[string]*Application {
+	applications := make(map[string]*Application)
+	for _, application := range appConfig.NotifyAPI.Applications {
+		applications[application.ID] = &Application{
+			ID:                application.ID,
+			Title:             application.Title,
+			Description:       application.Description,
+			DefaultNotifierID: application.DefaultNotifierID,
+			AppKey:            application.AppKey,
+		}
+	}
+	return applications
 }

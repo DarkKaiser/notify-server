@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,9 +24,9 @@ func TestNewHandler(t *testing.T) {
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
-		assert.Equal(t, 1, len(handler.allowedApplications), "1개의 애플리케이션이 등록되어야 합니다")
-		assert.Equal(t, "test-app", handler.allowedApplications[0].ID, "애플리케이션 ID가 일치해야 합니다")
-		assert.Equal(t, "Test Application", handler.allowedApplications[0].Title, "애플리케이션 제목이 일치해야 합니다")
+		assert.Equal(t, 1, len(handler.applications), "1개의 애플리케이션이 등록되어야 합니다")
+		assert.Equal(t, "test-app", handler.applications["test-app"].ID, "애플리케이션 ID가 일치해야 합니다")
+		assert.Equal(t, "Test Application", handler.applications["test-app"].Title, "애플리케이션 제목이 일치해야 합니다")
 	})
 
 	t.Run("여러 애플리케이션 등록", func(t *testing.T) {
@@ -53,7 +52,7 @@ func TestNewHandler(t *testing.T) {
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
-		assert.Equal(t, 2, len(handler.allowedApplications), "2개의 애플리케이션이 등록되어야 합니다")
+		assert.Equal(t, 2, len(handler.applications), "2개의 애플리케이션이 등록되어야 합니다")
 	})
 
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
@@ -63,25 +62,7 @@ func TestNewHandler(t *testing.T) {
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
-		assert.Equal(t, 0, len(handler.allowedApplications), "애플리케이션이 없어야 합니다")
-	})
-}
-
-func TestHandler_AllowedApplications(t *testing.T) {
-	t.Run("AllowedApplication 구조체 확인", func(t *testing.T) {
-		app := &model.AllowedApplication{
-			ID:                "test-id",
-			Title:             "Test Title",
-			Description:       "Test Description",
-			DefaultNotifierID: "test-notifier",
-			AppKey:            "test-key",
-		}
-
-		assert.Equal(t, "test-id", app.ID, "ID가 일치해야 합니다")
-		assert.Equal(t, "Test Title", app.Title, "Title이 일치해야 합니다")
-		assert.Equal(t, "Test Description", app.Description, "Description이 일치해야 합니다")
-		assert.Equal(t, "test-notifier", app.DefaultNotifierID, "DefaultNotifierID가 일치해야 합니다")
-		assert.Equal(t, "test-key", app.AppKey, "AppKey가 일치해야 합니다")
+		assert.Equal(t, 0, len(handler.applications), "애플리케이션이 없어야 합니다")
 	})
 }
 
