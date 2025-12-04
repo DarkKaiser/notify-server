@@ -94,7 +94,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// API v1 엔드포인트
 	grp := e.Group("/api/v1")
 	{
-		grp.POST("/notice/message", h.NotifyMessageSendHandler)
+		grp.POST("/notice/message", h.SendNotifyMessageHandler)
 	}
 
 	// Swagger UI 설정

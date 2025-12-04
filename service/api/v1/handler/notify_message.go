@@ -38,7 +38,7 @@ const (
 // @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
 // @Security ApiKeyAuth
 // @Router /api/v1/notice/message [post]
-func (h *Handler) NotifyMessageSendHandler(c echo.Context) error {
+func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 	// 1. 요청 바인딩
 	req := new(model.NotifyMessageRequest)
 	if err := c.Bind(req); err != nil {
