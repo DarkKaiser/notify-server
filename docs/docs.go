@@ -176,7 +176,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "application_id": {
-                    "description": "애플리케이션 ID (설정 파일의 allowed_applications에 등록된 ID)",
+                    "description": "애플리케이션 ID (설정 파일의 notify_api.applications에 등록된 ID)",
                     "type": "string",
                     "example": "my-app"
                 },

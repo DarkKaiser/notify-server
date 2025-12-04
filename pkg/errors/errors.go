@@ -82,8 +82,24 @@ func Cause(err error) error {
 	return nil
 }
 
-// GetType 에러 타입을 반환합니다. AppError가 아니면 ErrUnknown을 반환합니다.
+// RootCause 에러 체인의 최상위 원인 에러를 반환합니다.
+// 중첩된 에러를 재귀적으로 unwrap하여 가장 근본적인 원인을 찾습니다.
+func RootCause(err error) error {
+	for {
+		unwrapped := errors.Unwrap(err)
+		if unwrapped == nil {
+			return err
+		}
+		err = unwrapped
+	}
+}
+
+// GetType 에러 타입을 반환합니다. AppError가 아니거나 nil이면 ErrUnknown을 반환합니다.
 func GetType(err error) ErrorType {
+	if err == nil {
+		return ErrUnknown
+	}
+
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return appErr.Type
