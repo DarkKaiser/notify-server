@@ -9,8 +9,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -79,7 +79,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
 
-			errResp, ok := he.Message.(model.ErrorResponse)
+			errResp, ok := he.Message.(response.ErrorResponse)
 			assert.True(t, ok)
 			assert.Contains(t, errResp.Message, "app_key가 유효하지 않습니다")
 		}
@@ -104,7 +104,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
 
-			errResp, ok := he.Message.(model.ErrorResponse)
+			errResp, ok := he.Message.(response.ErrorResponse)
 			assert.True(t, ok)
 			assert.Contains(t, errResp.Message, "접근이 허용되지 않은 application_id")
 		}

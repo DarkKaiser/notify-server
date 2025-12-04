@@ -1,4 +1,4 @@
-package model
+package response
 
 // SuccessResponse 성공 응답 모델
 type SuccessResponse struct {

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,8 +21,8 @@ func TestNewBadRequestError(t *testing.T) {
 		assert.True(t, ok, "echo.HTTPError 타입이어야 합니다")
 		assert.Equal(t, http.StatusBadRequest, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
-		assert.True(t, ok, "Message는 model.ErrorResponse 타입이어야 합니다")
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
+		assert.True(t, ok, "Message는 response.ErrorResponse 타입이어야 합니다")
 		assert.Equal(t, message, errResp.Message)
 	})
 
@@ -34,7 +34,7 @@ func TestNewBadRequestError(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusBadRequest, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
 		assert.True(t, ok)
 		assert.Equal(t, "", errResp.Message)
 	})
@@ -50,8 +50,8 @@ func TestNewUnauthorizedError(t *testing.T) {
 		assert.True(t, ok, "echo.HTTPError 타입이어야 합니다")
 		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
-		assert.True(t, ok, "Message는 model.ErrorResponse 타입이어야 합니다")
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
+		assert.True(t, ok, "Message는 response.ErrorResponse 타입이어야 합니다")
 		assert.Equal(t, message, errResp.Message)
 	})
 
@@ -64,7 +64,7 @@ func TestNewUnauthorizedError(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
 		assert.True(t, ok)
 		assert.Contains(t, errResp.Message, "application_id")
 		assert.Contains(t, errResp.Message, "test-app")
@@ -81,8 +81,8 @@ func TestNewNotFoundError(t *testing.T) {
 		assert.True(t, ok, "echo.HTTPError 타입이어야 합니다")
 		assert.Equal(t, http.StatusNotFound, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
-		assert.True(t, ok, "Message는 model.ErrorResponse 타입이어야 합니다")
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
+		assert.True(t, ok, "Message는 response.ErrorResponse 타입이어야 합니다")
 		assert.Equal(t, message, errResp.Message)
 	})
 }
@@ -97,8 +97,8 @@ func TestNewInternalServerError(t *testing.T) {
 		assert.True(t, ok, "echo.HTTPError 타입이어야 합니다")
 		assert.Equal(t, http.StatusInternalServerError, httpErr.Code)
 
-		errResp, ok := httpErr.Message.(model.ErrorResponse)
-		assert.True(t, ok, "Message는 model.ErrorResponse 타입이어야 합니다")
+		errResp, ok := httpErr.Message.(response.ErrorResponse)
+		assert.True(t, ok, "Message는 response.ErrorResponse 타입이어야 합니다")
 		assert.Equal(t, message, errResp.Message)
 	})
 }
@@ -115,7 +115,7 @@ func TestNewSuccessResponse(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var resp model.SuccessResponse
+		var resp response.SuccessResponse
 		jsonErr := json.Unmarshal(rec.Body.Bytes(), &resp)
 		assert.NoError(t, jsonErr)
 		assert.Equal(t, 0, resp.ResultCode)
@@ -182,8 +182,8 @@ func TestResponseHelpers_Integration(t *testing.T) {
 			httpErr, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 
-			_, ok = httpErr.Message.(model.ErrorResponse)
-			assert.True(t, ok, "모든 에러는 model.ErrorResponse를 사용해야 합니다")
+			_, ok = httpErr.Message.(response.ErrorResponse)
+			assert.True(t, ok, "모든 에러는 response.ErrorResponse를 사용해야 합니다")
 		}
 	})
 }

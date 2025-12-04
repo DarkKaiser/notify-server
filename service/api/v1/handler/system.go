@@ -6,7 +6,7 @@ import (
 	"time"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -35,7 +35,7 @@ var serverStartTime = time.Now()
 // @Tags System
 // @Produce json
 // @Success 200 {object} model.HealthResponse "서버 정상"
-// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
+// @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	applog.WithComponentAndFields("api.handler", log.Fields{
@@ -45,16 +45,16 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	uptime := int64(time.Since(serverStartTime).Seconds())
 
 	// 의존성 상태 체크
-	deps := make(map[string]model.DependencyStatus)
+	deps := make(map[string]response.DependencyStatus)
 
 	// NotificationSender 상태 체크
 	if h.notificationSender != nil {
-		deps[dependencyNotificationService] = model.DependencyStatus{
+		deps[dependencyNotificationService] = response.DependencyStatus{
 			Status:  statusHealthy,
 			Message: "정상 작동 중",
 		}
 	} else {
-		deps[dependencyNotificationService] = model.DependencyStatus{
+		deps[dependencyNotificationService] = response.DependencyStatus{
 			Status:  statusUnhealthy,
 			Message: "서비스가 초기화되지 않음",
 		}
@@ -69,7 +69,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, model.HealthResponse{
+	return c.JSON(http.StatusOK, response.HealthResponse{
 		Status:       overallStatus,
 		Uptime:       uptime,
 		Dependencies: deps,
@@ -85,14 +85,14 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Tags System
 // @Produce json
 // @Success 200 {object} model.VersionResponse "버전 정보"
-// @Failure 500 {object} model.ErrorResponse "서버 내부 오류"
+// @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
 	applog.WithComponentAndFields("api.handler", log.Fields{
 		"endpoint": "/version",
 	}).Debug("버전 정보 요청")
 
-	return c.JSON(http.StatusOK, model.VersionResponse{
+	return c.JSON(http.StatusOK, response.VersionResponse{
 		Version:     h.buildInfo.Version,
 		BuildDate:   h.buildInfo.BuildDate,
 		BuildNumber: h.buildInfo.BuildNumber,
