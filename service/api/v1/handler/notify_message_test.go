@@ -10,6 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/darkkaiser/notify-server/service/api/v1/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -37,7 +38,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := model.NotifyMessageRequest{
+		reqBody := request.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 			ErrorOccurred: false,
@@ -60,7 +61,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := model.NotifyMessageRequest{
+		reqBody := request.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 		}
@@ -85,7 +86,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := model.NotifyMessageRequest{
+		reqBody := request.NotifyMessageRequest{
 			ApplicationID: "unknown-app",
 			Message:       "Test Message",
 		}

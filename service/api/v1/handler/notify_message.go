@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
+	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,7 +32,7 @@ const (
 // @Accept json
 // @Produce json
 // @Param app_key query string true "Application Key (인증용)" example(your-app-key-here)
-// @Param message body model.NotifyMessageRequest true "알림 메시지 정보"
+// @Param message body request.NotifyMessageRequest true "알림 메시지 정보"
 // @Success 200 {object} model.SuccessResponse "성공"
 // @Failure 400 {object} model.ErrorResponse "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)"
 // @Failure 401 {object} model.ErrorResponse "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)"
@@ -41,7 +41,7 @@ const (
 // @Router /api/v1/notice/message [post]
 func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 	// 1. 요청 바인딩
-	req := new(model.NotifyMessageRequest)
+	req := new(request.NotifyMessageRequest)
 	if err := c.Bind(req); err != nil {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"endpoint": endpointNotifyMessage,
