@@ -81,7 +81,12 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
-	e := router.New()
+	// Router 생성 시 설정 전달
+	// TODO: CORS AllowOrigins를 설정 파일에서 관리하도록 개선 필요
+	e := router.New(router.Config{
+		Debug:        s.appConfig.Debug,
+		AllowOrigins: []string{"*"}, // 현재는 모든 Origin 허용, 프로덕션에서는 특정 도메인만 허용 필요
+	})
 
 	// System 엔드포인트 (인증 불필요)
 	e.GET("/health", h.HealthCheckHandler)
