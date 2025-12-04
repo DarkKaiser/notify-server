@@ -58,7 +58,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 	h := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 			ErrorOccurred: false,
@@ -81,7 +81,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 	})
 
 	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 		}
@@ -98,12 +98,12 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "APP_KEY가 유효하지 않습니다")
+			assert.Contains(t, he.Message, "app_key가 유효하지 않습니다")
 		}
 	})
 
 	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := model.NotifyMessage{
+		reqBody := model.NotifyMessageRequest{
 			ApplicationID: "unknown-app",
 			Message:       "Test Message",
 		}
@@ -120,7 +120,7 @@ func TestHandler_NotifyMessageSendHandler(t *testing.T) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, he.Code)
-			assert.Contains(t, he.Message, "접근이 허용되지 않은 Application입니다")
+			assert.Contains(t, he.Message, "접근이 허용되지 않은 application_id")
 		}
 	})
 

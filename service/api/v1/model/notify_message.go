@@ -1,7 +1,7 @@
 package model
 
-// NotifyMessage 알림 메시지 요청 모델
-type NotifyMessage struct {
+// NotifyMessageRequest 알림 메시지 요청 모델
+type NotifyMessageRequest struct {
 	// 애플리케이션 ID (설정 파일의 notify_api.applications에 등록된 ID)
 	ApplicationID string `json:"application_id" form:"application_id" query:"application_id" binding:"required" example:"my-app"`
 	// 알림 메시지 내용 (최대 4096자, 마크다운 형식 지원)

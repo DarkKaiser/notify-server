@@ -57,7 +57,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.NotifyMessage"
+                            "$ref": "#/definitions/model.NotifyMessageRequest"
                         }
                     }
                 ],
@@ -91,7 +91,7 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.",
+                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.\n\n## 응답 필드\n- status: 전체 서버 상태 (healthy, unhealthy)\n- uptime: 서버 가동 시간 (초)\n- dependencies: 의존성 서비스 상태 (notification_service 등)",
                 "produces": [
                     "application/json"
                 ],
@@ -143,6 +143,26 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "model.DependencyStatus": {
+            "type": "object",
+            "properties": {
+                "latency_ms": {
+                    "description": "응답 시간 (밀리초, 선택적)",
+                    "type": "integer",
+                    "example": 5
+                },
+                "message": {
+                    "description": "추가 메시지 (선택적)",
+                    "type": "string",
+                    "example": "정상 작동 중"
+                },
+                "status": {
+                    "description": "상태 (healthy, unhealthy, unknown)",
+                    "type": "string",
+                    "example": "healthy"
+                }
+            }
+        },
         "model.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -156,6 +176,13 @@ const docTemplate = `{
         "model.HealthResponse": {
             "type": "object",
             "properties": {
+                "dependencies": {
+                    "description": "의존성 상태 (선택적)",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/model.DependencyStatus"
+                    }
+                },
                 "status": {
                     "description": "서버 상태 (healthy, unhealthy)",
                     "type": "string",
@@ -168,7 +195,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.NotifyMessage": {
+        "model.NotifyMessageRequest": {
             "type": "object",
             "required": [
                 "application_id",
