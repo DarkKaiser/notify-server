@@ -10,7 +10,7 @@ import (
 )
 
 func TestLogLevelFileHook_Levels(t *testing.T) {
-	hook := &LogLevelFileHook{}
+	hook := &LogLevelHook{}
 	assert.Equal(t, log.AllLevels, hook.Levels())
 }
 
@@ -21,7 +21,7 @@ func TestLogLevelFileHook_Fire(t *testing.T) {
 		criticalBuf := &bytes.Buffer{}
 		verboseBuf := &bytes.Buffer{}
 
-		hook := &LogLevelFileHook{
+		hook := &LogLevelHook{
 			criticalWriter: criticalBuf,
 			verboseWriter:  verboseBuf,
 			formatter:      formatter,
@@ -44,7 +44,7 @@ func TestLogLevelFileHook_Fire(t *testing.T) {
 		criticalBuf := &bytes.Buffer{}
 		verboseBuf := &bytes.Buffer{}
 
-		hook := &LogLevelFileHook{
+		hook := &LogLevelHook{
 			criticalWriter: criticalBuf,
 			verboseWriter:  verboseBuf,
 			formatter:      formatter,
@@ -67,7 +67,7 @@ func TestLogLevelFileHook_Fire(t *testing.T) {
 		criticalBuf := &bytes.Buffer{}
 		verboseBuf := &bytes.Buffer{}
 
-		hook := &LogLevelFileHook{
+		hook := &LogLevelHook{
 			criticalWriter: criticalBuf,
 			verboseWriter:  verboseBuf,
 			formatter:      formatter,
@@ -90,7 +90,7 @@ func TestLogLevelFileHook_Fire_NilWriter(t *testing.T) {
 	formatter := &log.TextFormatter{DisableTimestamp: true}
 
 	t.Run("Writer가 nil일 때 에러 없이 무시", func(t *testing.T) {
-		hook := &LogLevelFileHook{
+		hook := &LogLevelHook{
 			criticalWriter: nil, // nil writer
 			verboseWriter:  nil, // nil writer
 			formatter:      formatter,
@@ -114,7 +114,7 @@ func (f *errorFormatter) Format(entry *log.Entry) ([]byte, error) {
 
 func TestLogLevelFileHook_Fire_FormatError(t *testing.T) {
 	t.Run("포맷팅 에러 발생 시 에러 반환", func(t *testing.T) {
-		hook := &LogLevelFileHook{
+		hook := &LogLevelHook{
 			criticalWriter: &bytes.Buffer{},
 			formatter:      &errorFormatter{},
 		}

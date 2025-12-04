@@ -303,14 +303,14 @@ notify-server/
 
 `notify-server`는 `pkg/errors` 패키지를 사용하여 일관된 에러 처리를 지원합니다.
 
-- **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal` 등 명확한 에러 타입을 정의하여 사용합니다.
+- **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal`, `ErrSystem` 등 명확한 에러 타입을 정의하여 사용합니다.
 - **에러 래핑**: `apperrors.Wrap`을 사용하여 원인 에러와 컨텍스트 정보를 함께 전달합니다.
 - **에러 확인**: `apperrors.Is`, `apperrors.As`를 사용하여 에러 타입과 원인을 안전하게 확인합니다.
 - **에러 핸들링**: `apperrors.CheckErr`를 사용하여 에러 발생 시 설정된 핸들러(기본값: Fatal)를 통해 처리합니다.
 
 ### 검증 시스템
 
-`pkg/validation` 패키지는 설정 값 검증을 위한 재사용 가능한 함수들을 제공합니다.
+`pkg/validations` 패키지는 설정 값 검증을 위한 재사용 가능한 함수들을 제공합니다.
 
 - **Cron 표현식 검증**: `ValidateRobfigCronExpression` - robfig/cron 패키지 기반, 초 단위 포함 7필드 형식 지원
 - **포트 번호 검증**: `ValidatePort` - TCP/UDP 포트 범위(1-65535) 검증, 시스템 예약 포트 경고

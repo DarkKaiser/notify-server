@@ -10,7 +10,7 @@ import (
 type multiCloser struct {
 	closers []io.Closer
 
-	hook *LogLevelFileHook
+	hook *LogLevelHook
 }
 
 func (mc *multiCloser) Close() error {

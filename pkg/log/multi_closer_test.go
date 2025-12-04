@@ -61,7 +61,7 @@ func TestMultiCloser_Close(t *testing.T) {
 func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 	t.Run("Close 호출 시 Hook이 제거되는지 확인", func(t *testing.T) {
 		// 테스트용 Hook 생성
-		hook := &LogLevelFileHook{}
+		hook := &LogLevelHook{}
 
 		// Logrus에 Hook 등록
 		logger := log.StandardLogger()
