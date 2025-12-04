@@ -297,7 +297,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			if ps.Length() != 1 {
 				return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
-			product.Name = strutils.Trim(ps.Text())
+			product.Name = strutils.NormalizeSpaces(ps.Text())
 
 			// 상품 가격을 추출한다.
 			ps = sel.Find("h2.css-xrp7wx > span.css-8h3us8")

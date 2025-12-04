@@ -220,11 +220,11 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 
 	message = regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`).FindString(analysisResultData)
 	message += "\r\n\r\n"
-	message += "• " + strutils.Trim(regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.Trim(regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.Trim(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.Trim(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.Trim(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
+	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
 
 	return message, nil, nil
 }

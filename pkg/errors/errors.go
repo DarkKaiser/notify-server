@@ -16,6 +16,7 @@ const (
 	ErrInternal     ErrorType = "Internal"
 	ErrUnauthorized ErrorType = "Unauthorized"
 	ErrForbidden    ErrorType = "Forbidden"
+	ErrSystem       ErrorType = "System"
 
 	// Domain Specific Errors
 	ErrTaskNotFound        ErrorType = "TaskNotFound"

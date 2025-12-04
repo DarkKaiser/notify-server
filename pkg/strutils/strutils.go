@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	// ToSnakeCase에서 사용하는 정규식 (패키지 초기화 시 한 번만 컴파일)
+	// ToSnakeCase에서 사용하는 정규식
 	matchFirstRegexp = regexp.MustCompile("(.)([A-Z][a-z]+)")
 	matchAllRegexp   = regexp.MustCompile("([a-z0-9])([A-Z])")
 
@@ -23,21 +23,21 @@ func ToSnakeCase(str string) string {
 	return strings.ToLower(snakeCaseString)
 }
 
-// Trim 문자열의 앞뒤 공백을 제거하고 연속된 공백을 하나로 축약합니다.
+// NormalizeSpaces 문자열의 앞뒤 공백을 제거하고 연속된 공백을 하나로 축약합니다.
 // 예: "  hello   world  " -> "hello world"
-func Trim(s string) string {
+func NormalizeSpaces(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
-// TrimMultiLine 여러 줄 문자열의 각 줄을 trim하고 연속된 빈 줄을 하나로 축약합니다.
+// NormalizeMultiLineSpaces 여러 줄 문자열의 각 줄을 정규화하고 연속된 빈 줄을 하나로 축약합니다.
 // 앞뒤의 빈 줄도 제거됩니다.
-func TrimMultiLine(s string) string {
+func NormalizeMultiLineSpaces(s string) string {
 	var ret []string
 	var appendedEmptyLine bool
 
 	lines := strings.Split(s, "\n")
 	for _, line := range lines {
-		trimLine := Trim(line)
+		trimLine := NormalizeSpaces(line)
 		if trimLine != "" {
 			appendedEmptyLine = false
 			ret = append(ret, trimLine)
@@ -76,17 +76,25 @@ func FormatCommas(num int) string {
 	return str
 }
 
-// SplitNonEmpty 문자열을 분리하고 공백을 제거한 후 빈 항목을 제외합니다.
+// SplitAndTrim 주어진 구분자로 문자열을 분리한 후, 각 항목의 앞뒤 공백을 제거하고 빈 문자열을 제외한 슬라이스를 반환합니다.
+// 결과가 없거나 입력 문자열이 비어있는 경우 nil을 반환합니다.
 // 예: "a, , b,c" (구분자 ",") -> ["a", "b", "c"]
-func SplitNonEmpty(s, sep string) []string {
+func SplitAndTrim(s, sep string) []string {
 	tokens := strings.Split(s, sep)
+	if len(tokens) == 0 {
+		return nil
+	}
 
-	var result []string
+	result := make([]string, 0, len(tokens))
 	for _, token := range tokens {
 		token = strings.TrimSpace(token)
 		if token != "" {
 			result = append(result, token)
 		}
+	}
+
+	if len(result) == 0 {
+		return nil
 	}
 
 	return result

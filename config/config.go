@@ -101,8 +101,8 @@ type NotifierConfig struct {
 	Telegrams         []TelegramConfig `json:"telegrams"`
 }
 
-// Validate NotifierConfig의 유효성을 검사합니다.
-// 유효한 NotifierID 목록을 반환합니다.
+// Validate NotifierConfig의 유효성을 검사하고, 정의된 모든 Notifier의 ID 목록을 반환합니다.
+// 반환된 ID 목록은 Task 및 Application 설정에서 참조하는 NotifierID의 유효성을 검증하는 데 사용됩니다.
 func (c *NotifierConfig) Validate() ([]string, error) {
 	var notifierIDs []string
 	for _, telegram := range c.Telegrams {
@@ -223,13 +223,13 @@ func InitAppConfig() (*AppConfig, error) {
 func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(err, apperrors.ErrSystem, fmt.Sprintf("%s 파일을 읽을 수 없습니다", filename))
 	}
 
 	var appConfig AppConfig
 	err = json.Unmarshal(data, &appConfig)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s 파일의 JSON 파싱이 실패하였습니다", filename))
 	}
 
 	// HTTP Retry 설정 기본값 적용

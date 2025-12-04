@@ -58,11 +58,11 @@ func TestTrim(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(t, c.expected, Trim(c.s))
+		assert.Equal(t, c.expected, NormalizeSpaces(c.s))
 	}
 }
 
-func TestTrimMultiLine(t *testing.T) {
+func TestNormalizeMultiLineSpaces(t *testing.T) {
 	cases := []struct {
 		s        string
 		expected string
@@ -111,7 +111,7 @@ func TestTrimMultiLine(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(t, c.expected, TrimMultiLine(c.s))
+		assert.Equal(t, c.expected, NormalizeMultiLineSpaces(c.s))
 	}
 }
 
@@ -132,7 +132,7 @@ func TestFormatCommas(t *testing.T) {
 	}
 }
 
-func TestSplitNonEmpty(t *testing.T) {
+func TestSplitAndTrim(t *testing.T) {
 	var notAssign []string
 
 	cases := []struct {
@@ -150,6 +150,6 @@ func TestSplitNonEmpty(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		assert.Equal(t, c.expected, SplitNonEmpty(c.s, c.sep))
+		assert.Equal(t, c.expected, SplitAndTrim(c.s, c.sep))
 	}
 }
