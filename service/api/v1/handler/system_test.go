@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/service/api/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )

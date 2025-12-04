@@ -6,7 +6,7 @@ import (
 	"time"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/model"
+	"github.com/darkkaiser/notify-server/service/api/v1/model"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
