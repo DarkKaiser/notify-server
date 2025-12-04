@@ -14,7 +14,7 @@ const (
 	endpointNotifyMessage = "/api/v1/notice/message"
 )
 
-// NotifyMessageSendHandler godoc
+// SendNotifyMessageHandler godoc
 // @Summary 알림 메시지 전송
 // @Description 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.
 // @Description
