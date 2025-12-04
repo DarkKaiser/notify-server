@@ -20,7 +20,7 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockSender := &mockNotificationSender{}
+		mockSender := &MockNotificationSender{}
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
@@ -48,7 +48,7 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockSender := &mockNotificationSender{}
+		mockSender := &MockNotificationSender{}
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
@@ -58,40 +58,10 @@ func TestNewHandler(t *testing.T) {
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
 
-		mockSender := &mockNotificationSender{}
+		mockSender := &MockNotificationSender{}
 		handler := NewHandler(appConfig, mockSender, "1.0.0", "2024-01-01", "100")
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.Equal(t, 0, len(handler.applications), "애플리케이션이 없어야 합니다")
 	})
-}
-
-// mockNotificationSender는 테스트용 NotificationSender 구현체입니다.
-type mockNotificationSender struct {
-	notifyCalls []notifyCall
-}
-
-type notifyCall struct {
-	notifierID    string
-	title         string
-	message       string
-	errorOccurred bool
-}
-
-func (m *mockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	m.notifyCalls = append(m.notifyCalls, notifyCall{
-		notifierID:    notifierID,
-		title:         title,
-		message:       message,
-		errorOccurred: errorOccurred,
-	})
-	return true
-}
-
-func (m *mockNotificationSender) NotifyToDefault(message string) bool {
-	return true
-}
-
-func (m *mockNotificationSender) NotifyWithErrorToDefault(message string) bool {
-	return true
 }

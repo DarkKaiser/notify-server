@@ -5,7 +5,7 @@ import (
 	"github.com/darkkaiser/notify-server/service/notification"
 )
 
-// Handler
+// Handler API 요청을 처리하고 비즈니스 로직을 연결하는 역할을 담당합니다.
 type Handler struct {
 	applications map[string]*Application
 
@@ -18,7 +18,6 @@ type Handler struct {
 }
 
 func NewHandler(appConfig *config.AppConfig, notificationSender notification.NotificationSender, version, buildDate, buildNumber string) *Handler {
-	// 허용된 Application 목록을 구한다.
 	return &Handler{
 		applications: loadApplicationsFromConfig(appConfig),
 
@@ -28,18 +27,4 @@ func NewHandler(appConfig *config.AppConfig, notificationSender notification.Not
 		buildDate:   buildDate,
 		buildNumber: buildNumber,
 	}
-}
-
-func loadApplicationsFromConfig(appConfig *config.AppConfig) map[string]*Application {
-	applications := make(map[string]*Application)
-	for _, application := range appConfig.NotifyAPI.Applications {
-		applications[application.ID] = &Application{
-			ID:                application.ID,
-			Title:             application.Title,
-			Description:       application.Description,
-			DefaultNotifierID: application.DefaultNotifierID,
-			AppKey:            application.AppKey,
-		}
-	}
-	return applications
 }

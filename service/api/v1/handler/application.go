@@ -1,15 +1,28 @@
 package handler
 
-// Application API 사용이 허용된 외부 애플리케이션 정보
+import (
+	"github.com/darkkaiser/notify-server/config"
+)
+
+// Application API 접근이 허용된 애플리케이션 정보를 담고 있습니다.
 type Application struct {
-	// 애플리케이션 식별자 (예: "my-app")
-	ID string
-	// 애플리케이션 이름 (예: "My Application")
-	Title string
-	// 애플리케이션 설명
-	Description string
-	// 기본 알림 전송 대상 ID (예: "telegram-bot-1")
+	ID                string
+	Title             string
+	Description       string
 	DefaultNotifierID string
-	// API 인증 키
-	AppKey string
+	AppKey            string
+}
+
+func loadApplicationsFromConfig(appConfig *config.AppConfig) map[string]*Application {
+	applications := make(map[string]*Application)
+	for _, application := range appConfig.NotifyAPI.Applications {
+		applications[application.ID] = &Application{
+			ID:                application.ID,
+			Title:             application.Title,
+			Description:       application.Description,
+			DefaultNotifierID: application.DefaultNotifierID,
+			AppKey:            application.AppKey,
+		}
+	}
+	return applications
 }
