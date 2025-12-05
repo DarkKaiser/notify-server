@@ -21,7 +21,16 @@ import (
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
-// NotifyAPIService
+// NotifyAPIService Notify API 서버의 생명주기를 관리하는 서비스입니다.
+//
+// 이 서비스는 다음과 같은 역할을 수행합니다:
+//   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
+//   - API 엔드포인트 라우팅 설정 (Health Check, Version, 알림 메시지 전송 등)
+//   - Swagger UI 제공
+//   - 서비스 상태 관리 (시작/중지)
+//   - Graceful Shutdown 지원
+//
+// 서비스는 고루틴으로 실행되며, context를 통해 종료 신호를 받습니다.
 type NotifyAPIService struct {
 	appConfig *config.AppConfig
 
