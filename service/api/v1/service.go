@@ -14,7 +14,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/service/api/v1/router"
+	"github.com/darkkaiser/notify-server/service/api/v1/httpserver"
 	"github.com/darkkaiser/notify-server/service/notification"
 	log "github.com/sirupsen/logrus"
 )
@@ -88,8 +88,8 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
-	// Router 생성 (미들웨어 및 라우트 설정 포함)
-	e := router.New(router.Config{
+	// HTTP 서버 생성 (미들웨어 및 라우트 설정 포함)
+	e := httpserver.New(httpserver.Config{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	}, h)
