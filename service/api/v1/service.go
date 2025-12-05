@@ -14,7 +14,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/service/api/v1/httpserver"
+	"github.com/darkkaiser/notify-server/service/api/v1/server"
 	"github.com/darkkaiser/notify-server/service/notification"
 	log "github.com/sirupsen/logrus"
 )
@@ -89,7 +89,7 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
 	// HTTP 서버 생성 (미들웨어 및 라우트 설정 포함)
-	e := httpserver.New(httpserver.Config{
+	e := server.New(server.Config{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	}, h)
