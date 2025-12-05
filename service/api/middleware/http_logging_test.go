@@ -15,7 +15,7 @@ import (
 func TestRequestLoggerHandler(t *testing.T) {
 	// Setup
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notice/message?app_key=secret-key&other=value", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?app_key=secret-key&other=value", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -50,7 +50,7 @@ func TestRequestLoggerHandler(t *testing.T) {
 func TestRequestLoggerHandler_NoAppKey(t *testing.T) {
 	// Setup
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notice/message?other=value", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?other=value", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
