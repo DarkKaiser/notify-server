@@ -136,39 +136,3 @@ func TestFormatValidationError(t *testing.T) {
 		assert.Contains(t, message, "4096")
 	})
 }
-
-func TestGetFieldNameInKorean(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "ApplicationID",
-			input:    "ApplicationID",
-			expected: "애플리케이션 ID",
-		},
-		{
-			name:     "Message",
-			input:    "Message",
-			expected: "메시지",
-		},
-		{
-			name:     "ErrorOccurred",
-			input:    "ErrorOccurred",
-			expected: "에러 발생 여부",
-		},
-		{
-			name:     "알 수 없는 필드",
-			input:    "UnknownField",
-			expected: "UnknownField",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := getFieldNameInKorean(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}

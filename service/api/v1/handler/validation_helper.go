@@ -2,12 +2,27 @@ package handler
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/go-playground/validator/v10"
 )
 
 // validate 전역 validator 인스턴스입니다.
-var validate = validator.New()
+var validate *validator.Validate
+
+func init() {
+	validate = validator.New()
+
+	// korean tag를 필드명으로 사용하도록 설정
+	// 이렇게 하면 validator가 에러 메시지를 생성할 때 korean tag 값을 필드명으로 사용합니다.
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		koreanName := fld.Tag.Get("korean")
+		if koreanName != "" {
+			return koreanName
+		}
+		return fld.Name
+	})
+}
 
 // ValidateRequest 구조체의 validation tag를 기반으로 검증을 수행합니다.
 // 검증 실패 시 첫 번째 에러를 반환합니다.
@@ -40,7 +55,8 @@ func FormatValidationError(err error) string {
 
 // formatFieldError 개별 필드 에러를 한글 메시지로 변환합니다.
 func formatFieldError(fieldErr validator.FieldError) string {
-	fieldName := getFieldNameInKorean(fieldErr.Field())
+	// Field()는 이제 korean tag 값을 반환합니다 (RegisterTagNameFunc 덕분)
+	fieldName := fieldErr.Field()
 
 	switch fieldErr.Tag() {
 	case "required":
@@ -62,21 +78,4 @@ func formatFieldError(fieldErr validator.FieldError) string {
 	default:
 		return fmt.Sprintf("%s 검증 실패: %s", fieldName, fieldErr.Tag())
 	}
-}
-
-// getFieldNameInKorean 필드명을 한글로 변환합니다.
-func getFieldNameInKorean(field string) string {
-	// 알려진 필드명 직접 매핑
-	fieldNameMap := map[string]string{
-		"ApplicationID": "애플리케이션 ID",
-		"Message":       "메시지",
-		"ErrorOccurred": "에러 발생 여부",
-	}
-
-	if koreanName, ok := fieldNameMap[field]; ok {
-		return koreanName
-	}
-
-	// 매핑되지 않은 경우 원본 반환
-	return field
 }
