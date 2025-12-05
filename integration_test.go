@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/pkg/common"
 	apiv1 "github.com/darkkaiser/notify-server/service/api/v1"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
@@ -31,7 +32,11 @@ func TestServicesIntegration(t *testing.T) {
 			}
 		})
 
-		notifyAPIService := apiv1.NewNotifyAPIService(appConfig, notificationService, "test-version", "test-date", "test-build")
+		notifyAPIService := apiv1.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
+			Version:     "test-version",
+			BuildDate:   "test-date",
+			BuildNumber: "test-build",
+		})
 
 		// 서비스 검증
 		assert.NotNil(t, taskService, "TaskService가 생성되어야 합니다")

@@ -39,6 +39,9 @@ func TestInitAppConfig_ValidConfig(t *testing.T) {
 					"tls_key_file":  "",
 					"listen_port":   float64(2443),
 				},
+				"cors": map[string]interface{}{
+					"allow_origins": []string{"*"},
+				},
 				"applications": []map[string]interface{}{
 					{
 						"id":                  "test-app",
@@ -310,6 +313,7 @@ func TestInitAppConfig_TLSServerMissingCertFile(t *testing.T) {
 					"tls_key_file":  "/path/to/key.pem",
 					"listen_port":   float64(2443),
 				},
+				"cors":         map[string]interface{}{"allow_origins": []string{"*"}},
 				"applications": []map[string]interface{}{},
 			},
 		}
@@ -345,6 +349,7 @@ func TestInitAppConfig_TLSServerMissingKeyFile(t *testing.T) {
 					"tls_key_file":  "", // Missing!
 					"listen_port":   float64(2443),
 				},
+				"cors":         map[string]interface{}{"allow_origins": []string{"*"}},
 				"applications": []map[string]interface{}{},
 			},
 		}
@@ -374,7 +379,8 @@ func TestInitAppConfig_DuplicateApplicationID(t *testing.T) {
 			},
 			"tasks": []map[string]interface{}{},
 			"notify_api": map[string]interface{}{
-				"ws": map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"ws":   map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"cors": map[string]interface{}{"allow_origins": []string{"*"}},
 				"applications": []map[string]interface{}{
 					{
 						"id":                  "app1",
@@ -417,7 +423,8 @@ func TestInitAppConfig_InvalidApplicationNotifierID(t *testing.T) {
 			},
 			"tasks": []map[string]interface{}{},
 			"notify_api": map[string]interface{}{
-				"ws": map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"ws":   map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"cors": map[string]interface{}{"allow_origins": []string{"*"}},
 				"applications": []map[string]interface{}{
 					{
 						"id":                  "app1",
@@ -454,7 +461,8 @@ func TestInitAppConfig_MissingAppKey(t *testing.T) {
 			},
 			"tasks": []map[string]interface{}{},
 			"notify_api": map[string]interface{}{
-				"ws": map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"ws":   map[string]interface{}{"tls_server": false, "listen_port": float64(2443)},
+				"cors": map[string]interface{}{"allow_origins": []string{"*"}},
 				"applications": []map[string]interface{}{
 					{
 						"id":                  "app1",
@@ -514,6 +522,9 @@ func TestAppConfig_JSONMarshaling(t *testing.T) {
 					"tls_cert_file": "",
 					"tls_key_file": "",
 					"listen_port": 2443
+				},
+				"cors": {
+					"allow_origins": ["*"]
 				},
 				"applications": []
 			}

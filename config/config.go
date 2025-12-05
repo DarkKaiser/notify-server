@@ -23,7 +23,8 @@ const (
 	DefaultRetryDelay = "2s"
 )
 
-// Convert JSON to Go struct : https://mholt.github.io/json-to-go/
+// AppConfig 애플리케이션 전체 설정 구조체
+// JSON to Go struct 변환 도구: mholt.github.io/json-to-go
 type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
@@ -35,8 +36,8 @@ type AppConfig struct {
 // Validate AppConfig의 유효성을 검사합니다.
 func (c *AppConfig) Validate() error {
 	// HTTP Retry 설정 검증
-	if err := validations.ValidateDuration(c.HTTPRetry.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
+	if err := c.HTTPRetry.Validate(); err != nil {
+		return err
 	}
 
 	// Notifiers 유효성 검사
@@ -93,6 +94,14 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 type HTTPRetryConfig struct {
 	MaxRetries int    `json:"max_retries"`
 	RetryDelay string `json:"retry_delay"`
+}
+
+// Validate HTTPRetryConfig의 유효성을 검사합니다.
+func (c *HTTPRetryConfig) Validate() error {
+	if err := validations.ValidateDuration(c.RetryDelay); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
+	}
+	return nil
 }
 
 // NotifierConfig 알림 설정 구조체
@@ -159,23 +168,9 @@ type NotifyAPIConfig struct {
 
 // Validate NotifyAPIConfig의 유효성을 검사합니다.
 func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
-	// 포트 번호 검증
-	if err := validations.ValidatePort(c.WS.ListenPort); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
-	}
-
 	// WS 설정 검사
-	if c.WS.TLSServer {
-		if strings.TrimSpace(c.WS.TLSCertFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
-		}
-		if strings.TrimSpace(c.WS.TLSKeyFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
-		}
-
-		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
-		_ = validations.ValidateFileExistsOrURL(c.WS.TLSCertFile, true)
-		_ = validations.ValidateFileExistsOrURL(c.WS.TLSKeyFile, true)
+	if err := c.WS.Validate(); err != nil {
+		return err
 	}
 
 	// CORS 설정 검사
@@ -195,7 +190,7 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}
 
-		if app.AppKey == "" {
+		if strings.TrimSpace(app.AppKey) == "" {
 			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
 		}
 	}
@@ -211,6 +206,30 @@ type WSConfig struct {
 	ListenPort  int    `json:"listen_port"`
 }
 
+// Validate WSConfig의 유효성을 검사합니다.
+func (c *WSConfig) Validate() error {
+	// 포트 번호 검증
+	if err := validations.ValidatePort(c.ListenPort); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
+	}
+
+	// TLS 설정 검사
+	if c.TLSServer {
+		if strings.TrimSpace(c.TLSCertFile) == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+		}
+		if strings.TrimSpace(c.TLSKeyFile) == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
+		}
+
+		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
+		_ = validations.ValidateFileExistsOrURL(c.TLSCertFile, true)
+		_ = validations.ValidateFileExistsOrURL(c.TLSKeyFile, true)
+	}
+
+	return nil
+}
+
 // CORSConfig CORS 설정 구조체
 type CORSConfig struct {
 	AllowOrigins []string `json:"allow_origins"`
@@ -220,6 +239,19 @@ type CORSConfig struct {
 func (c *CORSConfig) Validate() error {
 	if len(c.AllowOrigins) == 0 {
 		return apperrors.New(apperrors.ErrInvalidInput, "CORS AllowOrigins 설정이 비어있습니다")
+	}
+
+	for _, origin := range c.AllowOrigins {
+		if origin == "*" {
+			if len(c.AllowOrigins) > 1 {
+				return apperrors.New(apperrors.ErrInvalidInput, "CORS AllowOrigins에 와일드카드(*)가 포함된 경우, 다른 Origin과 함께 사용할 수 없습니다")
+			}
+			continue
+		}
+
+		if err := validations.ValidateCORSOrigin(origin); err != nil {
+			return err
+		}
 	}
 	return nil
 }
