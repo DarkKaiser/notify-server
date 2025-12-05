@@ -87,6 +87,7 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 		"endpoint":       endpointNotifyMessage,
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
+		"message_length": len(req.Message),
 	}).Info("알림 메시지 전송 요청 성공")
 
 	h.notificationSender.Notify(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)

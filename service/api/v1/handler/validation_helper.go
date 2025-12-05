@@ -6,7 +6,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// validate는 전역 validator 인스턴스입니다.
+// validate 전역 validator 인스턴스입니다.
 var validate = validator.New()
 
 // ValidateRequest 구조체의 validation tag를 기반으로 검증을 수행합니다.

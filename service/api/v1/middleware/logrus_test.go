@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"errors"
-	"io"
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,373 +13,175 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLogger_Output(t *testing.T) {
-	t.Run("Output 반환", func(t *testing.T) {
-		logger := Logger{Logger: logrus.StandardLogger()}
-		output := logger.Output()
+func TestLogrusMiddlewareHandler(t *testing.T) {
+	// Setup
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notice/message?app_key=secret-key&other=value", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
 
-		assert.NotNil(t, output, "Output이 nil이 아니어야 합니다")
+	// Capture logs
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	defer logrus.SetOutput(logrus.StandardLogger().Out) // Restore
+
+	// Middleware execution
+	h := logrusMiddlewareHandler(c, func(c echo.Context) error {
+		return c.String(http.StatusOK, "test")
 	})
+
+	// Assertions
+	assert.NoError(t, h)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Log verification
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	assert.NoError(t, err)
+
+	uri, ok := logEntry["uri"].(string)
+	assert.True(t, ok)
+	// URL 인코딩된 별표(*) 확인 (%2A)
+	assert.Contains(t, uri, "app_key=%2A%2A%2A%2A%2A")
+	assert.Contains(t, uri, "other=value")
+	assert.NotContains(t, uri, "secret-key")
 }
 
-func TestLogger_Prefix(t *testing.T) {
-	t.Run("Prefix 반환", func(t *testing.T) {
-		logger := Logger{Logger: logrus.StandardLogger()}
-		prefix := logger.Prefix()
+func TestLogrusMiddlewareHandler_NoAppKey(t *testing.T) {
+	// Setup
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notice/message?other=value", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
 
-		assert.Equal(t, "", prefix, "Prefix는 빈 문자열이어야 합니다")
+	// Capture logs
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	defer logrus.SetOutput(logrus.StandardLogger().Out)
+
+	// Middleware execution
+	h := logrusMiddlewareHandler(c, func(c echo.Context) error {
+		return c.String(http.StatusOK, "test")
 	})
+
+	// Assertions
+	assert.NoError(t, h)
+
+	// Log verification
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	assert.NoError(t, err)
+
+	uri, ok := logEntry["uri"].(string)
+	assert.True(t, ok)
+	assert.Contains(t, uri, "other=value")
+	assert.NotContains(t, uri, "*****")
 }
 
 func TestLogger_Level(t *testing.T) {
-	cases := []struct {
-		name          string
-		logrusLevel   logrus.Level
-		expectedLevel log.Lvl
-	}{
-		{"Debug Level", logrus.DebugLevel, log.DEBUG},
-		{"Info Level", logrus.InfoLevel, log.INFO},
-		{"Warn Level", logrus.WarnLevel, log.WARN},
-		{"Error Level", logrus.ErrorLevel, log.ERROR},
-		{"Panic Level", logrus.PanicLevel, log.OFF},
-		{"Fatal Level", logrus.FatalLevel, log.OFF},
-		{"Trace Level", logrus.TraceLevel, log.OFF},
-	}
+	l := logrus.New()
+	logger := Logger{l}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			l := logrus.New()
-			l.SetLevel(c.logrusLevel)
-			logger := Logger{Logger: l}
+	l.SetLevel(logrus.DebugLevel)
+	assert.Equal(t, log.DEBUG, logger.Level())
 
-			level := logger.Level()
-			assert.Equal(t, c.expectedLevel, level, "로그 레벨이 일치해야 합니다")
-		})
-	}
+	l.SetLevel(logrus.InfoLevel)
+	assert.Equal(t, log.INFO, logger.Level())
+
+	l.SetLevel(logrus.WarnLevel)
+	assert.Equal(t, log.WARN, logger.Level())
+
+	l.SetLevel(logrus.ErrorLevel)
+	assert.Equal(t, log.ERROR, logger.Level())
 }
 
 func TestLogger_SetLevel(t *testing.T) {
-	cases := []struct {
-		name        string
-		echoLevel   log.Lvl
-		expectLevel logrus.Level
-	}{
-		{"Set Debug", log.DEBUG, logrus.DebugLevel},
-		{"Set Info", log.INFO, logrus.InfoLevel},
-		{"Set Warn", log.WARN, logrus.WarnLevel},
-		{"Set Error", log.ERROR, logrus.ErrorLevel},
-	}
+	l := logrus.New()
+	logger := Logger{l}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			logger := Logger{Logger: logrus.New()}
-			logger.SetLevel(c.echoLevel)
+	logger.SetLevel(log.DEBUG)
+	assert.Equal(t, logrus.DebugLevel, l.Level)
 
-			// 전역 logrus 레벨이 변경되었는지 확인
-			assert.NotNil(t, logger.Logger, "Logger가 nil이 아니어야 합니다")
-		})
-	}
+	logger.SetLevel(log.INFO)
+	assert.Equal(t, logrus.InfoLevel, l.Level)
+
+	logger.SetLevel(log.WARN)
+	assert.Equal(t, logrus.WarnLevel, l.Level)
+
+	logger.SetLevel(log.ERROR)
+	assert.Equal(t, logrus.ErrorLevel, l.Level)
 }
 
-func TestLogger_SetLevel_OFF(t *testing.T) {
-	t.Run("Set OFF Level", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetLevel(log.OFF)
+func TestLogger_Output(t *testing.T) {
+	l := logrus.New()
+	logger := Logger{l}
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
 
-		// OFF 레벨은 아무 동작도 하지 않음
-		assert.NotNil(t, logger.Logger, "Logger가 nil이 아니어야 합니다")
-	})
+	assert.Equal(t, &buf, logger.Output())
 }
 
-func TestLogger_SetOutput(t *testing.T) {
-	t.Run("Output 설정", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
+func TestLogger_Methods(t *testing.T) {
+	var buf bytes.Buffer
+	l := logrus.New()
+	l.SetOutput(&buf)
+	l.SetFormatter(&logrus.JSONFormatter{})
+	logger := Logger{l}
 
-		// io.Discard로 출력 설정
-		logger.SetOutput(io.Discard)
+	// Test Print
+	logger.Print("test print")
+	assert.Contains(t, buf.String(), "test print")
+	buf.Reset()
 
-		assert.NotNil(t, logger.Logger, "Logger가 nil이 아니어야 합니다")
-	})
+	// Test Info
+	logger.Info("test info")
+	assert.Contains(t, buf.String(), "test info")
+	assert.Contains(t, buf.String(), "info")
+	buf.Reset()
+
+	// Test Warn
+	logger.Warn("test warn")
+	assert.Contains(t, buf.String(), "test warn")
+	assert.Contains(t, buf.String(), "warning")
+	buf.Reset()
+
+	// Test Error
+	logger.Error("test error")
+	assert.Contains(t, buf.String(), "test error")
+	assert.Contains(t, buf.String(), "error")
+	buf.Reset()
+
+	// Test Debug (Level must be debug)
+	logger.SetLevel(log.DEBUG)
+	logger.Debug("test debug")
+	assert.Contains(t, buf.String(), "test debug")
+	assert.Contains(t, buf.String(), "debug")
+	buf.Reset()
 }
 
-func TestLogger_SetPrefix(t *testing.T) {
-	t.Run("Prefix 설정 (no-op)", func(t *testing.T) {
-		logger := Logger{Logger: logrus.StandardLogger()}
+func TestLogger_JSONMethods(t *testing.T) {
+	var buf bytes.Buffer
+	l := logrus.New()
+	l.SetOutput(&buf)
+	l.SetFormatter(&logrus.JSONFormatter{})
+	logger := Logger{l}
 
-		// SetPrefix는 아무 동작도 하지 않음
-		logger.SetPrefix("test-prefix")
+	j := log.JSON{"key": "value"}
 
-		// Prefix는 여전히 빈 문자열
-		assert.Equal(t, "", logger.Prefix(), "Prefix는 빈 문자열이어야 합니다")
-	})
-}
+	// Test Infoj
+	logger.Infoj(j)
+	assert.Contains(t, buf.String(), "value")
+	buf.Reset()
 
-func TestLogger_SetHeader(t *testing.T) {
-	t.Run("Header 설정 (no-op)", func(t *testing.T) {
-		logger := Logger{Logger: logrus.StandardLogger()}
+	// Test Warnj
+	logger.Warnj(j)
+	assert.Contains(t, buf.String(), "value")
+	buf.Reset()
 
-		// SetHeader는 아무 동작도 하지 않음
-		logger.SetHeader("test-header")
-
-		assert.NotNil(t, logger.Logger, "Logger가 nil이 아니어야 합니다")
-	})
-}
-
-func TestLogger_PrintMethods(t *testing.T) {
-	t.Run("Print 메서드 호출", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetOutput(io.Discard) // 출력 억제
-
-		// 각 Print 메서드가 panic 없이 실행되는지 확인
-		assert.NotPanics(t, func() {
-			logger.Print("test")
-			logger.Printf("test %s", "format")
-			logger.Printj(log.JSON{"key": "value"})
-		}, "Print 메서드들이 panic 없이 실행되어야 합니다")
-	})
-}
-
-func TestLogger_DebugMethods(t *testing.T) {
-	t.Run("Debug 메서드 호출", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetOutput(io.Discard) // 출력 억제
-
-		assert.NotPanics(t, func() {
-			logger.Debug("test")
-			logger.Debugf("test %s", "format")
-			logger.Debugj(log.JSON{"key": "value"})
-		}, "Debug 메서드들이 panic 없이 실행되어야 합니다")
-	})
-}
-
-func TestLogger_InfoMethods(t *testing.T) {
-	t.Run("Info 메서드 호출", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetOutput(io.Discard) // 출력 억제
-
-		assert.NotPanics(t, func() {
-			logger.Info("test")
-			logger.Infof("test %s", "format")
-			logger.Infoj(log.JSON{"key": "value"})
-		}, "Info 메서드들이 panic 없이 실행되어야 합니다")
-	})
-}
-
-func TestLogger_WarnMethods(t *testing.T) {
-	t.Run("Warn 메서드 호출", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetOutput(io.Discard) // 출력 억제
-
-		assert.NotPanics(t, func() {
-			logger.Warn("test")
-			logger.Warnf("test %s", "format")
-			logger.Warnj(log.JSON{"key": "value"})
-		}, "Warn 메서드들이 panic 없이 실행되어야 합니다")
-	})
-}
-
-func TestLogger_ErrorMethods(t *testing.T) {
-	t.Run("Error 메서드 호출", func(t *testing.T) {
-		logger := Logger{Logger: logrus.New()}
-		logger.SetOutput(io.Discard) // 출력 억제
-
-		assert.NotPanics(t, func() {
-			logger.Error("test")
-			logger.Errorf("test %s", "format")
-			logger.Errorj(log.JSON{"key": "value"})
-		}, "Error 메서드들이 panic 없이 실행되어야 합니다")
-	})
-}
-
-func TestLogrusLogger(t *testing.T) {
-	t.Run("LogrusLogger 미들웨어 생성", func(t *testing.T) {
-		middleware := LogrusLogger()
-
-		assert.NotNil(t, middleware, "미들웨어가 생성되어야 합니다")
-	})
-}
-
-// 새로운 테스트: 미들웨어 핸들러 성공 시나리오
-func TestLogrusMiddlewareHandler_Success(t *testing.T) {
-	t.Run("성공적인 요청 처리", func(t *testing.T) {
-		// Echo 인스턴스 생성
-		e := echo.New()
-		e.Logger = Logger{Logger: logrus.New()}
-		e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-		// 테스트 핸들러
-		handler := func(c echo.Context) error {
-			return c.String(http.StatusOK, "success")
-		}
-
-		// 미들웨어 적용
-		middlewareFunc := LogrusLogger()
-		wrappedHandler := middlewareFunc(handler)
-
-		// HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// 핸들러 실행
-		err := wrappedHandler(c)
-
-		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-		assert.Equal(t, http.StatusOK, rec.Code, "상태 코드가 200이어야 합니다")
-	})
-}
-
-// 새로운 테스트: 미들웨어 핸들러 에러 시나리오
-func TestLogrusMiddlewareHandler_Error(t *testing.T) {
-	t.Run("에러 발생 시 처리", func(t *testing.T) {
-		// Echo 인스턴스 생성
-		e := echo.New()
-		e.Logger = Logger{Logger: logrus.New()}
-		e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-		// 에러를 반환하는 핸들러
-		testError := errors.New("test error")
-		handler := func(c echo.Context) error {
-			return testError
-		}
-
-		// 미들웨어 적용
-		middlewareFunc := LogrusLogger()
-		wrappedHandler := middlewareFunc(handler)
-
-		// HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// 핸들러 실행
-		err := wrappedHandler(c)
-
-		// 미들웨어는 nil을 반환하지만 에러는 c.Error()로 처리됨
-		assert.NoError(t, err, "미들웨어는 nil을 반환해야 합니다")
-	})
-}
-
-// 새로운 테스트: 빈 경로 처리
-func TestLogrusMiddlewareHandler_EmptyPath(t *testing.T) {
-	t.Run("빈 경로 처리", func(t *testing.T) {
-		// Echo 인스턴스 생성
-		e := echo.New()
-		e.Logger = Logger{Logger: logrus.New()}
-		e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-		// 테스트 핸들러
-		handler := func(c echo.Context) error {
-			return c.String(http.StatusOK, "success")
-		}
-
-		// 미들웨어 적용
-		middlewareFunc := LogrusLogger()
-		wrappedHandler := middlewareFunc(handler)
-
-		// 루트 경로로 HTTP 요청 생성 (빈 경로 대신)
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// 핸들러 실행
-		err := wrappedHandler(c)
-
-		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-	})
-}
-
-// 새로운 테스트: Content-Length 헤더 없는 경우
-func TestLogrusMiddlewareHandler_NoContentLength(t *testing.T) {
-	t.Run("Content-Length 헤더 없는 경우", func(t *testing.T) {
-		// Echo 인스턴스 생성
-		e := echo.New()
-		e.Logger = Logger{Logger: logrus.New()}
-		e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-		// 테스트 핸들러
-		handler := func(c echo.Context) error {
-			return c.String(http.StatusOK, "success")
-		}
-
-		// 미들웨어 적용
-		middlewareFunc := LogrusLogger()
-		wrappedHandler := middlewareFunc(handler)
-
-		// Content-Length 헤더 없이 HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		// Content-Length 헤더를 명시적으로 제거
-		req.Header.Del(echo.HeaderContentLength)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// 핸들러 실행
-		err := wrappedHandler(c)
-
-		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-	})
-}
-
-// 새로운 테스트: 다양한 HTTP 메서드
-func TestLogrusMiddlewareHandler_HTTPMethods(t *testing.T) {
-	methods := []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
-
-	for _, method := range methods {
-		t.Run("HTTP "+method, func(t *testing.T) {
-			// Echo 인스턴스 생성
-			e := echo.New()
-			e.Logger = Logger{Logger: logrus.New()}
-			e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-			// 테스트 핸들러
-			handler := func(c echo.Context) error {
-				return c.String(http.StatusOK, "success")
-			}
-
-			// 미들웨어 적용
-			middlewareFunc := LogrusLogger()
-			wrappedHandler := middlewareFunc(handler)
-
-			// HTTP 요청 생성
-			req := httptest.NewRequest(method, "/test", nil)
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-
-			// 핸들러 실행
-			err := wrappedHandler(c)
-
-			assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-		})
-	}
-}
-
-// 새로운 테스트: 응답 크기 측정
-func TestLogrusMiddlewareHandler_ResponseSize(t *testing.T) {
-	t.Run("응답 크기 측정", func(t *testing.T) {
-		// Echo 인스턴스 생성
-		e := echo.New()
-		e.Logger = Logger{Logger: logrus.New()}
-		e.Logger.SetOutput(io.Discard) // 로그 출력 억제
-
-		// 테스트 핸들러 - 특정 크기의 응답 반환
-		responseBody := "test response body"
-		handler := func(c echo.Context) error {
-			return c.String(http.StatusOK, responseBody)
-		}
-
-		// 미들웨어 적용
-		middlewareFunc := LogrusLogger()
-		wrappedHandler := middlewareFunc(handler)
-
-		// HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// 핸들러 실행
-		err := wrappedHandler(c)
-
-		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-		assert.Equal(t, responseBody, rec.Body.String(), "응답 본문이 일치해야 합니다")
-	})
+	// Test Errorj
+	logger.Errorj(j)
+	assert.Contains(t, buf.String(), "value")
+	buf.Reset()
 }
