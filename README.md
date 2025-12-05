@@ -292,6 +292,11 @@ notify-server/
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
 ├── service/           # 비즈니스 로직
 │   ├── api/           # REST API 서버
+│   │   ├── auth/      # 인증 관리 (ApplicationManager)
+│   │   ├── handler/   # 공통 핸들러 (SystemHandler)
+│   │   ├── middleware/# 미들웨어 (HTTP 로깅, CORS 등)
+│   │   ├── model/     # 공통 모델 (response, domain)
+│   │   └── v1/        # API v1 엔드포인트
 │   ├── notification/  # 알림 발송 (Telegram 등)
 │   └── task/          # 스케줄링 및 스크래핑 작업
 ├── main.go            # 애플리케이션 진입점

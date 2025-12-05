@@ -19,12 +19,33 @@ type ServerConfig struct {
 }
 
 // NewServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
-// 미들웨어는 다음 순서로 적용됩니다:
-//  1. Recover - 패닉 복구
+//
+// 미들웨어는 다음 순서로 적용됩니다 (순서가 중요합니다):
+//
+//  1. PanicRecovery - 패닉 복구 및 로깅
+//     - 핸들러에서 발생한 panic을 복구하여 서버 다운 방지
+//     - 스택 트레이스와 함께 에러를 로깅
+//     - 가장 먼저 적용되어야 다른 미들웨어의 panic도 복구 가능
+//
 //  2. RequestID - 요청 ID 생성
-//  3. HTTPLogger - 로깅
+//     - 각 요청에 고유한 ID를 부여 (X-Request-ID 헤더)
+//     - 로깅 및 디버깅 시 요청 추적에 사용
+//     - 로깅 미들웨어보다 먼저 적용되어야 로그에 request_id 포함 가능
+//
+//  3. HTTPLogger - HTTP 요청/응답 로깅
+//     - 모든 HTTP 요청과 응답 정보를 구조화된 로그로 기록
+//     - 민감 정보(app_key, password 등)는 자동으로 마스킹
+//     - 요청 처리 시간, 상태 코드, IP 주소 등 기록
+//
 //  4. CORS - Cross-Origin Resource Sharing
+//     - 허용된 Origin에서의 크로스 도메인 요청 처리
+//     - Preflight 요청(OPTIONS) 자동 응답
+//     - 프로덕션 환경에서는 특정 도메인만 허용 권장
+//
 //  5. Secure - 보안 헤더 설정
+//     - X-XSS-Protection, X-Content-Type-Options 등 보안 헤더 자동 추가
+//     - XSS, 클릭재킹 등의 공격 방어
+//     - 가장 마지막에 적용되어 모든 응답에 보안 헤더 추가
 //
 // 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
 func NewServer(cfg ServerConfig) *echo.Echo {
@@ -40,8 +61,8 @@ func NewServer(cfg ServerConfig) *echo.Echo {
 	// 미들웨어 적용 (권장 순서)
 	e.Use(appmiddleware.PanicRecovery())                   // 1. Panic 복구
 	e.Use(middleware.RequestID())                          // 2. Request ID
-	e.Use(appmiddleware.HTTPLogger())                      // 3. 로깅
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 4. CORS
+	e.Use(appmiddleware.HTTPLogger())                      // 3. HTTP 로깅
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 4. CORS 설정
 		AllowOrigins: cfg.AllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
