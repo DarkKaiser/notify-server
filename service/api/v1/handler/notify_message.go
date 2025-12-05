@@ -1,11 +1,8 @@
 package handler
 
 import (
-	"fmt"
-
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	commonhandler "github.com/darkkaiser/notify-server/service/api/handler"
-	"github.com/darkkaiser/notify-server/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -73,7 +70,7 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 	}
 
 	// 3. 인증
-	app, err := h.findAndAuthenticateApplication(req.ApplicationID, appKey)
+	app, err := h.applicationManager.Authenticate(req.ApplicationID, appKey)
 	if err != nil {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"endpoint":       endpointNotifyMessage,
@@ -95,23 +92,4 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 
 	// 5. 성공 응답
 	return commonhandler.NewSuccessResponse(c)
-}
-
-// findAndAuthenticateApplication 애플리케이션을 찾고 인증을 수행합니다
-func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*domain.Application, error) {
-	app, ok := h.applications[applicationID]
-	if !ok {
-		return nil, commonhandler.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
-	}
-
-	if app.AppKey != appKey {
-		applog.WithComponentAndFields("api.handler", log.Fields{
-			"application_id":   applicationID,
-			"received_app_key": applog.MaskSensitiveData(appKey),
-		}).Warn("APP_KEY 불일치")
-
-		return nil, commonhandler.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
-	}
-
-	return app, nil
 }

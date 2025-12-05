@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"net/http"
@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Config Router 생성 시 필요한 설정을 정의합니다.
-type Config struct {
+// ServerConfig 서버 생성 시 필요한 설정을 정의합니다.
+type ServerConfig struct {
 	// Debug는 Echo의 디버그 모드 활성화 여부를 설정합니다.
 	Debug bool
 	// AllowOrigins는 CORS에서 허용할 Origin 목록을 설정합니다.
@@ -18,7 +18,7 @@ type Config struct {
 	AllowOrigins []string
 }
 
-// New 설정된 미들웨어와 라우트를 포함한 Echo 인스턴스를 생성합니다.
+// NewServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
 // 미들웨어는 다음 순서로 적용됩니다:
 //  1. Recover - 패닉 복구
 //  2. RequestID - 요청 ID 생성
@@ -27,7 +27,7 @@ type Config struct {
 //  5. Secure - 보안 헤더 설정
 //
 // 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
-func New(cfg Config) *echo.Echo {
+func NewServer(cfg ServerConfig) *echo.Echo {
 	e := echo.New()
 
 	e.Debug = cfg.Debug
