@@ -55,7 +55,6 @@ func FormatValidationError(err error) string {
 
 // formatFieldError 개별 필드 에러를 한글 메시지로 변환합니다.
 func formatFieldError(fieldErr validator.FieldError) string {
-	// Field()는 이제 korean tag 값을 반환합니다 (RegisterTagNameFunc 덕분)
 	fieldName := fieldErr.Field()
 
 	switch fieldErr.Tag() {
