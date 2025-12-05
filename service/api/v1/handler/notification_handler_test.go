@@ -48,7 +48,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		if assert.NoError(t, h.SendNotifyMessageHandler(c)) {
+		if assert.NoError(t, h.SendNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.True(t, mockSender.NotifyCalled)
 			assert.Equal(t, "test-notifier", mockSender.LastNotifierID)
@@ -70,7 +70,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -95,7 +95,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -114,7 +114,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		assert.Error(t, err)
 	})
 
@@ -131,7 +131,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -157,7 +157,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -189,7 +189,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.SendNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -222,7 +222,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		if assert.NoError(t, h.SendNotifyMessageHandler(c)) {
+		if assert.NoError(t, h.SendNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.True(t, mockSender.NotifyCalled)
 		}

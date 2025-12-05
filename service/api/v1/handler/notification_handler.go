@@ -13,7 +13,7 @@ const (
 	endpointNotifyMessage = "/api/v1/notice/message"
 )
 
-// SendNotifyMessageHandler godoc
+// SendNotificationHandler godoc
 // @Summary 알림 메시지 전송
 // @Description 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.
 // @Description
@@ -37,7 +37,7 @@ const (
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Security ApiKeyAuth
 // @Router /api/v1/notice/message [post]
-func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
+func (h *Handler) SendNotificationHandler(c echo.Context) error {
 	// 1. 요청 바인딩
 	req := new(request.NotifyMessageRequest)
 	if err := c.Bind(req); err != nil {
