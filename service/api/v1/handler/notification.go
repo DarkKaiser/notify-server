@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	// API 엔드포인트 경로
+	// endpointNotifyMessage 알림 메시지 전송 API 엔드포인트
 	endpointNotifyMessage = "/api/v1/notice/message"
 )
 
