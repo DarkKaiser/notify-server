@@ -35,7 +35,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	h := NewHandler(appManager, mockSender)
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 			ErrorOccurred: false,
@@ -58,7 +58,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 		}
@@ -83,7 +83,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "unknown-app",
 			Message:       "Test Message",
 		}
@@ -119,7 +119,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("ApplicationID 누락", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "",
 			Message:       "Test Message",
 		}
@@ -145,7 +145,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("Message 누락", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "",
 		}
@@ -177,7 +177,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			longMessage[i] = 'a'
 		}
 
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(longMessage),
 		}
@@ -210,7 +210,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			maxMessage[i] = 'a'
 		}
 
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(maxMessage),
 		}

@@ -39,7 +39,7 @@ const (
 // @Router /api/v1/notice/message [post]
 func (h *Handler) SendNotificationHandler(c echo.Context) error {
 	// 1. 요청 바인딩
-	req := new(request.NotifyMessageRequest)
+	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"endpoint": endpointNotifyMessage,
