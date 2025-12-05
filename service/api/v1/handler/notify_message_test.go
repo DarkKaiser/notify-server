@@ -9,8 +9,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/model/response"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
-	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )

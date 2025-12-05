@@ -5,7 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
-	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
+	"github.com/darkkaiser/notify-server/service/api/model/domain"
 	"github.com/stretchr/testify/assert"
 )
 

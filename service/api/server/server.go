@@ -3,8 +3,7 @@ package server
 import (
 	"net/http"
 
-	"github.com/darkkaiser/notify-server/service/api/v1/handler"
-	appmiddleware "github.com/darkkaiser/notify-server/service/api/v1/middleware"
+	appmiddleware "github.com/darkkaiser/notify-server/service/api/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
@@ -27,8 +26,8 @@ type Config struct {
 //  4. CORS - Cross-Origin Resource Sharing
 //  5. Secure - 보안 헤더 설정
 //
-// 라우트 설정까지 완료된 Echo 인스턴스를 반환하므로 바로 사용 가능합니다.
-func New(cfg Config, h *handler.Handler) *echo.Echo {
+// 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
+func New(cfg Config) *echo.Echo {
 	e := echo.New()
 
 	e.Debug = cfg.Debug
@@ -47,9 +46,6 @@ func New(cfg Config, h *handler.Handler) *echo.Echo {
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
 	e.Use(middleware.Secure()) // 5. 보안 헤더
-
-	// 라우트 설정
-	SetupRoutes(e, h)
 
 	return e
 }

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
+	"github.com/darkkaiser/notify-server/service/api/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -14,7 +14,7 @@ import (
 func TestNewBadRequestError(t *testing.T) {
 	t.Run("400 에러 생성", func(t *testing.T) {
 		message := "잘못된 요청입니다"
-		err := newBadRequestError(message)
+		err := NewBadRequestError(message)
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -27,7 +27,7 @@ func TestNewBadRequestError(t *testing.T) {
 	})
 
 	t.Run("빈 메시지로 에러 생성", func(t *testing.T) {
-		err := newBadRequestError("")
+		err := NewBadRequestError("")
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -43,7 +43,7 @@ func TestNewBadRequestError(t *testing.T) {
 func TestNewUnauthorizedError(t *testing.T) {
 	t.Run("401 에러 생성", func(t *testing.T) {
 		message := "인증이 필요합니다"
-		err := newUnauthorizedError(message)
+		err := NewUnauthorizedError(message)
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -57,7 +57,7 @@ func TestNewUnauthorizedError(t *testing.T) {
 
 	t.Run("application_id를 포함한 에러 메시지", func(t *testing.T) {
 		message := "접근이 허용되지 않은 application_id(test-app)입니다"
-		err := newUnauthorizedError(message)
+		err := NewUnauthorizedError(message)
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -74,7 +74,7 @@ func TestNewUnauthorizedError(t *testing.T) {
 func TestNewNotFoundError(t *testing.T) {
 	t.Run("404 에러 생성", func(t *testing.T) {
 		message := "리소스를 찾을 수 없습니다"
-		err := newNotFoundError(message)
+		err := NewNotFoundError(message)
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -90,7 +90,7 @@ func TestNewNotFoundError(t *testing.T) {
 func TestNewInternalServerError(t *testing.T) {
 	t.Run("500 에러 생성", func(t *testing.T) {
 		message := "서버 내부 오류가 발생했습니다"
-		err := newInternalServerError(message)
+		err := NewInternalServerError(message)
 
 		assert.Error(t, err)
 		httpErr, ok := err.(*echo.HTTPError)
@@ -110,7 +110,7 @@ func TestNewSuccessResponse(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		err := newSuccessResponse(c)
+		err := NewSuccessResponse(c)
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -127,7 +127,7 @@ func TestNewSuccessResponse(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		err := newSuccessResponse(c)
+		err := NewSuccessResponse(c)
 
 		assert.NoError(t, err)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
@@ -139,10 +139,10 @@ func TestNewSuccessResponse(t *testing.T) {
 
 func TestResponseHelpers_Integration(t *testing.T) {
 	t.Run("여러 에러 타입 비교", func(t *testing.T) {
-		badReqErr := newBadRequestError("bad request")
-		unauthorizedErr := newUnauthorizedError("unauthorized")
-		notFoundErr := newNotFoundError("not found")
-		internalErr := newInternalServerError("internal error")
+		badReqErr := NewBadRequestError("bad request")
+		unauthorizedErr := NewUnauthorizedError("unauthorized")
+		notFoundErr := NewNotFoundError("not found")
+		internalErr := NewInternalServerError("internal error")
 
 		badReqHTTPErr, _ := badReqErr.(*echo.HTTPError)
 		unauthorizedHTTPErr, _ := unauthorizedErr.(*echo.HTTPError)
@@ -162,20 +162,20 @@ func TestResponseHelpers_Integration(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// 성공 응답은 에러가 아님
-		successErr := newSuccessResponse(c)
+		successErr := NewSuccessResponse(c)
 		assert.NoError(t, successErr)
 
 		// 에러 응답은 에러임
-		badReqErr := newBadRequestError("error")
+		badReqErr := NewBadRequestError("error")
 		assert.Error(t, badReqErr)
 	})
 
 	t.Run("모든 에러 응답이 ErrorResponse 구조체 사용", func(t *testing.T) {
 		errors := []error{
-			newBadRequestError("bad request"),
-			newUnauthorizedError("unauthorized"),
-			newNotFoundError("not found"),
-			newInternalServerError("internal error"),
+			NewBadRequestError("bad request"),
+			NewUnauthorizedError("unauthorized"),
+			NewNotFoundError("not found"),
+			NewInternalServerError("internal error"),
 		}
 
 		for _, err := range errors {

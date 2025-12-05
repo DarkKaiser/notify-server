@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/model/domain"
+	commonhandler "github.com/darkkaiser/notify-server/service/api/handler"
+	"github.com/darkkaiser/notify-server/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
@@ -48,17 +49,17 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 			"error":    err,
 		}).Warn("요청 바인딩 실패")
 
-		return newBadRequestError("잘못된 요청 형식입니다")
+		return commonhandler.NewBadRequestError("잘못된 요청 형식입니다")
 	}
 
 	// 2. 입력 검증
-	if err := ValidateRequest(req); err != nil {
+	if err := commonhandler.ValidateRequest(req); err != nil {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"endpoint": endpointNotifyMessage,
 			"error":    err,
 		}).Warn("입력 검증 실패")
 
-		return newBadRequestError(FormatValidationError(err))
+		return commonhandler.NewBadRequestError(commonhandler.FormatValidationError(err))
 	}
 
 	appKey := c.QueryParam("app_key")
@@ -68,7 +69,7 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 			"application_id": req.ApplicationID,
 		}).Warn("app_key가 비어있음")
 
-		return newBadRequestError("app_key는 필수입니다")
+		return commonhandler.NewBadRequestError("app_key는 필수입니다")
 	}
 
 	// 3. 인증
@@ -93,14 +94,14 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 	h.notificationSender.Notify(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 
 	// 5. 성공 응답
-	return newSuccessResponse(c)
+	return commonhandler.NewSuccessResponse(c)
 }
 
 // findAndAuthenticateApplication 애플리케이션을 찾고 인증을 수행합니다
 func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (*domain.Application, error) {
 	app, ok := h.applications[applicationID]
 	if !ok {
-		return nil, newUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
+		return nil, commonhandler.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
 	}
 
 	if app.AppKey != appKey {
@@ -109,7 +110,7 @@ func (h *Handler) findAndAuthenticateApplication(applicationID, appKey string) (
 			"received_app_key": applog.MaskSensitiveData(appKey),
 		}).Warn("APP_KEY 불일치")
 
-		return nil, newUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
+		return nil, commonhandler.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
 	}
 
 	return app, nil

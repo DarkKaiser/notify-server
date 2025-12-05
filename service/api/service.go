@@ -13,8 +13,10 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/common"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/service/api/v1/server"
+	"github.com/darkkaiser/notify-server/service/api/handler"
+	"github.com/darkkaiser/notify-server/service/api/server"
+	v1 "github.com/darkkaiser/notify-server/service/api/v1"
+	v1handler "github.com/darkkaiser/notify-server/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/service/notification"
 	log "github.com/sirupsen/logrus"
 )
@@ -86,13 +88,20 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	defer serviceStopWaiter.Done()
 
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
-	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
+	h := v1handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
 	// HTTP 서버 생성 (미들웨어 및 라우트 설정 포함)
 	e := server.New(server.Config{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
-	}, h)
+	})
+
+	// SystemHandler 생성
+	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
+
+	// 라우트 설정
+	SetupRoutes(e, systemHandler)
+	v1.SetupRoutes(e, h)
 
 	// httpServerDone은 HTTP 서버 고루틴이 종료될 때까지 대기하기 위한 채널이다.
 	// 서비스 종료 시 s.notificationSender를 nil로 설정하기 전에 HTTP 서버가 완전히 종료되었음을 보장하여

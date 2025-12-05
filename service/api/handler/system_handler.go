@@ -5,8 +5,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/darkkaiser/notify-server/pkg/common"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/model/response"
+	"github.com/darkkaiser/notify-server/service/api/model/response"
+	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -21,6 +23,22 @@ const (
 )
 
 var serverStartTime = time.Now()
+
+// SystemHandler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
+type SystemHandler struct {
+	notificationSender notification.NotificationSender
+
+	buildInfo common.BuildInfo
+}
+
+// NewSystemHandler SystemHandler 인스턴스를 생성합니다.
+func NewSystemHandler(notificationSender notification.NotificationSender, buildInfo common.BuildInfo) *SystemHandler {
+	return &SystemHandler{
+		notificationSender: notificationSender,
+
+		buildInfo: buildInfo,
+	}
+}
 
 // HealthCheckHandler godoc
 // @Summary 서버 상태 확인
@@ -37,7 +55,7 @@ var serverStartTime = time.Now()
 // @Success 200 {object} response.HealthResponse "서버 정상"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
-func (h *Handler) HealthCheckHandler(c echo.Context) error {
+func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 	applog.WithComponentAndFields("api.handler", log.Fields{
 		"endpoint": "/health",
 	}).Debug("헬스체크 요청")
@@ -87,7 +105,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Success 200 {object} response.VersionResponse "버전 정보"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
-func (h *Handler) VersionHandler(c echo.Context) error {
+func (h *SystemHandler) VersionHandler(c echo.Context) error {
 	applog.WithComponentAndFields("api.handler", log.Fields{
 		"endpoint": "/version",
 	}).Debug("버전 정보 요청")
