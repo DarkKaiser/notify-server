@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewServer(t *testing.T) {
+func TestNewHTTPServer(t *testing.T) {
 	t.Run("Echo 서버 생성 - Debug 모드 활성화", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -22,7 +22,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("Echo 서버 생성 - Debug 모드 비활성화", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        false,
 			AllowOrigins: []string{"http://example.com"},
 		})
@@ -33,7 +33,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("미들웨어 설정 확인", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -46,7 +46,7 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("기본 라우트 테스트", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -72,7 +72,7 @@ func TestNewServer(t *testing.T) {
 
 func TestServerMiddlewares(t *testing.T) {
 	t.Run("CORS 미들웨어 확인", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -96,7 +96,7 @@ func TestServerMiddlewares(t *testing.T) {
 	})
 
 	t.Run("Recover 미들웨어 확인", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -118,7 +118,7 @@ func TestServerMiddlewares(t *testing.T) {
 	})
 
 	t.Run("RequestID 미들웨어 확인", func(t *testing.T) {
-		e := NewServer(ServerConfig{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})

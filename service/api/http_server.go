@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ServerConfig 서버 생성 시 필요한 설정을 정의합니다.
-type ServerConfig struct {
+// HTTPServerConfig 서버 생성 시 필요한 설정을 정의합니다.
+type HTTPServerConfig struct {
 	// Debug는 Echo의 디버그 모드 활성화 여부를 설정합니다.
 	Debug bool
 	// AllowOrigins는 CORS에서 허용할 Origin 목록을 설정합니다.
@@ -48,7 +48,7 @@ type ServerConfig struct {
 //     - 가장 마지막에 적용되어 모든 응답에 보안 헤더 추가
 //
 // 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
-func NewServer(cfg ServerConfig) *echo.Echo {
+func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	e := echo.New()
 
 	e.Debug = cfg.Debug

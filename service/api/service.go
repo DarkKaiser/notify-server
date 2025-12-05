@@ -146,7 +146,7 @@ func (s *NotifyAPIService) setupServer() *echo.Echo {
 	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
 
 	// Echo 서버 생성
-	e := NewServer(ServerConfig{
+	e := NewHTTPServer(HTTPServerConfig{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
