@@ -11,6 +11,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// sensitiveQueryParams 민감 정보로 간주할 쿼리 파라미터 목록입니다.
+// 로그에 기록될 때 이 목록의 파라미터 값은 마스킹됩니다.
+var sensitiveQueryParams = []string{
+	"app_key",
+	"api_key",
+	"password",
+	"token",
+	"secret",
+}
+
 // Logger Echo의 log.Logger 인터페이스를 구현하는 Logrus 어댑터입니다.
 // 이 어댑터 패턴을 통해 Echo 프레임워크가 Logrus를 사용하여 로깅할 수 있도록 합니다.
 //
@@ -184,16 +194,8 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 		bytesIn = "0"
 	}
 
-	// 민감 정보(app_key) 마스킹
-	uri := req.RequestURI
-	if u, err := url.Parse(uri); err == nil {
-		q := u.Query()
-		if q.Has("app_key") {
-			q.Set("app_key", "*****")
-			u.RawQuery = q.Encode()
-			uri = u.String()
-		}
-	}
+	// 민감 정보 마스킹
+	uri := maskSensitiveQueryParams(req.RequestURI)
 
 	logrus.WithFields(map[string]interface{}{
 		"time_rfc3339":  time.Now().Format(time.RFC3339),
@@ -213,6 +215,32 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 	}).Info("echo log")
 
 	return nil
+}
+
+// maskSensitiveQueryParams URI의 민감 정보를 마스킹합니다.
+// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 "*****"로 대체합니다.
+func maskSensitiveQueryParams(uri string) string {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return uri
+	}
+
+	q := u.Query()
+	masked := false
+
+	for _, param := range sensitiveQueryParams {
+		if q.Has(param) {
+			q.Set(param, "*****")
+			masked = true
+		}
+	}
+
+	if masked {
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+
+	return uri
 }
 
 func logrusLogger(next echo.HandlerFunc) echo.HandlerFunc {

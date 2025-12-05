@@ -185,3 +185,59 @@ func TestLogger_JSONMethods(t *testing.T) {
 	assert.Contains(t, buf.String(), "value")
 	buf.Reset()
 }
+
+func TestMaskSensitiveQueryParams(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "app_key 마스킹",
+			input:    "/api/v1/test?app_key=secret123",
+			expected: "/api/v1/test?app_key=%2A%2A%2A%2A%2A", // URL 인코딩된 *****
+		},
+		{
+			name:     "password 마스킹",
+			input:    "/api/v1/test?password=pass123",
+			expected: "/api/v1/test?password=%2A%2A%2A%2A%2A",
+		},
+		{
+			name:     "여러 민감 정보 마스킹",
+			input:    "/api/v1/test?app_key=secret&password=pass123&id=100",
+			expected: "/api/v1/test?app_key=%2A%2A%2A%2A%2A&id=100&password=%2A%2A%2A%2A%2A",
+		},
+		{
+			name:     "민감 정보 없음",
+			input:    "/api/v1/test?id=123&name=test",
+			expected: "/api/v1/test?id=123&name=test",
+		},
+		{
+			name:     "잘못된 URI",
+			input:    "://invalid",
+			expected: "://invalid",
+		},
+		{
+			name:     "token 마스킹",
+			input:    "/api/v1/test?token=abc123",
+			expected: "/api/v1/test?token=%2A%2A%2A%2A%2A",
+		},
+		{
+			name:     "api_key 마스킹",
+			input:    "/api/v1/test?api_key=xyz789",
+			expected: "/api/v1/test?api_key=%2A%2A%2A%2A%2A",
+		},
+		{
+			name:     "secret 마스킹",
+			input:    "/api/v1/test?secret=confidential",
+			expected: "/api/v1/test?secret=%2A%2A%2A%2A%2A",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maskSensitiveQueryParams(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

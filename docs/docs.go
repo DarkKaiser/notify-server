@@ -164,6 +164,7 @@ const docTemplate = `{
                     "description": "알림 메시지 내용 (최대 4096자, 마크다운 형식 지원)",
                     "type": "string",
                     "maxLength": 4096,
+                    "minLength": 1,
                     "example": "서버에서 중요한 이벤트가 발생했습니다."
                 }
             }

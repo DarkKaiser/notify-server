@@ -14,6 +14,7 @@ definitions:
         description: 알림 메시지 내용 (최대 4096자, 마크다운 형식 지원)
         example: 서버에서 중요한 이벤트가 발생했습니다.
         maxLength: 4096
+        minLength: 1
         type: string
     required:
     - application_id
