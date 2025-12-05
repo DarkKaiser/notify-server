@@ -33,11 +33,47 @@ const (
 )
 
 // InitFileOptions 로그 파일 초기화 옵션입니다.
+//
+// 로그 레벨별로 파일을 분리하여 저장할 수 있습니다.
+// 기본적으로 모든 로그는 메인 로그 파일에 기록되며,
+// 옵션을 활성화하면 특정 레벨의 로그를 별도 파일로 추가 저장합니다.
+//
+// # 사용 예제
+//
+// 기본 사용 (레벨 분리 없음):
+//
+//	closer := log.InitFile("myapp", 30)
+//	defer closer.Close()
+//
+// Critical 로그만 별도 파일로 분리:
+//
+//	opts := log.InitFileOptions{
+//	    EnableCriticalLog: true,  // myapp-YYYYMMDDHHMMSS.critical.log 파일 생성
+//	    EnableVerboseLog:  false,
+//	}
+//	closer := log.InitFileWithOptions("myapp", 30, opts)
+//	defer closer.Close()
+//
+// 모든 레벨을 별도 파일로 분리:
+//
+//	opts := log.InitFileOptions{
+//	    EnableCriticalLog: true,  // myapp-YYYYMMDDHHMMSS.critical.log
+//	    EnableVerboseLog:  true,  // myapp-YYYYMMDDHHMMSS.verbose.log
+//	}
+//	closer := log.InitFileWithOptions("myapp", 30, opts)
+//	defer closer.Close()
+//
+// 생성되는 파일:
+//   - 메인 로그: myapp-YYYYMMDDHHMMSS.log (모든 레벨)
+//   - Critical 로그: myapp-YYYYMMDDHHMMSS.critical.log (Error, Fatal, Panic)
+//   - Verbose 로그: myapp-YYYYMMDDHHMMSS.verbose.log (Debug, Trace)
 type InitFileOptions struct {
 	// EnableCriticalLog 치명적인 오류(Error, Fatal, Panic) 레벨의 로그를 별도 파일로 분리합니다.
+	// true로 설정하면 에러 로그를 쉽게 추적할 수 있습니다.
 	EnableCriticalLog bool
 
 	// EnableVerboseLog 상세 정보(Debug, Trace) 레벨의 로그를 별도 파일로 분리합니다.
+	// true로 설정하면 디버깅 시 상세 로그만 확인할 수 있습니다.
 	EnableVerboseLog bool
 }
 

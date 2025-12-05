@@ -1,15 +1,15 @@
-package router
+package server
 
 import (
 	"net/http"
 
-	_middleware_ "github.com/darkkaiser/notify-server/service/api/v1/middleware"
+	appmiddleware "github.com/darkkaiser/notify-server/service/api/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
 )
 
-// Config는 Router 생성 시 필요한 설정을 정의합니다.
+// Config Router 생성 시 필요한 설정을 정의합니다.
 type Config struct {
 	// Debug는 Echo의 디버그 모드 활성화 여부를 설정합니다.
 	Debug bool
@@ -18,13 +18,15 @@ type Config struct {
 	AllowOrigins []string
 }
 
-// New는 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
+// New 설정된 미들웨어와 라우트를 포함한 Echo 인스턴스를 생성합니다.
 // 미들웨어는 다음 순서로 적용됩니다:
 //  1. Recover - 패닉 복구
 //  2. RequestID - 요청 ID 생성
 //  3. LogrusLogger - 로깅
 //  4. CORS - Cross-Origin Resource Sharing
 //  5. Secure - 보안 헤더 설정
+//
+// 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
 func New(cfg Config) *echo.Echo {
 	e := echo.New()
 
@@ -33,12 +35,12 @@ func New(cfg Config) *echo.Echo {
 
 	// echo에서 출력되는 로그를 Logrus Logger로 출력되도록 한다.
 	// echo Logger의 인터페이스를 래핑한 객체를 이용하여 Logrus Logger로 보낸다.
-	e.Logger = _middleware_.Logger{Logger: log.StandardLogger()}
+	e.Logger = appmiddleware.Logger{Logger: log.StandardLogger()}
 
 	// 미들웨어 적용 (권장 순서)
-	e.Use(_middleware_.LogrusRecover())                    // 1. Panic 복구
+	e.Use(appmiddleware.LogrusRecover())                   // 1. Panic 복구
 	e.Use(middleware.RequestID())                          // 2. Request ID
-	e.Use(_middleware_.LogrusLogger())                     // 3. 로깅
+	e.Use(appmiddleware.LogrusLogger())                    // 3. 로깅
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 4. CORS
 		AllowOrigins: cfg.AllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},

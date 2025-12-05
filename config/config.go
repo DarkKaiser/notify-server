@@ -11,11 +11,15 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/validations"
 )
 
+// 애플리케이션 기본 정보
 const (
 	AppName string = "notify-server"
 
 	AppConfigFileName = AppName + ".json"
+)
 
+// HTTP 재시도 기본값
+const (
 	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
 	DefaultMaxRetries = 3
 

@@ -13,15 +13,24 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/common"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/service/api/v1/router"
+	"github.com/darkkaiser/notify-server/service/api/handler"
+	"github.com/darkkaiser/notify-server/service/api/server"
+	v1 "github.com/darkkaiser/notify-server/service/api/v1"
+	v1handler "github.com/darkkaiser/notify-server/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/service/notification"
-	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
-	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
-// NotifyAPIService
+// NotifyAPIService Notify API 서버의 생명주기를 관리하는 서비스입니다.
+//
+// 이 서비스는 다음과 같은 역할을 수행합니다:
+//   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
+//   - API 엔드포인트 라우팅 설정 (Health Check, Version, 알림 메시지 전송 등)
+//   - Swagger UI 제공
+//   - 서비스 상태 관리 (시작/중지)
+//   - Graceful Shutdown 지원
+//
+// 서비스는 고루틴으로 실행되며, context를 통해 종료 신호를 받습니다.
 type NotifyAPIService struct {
 	appConfig *config.AppConfig
 
@@ -79,37 +88,20 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	defer serviceStopWaiter.Done()
 
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
-	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
+	h := v1handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
-	// Router 생성 시 설정 전달
-	e := router.New(router.Config{
+	// HTTP 서버 생성 (미들웨어 및 라우트 설정 포함)
+	e := server.New(server.Config{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
-	// System 엔드포인트 (인증 불필요)
-	e.GET("/health", h.HealthCheckHandler)
-	e.GET("/version", h.VersionHandler)
+	// SystemHandler 생성
+	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
 
-	// API v1 엔드포인트
-	grp := e.Group("/api/v1")
-	{
-		grp.POST("/notice/message", h.SendNotifyMessageHandler)
-	}
-
-	// Swagger UI 설정
-	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(
-		// Swagger 문서 JSON 파일 위치 지정
-		echoSwagger.URL("/swagger/doc.json"),
-		// 딥 링크 활성화 (특정 API로 바로 이동 가능한 URL 지원)
-		echoSwagger.DeepLinking(true),
-		// 문서 로드 시 태그(Tag) 목록만 펼침 상태로 표시 ("list", "full", "none")
-		echoSwagger.DocExpansion("list"),
-	))
-
-	echo.NotFoundHandler = func(c echo.Context) error {
-		return echo.NewHTTPError(http.StatusNotFound, "페이지를 찾을 수 없습니다.")
-	}
+	// 라우트 설정
+	SetupRoutes(e, systemHandler)
+	v1.SetupRoutes(e, h)
 
 	// httpServerDone은 HTTP 서버 고루틴이 종료될 때까지 대기하기 위한 채널이다.
 	// 서비스 종료 시 s.notificationSender를 nil로 설정하기 전에 HTTP 서버가 완전히 종료되었음을 보장하여

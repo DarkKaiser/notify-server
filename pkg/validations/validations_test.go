@@ -200,3 +200,99 @@ func TestValidateNoDuplicate(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCORSOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  string
+		wantErr bool
+	}{
+		// 유효한 케이스
+		{"와일드카드", "*", false},
+		{"유효한 HTTP Origin", "http://localhost:3000", false},
+		{"유효한 HTTPS Origin", "https://example.com", false},
+		{"유효한 Origin (포트 포함)", "https://example.com:8443", false},
+		{"유효한 Origin (서브도메인)", "https://api.example.com", false},
+		{"유효한 Origin (IP 주소)", "http://192.168.1.1:8080", false},
+		{"유효한 Origin (localhost)", "http://localhost", false},
+
+		// 잘못된 케이스 - 슬래시로 끝남
+		{"슬래시로 끝나는 Origin", "https://example.com/", true},
+		{"슬래시로 끝나는 Origin (포트 포함)", "https://example.com:8443/", true},
+
+		// 잘못된 케이스 - 경로 포함
+		{"경로 포함", "https://example.com/path", true},
+		{"경로 포함 (여러 레벨)", "https://example.com/path/to/resource", true},
+
+		// 잘못된 케이스 - 쿼리 스트링 포함
+		{"쿼리 스트링 포함", "https://example.com?query=1", true},
+		{"쿼리 스트링과 경로 포함", "https://example.com/path?query=1", true},
+
+		// 잘못된 케이스 - 빈 문자열 및 공백
+		{"빈 문자열", "", true},
+		{"공백만 있는 문자열", "   ", true},
+
+		// 잘못된 케이스 - 잘못된 스키마
+		{"잘못된 스키마 (ftp)", "ftp://example.com", true},
+		{"잘못된 스키마 (file)", "file:///path/to/file", true},
+		{"스키마 없음", "example.com", true},
+		{"스키마 없음 (포트 포함)", "example.com:8080", true},
+
+		// 에지 케이스
+		{"포트만 있는 localhost", "http://localhost:3000", false},
+		{"IPv4 주소", "http://127.0.0.1", false},
+		{"IPv4 주소 (포트 포함)", "http://127.0.0.1:8080", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCORSOrigin(tt.origin)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateCORSOrigin() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateCORSOrigin_ErrorMessages(t *testing.T) {
+	// 에러 메시지 검증 테스트
+	tests := []struct {
+		name           string
+		origin         string
+		expectedErrMsg string
+	}{
+		{
+			name:           "슬래시로 끝나는 경우",
+			origin:         "https://example.com/",
+			expectedErrMsg: "슬래시(/)로 끝날 수 없습니다",
+		},
+		{
+			name:           "경로 포함",
+			origin:         "https://example.com/path",
+			expectedErrMsg: "경로(Path)를 포함할 수 없습니다",
+		},
+		{
+			name:           "쿼리 스트링 포함",
+			origin:         "https://example.com?query=1",
+			expectedErrMsg: "쿼리 스트링을 포함할 수 없습니다",
+		},
+		{
+			name:           "잘못된 스키마",
+			origin:         "ftp://example.com",
+			expectedErrMsg: "http 또는 https 스키마를 사용해야 합니다",
+		},
+		{
+			name:           "빈 문자열",
+			origin:         "   ",
+			expectedErrMsg: "빈 문자열일 수 없습니다",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCORSOrigin(tt.origin)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErrMsg)
+		})
+	}
+}

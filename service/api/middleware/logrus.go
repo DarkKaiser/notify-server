@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"io"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -10,7 +11,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Logger는 Echo의 log.Logger 인터페이스를 구현하는 Logrus 어댑터입니다.
+// sensitiveQueryParams 민감 정보로 간주할 쿼리 파라미터 목록입니다.
+// 로그에 기록될 때 이 목록의 파라미터 값은 마스킹됩니다.
+var sensitiveQueryParams = []string{
+	"app_key",
+	"api_key",
+	"password",
+	"token",
+	"secret",
+}
+
+// Logger Echo의 log.Logger 인터페이스를 구현하는 Logrus 어댑터입니다.
 // 이 어댑터 패턴을 통해 Echo 프레임워크가 Logrus를 사용하여 로깅할 수 있도록 합니다.
 //
 // Echo는 자체 Logger 인터페이스(github.com/labstack/gommon/log.Logger)를 정의하고 있으며,
@@ -22,11 +33,11 @@ type Logger struct {
 
 // Output 현재 출력 Writer를 반환합니다.
 func (l Logger) Output() io.Writer {
-	return l.Out
+	return l.Logger.Out
 }
 
 func (l Logger) SetOutput(w io.Writer) {
-	logrus.SetOutput(w)
+	l.Logger.SetOutput(w)
 }
 
 func (l Logger) Prefix() string {
@@ -60,13 +71,13 @@ func (l Logger) Level() log.Lvl {
 func (l Logger) SetLevel(lvl log.Lvl) {
 	switch lvl {
 	case log.DEBUG:
-		logrus.SetLevel(logrus.DebugLevel)
+		l.Logger.SetLevel(logrus.DebugLevel)
 	case log.WARN:
-		logrus.SetLevel(logrus.WarnLevel)
+		l.Logger.SetLevel(logrus.WarnLevel)
 	case log.ERROR:
-		logrus.SetLevel(logrus.ErrorLevel)
+		l.Logger.SetLevel(logrus.ErrorLevel)
 	case log.INFO:
-		logrus.SetLevel(logrus.InfoLevel)
+		l.Logger.SetLevel(logrus.InfoLevel)
 	case log.OFF:
 	}
 }
@@ -79,87 +90,87 @@ func (l Logger) SetHeader(string) {
 // Logrus의 해당 메서드로 단순 위임합니다.
 
 func (l Logger) Print(i ...interface{}) {
-	logrus.Print(i...)
+	l.Logger.Print(i...)
 }
 
 func (l Logger) Printf(format string, args ...interface{}) {
-	logrus.Printf(format, args...)
+	l.Logger.Printf(format, args...)
 }
 
 func (l Logger) Printj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Print()
+	l.Logger.WithFields(logrus.Fields(j)).Print()
 }
 
 func (l Logger) Debug(i ...interface{}) {
-	logrus.Debug(i...)
+	l.Logger.Debug(i...)
 }
 
 func (l Logger) Debugf(format string, args ...interface{}) {
-	logrus.Debugf(format, args...)
+	l.Logger.Debugf(format, args...)
 }
 
 func (l Logger) Debugj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Debug()
+	l.Logger.WithFields(logrus.Fields(j)).Debug()
 }
 
 func (l Logger) Info(i ...interface{}) {
-	logrus.Info(i...)
+	l.Logger.Info(i...)
 }
 
 func (l Logger) Infof(format string, args ...interface{}) {
-	logrus.Infof(format, args...)
+	l.Logger.Infof(format, args...)
 }
 
 func (l Logger) Infoj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Info()
+	l.Logger.WithFields(logrus.Fields(j)).Info()
 }
 
 func (l Logger) Warn(i ...interface{}) {
-	logrus.Warn(i...)
+	l.Logger.Warn(i...)
 }
 
 func (l Logger) Warnf(format string, args ...interface{}) {
-	logrus.Warnf(format, args...)
+	l.Logger.Warnf(format, args...)
 }
 
 func (l Logger) Warnj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Warn()
+	l.Logger.WithFields(logrus.Fields(j)).Warn()
 }
 
 func (l Logger) Error(i ...interface{}) {
-	logrus.Error(i...)
+	l.Logger.Error(i...)
 }
 
 func (l Logger) Errorf(format string, args ...interface{}) {
-	logrus.Errorf(format, args...)
+	l.Logger.Errorf(format, args...)
 }
 
 func (l Logger) Errorj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Error()
+	l.Logger.WithFields(logrus.Fields(j)).Error()
 }
 
 func (l Logger) Fatal(i ...interface{}) {
-	logrus.Fatal(i...)
+	l.Logger.Fatal(i...)
 }
 
 func (l Logger) Fatalf(format string, args ...interface{}) {
-	logrus.Fatalf(format, args...)
+	l.Logger.Fatalf(format, args...)
 }
 
 func (l Logger) Fatalj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Fatal()
+	l.Logger.WithFields(logrus.Fields(j)).Fatal()
 }
 
 func (l Logger) Panic(i ...interface{}) {
-	logrus.Panic(i...)
+	l.Logger.Panic(i...)
 }
 
 func (l Logger) Panicf(format string, args ...interface{}) {
-	logrus.Panicf(format, args...)
+	l.Logger.Panicf(format, args...)
 }
 
 func (l Logger) Panicj(j log.JSON) {
-	logrus.WithFields(logrus.Fields(j)).Panic()
+	l.Logger.WithFields(logrus.Fields(j)).Panic()
 }
 
 // logrusMiddlewareHandler HTTP 요청/응답 정보를 Logrus로 로깅하는 미들웨어 핸들러입니다.
@@ -183,11 +194,14 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 		bytesIn = "0"
 	}
 
+	// 민감 정보 마스킹
+	uri := maskSensitiveQueryParams(req.RequestURI)
+
 	logrus.WithFields(map[string]interface{}{
 		"time_rfc3339":  time.Now().Format(time.RFC3339),
 		"remote_ip":     c.RealIP(),
 		"host":          req.Host,
-		"uri":           req.RequestURI,
+		"uri":           uri,
 		"method":        req.Method,
 		"path":          p,
 		"referer":       req.Referer(),
@@ -201,6 +215,32 @@ func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
 	}).Info("echo log")
 
 	return nil
+}
+
+// maskSensitiveQueryParams URI의 민감 정보를 마스킹합니다.
+// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 "*****"로 대체합니다.
+func maskSensitiveQueryParams(uri string) string {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return uri
+	}
+
+	q := u.Query()
+	masked := false
+
+	for _, param := range sensitiveQueryParams {
+		if q.Has(param) {
+			q.Set(param, "*****")
+			masked = true
+		}
+	}
+
+	if masked {
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+
+	return uri
 }
 
 func logrusLogger(next echo.HandlerFunc) echo.HandlerFunc {

@@ -19,8 +19,23 @@ var (
 	// cronParser Cron 표현식 파서
 	cronParser = cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
-	// urlRegex URL 유효성 검사 정규식 (http/https 스키마 필수, localhost 및 IP 지원)
-	// IP 주소는 각 옥텟이 0-255 범위여야 함
+	// urlRegex URL 유효성 검사 정규식
+	// 형식: ^https?://[호스트](?::[포트])?(?:/[경로])*$
+	//
+	// 구성 요소:
+	//   - 스키마: http 또는 https (필수)
+	//   - 호스트: 다음 중 하나
+	//     * 도메인명: 영문자, 숫자, 하이픈, 점으로 구성, 최소 2자 이상의 TLD 필요
+	//       예: example.com, api.example.co.kr
+	//     * localhost: 로컬 개발 환경 지원
+	//     * IPv4 주소: 각 옥텟이 0-255 범위 (예: 192.168.1.1)
+	//   - 포트: 선택적, 숫자로 구성 (예: :8080)
+	//   - 경로: 선택적, 슬래시로 시작하는 경로 세그먼트 (예: /path/to/resource)
+	//
+	// 예제:
+	//   - https://example.com
+	//   - http://localhost:3000
+	//   - https://192.168.1.1:8443/api
 	urlRegex = regexp.MustCompile(`^https?://(?:[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})+|localhost|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?::\d+)?(?:/[^/]+)*$`)
 )
 

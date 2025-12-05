@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
-	apiv1 "github.com/darkkaiser/notify-server/service/api/v1"
+	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +32,7 @@ func TestServicesIntegration(t *testing.T) {
 			}
 		})
 
-		notifyAPIService := apiv1.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
+		notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
 			Version:     "test-version",
 			BuildDate:   "test-date",
 			BuildNumber: "test-build",
