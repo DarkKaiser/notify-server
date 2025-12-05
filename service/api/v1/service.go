@@ -88,14 +88,11 @@ func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaite
 	// main.go에서 전달받은 빌드 정보를 Handler에 전달
 	h := handler.NewHandler(s.appConfig, s.notificationSender, s.buildInfo)
 
-	// Router 생성 시 설정 전달
+	// Router 생성 (미들웨어 및 라우트 설정 포함)
 	e := router.New(router.Config{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
-	})
-
-	// 라우트 설정
-	router.SetupRoutes(e, h)
+	}, h)
 
 	// httpServerDone은 HTTP 서버 고루틴이 종료될 때까지 대기하기 위한 채널이다.
 	// 서비스 종료 시 s.notificationSender를 nil로 설정하기 전에 HTTP 서버가 완전히 종료되었음을 보장하여

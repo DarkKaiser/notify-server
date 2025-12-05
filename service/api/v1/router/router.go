@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/darkkaiser/notify-server/service/api/v1/handler"
 	appmiddleware "github.com/darkkaiser/notify-server/service/api/v1/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -18,14 +19,16 @@ type Config struct {
 	AllowOrigins []string
 }
 
-// New 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
+// New 설정된 미들웨어와 라우트를 포함한 Echo 인스턴스를 생성합니다.
 // 미들웨어는 다음 순서로 적용됩니다:
 //  1. Recover - 패닉 복구
 //  2. RequestID - 요청 ID 생성
 //  3. LogrusLogger - 로깅
 //  4. CORS - Cross-Origin Resource Sharing
 //  5. Secure - 보안 헤더 설정
-func New(cfg Config) *echo.Echo {
+//
+// 라우트 설정까지 완료된 Echo 인스턴스를 반환하므로 바로 사용 가능합니다.
+func New(cfg Config, h *handler.Handler) *echo.Echo {
 	e := echo.New()
 
 	e.Debug = cfg.Debug
@@ -44,6 +47,9 @@ func New(cfg Config) *echo.Echo {
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
 	e.Use(middleware.Secure()) // 5. 보안 헤더
+
+	// 라우트 설정
+	SetupRoutes(e, h)
 
 	return e
 }

@@ -14,7 +14,7 @@ func TestNew(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
 		assert.True(t, e.Debug, "Debug 모드가 활성화되어야 합니다")
@@ -25,7 +25,7 @@ func TestNew(t *testing.T) {
 		e := New(Config{
 			Debug:        false,
 			AllowOrigins: []string{"http://example.com"},
-		})
+		}, nil)
 
 		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
 		assert.False(t, e.Debug, "Debug 모드가 비활성화되어야 합니다")
@@ -36,7 +36,7 @@ func TestNew(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		// Echo 인스턴스가 정상적으로 생성되었는지 확인
 		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
@@ -49,7 +49,7 @@ func TestNew(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		// 테스트 라우트 추가
 		e.GET("/test", func(c echo.Context) error {
@@ -75,7 +75,7 @@ func TestRouterMiddlewares(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		// 테스트용 핸들러 등록
 		e.GET("/test", func(c echo.Context) error {
@@ -99,7 +99,7 @@ func TestRouterMiddlewares(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		// Panic이 발생해도 서버가 다운되지 않는지 테스트
 		e.GET("/panic", func(c echo.Context) error {
@@ -121,7 +121,7 @@ func TestRouterMiddlewares(t *testing.T) {
 		e := New(Config{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
-		})
+		}, nil)
 
 		e.GET("/test", func(c echo.Context) error {
 			return c.String(http.StatusOK, "ok")
