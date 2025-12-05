@@ -52,12 +52,13 @@ func (h *Handler) SendNotifyMessageHandler(c echo.Context) error {
 	}
 
 	// 2. 입력 검증
-	if req.ApplicationID == "" {
+	if err := ValidateRequest(req); err != nil {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"endpoint": endpointNotifyMessage,
-		}).Warn("ApplicationID가 비어있음")
+			"error":    err,
+		}).Warn("입력 검증 실패")
 
-		return newBadRequestError("application_id는 필수입니다")
+		return newBadRequestError(FormatValidationError(err))
 	}
 
 	appKey := c.QueryParam("app_key")
