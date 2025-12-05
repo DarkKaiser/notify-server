@@ -151,6 +151,9 @@ func validConfigJSON() string {
 				"tls_server": false,
 				"listen_port": 18080
 			},
+			"cors": {
+				"allow_origins": ["*"]
+			},
 			"applications": []
 		}
 	}`

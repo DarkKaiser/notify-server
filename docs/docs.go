@@ -57,7 +57,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.NotifyMessageRequest"
+                            "$ref": "#/definitions/request.NotifyMessageRequest"
                         }
                     }
                 ],
@@ -65,25 +65,25 @@ const docTemplate = `{
                     "200": {
                         "description": "성공",
                         "schema": {
-                            "$ref": "#/definitions/model.SuccessResponse"
+                            "$ref": "#/definitions/response.SuccessResponse"
                         }
                     },
                     "400": {
                         "description": "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)",
                         "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)",
                         "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류",
                         "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -103,13 +103,13 @@ const docTemplate = `{
                     "200": {
                         "description": "서버 정상",
                         "schema": {
-                            "$ref": "#/definitions/model.HealthResponse"
+                            "$ref": "#/definitions/response.HealthResponse"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류",
                         "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -129,13 +129,13 @@ const docTemplate = `{
                     "200": {
                         "description": "버전 정보",
                         "schema": {
-                            "$ref": "#/definitions/model.VersionResponse"
+                            "$ref": "#/definitions/response.VersionResponse"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류",
                         "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -143,59 +143,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "model.DependencyStatus": {
-            "type": "object",
-            "properties": {
-                "latency_ms": {
-                    "description": "응답 시간 (밀리초, 선택적)",
-                    "type": "integer",
-                    "example": 5
-                },
-                "message": {
-                    "description": "추가 메시지 (선택적)",
-                    "type": "string",
-                    "example": "정상 작동 중"
-                },
-                "status": {
-                    "description": "상태 (healthy, unhealthy, unknown)",
-                    "type": "string",
-                    "example": "healthy"
-                }
-            }
-        },
-        "model.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "description": "에러 메시지 (에러 발생 원인 및 해결 방법 포함)",
-                    "type": "string",
-                    "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
-                }
-            }
-        },
-        "model.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "dependencies": {
-                    "description": "의존성 상태 (선택적)",
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/model.DependencyStatus"
-                    }
-                },
-                "status": {
-                    "description": "서버 상태 (healthy, unhealthy)",
-                    "type": "string",
-                    "example": "healthy"
-                },
-                "uptime": {
-                    "description": "서버 가동 시간 (초)",
-                    "type": "integer",
-                    "example": 3600
-                }
-            }
-        },
-        "model.NotifyMessageRequest": {
+        "request.NotifyMessageRequest": {
             "type": "object",
             "required": [
                 "application_id",
@@ -220,7 +168,59 @@ const docTemplate = `{
                 }
             }
         },
-        "model.SuccessResponse": {
+        "response.DependencyStatus": {
+            "type": "object",
+            "properties": {
+                "latency_ms": {
+                    "description": "응답 시간 (밀리초, 선택적)",
+                    "type": "integer",
+                    "example": 5
+                },
+                "message": {
+                    "description": "추가 메시지 (선택적)",
+                    "type": "string",
+                    "example": "정상 작동 중"
+                },
+                "status": {
+                    "description": "상태 (healthy, unhealthy, unknown)",
+                    "type": "string",
+                    "example": "healthy"
+                }
+            }
+        },
+        "response.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "에러 메시지 (에러 발생 원인 및 해결 방법 포함)",
+                    "type": "string",
+                    "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
+                }
+            }
+        },
+        "response.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "dependencies": {
+                    "description": "의존성 상태 (선택적)",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/response.DependencyStatus"
+                    }
+                },
+                "status": {
+                    "description": "서버 상태 (healthy, unhealthy)",
+                    "type": "string",
+                    "example": "healthy"
+                },
+                "uptime": {
+                    "description": "서버 가동 시간 (초)",
+                    "type": "integer",
+                    "example": 3600
+                }
+            }
+        },
+        "response.SuccessResponse": {
             "type": "object",
             "properties": {
                 "result_code": {
@@ -230,7 +230,7 @@ const docTemplate = `{
                 }
             }
         },
-        "model.VersionResponse": {
+        "response.VersionResponse": {
             "type": "object",
             "properties": {
                 "build_date": {
