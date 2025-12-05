@@ -2,24 +2,10 @@ package middleware
 
 import (
 	"io"
-	"net/url"
-	"strconv"
-	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 	"github.com/sirupsen/logrus"
 )
-
-// sensitiveQueryParams 민감 정보로 간주할 쿼리 파라미터 목록입니다.
-// 로그에 기록될 때 이 목록의 파라미터 값은 마스킹됩니다.
-var sensitiveQueryParams = []string{
-	"app_key",
-	"api_key",
-	"password",
-	"token",
-	"secret",
-}
 
 // Logger Echo의 log.Logger 인터페이스를 구현하는 Logrus 어댑터입니다.
 // 이 어댑터 패턴을 통해 Echo 프레임워크가 Logrus를 사용하여 로깅할 수 있도록 합니다.
@@ -60,8 +46,11 @@ func (l Logger) Level() log.Lvl {
 	case logrus.InfoLevel:
 		return log.INFO
 	case logrus.PanicLevel:
+		// Echo에 대응하는 레벨이 없으므로 OFF 반환
 	case logrus.FatalLevel:
+		// Echo에 대응하는 레벨이 없으므로 OFF 반환
 	case logrus.TraceLevel:
+		// Echo에 대응하는 레벨이 없으므로 OFF 반환
 	}
 
 	return log.OFF
@@ -79,6 +68,7 @@ func (l Logger) SetLevel(lvl log.Lvl) {
 	case log.INFO:
 		l.Logger.SetLevel(logrus.InfoLevel)
 	case log.OFF:
+		// log.OFF는 Logrus에 대응하는 레벨이 없으므로 무시
 	}
 }
 
@@ -171,86 +161,4 @@ func (l Logger) Panicf(format string, args ...interface{}) {
 
 func (l Logger) Panicj(j log.JSON) {
 	l.Logger.WithFields(logrus.Fields(j)).Panic()
-}
-
-// logrusMiddlewareHandler HTTP 요청/응답 정보를 Logrus로 로깅하는 미들웨어 핸들러입니다.
-// 요청 처리 시간, 상태 코드, IP 주소 등의 정보를 구조화된 로그로 기록합니다.
-func logrusMiddlewareHandler(c echo.Context, next echo.HandlerFunc) error {
-	req := c.Request()
-	res := c.Response()
-	start := time.Now()
-	if err := next(c); err != nil {
-		c.Error(err)
-	}
-	stop := time.Now()
-
-	p := req.URL.Path
-	if p == "" {
-		p = "/"
-	}
-
-	bytesIn := req.Header.Get(echo.HeaderContentLength)
-	if bytesIn == "" {
-		bytesIn = "0"
-	}
-
-	// 민감 정보 마스킹
-	uri := maskSensitiveQueryParams(req.RequestURI)
-
-	logrus.WithFields(map[string]interface{}{
-		"time_rfc3339":  time.Now().Format(time.RFC3339),
-		"remote_ip":     c.RealIP(),
-		"host":          req.Host,
-		"uri":           uri,
-		"method":        req.Method,
-		"path":          p,
-		"referer":       req.Referer(),
-		"user_agent":    req.UserAgent(),
-		"status":        res.Status,
-		"latency":       strconv.FormatInt(stop.Sub(start).Nanoseconds()/1000, 10),
-		"latency_human": stop.Sub(start).String(),
-		"bytes_in":      bytesIn,
-		"bytes_out":     strconv.FormatInt(res.Size, 10),
-		"request_id":    res.Header().Get(echo.HeaderXRequestID),
-	}).Info("echo log")
-
-	return nil
-}
-
-// maskSensitiveQueryParams URI의 민감 정보를 마스킹합니다.
-// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 "*****"로 대체합니다.
-func maskSensitiveQueryParams(uri string) string {
-	u, err := url.Parse(uri)
-	if err != nil {
-		return uri
-	}
-
-	q := u.Query()
-	masked := false
-
-	for _, param := range sensitiveQueryParams {
-		if q.Has(param) {
-			q.Set(param, "*****")
-			masked = true
-		}
-	}
-
-	if masked {
-		u.RawQuery = q.Encode()
-		return u.String()
-	}
-
-	return uri
-}
-
-func logrusLogger(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		return logrusMiddlewareHandler(c, next)
-	}
-}
-
-// LogrusLogger Echo 미들웨어로 사용할 수 있는 Logrus 로거를 반환합니다.
-// router.New()에서 이 미들웨어를 등록하여 모든 HTTP 요청을 로깅합니다.
-func LogrusLogger() echo.MiddlewareFunc {
-	return logrusLogger
 }

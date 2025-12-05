@@ -10,8 +10,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ApplicationManager 애플리케이션 로딩 및 인증을 담당합니다.
-// API 버전과 무관하게 모든 핸들러에서 재사용 가능합니다.
+// ApplicationManager 애플리케이션 로딩 및 인증을 담당하는 매니저입니다.
+//
+// 이 구조체는 다음과 같은 역할을 수행합니다:
+//   - 설정 파일에서 등록된 애플리케이션 정보를 메모리에 로드
+//   - Application ID와 App Key를 통한 인증 처리
+//   - 인증 실패 시 적절한 HTTP 에러 반환
+//
+// ApplicationManager는 API 버전(v1, v2 등)과 무관하게 모든 핸들러에서 재사용 가능하며,
+// 애플리케이션 인증이 필요한 모든 엔드포인트에서 공통으로 사용됩니다.
+//
+// 사용 예시:
+//
+//	manager := auth.NewApplicationManager(appConfig)
+//	app, err := manager.Authenticate(applicationID, appKey)
+//	if err != nil {
+//	    return err // 401 Unauthorized
+//	}
+//	// app 사용
 type ApplicationManager struct {
 	applications map[string]*domain.Application
 }

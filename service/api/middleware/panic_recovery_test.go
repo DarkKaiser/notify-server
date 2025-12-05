@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLogrusRecover(t *testing.T) {
+func TestPanicRecovery(t *testing.T) {
 	// Setup
 	e := echo.New()
-	e.Use(LogrusRecover())
+	e.Use(PanicRecovery())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -34,7 +34,7 @@ func TestLogrusRecover(t *testing.T) {
 	// Execute handler through middleware chain
 	// Echo middleware chain execution is a bit complex to simulate directly with just function calls
 	// So we use the middleware returned function
-	err := LogrusRecover()(h)(c)
+	err := PanicRecovery()(h)(c)
 
 	// Assertions
 	assert.NoError(t, err) // Recover middleware should swallow the panic and return nil (or handle error internally)
@@ -67,10 +67,10 @@ func TestLogrusRecover(t *testing.T) {
 	assert.NotEmpty(t, stack)
 }
 
-func TestLogrusRecover_WithError(t *testing.T) {
+func TestPanicRecovery_WithError(t *testing.T) {
 	// Setup
 	e := echo.New()
-	e.Use(LogrusRecover())
+	e.Use(PanicRecovery())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -86,7 +86,7 @@ func TestLogrusRecover_WithError(t *testing.T) {
 		panic(assert.AnError)
 	}
 
-	err := LogrusRecover()(h)(c)
+	err := PanicRecovery()(h)(c)
 
 	assert.NoError(t, err)
 

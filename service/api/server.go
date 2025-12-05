@@ -22,7 +22,7 @@ type ServerConfig struct {
 // 미들웨어는 다음 순서로 적용됩니다:
 //  1. Recover - 패닉 복구
 //  2. RequestID - 요청 ID 생성
-//  3. LogrusLogger - 로깅
+//  3. HTTPLogger - 로깅
 //  4. CORS - Cross-Origin Resource Sharing
 //  5. Secure - 보안 헤더 설정
 //
@@ -38,9 +38,9 @@ func NewServer(cfg ServerConfig) *echo.Echo {
 	e.Logger = appmiddleware.Logger{Logger: log.StandardLogger()}
 
 	// 미들웨어 적용 (권장 순서)
-	e.Use(appmiddleware.LogrusRecover())                   // 1. Panic 복구
+	e.Use(appmiddleware.PanicRecovery())                   // 1. Panic 복구
 	e.Use(middleware.RequestID())                          // 2. Request ID
-	e.Use(appmiddleware.LogrusLogger())                    // 3. 로깅
+	e.Use(appmiddleware.HTTPLogger())                      // 3. 로깅
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 4. CORS
 		AllowOrigins: cfg.AllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
