@@ -17,7 +17,7 @@ func TestNotifierID(t *testing.T) {
 func TestNotifier_ID(t *testing.T) {
 	t.Run("Notifier ID 반환", func(t *testing.T) {
 		t.Run("Notifier ID 반환", func(t *testing.T) {
-			n := NewNotifier(NotifierID("test-id"), true)
+			n := NewNotifier(NotifierID("test-id"), true, 10)
 
 			assert.Equal(t, NotifierID("test-id"), n.ID(), "ID가 일치해야 합니다")
 		})
@@ -26,13 +26,13 @@ func TestNotifier_ID(t *testing.T) {
 
 func TestNotifier_SupportsHTMLMessage(t *testing.T) {
 	t.Run("HTML 메시지 지원", func(t *testing.T) {
-		n := NewNotifier(NotifierID("test-id"), true)
+		n := NewNotifier(NotifierID("test-id"), true, 10)
 
 		assert.True(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원해야 합니다")
 	})
 
 	t.Run("HTML 메시지 미지원", func(t *testing.T) {
-		n := NewNotifier(NotifierID("test-id"), false)
+		n := NewNotifier(NotifierID("test-id"), false, 10)
 
 		assert.False(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원하지 않아야 합니다")
 	})
@@ -40,9 +40,9 @@ func TestNotifier_SupportsHTMLMessage(t *testing.T) {
 
 func TestNotifier_Notify(t *testing.T) {
 	t.Run("정상적인 알림 전송", func(t *testing.T) {
-		n := NewNotifier(NotifierID("test-id"), true)
+		n := NewNotifier(NotifierID("test-id"), true, 10)
 		// Accessing private channel for testing
-		sendC := n.notificationSendC
+		sendC := n.requestC
 
 		taskCtx := task.NewContext()
 		succeeded := n.Notify("test message", taskCtx)
@@ -60,8 +60,8 @@ func TestNotifier_Notify(t *testing.T) {
 	})
 
 	t.Run("nil TaskContext로 알림 전송", func(t *testing.T) {
-		n := NewNotifier(NotifierID("test-id"), true)
-		sendC := n.notificationSendC
+		n := NewNotifier(NotifierID("test-id"), true, 10)
+		sendC := n.requestC
 
 		succeeded := n.Notify("test message", nil)
 
@@ -79,19 +79,37 @@ func TestNotifier_Notify(t *testing.T) {
 
 	t.Run("Panic 복구 테스트", func(t *testing.T) {
 		// 닫힌 채널로 panic 유발
-		n := NewNotifier(NotifierID("test-id"), true)
-		close(n.notificationSendC) // Force close for testing panic recovery
+		n := NewNotifier(NotifierID("test-id"), true, 10)
+		n.Close() // Force close using public method
 
 		succeeded := n.Notify("test message", nil)
 
 		assert.False(t, succeeded, "Panic 발생 시 false를 반환해야 합니다")
 	})
+
+	t.Run("메시지 버퍼 크기 설정", func(t *testing.T) {
+		bufferSize := 5
+		n := NewNotifier(NotifierID("test-id"), true, bufferSize)
+		assert.Equal(t, bufferSize, cap(n.requestC), "설정된 버퍼 크기와 채널의 용량이 일치해야 합니다")
+	})
+
+	t.Run("Notifier 종료(Close)", func(t *testing.T) {
+		n := NewNotifier(NotifierID("test-id"), true, 10)
+		n.Close()
+
+		assert.Nil(t, n.requestC, "Close 호출 후 채널은 nil이어야 합니다")
+
+		// 중복 호출 시에도 안전해야 함
+		assert.NotPanics(t, func() {
+			n.Close()
+		})
+	})
 }
 
-func TestNotificationSendData(t *testing.T) {
-	t.Run("NotificationSendData 구조체 생성", func(t *testing.T) {
+func TestNotifyRequest(t *testing.T) {
+	t.Run("notifyRequest 구조체 생성", func(t *testing.T) {
 		taskCtx := task.NewContext()
-		data := &notificationSendData{
+		data := &notifyRequest{
 			message: "test message",
 			taskCtx: taskCtx,
 		}

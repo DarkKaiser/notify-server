@@ -6,8 +6,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// notificationSendData 내부 채널을 통해 전달되는 알림 데이터입니다.
-type notificationSendData struct {
+// notifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
+type notifyRequest struct {
 	message string
 	taskCtx task.TaskContext
 }
@@ -19,17 +19,17 @@ type notifier struct {
 
 	supportsHTMLMessage bool
 
-	notificationSendC chan *notificationSendData
+	requestC chan *notifyRequest
 }
 
 // NewNotifier Notifier를 생성하고 초기화합니다.
-func NewNotifier(id NotifierID, supportsHTMLMessage bool) notifier {
+func NewNotifier(id NotifierID, supportsHTMLMessage bool, bufferSize int) notifier {
 	return notifier{
 		id: id,
 
 		supportsHTMLMessage: supportsHTMLMessage,
 
-		notificationSendC: make(chan *notificationSendData, 10),
+		requestC: make(chan *notifyRequest, bufferSize),
 	}
 }
 
@@ -52,7 +52,12 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 		}
 	}()
 
-	n.notificationSendC <- &notificationSendData{
+	// 채널이 닫혔거나 초기화되지 않은 경우
+	if n.requestC == nil {
+		return false
+	}
+
+	n.requestC <- &notifyRequest{
 		message: message,
 		taskCtx: taskCtx,
 	}
@@ -62,4 +67,12 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 
 func (n *notifier) SupportsHTMLMessage() bool {
 	return n.supportsHTMLMessage
+}
+
+// Close 알림 채널을 닫고 리소스를 정리합니다.
+func (n *notifier) Close() {
+	if n.requestC != nil {
+		close(n.requestC)
+		n.requestC = nil
+	}
 }

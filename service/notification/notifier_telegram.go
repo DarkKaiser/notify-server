@@ -100,7 +100,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 // This is useful for testing.
 func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 	notifier := &telegramNotifier{
-		notifier: NewNotifier(id, true),
+		notifier: NewNotifier(id, true, 100),
 		chatID:   chatID,
 		bot:      bot,
 	}
@@ -188,7 +188,7 @@ LOOP:
 					if len(commandSplit) == 2 {
 						taskInstanceID := commandSplit[1]
 						if taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) == false {
-							n.notificationSendC <- &notificationSendData{
+							n.requestC <- &notifyRequest{
 								message: fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%s)", taskInstanceID),
 								taskCtx: task.NewContext().WithError(),
 							}
@@ -201,7 +201,7 @@ LOOP:
 				for _, botCommand := range n.botCommands {
 					if command == botCommand.command {
 						if taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) == false {
-							n.notificationSendC <- &notificationSendData{
+							n.requestC <- &notifyRequest{
 								message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
 								taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
 							}
@@ -220,10 +220,10 @@ LOOP:
 				}).Error("알림메시지 발송 실패")
 			}
 
-		case notificationSendData := <-n.notificationSendC:
-			m := notificationSendData.message
+		case notifyRequest := <-n.requestC:
+			m := notifyRequest.message
 
-			if notificationSendData.taskCtx == nil {
+			if notifyRequest.taskCtx == nil {
 				if _, err := n.bot.Send(tgbotapi.NewMessage(n.chatID, m)); err != nil {
 					applog.WithComponentAndFields("notification.telegram", log.Fields{
 						"notifier_id": n.ID(),
@@ -231,12 +231,12 @@ LOOP:
 					}).Error("알림메시지 발송이 실패하였습니다")
 				}
 			} else {
-				title, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTitle).(string)
+				title, ok := notifyRequest.taskCtx.Value(task.TaskCtxKeyTitle).(string)
 				if ok == true && len(title) > 0 {
 					m = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", title, m)
 				} else {
-					taskID, ok1 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
-					taskCommandID, ok2 := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+					taskID, ok1 := notifyRequest.taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
+					taskCommandID, ok2 := notifyRequest.taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
 					if ok1 == true && ok2 == true {
 						for _, botCommand := range n.botCommands {
 							if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
@@ -248,11 +248,11 @@ LOOP:
 				}
 
 				// TaskInstanceID가 존재하는 경우 취소 명령어를 붙인다.
-				if taskInstanceID, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
+				if taskInstanceID, ok := notifyRequest.taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok == true {
 					m += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
 
 					// 작업 실행 후 경과시간(단위 : 초)
-					if elapsedTimeAfterRun, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyElapsedTimeAfterRun).(int64); ok == true && elapsedTimeAfterRun > 0 {
+					if elapsedTimeAfterRun, ok := notifyRequest.taskCtx.Value(task.TaskCtxKeyElapsedTimeAfterRun).(int64); ok == true && elapsedTimeAfterRun > 0 {
 						seconds := elapsedTimeAfterRun % 60
 						elapsedTimeAfterRun = elapsedTimeAfterRun / 60
 						minutes := elapsedTimeAfterRun % 60
@@ -275,7 +275,7 @@ LOOP:
 					}
 				}
 
-				if errorOccurred, ok := notificationSendData.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccurred == true {
+				if errorOccurred, ok := notifyRequest.taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok == true && errorOccurred == true {
 					m = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", m)
 				}
 
@@ -337,10 +337,9 @@ LOOP:
 		case <-notificationStopCtx.Done():
 			n.bot.StopReceivingUpdates()
 
-			close(n.notificationSendC)
+			n.Close()
 
 			n.bot = nil
-			n.notificationSendC = nil
 
 			applog.WithComponentAndFields("notification.telegram", log.Fields{
 				"notifier_id": n.ID(),
