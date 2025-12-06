@@ -11,18 +11,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationSender는 테스트용 간단한 알림 발송자입니다.
-type MockNotificationSender struct{}
+// MockNotificationService는 테스트용 간단한 알림 발송자입니다.
+type MockNotificationService struct{}
 
-func (m *MockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
 	return true
 }
 
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockNotificationService) NotifyToDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
+func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
 	return true
 }
 
@@ -32,8 +32,8 @@ func TestNotifyAPIService_Run(t *testing.T) {
 	appConfig.NotifyAPI.WS.ListenPort = 18081
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+	mockService := &MockNotificationService{}
+	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -75,8 +75,8 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 	appConfig.NotifyAPI.WS.ListenPort = 18082
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+	mockService := &MockNotificationService{}
+	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -119,8 +119,8 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 	appConfig.NotifyAPI.WS.ListenPort = 18083
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockSender := &MockNotificationSender{}
-	service := NewNotifyAPIService(appConfig, mockSender, common.BuildInfo{
+	mockService := &MockNotificationService{}
+	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -159,8 +159,8 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 	}
 }
 
-// TestNotifyAPIService_NilNotificationSender는 nil NotificationSender 처리를 테스트합니다.
-func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
+// TestNotifyAPIService_NilNotificationService는 nil NotificationService 처리를 테스트합니다.
+func TestNotifyAPIService_NilNotificationService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = 18084
 	appConfig.NotifyAPI.WS.TLSServer = false
@@ -177,9 +177,10 @@ func TestNotifyAPIService_NilNotificationSender(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	// nil NotificationSender로 시작 시도 - error가 반환되어야 함
+	// nil NotificationService로 시작 시도 - error가 반환되어야 함
 	err := service.Run(ctx, wg)
 
-	assert.Error(t, err, "nil NotificationSender로 시작 시 error가 반환되어야 합니다")
-	assert.Contains(t, err.Error(), "NotificationSender", "에러 메시지에 NotificationSender가 포함되어야 합니다")
+	// 초기화 되지 않은 NotificationService로 인해 에러 발생 확인
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "notificationService", "에러 메시지에 notificationService가 포함되어야 합니다")
 }

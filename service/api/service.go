@@ -44,7 +44,7 @@ type NotifyAPIService struct {
 	running   bool
 	runningMu sync.Mutex
 
-	notificationSender notification.NotificationSender
+	notificationService notification.Service
 
 	buildInfo common.BuildInfo
 }
@@ -53,14 +53,14 @@ type NotifyAPIService struct {
 //
 // Returns:
 //   - 초기화된 NotifyAPIService 인스턴스
-func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notification.NotificationSender, buildInfo common.BuildInfo) *NotifyAPIService {
+func NewNotifyAPIService(appConfig *config.AppConfig, notificationService notification.Service, buildInfo common.BuildInfo) *NotifyAPIService {
 	return &NotifyAPIService{
 		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		notificationSender: notificationSender,
+		notificationService: notificationService,
 
 		buildInfo: buildInfo,
 	}
@@ -79,7 +79,7 @@ func NewNotifyAPIService(appConfig *config.AppConfig, notificationSender notific
 //   - serviceStopWaiter: 서비스 종료 대기를 위한 WaitGroup
 //
 // Returns:
-//   - error: NotificationSender가 nil이거나 이미 실행 중인 경우 에러 반환
+//   - error: notificationService가 nil이거나 이미 실행 중인 경우 에러 반환
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
 func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
@@ -88,10 +88,10 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 	applog.WithComponent("api.service").Info("NotifyAPI 서비스 시작중...")
 
-	if s.notificationSender == nil {
+	if s.notificationService == nil {
 		defer serviceStopWaiter.Done()
 
-		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "notificationService 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
@@ -142,8 +142,8 @@ func (s *NotifyAPIService) setupServer() *echo.Echo {
 	applicationManager := apiauth.NewApplicationManager(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
-	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
+	systemHandler := handler.NewSystemHandler(s.notificationService, s.buildInfo)
+	v1Handler := v1handler.NewHandler(applicationManager, s.notificationService)
 
 	// Echo 서버 생성
 	e := NewHTTPServer(HTTPServerConfig{
@@ -212,7 +212,7 @@ func (s *NotifyAPIService) handleServerError(err error) {
 		"error": err,
 	}).Error(msg)
 
-	s.notificationSender.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
+	s.notificationService.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
 }
 
 // waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.
@@ -249,7 +249,7 @@ func (s *NotifyAPIService) waitForShutdown(serviceStopCtx context.Context, e *ec
 	// 상태 정리
 	s.runningMu.Lock()
 	s.running = false
-	s.notificationSender = nil
+	s.notificationService = nil
 	s.runningMu.Unlock()
 
 	applog.WithComponent("api.service").Info("NotifyAPI 서비스 중지됨")

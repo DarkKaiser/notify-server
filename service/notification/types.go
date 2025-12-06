@@ -29,9 +29,9 @@ type NotifierHandler interface {
 	SupportsHTMLMessage() bool
 }
 
-// NotificationSender 알림 발송 기능을 제공하는 인터페이스입니다.
+// Service 알림 발송 기능을 제공하는 인터페이스입니다.
 // 외부 컴포넌트(API, 스케줄러 등)는 이 인터페이스를 통해 알림 서비스를 사용합니다.
-type NotificationSender interface {
+type Service interface {
 	Notify(notifierID string, title string, message string, errorOccurred bool) bool
 	NotifyToDefault(message string) bool
 	NotifyWithErrorToDefault(message string) bool

@@ -21,9 +21,9 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockSender := &MockNotificationSender{}
+		mockService := &MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
-		handler := NewHandler(appManager, mockSender)
+		handler := NewHandler(appManager, mockService)
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.NotNil(t, handler.applicationManager, "ApplicationManager가 설정되어야 합니다")
@@ -48,9 +48,9 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockSender := &MockNotificationSender{}
+		mockService := &MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
-		handler := NewHandler(appManager, mockSender)
+		handler := NewHandler(appManager, mockService)
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.NotNil(t, handler.applicationManager, "ApplicationManager가 설정되어야 합니다")
@@ -59,9 +59,9 @@ func TestNewHandler(t *testing.T) {
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
 
-		mockSender := &MockNotificationSender{}
+		mockService := &MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
-		handler := NewHandler(appManager, mockSender)
+		handler := NewHandler(appManager, mockService)
 
 		assert.NotNil(t, handler, "핸들러가 생성되어야 합니다")
 		assert.NotNil(t, handler.applicationManager, "ApplicationManager가 설정되어야 합니다")
