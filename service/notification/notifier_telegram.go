@@ -83,7 +83,7 @@ func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, ap
 		notifier: notifier{
 			id: id,
 
-			supportHTMLMessage: true,
+			supportsHTMLMessage: true,
 
 			notificationSendC: make(chan *notificationSendData, 10),
 		},
@@ -95,7 +95,7 @@ func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, ap
 	// Bot Command를 초기화합니다.
 	for _, t := range appConfig.Tasks {
 		for _, c := range t.Commands {
-			if c.Notifier.Usable == false {
+			if !c.Notifier.Usable {
 				continue
 			}
 

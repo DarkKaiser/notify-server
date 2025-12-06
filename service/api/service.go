@@ -102,7 +102,7 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 		return nil
 	}
 
-	go s.run0(serviceStopCtx, serviceStopWaiter)
+	go s.runServiceLoop(serviceStopCtx, serviceStopWaiter)
 
 	s.running = true
 
@@ -111,9 +111,9 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 	return nil
 }
 
-// run0 서비스의 메인 실행 루프입니다.
+// runServiceLoop 서비스의 메인 실행 루프입니다.
 // 서버 설정, HTTP 서버 시작, Shutdown 대기를 순차적으로 수행합니다.
-func (s *NotifyAPIService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *NotifyAPIService) runServiceLoop(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	// 서버 설정
