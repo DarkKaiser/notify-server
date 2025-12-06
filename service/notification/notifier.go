@@ -6,6 +6,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// notificationSendData 내부 채널을 통해 전달되는 알림 데이터입니다.
+type notificationSendData struct {
+	message string
+	taskCtx task.TaskContext
+}
+
 // notifier NotifierHandler의 기본 구현체입니다.
 // 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
 type notifier struct {

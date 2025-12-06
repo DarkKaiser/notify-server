@@ -62,18 +62,18 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
-func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
+func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"bot_token": applog.MaskSensitiveData(botToken),
 	}).Debug("Telegram Bot 초기화 시도")
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("Telegram Bot 초기화 실패: %w", err)
 	}
 	bot.Debug = true
 
-	return newTelegramNotifierWithBot(id, &telegramBotWrapper{BotAPI: bot}, chatID, appConfig)
+	return newTelegramNotifierWithBot(id, &telegramBotWrapper{BotAPI: bot}, chatID, appConfig), nil
 }
 
 // newTelegramNotifierWithBot is an internal constructor that accepts a TelegramBot interface.

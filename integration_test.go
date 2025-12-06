@@ -17,14 +17,14 @@ import (
 // TestServicesIntegration은 전체 서비스의 통합을 테스트합니다.
 // mockIntegrationNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
 type mockIntegrationNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig) []notification.NotifierHandler
+	createNotifiersFunc func(cfg *config.AppConfig) ([]notification.NotifierHandler, error)
 }
 
-func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig) []notification.NotifierHandler {
+func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 	if m.createNotifiersFunc != nil {
 		return m.createNotifiersFunc(cfg)
 	}
-	return nil
+	return nil, nil
 }
 
 func TestServicesIntegration(t *testing.T) {
@@ -38,13 +38,13 @@ func TestServicesIntegration(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []notification.NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
 						id:                  notification.NotifierID("test-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		notificationService.SetNotifierFactory(mockFactory)
@@ -88,13 +88,13 @@ func TestServicesIntegration(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []notification.NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
 						id:                  notification.NotifierID("test-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		notificationService.SetNotifierFactory(mockFactory)
@@ -218,13 +218,13 @@ func TestServiceLifecycle(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []notification.NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
 						id:                  notification.NotifierID("test-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		notificationService.SetNotifierFactory(mockFactory)
@@ -305,13 +305,13 @@ func TestNotificationServiceIntegration(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []notification.NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
 						id:                  notification.NotifierID("default-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		notificationService.SetNotifierFactory(mockFactory)

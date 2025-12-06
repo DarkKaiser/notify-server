@@ -259,16 +259,15 @@ func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
 	return true
 }
 
-// mockNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
 type mockNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig) []NotifierHandler
+	createNotifiersFunc func(cfg *config.AppConfig) ([]NotifierHandler, error)
 }
 
-func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig) []NotifierHandler {
+func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]NotifierHandler, error) {
 	if m.createNotifiersFunc != nil {
 		return m.createNotifiersFunc(cfg)
 	}
-	return nil
+	return nil, nil
 }
 
 func TestNotificationService_Run(t *testing.T) {
@@ -282,13 +281,13 @@ func TestNotificationService_Run(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]NotifierHandler, error) {
 				return []NotifierHandler{
 					&mockNotifierHandler{
 						id:                  NotifierID("default-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		service.SetNotifierFactory(mockFactory)
@@ -319,13 +318,13 @@ func TestNotificationService_Run(t *testing.T) {
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]NotifierHandler, error) {
 				return []NotifierHandler{
 					&mockNotifierHandler{
 						id:                  NotifierID("default-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		service.SetNotifierFactory(mockFactory)
@@ -358,7 +357,7 @@ func TestNotificationService_Run(t *testing.T) {
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]NotifierHandler, error) {
 				return []NotifierHandler{
 					&mockNotifierHandler{
 						id:                  NotifierID("notifier1"),
@@ -368,7 +367,7 @@ func TestNotificationService_Run(t *testing.T) {
 						id:                  NotifierID("notifier2"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		service.SetNotifierFactory(mockFactory)
@@ -395,13 +394,13 @@ func TestNotificationService_Run(t *testing.T) {
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig) []NotifierHandler {
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]NotifierHandler, error) {
 				return []NotifierHandler{
 					&mockNotifierHandler{
 						id:                  NotifierID("default-notifier"),
 						supportsHTMLMessage: true,
 					},
-				}
+				}, nil
 			},
 		}
 		service.SetNotifierFactory(mockFactory)

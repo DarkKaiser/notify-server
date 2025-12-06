@@ -29,12 +29,6 @@ type NotifierHandler interface {
 	SupportsHTMLMessage() bool
 }
 
-// notificationSendData 내부 채널을 통해 전달되는 알림 데이터입니다.
-type notificationSendData struct {
-	message string
-	taskCtx task.TaskContext
-}
-
 // NotificationSender 알림 발송 기능을 제공하는 인터페이스입니다.
 // 외부 컴포넌트(API, 스케줄러 등)는 이 인터페이스를 통해 알림 서비스를 사용합니다.
 type NotificationSender interface {
