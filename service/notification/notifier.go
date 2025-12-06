@@ -1,0 +1,48 @@
+package notification
+
+import (
+	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/service/task"
+	log "github.com/sirupsen/logrus"
+)
+
+// notifier NotifierHandler의 기본 구현체입니다.
+// 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
+type notifier struct {
+	id NotifierID
+
+	supportsHTMLMessage bool
+
+	notificationSendC chan *notificationSendData
+}
+
+func (n *notifier) ID() NotifierID {
+	return n.id
+}
+
+// Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
+// 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
+func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			succeeded = false
+
+			applog.WithComponentAndFields("notification.service", log.Fields{
+				"notifier_id":    n.ID(),
+				"message_length": len(message),
+				"panic":          r,
+			}).Error("알림메시지 발송중에 panic 발생")
+		}
+	}()
+
+	n.notificationSendC <- &notificationSendData{
+		message: message,
+		taskCtx: taskCtx,
+	}
+
+	return true
+}
+
+func (n *notifier) SupportsHTMLMessage() bool {
+	return n.supportsHTMLMessage
+}
