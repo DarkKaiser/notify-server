@@ -16,6 +16,17 @@ type notifier struct {
 	notificationSendC chan *notificationSendData
 }
 
+// NewNotifier Notifier를 생성하고 초기화합니다.
+func NewNotifier(id NotifierID, supportsHTMLMessage bool) notifier {
+	return notifier{
+		id: id,
+
+		supportsHTMLMessage: supportsHTMLMessage,
+
+		notificationSendC: make(chan *notificationSendData, 10),
+	}
+}
+
 func (n *notifier) ID() NotifierID {
 	return n.id
 }

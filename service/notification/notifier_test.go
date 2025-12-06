@@ -16,33 +16,23 @@ func TestNotifierID(t *testing.T) {
 
 func TestNotifier_ID(t *testing.T) {
 	t.Run("Notifier ID 반환", func(t *testing.T) {
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: true,
-			notificationSendC:   make(chan *notificationSendData, 1),
-		}
+		t.Run("Notifier ID 반환", func(t *testing.T) {
+			n := NewNotifier(NotifierID("test-id"), true)
 
-		assert.Equal(t, NotifierID("test-id"), n.ID(), "ID가 일치해야 합니다")
+			assert.Equal(t, NotifierID("test-id"), n.ID(), "ID가 일치해야 합니다")
+		})
 	})
 }
 
 func TestNotifier_SupportsHTMLMessage(t *testing.T) {
 	t.Run("HTML 메시지 지원", func(t *testing.T) {
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: true,
-			notificationSendC:   make(chan *notificationSendData, 1),
-		}
+		n := NewNotifier(NotifierID("test-id"), true)
 
 		assert.True(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원해야 합니다")
 	})
 
 	t.Run("HTML 메시지 미지원", func(t *testing.T) {
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: false,
-			notificationSendC:   make(chan *notificationSendData, 1),
-		}
+		n := NewNotifier(NotifierID("test-id"), false)
 
 		assert.False(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원하지 않아야 합니다")
 	})
@@ -50,12 +40,9 @@ func TestNotifier_SupportsHTMLMessage(t *testing.T) {
 
 func TestNotifier_Notify(t *testing.T) {
 	t.Run("정상적인 알림 전송", func(t *testing.T) {
-		sendC := make(chan *notificationSendData, 1)
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: true,
-			notificationSendC:   sendC,
-		}
+		n := NewNotifier(NotifierID("test-id"), true)
+		// Accessing private channel for testing
+		sendC := n.notificationSendC
 
 		taskCtx := task.NewContext()
 		succeeded := n.Notify("test message", taskCtx)
@@ -73,12 +60,8 @@ func TestNotifier_Notify(t *testing.T) {
 	})
 
 	t.Run("nil TaskContext로 알림 전송", func(t *testing.T) {
-		sendC := make(chan *notificationSendData, 1)
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: true,
-			notificationSendC:   sendC,
-		}
+		n := NewNotifier(NotifierID("test-id"), true)
+		sendC := n.notificationSendC
 
 		succeeded := n.Notify("test message", nil)
 
@@ -96,14 +79,8 @@ func TestNotifier_Notify(t *testing.T) {
 
 	t.Run("Panic 복구 테스트", func(t *testing.T) {
 		// 닫힌 채널로 panic 유발
-		sendC := make(chan *notificationSendData)
-		close(sendC)
-
-		n := &notifier{
-			id:                  NotifierID("test-id"),
-			supportsHTMLMessage: true,
-			notificationSendC:   sendC,
-		}
+		n := NewNotifier(NotifierID("test-id"), true)
+		close(n.notificationSendC) // Force close for testing panic recovery
 
 		succeeded := n.Notify("test message", nil)
 

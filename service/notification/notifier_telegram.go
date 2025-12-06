@@ -80,16 +80,9 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 // This is useful for testing.
 func newTelegramNotifierWithBot(id NotifierID, bot TelegramBot, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 	notifier := &telegramNotifier{
-		notifier: notifier{
-			id: id,
-
-			supportsHTMLMessage: true,
-
-			notificationSendC: make(chan *notificationSendData, 10),
-		},
-
-		chatID: chatID,
-		bot:    bot,
+		notifier: NewNotifier(id, true),
+		chatID:   chatID,
+		bot:      bot,
 	}
 
 	// Bot Command를 초기화합니다.
