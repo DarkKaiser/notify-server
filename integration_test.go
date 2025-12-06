@@ -18,6 +18,7 @@ import (
 // mockIntegrationNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
 type mockIntegrationNotifierFactory struct {
 	createNotifiersFunc func(cfg *config.AppConfig) ([]notification.NotifierHandler, error)
+	processors          []notification.NotifierConfigProcessor
 }
 
 func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
@@ -25,6 +26,10 @@ func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig) 
 		return m.createNotifiersFunc(cfg)
 	}
 	return nil, nil
+}
+
+func (m *mockIntegrationNotifierFactory) RegisterProcessor(processor notification.NotifierConfigProcessor) {
+	m.processors = append(m.processors, processor)
 }
 
 func TestServicesIntegration(t *testing.T) {

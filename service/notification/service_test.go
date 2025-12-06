@@ -270,6 +270,10 @@ func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]Notifier
 	return nil, nil
 }
 
+func (m *mockNotifierFactory) RegisterProcessor(processor NotifierConfigProcessor) {
+	// Mock에서는 구현 필요 없음
+}
+
 func TestNotificationService_Run(t *testing.T) {
 	t.Run("서비스 시작 및 중지", func(t *testing.T) {
 		appConfig := &config.AppConfig{}

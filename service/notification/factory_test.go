@@ -24,9 +24,8 @@ func TestDefaultNotifierFactory_CreateNotifiers(t *testing.T) {
 		}
 
 		// Factory 생성 및 주입
-		factory := &DefaultNotifierFactory{
-			createTelegramNotifier: mockCreator,
-		}
+		factory := &DefaultNotifierFactory{}
+		factory.RegisterProcessor(NewTelegramConfigProcessor(mockCreator))
 
 		handlers, err := factory.CreateNotifiers(cfg)
 
@@ -48,9 +47,8 @@ func TestDefaultNotifierFactory_CreateNotifiers(t *testing.T) {
 			return &mockNotifierHandler{id: id}, nil
 		}
 
-		factory := &DefaultNotifierFactory{
-			createTelegramNotifier: mockCreator,
-		}
+		factory := &DefaultNotifierFactory{}
+		factory.RegisterProcessor(NewTelegramConfigProcessor(mockCreator))
 
 		handlers, err := factory.CreateNotifiers(cfg)
 

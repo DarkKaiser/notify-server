@@ -62,6 +62,26 @@ type telegramNotifier struct {
 	botCommands []telegramBotCommand
 }
 
+// telegramNotifierCreatorFunc Telegram Notifier 생성 함수 타입
+type telegramNotifierCreatorFunc func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) (NotifierHandler, error)
+
+// NewTelegramConfigProcessor Telegram 설정을 처리하는 Processor를 생성합니다.
+func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierConfigProcessor {
+	return func(appConfig *config.AppConfig) ([]NotifierHandler, error) {
+		var handlers []NotifierHandler
+
+		for _, telegram := range appConfig.Notifiers.Telegrams {
+			h, err := creator(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig)
+			if err != nil {
+				return nil, err
+			}
+			handlers = append(handlers, h)
+		}
+
+		return handlers, nil
+	}
+}
+
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"bot_token": applog.MaskSensitiveData(botToken),

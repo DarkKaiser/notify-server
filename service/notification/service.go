@@ -30,7 +30,7 @@ type NotificationService struct {
 }
 
 func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *NotificationService {
-	return &NotificationService{
+	service := &NotificationService{
 		appConfig: appConfig,
 
 		running:   false,
@@ -38,12 +38,17 @@ func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *Notifi
 
 		defaultNotifierHandler: nil,
 
-		notifierFactory: NewNotifierFactory(),
-
 		taskRunner: taskRunner,
 
 		notificationStopWaiter: &sync.WaitGroup{},
 	}
+
+	// Factory 생성 및 Processor 등록
+	factory := NewNotifierFactory()
+	factory.RegisterProcessor(NewTelegramConfigProcessor(newTelegramNotifier))
+	service.notifierFactory = factory
+
+	return service
 }
 
 func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
