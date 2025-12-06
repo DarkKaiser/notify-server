@@ -27,8 +27,8 @@ func TestServicesIntegration(t *testing.T) {
 		// Mock notifier 설정
 		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		})
 
@@ -72,8 +72,8 @@ func TestServicesIntegration(t *testing.T) {
 		// Mock notifier 설정
 		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		})
 
@@ -197,8 +197,8 @@ func TestServiceLifecycle(t *testing.T) {
 		// Mock notifier 설정
 		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		})
 
@@ -279,8 +279,8 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		// Mock notifier 설정
 		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		})
 
@@ -411,7 +411,7 @@ func (m *mockNotificationSender) NotifyWithTaskContext(notifierID string, messag
 	return true
 }
 
-func (m *mockNotificationSender) SupportHTMLMessage(notifierID string) bool {
+func (m *mockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 	return true
 }
 
@@ -432,8 +432,8 @@ func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
 
 // mockNotifierHandler는 테스트용 NotifierHandler 구현체입니다.
 type mockNotifierHandler struct {
-	id                 notification.NotifierID
-	supportHTMLMessage bool
+	id                  notification.NotifierID
+	supportsHTMLMessage bool
 }
 
 func (m *mockNotifierHandler) ID() notification.NotifierID {
@@ -449,8 +449,8 @@ func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCt
 	<-notificationStopCtx.Done()
 }
 
-func (m *mockNotifierHandler) SupportHTMLMessage() bool {
-	return m.supportHTMLMessage
+func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
+	return m.supportsHTMLMessage
 }
 
 // TestFullFlow_SchedulerToNotification은 스케줄러에서 알림까지의 전체 흐름을 테스트합니다.

@@ -9,7 +9,7 @@ import (
 
 func TestValidateRequest(t *testing.T) {
 	t.Run("정상적인 요청", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "테스트 메시지",
 			ErrorOccurred: false,
@@ -20,7 +20,7 @@ func TestValidateRequest(t *testing.T) {
 	})
 
 	t.Run("ApplicationID 누락", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "",
 			Message:       "테스트 메시지",
 		}
@@ -30,7 +30,7 @@ func TestValidateRequest(t *testing.T) {
 	})
 
 	t.Run("Message 누락", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "",
 		}
@@ -46,7 +46,7 @@ func TestValidateRequest(t *testing.T) {
 			longMessage[i] = 'a'
 		}
 
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(longMessage),
 		}
@@ -62,7 +62,7 @@ func TestValidateRequest(t *testing.T) {
 			maxMessage[i] = 'a'
 		}
 
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(maxMessage),
 		}
@@ -72,7 +72,7 @@ func TestValidateRequest(t *testing.T) {
 	})
 
 	t.Run("Message 최소 길이 (1자)", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "a",
 		}
@@ -89,7 +89,7 @@ func TestFormatValidationError(t *testing.T) {
 	})
 
 	t.Run("ApplicationID required 에러", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "",
 			Message:       "테스트",
 		}
@@ -103,7 +103,7 @@ func TestFormatValidationError(t *testing.T) {
 	})
 
 	t.Run("Message required 에러", func(t *testing.T) {
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "",
 		}
@@ -122,7 +122,7 @@ func TestFormatValidationError(t *testing.T) {
 			longMessage[i] = 'a'
 		}
 
-		req := &request.NotifyMessageRequest{
+		req := &request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(longMessage),
 		}

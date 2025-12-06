@@ -234,7 +234,7 @@ func TestTelegramNotifier_Notify_SendError(t *testing.T) {
 	mockBot.AssertExpectations(t)
 }
 
-func TestTelegramNotifier_SupportHTMLMessage(t *testing.T) {
+func TestTelegramNotifier_SupportsHTMLMessage(t *testing.T) {
 	// Setup
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
@@ -245,7 +245,7 @@ func TestTelegramNotifier_SupportHTMLMessage(t *testing.T) {
 	notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
 
 	// Test
-	result := notifier.SupportHTMLMessage()
+	result := notifier.SupportsHTMLMessage()
 
 	// Verify
 	assert.True(t, result, "Telegram notifier should support HTML messages")
@@ -585,7 +585,7 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 		// Verify
 		assert.NotNil(t, notifier, "Notifier가 생성되어야 합니다")
 		assert.Equal(t, NotifierID("test-notifier"), notifier.ID(), "ID가 일치해야 합니다")
-		assert.True(t, notifier.SupportHTMLMessage(), "HTML 메시지를 지원해야 합니다")
+		assert.True(t, notifier.SupportsHTMLMessage(), "HTML 메시지를 지원해야 합니다")
 	})
 
 	t.Run("Task Commands가 있는 설정으로 Notifier 생성", func(t *testing.T) {

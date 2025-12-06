@@ -254,7 +254,7 @@ func (t *task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 		t.notify(taskNotificationSender, m, taskCtx)
 	}
 
-	if message, changedTaskResultData, err := t.runFn(taskResultData, taskNotificationSender.SupportHTMLMessage(t.notifierID)); t.IsCanceled() == false {
+	if message, changedTaskResultData, err := t.runFn(taskResultData, taskNotificationSender.SupportsHTMLMessage(t.notifierID)); t.IsCanceled() == false {
 		if err == nil {
 			if len(message) > 0 {
 				t.notify(taskNotificationSender, message, taskCtx)
@@ -411,7 +411,7 @@ type TaskNotificationSender interface {
 	NotifyToDefault(message string) bool
 	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
 
-	SupportHTMLMessage(notifierID string) bool
+	SupportsHTMLMessage(notifierID string) bool
 }
 
 // TaskService

@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"net/http"
@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNew(t *testing.T) {
-	t.Run("라우터 생성 - Debug 모드 활성화", func(t *testing.T) {
-		e := New(Config{
+func TestNewHTTPServer(t *testing.T) {
+	t.Run("Echo 서버 생성 - Debug 모드 활성화", func(t *testing.T) {
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -21,8 +21,8 @@ func TestNew(t *testing.T) {
 		assert.True(t, e.HideBanner, "Banner가 숨겨져야 합니다")
 	})
 
-	t.Run("라우터 생성 - Debug 모드 비활성화", func(t *testing.T) {
-		e := New(Config{
+	t.Run("Echo 서버 생성 - Debug 모드 비활성화", func(t *testing.T) {
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        false,
 			AllowOrigins: []string{"http://example.com"},
 		})
@@ -33,7 +33,7 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("미들웨어 설정 확인", func(t *testing.T) {
-		e := New(Config{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -46,7 +46,7 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("기본 라우트 테스트", func(t *testing.T) {
-		e := New(Config{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -70,9 +70,9 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func TestRouterMiddlewares(t *testing.T) {
+func TestServerMiddlewares(t *testing.T) {
 	t.Run("CORS 미들웨어 확인", func(t *testing.T) {
-		e := New(Config{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -96,7 +96,7 @@ func TestRouterMiddlewares(t *testing.T) {
 	})
 
 	t.Run("Recover 미들웨어 확인", func(t *testing.T) {
-		e := New(Config{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
@@ -118,7 +118,7 @@ func TestRouterMiddlewares(t *testing.T) {
 	})
 
 	t.Run("RequestID 미들웨어 확인", func(t *testing.T) {
-		e := New(Config{
+		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})

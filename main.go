@@ -38,7 +38,7 @@ import (
 // @description 1. **사전 준비**: notify-server.json의 notify_api.applications에 애플리케이션 등록
 // @description    - application_id, app_key, default_notifier_id 설정
 // @description 2. **API 호출**: Query Parameter로 app_key 전달
-// @description    - POST /api/v1/notice/message?app_key=YOUR_KEY
+// @description    - POST /api/v1/notifications?app_key=YOUR_KEY
 // @description 3. **인증 검증**: 서버에서 application_id와 app_key 확인
 // @description    - 미등록 앱: 401 Unauthorized
 // @description    - 잘못된 app_key: 401 Unauthorized

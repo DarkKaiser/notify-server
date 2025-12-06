@@ -17,10 +17,10 @@ type MockTaskNotificationSender struct {
 	mu sync.Mutex
 
 	// 호출 기록
-	NotifyToDefaultCalls          []string
-	NotifyWithTaskContextCalls    []NotifyWithTaskContextCall
-	SupportHTMLMessageCalls       []string
-	SupportHTMLMessageReturnValue bool
+	NotifyToDefaultCalls           []string
+	NotifyWithTaskContextCalls     []NotifyWithTaskContextCall
+	SupportsHTMLMessageCalls       []string
+	SupportsHTMLMessageReturnValue bool
 }
 
 // NotifyWithTaskContextCall NotifyWithTaskContext 호출 정보를 저장합니다.
@@ -33,10 +33,10 @@ type NotifyWithTaskContextCall struct {
 // NewMockTaskNotificationSender 새로운 Mock 객체를 생성합니다.
 func NewMockTaskNotificationSender() *MockTaskNotificationSender {
 	return &MockTaskNotificationSender{
-		NotifyToDefaultCalls:          make([]string, 0),
-		NotifyWithTaskContextCalls:    make([]NotifyWithTaskContextCall, 0),
-		SupportHTMLMessageCalls:       make([]string, 0),
-		SupportHTMLMessageReturnValue: true, // 기본값: HTML 지원
+		NotifyToDefaultCalls:           make([]string, 0),
+		NotifyWithTaskContextCalls:     make([]NotifyWithTaskContextCall, 0),
+		SupportsHTMLMessageCalls:       make([]string, 0),
+		SupportsHTMLMessageReturnValue: true, // 기본값: HTML 지원
 	}
 }
 
@@ -62,13 +62,13 @@ func (m *MockTaskNotificationSender) NotifyWithTaskContext(notifierID string, me
 	return true
 }
 
-// SupportHTMLMessage HTML 메시지 지원 여부를 반환합니다 (Mock).
-func (m *MockTaskNotificationSender) SupportHTMLMessage(notifierID string) bool {
+// SupportsHTMLMessage HTML 메시지 지원 여부를 반환합니다 (Mock).
+func (m *MockTaskNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.SupportHTMLMessageCalls = append(m.SupportHTMLMessageCalls, notifierID)
-	return m.SupportHTMLMessageReturnValue
+	m.SupportsHTMLMessageCalls = append(m.SupportsHTMLMessageCalls, notifierID)
+	return m.SupportsHTMLMessageReturnValue
 }
 
 // Reset 모든 호출 기록을 초기화합니다.
@@ -78,7 +78,7 @@ func (m *MockTaskNotificationSender) Reset() {
 
 	m.NotifyToDefaultCalls = make([]string, 0)
 	m.NotifyWithTaskContextCalls = make([]NotifyWithTaskContextCall, 0)
-	m.SupportHTMLMessageCalls = make([]string, 0)
+	m.SupportsHTMLMessageCalls = make([]string, 0)
 }
 
 // GetNotifyToDefaultCallCount NotifyToDefault 호출 횟수를 반환합니다.
@@ -97,12 +97,12 @@ func (m *MockTaskNotificationSender) GetNotifyWithTaskContextCallCount() int {
 	return len(m.NotifyWithTaskContextCalls)
 }
 
-// GetSupportHTMLMessageCallCount SupportHTMLMessage 호출 횟수를 반환합니다.
-func (m *MockTaskNotificationSender) GetSupportHTMLMessageCallCount() int {
+// GetSupportsHTMLMessageCallCount SupportsHTMLMessage 호출 횟수를 반환합니다.
+func (m *MockTaskNotificationSender) GetSupportsHTMLMessageCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return len(m.SupportHTMLMessageCalls)
+	return len(m.SupportsHTMLMessageCalls)
 }
 
 // MockHTTPFetcher HTTP 요청을 Mock하는 구조체입니다.

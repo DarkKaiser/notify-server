@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/auth"
 	"github.com/darkkaiser/notify-server/service/api/model/response"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
@@ -31,14 +31,11 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			AppKey:            "valid-key",
 		},
 	}
-	h := NewHandler(appConfig, mockSender, common.BuildInfo{
-		Version:     "1.0.0",
-		BuildDate:   "2024-01-01",
-		BuildNumber: "100",
-	})
+	appManager := auth.NewApplicationManager(appConfig)
+	h := NewHandler(appManager, mockSender)
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 			ErrorOccurred: false,
@@ -51,7 +48,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		if assert.NoError(t, h.SendNotifyMessageHandler(c)) {
+		if assert.NoError(t, h.PublishNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.True(t, mockSender.NotifyCalled)
 			assert.Equal(t, "test-notifier", mockSender.LastNotifierID)
@@ -61,7 +58,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "Test Message",
 		}
@@ -73,7 +70,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -86,7 +83,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "unknown-app",
 			Message:       "Test Message",
 		}
@@ -98,7 +95,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -117,12 +114,12 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		assert.Error(t, err)
 	})
 
 	t.Run("ApplicationID 누락", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "",
 			Message:       "Test Message",
 		}
@@ -134,7 +131,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -148,7 +145,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 	})
 
 	t.Run("Message 누락", func(t *testing.T) {
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       "",
 		}
@@ -160,7 +157,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -180,7 +177,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			longMessage[i] = 'a'
 		}
 
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(longMessage),
 		}
@@ -192,7 +189,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		err := h.SendNotifyMessageHandler(c)
+		err := h.PublishNotificationHandler(c)
 		if assert.Error(t, err) {
 			he, ok := err.(*echo.HTTPError)
 			assert.True(t, ok)
@@ -213,7 +210,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 			maxMessage[i] = 'a'
 		}
 
-		reqBody := request.NotifyMessageRequest{
+		reqBody := request.NotificationRequest{
 			ApplicationID: "test-app",
 			Message:       string(maxMessage),
 		}
@@ -225,7 +222,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Execute
-		if assert.NoError(t, h.SendNotifyMessageHandler(c)) {
+		if assert.NoError(t, h.PublishNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.True(t, mockSender.NotifyCalled)
 		}

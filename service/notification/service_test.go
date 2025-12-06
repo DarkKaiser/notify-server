@@ -21,34 +21,34 @@ func TestNotifierID(t *testing.T) {
 func TestNotifier_ID(t *testing.T) {
 	t.Run("Notifier ID 반환", func(t *testing.T) {
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: true,
-			notificationSendC:  make(chan *notificationSendData, 1),
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: true,
+			notificationSendC:   make(chan *notificationSendData, 1),
 		}
 
 		assert.Equal(t, NotifierID("test-id"), n.ID(), "ID가 일치해야 합니다")
 	})
 }
 
-func TestNotifier_SupportHTMLMessage(t *testing.T) {
+func TestNotifier_SupportsHTMLMessage(t *testing.T) {
 	t.Run("HTML 메시지 지원", func(t *testing.T) {
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: true,
-			notificationSendC:  make(chan *notificationSendData, 1),
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: true,
+			notificationSendC:   make(chan *notificationSendData, 1),
 		}
 
-		assert.True(t, n.SupportHTMLMessage(), "HTML 메시지를 지원해야 합니다")
+		assert.True(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원해야 합니다")
 	})
 
 	t.Run("HTML 메시지 미지원", func(t *testing.T) {
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: false,
-			notificationSendC:  make(chan *notificationSendData, 1),
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: false,
+			notificationSendC:   make(chan *notificationSendData, 1),
 		}
 
-		assert.False(t, n.SupportHTMLMessage(), "HTML 메시지를 지원하지 않아야 합니다")
+		assert.False(t, n.SupportsHTMLMessage(), "HTML 메시지를 지원하지 않아야 합니다")
 	})
 }
 
@@ -56,9 +56,9 @@ func TestNotifier_Notify(t *testing.T) {
 	t.Run("정상적인 알림 전송", func(t *testing.T) {
 		sendC := make(chan *notificationSendData, 1)
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: true,
-			notificationSendC:  sendC,
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: true,
+			notificationSendC:   sendC,
 		}
 
 		taskCtx := task.NewContext()
@@ -79,9 +79,9 @@ func TestNotifier_Notify(t *testing.T) {
 	t.Run("nil TaskContext로 알림 전송", func(t *testing.T) {
 		sendC := make(chan *notificationSendData, 1)
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: true,
-			notificationSendC:  sendC,
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: true,
+			notificationSendC:   sendC,
 		}
 
 		succeeded := n.Notify("test message", nil)
@@ -104,9 +104,9 @@ func TestNotifier_Notify(t *testing.T) {
 		close(sendC)
 
 		n := &notifier{
-			id:                 NotifierID("test-id"),
-			supportHTMLMessage: true,
-			notificationSendC:  sendC,
+			id:                  NotifierID("test-id"),
+			supportsHTMLMessage: true,
+			notificationSendC:   sendC,
 		}
 
 		succeeded := n.Notify("test message", nil)
@@ -128,19 +128,19 @@ func TestNotificationSendData(t *testing.T) {
 	})
 }
 
-func TestNotificationService_SupportHTMLMessage(t *testing.T) {
+func TestNotificationService_SupportsHTMLMessage(t *testing.T) {
 	t.Run("존재하는 Notifier의 HTML 지원 여부", func(t *testing.T) {
 		// Mock notifier 생성
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("test-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("test-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
 			notifierHandlers: []NotifierHandler{mockNotifier},
 		}
 
-		result := service.SupportHTMLMessage("test-notifier")
+		result := service.SupportsHTMLMessage("test-notifier")
 		assert.True(t, result, "HTML 메시지를 지원해야 합니다")
 	})
 
@@ -149,7 +149,7 @@ func TestNotificationService_SupportHTMLMessage(t *testing.T) {
 			notifierHandlers: []NotifierHandler{},
 		}
 
-		result := service.SupportHTMLMessage("non-existent")
+		result := service.SupportsHTMLMessage("non-existent")
 		assert.False(t, result, "존재하지 않는 Notifier는 false를 반환해야 합니다")
 	})
 }
@@ -174,8 +174,8 @@ func TestNotificationService_NewService(t *testing.T) {
 func TestNotificationService_Notify(t *testing.T) {
 	t.Run("정상적인 알림 전송", func(t *testing.T) {
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("test-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("test-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -192,8 +192,8 @@ func TestNotificationService_Notify(t *testing.T) {
 
 	t.Run("에러 플래그와 함께 알림 전송", func(t *testing.T) {
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("test-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("test-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -214,8 +214,8 @@ func TestNotificationService_Notify(t *testing.T) {
 func TestNotificationService_NotifyToDefault(t *testing.T) {
 	t.Run("기본 Notifier로 알림 전송", func(t *testing.T) {
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("default-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("default-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -236,8 +236,8 @@ func TestNotificationService_NotifyToDefault(t *testing.T) {
 func TestNotificationService_NotifyWithErrorToDefault(t *testing.T) {
 	t.Run("기본 Notifier로 에러 알림 전송", func(t *testing.T) {
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("default-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("default-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -259,8 +259,8 @@ func TestNotificationService_NotifyWithErrorToDefault(t *testing.T) {
 func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 	t.Run("TaskContext와 함께 알림 전송", func(t *testing.T) {
 		mockNotifier := &mockNotifierHandler{
-			id:                 NotifierID("test-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("test-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -282,8 +282,8 @@ func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 
 	t.Run("존재하지 않는 Notifier로 알림 전송", func(t *testing.T) {
 		mockDefaultNotifier := &mockNotifierHandler{
-			id:                 NotifierID("default-notifier"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("default-notifier"),
+			supportsHTMLMessage: true,
 		}
 
 		service := &NotificationService{
@@ -305,12 +305,12 @@ func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 func TestNotificationService_MultipleNotifiers(t *testing.T) {
 	t.Run("여러 Notifier 중 특정 Notifier로 알림 전송", func(t *testing.T) {
 		mockNotifier1 := &mockNotifierHandler{
-			id:                 NotifierID("notifier1"),
-			supportHTMLMessage: true,
+			id:                  NotifierID("notifier1"),
+			supportsHTMLMessage: true,
 		}
 		mockNotifier2 := &mockNotifierHandler{
-			id:                 NotifierID("notifier2"),
-			supportHTMLMessage: false,
+			id:                  NotifierID("notifier2"),
+			supportsHTMLMessage: false,
 		}
 
 		service := &NotificationService{
@@ -330,9 +330,9 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 
 // mockNotifierHandler는 테스트용 notifierHandler 구현체입니다.
 type mockNotifierHandler struct {
-	id                 NotifierID
-	supportHTMLMessage bool
-	notifyCalls        []mockNotifyCall
+	id                  NotifierID
+	supportsHTMLMessage bool
+	notifyCalls         []mockNotifyCall
 }
 
 type mockNotifyCall struct {
@@ -357,8 +357,8 @@ func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCt
 	<-notificationStopCtx.Done()
 }
 
-func (m *mockNotifierHandler) SupportHTMLMessage() bool {
-	return m.supportHTMLMessage
+func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
+	return m.supportsHTMLMessage
 }
 
 // mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
@@ -395,8 +395,8 @@ func TestNotificationService_Run(t *testing.T) {
 		// Mock createNotifier
 		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		}
 
@@ -434,8 +434,8 @@ func TestNotificationService_Run(t *testing.T) {
 
 		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		}
 
@@ -480,8 +480,8 @@ func TestNotificationService_Run(t *testing.T) {
 
 		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		}
 
@@ -515,8 +515,8 @@ func TestNotificationService_Run(t *testing.T) {
 
 		service.newNotifier = func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler {
 			return &mockNotifierHandler{
-				id:                 id,
-				supportHTMLMessage: true,
+				id:                  id,
+				supportsHTMLMessage: true,
 			}
 		}
 

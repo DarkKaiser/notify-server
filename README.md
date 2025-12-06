@@ -226,7 +226,7 @@ NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어�
 3. **인증 검증**:
    - `application_id` 확인
    - `app_key` 일치 여부 확인
-4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송
+4. **알림 게시**: 인증 성공 시 텔레그램으로 메시지 전송
 
 **설정 예시**:
 
@@ -248,7 +248,7 @@ NotifyServer API는 App Key 기반 인증을 사용합니다. 다음 다이어�
 **API 호출 예시**:
 
 ```bash
-curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-key-here" \
+curl -X POST "http://localhost:2443/api/v1/notifications?app_key=your-secret-key-here" \
   -H "Content-Type: application/json" \
   -d '{
     "application_id": "my-app",
@@ -271,7 +271,8 @@ curl -X POST "http://localhost:2443/api/v1/notice/message?app_key=your-secret-ke
 | ------------------------ | ------ | --------------------------------------------- | ------------ |
 | `/health`                | GET    | 서버 상태 확인 (uptime, 의존성 상태)          | 아니오       |
 | `/version`               | GET    | 빌드 정보 확인 (Git 커밋, 빌드 날짜, Go 버전) | 아니오       |
-| `/api/v1/notice/message` | POST   | 알림 메시지 전송                              | 예 (App Key) |
+| `/api/v1/notifications`  | POST   | 알림 메시지 게시 (권장)                       | 예 (App Key) |
+| `/api/v1/notice/message` | POST   | 알림 메시지 전송 (레거시, 하위 호환성 유지)   | 예 (App Key) |
 
 ## 개발 가이드
 
@@ -291,6 +292,11 @@ notify-server/
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
 ├── service/           # 비즈니스 로직
 │   ├── api/           # REST API 서버
+│   │   ├── auth/      # 인증 관리 (ApplicationManager)
+│   │   ├── handler/   # 공통 핸들러 (SystemHandler)
+│   │   ├── middleware/# 미들웨어 (HTTP 로깅, CORS 등)
+│   │   ├── model/     # 공통 모델 (response, domain)
+│   │   └── v1/        # API v1 엔드포인트
 │   ├── notification/  # 알림 발송 (Telegram 등)
 │   └── task/          # 스케줄링 및 스크래핑 작업
 ├── main.go            # 애플리케이션 진입점

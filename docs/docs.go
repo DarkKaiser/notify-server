@@ -24,14 +24,14 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/notice/message": {
+        "/api/v1/notifications": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 사용 예시 (로컬 환경)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notice/message?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
+                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 사용 예시 (로컬 환경)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
                 "consumes": [
                     "application/json"
                 ],
@@ -41,7 +41,7 @@ const docTemplate = `{
                 "tags": [
                     "Notification"
                 ],
-                "summary": "알림 메시지 전송",
+                "summary": "알림 메시지 게시",
                 "parameters": [
                     {
                         "type": "string",
@@ -57,7 +57,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/request.NotifyMessageRequest"
+                            "$ref": "#/definitions/request.NotificationRequest"
                         }
                     }
                 ],
@@ -143,7 +143,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "request.NotifyMessageRequest": {
+        "request.NotificationRequest": {
             "type": "object",
             "required": [
                 "application_id",
@@ -151,7 +151,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "application_id": {
-                    "description": "애플리케이션 ID (설정 파일의 notify_api.applications에 등록된 ID)",
+                    "description": "애플리케이션 ID",
                     "type": "string",
                     "example": "my-app"
                 },
@@ -193,7 +193,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "message": {
-                    "description": "에러 메시지 (에러 발생 원인 및 해결 방법 포함)",
+                    "description": "오류에 대한 상세 메시지입니다.\n발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.",
                     "type": "string",
                     "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
                 }
@@ -225,7 +225,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "result_code": {
-                    "description": "결과 코드 (0: 성공, 0이 아닌 값: 실패)",
+                    "description": "처리 결과 코드입니다.\n0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.",
                     "type": "integer",
                     "example": 0
                 }
@@ -278,7 +278,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "Notify Server API",
-	Description:      "웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.\n\n이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.\n\n## 주요 기능\n- 알림 메시지 전송\n- 다양한 알림 채널 지원 (Telegram 등)\n- 애플리케이션별 인증 및 권한 관리\n\n## 인증 방법\nAPI 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록한 후 사용하세요.\n\n## 인증 플로우\n1. **사전 준비**: notify-server.json의 notify_api.applications에 애플리케이션 등록\n- application_id, app_key, default_notifier_id 설정\n2. **API 호출**: Query Parameter로 app_key 전달\n- POST /api/v1/notice/message?app_key=YOUR_KEY\n3. **인증 검증**: 서버에서 application_id와 app_key 확인\n- 미등록 앱: 401 Unauthorized\n- 잘못된 app_key: 401 Unauthorized\n4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송\n- 성공: 200 OK\n\n자세한 인증 플로우 다이어그램은 GitHub README를 참조하세요.",
+	Description:      "웹 스크래핑을 통해 수집한 정보를 알림으로 전송하는 서버의 REST API입니다.\n\n이 API를 사용하면 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송할 수 있습니다.\n\n## 주요 기능\n- 알림 메시지 전송\n- 다양한 알림 채널 지원 (Telegram 등)\n- 애플리케이션별 인증 및 권한 관리\n\n## 인증 방법\nAPI 사용을 위해서는 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록한 후 사용하세요.\n\n## 인증 플로우\n1. **사전 준비**: notify-server.json의 notify_api.applications에 애플리케이션 등록\n- application_id, app_key, default_notifier_id 설정\n2. **API 호출**: Query Parameter로 app_key 전달\n- POST /api/v1/notifications?app_key=YOUR_KEY\n3. **인증 검증**: 서버에서 application_id와 app_key 확인\n- 미등록 앱: 401 Unauthorized\n- 잘못된 app_key: 401 Unauthorized\n4. **알림 전송**: 인증 성공 시 텔레그램으로 메시지 전송\n- 성공: 200 OK\n\n자세한 인증 플로우 다이어그램은 GitHub README를 참조하세요.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
