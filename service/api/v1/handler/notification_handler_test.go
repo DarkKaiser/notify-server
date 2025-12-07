@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandler_SendNotifyMessageHandler(t *testing.T) {
+func TestHandler_PublishNotificationHandler(t *testing.T) {
 	// Setup
 	e := echo.New()
 	mockService := &MockNotificationService{}

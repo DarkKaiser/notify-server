@@ -547,7 +547,7 @@ func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
 	mockBot.AssertExpectations(t)
 }
 
-func TestTelegramBotWrapper_GetSelf(t *testing.T) {
+func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 	t.Run("GetSelf 함수 테스트", func(t *testing.T) {
 		// Setup
 		mockBotAPI := &tgbotapi.BotAPI{
@@ -559,10 +559,10 @@ func TestTelegramBotWrapper_GetSelf(t *testing.T) {
 			},
 		}
 
-		wrapper := &telegramBotWrapper{BotAPI: mockBotAPI}
+		client := &telegramBotAPIClient{BotAPI: mockBotAPI}
 
 		// Test
-		user := wrapper.GetSelf()
+		user := client.GetSelf()
 
 		// Verify
 		assert.Equal(t, int64(123456), user.ID, "User ID가 일치해야 합니다")
