@@ -10,11 +10,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	msgUnknownCommand             = "'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요."
+	msgInvalidCancelCommandFormat = "'%s'는 잘못된 취소 명령어 형식입니다.\n올바른 형식: '%s%s%s[작업인스턴스ID]'"
+	msgTaskExecutionFailed        = "사용자가 요청한 작업의 실행 요청이 실패하였습니다."
+	msgTaskCancelFailed           = "작업취소 요청이 실패하였습니다.(ID:%s)"
+	msgContextTitle               = "<b>【 %s 】</b>\n\n%s"
+	msgContextError               = "%s\n\n*** 오류가 발생하였습니다. ***"
+	msgElapsedTime                = " (%s지남)"
+)
+
 // handleCommand 사용자 텔레그램 명령어 처리
 func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tgbotapi.Message) {
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
-		m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요.", message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+		m := fmt.Sprintf(msgUnknownCommand, message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 		n.sendMessage(m)
 		return
 	}
@@ -41,7 +51,7 @@ func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tg
 			if !taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) {
 				// 실행 실패 알림 발송
 				n.requestC <- &notifyRequest{
-					message: "사용자가 요청한 작업의 실행 요청이 실패하였습니다.",
+					message: msgTaskExecutionFailed,
 					taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
 				}
 			}
@@ -50,7 +60,7 @@ func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tg
 	}
 
 	// 매칭되는 명령어가 없는 경우
-	m := fmt.Sprintf("'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요.", message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+	m := fmt.Sprintf(msgUnknownCommand, message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 	n.sendMessage(m)
 }
 
@@ -78,12 +88,12 @@ func (n *telegramNotifier) handleCancelCommand(taskRunner task.TaskRunner, comma
 		if !taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) {
 			// 취소 실패 시 알림
 			n.requestC <- &notifyRequest{
-				message: fmt.Sprintf("작업취소 요청이 실패하였습니다.(ID:%s)", taskInstanceID),
+				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
 				taskCtx: task.NewContext().WithError(),
 			}
 		}
 	} else {
-		m := fmt.Sprintf("'%s'는 잘못된 취소 명령어 형식입니다.\n올바른 형식: '%s%s%s[작업인스턴스ID]'", command, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
+		m := fmt.Sprintf(msgInvalidCancelCommandFormat, command, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
 		n.sendMessage(m)
 	}
 }
@@ -106,7 +116,7 @@ func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task
 	// 1. 작업 제목 추가
 	title, ok := taskCtx.Value(task.TaskCtxKeyTitle).(string)
 	if ok && len(title) > 0 {
-		message = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", title, message)
+		message = fmt.Sprintf(msgContextTitle, title, message)
 	} else {
 		// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
 		taskID, ok1 := taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
@@ -114,7 +124,7 @@ func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task
 		if ok1 && ok2 {
 			for _, botCommand := range n.botCommands {
 				if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-					message = fmt.Sprintf("<b>【 %s 】</b>\n\n%s", botCommand.commandTitle, message)
+					message = fmt.Sprintf(msgContextTitle, botCommand.commandTitle, message)
 					break
 				}
 			}
@@ -133,7 +143,7 @@ func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task
 
 	// 4. 오류 발생 시 강조 표시 추가
 	if errorOccurred, ok := taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok && errorOccurred {
-		message = fmt.Sprintf("%s\n\n*** 오류가 발생하였습니다. ***", message)
+		message = fmt.Sprintf(msgContextError, message)
 	}
 
 	return message
@@ -145,19 +155,19 @@ func formatElapsedTime(seconds int64) string {
 	m := (seconds / 60) % 60
 	h := seconds / 3600
 
-	var result string
+	var sb strings.Builder
 	if h > 0 {
-		result = fmt.Sprintf("%d시간 ", h)
+		fmt.Fprintf(&sb, "%d시간 ", h)
 	}
 	if m > 0 {
-		result += fmt.Sprintf("%d분 ", m)
+		fmt.Fprintf(&sb, "%d분 ", m)
 	}
 	if s > 0 {
-		result += fmt.Sprintf("%d초 ", s)
+		fmt.Fprintf(&sb, "%d초 ", s)
 	}
 
-	if len(result) > 0 {
-		return fmt.Sprintf(" (%s지남)", result)
+	if sb.Len() > 0 {
+		return fmt.Sprintf(msgElapsedTime, sb.String())
 	}
 	return ""
 }

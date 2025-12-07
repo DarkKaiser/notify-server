@@ -96,7 +96,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot 초기화 실패: %w", err)
 	}
-	botAPI.Debug = true
+	botAPI.Debug = appConfig.Debug
 
 	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, chatID, appConfig), nil
 }
