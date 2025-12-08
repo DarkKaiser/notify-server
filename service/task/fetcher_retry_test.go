@@ -13,29 +13,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// RetryTestMockFetcher는 Fetcher 인터페이스의 Mock 구현체입니다.
-type RetryTestMockFetcher struct {
-	mock.Mock
-}
-
-func (m *RetryTestMockFetcher) Get(url string) (*http.Response, error) {
-	args := m.Called(url)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
-}
-
-func (m *RetryTestMockFetcher) Do(req *http.Request) (*http.Response, error) {
-	args := m.Called(req)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
-}
-
 func TestRetryFetcher_Get_Success(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	expectedResp := &http.Response{StatusCode: 200}
@@ -52,7 +31,7 @@ func TestRetryFetcher_Get_Success(t *testing.T) {
 }
 
 func TestRetryFetcher_Get_RetrySuccess(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	// 첫 번째, 두 번째 호출은 실패, 세 번째 호출은 성공
@@ -69,7 +48,7 @@ func TestRetryFetcher_Get_RetrySuccess(t *testing.T) {
 }
 
 func TestRetryFetcher_Get_MaxRetriesExceeded(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	// 모든 호출 실패
@@ -84,7 +63,7 @@ func TestRetryFetcher_Get_MaxRetriesExceeded(t *testing.T) {
 }
 
 func TestRetryFetcher_Get_ServerErrorRetry(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	// 500 에러 발생 시 재시도
@@ -102,7 +81,7 @@ func TestRetryFetcher_Get_ServerErrorRetry(t *testing.T) {
 }
 
 func TestRetryFetcher_Get_InvalidURL(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	// 잘못된 URL로 인한 http.NewRequest 에러 테스트
@@ -116,7 +95,7 @@ func TestRetryFetcher_Get_InvalidURL(t *testing.T) {
 }
 
 func TestRetryFetcher_Do_ContextCancelled(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	// Retry delay large enough to ensure we hit the cancel in the test
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, 100*time.Millisecond)
 
@@ -140,7 +119,7 @@ func TestRetryFetcher_Do_ContextCancelled(t *testing.T) {
 }
 
 func TestRetryFetcher_Do_RequestBodyRetry(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	bodyContent := []byte("test body")
@@ -177,7 +156,7 @@ func TestRetryFetcher_Do_RequestBodyRetry(t *testing.T) {
 }
 
 func TestRetryFetcher_Get_TooManyRequestsRetry(t *testing.T) {
-	mockFetcher := new(RetryTestMockFetcher)
+	mockFetcher := new(TestMockFetcher)
 	retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
 
 	// 429 에러 발생 시 재시도

@@ -76,7 +76,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			t.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			t.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			t.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {

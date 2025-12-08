@@ -20,7 +20,21 @@ type RetryFetcher struct {
 }
 
 // NewRetryFetcher 새로운 RetryFetcher 인스턴스를 생성합니다.
+// maxRetries는 0~10 범위로 제한되며, retryDelay는 최소 1초로 설정됩니다.
 func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration) *RetryFetcher {
+	// 재시도 횟수 검증 (음수 방지 및 최대값 제한)
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	if maxRetries > 10 {
+		maxRetries = 10 // 과도한 재시도 방지
+	}
+
+	// 재시도 지연 시간 검증
+	if retryDelay < time.Second {
+		retryDelay = time.Second // 최소 1초
+	}
+
 	return &RetryFetcher{
 		delegate:   delegate,
 		maxRetries: maxRetries,
