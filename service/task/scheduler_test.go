@@ -217,6 +217,50 @@ func TestScheduler_StartStop(t *testing.T) {
 		// 정리
 		s.Stop()
 	})
+	t.Run("스케줄 등록 실패 - 잘못된 TimeSpec", func(t *testing.T) {
+		s := &scheduler{}
+		mockSender := NewMockTaskNotificationSender()
+		mockRunner := &mockTaskRunner{}
+
+		appConfig := &config.AppConfig{
+			Tasks: []config.TaskConfig{
+				{
+					ID:    "InvalidTask",
+					Title: "잘못된 작업",
+					Commands: []config.TaskCommandConfig{
+						{
+							ID:    "InvalidCommand",
+							Title: "잘못된 명령",
+							Scheduler: struct {
+								Runnable bool   `json:"runnable"`
+								TimeSpec string `json:"time_spec"`
+							}{
+								Runnable: true,
+								TimeSpec: "invalid-cron-spec", // 잘못된 표현식
+							},
+							DefaultNotifierID: "test-notifier",
+						},
+					},
+				},
+			},
+		}
+
+		// 스케줄러 시작
+		s.Start(appConfig, mockRunner, mockSender)
+
+		// 알림이 발송되었는지 확인
+		assert.Greater(t, mockSender.GetNotifyWithTaskContextCallCount(), 0, "오류 발생 시 알림이 발송되어야 합니다")
+
+		if mockSender.GetNotifyWithTaskContextCallCount() > 0 {
+			call := mockSender.NotifyWithTaskContextCalls[0]
+			assert.Equal(t, "test-notifier", call.NotifierID)
+			assert.Contains(t, call.Message, "Cron 스케줄 파싱 실패")
+			assert.NotNil(t, call.TaskCtx)
+		}
+
+		// 정리
+		s.Stop()
+	})
 }
 
 // mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
