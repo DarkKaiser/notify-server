@@ -186,25 +186,40 @@ func TestLogDirName(t *testing.T) {
 	})
 }
 
-func TestMaskSensitiveData(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"빈 문자열", "", ""},
-		{"3자 이하 (1자)", "a", "***"},
-		{"3자 이하 (3자)", "abc", "***"},
-		{"12자 이하 (4자)", "abcd", "abcd***"},
-		{"12자 이하 (12자)", "123456789012", "1234***"},
-		{"긴 문자열 (토큰)", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz", "1234***wxyz"},
-		{"긴 문자열 (일반)", "this_is_a_very_long_secret_key", "this***_key"},
-	}
+func TestSetCallerPathPrefix(t *testing.T) {
+	t.Run("CallerPathPrefix 설정 확인", func(t *testing.T) {
+		// 기본값 백업 및 복원
+		originalPrefix := callerFunctionPathPrefix
+		defer func() {
+			callerFunctionPathPrefix = originalPrefix
+		}()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := MaskSensitiveData(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+		prefix := "github.com/test/pkg"
+		SetCallerPathPrefix(prefix)
+
+		assert.Equal(t, prefix, callerFunctionPathPrefix, "Prefix가 올바르게 설정되어야 합니다")
+	})
+}
+
+func TestWithComponent(t *testing.T) {
+	t.Run("Component 필드가 추가되는지 확인", func(t *testing.T) {
+		entry := WithComponent("test-component")
+		assert.NotNil(t, entry)
+		assert.Equal(t, "test-component", entry.Data["component"])
+	})
+}
+
+func TestWithComponentAndFields(t *testing.T) {
+	t.Run("Component와 추가 필드가 모두 포함되는지 확인", func(t *testing.T) {
+		fields := log.Fields{
+			"key1": "value1",
+			"key2": 123,
+		}
+		entry := WithComponentAndFields("test-component", fields)
+
+		assert.NotNil(t, entry)
+		assert.Equal(t, "test-component", entry.Data["component"])
+		assert.Equal(t, "value1", entry.Data["key1"])
+		assert.Equal(t, 123, entry.Data["key2"])
+	})
 }

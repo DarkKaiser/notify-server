@@ -92,7 +92,7 @@ func init() {
 
 		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if taskRunData.TaskID != TidLotto {
-				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
@@ -197,11 +197,11 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
 	analysisFilePath := regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`).FindString(cmdOutString)
 	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 	analysisFilePath = regexp.MustCompile(`경로:(.*)\.log`).FindString(analysisFilePath)
 	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 	analysisFilePath = string([]rune(analysisFilePath)[3:]) // '경로:' 문자열을 제거한다.
 
@@ -215,7 +215,7 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 	analysisResultData := string(data)
 	index := strings.Index(analysisResultData, "- 분석결과")
 	if index == -1 {
-		return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
+		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
 	}
 	analysisResultData = analysisResultData[index:]
 

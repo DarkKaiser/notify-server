@@ -55,23 +55,23 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 func NewHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	resp, err := fetcher.Get(url)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
+		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	defer resp.Body.Close() // 응답을 받은 즉시 defer 설정하여 메모리 누수 방지
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
+		return nil, apperrors.New(ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
 	}
 
 	// Content-Type 헤더를 기반으로 인코딩을 UTF-8로 변환
 	utf8Reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s)의 인코딩 변환이 실패하였습니다.", url))
+		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s)의 인코딩 변환이 실패하였습니다.", url))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(utf8Reader)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 데이터 파싱이 실패하였습니다.", url))
+		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 데이터 파싱이 실패하였습니다.", url))
 	}
 
 	return doc, nil
@@ -87,7 +87,7 @@ func NewHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*go
 
 	sel := doc.Find(selector)
 	if sel.Length() <= 0 {
-		return nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요", url))
+		return nil, apperrors.New(ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요", url))
 	}
 
 	return sel, nil
@@ -110,7 +110,7 @@ func WebScrape(fetcher Fetcher, url string, selector string, f func(int, *goquer
 func UnmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
+		return apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	for key, value := range header {
 		req.Header.Set(key, value)
@@ -118,17 +118,17 @@ func UnmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header m
 
 	resp, err := fetcher.Do(req)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
+		return apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
 	}
 	defer resp.Body.Close() // 응답을 받은 즉시 defer 설정하여 메모리 누수 방지
 
 	if resp.StatusCode != http.StatusOK {
-		return apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
+		return apperrors.New(ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.(%s)", url, resp.Status))
 	}
 
 	// json.Decoder를 사용하여 스트림 방식으로 JSON 파싱 (메모리 효율적)
 	if err = json.NewDecoder(resp.Body).Decode(v); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.", url))
+		return apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.", url))
 	}
 
 	return nil

@@ -276,24 +276,20 @@ func InitAppConfig() (*AppConfig, error) {
 // InitAppConfigWithFile 지정된 파일에서 설정을 로드합니다.
 // 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
 func InitAppConfigWithFile(filename string) (*AppConfig, error) {
-	data, err := os.ReadFile(filename)
+	file, err := os.Open(filename)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrSystem, fmt.Sprintf("%s 파일을 읽을 수 없습니다", filename))
+		return nil, apperrors.Wrap(err, apperrors.ErrSystem, fmt.Sprintf("%s 파일을 열 수 없습니다", filename))
 	}
+	defer file.Close()
 
 	var appConfig AppConfig
-	err = json.Unmarshal(data, &appConfig)
-	if err != nil {
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&appConfig); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s 파일의 JSON 파싱이 실패하였습니다", filename))
 	}
 
-	// HTTP Retry 설정 기본값 적용
-	if appConfig.HTTPRetry.MaxRetries == 0 {
-		appConfig.HTTPRetry.MaxRetries = DefaultMaxRetries
-	}
-	if appConfig.HTTPRetry.RetryDelay == "" {
-		appConfig.HTTPRetry.RetryDelay = DefaultRetryDelay
-	}
+	// 기본값 설정
+	appConfig.SetDefaults()
 
 	//
 	// 파일 내용에 대해 유효성 검사를 한다.
@@ -303,4 +299,14 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	}
 
 	return &appConfig, nil
+}
+
+func (c *AppConfig) SetDefaults() {
+	// HTTP Retry 설정 기본값 적용
+	if c.HTTPRetry.MaxRetries == 0 {
+		c.HTTPRetry.MaxRetries = DefaultMaxRetries
+	}
+	if c.HTTPRetry.RetryDelay == "" {
+		c.HTTPRetry.RetryDelay = DefaultRetryDelay
+	}
 }

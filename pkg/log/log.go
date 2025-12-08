@@ -174,13 +174,6 @@ func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error)
 	return file, nil
 }
 
-// SetCallerPathPrefix 호출자 정보에서 축약할 경로 prefix를 설정합니다.
-// main() 함수 초기에 호출하여 호출자 경로 표시를 커스터마이징할 수 있습니다.
-// 예제: SetCallerPathPrefix("github.com/darkkaiser")
-func SetCallerPathPrefix(prefix string) {
-	callerFunctionPathPrefix = prefix
-}
-
 // SetDebugMode Debug 모드에 따라 로그 레벨을 설정합니다.
 // - Debug 모드: Trace 레벨 (모든 로그 출력)
 // - 운영 모드: Info 레벨 (Info, Warn, Error, Fatal만 출력)
@@ -190,6 +183,13 @@ func SetDebugMode(debug bool) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+}
+
+// SetCallerPathPrefix 호출자 정보에서 축약할 경로 prefix를 설정합니다.
+// main() 함수 초기에 호출하여 호출자 경로 표시를 커스터마이징할 수 있습니다.
+// 예제: SetCallerPathPrefix("github.com/darkkaiser")
+func SetCallerPathPrefix(prefix string) {
+	callerFunctionPathPrefix = prefix
 }
 
 func removeExpiredLogFiles(appName string, retentionDays float64) {
@@ -255,27 +255,6 @@ func removeExpiredLogFiles(appName string, retentionDays float64) {
 			}).Info("오래된 로그파일 삭제 성공")
 		}
 	}
-}
-
-// MaskSensitiveData 민감한 정보를 마스킹합니다.
-// 토큰, 키 등의 민감 정보를 안전하게 로깅하기 위해 사용합니다.
-func MaskSensitiveData(data string) string {
-	if data == "" {
-		return ""
-	}
-
-	// 3자 이하는 전체 마스킹
-	if len(data) <= 3 {
-		return "***"
-	}
-
-	// 앞 4자만 표시하고 나머지는 마스킹
-	if len(data) <= 12 {
-		return data[:4] + "***"
-	}
-
-	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
-	return data[:4] + "***" + data[len(data)-4:]
 }
 
 // WithComponent component 필드를 포함한 로그 Entry를 반환합니다.

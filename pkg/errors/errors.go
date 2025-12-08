@@ -61,20 +61,6 @@ const (
 	//   - 외부 시스템 연동 실패
 	//   - 리소스 부족 (메모리, 디스크)
 	ErrSystem ErrorType = "System"
-
-	// Domain Specific Errors (도메인 특화 에러)
-
-	// ErrTaskNotFound Task를 찾을 수 없음
-	// 사용 시나리오: 설정에 정의되지 않은 Task ID를 참조할 때
-	ErrTaskNotFound ErrorType = "TaskNotFound"
-
-	// ErrTaskExecutionFailed Task 실행 실패
-	// 사용 시나리오: Task 실행 중 오류가 발생했을 때
-	ErrTaskExecutionFailed ErrorType = "TaskExecutionFailed"
-
-	// ErrNotificationFailed 알림 전송 실패
-	// 사용 시나리오: 텔레그램 등의 알림 서비스로 메시지 전송 실패 시
-	ErrNotificationFailed ErrorType = "NotificationFailed"
 )
 
 // AppError 애플리케이션 전용 에러 구조체

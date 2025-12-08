@@ -129,3 +129,60 @@ func TestLogLevelFileHook_Fire_FormatError(t *testing.T) {
 		assert.Equal(t, "format error", err.Error())
 	})
 }
+
+// channelWriter is a safe writer for concurrent tests
+type channelWriter struct {
+	ch chan []byte
+}
+
+func (w *channelWriter) Write(p []byte) (n int, err error) {
+	// Send to channel or just discard for concurrency testing
+	// Sending might block if channel is full, so just discard for this specific test
+	// strictly checking for panic/race
+	return len(p), nil
+}
+
+func TestLogLevelFileHook_ConcurrentWrite(t *testing.T) {
+	formatter := &log.TextFormatter{DisableTimestamp: true}
+
+	// Use our safe writer mock
+	safeWriter := &channelWriter{
+		ch: make(chan []byte, 10000),
+	}
+
+	hook := &LogLevelHook{
+		criticalWriter: safeWriter,
+		verboseWriter:  safeWriter,
+		formatter:      formatter,
+	}
+
+	t.Run("동시성 쓰기 테스트 - Data Race 확인용", func(t *testing.T) {
+		concurrency := 10
+		iterations := 100
+		done := make(chan bool)
+
+		for i := 0; i < concurrency; i++ {
+			go func() {
+				for j := 0; j < iterations; j++ {
+					// We ignore errors here as we are testing for race conditions/panics
+					_ = hook.Fire(&log.Entry{
+						Level:   log.ErrorLevel,
+						Message: "concurrent error",
+					})
+					_ = hook.Fire(&log.Entry{
+						Level:   log.DebugLevel,
+						Message: "concurrent debug",
+					})
+				}
+				done <- true
+			}()
+		}
+
+		for i := 0; i < concurrency; i++ {
+			<-done
+		}
+
+		// If we reached here without panic/race (when run with -race), pass.
+		assert.True(t, true)
+	})
+}

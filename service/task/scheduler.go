@@ -67,7 +67,11 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskExecutor TaskExecutor
 
 	s.running = true
 
-	applog.WithComponent("task.scheduler").Info("Task 스케쥴러 시작됨")
+	// 등록된 스케줄 개수 로깅
+	registeredCount := len(s.cron.Entries())
+	applog.WithComponentAndFields("task.scheduler", log.Fields{
+		"registered_schedules": registeredCount,
+	}).Info("Task 스케쥴러 시작됨")
 }
 
 // Stop 실행 중인 스케줄러를 중지합니다.

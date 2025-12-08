@@ -228,3 +228,190 @@ func TestAppConfig_Validate_TLSCertURL(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+func TestAppConfig_Validate_LogicErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *AppConfig
+		errorMsg string
+	}{
+		{
+			name: "중복된 Notifier ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+						{ID: "telegram1", BotToken: "val2", ChatID: 456},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "중복되었습니다",
+		},
+		{
+			name: "존재하지 않는 기본 Notifier ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "non-existent",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "존재하지 않습니다",
+		},
+		{
+			name: "중복된 Task ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				Tasks: []TaskConfig{
+					{ID: "task1", Commands: []TaskCommandConfig{}},
+					{ID: "task1", Commands: []TaskCommandConfig{}},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "중복되었습니다",
+		},
+		{
+			name: "중복된 Command ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				Tasks: []TaskConfig{
+					{
+						ID: "task1",
+						Commands: []TaskCommandConfig{
+							{ID: "cmd1", DefaultNotifierID: "telegram1"},
+							{ID: "cmd1", DefaultNotifierID: "telegram1"},
+						},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "중복되었습니다",
+		},
+		{
+			name: "Command의 존재하지 않는 Notifier ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				Tasks: []TaskConfig{
+					{
+						ID: "task1",
+						Commands: []TaskCommandConfig{
+							{ID: "cmd1", DefaultNotifierID: "non-existent"},
+						},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "존재하지 않습니다",
+		},
+		{
+			name: "중복된 Application ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				NotifyAPI: NotifyAPIConfig{
+					WS:   WSConfig{ListenPort: 8080},
+					CORS: CORSConfig{AllowOrigins: []string{"*"}},
+					Applications: []ApplicationConfig{
+						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: "key1"},
+						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: "key2"},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "중복되었습니다",
+		},
+		{
+			name: "Application의 존재하지 않는 Notifier ID",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				NotifyAPI: NotifyAPIConfig{
+					WS:   WSConfig{ListenPort: 8080},
+					CORS: CORSConfig{AllowOrigins: []string{"*"}},
+					Applications: []ApplicationConfig{
+						{ID: "app1", DefaultNotifierID: "non-existent", AppKey: "key1"},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "존재하지 않습니다",
+		},
+		{
+			name: "Application의 AppKey 누락",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				NotifyAPI: NotifyAPIConfig{
+					WS:   WSConfig{ListenPort: 8080},
+					CORS: CORSConfig{AllowOrigins: []string{"*"}},
+					Applications: []ApplicationConfig{
+						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: ""},
+					},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "APP_KEY",
+		},
+		{
+			name: "TLS Server 활성화 시 Cert/Key 누락",
+			config: &AppConfig{
+				Notifiers: NotifierConfig{
+					DefaultNotifierID: "telegram1",
+					Telegrams: []TelegramConfig{
+						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+					},
+				},
+				NotifyAPI: NotifyAPIConfig{
+					WS: WSConfig{
+						ListenPort: 8080,
+						TLSServer:  true,
+						// Cert/Key missing
+					},
+					CORS:         CORSConfig{AllowOrigins: []string{"*"}},
+					Applications: []ApplicationConfig{},
+				},
+				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			},
+			errorMsg: "Cert 파일 경로",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.Validate()
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.errorMsg)
+		})
+	}
+}
