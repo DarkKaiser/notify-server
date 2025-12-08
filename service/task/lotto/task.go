@@ -1,4 +1,4 @@
-package task
+package lotto
 
 import (
 	"bytes"
@@ -13,15 +13,16 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	// TaskID
-	TidLotto TaskID = "LOTTO"
+	TidLotto task.TaskID = "LOTTO"
 
 	// TaskCommandID
-	TcidLottoPrediction TaskCommandID = "Prediction" // 로또 번호 예측
+	TcidLottoPrediction task.TaskCommandID = "Prediction" // 로또 번호 예측
 )
 
 // CommandProcess 실행 중인 프로세스를 추상화하는 인터페이스
@@ -80,25 +81,25 @@ type lottoTaskData struct {
 type lottoPredictionResultData struct{}
 
 func init() {
-	supportedTasks[TidLotto] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidLottoPrediction,
+	task.RegisterTask(TidLotto, &task.TaskConfig{
+		CommandConfigs: []*task.TaskCommandConfig{{
+			TaskCommandID: TcidLottoPrediction,
 
-			allowMultipleInstances: false,
+			AllowMultipleInstances: false,
 
-			newTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
-			if taskRunData.taskID != TidLotto {
+		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if taskRunData.TaskID != TidLotto {
 				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
 			for _, t := range appConfig.Tasks {
-				if taskRunData.taskID == TaskID(t.ID) {
+				if taskRunData.TaskID == task.TaskID(t.ID) {
 					taskData := &lottoTaskData{}
-					if err := fillTaskDataFromMap(taskData, t.Data); err != nil {
+					if err := task.FillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
 
@@ -108,17 +109,17 @@ func init() {
 				}
 			}
 
-			task := &lottoTask{
-				task: task{
-					id:         taskRunData.taskID,
-					commandID:  taskRunData.taskCommandID,
-					instanceID: instanceID,
+			lottoTask := &lottoTask{
+				Task: task.Task{
+					ID:         taskRunData.TaskID,
+					CommandID:  taskRunData.TaskCommandID,
+					InstanceID: instanceID,
 
-					notifierID: taskRunData.notifierID,
+					NotifierID: taskRunData.NotifierID,
 
-					canceled: false,
+					Canceled: false,
 
-					runBy: taskRunData.taskRunBy,
+					RunBy: taskRunData.TaskRunBy,
 				},
 
 				appPath: appPath,
@@ -126,22 +127,22 @@ func init() {
 				executor: &DefaultCommandExecutor{},
 			}
 
-			task.runFn = func(taskResultData interface{}, _ bool) (string, interface{}, error) {
-				switch task.CommandID() {
+			lottoTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+				switch lottoTask.GetCommandID() {
 				case TcidLottoPrediction:
-					return task.runPrediction()
+					return lottoTask.runPrediction()
 				}
 
-				return "", nil, ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNoImplementationForTaskCommand
 			}
 
-			return task, nil
+			return lottoTask, nil
 		},
-	}
+	})
 }
 
 type lottoTask struct {
-	task
+	task.Task
 
 	appPath string
 
@@ -168,8 +169,8 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 					err0 := process.Kill()
 					if err0 != nil {
 						applog.WithComponentAndFields("task.lotto", log.Fields{
-							"task_id":    t.ID(),
-							"command_id": t.CommandID(),
+							"task_id":    t.GetID(),
+							"command_id": t.GetCommandID(),
 							"error":      err0,
 						}).Error("작업 취소 중 외부 프로그램 종료 실패")
 					}

@@ -1,8 +1,9 @@
-package task
+package jdc
 
 import (
 	"testing"
 
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,7 +40,7 @@ func TestJdcOnlineEducationCourse_String(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 	t.Run("정상적인 강의 정보 파싱", func(t *testing.T) {
-		mockFetcher := NewMockHTTPFetcher()
+		mockFetcher := task.NewMockHTTPFetcher()
 
 		// 1. Digital Education List Page
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"
@@ -96,17 +97,17 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		mockFetcher.SetResponse(detailUntactURL, []byte(detailUntactHTML))
 
 		// Task Setup
-		task := &jdcTask{
-			task: task{
-				id:        TidJdc,
-				commandID: TcidJdcWatchNewOnlineEducation,
-				fetcher:   mockFetcher,
+		tTask := &jdcTask{
+			Task: task.Task{
+				ID:        TidJdc,
+				CommandID: TcidJdcWatchNewOnlineEducation,
+				Fetcher:   mockFetcher,
 			},
 		}
 
 		// Initial Run
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := task.runWatchNewOnlineEducation(taskResultData, false)
+		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Contains(t, message, "디지털 기초", "디지털 교육 제목이 포함되어야 합니다")
@@ -120,7 +121,7 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 	})
 
 	t.Run("데이터가 없는 경우", func(t *testing.T) {
-		mockFetcher := NewMockHTTPFetcher()
+		mockFetcher := task.NewMockHTTPFetcher()
 
 		// Empty Lists
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"
@@ -129,17 +130,20 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		untactListURL := "http://전남디지털역량.com/product/list?type=untact_edu"
 		mockFetcher.SetResponse(untactListURL, []byte(`<div id="content"><div class="no-data2">데이터가 없습니다</div></div>`))
 
-		task := &jdcTask{
-			task: task{
-				id:        TidJdc,
-				commandID: TcidJdcWatchNewOnlineEducation,
-				fetcher:   mockFetcher,
-				runBy:     TaskRunByScheduler,
+		// Task Setup
+		tTask := &jdcTask{
+			Task: task.Task{
+				ID:         TidJdc,
+				CommandID:  TcidJdcWatchNewOnlineEducation,
+				NotifierID: "test-notifier",
+				Fetcher:    mockFetcher,
+				RunBy:      task.TaskRunByScheduler,
 			},
 		}
 
+		// Initial Run (Data empty)
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := task.runWatchNewOnlineEducation(taskResultData, false)
+		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Empty(t, message, "데이터가 없으면 메시지도 없어야 합니다 (초기 실행 아님)")

@@ -29,7 +29,7 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 }
 
 // noinspection GoUnhandledErrorResult
-func newHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
+func NewHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	resp, err := fetcher.Get(url)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
@@ -52,8 +52,8 @@ func newHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	return doc, nil
 }
 
-func newHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
-	doc, err := newHTMLDocument(fetcher, url)
+func NewHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
+	doc, err := NewHTMLDocument(fetcher, url)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +66,8 @@ func newHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*go
 	return sel, nil
 }
 
-func webScrape(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
-	sel, err := newHTMLDocumentSelection(fetcher, url, selector)
+func WebScrape(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
+	sel, err := NewHTMLDocumentSelection(fetcher, url, selector)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func webScrape(fetcher Fetcher, url string, selector string, f func(int, *goquer
 }
 
 // noinspection GoUnhandledErrorResult
-func unmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
+func UnmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))

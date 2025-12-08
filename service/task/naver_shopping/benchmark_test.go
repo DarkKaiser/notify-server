@@ -1,16 +1,16 @@
-package task
+package naver_shopping
 
 import (
 	"fmt"
 	"net/url"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 	query := "아이폰"
 	encodedQuery := url.QueryEscape(query)
 
@@ -43,37 +43,13 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	mockFetcher.SetResponse(url1, []byte(searchResultJSON))
 
 	// 2. Task 초기화
-	appConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(TidNaverShopping),
-				Commands: []config.TaskCommandConfig{
-					{
-						ID: string(TcidNaverShoppingWatchPriceAny), // 실제로는 접두사 매칭
-						Data: map[string]interface{}{
-							"query": query,
-							"filters": map[string]interface{}{
-								"included_keywords": "",
-								"excluded_keywords": "",
-								"price_less_than":   20000,
-							},
-						},
-					},
-				},
-			},
+	tTask := &naverShoppingTask{
+		Task: task.Task{
+			ID:         TidNaverShopping,
+			CommandID:  TcidNaverShoppingWatchPriceAny,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
-	}
-
-	task := &naverShoppingTask{
-		task: task{
-			id:         TidNaverShopping,
-			commandID:  TaskCommandID("WatchPrice_Test"), // 접두사 매칭을 위해 설정
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
-		},
-		appConfig:    appConfig,
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
 	}
 
 	// 3. 테스트 데이터 준비
@@ -96,7 +72,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := task.runWatchPrice(taskCommandData, resultData, true)
+		_, _, err := tTask.runWatchPrice(taskCommandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

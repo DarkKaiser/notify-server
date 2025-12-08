@@ -1,4 +1,4 @@
-package task
+package kurly
 
 import (
 	"encoding/csv"
@@ -13,12 +13,13 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 const (
-	TidKurly TaskID = "KURLY" // 마켓컬리
+	TidKurly task.TaskID = "KURLY" // 마켓컬리
 
-	TcidKurlyWatchProductPrice TaskCommandID = "WatchProductPrice" // 마켓컬리 가격 확인
+	TcidKurlyWatchProductPrice task.TaskCommandID = "WatchProductPrice" // 마켓컬리 가격 확인
 )
 
 const (
@@ -127,35 +128,34 @@ type kurlyWatchProductPriceResultData struct {
 }
 
 func init() {
-	supportedTasks[TidKurly] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidKurlyWatchProductPrice,
+	task.RegisterTask(TidKurly, &task.TaskConfig{
+		CommandConfigs: []*task.TaskCommandConfig{{
+			TaskCommandID: TcidKurlyWatchProductPrice,
 
-			allowMultipleInstances: true,
+			AllowMultipleInstances: true,
 
-			newTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
-			if taskRunData.taskID != TidKurly {
+		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if taskRunData.TaskID != TidKurly {
 				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
-			task := &kurlyTask{
-				task: task{
-					id:         taskRunData.taskID,
-					commandID:  taskRunData.taskCommandID,
-					instanceID: instanceID,
+			tTask := &kurlyTask{
+				Task: task.Task{
+					ID:         taskRunData.TaskID,
+					CommandID:  taskRunData.TaskCommandID,
+					InstanceID: instanceID,
 
-					notifierID: taskRunData.notifierID,
+					NotifierID: taskRunData.NotifierID,
 
-					canceled: false,
+					Canceled: false,
 
-					runBy: taskRunData.taskRunBy,
+					RunBy: taskRunData.TaskRunBy,
 
-					fetcher: nil,
+					Fetcher: nil,
 				},
-
 				appConfig: appConfig,
 			}
 
@@ -163,41 +163,41 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
-			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
-				switch task.CommandID() {
+			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+
+				switch tTask.GetCommandID() {
 				case TcidKurlyWatchProductPrice:
-					for _, t := range task.appConfig.Tasks {
-						if task.ID() == TaskID(t.ID) {
+					for _, t := range tTask.appConfig.Tasks {
+						if tTask.GetID() == task.TaskID(t.ID) {
 							for _, c := range t.Commands {
-								if task.CommandID() == TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
 									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
-									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
+									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 									if err := taskCommandData.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return task.runWatchProductPrice(taskCommandData, taskResultData, messageTypeHTML)
+									return tTask.runWatchProductPrice(taskCommandData, taskResultData, messageTypeHTML)
 								}
 							}
 							break
 						}
 					}
 				}
-
-				return "", nil, ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNoImplementationForTaskCommand
 			}
 
-			return task, nil
+			return tTask, nil
 		},
-	}
+	})
 }
 
 type kurlyTask struct {
-	task
+	task.Task
 
 	appConfig *config.AppConfig
 }
@@ -254,7 +254,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		// 상품 페이지를 읽어들인다.
 		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
-		doc, err := newHTMLDocument(t.fetcher, productDetailPageURL)
+		doc, err := task.NewHTMLDocument(t.Fetcher, productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}
@@ -352,7 +352,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 	if messageTypeHTML == true {
 		lineSpacing = "\n"
 	}
-	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
+	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*kurlyProduct)
 		originProduct, ok2 := telem.(*kurlyProduct)
 		if ok1 == false || ok2 == false {
@@ -480,7 +480,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.runBy == TaskRunByUser {
+		if t.RunBy == task.TaskRunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {

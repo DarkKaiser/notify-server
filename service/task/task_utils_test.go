@@ -9,7 +9,7 @@ import (
 func TestTakeSliceArg(t *testing.T) {
 	t.Run("정상적인 슬라이스 변환", func(t *testing.T) {
 		input := []string{"a", "b", "c"}
-		result, ok := takeSliceArg(input)
+		result, ok := TakeSliceArg(input)
 
 		assert.True(t, ok, "슬라이스 변환이 성공해야 합니다")
 		assert.Equal(t, 3, len(result), "변환된 슬라이스의 길이가 일치해야 합니다")
@@ -20,7 +20,7 @@ func TestTakeSliceArg(t *testing.T) {
 
 	t.Run("빈 슬라이스 변환", func(t *testing.T) {
 		input := []int{}
-		result, ok := takeSliceArg(input)
+		result, ok := TakeSliceArg(input)
 
 		assert.True(t, ok, "빈 슬라이스도 변환이 성공해야 합니다")
 		assert.Equal(t, 0, len(result), "변환된 슬라이스의 길이가 0이어야 합니다")
@@ -28,7 +28,7 @@ func TestTakeSliceArg(t *testing.T) {
 
 	t.Run("슬라이스가 아닌 타입", func(t *testing.T) {
 		input := "not a slice"
-		result, ok := takeSliceArg(input)
+		result, ok := TakeSliceArg(input)
 
 		assert.False(t, ok, "슬라이스가 아닌 타입은 변환이 실패해야 합니다")
 		assert.Nil(t, result, "결과가 nil이어야 합니다")
@@ -36,7 +36,7 @@ func TestTakeSliceArg(t *testing.T) {
 
 	t.Run("다양한 타입의 슬라이스", func(t *testing.T) {
 		intSlice := []int{1, 2, 3}
-		result, ok := takeSliceArg(intSlice)
+		result, ok := TakeSliceArg(intSlice)
 
 		assert.True(t, ok, "int 슬라이스도 변환이 성공해야 합니다")
 		assert.Equal(t, 3, len(result), "변환된 슬라이스의 길이가 일치해야 합니다")
@@ -52,7 +52,7 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 		foundCount := 0
 		notFoundCount := 0
 
-		err := eachSourceElementIsInTargetElementOrNot(
+		err := EachSourceElementIsInTargetElementOrNot(
 			source,
 			target,
 			func(selem, telem interface{}) (bool, error) {
@@ -78,7 +78,7 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 		foundCount := 0
 		notFoundCount := 0
 
-		err := eachSourceElementIsInTargetElementOrNot(
+		err := EachSourceElementIsInTargetElementOrNot(
 			source,
 			target,
 			func(selem, telem interface{}) (bool, error) {
@@ -101,7 +101,7 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 		source := []string{"a"}
 		target := []string{"a"}
 
-		err := eachSourceElementIsInTargetElementOrNot(source, target, nil, nil, nil)
+		err := EachSourceElementIsInTargetElementOrNot(source, target, nil, nil, nil)
 
 		assert.Error(t, err, "equalFn이 nil이면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "equalFn()이 할당되지 않았습니다", "적절한 에러 메시지를 반환해야 합니다")
@@ -111,7 +111,7 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 		source := "not a slice"
 		target := []string{"a"}
 
-		err := eachSourceElementIsInTargetElementOrNot(
+		err := EachSourceElementIsInTargetElementOrNot(
 			source,
 			target,
 			func(selem, telem interface{}) (bool, error) { return true, nil },
@@ -127,7 +127,7 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 		source := []string{"a"}
 		target := "not a slice"
 
-		err := eachSourceElementIsInTargetElementOrNot(
+		err := EachSourceElementIsInTargetElementOrNot(
 			source,
 			target,
 			func(selem, telem interface{}) (bool, error) { return true, nil },
@@ -153,7 +153,7 @@ func TestFillTaskDataFromMap(t *testing.T) {
 		}
 
 		var result TestData
-		err := fillTaskDataFromMap(&result, inputMap)
+		err := FillTaskDataFromMap(&result, inputMap)
 
 		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
 		assert.Equal(t, "test", result.Name, "Name 필드가 올바르게 설정되어야 합니다")
@@ -164,7 +164,7 @@ func TestFillTaskDataFromMap(t *testing.T) {
 		inputMap := map[string]interface{}{}
 
 		var result TestData
-		err := fillTaskDataFromMap(&result, inputMap)
+		err := FillTaskDataFromMap(&result, inputMap)
 
 		assert.NoError(t, err, "빈 맵도 에러 없이 처리되어야 합니다")
 		assert.Equal(t, "", result.Name, "Name 필드가 기본값이어야 합니다")
@@ -185,7 +185,7 @@ func TestFillTaskCommandDataFromMap(t *testing.T) {
 		}
 
 		var result TestCommandData
-		err := fillTaskCommandDataFromMap(&result, inputMap)
+		err := FillTaskCommandDataFromMap(&result, inputMap)
 
 		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
 		assert.Equal(t, "test query", result.Query, "Query 필드가 올바르게 설정되어야 합니다")
@@ -199,7 +199,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -208,7 +208,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "포함 키워드가 없으면 false를 반환해야 합니다")
 	})
 
@@ -217,7 +217,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트"}
 		excludedKeywords := []string{"문자열"}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "제외 키워드가 있으면 false를 반환해야 합니다")
 	})
 
@@ -226,7 +226,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트", "문자열"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "모든 포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -235,7 +235,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트", "샘플"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "포함 키워드 중 하나라도 없으면 false를 반환해야 합니다")
 	})
 
@@ -244,7 +244,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플|테스트|예제"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "OR 조건 중 하나라도 만족하면 true를 반환해야 합니다")
 	})
 
@@ -253,7 +253,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플|예제|데모"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "OR 조건 모두 불만족하면 false를 반환해야 합니다")
 	})
 
@@ -262,7 +262,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"삼성", "스마트폰"}
 		excludedKeywords := []string{"아이폰"}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드는 만족하고 제외 키워드는 없으면 true를 반환해야 합니다")
 	})
 
@@ -271,7 +271,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "키워드가 없으면 true를 반환해야 합니다")
 	})
 
@@ -280,7 +280,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"samsung"}
 		excludedKeywords := []string{}
 
-		result := filter(s, includedKeywords, excludedKeywords)
+		result := Filter(s, includedKeywords, excludedKeywords)
 
 		// filter 함수가 대소문자를 구분하는지 확인
 		// 실제 구현에 따라 결과가 달라질 수 있음

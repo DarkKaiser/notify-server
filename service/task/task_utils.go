@@ -9,11 +9,11 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/strutils"
 )
 
-type equalFunc func(selem, telem interface{}) (bool, error)
-type onFoundFunc func(selem, telem interface{})
-type onNotFoundFunc func(selem interface{})
+type EqualFunc func(selem, telem interface{}) (bool, error)
+type OnFoundFunc func(selem, telem interface{})
+type OnNotFoundFunc func(selem interface{})
 
-func takeSliceArg(x interface{}) ([]interface{}, bool) {
+func TakeSliceArg(x interface{}) ([]interface{}, bool) {
 	value := reflect.ValueOf(x)
 	if value.Kind() != reflect.Slice {
 		return nil, false
@@ -27,15 +27,15 @@ func takeSliceArg(x interface{}) ([]interface{}, bool) {
 	return result, true
 }
 
-func eachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn equalFunc, onFoundFn onFoundFunc, onNotFoundFn onNotFoundFunc) error {
+func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn EqualFunc, onFoundFn OnFoundFunc, onNotFoundFn OnNotFoundFunc) error {
 	if equalFn == nil {
 		return errors.New("equalFn()이 할당되지 않았습니다")
 	}
-	sourceSlice, ok := takeSliceArg(source)
+	sourceSlice, ok := TakeSliceArg(source)
 	if ok == false {
 		return errors.New("source 인자의 Slice 타입 변환이 실패하였습니다")
 	}
-	targetSlice, ok := takeSliceArg(target)
+	targetSlice, ok := TakeSliceArg(target)
 	if ok == false {
 		return errors.New("target 인자의 Slice 타입 변환이 실패하였습니다")
 	}
@@ -64,11 +64,11 @@ func eachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 	return nil
 }
 
-func fillTaskDataFromMap(d interface{}, m map[string]interface{}) error {
-	return fillTaskCommandDataFromMap(d, m)
+func FillTaskDataFromMap(d interface{}, m map[string]interface{}) error {
+	return FillTaskCommandDataFromMap(d, m)
 }
 
-func fillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
+func FillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func fillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
 	return nil
 }
 
-func filter(s string, includedKeywords, excludedKeywords []string) bool {
+func Filter(s string, includedKeywords, excludedKeywords []string) bool {
 	for _, k := range includedKeywords {
 		includedOneOfManyKeywords := strutils.SplitAndTrim(k, "|")
 		if len(includedOneOfManyKeywords) == 1 {

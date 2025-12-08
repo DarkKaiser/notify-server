@@ -1,4 +1,4 @@
-package task
+package jyiu
 
 import (
 	"fmt"
@@ -10,15 +10,16 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 const (
 	// TaskID
-	TidJyiu TaskID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
+	TidJyiu task.TaskID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
 
 	// TaskCommandID
-	TcidJyiuWatchNewNotice    TaskCommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
-	TcidJyiuWatchNewEducation TaskCommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
+	TcidJyiuWatchNewNotice    task.TaskCommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
+	TcidJyiuWatchNewEducation task.TaskCommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
 )
 
 const (
@@ -61,39 +62,37 @@ type jyiuWatchNewEducationResultData struct {
 }
 
 func init() {
-	supportedTasks[TidJyiu] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidJyiuWatchNewNotice,
+	task.RegisterTask(TidJyiu, &task.TaskConfig{
+		CommandConfigs: []*task.TaskCommandConfig{{
+			TaskCommandID: TcidJyiuWatchNewNotice,
 
-			allowMultipleInstances: true,
+			AllowMultipleInstances: true,
 
-			newTaskResultDataFn: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
 		}, {
-			taskCommandID: TcidJyiuWatchNewEducation,
+			TaskCommandID: TcidJyiuWatchNewEducation,
 
-			allowMultipleInstances: true,
+			AllowMultipleInstances: true,
 
-			newTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
-			if taskRunData.taskID != TidJyiu {
+		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if taskRunData.TaskID != TidJyiu {
 				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
-			task := &jyiuTask{
-				task: task{
-					id:         taskRunData.taskID,
-					commandID:  taskRunData.taskCommandID,
-					instanceID: instanceID,
+			tTask := &jyiuTask{
+				Task: task.Task{
+					ID:         taskRunData.TaskID,
+					CommandID:  taskRunData.TaskCommandID,
+					InstanceID: instanceID,
 
-					notifierID: taskRunData.notifierID,
+					NotifierID: taskRunData.NotifierID,
 
-					canceled: false,
+					Canceled: false,
 
-					runBy: taskRunData.taskRunBy,
-
-					fetcher: nil,
+					RunBy: taskRunData.TaskRunBy,
 				},
 			}
 
@@ -101,27 +100,27 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
-			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
-				switch task.CommandID() {
+			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+				switch tTask.GetCommandID() {
 				case TcidJyiuWatchNewNotice:
-					return task.runWatchNewNotice(taskResultData, messageTypeHTML)
+					return tTask.runWatchNewNotice(taskResultData, messageTypeHTML)
 
 				case TcidJyiuWatchNewEducation:
-					return task.runWatchNewEducation(taskResultData, messageTypeHTML)
+					return tTask.runWatchNewEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNoImplementationForTaskCommand
 			}
 
-			return task, nil
+			return tTask, nil
 		},
-	}
+	})
 }
 
 type jyiuTask struct {
-	task
+	task.Task
 }
 
 func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
@@ -133,7 +132,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
-	err = webScrape(t.fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.WebScrape(t.Fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
@@ -187,7 +186,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	if messageTypeHTML == true {
 		lineSpacing = "\n"
 	}
-	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Notices, originTaskResultData.Notices, func(selem, telem interface{}) (bool, error) {
+	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Notices, originTaskResultData.Notices, func(selem, telem interface{}) (bool, error) {
 		actualityNotice, ok1 := selem.(*jyiuNotice)
 		originNotice, ok2 := telem.(*jyiuNotice)
 		if ok1 == false || ok2 == false {
@@ -214,7 +213,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		message = "새로운 공지사항이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.runBy == TaskRunByUser {
+		if t.RunBy == task.TaskRunByUser {
 			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
@@ -242,7 +241,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
-	err = webScrape(t.fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.WebScrape(t.Fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
@@ -294,7 +293,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	// 교육프로그램 새로운 글 정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Educations, originTaskResultData.Educations, func(selem, telem interface{}) (bool, error) {
+	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Educations, originTaskResultData.Educations, func(selem, telem interface{}) (bool, error) {
 		actualityEducation, ok1 := selem.(*jyiuEducation)
 		originEducation, ok2 := telem.(*jyiuEducation)
 		if ok1 == false || ok2 == false {
@@ -321,7 +320,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		message = "새로운 교육프로그램이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.runBy == TaskRunByUser {
+		if t.RunBy == task.TaskRunByUser {
 			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {

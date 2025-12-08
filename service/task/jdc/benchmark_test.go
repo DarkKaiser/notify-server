@@ -1,13 +1,15 @@
-package task
+package jdc
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 목록 페이지 HTML 생성 (여러 개의 강의 포함)
 	listHTML := `<html><body><div id="content"><ul class="prdt-list2">`
@@ -36,17 +38,18 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 		</body></html>
 	`
 	// 목록에 있는 모든 상세 페이지에 대해 응답 설정
+	// 목록에 있는 모든 상세 페이지에 대해 응답 설정
 	for i := 0; i < 20; i++ {
 		mockFetcher.SetResponse(fmt.Sprintf("%sproduct/detail?id=%d", jdcBaseURL, i), []byte(detailHTML))
 	}
 
 	// 2. Task 초기화
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -59,7 +62,7 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := task.runWatchNewOnlineEducation(resultData, true)
+		_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
