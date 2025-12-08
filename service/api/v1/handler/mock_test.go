@@ -7,6 +7,7 @@ type MockNotificationService struct {
 	LastTitle         string
 	LastMessage       string
 	LastErrorOccurred bool
+	ShouldFail        bool
 }
 
 func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
@@ -15,7 +16,7 @@ func (m *MockNotificationService) Notify(notifierID string, title string, messag
 	m.LastTitle = title
 	m.LastMessage = message
 	m.LastErrorOccurred = errorOccurred
-	return true
+	return !m.ShouldFail
 }
 
 func (m *MockNotificationService) NotifyToDefault(message string) bool {

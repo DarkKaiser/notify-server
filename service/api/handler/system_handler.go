@@ -22,13 +22,13 @@ const (
 	dependencyNotificationService = "notification_service"
 )
 
-var serverStartTime = time.Now()
-
 // SystemHandler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
 type SystemHandler struct {
 	notificationService notification.Service
 
 	buildInfo common.BuildInfo
+
+	serverStartTime time.Time
 }
 
 // NewSystemHandler SystemHandler 인스턴스를 생성합니다.
@@ -37,6 +37,8 @@ func NewSystemHandler(notificationService notification.Service, buildInfo common
 		notificationService: notificationService,
 
 		buildInfo: buildInfo,
+
+		serverStartTime: time.Now(),
 	}
 }
 
@@ -60,7 +62,7 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 		"endpoint": "/health",
 	}).Debug("헬스체크 요청")
 
-	uptime := int64(time.Since(serverStartTime).Seconds())
+	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
 	// 의존성 상태 체크
 	deps := make(map[string]response.DependencyStatus)

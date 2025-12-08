@@ -36,48 +36,31 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 1. 요청 바인딩
 	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
-		applog.WithComponentAndFields("api.handler", log.Fields{
-			"endpoint": c.Path(),
-			"error":    err,
-		}).Warn("요청 바인딩 실패")
-
+		h.log(c).WithField("error", err).Warn("요청 바인딩 실패")
 		return commonhandler.NewBadRequestError("잘못된 요청 형식입니다")
 	}
 
 	// 2. 입력 검증
 	if err := commonhandler.ValidateRequest(req); err != nil {
-		applog.WithComponentAndFields("api.handler", log.Fields{
-			"endpoint": c.Path(),
-			"error":    err,
-		}).Warn("입력 검증 실패")
-
+		h.log(c).WithField("error", err).Warn("입력 검증 실패")
 		return commonhandler.NewBadRequestError(commonhandler.FormatValidationError(err))
 	}
 
 	appKey := c.QueryParam("app_key")
 	if appKey == "" {
-		applog.WithComponentAndFields("api.handler", log.Fields{
-			"endpoint":       c.Path(),
-			"application_id": req.ApplicationID,
-		}).Warn("app_key가 비어있음")
-
+		h.log(c).WithField("application_id", req.ApplicationID).Warn("app_key가 비어있음")
 		return commonhandler.NewBadRequestError("app_key는 필수입니다")
 	}
 
 	// 3. 인증
 	app, err := h.applicationManager.Authenticate(req.ApplicationID, appKey)
 	if err != nil {
-		applog.WithComponentAndFields("api.handler", log.Fields{
-			"endpoint":       c.Path(),
-			"application_id": req.ApplicationID,
-		}).Warn("인증 실패")
-
+		h.log(c).WithField("application_id", req.ApplicationID).Warn("인증 실패")
 		return err
 	}
 
 	// 4. 비즈니스 로직
-	applog.WithComponentAndFields("api.handler", log.Fields{
-		"endpoint":       c.Path(),
+	h.log(c).WithFields(log.Fields{
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
@@ -87,4 +70,11 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 	// 5. 성공 응답
 	return commonhandler.NewSuccessResponse(c)
+}
+
+// log는 공통 로깅 필드가 설정된 로거 엔트리를 반환합니다.
+func (h *Handler) log(c echo.Context) *log.Entry {
+	return applog.WithComponentAndFields("api.handler", log.Fields{
+		"endpoint": c.Path(),
+	})
 }

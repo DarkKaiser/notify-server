@@ -109,8 +109,36 @@ func TestLogger_JSONMethods(t *testing.T) {
 	assert.Contains(t, buf.String(), "value")
 	buf.Reset()
 
-	// Test Errorj
 	logger.Errorj(j)
 	assert.Contains(t, buf.String(), "value")
+	buf.Reset()
+}
+
+func TestLogger_FormattedMethods(t *testing.T) {
+	var buf bytes.Buffer
+	l := logrus.New()
+	l.SetOutput(&buf)
+	l.SetFormatter(&logrus.JSONFormatter{})
+	logger := Logger{l}
+
+	// Infof
+	logger.Infof("info %s", "formatted")
+	assert.Contains(t, buf.String(), "info formatted")
+	buf.Reset()
+
+	// Warnf
+	logger.Warnf("warn %d", 123)
+	assert.Contains(t, buf.String(), "warn 123")
+	buf.Reset()
+
+	// Errorf
+	logger.Errorf("error %v", true)
+	assert.Contains(t, buf.String(), "error true")
+	buf.Reset()
+
+	// Debugf
+	logger.SetLevel(log.DEBUG)
+	logger.Debugf("debug %s", "msg")
+	assert.Contains(t, buf.String(), "debug msg")
 	buf.Reset()
 }

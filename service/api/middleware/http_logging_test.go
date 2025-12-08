@@ -139,3 +139,67 @@ func TestMaskSensitiveQueryParams(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestLoggerHandler_Error(t *testing.T) {
+	// Setup
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/error", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Capture logs
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	defer logrus.SetOutput(logrus.StandardLogger().Out)
+
+	// Middleware execution with error
+	h := httpLoggerHandler(c, func(c echo.Context) error {
+		return echo.NewHTTPError(http.StatusBadRequest, "bad request")
+	})
+
+	// Assertions
+	assert.NoError(t, h) // Middleware itself swallows error after c.Error(err)?
+	// Note: httpLoggerHandler logic is: if err := next(c); err != nil { c.Error(err) } return nil
+	// so it should return nil.
+
+	// Log verification
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	assert.NoError(t, err)
+
+	status, ok := logEntry["status"].(float64) // JSON Unmarshal makes numbers float64
+	assert.True(t, ok)
+	assert.Equal(t, float64(http.StatusBadRequest), status)
+}
+
+func TestRequestLoggerHandler_ContentLength(t *testing.T) {
+	// Setup
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/upload", nil)
+	req.Header.Set(echo.HeaderContentLength, "12345")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Capture logs
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	defer logrus.SetOutput(logrus.StandardLogger().Out)
+
+	// Middleware execution
+	h := httpLoggerHandler(c, func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	assert.NoError(t, h)
+
+	// Log verification
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	assert.NoError(t, err)
+
+	bytesIn, ok := logEntry["bytes_in"].(string)
+	assert.True(t, ok)
+	assert.Equal(t, "12345", bytesIn)
+}

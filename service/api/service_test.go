@@ -26,10 +26,10 @@ func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool 
 	return true
 }
 
-// TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
-func TestNotifyAPIService_Run(t *testing.T) {
+// setupTestService는 테스트용 서비스를 설정합니다.
+func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppConfig) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18081
+	appConfig.NotifyAPI.WS.ListenPort = port
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockService := &MockNotificationService{}
@@ -38,6 +38,12 @@ func TestNotifyAPIService_Run(t *testing.T) {
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
 	})
+	return service, appConfig
+}
+
+// TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
+func TestNotifyAPIService_Run(t *testing.T) {
+	service, _ := setupTestService(t, 18081)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -71,16 +77,7 @@ func TestNotifyAPIService_Run(t *testing.T) {
 
 // TestNotifyAPIService_GracefulShutdown은 우아한 종료를 테스트합니다.
 func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18082
-	appConfig.NotifyAPI.WS.TLSServer = false
-
-	mockService := &MockNotificationService{}
-	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
-		Version:     "1.0.0",
-		BuildDate:   "2024-01-01",
-		BuildNumber: "100",
-	})
+	service, _ := setupTestService(t, 18082)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -115,16 +112,7 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 
 // TestNotifyAPIService_DuplicateRun은 중복 시작 방지를 테스트합니다.
 func TestNotifyAPIService_DuplicateRun(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18083
-	appConfig.NotifyAPI.WS.TLSServer = false
-
-	mockService := &MockNotificationService{}
-	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
-		Version:     "1.0.0",
-		BuildDate:   "2024-01-01",
-		BuildNumber: "100",
-	})
+	service, _ := setupTestService(t, 18083)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

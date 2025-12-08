@@ -227,4 +227,28 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			assert.True(t, mockService.NotifyCalled)
 		}
 	})
+
+	t.Run("알림 서비스 전송 실패", func(t *testing.T) {
+		// Mock 서비스가 실패하도록 설정
+		mockService.ShouldFail = true
+		defer func() { mockService.ShouldFail = false }()
+
+		reqBody := request.NotificationRequest{
+			ApplicationID: "test-app",
+			Message:       "Fail Message",
+		}
+		jsonBody, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		// Execute
+		if assert.NoError(t, h.PublishNotificationHandler(c)) {
+			// 현재 구현은 실패 시에도 200 OK 반환 (Legacy)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.True(t, mockService.NotifyCalled)
+		}
+	})
 }

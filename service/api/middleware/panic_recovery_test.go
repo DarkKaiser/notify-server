@@ -99,3 +99,39 @@ func TestPanicRecovery_WithError(t *testing.T) {
 	assert.True(t, ok)
 	assert.Contains(t, errorField, assert.AnError.Error())
 }
+
+func TestPanicRecovery_RequestID(t *testing.T) {
+	// Setup
+	e := echo.New()
+	e.Use(PanicRecovery())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Set Request ID
+	reqID := "req-12345"
+	c.Response().Header().Set(echo.HeaderXRequestID, reqID)
+
+	// Capture logs
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+	defer logrus.SetOutput(logrus.StandardLogger().Out)
+
+	// Middleware execution with panic
+	h := func(c echo.Context) error {
+		panic("panic with request id")
+	}
+
+	err := PanicRecovery()(h)(c)
+	assert.NoError(t, err)
+
+	// Log verification
+	var logEntry map[string]interface{}
+	jsonErr := json.Unmarshal(buf.Bytes(), &logEntry)
+	assert.NoError(t, jsonErr)
+
+	loggedReqID, ok := logEntry["request_id"].(string)
+	assert.True(t, ok)
+	assert.Equal(t, reqID, loggedReqID)
+}

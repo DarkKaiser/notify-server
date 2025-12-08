@@ -90,15 +90,12 @@ func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter
 
 	if s.notificationService == nil {
 		defer serviceStopWaiter.Done()
-
 		return apperrors.New(apperrors.ErrInternal, "notificationService 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
 		defer serviceStopWaiter.Done()
-
 		applog.WithComponent("api.service").Warn("NotifyAPI 서비스가 이미 시작됨!!!")
-
 		return nil
 	}
 
