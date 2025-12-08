@@ -93,6 +93,11 @@ func TestNotifier_Notify(t *testing.T) {
 		assert.Equal(t, bufferSize, cap(n.requestC), "설정된 버퍼 크기와 채널의 용량이 일치해야 합니다")
 	})
 
+	t.Run("버퍼 크기가 0일 때 Unbuffered Channel 생성", func(t *testing.T) {
+		n := NewNotifier(NotifierID("test-id"), true, 0)
+		assert.Equal(t, 0, cap(n.requestC), "버퍼 크기가 0이어야 합니다")
+	})
+
 	t.Run("Notifier 종료(Close)", func(t *testing.T) {
 		n := NewNotifier(NotifierID("test-id"), true, 10)
 		n.Close()

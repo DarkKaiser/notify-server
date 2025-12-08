@@ -218,10 +218,32 @@ func (n *telegramNotifier) sendMessage(message string) {
 	var messageChunk string
 	lines := strings.SplitSeq(message, "\n")
 	for line := range lines {
-		// 현재 청크 + 새 라인이 최대 길이를 넘으면 현재 청크를 먼저 전송
-		if len(messageChunk)+len(line)+1 > telegramMessageMaxLength {
-			n.sendSingleMessage(messageChunk)
-			messageChunk = line
+		neededSpace := len(line)
+		if len(messageChunk) > 0 {
+			neededSpace += 1 // 줄바꿈 문자 공간
+		}
+
+		// 현재 청크 + (줄바꿈) + 새 라인이 최대 길이를 넘으면
+		if len(messageChunk)+neededSpace > telegramMessageMaxLength {
+			// 현재까지 모은 청크가 있다면 전송
+			if len(messageChunk) > 0 {
+				n.sendSingleMessage(messageChunk)
+				messageChunk = ""
+			}
+
+			// 현재 라인 자체가 최대 길이보다 길다면 강제로 자름 (Chunking)
+			if len(line) > telegramMessageMaxLength {
+				for len(line) > telegramMessageMaxLength {
+					chunk := line[:telegramMessageMaxLength]
+					n.sendSingleMessage(chunk)
+					line = line[telegramMessageMaxLength:]
+				}
+				// 자르고 남은 뒷부분을 새로운 청크의 시작으로 설정
+				messageChunk = line
+			} else {
+				// 현재 라인은 최대 길이 이내이므로 새로운 청크로 설정
+				messageChunk = line
+			}
 		} else {
 			// 청크에 라인 추가
 			if len(messageChunk) > 0 {
