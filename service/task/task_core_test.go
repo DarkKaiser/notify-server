@@ -15,21 +15,21 @@ func TestTask_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		doneC := make(chan TaskInstanceID, 1)
 
-		taskInstance := &task{
-			id:         "ErrorTask",
-			commandID:  "ErrorCommand",
-			instanceID: "ErrorInstance",
-			notifierID: "test-notifier",
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+		taskInstance := &Task{
+			ID:         "ErrorTask",
+			CommandID:  "ErrorCommand",
+			InstanceID: "ErrorInstance",
+			NotifierID: "test-notifier",
+			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "", nil, errors.New("Run Error")
 			},
 		}
 
-		supportedTasks["ErrorTask"] = &supportedTaskConfig{
-			commandConfigs: []*supportedTaskCommandConfig{
+		supportedTasks["ErrorTask"] = &TaskConfig{
+			CommandConfigs: []*TaskCommandConfig{
 				{
-					taskCommandID: "ErrorCommand",
-					newTaskResultDataFn: func() interface{} {
+					TaskCommandID: "ErrorCommand",
+					NewTaskResultDataFn: func() interface{} {
 						return map[string]interface{}{}
 					},
 				},
@@ -59,22 +59,22 @@ func TestTask_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		doneC := make(chan TaskInstanceID, 1)
 
-		taskInstance := &task{
-			id:         "CancelTask",
-			commandID:  "CancelCommand",
-			instanceID: "CancelInstance",
-			notifierID: "test-notifier",
-			canceled:   true, // Already canceled
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+		taskInstance := &Task{
+			ID:         "CancelTask",
+			CommandID:  "CancelCommand",
+			InstanceID: "CancelInstance",
+			NotifierID: "test-notifier",
+			Canceled:   true, // Already canceled
+			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "Should Not Send", nil, nil
 			},
 		}
 
-		supportedTasks["CancelTask"] = &supportedTaskConfig{
-			commandConfigs: []*supportedTaskCommandConfig{
+		supportedTasks["CancelTask"] = &TaskConfig{
+			CommandConfigs: []*TaskCommandConfig{
 				{
-					taskCommandID: "CancelCommand",
-					newTaskResultDataFn: func() interface{} {
+					TaskCommandID: "CancelCommand",
+					NewTaskResultDataFn: func() interface{} {
 						return &map[string]interface{}{}
 					},
 				},
@@ -99,7 +99,7 @@ func TestTask_Run(t *testing.T) {
 }
 
 func TestTask_Cancel(t *testing.T) {
-	taskInstance := &task{}
+	taskInstance := &Task{}
 	assert.False(t, taskInstance.IsCanceled())
 
 	taskInstance.Cancel()

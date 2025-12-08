@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandler_SendNotifyMessageHandler(t *testing.T) {
+func TestHandler_PublishNotificationHandler(t *testing.T) {
 	// Setup
 	e := echo.New()
-	mockSender := &MockNotificationSender{}
+	mockService := &MockNotificationService{}
 
 	// Test Config
 	appConfig := &config.AppConfig{}
@@ -32,7 +32,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		},
 	}
 	appManager := auth.NewApplicationManager(appConfig)
-	h := NewHandler(appManager, mockSender)
+	h := NewHandler(appManager, mockService)
 
 	t.Run("정상적인 메시지 전송", func(t *testing.T) {
 		reqBody := request.NotificationRequest{
@@ -50,10 +50,10 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		// Execute
 		if assert.NoError(t, h.PublishNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.True(t, mockSender.NotifyCalled)
-			assert.Equal(t, "test-notifier", mockSender.LastNotifierID)
-			assert.Equal(t, "Test App", mockSender.LastTitle)
-			assert.Equal(t, "Test Message", mockSender.LastMessage)
+			assert.True(t, mockService.NotifyCalled)
+			assert.Equal(t, "test-notifier", mockService.LastNotifierID)
+			assert.Equal(t, "Test App", mockService.LastTitle)
+			assert.Equal(t, "Test Message", mockService.LastMessage)
 		}
 	})
 
@@ -224,7 +224,7 @@ func TestHandler_SendNotifyMessageHandler(t *testing.T) {
 		// Execute
 		if assert.NoError(t, h.PublishNotificationHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.True(t, mockSender.NotifyCalled)
+			assert.True(t, mockService.NotifyCalled)
 		}
 	})
 }

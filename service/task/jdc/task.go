@@ -1,4 +1,4 @@
-package task
+package jdc
 
 import (
 	"fmt"
@@ -9,14 +9,15 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 const (
 	// TaskID
-	TidJdc TaskID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
+	TidJdc task.TaskID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
 	// TaskCommandID
-	TcidJdcWatchNewOnlineEducation TaskCommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
+	TcidJdcWatchNewOnlineEducation task.TaskCommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 
 const (
@@ -43,33 +44,31 @@ type jdcWatchNewOnlineEducationResultData struct {
 }
 
 func init() {
-	supportedTasks[TidJdc] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidJdcWatchNewOnlineEducation,
+	task.RegisterTask(TidJdc, &task.TaskConfig{
+		CommandConfigs: []*task.TaskCommandConfig{{
+			TaskCommandID: TcidJdcWatchNewOnlineEducation,
 
-			allowMultipleInstances: true,
+			AllowMultipleInstances: true,
 
-			newTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
-			if taskRunData.taskID != TidJdc {
+		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if taskRunData.TaskID != TidJdc {
 				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
-			task := &jdcTask{
-				task: task{
-					id:         taskRunData.taskID,
-					commandID:  taskRunData.taskCommandID,
-					instanceID: instanceID,
+			t := &jdcTask{
+				Task: task.Task{
+					ID:         taskRunData.TaskID,
+					CommandID:  taskRunData.TaskCommandID,
+					InstanceID: instanceID,
 
-					notifierID: taskRunData.notifierID,
+					NotifierID: taskRunData.NotifierID,
 
-					canceled: false,
+					Canceled: false,
 
-					runBy: taskRunData.taskRunBy,
-
-					fetcher: nil,
+					RunBy: taskRunData.TaskRunBy,
 				},
 			}
 
@@ -77,24 +76,24 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			t.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
-			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
-				switch task.CommandID() {
+			t.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+				switch t.GetCommandID() {
 				case TcidJdcWatchNewOnlineEducation:
-					return task.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
+					return t.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNoImplementationForTaskCommand
 			}
 
-			return task, nil
+			return t, nil
 		},
-	}
+	})
 }
 
 type jdcTask struct {
-	task
+	task.Task
 }
 
 func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
@@ -121,7 +120,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 	// 새로운 강의 정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.OnlineEducationCourses, originTaskResultData.OnlineEducationCourses, func(selem, telem interface{}) (bool, error) {
+	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.OnlineEducationCourses, originTaskResultData.OnlineEducationCourses, func(selem, telem interface{}) (bool, error) {
 		actualityEducationCourse, ok1 := selem.(*jdcOnlineEducationCourse)
 		originEducationCourse, ok2 := telem.(*jdcOnlineEducationCourse)
 		if ok1 == false || ok2 == false {
@@ -148,7 +147,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		message = "새로운 온라인교육 강의가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.runBy == TaskRunByUser {
+		if t.RunBy == task.TaskRunByUser {
 			if len(actualityTaskResultData.OnlineEducationCourses) == 0 {
 				message = "등록된 온라인교육 강의가 존재하지 않습니다."
 			} else {
@@ -171,7 +170,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	// 온라인교육 강의 목록페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
-	err = webScrape(t.fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
+	err = task.WebScrape(t.Fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
 			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
@@ -184,7 +183,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	})
 	if err != nil {
 		// 온라인교육 강의 데이터가 없는지 확인한다.
-		if sel, _ := newHTMLDocumentSelection(t.fetcher, url, "#content > div.no-data2"); sel != nil {
+		if sel, _ := task.NewHTMLDocumentSelection(t.Fetcher, url, "#content > div.no-data2"); sel != nil {
 			return nil, nil
 		}
 
@@ -221,7 +220,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 	var err0 error
 	var onlineEducationCourseCurriculums = make([]*jdcOnlineEducationCourse, 0)
 
-	err := webScrape(t.fetcher, fmt.Sprintf("%sproduct/%s", jdcBaseURL, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err := task.WebScrape(t.Fetcher, fmt.Sprintf("%sproduct/%s", jdcBaseURL, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {

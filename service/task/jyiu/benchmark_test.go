@@ -1,13 +1,15 @@
-package task
+package jyiu
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 공지사항 목록 HTML 생성
 	noticeHTML := `<html><body><div id="contents"><table class="bbsList"><tbody>`
@@ -26,12 +28,12 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", jyiuBaseURL), []byte(noticeHTML))
 
 	// 2. Task 초기화
-	task := &jyiuTask{
-		task: task{
-			id:         TidJyiu,
-			commandID:  TcidJyiuWatchNewNotice,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jyiuTask{
+		Task: task.Task{
+			ID:         TidJyiu,
+			CommandID:  TcidJyiuWatchNewNotice,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -44,7 +46,7 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := task.runWatchNewNotice(resultData, true)
+		_, _, err := tTask.runWatchNewNotice(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
@@ -53,29 +55,10 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 교육 프로그램 목록 HTML 생성
 	eduHTML := `<html><body><div class="gms_003001"><table class="bbsList"><tbody>`
-	for i := 0; i < 20; i++ {
-		eduHTML += fmt.Sprintf(`
-			<tr>
-				<td>%d</td>
-				<td>Category</td>
-				<td>Education Title %d</td>
-				<td>Target</td>
-				<td>2023-01-01 ~ 2023-12-31</td>
-				<td>2023-01-01 ~ 2023-01-31</td>
-			</tr>`, i, i)
-		// onclick 속성은 tr이나 a 태그에 있을 수 있음. 코드 상으로는 tr에서 찾는 로직이 아닌 것 같으므로 확인 필요.
-		// task_jyiu.go:239 -> "div.gms_003001 table.bbsList > tbody > tr"
-		// task_jyiu.go:247 -> url, exists := s.Attr("onclick")
-		// 따라서 tr 태그에 onclick이 있어야 함.
-	}
-	// 위 루프에서 tr 태그를 닫지 않았고, onclick 속성도 추가해야 함.
-
-	// 다시 생성
-	eduHTML = `<html><body><div class="gms_003001"><table class="bbsList"><tbody>`
 	for i := 0; i < 20; i++ {
 		eduHTML += fmt.Sprintf(`
 			<tr onclick="view('%d')">
@@ -92,12 +75,12 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), []byte(eduHTML))
 
 	// 2. Task 초기화
-	task := &jyiuTask{
-		task: task{
-			id:         TidJyiu,
-			commandID:  TcidJyiuWatchNewEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jyiuTask{
+		Task: task.Task{
+			ID:         TidJyiu,
+			CommandID:  TcidJyiuWatchNewEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -110,7 +93,7 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := task.runWatchNewEducation(resultData, true)
+		_, _, err := tTask.runWatchNewEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

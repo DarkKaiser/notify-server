@@ -15,6 +15,23 @@ import (
 )
 
 // TestServicesIntegration은 전체 서비스의 통합을 테스트합니다.
+// mockIntegrationNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
+type mockIntegrationNotifierFactory struct {
+	createNotifiersFunc func(cfg *config.AppConfig) ([]notification.NotifierHandler, error)
+	processors          []notification.NotifierConfigProcessor
+}
+
+func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
+	if m.createNotifiersFunc != nil {
+		return m.createNotifiersFunc(cfg)
+	}
+	return nil, nil
+}
+
+func (m *mockIntegrationNotifierFactory) RegisterProcessor(processor notification.NotifierConfigProcessor) {
+	m.processors = append(m.processors, processor)
+}
+
 func TestServicesIntegration(t *testing.T) {
 	t.Run("서비스 초기화 및 시작", func(t *testing.T) {
 		// 테스트용 설정 생성
@@ -24,13 +41,18 @@ func TestServicesIntegration(t *testing.T) {
 		taskService := task.NewService(appConfig)
 		notificationService := notification.NewService(appConfig, taskService)
 
-		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
-			return &mockNotifierHandler{
-				id:                  id,
-				supportsHTMLMessage: true,
-			}
-		})
+		// Mock factory
+		mockFactory := &mockIntegrationNotifierFactory{
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
+				return []notification.NotifierHandler{
+					&mockNotifierHandler{
+						id:                  notification.NotifierID("test-notifier"),
+						supportsHTMLMessage: true,
+					},
+				}, nil
+			},
+		}
+		notificationService.SetNotifierFactory(mockFactory)
 
 		notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
 			Version:     "test-version",
@@ -69,13 +91,18 @@ func TestServicesIntegration(t *testing.T) {
 		taskService := task.NewService(appConfig)
 		notificationService := notification.NewService(appConfig, taskService)
 
-		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
-			return &mockNotifierHandler{
-				id:                  id,
-				supportsHTMLMessage: true,
-			}
-		})
+		// Mock factory
+		mockFactory := &mockIntegrationNotifierFactory{
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
+				return []notification.NotifierHandler{
+					&mockNotifierHandler{
+						id:                  notification.NotifierID("test-notifier"),
+						supportsHTMLMessage: true,
+					},
+				}, nil
+			},
+		}
+		notificationService.SetNotifierFactory(mockFactory)
 
 		taskService.SetTaskNotificationSender(notificationService)
 
@@ -194,13 +221,18 @@ func TestServiceLifecycle(t *testing.T) {
 		taskService := task.NewService(appConfig)
 		notificationService := notification.NewService(appConfig, taskService)
 
-		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
-			return &mockNotifierHandler{
-				id:                  id,
-				supportsHTMLMessage: true,
-			}
-		})
+		// Mock factory
+		mockFactory := &mockIntegrationNotifierFactory{
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
+				return []notification.NotifierHandler{
+					&mockNotifierHandler{
+						id:                  notification.NotifierID("test-notifier"),
+						supportsHTMLMessage: true,
+					},
+				}, nil
+			},
+		}
+		notificationService.SetNotifierFactory(mockFactory)
 
 		taskService.SetTaskNotificationSender(notificationService)
 
@@ -276,13 +308,18 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		mockTaskRunner := &mockTaskRunner{}
 		notificationService := notification.NewService(appConfig, mockTaskRunner)
 
-		// Mock notifier 설정
-		notificationService.SetNewNotifier(func(id notification.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) notification.NotifierHandler {
-			return &mockNotifierHandler{
-				id:                  id,
-				supportsHTMLMessage: true,
-			}
-		})
+		// Mock factory
+		mockFactory := &mockIntegrationNotifierFactory{
+			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
+				return []notification.NotifierHandler{
+					&mockNotifierHandler{
+						id:                  notification.NotifierID("default-notifier"),
+						supportsHTMLMessage: true,
+					},
+				}, nil
+			},
+		}
+		notificationService.SetNotifierFactory(mockFactory)
 
 		// 서비스가 정상적으로 생성되었는지 확인
 		assert.NotNil(t, notificationService, "NotificationService가 생성되어야 합니다")

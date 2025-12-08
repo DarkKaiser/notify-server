@@ -58,8 +58,8 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	taskID := TidNaverShopping
-	commandID := TcidNaverShoppingWatchPriceAny
+	taskID := TaskID("TEST_TASK")
+	commandID := TaskCommandID("TEST_COMMAND")
 	notifierID := "test-notifier"
 
 	succeeded := service.TaskRun(taskID, commandID, notifierID, false, TaskRunByUser)
@@ -92,8 +92,8 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	taskCtx := NewContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	taskID := TidNaverShopping
-	commandID := TcidNaverShoppingWatchPriceAny
+	taskID := TaskID("TEST_TASK")
+	commandID := TaskCommandID("TEST_COMMAND")
 	notifierID := "test-notifier"
 
 	succeeded := service.TaskRunWithContext(taskID, commandID, taskCtx, notifierID, false, TaskRunByUser)
@@ -198,7 +198,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultipleInstances=true)
-				service.TaskRun(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test-notifier", false, TaskRunByUser)
+				service.TaskRun(TaskID("TEST_TASK"), TaskCommandID("TEST_COMMAND"), "test-notifier", false, TaskRunByUser)
 				time.Sleep(time.Millisecond)
 			}
 		}()
@@ -241,7 +241,7 @@ func TestTaskService_CancelConcurrency(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
 			// Task 실행 (오래 걸리는 작업 시뮬레이션은 어렵지만, 등록은 됨)
-			service.TaskRun(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test-notifier", false, TaskRunByUser)
+			service.TaskRun(TaskID("TEST_TASK"), TaskCommandID("TEST_COMMAND"), "test-notifier", false, TaskRunByUser)
 
 			// 실행된 Task를 찾아서 취소 시도 (ID를 알기 어려우므로 모든 핸들러 취소 시도)
 			service.runningMu.Lock()

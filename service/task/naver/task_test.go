@@ -1,9 +1,10 @@
-package task
+package naver
 
 import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +77,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"뮤지컬"}
 		excludedKeywords := []string{}
 
-		result := filter("뮤지컬 오페라의 유령", includedKeywords, excludedKeywords)
+		result := task.Filter("뮤지컬 오페라의 유령", includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -84,7 +85,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"뮤지컬"}
 		excludedKeywords := []string{"아동"}
 
-		result := filter("뮤지컬 아동극", includedKeywords, excludedKeywords)
+		result := task.Filter("뮤지컬 아동극", includedKeywords, excludedKeywords)
 		assert.False(t, result, "제외 키워드가 있으면 false를 반환해야 합니다")
 	})
 
@@ -92,7 +93,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"서울"}
 		excludedKeywords := []string{}
 
-		result := filter("서울 예술의전당", includedKeywords, excludedKeywords)
+		result := task.Filter("서울 예술의전당", includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 }
@@ -100,7 +101,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 	t.Run("정상적인 공연 정보 파싱", func(t *testing.T) {
 		// Mock Fetcher 설정
-		mockFetcher := NewMockHTTPFetcher()
+		mockFetcher := task.NewMockHTTPFetcher()
 
 		// Page 1 Response
 		page1URL := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=1&u8=all&u3=&u1=%EB%AE%A4%EC%A7%80%EC%BB%AC&u2=all&u4=ingplan&u6=N&u5=date"
@@ -113,11 +114,11 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		mockFetcher.SetResponse(page2URL, []byte(mockJSON2))
 
 		// Task 설정
-		task := &naverTask{
-			task: task{
-				id:        TidNaver,
-				commandID: TcidNaverWatchNewPerformances,
-				fetcher:   mockFetcher,
+		tTask := &naverTask{
+			Task: task.Task{
+				ID:        TidNaver,
+				CommandID: TcidNaverWatchNewPerformances,
+				Fetcher:   mockFetcher,
 			},
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
@@ -148,7 +149,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// 초기 실행 (이전 데이터 없음)
 		taskResultData := &naverWatchNewPerformancesResultData{}
-		message, changedData, err := task.runWatchNewPerformances(
+		message, changedData, err := tTask.runWatchNewPerformances(
 			&naverWatchNewPerformancesTaskCommandData{Query: "뮤지컬"},
 			taskResultData,
 			false,
@@ -168,7 +169,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 	t.Run("필터링 테스트", func(t *testing.T) {
 		// Mock Fetcher 설정
-		mockFetcher := NewMockHTTPFetcher()
+		mockFetcher := task.NewMockHTTPFetcher()
 
 		// Page 1 Response
 		// Query: "공연" -> encoded: %EA%B3%B5%EC%97%B0
@@ -182,11 +183,11 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		mockFetcher.SetResponse(page2URL, []byte(mockJSON2))
 
 		// Task 설정 (필터 적용)
-		task := &naverTask{
-			task: task{
-				id:        TidNaver,
-				commandID: TcidNaverWatchNewPerformances,
-				fetcher:   mockFetcher,
+		tTask := &naverTask{
+			Task: task.Task{
+				ID:        TidNaver,
+				CommandID: TcidNaverWatchNewPerformances,
+				Fetcher:   mockFetcher,
 			},
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
@@ -218,7 +219,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		}
 		commandData.Filters.Title.IncludedKeywords = "뮤지컬"
 
-		message, changedData, err := task.runWatchNewPerformances(
+		message, changedData, err := tTask.runWatchNewPerformances(
 			commandData,
 			taskResultData,
 			false,

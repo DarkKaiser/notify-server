@@ -12,103 +12,25 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// NotifierID 알림 채널(Notifier)를 식별하는 고유 ID입니다.
-type NotifierID string
-
-// notifier NotifierHandler의 기본 구현체입니다.
-// 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
-type notifier struct {
-	id NotifierID
-
-	supportsHTMLMessage bool
-
-	notificationSendC chan *notificationSendData
-}
-
-// NotifierHandler 알림 채널(예: Telegram, Slack)의 공통 인터페이스입니다.
-// 실제 알림 발송 로직은 이 인터페이스를 구현하여 정의합니다.
-type NotifierHandler interface {
-	ID() NotifierID
-
-	// Notify 알림 발송 요청을 처리합니다.
-	// 실제 발송은 비동기 큐를 통해 처리될 수 있습니다.
-	//
-	// 반환값:
-	//   - succeeded: 요청이 정상적으로 접수되었는지 여부
-	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
-
-	// Run Notifier의 메인 루프를 실행합니다.
-	// 메시지 큐를 소비하여 실제 발송 작업을 수행합니다.
-	Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
-
-	SupportsHTMLMessage() bool
-}
-
-func (n *notifier) ID() NotifierID {
-	return n.id
-}
-
-// Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
-// 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			succeeded = false
-
-			applog.WithComponentAndFields("notification.service", log.Fields{
-				"notifier_id":    n.ID(),
-				"message_length": len(message),
-				"panic":          r,
-			}).Error("알림메시지 발송중에 panic 발생")
-		}
-	}()
-
-	n.notificationSendC <- &notificationSendData{
-		message: message,
-		taskCtx: taskCtx,
-	}
-
-	return true
-}
-
-func (n *notifier) SupportsHTMLMessage() bool {
-	return n.supportsHTMLMessage
-}
-
-// notificationSendData 내부 채널을 통해 전달되는 알림 데이터입니다.
-type notificationSendData struct {
-	message string
-	taskCtx task.TaskContext
-}
-
-// NotificationSender 알림 발송 기능을 제공하는 인터페이스입니다.
-// 외부 컴포넌트(API, 스케줄러 등)는 이 인터페이스를 통해 알림 서비스를 사용합니다.
-type NotificationSender interface {
-	Notify(notifierID string, title string, message string, errorOccurred bool) bool
-	NotifyToDefault(message string) bool
-	NotifyWithErrorToDefault(message string) bool
-}
-
 type NotificationService struct {
 	appConfig *config.AppConfig
 
 	running   bool
 	runningMu sync.Mutex
 
-	defaultNotifierHandler NotifierHandler
 	notifierHandlers       []NotifierHandler
+	defaultNotifierHandler NotifierHandler
+
+	notifierFactory NotifierFactory
 
 	taskRunner task.TaskRunner
 
 	// notificationStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
 	notificationStopWaiter *sync.WaitGroup
-
-	// newNotifier Notifier 생성 팩토리
-	newNotifier func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler
 }
 
 func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *NotificationService {
-	return &NotificationService{
+	service := &NotificationService{
 		appConfig: appConfig,
 
 		running:   false,
@@ -119,13 +41,18 @@ func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *Notifi
 		taskRunner: taskRunner,
 
 		notificationStopWaiter: &sync.WaitGroup{},
-
-		newNotifier: newTelegramNotifier,
 	}
+
+	// Factory 생성 및 Processor 등록
+	factory := NewNotifierFactory()
+	factory.RegisterProcessor(NewTelegramConfigProcessor(newTelegramNotifier))
+	service.notifierFactory = factory
+
+	return service
 }
 
-func (s *NotificationService) SetNewNotifier(newNotifierFn func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) NotifierHandler) {
-	s.newNotifier = newNotifierFn
+func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
+	s.notifierFactory = factory
 }
 
 // Run 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
@@ -146,9 +73,13 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 		return nil
 	}
 
-	// 1. Telegram Notifier들을 초기화 및 실행
-	for _, telegram := range s.appConfig.Notifiers.Telegrams {
-		h := s.newNotifier(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, s.appConfig)
+	// 1. Notifier들을 초기화 및 실행
+	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig)
+	if err != nil {
+		defer serviceStopWaiter.Done()
+		return apperrors.Wrap(err, apperrors.ErrInternal, "Notifier 초기화 중 에러가 발생했습니다")
+	}
+	for _, h := range notifiers {
 		s.notifierHandlers = append(s.notifierHandlers, h)
 
 		s.notificationStopWaiter.Add(1)
@@ -156,8 +87,8 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 		go h.Run(s.taskRunner, serviceStopCtx, s.notificationStopWaiter)
 
 		applog.WithComponentAndFields("notification.service", log.Fields{
-			"notifier_id": telegram.ID,
-		}).Debug("Telegram Notifier가 Notification 서비스에 등록됨")
+			"notifier_id": h.ID(),
+		}).Debug("Notifier가 Notification 서비스에 등록됨")
 	}
 
 	// 2. 기본 Notifier 설정 (존재 여부 확인)
@@ -235,6 +166,11 @@ func (s *NotificationService) NotifyToDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
+	if s.defaultNotifierHandler == nil {
+		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
+		return false
+	}
+
 	return s.defaultNotifierHandler.Notify(message, nil)
 }
 
@@ -250,6 +186,11 @@ func (s *NotificationService) NotifyToDefault(message string) bool {
 func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
+
+	if s.defaultNotifierHandler == nil {
+		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 에러 메시지를 전송할 수 없습니다")
+		return false
+	}
 
 	return s.defaultNotifierHandler.Notify(message, task.NewContext().WithError())
 }
@@ -267,6 +208,13 @@ func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
 func (s *NotificationService) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
+
+	if !s.running {
+		applog.WithComponentAndFields("notification.service", log.Fields{
+			"notifier_id": notifierID,
+		}).Warn("Notification 서비스가 실행 중이 아니어서 메시지를 전송할 수 없습니다")
+		return false
+	}
 
 	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {

@@ -1,7 +1,7 @@
 package handler
 
-// MockNotificationSender is a mock implementation of NotificationSender
-type MockNotificationSender struct {
+// MockNotificationService is a mock implementation of NotificationService
+type MockNotificationService struct {
 	NotifyCalled      bool
 	LastNotifierID    string
 	LastTitle         string
@@ -9,7 +9,7 @@ type MockNotificationSender struct {
 	LastErrorOccurred bool
 }
 
-func (m *MockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
 	m.NotifyCalled = true
 	m.LastNotifierID = notifierID
 	m.LastTitle = title
@@ -18,10 +18,10 @@ func (m *MockNotificationSender) Notify(notifierID string, title string, message
 	return true
 }
 
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockNotificationService) NotifyToDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
+func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
 	return true
 }

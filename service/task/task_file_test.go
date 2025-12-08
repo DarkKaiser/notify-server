@@ -9,10 +9,10 @@ import (
 func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 	t.Run("TaskResultData 파일 읽기/쓰기 테스트", func(t *testing.T) {
 		// 테스트용 임시 Task 생성
-		testTask := &task{
-			id:         TaskID("TEST_TASK"),
-			commandID:  TaskCommandID("TEST_COMMAND"),
-			instanceID: TaskInstanceID("test_instance_rw"),
+		testTask := &Task{
+			ID:         TaskID("TEST_TASK"),
+			CommandID:  TaskCommandID("TEST_COMMAND"),
+			InstanceID: TaskInstanceID("test_instance_rw"),
 		}
 
 		// 테스트용 데이터 구조
@@ -41,10 +41,10 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 파일 읽기", func(t *testing.T) {
-		testTask := &task{
-			id:         TaskID("NONEXISTENT_TASK"),
-			commandID:  TaskCommandID("NONEXISTENT_COMMAND"),
-			instanceID: TaskInstanceID("nonexistent_instance"),
+		testTask := &Task{
+			ID:         TaskID("NONEXISTENT_TASK"),
+			CommandID:  TaskCommandID("NONEXISTENT_COMMAND"),
+			InstanceID: TaskInstanceID("nonexistent_instance"),
 		}
 
 		type TestResultData struct {
@@ -68,11 +68,11 @@ func TestTaskRunBy_Values(t *testing.T) {
 	})
 
 	t.Run("TaskRunBy 비교 테스트", func(t *testing.T) {
-		testTask := &task{
-			runBy: TaskRunByUser,
+		testTask := &Task{
+			RunBy: TaskRunByUser,
 		}
 
-		assert.Equal(t, TaskRunByUser, testTask.runBy, "Task의 runBy가 TaskRunByUser여야 합니다")
-		assert.NotEqual(t, TaskRunByScheduler, testTask.runBy, "Task의 runBy가 TaskRunByScheduler가 아니어야 합니다")
+		assert.Equal(t, TaskRunByUser, testTask.RunBy, "Task의 runBy가 TaskRunByUser여야 합니다")
+		assert.NotEqual(t, TaskRunByScheduler, testTask.RunBy, "Task의 runBy가 TaskRunByScheduler가 아니어야 합니다")
 	})
 }

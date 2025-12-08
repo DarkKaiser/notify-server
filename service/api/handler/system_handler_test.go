@@ -12,18 +12,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationSender는 테스트용 NotificationSender입니다.
-type MockNotificationSender struct{}
+// MockNotificationService는 테스트용 NotificationService입니다.
+type MockNotificationService struct{}
 
-func (m *MockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
 	return true
 }
 
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockNotificationService) NotifyToDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationSender) NotifyWithErrorToDefault(message string) bool {
+func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
 	return true
 }
 
@@ -34,8 +34,8 @@ func TestHealthCheckHandler(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		mockSender := &MockNotificationSender{}
-		h := NewSystemHandler(mockSender, common.BuildInfo{})
+		mockService := &MockNotificationService{}
+		h := NewSystemHandler(mockService, common.BuildInfo{})
 
 		if assert.NoError(t, h.HealthCheckHandler(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
@@ -54,7 +54,7 @@ func TestHealthCheckHandler(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// nil NotificationSender 전달
+		// nil NotificationService 전달
 		h := NewSystemHandler(nil, common.BuildInfo{})
 
 		if assert.NoError(t, h.HealthCheckHandler(c)) {
@@ -80,7 +80,7 @@ func TestVersionHandler(t *testing.T) {
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
 	}
-	h := NewSystemHandler(&MockNotificationSender{}, buildInfo)
+	h := NewSystemHandler(&MockNotificationService{}, buildInfo)
 
 	if assert.NoError(t, h.VersionHandler(c)) {
 		assert.Equal(t, http.StatusOK, rec.Code)

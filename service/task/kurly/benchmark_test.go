@@ -1,14 +1,16 @@
-package task
+package kurly
 
 import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
 
@@ -51,12 +53,12 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Setup Task
-	task := &kurlyTask{
-		task: task{
-			id:         TidKurly,
-			commandID:  TcidKurlyWatchProductPrice,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &kurlyTask{
+		Task: task.Task{
+			ID:         TidKurly,
+			CommandID:  TcidKurlyWatchProductPrice,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -93,7 +95,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	b.ResetTimer() // Reset timer to ignore setup time
 
 	for i := 0; i < b.N; i++ {
-		_, _, err := task.runWatchProductPrice(commandData, resultData, true)
+		_, _, err := tTask.runWatchProductPrice(commandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

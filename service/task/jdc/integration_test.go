@@ -1,15 +1,16 @@
-package task
+package jdc
 
 import (
 	"fmt"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath := "detail_course"
@@ -76,12 +77,12 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 	mockFetcher.SetResponse(fullDetailURL, []byte(detailHTML))
 
 	// 2. Task 초기화
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -91,7 +92,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 	}
 
 	// 3. 실행
-	message, newResultData, err := task.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
@@ -116,24 +117,24 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 	url := jdcBaseURL + "product/list?type=digital_edu"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
 	// 3. 실행
-	_, _, err := task.runWatchNewOnlineEducation(resultData, true)
+	_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -142,25 +143,25 @@ func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 	url := jdcBaseURL + "product/list?type=digital_edu"
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Course Info</h1></body></html>`))
 
 	// 2. Task 초기화
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
 	// 3. 실행
-	_, _, err := task.runWatchNewOnlineEducation(resultData, true)
+	_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -171,7 +172,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath := "detail_course"
@@ -237,13 +238,13 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(jdcBaseURL+"product/list?type=untact_edu", []byte(emptyListHTML))
 	mockFetcher.SetResponse(fullDetailURL, []byte(detailHTML))
 
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
-			runBy:      TaskRunByScheduler, // 스케줄러 실행
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
+			RunBy:      task.TaskRunByScheduler,
 		},
 	}
 
@@ -260,7 +261,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := task.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -270,7 +271,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	// 신규 강의 시나리오
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath1 := "detail_course_1"
@@ -355,12 +356,12 @@ func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	mockFetcher.SetResponse(jdcBaseURL+"product/"+detailPath1, []byte(detailHTML1))
 	mockFetcher.SetResponse(jdcBaseURL+"product/"+detailPath2, []byte(detailHTML2))
 
-	task := &jdcTask{
-		task: task{
-			id:         TidJdc,
-			commandID:  TcidJdcWatchNewOnlineEducation,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &jdcTask{
+		Task: task.Task{
+			ID:         TidJdc,
+			CommandID:  TcidJdcWatchNewOnlineEducation,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -377,7 +378,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := task.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)

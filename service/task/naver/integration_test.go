@@ -1,15 +1,16 @@
-package task
+package naver
 
 import (
 	"fmt"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 
 	// 테스트용 JSON 응답 생성
 	performanceTitle := "테스트 공연"
@@ -26,16 +27,14 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 
 	// 페이지 2에 대한 빈 응답 (페이지네이션 종료)
 	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
-	emptyJsonContent := `{"html": "<ul></ul>"}`
-	mockFetcher.SetResponse(url2, []byte(emptyJsonContent))
-
+	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
-	task := &naverTask{
-		task: task{
-			id:         TidNaver,
-			commandID:  TcidNaverWatchNewPerformances,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &naverTask{
+		Task: task.Task{
+			ID:         TidNaver,
+			CommandID:  TcidNaverWatchNewPerformances,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 	}
 
@@ -54,7 +53,7 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := task.runWatchNewPerformances(commandData, resultData, true)
+	message, newResultData, err := tTask.runWatchNewPerformances(commandData, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)

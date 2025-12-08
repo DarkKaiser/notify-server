@@ -1,4 +1,4 @@
-package task
+package naver
 
 import (
 	"fmt"
@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := NewMockHTTPFetcher()
+	mockFetcher := task.NewMockHTTPFetcher()
 	query := "뮤지컬"
 	encodedQuery := url.QueryEscape(query)
 	// Naver Task는 페이지 인덱스를 1부터 증가시키며 데이터를 가져옴
@@ -61,12 +62,12 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 		},
 	}
 
-	task := &naverTask{
-		task: task{
-			id:         TidNaver,
-			commandID:  TcidNaverWatchNewPerformances,
-			notifierID: "test-notifier",
-			fetcher:    mockFetcher,
+	tTask := &naverTask{
+		Task: task.Task{
+			ID:         TidNaver,
+			CommandID:  TcidNaverWatchNewPerformances,
+			NotifierID: "test-notifier",
+			Fetcher:    mockFetcher,
 		},
 		appConfig: appConfig,
 	}
@@ -84,7 +85,7 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := task.runWatchNewPerformances(taskCommandData, resultData, true)
+		_, _, err := tTask.runWatchNewPerformances(taskCommandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

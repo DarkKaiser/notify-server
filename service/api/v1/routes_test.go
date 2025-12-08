@@ -17,25 +17,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockNotificationSender는 테스트용 NotificationSender 구현체입니다.
-type mockNotificationSender struct {
+// mockNotificationService는 테스트용 NotificationService 구현체입니다.
+type mockNotificationService struct {
 	notifyCalled bool
 	lastMessage  string
 }
 
-func (m *mockNotificationSender) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *mockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
 	return true
 }
 
-func (m *mockNotificationSender) NotifyToDefault(message string) bool {
+func (m *mockNotificationService) NotifyToDefault(message string) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
 	return true
 }
 
-func (m *mockNotificationSender) NotifyWithErrorToDefault(message string) bool {
+func (m *mockNotificationService) NotifyWithErrorToDefault(message string) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
 	return true
@@ -64,9 +64,9 @@ func TestSetupRoutes(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 
 	// v1 라우트 설정
 	SetupRoutes(e, h)
@@ -98,9 +98,9 @@ func TestNotificationsEndpoint(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	// 요청 본문 생성
@@ -128,9 +128,9 @@ func TestNotificationsEndpoint(t *testing.T) {
 
 	assert.Equal(t, 0, successResp.ResultCode)
 
-	// NotificationSender가 호출되었는지 확인
-	assert.True(t, mockSender.notifyCalled, "NotificationSender.Notify가 호출되지 않았습니다")
-	assert.Equal(t, "테스트 메시지", mockSender.lastMessage)
+	// NotificationService가 호출되었는지 확인
+	assert.True(t, mockService.notifyCalled, "NotificationService.Notify가 호출되지 않았습니다")
+	assert.Equal(t, "테스트 메시지", mockService.lastMessage)
 }
 
 // TestLegacyNoticeMessageEndpoint는 레거시 /api/v1/notice/message 엔드포인트가 동작하는지 테스트합니다.
@@ -139,9 +139,9 @@ func TestLegacyNoticeMessageEndpoint(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	// 요청 본문 생성
@@ -169,9 +169,9 @@ func TestLegacyNoticeMessageEndpoint(t *testing.T) {
 
 	assert.Equal(t, 0, successResp.ResultCode)
 
-	// NotificationSender가 호출되었는지 확인
-	assert.True(t, mockSender.notifyCalled)
-	assert.Equal(t, "레거시 엔드포인트 테스트", mockSender.lastMessage)
+	// N	otificationSender가 호출되었는지 확인
+	assert.True(t, mockService.notifyCalled)
+	assert.Equal(t, "레거시 엔드포인트 테스트", mockService.lastMessage)
 }
 
 // TestNotificationsEndpoint_MissingAppKey는 app_key가 없을 때 400 에러를 반환하는지 테스트합니다.
@@ -180,9 +180,9 @@ func TestNotificationsEndpoint_MissingAppKey(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	// 요청 본문 생성
@@ -217,9 +217,9 @@ func TestNotificationsEndpoint_InvalidAppKey(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	// 요청 본문 생성
@@ -254,9 +254,9 @@ func TestNotificationsEndpoint_InvalidJSON(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	// 잘못된 JSON
@@ -278,9 +278,9 @@ func TestBothEndpointsUseSameHandler(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockSender := &mockNotificationSender{}
+	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockSender)
+	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
 	routes := e.Routes()

@@ -117,7 +117,7 @@ func TestTaskContext_WithError(t *testing.T) {
 	assert.Equal(t, true, ctx.Value(TaskCtxKeyErrorOccurred), "에러 상태가 설정되어야 합니다")
 }
 
-func TestSupportedTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
+func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
 	cases := []struct {
 		name             string
 		configCommandID  TaskCommandID
@@ -164,8 +164,8 @@ func TestSupportedTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			config := &supportedTaskCommandConfig{
-				taskCommandID: c.configCommandID,
+			config := &TaskCommandConfig{
+				TaskCommandID: c.configCommandID,
 			}
 
 			result := config.equalsTaskCommandID(c.compareCommandID)
@@ -185,16 +185,16 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 		supportedTasks = originalTasks
 	}()
 
-	supportedTasks = make(map[TaskID]*supportedTaskConfig)
-	supportedTasks[testTaskID] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{
+	supportedTasks = make(map[TaskID]*TaskConfig)
+	supportedTasks[testTaskID] = &TaskConfig{
+		CommandConfigs: []*TaskCommandConfig{
 			{
-				taskCommandID:          testCommandID,
-				allowMultipleInstances: true,
-				newTaskResultDataFn:    func() interface{} { return nil },
+				TaskCommandID:          testCommandID,
+				AllowMultipleInstances: true,
+				NewTaskResultDataFn:    func() interface{} { return nil },
 			},
 		},
-		newTaskFn: nil,
+		NewTaskFn: nil,
 	}
 
 	t.Run("존재하는 Task와 Command를 찾는 경우", func(t *testing.T) {
@@ -203,7 +203,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
 		assert.NotNil(t, taskConfig, "Task 설정을 찾아야 합니다")
 		assert.NotNil(t, commandConfig, "Command 설정을 찾아야 합니다")
-		assert.Equal(t, testCommandID, commandConfig.taskCommandID, "올바른 Command 설정을 반환해야 합니다")
+		assert.Equal(t, testCommandID, commandConfig.TaskCommandID, "올바른 Command 설정을 반환해야 합니다")
 	})
 
 	t.Run("존재하지 않는 Task를 찾는 경우", func(t *testing.T) {
@@ -226,28 +226,28 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 }
 
 func TestTask_BasicMethods(t *testing.T) {
-	testTask := &task{
-		id:         TaskID("TEST_TASK"),
-		commandID:  TaskCommandID("TEST_COMMAND"),
-		instanceID: TaskInstanceID("test_instance_123"),
-		notifierID: "test_notifier",
-		canceled:   false,
+	testTask := &Task{
+		ID:         TaskID("TEST_TASK"),
+		CommandID:  TaskCommandID("TEST_COMMAND"),
+		InstanceID: TaskInstanceID("test_instance_123"),
+		NotifierID: "test_notifier",
+		Canceled:   false,
 	}
 
 	t.Run("ID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskID("TEST_TASK"), testTask.ID(), "TaskID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, TaskID("TEST_TASK"), testTask.GetID(), "TaskID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("CommandID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskCommandID("TEST_COMMAND"), testTask.CommandID(), "TaskCommandID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, TaskCommandID("TEST_COMMAND"), testTask.GetCommandID(), "TaskCommandID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("InstanceID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskInstanceID("test_instance_123"), testTask.InstanceID(), "TaskInstanceID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, TaskInstanceID("test_instance_123"), testTask.GetInstanceID(), "TaskInstanceID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("NotifierID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, "test_notifier", testTask.NotifierID(), "NotifierID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, "test_notifier", testTask.GetNotifierID(), "NotifierID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("Cancel 및 IsCanceled 테스트", func(t *testing.T) {
@@ -259,7 +259,7 @@ func TestTask_BasicMethods(t *testing.T) {
 
 	t.Run("ElapsedTimeAfterRun 테스트", func(t *testing.T) {
 		// runTime을 현재 시간으로 설정
-		testTask.runTime = time.Now()
+		testTask.RunTime = time.Now()
 
 		// 짧은 대기
 		time.Sleep(100 * time.Millisecond)

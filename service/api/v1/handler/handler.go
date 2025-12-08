@@ -23,23 +23,23 @@ type Handler struct {
 	// API 요청 시 app_key를 검증하여 등록된 애플리케이션인지 확인합니다.
 	applicationManager *auth.ApplicationManager
 
-	// notificationSender 실제 알림을 전송하는 서비스
+	// notificationService 실제 알림을 전송하는 서비스
 	// 텔레그램 등의 메신저로 메시지를 전송합니다.
-	notificationSender notification.NotificationSender
+	notificationService notification.Service
 }
 
 // NewHandler Handler 인스턴스를 생성합니다.
 //
 // 매개변수:
 //   - applicationManager: 애플리케이션 인증을 담당하는 매니저
-//   - notificationSender: 알림 전송을 담당하는 서비스
+//   - notificationService: 알림 전송을 담당하는 서비스
 //
 // 반환값:
 //   - 초기화된 Handler 인스턴스
-func NewHandler(applicationManager *auth.ApplicationManager, notificationSender notification.NotificationSender) *Handler {
+func NewHandler(applicationManager *auth.ApplicationManager, notificationService notification.Service) *Handler {
 	return &Handler{
 		applicationManager: applicationManager,
 
-		notificationSender: notificationSender,
+		notificationService: notificationService,
 	}
 }

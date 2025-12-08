@@ -1,4 +1,4 @@
-package task
+package naver
 
 import (
 	"fmt"
@@ -11,14 +11,15 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/service/task"
 )
 
 const (
 	// TaskID
-	TidNaver TaskID = "NAVER" // 네이버
+	TidNaver task.TaskID = "NAVER" // 네이버
 
 	// TaskCommandID
-	TcidNaverWatchNewPerformances TaskCommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
+	TcidNaverWatchNewPerformances task.TaskCommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
 type naverWatchNewPerformancesTaskCommandData struct {
@@ -64,33 +65,33 @@ type naverWatchNewPerformancesResultData struct {
 }
 
 func init() {
-	supportedTasks[TidNaver] = &supportedTaskConfig{
-		commandConfigs: []*supportedTaskCommandConfig{{
-			taskCommandID: TcidNaverWatchNewPerformances,
+	task.RegisterTask(TidNaver, &task.TaskConfig{
+		CommandConfigs: []*task.TaskCommandConfig{{
+			TaskCommandID: TcidNaverWatchNewPerformances,
 
-			allowMultipleInstances: true,
+			AllowMultipleInstances: true,
 
-			newTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
+			NewTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},
 
-		newTaskFn: func(instanceID TaskInstanceID, taskRunData *taskRunData, appConfig *config.AppConfig) (taskHandler, error) {
-			if taskRunData.taskID != TidNaver {
+		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if taskRunData.TaskID != TidNaver {
 				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
-			task := &naverTask{
-				task: task{
-					id:         taskRunData.taskID,
-					commandID:  taskRunData.taskCommandID,
-					instanceID: instanceID,
+			tTask := &naverTask{
+				Task: task.Task{
+					ID:         taskRunData.TaskID,
+					CommandID:  taskRunData.TaskCommandID,
+					InstanceID: instanceID,
 
-					notifierID: taskRunData.notifierID,
+					NotifierID: taskRunData.NotifierID,
 
-					canceled: false,
+					Canceled: false,
 
-					runBy: taskRunData.taskRunBy,
+					RunBy: taskRunData.TaskRunBy,
 
-					fetcher: nil,
+					Fetcher: nil,
 				},
 
 				appConfig: appConfig,
@@ -100,24 +101,24 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			task.fetcher = NewRetryFetcher(&HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
 
-			task.runFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
-				switch task.CommandID() {
+			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+				switch tTask.GetCommandID() {
 				case TcidNaverWatchNewPerformances:
-					for _, t := range task.appConfig.Tasks {
-						if task.ID() == TaskID(t.ID) {
+					for _, t := range tTask.appConfig.Tasks {
+						if tTask.GetID() == task.TaskID(t.ID) {
 							for _, c := range t.Commands {
-								if task.CommandID() == TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
 									taskCommandData := &naverWatchNewPerformancesTaskCommandData{}
-									if err := fillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
+									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 									if err := taskCommandData.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return task.runWatchNewPerformances(taskCommandData, taskResultData, messageTypeHTML)
+									return tTask.runWatchNewPerformances(taskCommandData, taskResultData, messageTypeHTML)
 								}
 							}
 							break
@@ -125,16 +126,16 @@ func init() {
 					}
 				}
 
-				return "", nil, ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNoImplementationForTaskCommand
 			}
 
-			return task, nil
+			return tTask, nil
 		},
-	}
+	})
 }
 
 type naverTask struct {
-	task
+	task.Task
 
 	appConfig *config.AppConfig
 }
@@ -156,7 +157,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = unmarshalFromResponseJSONData(t.fetcher, "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(taskCommandData.Query)), nil, nil, searchResultData)
+		err = task.UnmarshalFromResponseJSONData(t.Fetcher, "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(taskCommandData.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}
@@ -198,7 +199,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
 
-			if filter(title, titleIncludedKeywords, titleExcludedKeywords) == false || filter(place, placeIncludedKeywords, placeExcludedKeywords) == false {
+			if task.Filter(title, titleIncludedKeywords, titleExcludedKeywords) == false || task.Filter(place, placeIncludedKeywords, placeExcludedKeywords) == false {
 				return true
 			}
 
@@ -227,7 +228,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	// 신규 공연정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	err = eachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
+	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*naverPerformance)
 		originPerformance, ok2 := telem.(*naverPerformance)
 		if ok1 == false || ok2 == false {
@@ -254,7 +255,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.runBy == TaskRunByUser {
+		if t.RunBy == task.TaskRunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {

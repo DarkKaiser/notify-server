@@ -18,7 +18,7 @@ type HTTPServerConfig struct {
 	AllowOrigins []string
 }
 
-// NewServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
+// NewHTTPServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
 //
 // 미들웨어는 다음 순서로 적용됩니다 (순서가 중요합니다):
 //

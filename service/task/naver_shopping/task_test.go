@@ -1,10 +1,11 @@
-package task
+package naver_shopping
 
 import (
 	"encoding/json"
 	"errors"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -123,7 +124,7 @@ func TestNaverShoppingProduct_String(t *testing.T) {
 func TestNaverShoppingWatchPriceSearchResultData_Parsing(t *testing.T) {
 	t.Run("JSON 파싱 테스트", func(t *testing.T) {
 		// testdata에서 샘플 JSON 로드
-		jsonData := LoadTestData(t, "naver_shopping/api_response.json")
+		jsonData := task.LoadTestData(t, "api_response.json")
 
 		var result naverShoppingWatchPriceSearchResultData
 		err := json.Unmarshal(jsonData, &result)
@@ -142,9 +143,6 @@ func TestNaverShoppingWatchPriceSearchResultData_Parsing(t *testing.T) {
 
 func TestNaverShoppingTask_FilterProducts(t *testing.T) {
 	t.Run("포함 키워드 필터링", func(t *testing.T) {
-		// 이 테스트는 실제 runWatchPrice 메서드를 테스트하기 위한 것이지만,
-		// 현재는 필터링 로직이 내부에 있으므로 통합 테스트로 작성해야 합니다.
-		// 여기서는 기본적인 구조만 테스트합니다.
 		t.Skip("통합 테스트로 이동 필요")
 	})
 }

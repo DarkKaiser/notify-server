@@ -1,4 +1,4 @@
-package task
+package lotto
 
 import (
 	"os"
@@ -7,13 +7,14 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLottoTask_ParsePredictionResult(t *testing.T) {
 	t.Run("정상적인 예측 결과 파싱", func(t *testing.T) {
 		// testdata에서 샘플 로또 결과 로드
-		resultData := LoadTestDataAsString(t, "lotto/prediction_result.log")
+		resultData := task.LoadTestDataAsString(t, "prediction_result.log")
 
 		// 당첨번호 예측 결과 추출 정규표현식 테스트
 		re := regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`)
@@ -24,7 +25,7 @@ func TestLottoTask_ParsePredictionResult(t *testing.T) {
 	})
 
 	t.Run("당첨번호 추출", func(t *testing.T) {
-		resultData := LoadTestDataAsString(t, "lotto/prediction_result.log")
+		resultData := task.LoadTestDataAsString(t, "prediction_result.log")
 
 		// 각 당첨번호 추출
 		re1 := regexp.MustCompile(`당첨번호1(.*)`)
@@ -49,7 +50,7 @@ func TestLottoTask_ParsePredictionResult(t *testing.T) {
 	})
 
 	t.Run("분석결과 섹션 추출", func(t *testing.T) {
-		resultData := LoadTestDataAsString(t, "lotto/prediction_result.log")
+		resultData := task.LoadTestDataAsString(t, "prediction_result.log")
 
 		// "- 분석결과" 섹션 찾기
 		index := regexp.MustCompile(`- 분석결과`).FindStringIndex(resultData)
@@ -93,11 +94,11 @@ func TestLottoTask_FilePathExtraction(t *testing.T) {
 func TestLottoTask_ResultFileReading(t *testing.T) {
 	t.Run("결과 파일 읽기 테스트", func(t *testing.T) {
 		// 임시 디렉토리 생성
-		tempDir := CreateTestTempDir(t)
+		tempDir := task.CreateTestTempDir(t)
 
 		// 테스트 결과 파일 생성
 		resultFilePath := filepath.Join(tempDir, "lotto_result.log")
-		testContent := LoadTestData(t, "lotto/prediction_result.log")
+		testContent := task.LoadTestData(t, "prediction_result.log")
 
 		err := os.WriteFile(resultFilePath, testContent, 0644)
 		assert.NoError(t, err, "테스트 파일 생성이 성공해야 합니다")
@@ -120,14 +121,14 @@ func TestLottoTask_ResultFileReading(t *testing.T) {
 
 func TestLottoTask_CancelLogic(t *testing.T) {
 	t.Run("작업 취소 플래그 테스트", func(t *testing.T) {
-		task := CreateTestTask(TidLotto, TcidLottoPrediction, "test_instance")
+		testTask := task.CreateTestTask(TidLotto, TcidLottoPrediction, "test_instance")
 
 		// 초기 상태 확인
-		assert.False(t, task.IsCanceled(), "초기 상태에서는 취소되지 않아야 합니다")
+		assert.False(t, testTask.IsCanceled(), "초기 상태에서는 취소되지 않아야 합니다")
 
 		// 작업 취소
-		task.Cancel()
-		assert.True(t, task.IsCanceled(), "Cancel 호출 후에는 취소 상태여야 합니다")
+		testTask.Cancel()
+		assert.True(t, testTask.IsCanceled(), "Cancel 호출 후에는 취소 상태여야 합니다")
 	})
 }
 
@@ -184,9 +185,9 @@ func (m *MockCommandExecutor) StartCommand(name string, args ...string) (Command
 func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 	t.Run("Mock Executor로 정상 실행 테스트", func(t *testing.T) {
 		// 테스트 결과 파일 생성
-		tempDir := CreateTestTempDir(t)
+		tempDir := task.CreateTestTempDir(t)
 		resultPath := filepath.Join(tempDir, "result.log")
-		testContent := LoadTestData(t, "lotto/prediction_result.log")
+		testContent := task.LoadTestData(t, "prediction_result.log")
 		err := os.WriteFile(resultPath, testContent, 0644)
 		assert.NoError(t, err)
 
@@ -204,18 +205,18 @@ func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 		}
 
 		// lottoTask 생성
-		task := &lottoTask{
-			task: task{
-				id:        TidLotto,
-				commandID: TcidLottoPrediction,
-				canceled:  false,
+		tTask := &lottoTask{
+			Task: task.Task{
+				ID:        TidLotto,
+				CommandID: TcidLottoPrediction,
+				Canceled:  false,
 			},
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
 
 		// runPrediction 실행
-		message, changedData, err := task.runPrediction()
+		message, changedData, err := tTask.runPrediction()
 
 		assert.NoError(t, err, "정상 실행 시 에러가 없어야 합니다")
 		assert.Nil(t, changedData, "changedData는 nil이어야 합니다")
@@ -231,17 +232,17 @@ func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
 			err:     assert.AnError,
 		}
 
-		task := &lottoTask{
-			task: task{
-				id:        TidLotto,
-				commandID: TcidLottoPrediction,
-				canceled:  false,
+		tTask := &lottoTask{
+			Task: task.Task{
+				ID:        TidLotto,
+				CommandID: TcidLottoPrediction,
+				Canceled:  false,
 			},
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
 
-		_, _, err := task.runPrediction()
+		_, _, err := tTask.runPrediction()
 
 		assert.Error(t, err, "StartCommand 실패 시 에러가 발생해야 합니다")
 	})
@@ -259,17 +260,17 @@ func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
 			err:     nil,
 		}
 
-		task := &lottoTask{
-			task: task{
-				id:        TidLotto,
-				commandID: TcidLottoPrediction,
-				canceled:  false,
+		tTask := &lottoTask{
+			Task: task.Task{
+				ID:        TidLotto,
+				CommandID: TcidLottoPrediction,
+				Canceled:  false,
 			},
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
 
-		_, _, err := task.runPrediction()
+		_, _, err := tTask.runPrediction()
 
 		assert.Error(t, err, "Wait 실패 시 에러가 발생해야 합니다")
 	})
@@ -287,17 +288,17 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 			err:     nil,
 		}
 
-		task := &lottoTask{
-			task: task{
-				id:        TidLotto,
-				commandID: TcidLottoPrediction,
-				canceled:  false,
+		tTask := &lottoTask{
+			Task: task.Task{
+				ID:        TidLotto,
+				CommandID: TcidLottoPrediction,
+				Canceled:  false,
 			},
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
 
-		_, _, err := task.runPrediction()
+		_, _, err := tTask.runPrediction()
 
 		assert.Error(t, err, "잘못된 출력 형식 시 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "정상적으로 완료되었는지 확인할 수 없습니다", "적절한 에러 메시지가 반환되어야 합니다")
