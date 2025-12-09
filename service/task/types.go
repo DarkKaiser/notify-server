@@ -1,6 +1,8 @@
 package task
 
 import (
+	"strings"
+
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 )
 
@@ -9,9 +11,30 @@ type TaskCommandID string
 type TaskInstanceID string
 type TaskRunBy int
 
-// TaskCommandID의 마지막에 들어가는 특별한 문자
-// 이 문자는 환경설정 파일(JSON)에서는 사용되지 않으며 오직 소스코드 상에서만 사용한다.
-const taskCommandIDAnyString string = "*"
+// Match 주어진 commandID가 현재 commandID 패턴과 일치하는지 확인합니다.
+// '*' 와일드카드를 지원하여 접두사가 일치하면 true를 반환합니다.
+func (id TaskCommandID) Match(target TaskCommandID) bool {
+	const wildcard = "*"
+
+	s := string(id)
+	if strings.HasSuffix(s, wildcard) {
+		prefix := strings.TrimSuffix(s, wildcard)
+		return strings.HasPrefix(string(target), prefix)
+	}
+
+	return id == target
+}
+
+func (t TaskRunBy) String() string {
+	switch t {
+	case TaskRunByUser:
+		return "User"
+	case TaskRunByScheduler:
+		return "Scheduler"
+	default:
+		return "Unknown"
+	}
+}
 
 type taskContextKey string
 

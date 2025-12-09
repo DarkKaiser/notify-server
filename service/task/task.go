@@ -42,12 +42,7 @@ type TaskCommandConfig struct {
 }
 
 func (c *TaskCommandConfig) equalsTaskCommandID(taskCommandID TaskCommandID) bool {
-	if strings.HasSuffix(string(c.TaskCommandID), taskCommandIDAnyString) == true {
-		compareLength := len(c.TaskCommandID) - len(taskCommandIDAnyString)
-		return len(c.TaskCommandID) <= len(taskCommandID) && c.TaskCommandID[:compareLength] == taskCommandID[:compareLength]
-	}
-
-	return c.TaskCommandID == taskCommandID
+	return c.TaskCommandID.Match(taskCommandID)
 }
 
 func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*TaskConfig, *TaskCommandConfig, error) {
