@@ -65,8 +65,9 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 
 func TestRunBy_Values(t *testing.T) {
 	t.Run("RunBy 상수 값 테스트", func(t *testing.T) {
-		assert.Equal(t, RunBy(0), RunByUser, "RunByUser는 0이어야 합니다")
-		assert.Equal(t, RunBy(1), RunByScheduler, "RunByScheduler는 1이어야 합니다")
+		assert.Equal(t, RunBy(0), RunByUnknown, "RunByUnknown은 0이어야 합니다")
+		assert.Equal(t, RunBy(1), RunByUser, "RunByUser는 1이어야 합니다")
+		assert.Equal(t, RunBy(2), RunByScheduler, "RunByScheduler는 2이어야 합니다")
 	})
 
 	t.Run("RunBy 비교 테스트", func(t *testing.T) {

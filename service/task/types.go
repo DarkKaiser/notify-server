@@ -12,14 +12,38 @@ var (
 	ErrNotImplementedCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
 )
 
-// ID 작업의 고유 식별자입니다. (예: "Lotto")
+// ID 작업의 고유 식별자입니다.
 type ID string
 
-// CommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다. (예: "Check")
+func (id ID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id ID) String() string {
+	return string(id)
+}
+
+// CommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다.
 type CommandID string
+
+func (id CommandID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id CommandID) String() string {
+	return string(id)
+}
 
 // InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
 type InstanceID string
+
+func (id InstanceID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id InstanceID) String() string {
+	return string(id)
+}
 
 // Match 주어진 대상 커맨드 ID(target)가 현재 커맨드 ID 패턴과 일치하는지 확인합니다.
 // 와일드카드('*') 접미사를 지원하여, 패턴 매칭을 수행할 수 있습니다.
@@ -58,8 +82,10 @@ const (
 type RunBy int
 
 const (
+	// RunByUnknown 실행 주체가 명확하지 않은 상태 (Zero Value 안전성 확보)
+	RunByUnknown RunBy = iota
 	// RunByUser 사용자가 직접 실행 요청한 경우입니다.
-	RunByUser RunBy = iota
+	RunByUser
 	// RunByScheduler 스케줄러에 의해 자동으로 실행된 경우입니다.
 	RunByScheduler
 )
