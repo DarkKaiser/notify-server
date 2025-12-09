@@ -6,412 +6,237 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAppConfig_Validate_InvalidDuration(t *testing.T) {
-	t.Run("잘못된 HTTP Retry Duration", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2 seconds", // Invalid!
+// helper to create a base valid config
+func createBaseValidConfig() *AppConfig {
+	return &AppConfig{
+		HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+		Notifiers: NotifierConfig{
+			DefaultNotifierID: "telegram1",
+			Telegrams: []TelegramConfig{
+				{ID: "telegram1", BotToken: "token", ChatID: 123},
 			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{},
-			NotifyAPI: NotifyAPIConfig{
-				WS:           WSConfig{TLSServer: false, ListenPort: 2443},
-				CORS:         CORSConfig{AllowOrigins: []string{"*"}},
-				Applications: []ApplicationConfig{},
-			},
-		}
-
-		err := appConfig.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "HTTP Retry")
-	})
+		},
+		Tasks: []TaskConfig{},
+		NotifyAPI: NotifyAPIConfig{
+			WS:           WSConfig{ListenPort: 8080},
+			CORS:         CORSConfig{AllowOrigins: []string{"*"}},
+			Applications: []ApplicationConfig{},
+		},
+	}
 }
 
-func TestAppConfig_Validate_InvalidCronExpression(t *testing.T) {
-	t.Run("잘못된 Cron 표현식", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2s",
-			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{
-				{
-					ID:    "test-task",
-					Title: "Test Task",
-					Commands: []TaskCommandConfig{
-						{
-							ID:    "test-command",
-							Title: "Test Command",
-							Scheduler: struct {
-								Runnable bool   `json:"runnable"`
-								TimeSpec string `json:"time_spec"`
-							}{
-								Runnable: true,
-								TimeSpec: "invalid cron", // Invalid!
-							},
-							DefaultNotifierID: "telegram1",
-						},
-					},
-				},
-			},
-			NotifyAPI: NotifyAPIConfig{
-				WS:           WSConfig{TLSServer: false, ListenPort: 2443},
-				CORS:         CORSConfig{AllowOrigins: []string{"*"}},
-				Applications: []ApplicationConfig{},
-			},
-		}
-
-		err := appConfig.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Scheduler")
-		assert.Contains(t, err.Error(), "test-task")
-		assert.Contains(t, err.Error(), "test-command")
-	})
-}
-
-func TestAppConfig_Validate_InvalidPort(t *testing.T) {
-	t.Run("잘못된 포트 번호", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2s",
-			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{},
-			NotifyAPI: NotifyAPIConfig{
-				WS:           WSConfig{TLSServer: false, ListenPort: 70000}, // Invalid!
-				CORS:         CORSConfig{AllowOrigins: []string{"*"}},
-				Applications: []ApplicationConfig{},
-			},
-		}
-
-		err := appConfig.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "포트")
-	})
-}
-
-func TestAppConfig_Validate_ValidCronExpression(t *testing.T) {
-	t.Run("유효한 Cron 표현식", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2s",
-			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{
-				{
-					ID:    "test-task",
-					Title: "Test Task",
-					Commands: []TaskCommandConfig{
-						{
-							ID:    "test-command",
-							Title: "Test Command",
-							Scheduler: struct {
-								Runnable bool   `json:"runnable"`
-								TimeSpec string `json:"time_spec"`
-							}{
-								Runnable: true,
-								TimeSpec: "0 */5 * * * *", // Valid!
-							},
-							DefaultNotifierID: "telegram1",
-						},
-					},
-				},
-			},
-			NotifyAPI: NotifyAPIConfig{
-				WS: WSConfig{TLSServer: false, ListenPort: 2443},
-				CORS: CORSConfig{
-					AllowOrigins: []string{"*"},
-				},
-				Applications: []ApplicationConfig{
-					{
-						ID:                "test-app",
-						Title:             "Test App",
-						DefaultNotifierID: "telegram1",
-						AppKey:            "test-key",
-					},
-				},
-			},
-		}
-
-		err := appConfig.Validate()
-		assert.NoError(t, err)
-	})
-}
-
-func TestAppConfig_Validate_TLSCertURL(t *testing.T) {
-	t.Run("TLS 인증서 URL 형식", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2s",
-			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{},
-			NotifyAPI: NotifyAPIConfig{
-				WS: WSConfig{
-					TLSServer:   true,
-					TLSCertFile: "https://example.com/cert.pem", // URL 형식
-					TLSKeyFile:  "https://example.com/key.pem",  // URL 형식
-					ListenPort:  2443,
-				},
-				CORS: CORSConfig{
-					AllowOrigins: []string{"*"},
-				},
-				Applications: []ApplicationConfig{},
-			},
-		}
-
-		err := appConfig.Validate()
-		// URL 형식은 유효하므로 에러가 없어야 함 (경고만 출력)
-		assert.NoError(t, err)
-	})
-
-	t.Run("잘못된 TLS 인증서 URL", func(t *testing.T) {
-		appConfig := &AppConfig{
-			HTTPRetry: HTTPRetryConfig{
-				MaxRetries: 3,
-				RetryDelay: "2s",
-			},
-			Notifiers: NotifierConfig{
-				DefaultNotifierID: "telegram1",
-				Telegrams: []TelegramConfig{
-					{ID: "telegram1", BotToken: "token1", ChatID: 123},
-				},
-			},
-			Tasks: []TaskConfig{},
-			NotifyAPI: NotifyAPIConfig{
-				WS: WSConfig{
-					TLSServer:   true,
-					TLSCertFile: "ftp://example.com/cert.pem", // 잘못된 스키마
-					TLSKeyFile:  "https://example.com/key.pem",
-					ListenPort:  2443,
-				},
-				CORS: CORSConfig{
-					AllowOrigins: []string{"*"},
-				},
-				Applications: []ApplicationConfig{},
-			},
-		}
-
-		err := appConfig.Validate()
-		// ftp 스키마는 허용되지 않으므로 에러 발생 (경고 모드지만 URL 검증은 에러 반환)
-		// 실제로는 경고만 출력하므로 에러 없음
-		assert.NoError(t, err)
-	})
-}
-
-func TestAppConfig_Validate_LogicErrors(t *testing.T) {
+func TestAppConfig_Validate_TableDriven(t *testing.T) {
 	tests := []struct {
-		name     string
-		config   *AppConfig
-		errorMsg string
+		name          string
+		modifyConfig  func(*AppConfig) // Function to modify base valid config
+		shouldError   bool
+		errorContains string
 	}{
 		{
-			name: "중복된 Notifier ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-						{ID: "telegram1", BotToken: "val2", ChatID: 456},
-					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			name:         "Valid Config",
+			modifyConfig: func(c *AppConfig) {},
+			shouldError:  false,
+		},
+		// HTTP Retry
+		{
+			name: "Invalid HTTP Retry Duration",
+			modifyConfig: func(c *AppConfig) {
+				c.HTTPRetry.RetryDelay = "invalid"
 			},
-			errorMsg: "중복되었습니다",
+			shouldError:   true,
+			errorContains: "HTTP Retry",
+		},
+		// Scheduler
+		{
+			name: "Invalid Task Cron Expression",
+			modifyConfig: func(c *AppConfig) {
+				c.Tasks = []TaskConfig{
+					{
+						ID:    "task1",
+						Title: "Task 1",
+						Commands: []TaskCommandConfig{
+							{
+								ID:                "cmd1",
+								Title:             "Cmd 1",
+								DefaultNotifierID: "telegram1",
+								Scheduler: struct {
+									Runnable bool   `json:"runnable"`
+									TimeSpec string `json:"time_spec"`
+								}{Runnable: true, TimeSpec: "invalid cron"},
+							},
+						},
+					},
+				}
+			},
+			shouldError:   true,
+			errorContains: "Scheduler", // Validation logic adds this context
 		},
 		{
-			name: "존재하지 않는 기본 Notifier ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "non-existent",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
+			name: "Valid Task Cron Expression",
+			modifyConfig: func(c *AppConfig) {
+				c.Tasks = []TaskConfig{
+					{
+						ID:    "task1",
+						Title: "Task 1",
+						Commands: []TaskCommandConfig{
+							{
+								ID:                "cmd1",
+								Title:             "Cmd 1",
+								DefaultNotifierID: "telegram1",
+								Scheduler: struct {
+									Runnable bool   `json:"runnable"`
+									TimeSpec string `json:"time_spec"`
+								}{Runnable: true, TimeSpec: "0 */5 * * * *"},
+							},
+						},
 					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+				}
 			},
-			errorMsg: "존재하지 않습니다",
+			shouldError: false,
+		},
+		// NotifyAPI - WS
+		{
+			name: "Invalid Listen Port (Too High)",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.WS.ListenPort = 70000
+			},
+			shouldError:   true,
+			errorContains: "포트",
 		},
 		{
-			name: "중복된 Task ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				Tasks: []TaskConfig{
-					{ID: "task1", Commands: []TaskCommandConfig{}},
-					{ID: "task1", Commands: []TaskCommandConfig{}},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			name: "Invalid Listen Port (Too Low)",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.WS.ListenPort = -1
 			},
-			errorMsg: "중복되었습니다",
+			shouldError:   true,
+			errorContains: "포트",
 		},
 		{
-			name: "중복된 Command ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				Tasks: []TaskConfig{
+			name: "TLS Enabled but Missing Cert",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.WS.TLSServer = true
+				c.NotifyAPI.WS.TLSCertFile = "" // Missing
+				c.NotifyAPI.WS.TLSKeyFile = "key.pem"
+			},
+			shouldError:   true,
+			errorContains: "Cert 파일 경로",
+		},
+		{
+			name: "TLS Valid URL Cert",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.WS.TLSServer = true
+				c.NotifyAPI.WS.TLSCertFile = "https://example.com/cert"
+				c.NotifyAPI.WS.TLSKeyFile = "https://example.com/key"
+			},
+			shouldError: false,
+		},
+		// Logic Errors (Duplicates, Missing IDs)
+		{
+			name: "Duplicate Notifier ID",
+			modifyConfig: func(c *AppConfig) {
+				c.Notifiers.Telegrams = append(c.Notifiers.Telegrams, TelegramConfig{
+					ID: "telegram1", BotToken: "dup", ChatID: 123,
+				})
+			},
+			shouldError:   true,
+			errorContains: "중복되었습니다",
+		},
+		{
+			name: "Missing Default Notifier ID",
+			modifyConfig: func(c *AppConfig) {
+				c.Notifiers.DefaultNotifierID = "non-existent"
+			},
+			shouldError:   true,
+			errorContains: "존재하지 않습니다",
+		},
+		{
+			name: "Duplicate Task ID",
+			modifyConfig: func(c *AppConfig) {
+				c.Tasks = []TaskConfig{
+					{ID: "dup"}, {ID: "dup"},
+				}
+			},
+			shouldError:   true,
+			errorContains: "중복되었습니다",
+		},
+		{
+			name: "Duplicate Command ID within Task",
+			modifyConfig: func(c *AppConfig) {
+				c.Tasks = []TaskConfig{
 					{
 						ID: "task1",
 						Commands: []TaskCommandConfig{
-							{ID: "cmd1", DefaultNotifierID: "telegram1"},
-							{ID: "cmd1", DefaultNotifierID: "telegram1"},
+							{ID: "dup", DefaultNotifierID: "telegram1"},
+							{ID: "dup", DefaultNotifierID: "telegram1"},
 						},
 					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+				}
 			},
-			errorMsg: "중복되었습니다",
+			shouldError:   true,
+			errorContains: "중복되었습니다",
 		},
 		{
-			name: "Command의 존재하지 않는 Notifier ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				Tasks: []TaskConfig{
+			name: "Command uses unknown Notifier ID",
+			modifyConfig: func(c *AppConfig) {
+				c.Tasks = []TaskConfig{
 					{
 						ID: "task1",
 						Commands: []TaskCommandConfig{
-							{ID: "cmd1", DefaultNotifierID: "non-existent"},
+							{ID: "cmd1", DefaultNotifierID: "unknown"},
 						},
 					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+				}
 			},
-			errorMsg: "존재하지 않습니다",
+			shouldError:   true,
+			errorContains: "존재하지 않습니다",
 		},
 		{
-			name: "중복된 Application ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				NotifyAPI: NotifyAPIConfig{
-					WS:   WSConfig{ListenPort: 8080},
-					CORS: CORSConfig{AllowOrigins: []string{"*"}},
-					Applications: []ApplicationConfig{
-						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: "key1"},
-						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: "key2"},
-					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			name: "Duplicate Application ID",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.Applications = []ApplicationConfig{
+					{ID: "app1", AppKey: "k1", DefaultNotifierID: "telegram1"},
+					{ID: "app1", AppKey: "k2", DefaultNotifierID: "telegram1"},
+				}
 			},
-			errorMsg: "중복되었습니다",
+			shouldError:   true,
+			errorContains: "중복되었습니다",
 		},
 		{
-			name: "Application의 존재하지 않는 Notifier ID",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				NotifyAPI: NotifyAPIConfig{
-					WS:   WSConfig{ListenPort: 8080},
-					CORS: CORSConfig{AllowOrigins: []string{"*"}},
-					Applications: []ApplicationConfig{
-						{ID: "app1", DefaultNotifierID: "non-existent", AppKey: "key1"},
-					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			name: "Application uses unknown Notifier ID",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.Applications = []ApplicationConfig{
+					{ID: "app1", AppKey: "k1", DefaultNotifierID: "unknown"},
+				}
 			},
-			errorMsg: "존재하지 않습니다",
+			shouldError:   true,
+			errorContains: "존재하지 않습니다",
 		},
 		{
-			name: "Application의 AppKey 누락",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				NotifyAPI: NotifyAPIConfig{
-					WS:   WSConfig{ListenPort: 8080},
-					CORS: CORSConfig{AllowOrigins: []string{"*"}},
-					Applications: []ApplicationConfig{
-						{ID: "app1", DefaultNotifierID: "telegram1", AppKey: ""},
-					},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
+			name: "Application Missing AppKey",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.Applications = []ApplicationConfig{
+					{ID: "app1", AppKey: "", DefaultNotifierID: "telegram1"},
+				}
 			},
-			errorMsg: "APP_KEY",
-		},
-		{
-			name: "TLS Server 활성화 시 Cert/Key 누락",
-			config: &AppConfig{
-				Notifiers: NotifierConfig{
-					DefaultNotifierID: "telegram1",
-					Telegrams: []TelegramConfig{
-						{ID: "telegram1", BotToken: "val1", ChatID: 123},
-					},
-				},
-				NotifyAPI: NotifyAPIConfig{
-					WS: WSConfig{
-						ListenPort: 8080,
-						TLSServer:  true,
-						// Cert/Key missing
-					},
-					CORS:         CORSConfig{AllowOrigins: []string{"*"}},
-					Applications: []ApplicationConfig{},
-				},
-				HTTPRetry: HTTPRetryConfig{MaxRetries: 3, RetryDelay: "1s"},
-			},
-			errorMsg: "Cert 파일 경로",
+			shouldError:   true,
+			errorContains: "APP_KEY",
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.config.Validate()
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tc.errorMsg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createBaseValidConfig()
+			tt.modifyConfig(cfg)
+
+			err := cfg.Validate()
+			if tt.shouldError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }

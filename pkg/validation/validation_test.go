@@ -133,6 +133,9 @@ func TestValidateURL(t *testing.T) {
 		{"퓨니코드 도메인", "https://xn--989a11j08n21d.com", false}, // 한국.com
 		{"URL 인코딩된 경로", "https://example.com/path%20with%20spaces", false},
 		{"IPv6 주소 (현재 미지원)", "http://[::1]:8080", true},
+		{"URL with user info", "https://user:pass@example.com", false},
+		{"URL with query params", "https://example.com?q=golang", false},
+		{"URL with fragment", "https://example.com#section", false},
 	}
 
 	for _, tt := range tests {
