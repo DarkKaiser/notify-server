@@ -246,15 +246,11 @@ func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
 // mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
 type mockTaskRunner struct{}
 
-func (m *mockTaskRunner) TaskRun(taskID task.TaskID, taskCommandID task.TaskCommandID, notifierID string, manualRun bool, runType task.TaskRunBy) bool {
+func (m *mockTaskRunner) TaskRun(taskRunData *task.TaskRunData) bool {
 	return true
 }
 
-func (m *mockTaskRunner) TaskRunWithContext(taskID task.TaskID, taskCommandID task.TaskCommandID, taskCtx task.TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) bool {
-	return true
-}
-
-func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockTaskRunner) Cancel(taskInstanceID task.TaskInstanceID) bool {
 	return true
 }
 

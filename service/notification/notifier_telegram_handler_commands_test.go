@@ -175,10 +175,11 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		mockBot.On("StopReceivingUpdates").Return().Once()
 
 		mockTaskRunner := &MockTaskRunner{}
-		mockTaskRunner.On("TaskRun", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mockTaskRunner.On("TaskRun", mock.Anything).
 			Run(func(args mock.Arguments) {
-				capturedTaskID = args.Get(0).(task.TaskID)
-				capturedCommandID = args.Get(1).(task.TaskCommandID)
+				data := args.Get(0).(*task.TaskRunData)
+				capturedTaskID = data.TaskID
+				capturedCommandID = data.TaskCommandID
 				close(done)
 			}).Return(true)
 

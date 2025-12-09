@@ -188,7 +188,7 @@ func init() {
 						}
 					}
 				}
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return tTask, nil

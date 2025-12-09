@@ -12,17 +12,12 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, manualRun bool, runType TaskRunBy) bool {
-	args := m.Called(taskID, taskCommandID, notifierID, manualRun, runType)
+func (m *MockTaskExecutor) TaskRun(taskRunData *TaskRunData) bool {
+	args := m.Called(taskRunData)
 	return args.Bool(0)
 }
 
-func (m *MockTaskExecutor) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) bool {
-	args := m.Called(taskID, taskCommandID, taskCtx, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
-	return args.Bool(0)
-}
-
-func (m *MockTaskExecutor) TaskCancel(taskInstanceID TaskInstanceID) bool {
+func (m *MockTaskExecutor) Cancel(taskInstanceID TaskInstanceID) bool {
 	args := m.Called(taskInstanceID)
 	return args.Bool(0)
 }

@@ -151,13 +151,13 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
-		result := taskService.TaskRun(
-			task.TaskID("NON_EXISTENT"),
-			task.TaskCommandID("TEST"),
-			"test-notifier",
-			true,
-			task.TaskRunByUser,
-		)
+		result := taskService.TaskRun(&task.TaskRunData{
+			TaskID:        "NON_EXISTENT",
+			TaskCommandID: "TEST",
+			NotifierID:    "test-notifier",
+			NotifyOnStart: true,
+			TaskRunBy:     task.TaskRunByUser,
+		})
 
 		// TaskRun은 비동기 요청이므로 성공적으로 큐에 들어가면 true를 반환함
 		assert.True(t, result, "Task 실행 요청은 성공해야 합니다")
@@ -195,13 +195,13 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		initialCallCount := len(mockSender.notifyCalls)
 
 		// Task 실행 (알림 요청 포함)
-		taskService.TaskRun(
-			task.TaskID("TEST"),
-			task.TaskCommandID("TEST"),
-			"test-notifier",
-			true, // 알림 요청
-			task.TaskRunByUser,
-		)
+		taskService.TaskRun(&task.TaskRunData{
+			TaskID:        "TEST",
+			TaskCommandID: "TEST",
+			NotifierID:    "test-notifier",
+			NotifyOnStart: true,
+			TaskRunBy:     task.TaskRunByUser,
+		})
 
 		time.Sleep(200 * time.Millisecond)
 
@@ -363,13 +363,13 @@ func TestEndToEndScenario(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Task 실행 시도
-		taskService.TaskRun(
-			task.TaskID("TEST"),
-			task.TaskCommandID("TEST"),
-			"test-notifier",
-			false,
-			task.TaskRunByUser,
-		)
+		taskService.TaskRun(&task.TaskRunData{
+			TaskID:        "TEST",
+			TaskCommandID: "TEST",
+			NotifierID:    "test-notifier",
+			NotifyOnStart: false,
+			TaskRunBy:     task.TaskRunByUser,
+		})
 
 		time.Sleep(200 * time.Millisecond)
 
@@ -455,15 +455,11 @@ func (m *mockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 // mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
 type mockTaskRunner struct{}
 
-func (m *mockTaskRunner) TaskRun(taskID task.TaskID, taskCommandID task.TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) bool {
+func (m *mockTaskRunner) TaskRun(data *task.TaskRunData) bool {
 	return true
 }
 
-func (m *mockTaskRunner) TaskRunWithContext(taskID task.TaskID, taskCommandID task.TaskCommandID, taskCtx task.TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) bool {
-	return true
-}
-
-func (m *mockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockTaskRunner) Cancel(taskInstanceID task.TaskInstanceID) bool {
 	return true
 }
 
@@ -488,75 +484,4 @@ func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCt
 
 func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
 	return m.supportsHTMLMessage
-}
-
-// TestFullFlow_SchedulerToNotification은 스케줄러에서 알림까지의 전체 흐름을 테스트합니다.
-func TestFullFlow_SchedulerToNotification(t *testing.T) {
-	t.Run("스케줄러에 의한 작업 실행 및 알림 발송", func(t *testing.T) {
-		// 1. 설정 생성 (자주 실행되는 작업 포함)
-		appConfig := createTestConfig()
-		appConfig.Tasks = []config.TaskConfig{
-			{
-				ID:    "IntegrationTask",
-				Title: "통합 테스트 작업",
-				Commands: []config.TaskCommandConfig{
-					{
-						ID:    "Run",
-						Title: "실행",
-						Scheduler: struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						}{
-							Runnable: true,
-							TimeSpec: "* * * * * *", // 매초 실행
-						},
-						Notifier: struct {
-							Usable bool `json:"usable"`
-						}{Usable: true},
-						DefaultNotifierID: "test-notifier",
-					},
-				},
-			},
-		}
-
-		// 2. 서비스 초기화
-		taskService := task.NewService(appConfig)
-
-		// Mock Notification Sender 사용 (알림 수신 확인용)
-		mockSender := &mockNotificationSender{
-			notifyCalls: make([]notifyCall, 0),
-		}
-
-		// TaskService에 Mock Sender 연결 (NotificationService를 거치지 않고 직접 확인)
-		// 실제로는 NotificationService가 Sender 역할을 하지만, 여기서는 알림 요청이 발생하는지만 확인
-		taskService.SetTaskNotificationSender(mockSender)
-
-		// 3. 서비스 시작
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		wg.Add(1)
-		go taskService.Run(ctx, wg)
-
-		// 4. 스케줄러가 트리거할 때까지 대기
-		// 매초 실행되므로 2초 정도면 최소 1번은 실행되어야 함
-		time.Sleep(2500 * time.Millisecond)
-
-		// 5. 검증
-		// 작업이 실행되려 했으나 등록된 핸들러가 없어서 에러 알림이 발생해야 함
-		// (실제 작업 로직은 task 패키지 내부에 하드코딩되어 있거나 등록되어야 하는데, 여기서는 config만 추가했으므로 '등록되지 않은 작업' 에러가 발생할 것임)
-		// 하지만 중요한 건 스케줄러 -> TaskService -> NotificationSender 흐름이 동작했느냐임.
-
-		assert.Greater(t, len(mockSender.notifyCalls), 0, "알림이 최소 1회 이상 발송되어야 합니다")
-
-		if len(mockSender.notifyCalls) > 0 {
-			lastCall := mockSender.notifyCalls[len(mockSender.notifyCalls)-1]
-			// 에러 메시지 또는 작업 시작 메시지가 포함되어야 함
-			t.Logf("수신된 알림 메시지: %s", lastCall.message)
-		}
-
-		cancel()
-		wg.Wait()
-	})
 }

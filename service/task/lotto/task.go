@@ -133,7 +133,7 @@ func init() {
 					return lottoTask.runPrediction()
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return lottoTask, nil

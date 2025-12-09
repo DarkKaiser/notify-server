@@ -39,17 +39,12 @@ type MockTaskRunner struct {
 	mock.Mock
 }
 
-func (m *MockTaskRunner) TaskRun(taskID task.TaskID, taskCommandID task.TaskCommandID, notifierID string, manualRun bool, runType task.TaskRunBy) bool {
-	args := m.Called(taskID, taskCommandID, notifierID, manualRun, runType)
+func (m *MockTaskRunner) TaskRun(taskRunData *task.TaskRunData) bool {
+	args := m.Called(taskRunData)
 	return args.Bool(0)
 }
 
-func (m *MockTaskRunner) TaskRunWithContext(taskID task.TaskID, taskCommandID task.TaskCommandID, taskCtx task.TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) (succeeded bool) {
-	args := m.Called(taskID, taskCommandID, taskCtx, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
-	return args.Bool(0)
-}
-
-func (m *MockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *MockTaskRunner) Cancel(taskInstanceID task.TaskInstanceID) bool {
 	args := m.Called(taskInstanceID)
 	return args.Bool(0)
 }

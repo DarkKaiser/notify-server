@@ -6,10 +6,15 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 )
 
+var (
+	ErrNotSupportedTask      = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
+	ErrNotSupportedCommand   = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
+	ErrNotImplementedCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
+)
+
 type TaskID string
 type TaskCommandID string
 type TaskInstanceID string
-type TaskRunBy int
 
 // Match 주어진 commandID가 현재 commandID 패턴과 일치하는지 확인합니다.
 // '*' 와일드카드를 지원하여 접두사가 일치하면 true를 반환합니다.
@@ -25,17 +30,6 @@ func (id TaskCommandID) Match(target TaskCommandID) bool {
 	return id == target
 }
 
-func (t TaskRunBy) String() string {
-	switch t {
-	case TaskRunByUser:
-		return "User"
-	case TaskRunByScheduler:
-		return "Scheduler"
-	default:
-		return "Unknown"
-	}
-}
-
 type taskContextKey string
 
 const (
@@ -48,16 +42,23 @@ const (
 	TaskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
 )
 
+type TaskRunBy int
+
 const (
 	TaskRunByUser TaskRunBy = iota
 	TaskRunByScheduler
 )
 
-var (
-	ErrNotSupportedTask               = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
-	ErrNotSupportedCommand            = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
-	ErrNoImplementationForTaskCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
-)
+func (t TaskRunBy) String() string {
+	switch t {
+	case TaskRunByUser:
+		return "User"
+	case TaskRunByScheduler:
+		return "Scheduler"
+	default:
+		return "Unknown"
+	}
+}
 
 // TaskRunData
 type TaskRunData struct {
@@ -68,26 +69,25 @@ type TaskRunData struct {
 
 	NotifierID string
 
-	NotifyResultOfTaskRunRequest bool
+	NotifyOnStart bool
 
 	TaskRunBy TaskRunBy
 }
 
 // TaskExecutor
 type TaskExecutor interface {
-	TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
-	TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool)
+	TaskRun(taskRunData *TaskRunData) (succeeded bool)
 }
 
-// TaskCanceler
-type TaskCanceler interface {
-	TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool)
+// Canceler
+type Canceler interface {
+	Cancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
 // TaskRunner
 type TaskRunner interface {
 	TaskExecutor
-	TaskCanceler
+	Canceler
 }
 
 // TaskNotificationSender

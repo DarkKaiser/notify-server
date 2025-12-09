@@ -93,7 +93,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskCancel to be called
-	mockTaskRunner.On("TaskCancel", task.TaskInstanceID("1234")).Run(func(args mock.Arguments) {
+	mockTaskRunner.On("Cancel", task.TaskInstanceID("1234")).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)
 
@@ -117,7 +117,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	case <-done:
 		// Success
 	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for TaskCancel")
+		t.Fatal("Timeout waiting for Cancel")
 	}
 
 	// Cleanup
@@ -228,7 +228,13 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskRun to be called
-	mockTaskRunner.On("TaskRun", task.TaskID("test_task"), task.TaskCommandID("run"), "test-notifier", true, task.TaskRunByUser).Run(func(args mock.Arguments) {
+	mockTaskRunner.On("TaskRun", mock.MatchedBy(func(data *task.TaskRunData) bool {
+		return data.TaskID == "test_task" &&
+			data.TaskCommandID == "run" &&
+			data.NotifierID == "test-notifier" &&
+			data.NotifyOnStart == true &&
+			data.TaskRunBy == task.TaskRunByUser
+	})).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)
 

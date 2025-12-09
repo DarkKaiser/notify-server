@@ -171,7 +171,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
-			if taskRunData.NotifyResultOfTaskRunRequest == true {
+			if taskRunData.NotifyOnStart == true {
 				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.TaskCtx.WithInstanceID(instanceID, 0))
 			}
 
@@ -247,40 +247,25 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool) {
-	return s.TaskRunWithContext(taskID, taskCommandID, nil, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
-}
-
-func (s *TaskService) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) (succeeded bool) {
+func (s *TaskService) TaskRun(taskRunData *TaskRunData) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
 
 			applog.WithComponentAndFields("task.service", log.Fields{
-				"task_id":    taskID,
-				"command_id": taskCommandID,
+				"task_id":    taskRunData.TaskID,
+				"command_id": taskRunData.TaskCommandID,
 				"panic":      r,
 			}).Error("Task 실행 요청중에 panic 발생")
 		}
 	}()
 
-	s.taskRunC <- &TaskRunData{
-		TaskID:        taskID,
-		TaskCommandID: taskCommandID,
-
-		TaskCtx: taskCtx,
-
-		NotifierID: notifierID,
-
-		NotifyResultOfTaskRunRequest: notifyResultOfTaskRunRequest,
-
-		TaskRunBy: taskRunBy,
-	}
+	s.taskRunC <- taskRunData
 
 	return true
 }
 
-func (s *TaskService) TaskCancel(taskInstanceID TaskInstanceID) (succeeded bool) {
+func (s *TaskService) Cancel(taskInstanceID TaskInstanceID) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

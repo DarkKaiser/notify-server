@@ -49,7 +49,13 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskExecutor TaskExecutor
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
 				// 작업 실행 요청. 실패 시(false 반환) 에러 처리 및 알림 발송
-				if !taskExecutor.TaskRun(taskID, taskCommandID, defaultNotifierID, false, TaskRunByScheduler) {
+				if !taskExecutor.TaskRun(&TaskRunData{
+					TaskID:        taskID,
+					TaskCommandID: taskCommandID,
+					NotifierID:    defaultNotifierID,
+					NotifyOnStart: false,
+					TaskRunBy:     TaskRunByScheduler,
+				}) {
 					msg := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 					s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, nil)
 				}
