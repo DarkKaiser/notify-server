@@ -33,7 +33,7 @@ func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppCon
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockService := &MockNotificationService{}
-	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
+	service := NewService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -153,7 +153,7 @@ func TestNotifyAPIService_NilNotificationService(t *testing.T) {
 	appConfig.NotifyAPI.WS.ListenPort = 18084
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	service := NewNotifyAPIService(appConfig, nil, common.BuildInfo{
+	service := NewService(appConfig, nil, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",

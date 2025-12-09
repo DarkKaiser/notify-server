@@ -54,7 +54,7 @@ func TestServicesIntegration(t *testing.T) {
 		}
 		notificationService.SetNotifierFactory(mockFactory)
 
-		notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
+		notifyAPIService := api.NewService(appConfig, notificationService, common.BuildInfo{
 			Version:     "test-version",
 			BuildDate:   "test-date",
 			BuildNumber: "test-build",

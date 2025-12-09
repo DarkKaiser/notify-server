@@ -137,7 +137,7 @@ func main() {
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	notifyAPIService := api.NewNotifyAPIService(appConfig, notificationService, common.BuildInfo{
+	notifyAPIService := api.NewService(appConfig, notificationService, common.BuildInfo{
 		Version:     Version,
 		BuildDate:   BuildDate,
 		BuildNumber: BuildNumber,

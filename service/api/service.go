@@ -49,11 +49,11 @@ type NotifyAPIService struct {
 	buildInfo common.BuildInfo
 }
 
-// NewNotifyAPIService NotifyAPIService 인스턴스를 생성합니다.
+// NewService NotifyAPIService 인스턴스를 생성합니다.
 //
 // Returns:
 //   - 초기화된 NotifyAPIService 인스턴스
-func NewNotifyAPIService(appConfig *config.AppConfig, notificationService notification.Service, buildInfo common.BuildInfo) *NotifyAPIService {
+func NewService(appConfig *config.AppConfig, notificationService notification.Service, buildInfo common.BuildInfo) *NotifyAPIService {
 	return &NotifyAPIService{
 		appConfig: appConfig,
 
