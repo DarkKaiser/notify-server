@@ -34,17 +34,6 @@ func (id CommandID) String() string {
 	return string(id)
 }
 
-// InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
-type InstanceID string
-
-func (id InstanceID) IsEmpty() bool {
-	return len(id) == 0
-}
-
-func (id InstanceID) String() string {
-	return string(id)
-}
-
 // Match 주어진 대상 커맨드 ID(target)가 현재 커맨드 ID 패턴과 일치하는지 확인합니다.
 // 와일드카드('*') 접미사를 지원하여, 패턴 매칭을 수행할 수 있습니다.
 func (id CommandID) Match(target CommandID) bool {
@@ -57,6 +46,17 @@ func (id CommandID) Match(target CommandID) bool {
 	}
 
 	return id == target
+}
+
+// InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
+type InstanceID string
+
+func (id InstanceID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id InstanceID) String() string {
+	return string(id)
 }
 
 // RunBy 누가 작업을 실행했는지를 나타내는 타입입니다.
@@ -82,6 +82,16 @@ func (t RunBy) String() string {
 	}
 }
 
+// IsValid 유효한 RunBy 값인지 확인합니다.
+func (t RunBy) IsValid() bool {
+	switch t {
+	case RunByUser, RunByScheduler:
+		return true
+	default:
+		return false
+	}
+}
+
 // RunRequest 작업 실행 요청 정보를 담고 있는 구조체입니다.
 type RunRequest struct {
 	TaskID        ID
@@ -96,6 +106,20 @@ type RunRequest struct {
 	NotifyOnStart bool
 
 	RunBy RunBy
+}
+
+// Validate 유효한 요청인지 검증합니다.
+func (r *RunRequest) Validate() error {
+	if r.TaskID.IsEmpty() {
+		return apperrors.New(apperrors.ErrInvalidInput, "TaskID는 필수입니다")
+	}
+	if r.TaskCommandID.IsEmpty() {
+		return apperrors.New(apperrors.ErrInvalidInput, "TaskCommandID는 필수입니다")
+	}
+	if !r.RunBy.IsValid() {
+		return apperrors.New(apperrors.ErrInvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
+	}
+	return nil
 }
 
 type Runner interface {
