@@ -12,8 +12,8 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) Run(taskRunData *TaskRunData) bool {
-	args := m.Called(taskRunData)
+func (m *MockTaskExecutor) Run(req *RunRequest) bool {
+	args := m.Called(req)
 	return args.Bool(0)
 }
 

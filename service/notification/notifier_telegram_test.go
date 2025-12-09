@@ -228,12 +228,12 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskRun to be called
-	mockTaskRunner.On("Run", mock.MatchedBy(func(data *task.TaskRunData) bool {
-		return data.TaskID == "test_task" &&
-			data.TaskCommandID == "run" &&
-			data.NotifierID == "test-notifier" &&
-			data.NotifyOnStart == true &&
-			data.RunBy == task.RunByUser
+	mockTaskRunner.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
+		return req.TaskID == "test_task" &&
+			req.TaskCommandID == "run" &&
+			req.NotifierID == "test-notifier" &&
+			req.NotifyOnStart == true &&
+			req.RunBy == task.RunByUser
 	})).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)

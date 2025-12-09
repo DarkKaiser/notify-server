@@ -26,7 +26,7 @@ type TaskService struct {
 
 	taskNotificationSender TaskNotificationSender
 
-	taskRunC    chan *TaskRunData
+	taskRunC    chan *RunRequest
 	taskDoneC   chan TaskInstanceID
 	taskCancelC chan TaskInstanceID
 
@@ -48,7 +48,7 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 
 		taskNotificationSender: nil,
 
-		taskRunC:    make(chan *TaskRunData, 10),
+		taskRunC:    make(chan *RunRequest, 10),
 		taskDoneC:   make(chan TaskInstanceID, 10),
 		taskCancelC: make(chan TaskInstanceID, 10),
 
@@ -93,29 +93,29 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 	for {
 		select {
-		case taskRunData := <-s.taskRunC:
+		case req := <-s.taskRunC:
 			applog.WithComponentAndFields("task.service", log.Fields{
-				"task_id":    taskRunData.TaskID,
-				"command_id": taskRunData.TaskCommandID,
-				"run_by":     taskRunData.RunBy,
+				"task_id":    req.TaskID,
+				"command_id": req.TaskCommandID,
+				"run_by":     req.RunBy,
 			}).Debug("새로운 Task 실행 요청 수신")
 
-			if taskRunData.TaskCtx == nil {
-				taskRunData.TaskCtx = NewContext()
+			if req.TaskCtx == nil {
+				req.TaskCtx = NewContext()
 			}
-			taskRunData.TaskCtx.WithTask(taskRunData.TaskID, taskRunData.TaskCommandID)
+			req.TaskCtx.WithTask(req.TaskID, req.TaskCommandID)
 
-			taskConfig, commandConfig, err := findConfigFromSupportedTask(taskRunData.TaskID, taskRunData.TaskCommandID)
+			taskConfig, commandConfig, err := findConfigFromSupportedTask(req.TaskID, req.TaskCommandID)
 			if err != nil {
 				m := "등록되지 않은 작업입니다.😱"
 
 				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":    taskRunData.TaskID,
-					"command_id": taskRunData.TaskCommandID,
+					"task_id":    req.TaskID,
+					"command_id": req.TaskCommandID,
 					"error":      err,
 				}).Error(m)
 
-				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.NotifierID, m, taskRunData.TaskCtx.WithError())
+				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, m, req.TaskCtx.WithError())
 
 				continue
 			}
@@ -126,7 +126,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				s.runningMu.Lock()
 				for _, handler := range s.taskHandlers {
-					if handler.GetID() == taskRunData.TaskID && handler.GetCommandID() == taskRunData.TaskCommandID && handler.IsCanceled() == false {
+					if handler.GetID() == req.TaskID && handler.GetCommandID() == req.TaskCommandID && handler.IsCanceled() == false {
 						alreadyRunTaskHandler = handler
 						break
 					}
@@ -134,8 +134,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					taskRunData.TaskCtx.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.taskNotificationSender.NotifyWithTaskContext(taskRunData.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", taskRunData.TaskCtx)
+					req.TaskCtx.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+					s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", req.TaskCtx)
 					continue
 				}
 			}
@@ -151,15 +151,15 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			s.runningMu.Unlock()
 
-			h, err := taskConfig.NewTaskFn(instanceID, taskRunData, s.appConfig)
+			h, err := taskConfig.NewTaskFn(instanceID, req, s.appConfig)
 			if h == nil {
 				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":    taskRunData.TaskID,
-					"command_id": taskRunData.TaskCommandID,
+					"task_id":    req.TaskID,
+					"command_id": req.TaskCommandID,
 					"error":      err,
 				}).Error(err)
 
-				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.NotifierID, err.Error(), taskRunData.TaskCtx.WithError())
+				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, err.Error(), req.TaskCtx.WithError())
 
 				continue
 			}
@@ -171,8 +171,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.taskStopWaiter.Add(1)
 			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
 
-			if taskRunData.NotifyOnStart == true {
-				s.taskNotificationSender.NotifyWithTaskContext(taskRunData.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", taskRunData.TaskCtx.WithInstanceID(instanceID, 0))
+			if req.NotifyOnStart == true {
+				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", req.TaskCtx.WithInstanceID(instanceID, 0))
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -247,20 +247,20 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) Run(taskRunData *TaskRunData) (succeeded bool) {
+func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
 
 			applog.WithComponentAndFields("task.service", log.Fields{
-				"task_id":    taskRunData.TaskID,
-				"command_id": taskRunData.TaskCommandID,
+				"task_id":    req.TaskID,
+				"command_id": req.TaskCommandID,
 				"panic":      r,
 			}).Error("Task 실행 요청중에 panic 발생")
 		}
 	}()
 
-	s.taskRunC <- taskRunData
+	s.taskRunC <- req
 
 	return true
 }

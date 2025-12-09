@@ -177,9 +177,9 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		mockTaskRunner := &MockExecutor{}
 		mockTaskRunner.On("Run", mock.Anything).
 			Run(func(args mock.Arguments) {
-				data := args.Get(0).(*task.TaskRunData)
-				capturedTaskID = data.TaskID
-				capturedCommandID = data.TaskCommandID
+				req := args.Get(0).(*task.RunRequest)
+				capturedTaskID = req.TaskID
+				capturedCommandID = req.TaskCommandID
 				close(done)
 			}).Return(true)
 

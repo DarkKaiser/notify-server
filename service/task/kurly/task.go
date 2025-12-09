@@ -137,22 +137,22 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidKurly {
+		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidKurly {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &kurlyTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.RunBy,
+					RunBy: req.RunBy,
 
 					Fetcher: nil,
 				},

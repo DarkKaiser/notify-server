@@ -18,7 +18,7 @@ import (
 )
 
 // supportedTasks
-type NewTaskFunc func(TaskInstanceID, *TaskRunData, *config.AppConfig) (TaskHandler, error)
+type NewTaskFunc func(TaskInstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error)
 type NewTaskResultDataFunc func() interface{}
 
 var supportedTasks = make(map[TaskID]*TaskConfig)

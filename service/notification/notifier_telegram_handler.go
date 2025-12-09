@@ -66,7 +66,7 @@ func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, b
 func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand telegramBotCommand) {
 	// Executor를 통해 작업을 비동기로 실행 요청
 	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 false 반환
-	if !executor.Run(&task.TaskRunData{
+	if !executor.Run(&task.RunRequest{
 		TaskID:        botCommand.taskID,
 		TaskCommandID: botCommand.taskCommandID,
 		NotifierID:    string(n.ID()),

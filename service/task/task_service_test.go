@@ -58,7 +58,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	succeeded := service.Run(&TaskRunData{
+	succeeded := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -94,7 +94,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	taskCtx := NewContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	succeeded := service.Run(&TaskRunData{
+	succeeded := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -156,7 +156,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 지원되지 않는 Task 실행 요청
-	succeeded := service.Run(&TaskRunData{
+	succeeded := service.Run(&RunRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		TaskCommandID: "UNSUPPORTED_COMMAND",
 		NotifierID:    "test-notifier",
@@ -205,7 +205,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultipleInstances=true)
-				service.Run(&TaskRunData{
+				service.Run(&RunRequest{
 					TaskID:        "TEST_TASK",
 					TaskCommandID: "TEST_COMMAND",
 					NotifierID:    "test-notifier",
@@ -253,7 +253,7 @@ func TestTaskService_CancelConcurrency(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
 			// Task 실행
-			service.Run(&TaskRunData{
+			service.Run(&RunRequest{
 				TaskID:        "TEST_TASK",
 				TaskCommandID: "TEST_COMMAND",
 				NotifierID:    "test-notifier",

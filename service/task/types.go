@@ -60,8 +60,8 @@ func (t RunBy) String() string {
 	}
 }
 
-// TaskRunData
-type TaskRunData struct {
+// RunRequest
+type RunRequest struct {
 	TaskID        TaskID
 	TaskCommandID TaskCommandID
 
@@ -76,7 +76,7 @@ type TaskRunData struct {
 
 // Runner
 type Runner interface {
-	Run(taskRunData *TaskRunData) (succeeded bool)
+	Run(req *RunRequest) (succeeded bool)
 }
 
 // Canceler

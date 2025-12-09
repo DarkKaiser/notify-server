@@ -104,14 +104,14 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidNaverShopping {
+		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidNaverShopping {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			taskData := &naverShoppingTaskData{}
 			for _, t := range appConfig.Tasks {
-				if taskRunData.TaskID == task.TaskID(t.ID) {
+				if req.TaskID == task.TaskID(t.ID) {
 					if err := task.FillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
@@ -124,15 +124,15 @@ func init() {
 
 			tTask := &naverShoppingTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.RunBy,
+					RunBy: req.RunBy,
 
 					Fetcher: nil,
 				},
