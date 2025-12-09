@@ -123,7 +123,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				m.On("Get", "http://example.com/error").Return(nil, errors.New("network error"))
 			},
 			wantErr:     true,
-			errContains: "페이지(http://example.com/error) 접근이 실패하였습니다.",
+			errContains: "HTML 페이지(http://example.com/error) 요청 중 네트워크 또는 클라이언트 에러가 발생했습니다.",
 		},
 		{
 			name: "HTTP 500 Error",
@@ -134,7 +134,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				m.On("Get", "http://example.com/500").Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "페이지(http://example.com/500) 접근이 실패하였습니다.(500 Internal Server Error)",
+			errContains: "HTML 페이지(http://example.com/500) 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
 		},
 	}
 
@@ -320,7 +320,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "페이지(http://example.com/404) 접근이 실패하였습니다.(404 Not Found)",
+			errContains: "JSON API(http://example.com/404) 요청이 실패했습니다. 상태 코드: 404 Not Found",
 		},
 	}
 

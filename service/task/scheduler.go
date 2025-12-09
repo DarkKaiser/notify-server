@@ -27,10 +27,14 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotifi
 		return
 	}
 
-	// Cron 인스턴스 초기화: 초 단위 스케줄링 지원 및 로거 설정
+	// Cron 인스턴스 초기화: 초 단위 스케줄링 지원 및 로거, 미들웨어 설정
 	s.cron = cron.New(
-		cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())),
 		cron.WithSeconds(),
+		cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())), // 기본 로거 추가
+		cron.WithChain(
+			cron.Recover(cron.VerbosePrintfLogger(log.StandardLogger())),            // Panic 복구
+			cron.SkipIfStillRunning(cron.VerbosePrintfLogger(log.StandardLogger())), // 이전 작업이끝나지 않았으면 스킵
+		),
 	)
 
 	// 설정 파일의 모든 작업을 순회하며 스케줄링 등록
@@ -89,10 +93,13 @@ func (s *scheduler) Stop() {
 		return
 	}
 
-	ctx := s.cron.Stop()
-	<-ctx.Done()
+	if s.cron != nil {
+		ctx := s.cron.Stop()
+		<-ctx.Done()
+	}
 
 	s.running = false
+	s.cron = nil
 
 	applog.WithComponent("task.scheduler").Info("Task 스케쥴러 중지됨")
 }

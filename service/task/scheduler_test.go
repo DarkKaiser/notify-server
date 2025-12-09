@@ -29,18 +29,14 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 			},
 		},
 		{
-			name: "Stop Scheduler",
+			name: "Stop Scheduler Safely",
 			initialState: func(s *scheduler) {
-				// To test Stop() safely without fully starting everything (which needs mocks),
-				// we should simulate a running state safely or just do a full Start.
-				// But Stop() implementation seems to Crash if cron is nil but running is true?
-				// Let's check implementation. s.cron = cron.New() is in Start.
-				// If we just manually set running to true, cron is nil.
-				// We should just use action to Start then Stop, no need for manual initialState hacking unless we want to test partial state.
-				// Better approach: Let action Start() then Stop().
+				// With defensive Stop(), this should not panic even if cron is nil but running is true
+				// (simulating inconsistent state or just testing robustness)
+				s.running = true
+				s.cron = nil
 			},
 			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockNotificationSender) {
-				s.Start(cfg, exec, sender)
 				s.Stop()
 			},
 			verify: func(t *testing.T, s *scheduler) {
