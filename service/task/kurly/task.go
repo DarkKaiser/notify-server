@@ -152,7 +152,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 
 					Fetcher: nil,
 				},
@@ -480,7 +480,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {

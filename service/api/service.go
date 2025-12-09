@@ -37,7 +37,7 @@ const (
 //   - Graceful Shutdown 지원 (5초 타임아웃)
 //
 // 서비스는 고루틴으로 실행되며, context를 통해 종료 신호를 받습니다.
-// Run() 메서드로 시작하고, context 취소로 종료됩니다.
+// Start() 메서드로 시작하고, context 취소로 종료됩니다.
 type NotifyAPIService struct {
 	appConfig *config.AppConfig
 
@@ -66,7 +66,7 @@ func NewNotifyAPIService(appConfig *config.AppConfig, notificationService notifi
 	}
 }
 
-// Run API 서비스를 시작합니다.
+// Start API 서비스를 시작합니다.
 //
 // 서비스는 별도의 고루틴에서 실행되며, 다음 작업을 수행합니다:
 //  1. Echo 서버 설정 (미들웨어, 라우트)
@@ -82,7 +82,7 @@ func NewNotifyAPIService(appConfig *config.AppConfig, notificationService notifi
 //   - error: notificationService가 nil이거나 이미 실행 중인 경우 에러 반환
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
-func (s *NotifyAPIService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *NotifyAPIService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

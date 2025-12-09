@@ -19,7 +19,7 @@ type scheduler struct {
 }
 
 // Start 스케줄러를 시작하고 정의된 작업들을 Cron에 등록합니다.
-func (s *scheduler) Start(appConfig *config.AppConfig, taskExecutor TaskExecutor, taskNotificationSender TaskNotificationSender) {
+func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotificationSender TaskNotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -49,12 +49,12 @@ func (s *scheduler) Start(appConfig *config.AppConfig, taskExecutor TaskExecutor
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
 				// 작업 실행 요청. 실패 시(false 반환) 에러 처리 및 알림 발송
-				if !taskExecutor.TaskRun(&TaskRunData{
+				if !runner.Run(&TaskRunData{
 					TaskID:        taskID,
 					TaskCommandID: taskCommandID,
 					NotifierID:    defaultNotifierID,
 					NotifyOnStart: false,
-					TaskRunBy:     TaskRunByScheduler,
+					RunBy:         RunByScheduler,
 				}) {
 					msg := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
 					s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, nil)
@@ -103,7 +103,7 @@ func (s *scheduler) handleError(taskNotificationSender TaskNotificationSender, n
 	fields := log.Fields{
 		"task_id":    taskID,
 		"command_id": taskCommandID,
-		"run_by":     TaskRunByScheduler,
+		"run_by":     RunByScheduler,
 	}
 	if err != nil {
 		fields["error"] = err

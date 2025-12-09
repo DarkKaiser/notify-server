@@ -54,7 +54,7 @@ type telegramNotifier struct {
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
-func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+func (n *telegramNotifier) Run(executor task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
 	defer notificationStopWaiter.Done()
 
 	// 텔레그램 메시지 수신 설정
@@ -84,7 +84,7 @@ func (n *telegramNotifier) Run(taskRunner task.TaskRunner, notificationStopCtx c
 			}
 
 			// 수신된 명령어를 처리 핸들러로 위임
-			n.handleCommand(taskRunner, update.Message)
+			n.handleCommand(executor, update.Message)
 
 		// 2. 내부 시스템으로부터 발송할 알림 요청 수신
 		case notifyRequest := <-n.requestC:

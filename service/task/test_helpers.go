@@ -203,7 +203,7 @@ func CreateTestTask(id TaskID, commandID TaskCommandID, instanceID TaskInstanceI
 		InstanceID: instanceID,
 		NotifierID: "test_notifier",
 		Canceled:   false,
-		RunBy:      TaskRunByUser,
+		RunBy:      RunByUser,
 	}
 }
 

@@ -56,7 +56,7 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 	}
 }
 
-func (s *TaskService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *TaskService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -97,7 +97,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    taskRunData.TaskID,
 				"command_id": taskRunData.TaskCommandID,
-				"run_by":     taskRunData.TaskRunBy,
+				"run_by":     taskRunData.RunBy,
 			}).Debug("새로운 Task 실행 요청 수신")
 
 			if taskRunData.TaskCtx == nil {
@@ -247,7 +247,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) TaskRun(taskRunData *TaskRunData) (succeeded bool) {
+func (s *TaskService) Run(taskRunData *TaskRunData) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

@@ -12,7 +12,7 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) TaskRun(taskRunData *TaskRunData) bool {
+func (m *MockTaskExecutor) Run(taskRunData *TaskRunData) bool {
 	args := m.Called(taskRunData)
 	return args.Bool(0)
 }

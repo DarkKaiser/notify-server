@@ -74,9 +74,9 @@ func TestServicesIntegration(t *testing.T) {
 
 		// 서비스 시작
 		wg.Add(3)
-		go taskService.Run(ctx, wg)
-		go notificationService.Run(ctx, wg)
-		go notifyAPIService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
+		go notificationService.Start(ctx, wg)
+		go notifyAPIService.Start(ctx, wg)
 
 		// 서비스가 시작될 때까지 대기
 		time.Sleep(100 * time.Millisecond)
@@ -112,14 +112,14 @@ func TestServicesIntegration(t *testing.T) {
 
 		// 첫 번째 시작
 		wg.Add(2)
-		go taskService.Run(ctx, wg)
-		go notificationService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
+		go notificationService.Start(ctx, wg)
 		time.Sleep(100 * time.Millisecond)
 
 		// 두 번째 시작 시도 (중복)
 		wg.Add(2)
-		taskService.Run(ctx, wg)
-		notificationService.Run(ctx, wg)
+		taskService.Start(ctx, wg)
+		notificationService.Start(ctx, wg)
 
 		// 정상 종료
 		cancel()
@@ -145,18 +145,18 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		wg := &sync.WaitGroup{}
 
 		wg.Add(1)
-		go taskService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
 
 		// 서비스 시작 대기
 		time.Sleep(100 * time.Millisecond)
 
 		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
-		result := taskService.TaskRun(&task.TaskRunData{
+		result := taskService.Run(&task.TaskRunData{
 			TaskID:        "NON_EXISTENT",
 			TaskCommandID: "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
-			TaskRunBy:     task.TaskRunByUser,
+			RunBy:         task.RunByUser,
 		})
 
 		// TaskRun은 비동기 요청이므로 성공적으로 큐에 들어가면 true를 반환함
@@ -187,7 +187,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		wg := &sync.WaitGroup{}
 
 		wg.Add(1)
-		go taskService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -195,12 +195,12 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		initialCallCount := len(mockSender.notifyCalls)
 
 		// Task 실행 (알림 요청 포함)
-		taskService.TaskRun(&task.TaskRunData{
+		taskService.Run(&task.TaskRunData{
 			TaskID:        "TEST",
 			TaskCommandID: "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
-			TaskRunBy:     task.TaskRunByUser,
+			RunBy:         task.RunByUser,
 		})
 
 		time.Sleep(200 * time.Millisecond)
@@ -242,8 +242,8 @@ func TestServiceLifecycle(t *testing.T) {
 
 		// 서비스 시작
 		wg.Add(2)
-		go taskService.Run(ctx, wg)
-		go notificationService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
+		go notificationService.Start(ctx, wg)
 
 		// 잠시 실행
 		time.Sleep(500 * time.Millisecond)
@@ -269,7 +269,7 @@ func TestServiceLifecycle(t *testing.T) {
 		for _, svc := range services {
 			svc.SetTaskNotificationSender(&mockNotificationSender{})
 			wg.Add(1)
-			go svc.Run(ctx, wg)
+			go svc.Start(ctx, wg)
 		}
 
 		time.Sleep(100 * time.Millisecond)
@@ -290,7 +290,7 @@ func TestServiceLifecycle(t *testing.T) {
 			wg := &sync.WaitGroup{}
 
 			wg.Add(1)
-			go taskService.Run(ctx, wg)
+			go taskService.Start(ctx, wg)
 
 			time.Sleep(50 * time.Millisecond)
 
@@ -305,7 +305,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 	t.Run("NotificationService 생성 및 초기화", func(t *testing.T) {
 		appConfig := createTestConfigWithNotifier()
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		notificationService := notification.NewService(appConfig, mockTaskRunner)
 
 		// Mock factory
@@ -328,7 +328,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		go notificationService.Run(ctx, wg)
+		go notificationService.Start(ctx, wg)
 		time.Sleep(100 * time.Millisecond)
 
 		// 알림 발송 테스트
@@ -358,17 +358,17 @@ func TestEndToEndScenario(t *testing.T) {
 		wg := &sync.WaitGroup{}
 
 		wg.Add(1)
-		go taskService.Run(ctx, wg)
+		go taskService.Start(ctx, wg)
 
 		time.Sleep(200 * time.Millisecond)
 
 		// Task 실행 시도
-		taskService.TaskRun(&task.TaskRunData{
+		taskService.Run(&task.TaskRunData{
 			TaskID:        "TEST",
 			TaskCommandID: "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: false,
-			TaskRunBy:     task.TaskRunByUser,
+			RunBy:         task.RunByUser,
 		})
 
 		time.Sleep(200 * time.Millisecond)
@@ -452,14 +452,14 @@ func (m *mockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 	return true
 }
 
-// mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
-type mockTaskRunner struct{}
+// mockExecutor는 테스트용 Executor 구현체입니다.
+type mockExecutor struct{}
 
-func (m *mockTaskRunner) TaskRun(data *task.TaskRunData) bool {
+func (m *mockExecutor) Run(taskRunData *task.TaskRunData) bool {
 	return true
 }
 
-func (m *mockTaskRunner) Cancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockExecutor) Cancel(taskInstanceID task.TaskInstanceID) bool {
 	return true
 }
 
@@ -477,7 +477,7 @@ func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) b
 	return true
 }
 
-func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
 	defer notificationStopWaiter.Done()
 	<-notificationStopCtx.Done()
 }

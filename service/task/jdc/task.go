@@ -68,7 +68,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 				},
 			}
 
@@ -147,7 +147,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		message = "새로운 온라인교육 강의가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.OnlineEducationCourses) == 0 {
 				message = "등록된 온라인교육 강의가 존재하지 않습니다."
 			} else {

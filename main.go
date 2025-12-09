@@ -153,7 +153,7 @@ func main() {
 	services := []service.Service{taskService, notificationService, notifyAPIService}
 	for _, s := range services {
 		serviceStopWaiter.Add(1)
-		if err := s.Run(serviceStopCtx, serviceStopWaiter); err != nil {
+		if err := s.Start(serviceStopCtx, serviceStopWaiter); err != nil {
 			applog.WithComponentAndFields("main", log.Fields{
 				"error": err,
 			}).Error("서비스 초기화 실패")

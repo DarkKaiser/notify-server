@@ -19,7 +19,7 @@ func TestTelegramNotifier_Notify_LongMessage(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -83,7 +83,7 @@ func TestTelegramNotifier_Notify_LongSingleLineMessage(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -155,7 +155,7 @@ func TestTelegramNotifier_Notify_HTMLMessage(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -208,7 +208,7 @@ func TestTelegramNotifier_Notify_SendError(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -256,7 +256,7 @@ func TestTelegramNotifier_Notify_WithTaskContext(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -308,7 +308,7 @@ func TestTelegramNotifier_Notify_ErrorContext(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -360,7 +360,7 @@ func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -379,9 +379,9 @@ func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
 		// Check for elapsed time string "1시간 1분 1초" (3661 seconds)
 		return ok && msg.ParseMode == "HTML" &&
 			(strings.Contains(msg.Text, "1시간") || strings.Contains(msg.Text, "1분") || strings.Contains(msg.Text, "1초"))
-	})).Run(func(args mock.Arguments) {
+	})).Return(tgbotapi.Message{}, nil).Run(func(args mock.Arguments) {
 		close(done)
-	}).Return(tgbotapi.Message{}, nil)
+	})
 
 	mockBot.On("StopReceivingUpdates").Return()
 

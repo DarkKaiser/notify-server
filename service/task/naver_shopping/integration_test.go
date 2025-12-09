@@ -172,7 +172,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 			CommandID:  TcidNaverShoppingWatchPriceAny,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler, // 스케줄러 실행으로 설정
+			RunBy:      task.RunByScheduler,
 		},
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",

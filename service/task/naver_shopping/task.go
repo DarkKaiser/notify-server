@@ -132,7 +132,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 
 					Fetcher: nil,
 				},
@@ -309,7 +309,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {

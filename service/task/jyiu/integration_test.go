@@ -47,7 +47,7 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewNotice,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -120,7 +120,7 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewEducation,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -166,7 +166,7 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewNotice,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -194,7 +194,7 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewEducation,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -246,7 +246,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewNotice,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -315,7 +315,7 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewNotice,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -383,7 +383,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewEducation,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 
@@ -458,7 +458,7 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 			CommandID:  TcidJyiuWatchNewEducation,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler,
+			RunBy:      task.RunByScheduler,
 		},
 	}
 

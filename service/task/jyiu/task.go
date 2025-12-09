@@ -92,7 +92,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 				},
 			}
 
@@ -213,7 +213,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		message = "새로운 공지사항이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
@@ -320,7 +320,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		message = "새로운 교육프로그램이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {

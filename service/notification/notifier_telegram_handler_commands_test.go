@@ -84,7 +84,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go notif.Run(&MockTaskRunner{}, ctx, wg)
+		go notif.Run(&MockExecutor{}, ctx, wg)
 
 		sendMessageUpdate("/unknown")
 
@@ -134,7 +134,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go notif.Run(&MockTaskRunner{}, ctx, wg)
+		go notif.Run(&MockExecutor{}, ctx, wg)
 
 		sendMessageUpdate("/help")
 
@@ -174,8 +174,8 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
 		mockBot.On("StopReceivingUpdates").Return().Once()
 
-		mockTaskRunner := &MockTaskRunner{}
-		mockTaskRunner.On("TaskRun", mock.Anything).
+		mockTaskRunner := &MockExecutor{}
+		mockTaskRunner.On("Run", mock.Anything).
 			Run(func(args mock.Arguments) {
 				data := args.Get(0).(*task.TaskRunData)
 				capturedTaskID = data.TaskID

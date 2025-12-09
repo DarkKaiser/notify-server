@@ -6,25 +6,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTaskRunBy_String(t *testing.T) {
+func TestRunBy_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		runBy    TaskRunBy
+		runBy    RunBy
 		expected string
 	}{
 		{
 			name:     "User",
-			runBy:    TaskRunByUser,
+			runBy:    RunByUser,
 			expected: "User",
 		},
 		{
 			name:     "Scheduler",
-			runBy:    TaskRunByScheduler,
+			runBy:    RunByScheduler,
 			expected: "Scheduler",
 		},
 		{
 			name:     "Unknown",
-			runBy:    TaskRunBy(999),
+			runBy:    RunBy(999),
 			expected: "Unknown",
 		},
 	}

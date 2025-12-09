@@ -72,7 +72,7 @@ type Task struct {
 
 	Canceled bool
 
-	RunBy   TaskRunBy
+	RunBy   RunBy
 	RunTime time.Time
 
 	RunFn TaskRunFunc

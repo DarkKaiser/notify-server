@@ -42,18 +42,18 @@ const (
 	TaskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
 )
 
-type TaskRunBy int
+type RunBy int
 
 const (
-	TaskRunByUser TaskRunBy = iota
-	TaskRunByScheduler
+	RunByUser RunBy = iota
+	RunByScheduler
 )
 
-func (t TaskRunBy) String() string {
+func (t RunBy) String() string {
 	switch t {
-	case TaskRunByUser:
+	case RunByUser:
 		return "User"
-	case TaskRunByScheduler:
+	case RunByScheduler:
 		return "Scheduler"
 	default:
 		return "Unknown"
@@ -71,12 +71,12 @@ type TaskRunData struct {
 
 	NotifyOnStart bool
 
-	TaskRunBy TaskRunBy
+	RunBy RunBy
 }
 
-// TaskExecutor
-type TaskExecutor interface {
-	TaskRun(taskRunData *TaskRunData) (succeeded bool)
+// Runner
+type Runner interface {
+	Run(taskRunData *TaskRunData) (succeeded bool)
 }
 
 // Canceler
@@ -84,9 +84,9 @@ type Canceler interface {
 	Cancel(taskInstanceID TaskInstanceID) (succeeded bool)
 }
 
-// TaskRunner
-type TaskRunner interface {
-	TaskExecutor
+// Executor
+type Executor interface {
+	Runner
 	Canceler
 }
 

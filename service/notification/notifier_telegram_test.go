@@ -19,7 +19,7 @@ func TestTelegramNotifier_Run_HelpCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -78,7 +78,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -134,7 +134,7 @@ func TestTelegramNotifier_Run_UnknownCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -193,7 +193,7 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 
 	// Construct config with a task command
@@ -228,12 +228,12 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskRun to be called
-	mockTaskRunner.On("TaskRun", mock.MatchedBy(func(data *task.TaskRunData) bool {
+	mockTaskRunner.On("Run", mock.MatchedBy(func(data *task.TaskRunData) bool {
 		return data.TaskID == "test_task" &&
 			data.TaskCommandID == "run" &&
 			data.NotifierID == "test-notifier" &&
 			data.NotifyOnStart == true &&
-			data.TaskRunBy == task.TaskRunByUser
+			data.RunBy == task.RunByUser
 	})).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)

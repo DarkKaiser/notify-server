@@ -119,7 +119,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 				},
 
 				appPath: appPath,

@@ -89,7 +89,7 @@ func init() {
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: taskRunData.RunBy,
 
 					Fetcher: nil,
 				},
@@ -255,7 +255,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {

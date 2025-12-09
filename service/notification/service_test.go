@@ -40,13 +40,13 @@ func TestNotificationService_SupportsHTMLMessage(t *testing.T) {
 func TestNotificationService_NewService(t *testing.T) {
 	t.Run("서비스 생성", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 
 		service := NewService(appConfig, mockTaskRunner)
 
 		assert.NotNil(t, service, "서비스가 생성되어야 합니다")
 		assert.Equal(t, appConfig, service.appConfig, "Config가 설정되어야 합니다")
-		assert.Equal(t, mockTaskRunner, service.taskRunner, "TaskRunner가 설정되어야 합니다")
+		assert.Equal(t, mockTaskRunner, service.executor, "TaskRunner가 설정되어야 합니다")
 		assert.False(t, service.running, "초기에는 실행 중이 아니어야 합니다")
 		assert.NotNil(t, service.notificationStopWaiter, "WaitGroup이 초기화되어야 합니다")
 	})
@@ -234,7 +234,7 @@ func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) b
 	return true
 }
 
-func (m *mockNotifierHandler) Run(taskRunner task.TaskRunner, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
 	defer notificationStopWaiter.Done()
 	<-notificationStopCtx.Done()
 }
@@ -243,14 +243,14 @@ func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
 	return m.supportsHTMLMessage
 }
 
-// mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
-type mockTaskRunner struct{}
+// mockExecutor는 테스트용 Executor 구현체입니다.
+type mockExecutor struct{}
 
-func (m *mockTaskRunner) TaskRun(taskRunData *task.TaskRunData) bool {
+func (m *mockExecutor) Run(taskRunData *task.TaskRunData) bool {
 	return true
 }
 
-func (m *mockTaskRunner) Cancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockExecutor) Cancel(taskInstanceID task.TaskInstanceID) bool {
 	return true
 }
 
@@ -275,7 +275,7 @@ func TestNotificationService_Run(t *testing.T) {
 		// Setup config with default notifier
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		// Mock factory
@@ -296,7 +296,7 @@ func TestNotificationService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.NoError(t, err)
 
 		// Check if running by sending a notification
@@ -311,7 +311,7 @@ func TestNotificationService_Run(t *testing.T) {
 		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
@@ -332,12 +332,12 @@ func TestNotificationService_Run(t *testing.T) {
 
 		// 첫 번째 실행
 		wg.Add(1)
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.NoError(t, err)
 
 		// 두 번째 실행 시도 (이미 실행 중)
 		wg.Add(1)
-		err = service.Run(ctx, wg)
+		err = service.Start(ctx, wg)
 		assert.NoError(t, err) // Run returns nil even if running, just warning log
 
 		// 서비스는 여전히 실행 중이어야 함
@@ -351,7 +351,7 @@ func TestNotificationService_Run(t *testing.T) {
 		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "notifier1"
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
@@ -374,7 +374,7 @@ func TestNotificationService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.NoError(t, err)
 
 		// 두 개의 Notifier가 등록되어야 함
@@ -388,7 +388,7 @@ func TestNotificationService_Run(t *testing.T) {
 		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
@@ -407,7 +407,7 @@ func TestNotificationService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.NoError(t, err)
 
 		// 서비스가 실행 중인지 확인
@@ -423,7 +423,7 @@ func TestNotificationService_Run(t *testing.T) {
 		// 리소스가 정리되었는지 확인 (서비스 구현에 따라 nil 확인)
 		service.runningMu.Lock()
 		assert.False(t, service.running, "서비스가 중지되어야 합니다")
-		assert.Nil(t, service.taskRunner, "TaskRunner가 nil이어야 합니다")
+		assert.Nil(t, service.executor, "Executor가 nil이어야 합니다")
 		assert.Nil(t, service.notifierHandlers, "notifierHandlers가 nil이어야 합니다")
 		assert.Nil(t, service.defaultNotifierHandler, "defaultNotifierHandler가 nil이어야 합니다")
 		service.runningMu.Unlock()
@@ -434,24 +434,22 @@ func TestNotificationService_Run(t *testing.T) {
 		assert.False(t, service.NotifyWithTaskContext("default-notifier", "msg", nil), "서비스 중지 후에는 알림 전송이 실패해야 합니다")
 	})
 
-	t.Run("TaskRunner 미설정 시 에러 반환", func(t *testing.T) {
+	t.Run("Executor 미설정 시 에러 반환", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
-		service := NewService(appConfig, nil) // TaskRunner nil
+		service := NewService(appConfig, nil) // Executor nil
 
 		ctx := context.Background()
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "TaskRunner 객체가 초기화되지 않았습니다")
-
-		wg.Wait()
+		assert.Contains(t, err.Error(), "Executor 객체가 초기화되지 않았습니다")
 	})
 
 	t.Run("Notifier 초기화 실패 시 에러 반환", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
@@ -465,17 +463,16 @@ func TestNotificationService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Notifier 초기화 중 에러가 발생했습니다")
-		wg.Wait()
 	})
 
 	t.Run("기본 Notifier 미설정 시 에러 반환", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
 		appConfig.Notifiers.DefaultNotifierID = "default-notifier"
 
-		mockTaskRunner := &mockTaskRunner{}
+		mockTaskRunner := &mockExecutor{}
 		service := NewService(appConfig, mockTaskRunner)
 
 		mockFactory := &mockNotifierFactory{
@@ -494,7 +491,7 @@ func TestNotificationService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		err := service.Run(ctx, wg)
+		err := service.Start(ctx, wg)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "기본 NotifierID('default-notifier')를 찾을 수 없습니다")
 		wg.Wait()
