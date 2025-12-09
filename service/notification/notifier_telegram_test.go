@@ -95,7 +95,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	// Expect TaskCancel to be called
 	mockTaskRunner.On("Cancel", task.InstanceID("1234")).Run(func(args mock.Arguments) {
 		close(done)
-	}).Return(true)
+	}).Return(nil)
 
 	// Run
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,7 +236,7 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 			req.RunBy == task.RunByUser
 	})).Run(func(args mock.Arguments) {
 		close(done)
-	}).Return(true)
+	}).Return(nil)
 
 	// Run
 	ctx, cancel := context.WithCancel(context.Background())

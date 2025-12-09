@@ -48,16 +48,16 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotifi
 
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
-				// 작업 실행 요청. 실패 시(false 반환) 에러 처리 및 알림 발송
-				if !runner.Run(&RunRequest{
+				// 작업 실행 요청. 실패 시 에러 처리 및 알림 발송
+				if err := runner.Run(&RunRequest{
 					TaskID:        taskID,
 					TaskCommandID: taskCommandID,
 					NotifierID:    defaultNotifierID,
 					NotifyOnStart: false,
 					RunBy:         RunByScheduler,
-				}) {
+				}); err != nil {
 					msg := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
-					s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, nil)
+					s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, err)
 				}
 			})
 

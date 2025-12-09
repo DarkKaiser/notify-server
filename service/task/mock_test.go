@@ -12,14 +12,14 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) Run(req *RunRequest) bool {
+func (m *MockTaskExecutor) Run(req *RunRequest) error {
 	args := m.Called(req)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
-func (m *MockTaskExecutor) Cancel(instanceID InstanceID) bool {
+func (m *MockTaskExecutor) Cancel(instanceID InstanceID) error {
 	args := m.Called(instanceID)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
 // MockNotificationSender is a mock implementation of TaskNotificationSender interface

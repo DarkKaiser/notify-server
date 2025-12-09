@@ -58,7 +58,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -67,7 +67,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -94,7 +94,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	taskCtx := NewTaskContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -104,7 +104,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -129,10 +129,10 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 
 	// Task 취소 요청
 	instanceID := InstanceID("test_instance_123")
-	succeeded := service.Cancel(instanceID)
+	err := service.Cancel(instanceID)
 
 	// 검증
-	require.True(t, succeeded, "Task 취소 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 취소 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -156,7 +156,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 지원되지 않는 Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		TaskCommandID: "UNSUPPORTED_COMMAND",
 		NotifierID:    "test-notifier",
@@ -165,7 +165,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청 자체는 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청 자체는 성공해야 합니다")
 
 	// 알림이 발송되었는지 확인
 	time.Sleep(100 * time.Millisecond)

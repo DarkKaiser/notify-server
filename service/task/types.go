@@ -6,12 +6,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 )
 
-var (
-	ErrNotSupportedTask      = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
-	ErrNotSupportedCommand   = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
-	ErrNotImplementedCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
-)
-
 // ID 작업의 고유 식별자입니다.
 type ID string
 
@@ -123,13 +117,13 @@ func (r *RunRequest) Validate() error {
 }
 
 type Runner interface {
-	// Run 작업을 실행합니다. 실행 성공 여부를 반환합니다.
-	Run(req *RunRequest) (succeeded bool)
+	// Run 작업을 실행합니다. 실행 성공 여부(error)를 반환합니다.
+	Run(req *RunRequest) error
 }
 
 type Canceler interface {
-	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부를 반환합니다.
-	Cancel(taskInstanceID InstanceID) (succeeded bool)
+	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
+	Cancel(taskInstanceID InstanceID) error
 }
 
 type Executor interface {

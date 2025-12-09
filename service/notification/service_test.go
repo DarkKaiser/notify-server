@@ -246,12 +246,12 @@ func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
 // mockExecutor는 테스트용 Executor 구현체입니다.
 type mockExecutor struct{}
 
-func (m *mockExecutor) Run(req *task.RunRequest) bool {
-	return true
+func (m *mockExecutor) Run(req *task.RunRequest) error {
+	return nil
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) bool {
-	return true
+func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) error {
+	return nil
 }
 
 type mockNotifierFactory struct {

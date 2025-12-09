@@ -181,7 +181,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 				capturedTaskID = req.TaskID
 				capturedCommandID = req.TaskCommandID
 				close(done)
-			}).Return(true)
+			}).Return(nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}

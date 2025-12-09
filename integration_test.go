@@ -159,8 +159,8 @@ func TestTaskToNotificationFlow(t *testing.T) {
 			RunBy:         task.RunByUser,
 		})
 
-		// TaskRun은 비동기 요청이므로 성공적으로 큐에 들어가면 true를 반환함
-		assert.True(t, result, "Task 실행 요청은 성공해야 합니다")
+		// TaskRun은 비동기 요청이므로 성공적으로 큐에 들어가면 nil을 반환함
+		assert.NoError(t, result, "Task 실행 요청은 성공해야 합니다")
 
 		// 알림 발송 확인 (처리 대기)
 		time.Sleep(200 * time.Millisecond)
@@ -455,12 +455,12 @@ func (m *mockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 // mockExecutor는 테스트용 Executor 구현체입니다.
 type mockExecutor struct{}
 
-func (m *mockExecutor) Run(req *task.RunRequest) bool {
-	return true
+func (m *mockExecutor) Run(req *task.RunRequest) error {
+	return nil
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) bool {
-	return true
+func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) error {
+	return nil
 }
 
 // mockNotifierHandler는 테스트용 NotifierHandler 구현체입니다.

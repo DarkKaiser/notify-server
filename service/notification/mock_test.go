@@ -39,12 +39,12 @@ type MockExecutor struct {
 	mock.Mock
 }
 
-func (m *MockExecutor) Run(req *task.RunRequest) bool {
+func (m *MockExecutor) Run(req *task.RunRequest) error {
 	args := m.Called(req)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
-func (m *MockExecutor) Cancel(instanceID task.InstanceID) bool {
+func (m *MockExecutor) Cancel(instanceID task.InstanceID) error {
 	args := m.Called(instanceID)
-	return args.Bool(0)
+	return args.Error(0)
 }

@@ -161,7 +161,7 @@ func TestScheduler_StartStop(t *testing.T) {
 				req.RunBy == RunByScheduler
 		})).Run(func(args mock.Arguments) {
 			close(done)
-		}).Return(true).Once()
+		}).Return(nil).Once()
 
 		// 스케줄러 시작
 		s.Start(appConfig, mockExecutor, mockSender)
@@ -218,7 +218,7 @@ func TestScheduler_StartStop(t *testing.T) {
 				req.RunBy == RunByScheduler
 		})).Run(func(args mock.Arguments) {
 			wg.Done()
-		}).Return(false).Once()
+		}).Return(assert.AnError).Once()
 
 		// Expect Notify call
 		mockSender.On("NotifyWithTaskContext", "fail-notifier", mock.MatchedBy(func(msg string) bool {

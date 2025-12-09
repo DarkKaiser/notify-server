@@ -247,10 +247,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
+func (s *TaskService) Run(req *RunRequest) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			succeeded = false
+			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    req.TaskID,
@@ -262,13 +262,13 @@ func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
 
 	s.taskRunC <- req
 
-	return true
+	return nil
 }
 
-func (s *TaskService) Cancel(taskInstanceID InstanceID) (succeeded bool) {
+func (s *TaskService) Cancel(taskInstanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			succeeded = false
+			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"instance_id": taskInstanceID,
@@ -279,7 +279,7 @@ func (s *TaskService) Cancel(taskInstanceID InstanceID) (succeeded bool) {
 
 	s.taskCancelC <- taskInstanceID
 
-	return true
+	return nil
 }
 
 func (s *TaskService) SetTaskNotificationSender(taskNotificiationSender TaskNotificationSender) {

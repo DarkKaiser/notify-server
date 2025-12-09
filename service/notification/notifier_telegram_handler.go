@@ -65,14 +65,14 @@ func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, b
 // executeCommand 주어진 봇 명령어를 Executor를 통해 실행합니다.
 func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand telegramBotCommand) {
 	// Executor를 통해 작업을 비동기로 실행 요청
-	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 false 반환
-	if !executor.Run(&task.RunRequest{
+	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 error 반환
+	if err := executor.Run(&task.RunRequest{
 		TaskID:        botCommand.taskID,
 		TaskCommandID: botCommand.taskCommandID,
 		NotifierID:    string(n.ID()),
 		NotifyOnStart: true,
 		RunBy:         task.RunByUser,
-	}) {
+	}); err != nil {
 		// 실행 실패 알림 발송
 		n.requestC <- &notifyRequest{
 			message: msgTaskExecutionFailed,
@@ -108,7 +108,7 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 	if len(commandSplit) == 2 {
 		taskInstanceID := commandSplit[1]
 		// Executor에 취소 요청
-		if !executor.Cancel(task.InstanceID(taskInstanceID)) {
+		if err := executor.Cancel(task.InstanceID(taskInstanceID)); err != nil {
 			// 취소 실패 시 알림
 			n.requestC <- &notifyRequest{
 				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
