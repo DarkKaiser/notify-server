@@ -10,37 +10,13 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apiauth "github.com/darkkaiser/notify-server/service/api/auth"
 	"github.com/darkkaiser/notify-server/service/api/model/response"
+	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/darkkaiser/notify-server/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// mockNotificationService는 테스트용 NotificationService 구현체입니다.
-type mockNotificationService struct {
-	notifyCalled bool
-	lastMessage  string
-	shouldFail   bool
-}
-
-func (m *mockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	m.notifyCalled = true
-	m.lastMessage = message
-	return !m.shouldFail
-}
-
-func (m *mockNotificationService) NotifyToDefault(message string) bool {
-	m.notifyCalled = true
-	m.lastMessage = message
-	return !m.shouldFail
-}
-
-func (m *mockNotificationService) NotifyWithErrorToDefault(message string) bool {
-	m.notifyCalled = true
-	m.lastMessage = message
-	return !m.shouldFail
-}
 
 // createTestAppConfig는 테스트용 AppConfig를 생성합니다.
 func createTestAppConfig() *config.AppConfig {
@@ -65,7 +41,7 @@ func TestSetupRoutes(t *testing.T) {
 
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
+	mockService := &testutil.MockNotificationService{}
 
 	h := handler.NewHandler(applicationManager, mockService)
 
@@ -219,8 +195,8 @@ func TestNotificationsEndpoint_TableDriven(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mockService := &mockNotificationService{
-				shouldFail: tc.shouldFail,
+			mockService := &testutil.MockNotificationService{
+				ShouldFail: tc.shouldFail,
 			}
 			h := handler.NewHandler(applicationManager, mockService)
 			SetupRoutes(e, h)

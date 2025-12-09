@@ -8,31 +8,23 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationService는 테스트용 간단한 알림 발송자입니다.
-type MockNotificationService struct{}
-
-func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	return true
-}
-
-func (m *MockNotificationService) NotifyToDefault(message string) bool {
-	return true
-}
-
-func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
-	return true
-}
-
 // setupTestService는 테스트용 서비스를 설정합니다.
-func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppConfig) {
+func setupTestService(t *testing.T) (*NotifyAPIService, *config.AppConfig) {
+	// 동적 포트 할당
+	port, err := testutil.GetFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+
 	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = port
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockService := &MockNotificationService{}
+	mockService := &testutil.MockNotificationService{}
 	service := NewService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
@@ -43,7 +35,7 @@ func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppCon
 
 // TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
 func TestNotifyAPIService_Run(t *testing.T) {
-	service, _ := setupTestService(t, 18081)
+	service, appConfig := setupTestService(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -54,8 +46,9 @@ func TestNotifyAPIService_Run(t *testing.T) {
 	// 서비스 시작
 	go service.Start(ctx, wg)
 
-	// 서비스 시작 대기
-	time.Sleep(500 * time.Millisecond)
+	// 서버가 실제로 뜰 때까지 대기
+	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	assert.NoError(t, err, "서버가 제한 시간 내에 시작되어야 합니다")
 
 	// 서비스 종료
 	cancel()
@@ -70,14 +63,14 @@ func TestNotifyAPIService_Run(t *testing.T) {
 	select {
 	case <-done:
 		// 정상 종료
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("서비스가 제한 시간 내에 종료되지 않았습니다")
 	}
 }
 
 // TestNotifyAPIService_GracefulShutdown은 우아한 종료를 테스트합니다.
 func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
-	service, _ := setupTestService(t, 18082)
+	service, appConfig := setupTestService(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
@@ -86,8 +79,9 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 	// 서비스 시작
 	go service.Start(ctx, wg)
 
-	// 서비스가 완전히 시작될 때까지 대기
-	time.Sleep(500 * time.Millisecond)
+	// 서버 시작 대기
+	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	assert.NoError(t, err)
 
 	// Graceful Shutdown 시작
 	shutdownStart := time.Now()
@@ -112,23 +106,25 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 
 // TestNotifyAPIService_DuplicateRun은 중복 시작 방지를 테스트합니다.
 func TestNotifyAPIService_DuplicateRun(t *testing.T) {
-	service, _ := setupTestService(t, 18083)
+	service, appConfig := setupTestService(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	wg := &sync.WaitGroup{}
-	wg.Add(2) // 두 번 시작 시도
+	wg.Add(2) // 두 번 시작 시도 (실제로는 첫 번째만 성공하고 두 번째는 즉시 리턴)
 
 	// 첫 번째 시작
 	go service.Start(ctx, wg)
-	time.Sleep(500 * time.Millisecond)
+
+	// 서버 시작 대기
+	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	assert.NoError(t, err)
 
 	// 두 번째 시작 시도 (이미 실행 중이므로 즉시 반환되어야 함)
-	go service.Start(ctx, wg)
-
-	// 모든 Run 호출이 완료될 때까지 대기
-	time.Sleep(500 * time.Millisecond)
+	// Start 메서드는 running 확인 후 바로 리턴하므로 에러를 반환하지 않고 nil을 반환함
+	err = service.Start(ctx, wg)
+	assert.NoError(t, err)
 
 	// 종료
 	cancel()
@@ -150,7 +146,7 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 // TestNotifyAPIService_NilNotificationService는 nil NotificationService 처리를 테스트합니다.
 func TestNotifyAPIService_NilNotificationService(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18084
+	appConfig.NotifyAPI.WS.ListenPort = 0 // 포트는 상관없음
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	service := NewService(appConfig, nil, common.BuildInfo{

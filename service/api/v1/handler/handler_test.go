@@ -5,6 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/auth"
+	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,7 +22,7 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockService := &MockNotificationService{}
+		mockService := &testutil.MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
 		handler := NewHandler(appManager, mockService)
 
@@ -48,7 +49,7 @@ func TestNewHandler(t *testing.T) {
 			},
 		}
 
-		mockService := &MockNotificationService{}
+		mockService := &testutil.MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
 		handler := NewHandler(appManager, mockService)
 
@@ -59,7 +60,7 @@ func TestNewHandler(t *testing.T) {
 	t.Run("빈 애플리케이션 목록", func(t *testing.T) {
 		appConfig := &config.AppConfig{}
 
-		mockService := &MockNotificationService{}
+		mockService := &testutil.MockNotificationService{}
 		appManager := auth.NewApplicationManager(appConfig)
 		handler := NewHandler(appManager, mockService)
 
