@@ -459,7 +459,7 @@ func (m *mockExecutor) Run(req *task.RunRequest) bool {
 	return true
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) bool {
 	return true
 }
 

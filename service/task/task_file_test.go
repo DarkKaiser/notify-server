@@ -11,9 +11,9 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 	t.Run("TaskResultData 파일 읽기/쓰기 테스트", func(t *testing.T) {
 		// 테스트용 임시 Task 생성
 		testTask := &Task{
-			ID:         TaskID("TEST_TASK"),
-			CommandID:  TaskCommandID("TEST_COMMAND"),
-			InstanceID: TaskInstanceID("test_instance_rw"),
+			ID:         ID("TEST_TASK"),
+			CommandID:  CommandID("TEST_COMMAND"),
+			InstanceID: InstanceID("test_instance_rw"),
 		}
 		defer os.Remove(testTask.dataFileName()) // 테스트 후 파일 삭제 cleanup
 
@@ -44,9 +44,9 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 
 	t.Run("존재하지 않는 파일 읽기", func(t *testing.T) {
 		testTask := &Task{
-			ID:         TaskID("NONEXISTENT_TASK"),
-			CommandID:  TaskCommandID("NONEXISTENT_COMMAND"),
-			InstanceID: TaskInstanceID("nonexistent_instance"),
+			ID:         ID("NONEXISTENT_TASK"),
+			CommandID:  CommandID("NONEXISTENT_COMMAND"),
+			InstanceID: InstanceID("nonexistent_instance"),
 		}
 
 		type TestResultData struct {

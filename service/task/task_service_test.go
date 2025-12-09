@@ -128,7 +128,7 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 취소 요청
-	instanceID := TaskInstanceID("test_instance_123")
+	instanceID := InstanceID("test_instance_123")
 	succeeded := service.Cancel(instanceID)
 
 	// 검증

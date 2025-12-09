@@ -18,12 +18,12 @@ import (
 )
 
 // supportedTasks
-type NewTaskFunc func(TaskInstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error)
+type NewTaskFunc func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error)
 type NewTaskResultDataFunc func() interface{}
 
-var supportedTasks = make(map[TaskID]*TaskConfig)
+var supportedTasks = make(map[ID]*TaskConfig)
 
-func RegisterTask(taskID TaskID, config *TaskConfig) {
+func RegisterTask(taskID ID, config *TaskConfig) {
 	supportedTasks[taskID] = config
 }
 
@@ -34,18 +34,18 @@ type TaskConfig struct {
 }
 
 type TaskCommandConfig struct {
-	TaskCommandID TaskCommandID
+	TaskCommandID CommandID
 
 	AllowMultipleInstances bool
 
 	NewTaskResultDataFn NewTaskResultDataFunc
 }
 
-func (c *TaskCommandConfig) equalsTaskCommandID(taskCommandID TaskCommandID) bool {
+func (c *TaskCommandConfig) equalsTaskCommandID(taskCommandID CommandID) bool {
 	return c.TaskCommandID.Match(taskCommandID)
 }
 
-func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*TaskConfig, *TaskCommandConfig, error) {
+func findConfigFromSupportedTask(taskID ID, taskCommandID CommandID) (*TaskConfig, *TaskCommandConfig, error) {
 	taskConfig, exists := supportedTasks[taskID]
 	if exists == true {
 		for _, commandConfig := range taskConfig.CommandConfigs {
@@ -64,9 +64,9 @@ func findConfigFromSupportedTask(taskID TaskID, taskCommandID TaskCommandID) (*T
 type TaskRunFunc func(interface{}, bool) (string, interface{}, error)
 
 type Task struct {
-	ID         TaskID
-	CommandID  TaskCommandID
-	InstanceID TaskInstanceID
+	ID         ID
+	CommandID  CommandID
+	InstanceID InstanceID
 
 	NotifierID string
 
@@ -81,9 +81,9 @@ type Task struct {
 }
 
 type TaskHandler interface {
-	GetID() TaskID
-	GetCommandID() TaskCommandID
-	GetInstanceID() TaskInstanceID
+	GetID() ID
+	GetCommandID() CommandID
+	GetInstanceID() InstanceID
 
 	GetNotifierID() string
 
@@ -92,18 +92,18 @@ type TaskHandler interface {
 
 	ElapsedTimeAfterRun() int64
 
-	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID)
+	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
-func (t *Task) GetID() TaskID {
+func (t *Task) GetID() ID {
 	return t.ID
 }
 
-func (t *Task) GetCommandID() TaskCommandID {
+func (t *Task) GetCommandID() CommandID {
 	return t.CommandID
 }
 
-func (t *Task) GetInstanceID() TaskInstanceID {
+func (t *Task) GetInstanceID() InstanceID {
 	return t.InstanceID
 }
 
@@ -123,7 +123,7 @@ func (t *Task) ElapsedTimeAfterRun() int64 {
 	return int64(time.Since(t.RunTime).Seconds())
 }
 
-func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- TaskInstanceID) {
+func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
 	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
 	defer taskStopWaiter.Done()
@@ -262,8 +262,8 @@ func (t *Task) writeTaskResultDataToFile(v interface{}) error {
 // TaskContext
 type TaskContext interface {
 	With(key, val interface{}) TaskContext
-	WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext
-	WithInstanceID(taskInstanceID TaskInstanceID, elapsedTimeAfterRun int64) TaskContext
+	WithTask(taskID ID, taskCommandID CommandID) TaskContext
+	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
 	WithError() TaskContext
 	Value(key interface{}) interface{}
 }
@@ -283,14 +283,14 @@ func (c *taskContext) With(key, val interface{}) TaskContext {
 	return c
 }
 
-func (c *taskContext) WithTask(taskID TaskID, taskCommandID TaskCommandID) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskID, taskID)
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskCommandID, taskCommandID)
+func (c *taskContext) WithTask(taskID ID, taskCommandID CommandID) TaskContext {
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyID, taskID)
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyCommandID, taskCommandID)
 	return c
 }
 
-func (c *taskContext) WithInstanceID(taskInstanceID TaskInstanceID, elapsedTimeAfterRun int64) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyTaskInstanceID, taskInstanceID)
+func (c *taskContext) WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
+	c.ctx = context.WithValue(c.ctx, TaskCtxKeyInstanceID, taskInstanceID)
 	c.ctx = context.WithValue(c.ctx, TaskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
 	return c
 }

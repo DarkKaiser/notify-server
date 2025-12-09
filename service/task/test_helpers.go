@@ -196,7 +196,7 @@ func (m *MockHTTPFetcher) Reset() {
 // TestHelpers - 테스트 헬퍼 함수들
 
 // CreateTestTask 테스트용 Task 인스턴스를 생성합니다.
-func CreateTestTask(id TaskID, commandID TaskCommandID, instanceID TaskInstanceID) *Task {
+func CreateTestTask(id ID, commandID CommandID, instanceID InstanceID) *Task {
 	return &Task{
 		ID:         id,
 		CommandID:  commandID,

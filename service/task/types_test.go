@@ -39,8 +39,8 @@ func TestRunBy_String(t *testing.T) {
 func TestTaskCommandID_Match(t *testing.T) {
 	cases := []struct {
 		name           string
-		pattern        TaskCommandID
-		target         TaskCommandID
+		pattern        CommandID
+		target         CommandID
 		expectedResult bool
 	}{
 		{

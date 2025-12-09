@@ -17,8 +17,8 @@ func (m *MockTaskExecutor) Run(req *RunRequest) bool {
 	return args.Bool(0)
 }
 
-func (m *MockTaskExecutor) Cancel(taskInstanceID TaskInstanceID) bool {
-	args := m.Called(taskInstanceID)
+func (m *MockTaskExecutor) Cancel(instanceID InstanceID) bool {
+	args := m.Called(instanceID)
 	return args.Bool(0)
 }
 

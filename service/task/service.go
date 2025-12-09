@@ -20,15 +20,15 @@ type TaskService struct {
 
 	scheduler scheduler
 
-	taskHandlers map[TaskInstanceID]TaskHandler
+	taskHandlers map[InstanceID]TaskHandler
 
 	instanceIDGenerator instanceIDGenerator
 
 	taskNotificationSender TaskNotificationSender
 
 	taskRunC    chan *RunRequest
-	taskDoneC   chan TaskInstanceID
-	taskCancelC chan TaskInstanceID
+	taskDoneC   chan InstanceID
+	taskCancelC chan InstanceID
 
 	taskStopWaiter *sync.WaitGroup
 }
@@ -42,15 +42,15 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 
 		scheduler: scheduler{},
 
-		taskHandlers: make(map[TaskInstanceID]TaskHandler),
+		taskHandlers: make(map[InstanceID]TaskHandler),
 
 		instanceIDGenerator: instanceIDGenerator{},
 
 		taskNotificationSender: nil,
 
 		taskRunC:    make(chan *RunRequest, 10),
-		taskDoneC:   make(chan TaskInstanceID, 10),
-		taskCancelC: make(chan TaskInstanceID, 10),
+		taskDoneC:   make(chan InstanceID, 10),
+		taskCancelC: make(chan InstanceID, 10),
 
 		taskStopWaiter: &sync.WaitGroup{},
 	}
@@ -140,7 +140,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				}
 			}
 
-			var instanceID TaskInstanceID
+			var instanceID InstanceID
 
 			s.runningMu.Lock()
 			for {
@@ -265,7 +265,7 @@ func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
 	return true
 }
 
-func (s *TaskService) Cancel(taskInstanceID TaskInstanceID) (succeeded bool) {
+func (s *TaskService) Cancel(taskInstanceID InstanceID) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

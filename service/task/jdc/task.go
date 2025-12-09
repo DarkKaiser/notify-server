@@ -14,10 +14,10 @@ import (
 
 const (
 	// TaskID
-	TidJdc task.TaskID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
+	TidJdc task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
 	// TaskCommandID
-	TcidJdcWatchNewOnlineEducation task.TaskCommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
+	TcidJdcWatchNewOnlineEducation task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 
 const (
@@ -53,7 +53,7 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if req.TaskID != TidJdc {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}

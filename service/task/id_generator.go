@@ -14,15 +14,15 @@ const (
 	base62Len   = int64(len(base62Chars))
 )
 
-// instanceIDGenerator 고유한 TaskInstanceID를 생성합니다.
+// instanceIDGenerator 고유한 InstanceID를 생성합니다.
 // 타임스탬프(나노초)와 원자적 카운터를 결합하여 동시성 환경에서도 충돌 없는 ID를 보장합니다.
 type instanceIDGenerator struct {
 	counter uint32
 }
 
-// New 새로운 TaskInstanceID를 생성합니다.
+// New 새로운 InstanceID를 생성합니다.
 // 생성된 ID는 시간 순서로 정렬 가능하며(대략적), 단일 프로세스 내에서 유일성을 보장합니다.
-func (g *instanceIDGenerator) New() TaskInstanceID {
+func (g *instanceIDGenerator) New() InstanceID {
 	// 나노초 단위 타임스탬프
 	now := time.Now().UnixNano()
 
@@ -40,7 +40,7 @@ func (g *instanceIDGenerator) New() TaskInstanceID {
 	// 패딩을 해야 문자열 정렬 시 자릿수 차이로 인한 문제와 아스키 코드 순서 문제를 완화할 수 있음.
 	b = g.appendBase62FixedLength(b, int64(seq), 6)
 
-	return TaskInstanceID(b)
+	return InstanceID(b)
 }
 
 // appendBase62 정수 값을 Base62로 인코딩하여 버퍼에 추가합니다.

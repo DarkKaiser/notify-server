@@ -93,7 +93,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskCancel to be called
-	mockTaskRunner.On("Cancel", task.TaskInstanceID("1234")).Run(func(args mock.Arguments) {
+	mockTaskRunner.On("Cancel", task.InstanceID("1234")).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)
 

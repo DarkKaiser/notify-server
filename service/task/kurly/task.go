@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	TidKurly task.TaskID = "KURLY" // 마켓컬리
+	TidKurly task.ID = "KURLY" // 마켓컬리
 
-	TcidKurlyWatchProductPrice task.TaskCommandID = "WatchProductPrice" // 마켓컬리 가격 확인
+	TcidKurlyWatchProductPrice task.CommandID = "WatchProductPrice" // 마켓컬리 가격 확인
 )
 
 const (
@@ -137,7 +137,7 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if req.TaskID != TidKurly {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -170,9 +170,9 @@ func init() {
 				switch tTask.GetCommandID() {
 				case TcidKurlyWatchProductPrice:
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.TaskID(t.ID) {
+						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
 									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")

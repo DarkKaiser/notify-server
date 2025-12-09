@@ -16,10 +16,10 @@ import (
 
 const (
 	// TaskID
-	TidNaver task.TaskID = "NAVER" // 네이버
+	TidNaver task.ID = "NAVER" // 네이버
 
 	// TaskCommandID
-	TcidNaverWatchNewPerformances task.TaskCommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
+	TcidNaverWatchNewPerformances task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
 type naverWatchNewPerformancesTaskCommandData struct {
@@ -74,7 +74,7 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if req.TaskID != TidNaver {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -107,9 +107,9 @@ func init() {
 				switch tTask.GetCommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.TaskID(t.ID) {
+						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									taskCommandData := &naverWatchNewPerformancesTaskCommandData{}
 									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")

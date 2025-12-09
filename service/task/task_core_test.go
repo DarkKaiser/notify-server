@@ -13,7 +13,7 @@ func TestTask_Run(t *testing.T) {
 	t.Run("실행 중 에러 발생", func(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		wg := &sync.WaitGroup{}
-		doneC := make(chan TaskInstanceID, 1)
+		doneC := make(chan InstanceID, 1)
 
 		taskInstance := &Task{
 			ID:         "ErrorTask",
@@ -42,7 +42,7 @@ func TestTask_Run(t *testing.T) {
 
 		select {
 		case id := <-doneC:
-			assert.Equal(t, TaskInstanceID("ErrorInstance"), id)
+			assert.Equal(t, InstanceID("ErrorInstance"), id)
 		case <-time.After(1 * time.Second):
 			t.Fatal("Task did not complete in time")
 		}
@@ -57,7 +57,7 @@ func TestTask_Run(t *testing.T) {
 	t.Run("취소된 작업", func(t *testing.T) {
 		mockSender := NewMockTaskNotificationSender()
 		wg := &sync.WaitGroup{}
-		doneC := make(chan TaskInstanceID, 1)
+		doneC := make(chan InstanceID, 1)
 
 		taskInstance := &Task{
 			ID:         "CancelTask",
@@ -87,7 +87,7 @@ func TestTask_Run(t *testing.T) {
 
 		select {
 		case id := <-doneC:
-			assert.Equal(t, TaskInstanceID("CancelInstance"), id)
+			assert.Equal(t, InstanceID("CancelInstance"), id)
 		case <-time.After(1 * time.Second):
 			t.Fatal("Task did not complete in time")
 		}
@@ -113,11 +113,11 @@ func TestTaskContext(t *testing.T) {
 	assert.Equal(t, "value", ctx.Value("key"))
 
 	ctx.WithTask("TaskID", "CommandID")
-	assert.Equal(t, TaskID("TaskID"), ctx.Value(TaskCtxKeyTaskID))
-	assert.Equal(t, TaskCommandID("CommandID"), ctx.Value(TaskCtxKeyTaskCommandID))
+	assert.Equal(t, ID("TaskID"), ctx.Value(TaskCtxKeyID))
+	assert.Equal(t, CommandID("CommandID"), ctx.Value(TaskCtxKeyCommandID))
 
 	ctx.WithInstanceID("InstanceID", 100)
-	assert.Equal(t, TaskInstanceID("InstanceID"), ctx.Value(TaskCtxKeyTaskInstanceID))
+	assert.Equal(t, InstanceID("InstanceID"), ctx.Value(TaskCtxKeyInstanceID))
 	assert.Equal(t, int64(100), ctx.Value(TaskCtxKeyElapsedTimeAfterRun))
 
 	ctx.WithError()

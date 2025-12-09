@@ -151,7 +151,7 @@ func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 		}
 
 		taskCtx := task.NewContext().
-			WithTask(task.TaskID("TEST"), task.TaskCommandID("TEST_CMD")).
+			WithTask(task.ID("TEST"), task.CommandID("TEST_CMD")).
 			With(task.TaskCtxKeyTitle, "Test Task")
 
 		result := service.NotifyWithTaskContext("test-notifier", "Test message", taskCtx)
@@ -250,7 +250,7 @@ func (m *mockExecutor) Run(req *task.RunRequest) bool {
 	return true
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.TaskInstanceID) bool {
+func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) bool {
 	return true
 }
 

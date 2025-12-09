@@ -19,7 +19,7 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	const numGoroutines = 100
 	const numIDsPerGoroutine = 1000
 
-	ids := make(chan TaskInstanceID, numGoroutines*numIDsPerGoroutine)
+	ids := make(chan InstanceID, numGoroutines*numIDsPerGoroutine)
 	var wg sync.WaitGroup
 
 	// 병렬로 ID 대량 생성
@@ -37,7 +37,7 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	close(ids)
 
 	// 중복 검사
-	uniqueMap := make(map[TaskInstanceID]bool)
+	uniqueMap := make(map[InstanceID]bool)
 	count := 0
 	for id := range ids {
 		if uniqueMap[id] {

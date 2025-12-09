@@ -12,18 +12,18 @@ var (
 	ErrNotImplementedCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
 )
 
-// TaskID 작업의 고유 식별자입니다. (예: "Lotto")
-type TaskID string
+// ID 작업의 고유 식별자입니다. (예: "Lotto")
+type ID string
 
-// TaskCommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다. (예: "Check")
-type TaskCommandID string
+// CommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다. (예: "Check")
+type CommandID string
 
-// TaskInstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
-type TaskInstanceID string
+// InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
+type InstanceID string
 
 // Match 주어진 대상 커맨드 ID(target)가 현재 커맨드 ID 패턴과 일치하는지 확인합니다.
 // 와일드카드('*') 접미사를 지원하여, 패턴 매칭을 수행할 수 있습니다.
-func (id TaskCommandID) Match(target TaskCommandID) bool {
+func (id CommandID) Match(target CommandID) bool {
 	const wildcard = "*"
 
 	s := string(id)
@@ -44,12 +44,12 @@ const (
 	// TaskCtxKeyErrorOccurred 작업 실행 중 에러 발생 여부를 나타내는 키입니다.
 	TaskCtxKeyErrorOccurred taskContextKey = "ErrorOccurred"
 
-	// TaskCtxKeyTaskID 작업 ID를 저장하는 키입니다.
-	TaskCtxKeyTaskID taskContextKey = "Task.TaskID"
-	// TaskCtxKeyTaskCommandID 작업 커맨드 ID를 저장하는 키입니다.
-	TaskCtxKeyTaskCommandID taskContextKey = "Task.TaskCommandID"
-	// TaskCtxKeyTaskInstanceID 작업 인스턴스 ID를 저장하는 키입니다.
-	TaskCtxKeyTaskInstanceID taskContextKey = "Task.TaskInstanceID"
+	// TaskCtxKeyID 작업 ID를 저장하는 키입니다.
+	TaskCtxKeyID taskContextKey = "Task.ID"
+	// TaskCtxKeyCommandID 작업 커맨드 ID를 저장하는 키입니다.
+	TaskCtxKeyCommandID taskContextKey = "Task.CommandID"
+	// TaskCtxKeyInstanceID 작업 인스턴스 ID를 저장하는 키입니다.
+	TaskCtxKeyInstanceID taskContextKey = "Task.InstanceID"
 	// TaskCtxKeyElapsedTimeAfterRun 작업 실행 후 경과 시간을 저장하는 키입니다.
 	TaskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
 )
@@ -77,8 +77,8 @@ func (t RunBy) String() string {
 
 // RunRequest 작업 실행 요청 정보를 담고 있는 구조체입니다.
 type RunRequest struct {
-	TaskID        TaskID
-	TaskCommandID TaskCommandID
+	TaskID        ID
+	TaskCommandID CommandID
 
 	// TaskCtx 작업 실행 컨텍스트입니다. 실행 중 필요한 메타데이터를 전달하는 데 사용됩니다.
 	TaskCtx TaskContext
@@ -98,7 +98,7 @@ type Runner interface {
 
 type Canceler interface {
 	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부를 반환합니다.
-	Cancel(taskInstanceID TaskInstanceID) (succeeded bool)
+	Cancel(taskInstanceID InstanceID) (succeeded bool)
 }
 
 type Executor interface {

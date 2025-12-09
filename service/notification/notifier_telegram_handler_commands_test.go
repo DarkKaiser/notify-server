@@ -167,8 +167,8 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		notif := createTestNotifier(mockBot)
 
 		done := make(chan struct{})
-		var capturedTaskID task.TaskID
-		var capturedCommandID task.TaskCommandID
+		var capturedTaskID task.ID
+		var capturedCommandID task.CommandID
 
 		mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan)).Once()
 		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
@@ -197,8 +197,8 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			t.Fatal("Timeout waiting for TaskRun")
 		}
 
-		assert.Equal(t, task.TaskID("task1"), capturedTaskID)
-		assert.Equal(t, task.TaskCommandID("run"), capturedCommandID)
+		assert.Equal(t, task.ID("task1"), capturedTaskID)
+		assert.Equal(t, task.CommandID("run"), capturedCommandID)
 
 		cancel()
 		wg.Wait()

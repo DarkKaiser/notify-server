@@ -15,11 +15,11 @@ import (
 
 const (
 	// TaskID
-	TidJyiu task.TaskID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
+	TidJyiu task.ID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
 
 	// TaskCommandID
-	TcidJyiuWatchNewNotice    task.TaskCommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
-	TcidJyiuWatchNewEducation task.TaskCommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
+	TcidJyiuWatchNewNotice    task.CommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
+	TcidJyiuWatchNewEducation task.CommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
 )
 
 const (
@@ -77,7 +77,7 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if req.TaskID != TidJyiu {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}

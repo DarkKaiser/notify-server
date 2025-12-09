@@ -41,8 +41,8 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotifi
 			}
 
 			// 클로저 캡처 문제 방지를 위해 로컬 변수에 재할당 (중요!)
-			taskID := TaskID(t.ID)
-			taskCommandID := TaskCommandID(c.ID)
+			taskID := ID(t.ID)
+			taskCommandID := CommandID(c.ID)
 			defaultNotifierID := c.DefaultNotifierID
 			timeSpec := c.Scheduler.TimeSpec
 
@@ -99,7 +99,7 @@ func (s *scheduler) Stop() {
 
 // handleError 에러 로깅 및 알림 전송을 처리하는 헬퍼 메서드
 // 에러 발생 시 로그를 남기고, 설정된 Notifier를 통해 담당자에게 알림을 보냅니다.
-func (s *scheduler) handleError(taskNotificationSender TaskNotificationSender, notifierID string, taskID TaskID, taskCommandID TaskCommandID, msg string, err error) {
+func (s *scheduler) handleError(taskNotificationSender TaskNotificationSender, notifierID string, taskID ID, taskCommandID CommandID, msg string, err error) {
 	fields := log.Fields{
 		"task_id":    taskID,
 		"command_id": taskCommandID,
