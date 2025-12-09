@@ -11,111 +11,104 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-// TestCustomHTTPErrorHandler_404는 404 에러 핸들러가 올바른 응답을 반환하는지 테스트합니다.
-func TestCustomHTTPErrorHandler_404(t *testing.T) {
-	e := echo.New()
-	e.HTTPErrorHandler = CustomHTTPErrorHandler
-
-	// 존재하지 않는 경로 요청을 시뮬레이션하기 위해 404 에러 직접 발생
-	req := httptest.NewRequest(http.MethodGet, "/non-existent-path", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	err := echo.NewHTTPError(http.StatusNotFound, "Not Found")
-	CustomHTTPErrorHandler(err, c)
-
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-
-	var errorResp response.ErrorResponse
-	jsonErr := json.Unmarshal(rec.Body.Bytes(), &errorResp)
-	require.NoError(t, jsonErr)
-
-	assert.Equal(t, "페이지를 찾을 수 없습니다.", errorResp.Message)
-}
-
-// TestCustomHTTPErrorHandler_Custom404는 커스텀 404 메시지가 보존되는지 테스트합니다.
-func TestCustomHTTPErrorHandler_Custom404(t *testing.T) {
-	e := echo.New()
-	e.HTTPErrorHandler = CustomHTTPErrorHandler
-
-	req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	customMsg := "사용자를 찾을 수 없습니다"
-	err := echo.NewHTTPError(http.StatusNotFound, customMsg)
-	CustomHTTPErrorHandler(err, c)
-
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-
-	var errorResp response.ErrorResponse
-	jsonErr := json.Unmarshal(rec.Body.Bytes(), &errorResp)
-	require.NoError(t, jsonErr)
-
-	assert.Equal(t, customMsg, errorResp.Message, "커스텀 404 메시지는 덮어쓰여지지 않아야 합니다")
-}
-
-// TestCustomHTTPErrorHandler_MethodNotAllowed는 405 에러 핸들러가 올바른 응답을 반환하는지 테스트합니다.
-func TestCustomHTTPErrorHandler_MethodNotAllowed(t *testing.T) {
-	e := echo.New()
-	e.HTTPErrorHandler = CustomHTTPErrorHandler
-
-	req := httptest.NewRequest(http.MethodPost, "/health", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	err := echo.NewHTTPError(http.StatusMethodNotAllowed, "method not allowed")
-	CustomHTTPErrorHandler(err, c)
-
-	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
-
-	var errorResp response.ErrorResponse
-	jsonErr := json.Unmarshal(rec.Body.Bytes(), &errorResp)
-	require.NoError(t, jsonErr)
-
-	assert.NotEmpty(t, errorResp.Message)
-}
-
-func TestCustomHTTPErrorHandler_500_Logging(t *testing.T) {
-	// 로그 캡처 설정
+func TestCustomHTTPErrorHandler_Table(t *testing.T) {
+	// Setup Logger capture
 	var buf bytes.Buffer
 	logrus.SetOutput(&buf)
 	logrus.SetFormatter(&logrus.JSONFormatter{})
-	defer logrus.SetOutput(logrus.StandardLogger().Out) // 복원
+	defer logrus.SetOutput(logrus.StandardLogger().Out)
 
-	e := echo.New()
-	e.HTTPErrorHandler = CustomHTTPErrorHandler
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		err            error
+		expectedStatus int
+		expectLog      []string
+		verifyResponse func(*testing.T, *httptest.ResponseRecorder)
+	}{
+		{
+			name:           "404 Not Found",
+			method:         http.MethodGet,
+			path:           "/non-existent",
+			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
+			expectedStatus: http.StatusNotFound,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.Equal(t, "페이지를 찾을 수 없습니다.", errorResp.Message)
+			},
+		},
+		{
+			name:           "Custom 404 Message",
+			method:         http.MethodGet,
+			path:           "/users/123",
+			err:            echo.NewHTTPError(http.StatusNotFound, "Custom 404"),
+			expectedStatus: http.StatusNotFound,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.Equal(t, "Custom 404", errorResp.Message)
+			},
+		},
+		{
+			name:           "405 Method Not Allowed",
+			method:         http.MethodPost,
+			path:           "/health",
+			err:            echo.NewHTTPError(http.StatusMethodNotAllowed, "method not allowed"),
+			expectedStatus: http.StatusMethodNotAllowed,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.NotEmpty(t, errorResp.Message)
+			},
+		},
+		{
+			name:           "500 Internal Server Error",
+			method:         http.MethodGet,
+			path:           "/error",
+			err:            echo.NewHTTPError(http.StatusInternalServerError, "internal error"),
+			expectedStatus: http.StatusInternalServerError,
+			expectLog:      []string{"내부 서버 오류 발생", "internal error"},
+		},
+		{
+			name:           "HEAD Request 404",
+			method:         http.MethodHead,
+			path:           "/non-existent",
+			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
+			expectedStatus: http.StatusNotFound,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				assert.Empty(t, rec.Body.String())
+			},
+		},
+	}
 
-	req := httptest.NewRequest(http.MethodGet, "/internal-error", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf.Reset()
+			e := echo.New()
+			e.HTTPErrorHandler = CustomHTTPErrorHandler
 
-	err := echo.NewHTTPError(http.StatusInternalServerError, "internal error")
-	CustomHTTPErrorHandler(err, c)
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+			CustomHTTPErrorHandler(tt.err, c)
 
-	// 로그 확인
-	assert.Contains(t, buf.String(), "내부 서버 오류 발생")
-	assert.Contains(t, buf.String(), "error")
-	assert.Contains(t, buf.String(), "internal error")
-}
+			assert.Equal(t, tt.expectedStatus, rec.Code)
 
-func TestCustomHTTPErrorHandler_HEAD(t *testing.T) {
-	e := echo.New()
-	e.HTTPErrorHandler = CustomHTTPErrorHandler
+			if tt.verifyResponse != nil {
+				tt.verifyResponse(t, rec)
+			}
 
-	req := httptest.NewRequest(http.MethodHead, "/non-existent-path", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// 404 에러 발생
-	err := echo.NewHTTPError(http.StatusNotFound, "Not Found")
-	CustomHTTPErrorHandler(err, c)
-
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-	assert.Empty(t, rec.Body.String(), "HEAD 요청은 본문이 없어야 합니다")
+			if len(tt.expectLog) > 0 {
+				logOutput := buf.String()
+				for _, expect := range tt.expectLog {
+					assert.Contains(t, logOutput, expect)
+				}
+			}
+		})
+	}
 }

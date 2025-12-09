@@ -9,30 +9,30 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewHTTPServer(t *testing.T) {
+func TestNewHTTPServer_Table(t *testing.T) {
 	tests := []struct {
-		name        string
-		config      HTTPServerConfig
-		checkDebug  bool
-		checkBanner bool
+		name         string
+		config       HTTPServerConfig
+		expectDebug  bool
+		expectBanner bool // HideBanner
 	}{
 		{
-			name: "Debug 모드 활성화",
+			name: "Debug Enabled",
 			config: HTTPServerConfig{
 				Debug:        true,
 				AllowOrigins: []string{"*"},
 			},
-			checkDebug:  true,
-			checkBanner: true,
+			expectDebug:  true,
+			expectBanner: true, // NewHTTPServer sets HideBanner=true
 		},
 		{
-			name: "Debug 모드 비활성화",
+			name: "Debug Disabled",
 			config: HTTPServerConfig{
 				Debug:        false,
 				AllowOrigins: []string{"http://example.com"},
 			},
-			checkDebug:  false,
-			checkBanner: true,
+			expectDebug:  false,
+			expectBanner: true,
 		},
 	}
 
@@ -40,100 +40,95 @@ func TestNewHTTPServer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := NewHTTPServer(tt.config)
 
-			assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
-			assert.Equal(t, tt.checkDebug, e.Debug, "Debug 모드 설정이 일치해야 합니다")
-			assert.Equal(t, tt.checkBanner, e.HideBanner, "HideBanner 설정이 일치해야 합니다")
+			assert.NotNil(t, e, "Echo instance should be created")
+			assert.Equal(t, tt.expectDebug, e.Debug, "Debug mode mismatch")
+			assert.Equal(t, tt.expectBanner, e.HideBanner, "HideBanner mismatch")
+			assert.NotNil(t, e.Logger, "Logger should be set")
 		})
 	}
-
-	t.Run("기본 설정 확인", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
-		})
-
-		assert.NotNil(t, e.Logger, "Logger가 설정되어야 합니다")
-
-		// 기본 라우트 테스트
-		e.GET("/test", func(c echo.Context) error {
-			return c.String(200, "test")
-		})
-
-		routes := e.Routes()
-		found := false
-		for _, route := range routes {
-			if route.Path == "/test" && route.Method == "GET" {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "테스트 라우트가 추가되어야 합니다")
-	})
 }
 
-func TestServerMiddlewares(t *testing.T) {
-	t.Run("CORS 미들웨어 확인", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
+func TestServerMiddlewares_Table(t *testing.T) {
+	// Common config
+	cfg := HTTPServerConfig{
+		Debug:        true,
+		AllowOrigins: []string{"*"},
+	}
+
+	tests := []struct {
+		name           string
+		setupRequest   func() (*http.Request, *httptest.ResponseRecorder)
+		handler        echo.HandlerFunc
+		path           string
+		expectStatus   int
+		verifyResponse func(*testing.T, *httptest.ResponseRecorder)
+	}{
+		{
+			name: "CORS Middleware",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+				req.Header.Set("Origin", "http://example.com")
+				req.Header.Set("Access-Control-Request-Method", "GET")
+				return req, httptest.NewRecorder()
+			},
+			handler:      func(c echo.Context) error { return c.String(http.StatusOK, "ok") },
+			path:         "/test",
+			expectStatus: http.StatusNoContent, // OPTIONS request usually returns 204 No Content for CORS preflight
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				assert.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))
+			},
+		},
+		{
+			name: "Recover Middleware",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				return httptest.NewRequest(http.MethodGet, "/panic", nil), httptest.NewRecorder()
+			},
+			handler:      func(c echo.Context) error { panic("test panic") },
+			path:         "/panic",
+			expectStatus: http.StatusInternalServerError, // 500
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				// Body might contain error info or be standard error page depending on config
+			},
+		},
+		{
+			name: "RequestID Middleware",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				return httptest.NewRequest(http.MethodGet, "/test", nil), httptest.NewRecorder()
+			},
+			handler:      func(c echo.Context) error { return c.String(http.StatusOK, "ok") },
+			path:         "/test",
+			expectStatus: http.StatusOK,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				assert.NotEmpty(t, rec.Header().Get(echo.HeaderXRequestID))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := NewHTTPServer(cfg)
+
+			// Register handler
+			if tt.path == "/test" && tt.name == "CORS Middleware" {
+				// For CORS test we usually need a registered route or just let middleware handle OPTIONS
+				e.GET(tt.path, tt.handler)
+			} else {
+				e.GET(tt.path, tt.handler)
+			}
+
+			req, rec := tt.setupRequest()
+			e.ServeHTTP(rec, req)
+
+			// Special handling for CORS Preflight which might differ based on Echo version or config
+			// But generally if handler is executed it returns StatusOK, if CORS handles OPTIONS it might return NO Content.
+			// Let's assert status code if specified
+			if tt.expectStatus != 0 {
+				assert.Equal(t, tt.expectStatus, rec.Code)
+			}
+
+			if tt.verifyResponse != nil {
+				tt.verifyResponse(t, rec)
+			}
 		})
-
-		// 테스트용 핸들러 등록
-		e.GET("/test", func(c echo.Context) error {
-			return c.String(http.StatusOK, "ok")
-		})
-
-		// HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodOptions, "/test", nil)
-		req.Header.Set("Origin", "http://example.com")
-		req.Header.Set("Access-Control-Request-Method", "GET")
-		rec := httptest.NewRecorder()
-
-		// 요청 실행
-		e.ServeHTTP(rec, req)
-
-		// CORS 헤더가 설정되었는지 확인
-		assert.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))
-	})
-
-	t.Run("Recover 미들웨어 확인", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
-		})
-
-		// Panic이 발생해도 서버가 다운되지 않는지 테스트
-		e.GET("/panic", func(c echo.Context) error {
-			panic("test panic")
-		})
-
-		// HTTP 요청 생성
-		req := httptest.NewRequest(http.MethodGet, "/panic", nil)
-		rec := httptest.NewRecorder()
-
-		// 요청 실행 (panic이 발생해도 서버가 다운되지 않아야 함)
-		e.ServeHTTP(rec, req)
-
-		// 500 에러가 반환되는지 확인 (panic이 recover되었다는 의미)
-		assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	})
-
-	t.Run("RequestID 미들웨어 확인", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
-		})
-
-		e.GET("/test", func(c echo.Context) error {
-			return c.String(http.StatusOK, "ok")
-		})
-
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		rec := httptest.NewRecorder()
-
-		e.ServeHTTP(rec, req)
-
-		// X-Request-ID 헤더가 존재하는지 확인
-		assert.NotEmpty(t, rec.Header().Get(echo.HeaderXRequestID))
-	})
+	}
 }

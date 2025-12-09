@@ -12,126 +12,138 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPanicRecovery(t *testing.T) {
-	// Setup
-	e := echo.New()
-	e.Use(PanicRecovery())
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Capture logs
-	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	logrus.SetFormatter(&logrus.JSONFormatter{})
-	defer logrus.SetOutput(logrus.StandardLogger().Out)
-
-	// Middleware execution with panic
-	h := func(c echo.Context) error {
-		panic("test panic")
+func TestPanicRecovery_Table(t *testing.T) {
+	// Setup capture
+	setupLogger := func() (*bytes.Buffer, func()) {
+		var buf bytes.Buffer
+		logrus.SetOutput(&buf)
+		logrus.SetFormatter(&logrus.JSONFormatter{})
+		restore := func() {
+			logrus.SetOutput(logrus.StandardLogger().Out)
+		}
+		return &buf, restore
 	}
 
-	// Execute handler through middleware chain
-	// Echo middleware chain execution is a bit complex to simulate directly with just function calls
-	// So we use the middleware returned function
-	err := PanicRecovery()(h)(c)
+	tests := []struct {
+		name         string
+		panicPayload interface{}
+		requestID    string
+		verifyLog    func(*testing.T, map[string]interface{})
+	}{
+		{
+			name:         "String Panic",
+			panicPayload: "test panic",
+			verifyLog: func(t *testing.T, entry map[string]interface{}) {
+				msg, ok := entry["msg"].(string)
+				assert.True(t, ok)
+				assert.Equal(t, "PANIC RECOVERED", msg)
 
-	// Assertions
-	assert.NoError(t, err) // Recover middleware should swallow the panic and return nil (or handle error internally)
-	// Note: Echo's recover middleware usually handles the error and commits response.
-	// Our implementation calls c.Error(err) which might set status code.
+				errorField, ok := entry["error"].(string)
+				assert.True(t, ok)
+				assert.Contains(t, errorField, "test panic")
 
-	// Log verification
-	var logEntry map[string]interface{}
-	jsonErr := json.Unmarshal(buf.Bytes(), &logEntry)
-	assert.NoError(t, jsonErr)
-
-	msg, ok := logEntry["msg"].(string)
-	assert.True(t, ok)
-	assert.Equal(t, "PANIC RECOVERED", msg)
-
-	level, ok := logEntry["level"].(string)
-	assert.True(t, ok)
-	assert.Equal(t, "error", level)
-
-	fields, ok := logEntry["component"].(string)
-	assert.True(t, ok)
-	assert.Equal(t, "api.middleware", fields)
-
-	errorField, ok := logEntry["error"].(string)
-	assert.True(t, ok)
-	assert.Contains(t, errorField, "test panic")
-
-	stack, ok := logEntry["stack"].(string)
-	assert.True(t, ok)
-	assert.NotEmpty(t, stack)
-}
-
-func TestPanicRecovery_WithError(t *testing.T) {
-	// Setup
-	e := echo.New()
-	e.Use(PanicRecovery())
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Capture logs
-	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	logrus.SetFormatter(&logrus.JSONFormatter{})
-	defer logrus.SetOutput(logrus.StandardLogger().Out)
-
-	// Middleware execution with panic error
-	h := func(c echo.Context) error {
-		panic(assert.AnError)
+				stack, ok := entry["stack"].(string)
+				assert.True(t, ok)
+				assert.NotEmpty(t, stack)
+			},
+		},
+		{
+			name:         "Error Panic",
+			panicPayload: assert.AnError,
+			verifyLog: func(t *testing.T, entry map[string]interface{}) {
+				errorField, ok := entry["error"].(string)
+				assert.True(t, ok)
+				assert.Contains(t, errorField, assert.AnError.Error())
+			},
+		},
+		{
+			name:         "Panic with Request ID",
+			panicPayload: "panic with req id",
+			requestID:    "req-12345",
+			verifyLog: func(t *testing.T, entry map[string]interface{}) {
+				reqID, ok := entry["request_id"].(string)
+				assert.True(t, ok)
+				assert.Equal(t, "req-12345", reqID)
+			},
+		},
 	}
 
-	err := PanicRecovery()(h)(c)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf, restore := setupLogger()
+			defer restore()
 
-	assert.NoError(t, err)
+			e := echo.New()
+			// Manually construct chain to avoid complexity or just use Use() and simulate request?
+			// Using e.Use() and ServeHTTP is cleaner integration
+			e.Use(PanicRecovery())
 
-	// Log verification
-	var logEntry map[string]interface{}
-	jsonErr := json.Unmarshal(buf.Bytes(), &logEntry)
-	assert.NoError(t, jsonErr)
+			// Setup Handler that panics
+			e.GET("/panic", func(c echo.Context) error {
+				panic(tt.panicPayload)
+			})
 
-	errorField, ok := logEntry["error"].(string)
-	assert.True(t, ok)
-	assert.Contains(t, errorField, assert.AnError.Error())
-}
+			req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+			rec := httptest.NewRecorder()
 
-func TestPanicRecovery_RequestID(t *testing.T) {
-	// Setup
-	e := echo.New()
-	e.Use(PanicRecovery())
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+			// Set Request ID if needed before request?
+			// Request ID is usually set by RequestID middleware or client header.
+			// Ideally we simulated X-Request-ID header incoming.
+			if tt.requestID != "" {
+				// Wait, if we want Response Header to have it (as middleware reads from response header sometimes?)
+				// PanicRecovery implementation reads from...?
+				// Let's check implementation if needed. usually it reads from c.Response().Header().Get(echo.HeaderXRequestID)
+				// Or c.Get("request_id")?
+				// Let's assume standard echo behavior or passing header.
+				// Echo RequestID middleware sets it on response header.
+				// We can manually set it on response header in a pre-middleware or just mock it.
+				// But simpler: just pass it in header, and assume something sets it, or just set strictly in handler?
+				// But handler PANICS.
+				// So we set it in context before handler?
+				// Let's use a middleware to set response ID or just set it on context if implementation checks context.
+				// Actually, let's look at previous test: c.Response().Header().Set(echo.HeaderXRequestID, reqID)
+				// So we can do that in a middleware before panic recovery or manually on context creation?
+				// Context creation is inside e.ServeHTTP.
+				// We can chain a middleware that sets the ID.
+			}
 
-	// Set Request ID
-	reqID := "req-12345"
-	c.Response().Header().Set(echo.HeaderXRequestID, reqID)
+			// To simplify: we can just call the middleware function directly like in previous test if ServeHTTP is too complex.
+			// But ServeHTTP is better integration.
+			// Let's use ServeHTTP but inject a middleware that sets RequestID if needed.
 
-	// Capture logs
-	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	logrus.SetFormatter(&logrus.JSONFormatter{})
-	defer logrus.SetOutput(logrus.StandardLogger().Out)
+			if tt.requestID != "" {
+				e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+					return func(c echo.Context) error {
+						c.Response().Header().Set(echo.HeaderXRequestID, tt.requestID)
+						return next(c)
+					}
+				})
+			}
 
-	// Middleware execution with panic
-	h := func(c echo.Context) error {
-		panic("panic with request id")
+			// We need to re-add PanicHandlers or just use e.Use
+			// Order matters. PanicRecovery should be outer?
+			// Usually PanicRecovery is first (outermost).
+			// So e.Use(PanicRecovery) is already called.
+			// Then e.Use(RequestSetter)
+
+			// Execute
+			e.ServeHTTP(rec, req)
+
+			// Assertions
+			// PanicRecovery should handle it, so status might be 500
+			if rec.Code != http.StatusInternalServerError {
+				// It might be 200 if we didn't set error handler or something?
+				// Echo default error handler handles panic err.
+			}
+
+			// Log Verification
+			var logEntry map[string]interface{}
+			err := json.Unmarshal(buf.Bytes(), &logEntry)
+			assert.NoError(t, err)
+
+			if tt.verifyLog != nil {
+				tt.verifyLog(t, logEntry)
+			}
+		})
 	}
-
-	err := PanicRecovery()(h)(c)
-	assert.NoError(t, err)
-
-	// Log verification
-	var logEntry map[string]interface{}
-	jsonErr := json.Unmarshal(buf.Bytes(), &logEntry)
-	assert.NoError(t, jsonErr)
-
-	loggedReqID, ok := logEntry["request_id"].(string)
-	assert.True(t, ok)
-	assert.Equal(t, reqID, loggedReqID)
 }

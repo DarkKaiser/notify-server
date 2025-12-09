@@ -27,72 +27,98 @@ func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool 
 	return true
 }
 
-func TestHealthCheckHandler(t *testing.T) {
-	t.Run("정상 상태 반환", func(t *testing.T) {
-		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+func TestHealthCheckHandler_Table(t *testing.T) {
+	tests := []struct {
+		name              string
+		mockService       *MockNotificationService
+		useNilService     bool
+		expectedStatus    string
+		expectedDepStatus string
+	}{
+		{
+			name:              "Healthy",
+			mockService:       &MockNotificationService{},
+			useNilService:     false,
+			expectedStatus:    "healthy",
+			expectedDepStatus: "healthy",
+		},
+		{
+			name:              "Unhealthy (Service Nil)",
+			mockService:       nil,
+			useNilService:     true,
+			expectedStatus:    "unhealthy",
+			expectedDepStatus: "unhealthy",
+		},
+	}
 
-		mockService := &MockNotificationService{}
-		h := NewSystemHandler(mockService, common.BuildInfo{})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-		if assert.NoError(t, h.HealthCheckHandler(c)) {
-			assert.Equal(t, http.StatusOK, rec.Code)
+			var h *SystemHandler
+			if tt.useNilService {
+				h = NewSystemHandler(nil, common.BuildInfo{})
+			} else {
+				h = NewSystemHandler(tt.mockService, common.BuildInfo{})
+			}
 
-			var healthResp response.HealthResponse
-			err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
-			assert.NoError(t, err)
-			assert.NoError(t, err)
-			assert.Equal(t, "healthy", healthResp.Status)
-			assert.Equal(t, "healthy", healthResp.Dependencies["notification_service"].Status)
-			assert.GreaterOrEqual(t, healthResp.Uptime, int64(0), "Uptime은 0 이상이어야 합니다")
-		}
-	})
+			if assert.NoError(t, h.HealthCheckHandler(c)) {
+				assert.Equal(t, http.StatusOK, rec.Code)
 
-	t.Run("의존성 서비스 비정상 시 unhealthy 반환", func(t *testing.T) {
-		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+				var healthResp response.HealthResponse
+				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedStatus, healthResp.Status)
+				assert.Equal(t, tt.expectedDepStatus, healthResp.Dependencies["notification_service"].Status)
 
-		// nil NotificationService 전달
-		h := NewSystemHandler(nil, common.BuildInfo{})
-
-		if assert.NoError(t, h.HealthCheckHandler(c)) {
-			assert.Equal(t, http.StatusOK, rec.Code)
-
-			var healthResp response.HealthResponse
-			err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
-			assert.NoError(t, err)
-			assert.Equal(t, "unhealthy", healthResp.Status)
-			assert.Equal(t, "unhealthy", healthResp.Dependencies["notification_service"].Status)
-		}
-	})
+				if tt.expectedStatus == "healthy" {
+					assert.GreaterOrEqual(t, healthResp.Uptime, int64(0), "Uptime should be >= 0")
+				}
+			}
+		})
+	}
 }
 
-func TestVersionHandler(t *testing.T) {
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/version", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
+func TestVersionHandler_Table(t *testing.T) {
 	buildInfo := common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
 	}
-	h := NewSystemHandler(&MockNotificationService{}, buildInfo)
 
-	if assert.NoError(t, h.VersionHandler(c)) {
-		assert.Equal(t, http.StatusOK, rec.Code)
+	tests := []struct {
+		name      string
+		buildInfo common.BuildInfo
+	}{
+		{
+			name:      "Version Info Present",
+			buildInfo: buildInfo,
+		},
+	}
 
-		var versionResp response.VersionResponse
-		err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
-		assert.NoError(t, err)
-		assert.Equal(t, "1.0.0", versionResp.Version)
-		assert.Equal(t, "2024-01-01", versionResp.BuildDate)
-		assert.Equal(t, "100", versionResp.BuildNumber)
-		assert.NotEmpty(t, versionResp.GoVersion)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/version", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			h := NewSystemHandler(&MockNotificationService{}, tt.buildInfo)
+
+			if assert.NoError(t, h.VersionHandler(c)) {
+				assert.Equal(t, http.StatusOK, rec.Code)
+
+				var versionResp response.VersionResponse
+				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.buildInfo.Version, versionResp.Version)
+				assert.Equal(t, tt.buildInfo.BuildDate, versionResp.BuildDate)
+				assert.Equal(t, tt.buildInfo.BuildNumber, versionResp.BuildNumber)
+				assert.NotEmpty(t, versionResp.GoVersion)
+			}
+		})
 	}
 }

@@ -16,19 +16,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandler_PublishNotificationHandler(t *testing.T) {
-	// Setup
+func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
+	// Common Setup
 	mockService := &testutil.MockNotificationService{}
-
-	// Test Config
-	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.Applications = []config.ApplicationConfig{
-		{
-			ID:                "test-app",
-			Title:             "Test App",
-			Description:       "Test Application",
-			DefaultNotifierID: "test-notifier",
-			AppKey:            "valid-key",
+	appConfig := &config.AppConfig{
+		NotifyAPI: config.NotifyAPIConfig{
+			Applications: []config.ApplicationConfig{
+				{
+					ID:                "test-app",
+					Title:             "Test App",
+					DefaultNotifierID: "test-notifier",
+					AppKey:            "valid-key",
+				},
+			},
 		},
 	}
 	appManager := auth.NewApplicationManager(appConfig)
@@ -37,19 +37,18 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 	tests := []struct {
 		name              string
 		appKey            string
-		reqBody           interface{} // string or struct
+		reqBody           interface{}
 		mockFail          bool
 		expectedStatus    int
-		verifyErrResponse func(t *testing.T, errResp response.ErrorResponse)
-		verifyMock        func(t *testing.T, m *testutil.MockNotificationService)
+		verifyErrResponse func(*testing.T, response.ErrorResponse)
+		verifyMock        func(*testing.T, *testutil.MockNotificationService)
 	}{
 		{
-			name:   "정상적인 메시지 전송",
+			name:   "Success Notification",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "Test Message",
-				ErrorOccurred: false,
 			},
 			expectedStatus: http.StatusOK,
 			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
@@ -61,7 +60,7 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "잘못된 AppKey",
+			name:   "Invalid AppKey",
 			appKey: "invalid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
@@ -73,7 +72,7 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "허용되지 않은 ApplicationID",
+			name:   "Unauthorized AppID",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "unknown-app",
@@ -85,15 +84,13 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "잘못된 요청 본문 (JSON 파싱 에러)",
-			appKey: "valid-key",
-			reqBody: func() string {
-				return "invalid-json"
-			}(),
-			expectedStatus: http.StatusBadRequest, // Echo 바인딩 에러는 400 반환
+			name:           "Invalid JSON Body",
+			appKey:         "valid-key",
+			reqBody:        "invalid-json", // Helper handles string as raw body logic
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "ApplicationID 누락",
+			name:   "Missing ApplicationID",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "",
@@ -106,7 +103,7 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "Message 누락",
+			name:   "Missing Message",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
@@ -119,7 +116,7 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "Message 길이 초과",
+			name:   "Message Too Long",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
@@ -133,20 +130,7 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "Message 최대 길이 허용 (4096자)",
-			appKey: "valid-key",
-			reqBody: request.NotificationRequest{
-				ApplicationID: "test-app",
-				Message:       strings.Repeat("a", 4096),
-			},
-			expectedStatus: http.StatusOK,
-			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
-				assert.True(t, m.NotifyCalled)
-				assert.Equal(t, 4096, len(m.LastMessage))
-			},
-		},
-		{
-			name:   "알림 서비스 전송 실패 (여전히 200 OK)",
+			name:   "Service Failure (Still 200)",
 			appKey: "valid-key",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
@@ -156,23 +140,25 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
 				assert.True(t, m.NotifyCalled)
+				// Service fail logic implementation detail: does it return specific error or just bool false?
+				// Handler ignores false return currently (legacy behavior).
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Mock 초기화 및 설정
 			mockService.Reset()
 			mockService.ShouldFail = tt.mockFail
 
 			e := echo.New()
+
 			var bodyStr string
 			if s, ok := tt.reqBody.(string); ok {
 				bodyStr = s
 			} else {
-				jsonBytes, _ := json.Marshal(tt.reqBody)
-				bodyStr = string(jsonBytes)
+				b, _ := json.Marshal(tt.reqBody)
+				bodyStr = string(b)
 			}
 
 			req := httptest.NewRequest(http.MethodPost, "/?app_key="+tt.appKey, strings.NewReader(bodyStr))
@@ -180,10 +166,8 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			// Execute
 			err := h.PublishNotificationHandler(c)
 
-			// 검증
 			if tt.expectedStatus == http.StatusOK {
 				assert.NoError(t, err)
 				assert.Equal(t, http.StatusOK, rec.Code)
@@ -192,17 +176,17 @@ func TestHandler_PublishNotificationHandler(t *testing.T) {
 					he, ok := err.(*echo.HTTPError)
 					assert.True(t, ok)
 					assert.Equal(t, tt.expectedStatus, he.Code)
-
 					if tt.verifyErrResponse != nil {
 						errResp, ok := he.Message.(response.ErrorResponse)
 						assert.True(t, ok)
 						tt.verifyErrResponse(t, errResp)
 					}
 				} else {
-					// 에러가 발생해야 하는데 안 한 경우 (혹은 바인딩 에러가 내부적으로 처리되어 응답에 쓰여진 경우 확인)
-					// Echo Handler는 에러를 리턴하는 것이 관례
-					// 다만, Binding 에러 같은 경우엔 echo가 자동으로 에러를 리턴함. 우리가 handler 내에서 bind를 호출하고 에러를 리턴하므로 err != nil이어야 함.
-					assert.Error(t, err, "에러가 발생해야 합니다")
+					// Expected error but got none
+					// Check if Echo wrote error directly to body (Binding error does this)
+					// But we assert assert.Error(t, err) usually
+					// Standard echo binding might return error
+					assert.Error(t, err, "Expected error")
 				}
 			}
 

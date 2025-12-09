@@ -1,6 +1,10 @@
 package notification
 
 import (
+	"context"
+	"sync"
+
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
@@ -48,3 +52,50 @@ func (m *MockExecutor) Cancel(instanceID task.InstanceID) error {
 	args := m.Called(instanceID)
 	return args.Error(0)
 }
+
+// mockNotifierHandler is a shared mock implementation of NotifierHandler for tests
+type mockNotifierHandler struct {
+	id                  NotifierID
+	supportsHTMLMessage bool
+	notifyCalls         []mockNotifyCall
+}
+
+type mockNotifyCall struct {
+	message string
+	taskCtx task.TaskContext
+}
+
+func (m *mockNotifierHandler) ID() NotifierID {
+	return m.id
+}
+
+func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) bool {
+	m.notifyCalls = append(m.notifyCalls, mockNotifyCall{
+		message: message,
+		taskCtx: taskCtx,
+	})
+	return true
+}
+
+func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+	defer notificationStopWaiter.Done()
+	<-notificationStopCtx.Done()
+}
+
+func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
+	return m.supportsHTMLMessage
+}
+
+// mockNotifierFactory is a shared mock implementation of NotifierFactory for tests
+type mockNotifierFactory struct {
+	createNotifiersFunc func(cfg *config.AppConfig) ([]NotifierHandler, error)
+}
+
+func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]NotifierHandler, error) {
+	if m.createNotifiersFunc != nil {
+		return m.createNotifiersFunc(cfg)
+	}
+	return []NotifierHandler{}, nil
+}
+
+func (m *mockNotifierFactory) RegisterProcessor(processor NotifierConfigProcessor) {}

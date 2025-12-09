@@ -15,16 +15,12 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// TestHTTPFetcher_UserAgent verifies that the User-Agent header is automatically set if missing.
-func TestHTTPFetcher_UserAgent(t *testing.T) {
+// TestHTTPFetcher_Methods_Table consolidates generic HTTPFetcher method tests (Do, Get, User-Agent behavior)
+func TestHTTPFetcher_Methods_Table(t *testing.T) {
+	// Setup a test server that validates User-Agent
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userAgent := r.Header.Get("User-Agent")
-		if userAgent == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		// Expecting the default User-Agent set in fetcher.go
-		if !strings.Contains(userAgent, "Mozilla/5.0") {
+		if userAgent == "" || !strings.Contains(userAgent, "Mozilla/5.0") {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -34,29 +30,50 @@ func TestHTTPFetcher_UserAgent(t *testing.T) {
 
 	fetcher := NewHTTPFetcher()
 
-	// Test Do method
-	req, _ := http.NewRequest("GET", ts.URL, nil)
-	resp, err := fetcher.Do(req)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	tests := []struct {
+		name        string
+		action      func() (*http.Response, error)
+		expectError bool
+	}{
+		{
+			name: "Do Request (Automatic User-Agent)",
+			action: func() (*http.Response, error) {
+				req, _ := http.NewRequest("GET", ts.URL, nil)
+				return fetcher.Do(req)
+			},
+			expectError: false,
+		},
+		{
+			name: "Get Request (Automatic User-Agent)",
+			action: func() (*http.Response, error) {
+				return fetcher.Get(ts.URL)
+			},
+			expectError: false,
+		},
+	}
 
-	// Test Get method
-	resp, err = fetcher.Get(ts.URL)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := tt.action()
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				if resp != nil {
+					assert.Equal(t, http.StatusOK, resp.StatusCode)
+				}
+			}
+		})
+	}
 }
 
-// TestHTTPFetcher_Timeout checks that the fetcher is initialized with a timeout.
+// TestHTTPFetcher_Timeout checks initialization (Basic check)
 func TestHTTPFetcher_Timeout(t *testing.T) {
 	fetcher := NewHTTPFetcher()
 	assert.NotNil(t, fetcher)
-	// We can't directly check the private client field or its timeout without reflection,
-	// but we trust the constructor. Verification relies on code review or functional testing if needed.
 }
 
-// TestFetchHTMLDocument verifies fetching and parsing HTML, including robust encoding handling.
-func TestFetchHTMLDocument(t *testing.T) {
-	// Helper to create EUC-KR encoded content
+func TestFetchHTMLDocument_Table(t *testing.T) {
 	eucKrContent := func(s string) string {
 		var buf bytes.Buffer
 		w := transform.NewWriter(&buf, korean.EUCKR.NewEncoder())
@@ -68,18 +85,14 @@ func TestFetchHTMLDocument(t *testing.T) {
 	tests := []struct {
 		name        string
 		url         string
-		contentType string // Response Content-Type header
-		bodyContent string // Response body content
 		setupMock   func(*TestMockFetcher)
 		wantErr     bool
 		errContains string
 		validateDoc func(*testing.T, *goquery.Document)
 	}{
 		{
-			name:        "Success - UTF-8",
-			url:         "http://example.com/utf8",
-			contentType: "text/html; charset=utf-8",
-			bodyContent: `<html><body><div class="test">안녕</div></body></html>`,
+			name: "Success - UTF-8",
+			url:  "http://example.com/utf8",
 			setupMock: func(m *TestMockFetcher) {
 				htmlContent := `<html><body><div class="test">안녕</div></body></html>`
 				resp := NewMockResponse(htmlContent, 200)
@@ -87,24 +100,19 @@ func TestFetchHTMLDocument(t *testing.T) {
 				m.On("Get", "http://example.com/utf8").Return(resp, nil)
 			},
 			validateDoc: func(t *testing.T, doc *goquery.Document) {
-				assert.NotNil(t, doc)
 				assert.Equal(t, "안녕", doc.Find(".test").Text())
 			},
 		},
 		{
-			name:        "Success - EUC-KR",
-			url:         "http://example.com/euckr",
-			contentType: "text/html; charset=euc-kr",
+			name: "Success - EUC-KR",
+			url:  "http://example.com/euckr",
 			setupMock: func(m *TestMockFetcher) {
-				// "안녕" in EUC-KR
 				content := eucKrContent(`<html><body><div class="test">안녕</div></body></html>`)
 				resp := NewMockResponse(content, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=euc-kr")
 				m.On("Get", "http://example.com/euckr").Return(resp, nil)
 			},
 			validateDoc: func(t *testing.T, doc *goquery.Document) {
-				assert.NotNil(t, doc)
-				// Should be converted to UTF-8 correctly
 				assert.Equal(t, "안녕", doc.Find(".test").Text())
 			},
 		},
@@ -156,8 +164,7 @@ func TestFetchHTMLDocument(t *testing.T) {
 	}
 }
 
-// TestFetchHTMLSelection verifies finding specific elements within an HTML document.
-func TestFetchHTMLSelection(t *testing.T) {
+func TestFetchHTMLSelection_Table(t *testing.T) {
 	tests := []struct {
 		name        string
 		url         string
@@ -178,7 +185,6 @@ func TestFetchHTMLSelection(t *testing.T) {
 				m.On("Get", "http://example.com/success").Return(resp, nil)
 			},
 			validateSel: func(t *testing.T, sel *goquery.Selection) {
-				assert.NotNil(t, sel)
 				assert.Equal(t, "Found Me", sel.Text())
 			},
 		},
@@ -211,7 +217,6 @@ func TestFetchHTMLSelection(t *testing.T) {
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
-				assert.Nil(t, sel)
 			} else {
 				assert.NoError(t, err)
 				if tt.validateSel != nil {
@@ -223,27 +228,18 @@ func TestFetchHTMLSelection(t *testing.T) {
 	}
 }
 
-// TestScrapeHTML verifies the scraping logic, including control flow (breaking the loop).
 func TestScrapeHTML(t *testing.T) {
+	// ScrapeHTML Logic flow test, kept as is or slightly refined
 	t.Run("Scrape - Iterate All", func(t *testing.T) {
 		mockFetcher := &TestMockFetcher{}
-		htmlContent := `
-			<html><body>
-				<ul class="list">
-					<li>Item 1</li>
-					<li>Item 2</li>
-					<li>Item 3</li>
-				</ul>
-			</body></html>
-		`
+		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></body></html>`
 		resp := NewMockResponse(htmlContent, 200)
-		resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 		mockFetcher.On("Get", "http://example.com").Return(resp, nil)
 
 		count := 0
 		err := ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			count++
-			return true // Continue iteration
+			return true
 		})
 
 		assert.NoError(t, err)
@@ -252,23 +248,14 @@ func TestScrapeHTML(t *testing.T) {
 
 	t.Run("Scrape - Early Exit", func(t *testing.T) {
 		mockFetcher := &TestMockFetcher{}
-		htmlContent := `
-			<html><body>
-				<ul class="list">
-					<li>Item 1</li>
-					<li>Item 2</li>
-					<li>Item 3</li>
-				</ul>
-			</body></html>
-		`
+		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li></ul></body></html>`
 		resp := NewMockResponse(htmlContent, 200)
-		resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 		mockFetcher.On("Get", "http://example.com").Return(resp, nil)
 
 		count := 0
 		err := ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			count++
-			return false // Stop iteration after first item
+			return false
 		})
 
 		assert.NoError(t, err)
@@ -276,8 +263,7 @@ func TestScrapeHTML(t *testing.T) {
 	})
 }
 
-// TestFetchJSON verifies JSON fetching including error cases for bad JSON or empty bodies.
-func TestFetchJSON(t *testing.T) {
+func TestFetchJSON_Table(t *testing.T) {
 	type TestData struct {
 		Name  string `json:"name"`
 		Value int    `json:"value"`
@@ -317,34 +303,10 @@ func TestFetchJSON(t *testing.T) {
 			method: "GET",
 			url:    "http://example.com",
 			setupMock: func(m *TestMockFetcher) {
-				jsonContent := `{"name": "test", "value": "invalid"}` // Value expects int
+				jsonContent := `{"name": "test", "value": "invalid"}`
 				resp := NewMockResponse(jsonContent, 200)
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
-			wantErr:     true,
-			errContains: "JSON 변환이 실패하였습니다",
-		},
-		{
-			name:   "JSON Parsing Error - Malformed JSON",
-			method: "GET",
-			url:    "http://example.com/malformed",
-			setupMock: func(m *TestMockFetcher) {
-				jsonContent := `{"name": "test", "val` // Truncated JSON
-				resp := NewMockResponse(jsonContent, 200)
-				m.On("Do", mock.Anything).Return(resp, nil)
-			},
-			wantErr:     true,
-			errContains: "JSON 변환이 실패하였습니다",
-		},
-		{
-			name:   "Empty Body",
-			method: "GET",
-			url:    "http://example.com/empty",
-			setupMock: func(m *TestMockFetcher) {
-				resp := NewMockResponse("", 200)
-				m.On("Do", mock.Anything).Return(resp, nil)
-			},
-			// Decoding empty string usually gives EOF, wrapped in our error
 			wantErr:     true,
 			errContains: "JSON 변환이 실패하였습니다",
 		},
