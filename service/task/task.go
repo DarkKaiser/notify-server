@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,7 +132,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 
 	t.RunTime = time.Now()
 
-	var taskCtx = NewContext().WithTask(t.GetID(), t.GetCommandID())
+	var taskCtx = NewTaskContext().WithTask(t.GetID(), t.GetCommandID())
 
 	if t.RunFn == nil {
 		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)
@@ -257,49 +256,4 @@ func (t *Task) writeTaskResultDataToFile(v interface{}) error {
 	}
 
 	return nil
-}
-
-// TaskContext
-type TaskContext interface {
-	With(key, val interface{}) TaskContext
-	WithTask(taskID ID, taskCommandID CommandID) TaskContext
-	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
-	WithError() TaskContext
-	Value(key interface{}) interface{}
-}
-
-type taskContext struct {
-	ctx context.Context
-}
-
-func NewContext() TaskContext {
-	return &taskContext{
-		ctx: context.Background(),
-	}
-}
-
-func (c *taskContext) With(key, val interface{}) TaskContext {
-	c.ctx = context.WithValue(c.ctx, key, val)
-	return c
-}
-
-func (c *taskContext) WithTask(taskID ID, taskCommandID CommandID) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyID, taskID)
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyCommandID, taskCommandID)
-	return c
-}
-
-func (c *taskContext) WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyInstanceID, taskInstanceID)
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
-	return c
-}
-
-func (c *taskContext) WithError() TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyErrorOccurred, true)
-	return c
-}
-
-func (c *taskContext) Value(key interface{}) interface{} {
-	return c.ctx.Value(key)
 }

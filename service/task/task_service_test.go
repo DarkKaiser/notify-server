@@ -91,7 +91,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task Context 생성
-	taskCtx := NewContext().With("test_key", "test_value")
+	taskCtx := NewTaskContext().With("test_key", "test_value")
 
 	// Task 실행 요청
 	succeeded := service.Run(&RunRequest{

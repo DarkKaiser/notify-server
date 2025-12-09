@@ -150,9 +150,9 @@ func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 			running:          true,
 		}
 
-		taskCtx := task.NewContext().
+		taskCtx := task.NewTaskContext().
 			WithTask(task.ID("TEST"), task.CommandID("TEST_CMD")).
-			With(task.TaskCtxKeyTitle, "Test Task")
+			WithTitle("Test Task")
 
 		result := service.NotifyWithTaskContext("test-notifier", "Test message", taskCtx)
 
@@ -174,7 +174,7 @@ func TestNotificationService_NotifyWithTaskContext(t *testing.T) {
 			running:                true,
 		}
 
-		taskCtx := task.NewContext()
+		taskCtx := task.NewTaskContext()
 		result := service.NotifyWithTaskContext("non-existent", "Test message", taskCtx)
 
 		assert.False(t, result, "존재하지 않는 Notifier로의 알림은 실패해야 합니다")
@@ -202,7 +202,7 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 		}
 
 		// notifier2로 알림 전송
-		result := service.NotifyWithTaskContext("notifier2", "Message to notifier2", task.NewContext())
+		result := service.NotifyWithTaskContext("notifier2", "Message to notifier2", task.NewTaskContext())
 
 		assert.True(t, result, "알림 전송이 성공해야 합니다")
 		assert.Equal(t, 0, len(mockNotifier1.notifyCalls), "notifier1은 호출되지 않아야 합니다")

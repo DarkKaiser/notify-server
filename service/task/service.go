@@ -101,7 +101,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}).Debug("새로운 Task 실행 요청 수신")
 
 			if req.TaskCtx == nil {
-				req.TaskCtx = NewContext()
+				req.TaskCtx = NewTaskContext()
 			}
 			req.TaskCtx.WithTask(req.TaskID, req.TaskCommandID)
 
@@ -203,7 +203,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"instance_id": instanceID,
 				}).Debug("Task 작업 취소")
 
-				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()))
+				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()))
 			} else {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,

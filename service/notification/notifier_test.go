@@ -44,7 +44,7 @@ func TestNotifier_Notify(t *testing.T) {
 		// Accessing private channel for testing
 		sendC := n.requestC
 
-		taskCtx := task.NewContext()
+		taskCtx := task.NewTaskContext()
 		succeeded := n.Notify("test message", taskCtx)
 
 		assert.True(t, succeeded, "알림 전송이 성공해야 합니다")
@@ -113,7 +113,7 @@ func TestNotifier_Notify(t *testing.T) {
 
 func TestNotifyRequest(t *testing.T) {
 	t.Run("notifyRequest 구조체 생성", func(t *testing.T) {
-		taskCtx := task.NewContext()
+		taskCtx := task.NewTaskContext()
 		data := &notifyRequest{
 			message: "test message",
 			taskCtx: taskCtx,

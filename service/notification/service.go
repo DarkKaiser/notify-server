@@ -148,7 +148,7 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
 func (s *NotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	taskCtx := task.NewContext().With(task.TaskCtxKeyTitle, title)
+	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
 		taskCtx.WithError()
 	}
@@ -193,7 +193,7 @@ func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(message, task.NewContext().WithError())
+	return s.defaultNotifierHandler.Notify(message, task.NewTaskContext().WithError())
 }
 
 // NotifyWithTaskContext 가장 저수준의 알림 발송 메서드입니다.
@@ -230,7 +230,7 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 		"notifier_id": notifierID,
 	}).Error(m)
 
-	s.defaultNotifierHandler.Notify(m, task.NewContext().WithError())
+	s.defaultNotifierHandler.Notify(m, task.NewTaskContext().WithError())
 
 	return false
 }

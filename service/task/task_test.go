@@ -8,7 +8,7 @@ import (
 )
 
 func TestTaskContext_With(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
 	// 값 설정
 	ctx = ctx.With("key1", "value1")
@@ -21,35 +21,35 @@ func TestTaskContext_With(t *testing.T) {
 }
 
 func TestTaskContext_WithTask(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
 	taskID := ID("TEST_TASK")
 	commandID := CommandID("TEST_COMMAND")
 
 	ctx = ctx.WithTask(taskID, commandID)
 
-	assert.Equal(t, taskID, ctx.Value(TaskCtxKeyID), "TaskID가 설정되어야 합니다")
-	assert.Equal(t, commandID, ctx.Value(TaskCtxKeyCommandID), "TaskCommandID가 설정되어야 합니다")
+	assert.Equal(t, taskID, ctx.GetID(), "TaskID가 설정되어야 합니다")
+	assert.Equal(t, commandID, ctx.GetCommandID(), "TaskCommandID가 설정되어야 합니다")
 }
 
 func TestTaskContext_WithInstanceID(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
 	instanceID := InstanceID("test_instance_123")
 	elapsedTime := int64(42)
 
 	ctx = ctx.WithInstanceID(instanceID, elapsedTime)
 
-	assert.Equal(t, instanceID, ctx.Value(TaskCtxKeyInstanceID), "TaskInstanceID가 설정되어야 합니다")
-	assert.Equal(t, elapsedTime, ctx.Value(TaskCtxKeyElapsedTimeAfterRun), "경과 시간이 설정되어야 합니다")
+	assert.Equal(t, instanceID, ctx.GetInstanceID(), "TaskInstanceID가 설정되어야 합니다")
+	assert.Equal(t, elapsedTime, ctx.GetElapsedTimeAfterRun(), "경과 시간이 설정되어야 합니다")
 }
 
 func TestTaskContext_WithError(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
 	ctx = ctx.WithError()
 
-	assert.Equal(t, true, ctx.Value(TaskCtxKeyErrorOccurred), "에러 상태가 설정되어야 합니다")
+	assert.Equal(t, true, ctx.IsErrorOccurred(), "에러 상태가 설정되어야 합니다")
 }
 
 func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {

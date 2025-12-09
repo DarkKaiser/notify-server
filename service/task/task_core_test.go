@@ -107,19 +107,22 @@ func TestTask_Cancel(t *testing.T) {
 }
 
 func TestTaskContext(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
 	ctx.With("key", "value")
 	assert.Equal(t, "value", ctx.Value("key"))
 
 	ctx.WithTask("TaskID", "CommandID")
-	assert.Equal(t, ID("TaskID"), ctx.Value(TaskCtxKeyID))
-	assert.Equal(t, CommandID("CommandID"), ctx.Value(TaskCtxKeyCommandID))
+	ctx.WithTask("TaskID", "CommandID")
+	assert.Equal(t, ID("TaskID"), ctx.GetID())
+	assert.Equal(t, CommandID("CommandID"), ctx.GetCommandID())
 
 	ctx.WithInstanceID("InstanceID", 100)
-	assert.Equal(t, InstanceID("InstanceID"), ctx.Value(TaskCtxKeyInstanceID))
-	assert.Equal(t, int64(100), ctx.Value(TaskCtxKeyElapsedTimeAfterRun))
+	ctx.WithInstanceID("InstanceID", 100)
+	assert.Equal(t, InstanceID("InstanceID"), ctx.GetInstanceID())
+	assert.Equal(t, int64(100), ctx.GetElapsedTimeAfterRun())
 
 	ctx.WithError()
-	assert.Equal(t, true, ctx.Value(TaskCtxKeyErrorOccurred))
+	ctx.WithError()
+	assert.True(t, ctx.IsErrorOccurred())
 }

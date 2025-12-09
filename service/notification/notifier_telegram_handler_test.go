@@ -54,7 +54,7 @@ func TestTelegramNotifier_Notify_LongMessage(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification
-	notifier.Notify(longMessage, task.NewContext())
+	notifier.Notify(longMessage, task.NewTaskContext())
 
 	// Wait for processing
 	sendDone := make(chan struct{})
@@ -126,7 +126,7 @@ func TestTelegramNotifier_Notify_LongSingleLineMessage(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification
-	notifier.Notify(longMessage, task.NewContext())
+	notifier.Notify(longMessage, task.NewTaskContext())
 
 	// Wait for processing
 	sendDone := make(chan struct{})
@@ -185,7 +185,7 @@ func TestTelegramNotifier_Notify_HTMLMessage(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send HTML Notification
-	notifier.Notify(htmlMessage, task.NewContext())
+	notifier.Notify(htmlMessage, task.NewTaskContext())
 
 	// Wait for processing
 	select {
@@ -233,7 +233,7 @@ func TestTelegramNotifier_Notify_SendError(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification (should handle error gracefully)
-	notifier.Notify("Test message", task.NewContext())
+	notifier.Notify("Test message", task.NewTaskContext())
 
 	// Wait for processing
 	select {
@@ -281,9 +281,9 @@ func TestTelegramNotifier_Notify_WithTaskContext(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification with TaskContext
-	taskCtx := task.NewContext().
+	taskCtx := task.NewTaskContext().
 		WithTask(task.ID("TEST"), task.CommandID("TEST_CMD")).
-		With(task.TaskCtxKeyTitle, "Test Task")
+		WithTitle("Test Task")
 
 	notifier.Notify("Test message", taskCtx)
 
@@ -333,7 +333,7 @@ func TestTelegramNotifier_Notify_ErrorContext(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification with Error Context
-	taskCtx := task.NewContext().
+	taskCtx := task.NewTaskContext().
 		WithTask(task.ID("TEST"), task.CommandID("TEST_CMD")).
 		WithError()
 
@@ -393,9 +393,8 @@ func TestTelegramNotifier_Notify_ElapsedTime(t *testing.T) {
 	go notifier.Run(mockTaskRunner, ctx, wg)
 
 	// Send Notification with Elapsed Time
-	taskCtx := task.NewContext().
-		With(task.TaskCtxKeyInstanceID, task.InstanceID("1234")).
-		With(task.TaskCtxKeyElapsedTimeAfterRun, int64(3661)) // 1h 1m 1s
+	taskCtx := task.NewTaskContext().
+		WithInstanceID(task.InstanceID("1234"), int64(3661)) // 1h 1m 1s
 
 	notifier.Notify("Task Completed", taskCtx)
 
