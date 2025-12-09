@@ -7,6 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestScheduler_StartStop(t *testing.T) {
@@ -14,49 +15,53 @@ func TestScheduler_StartStop(t *testing.T) {
 		s := &scheduler{}
 
 		// Mock 객체 생성
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 
 		// 빈 설정으로 시작
 		appConfig := &config.AppConfig{}
 
 		// 스케줄러 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop() // Ensure cleanup
+
+		assert.True(t, s.running, "스케줄러가 실행 중이어야 합니다")
+		assert.NotNil(t, s.cron, "cron 객체가 생성되어야 합니다")
 
 		// 스케줄러 중지
 		s.Stop()
+		assert.False(t, s.running, "스케줄러가 중지되어야 합니다")
 
 		// 중지 후 다시 시작 가능한지 확인
-		s.Start(appConfig, mockRunner, mockSender)
-		s.Stop()
+		s.Start(appConfig, mockExecutor, mockSender)
+		assert.True(t, s.running, "스케줄러가 다시 실행 중이어야 합니다")
 	})
 
 	t.Run("이미 실행 중인 스케줄러 재시작 시도", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 		appConfig := &config.AppConfig{}
 
 		// 첫 번째 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop()
+
 		assert.True(t, s.running, "스케줄러가 실행 중이어야 합니다")
 
 		// 두 번째 시작 시도 (중복)
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
 		assert.True(t, s.running, "스케줄러가 여전히 실행 중이어야 합니다")
-
-		// 정리
-		s.Stop()
 	})
 
 	t.Run("이미 중지된 스케줄러 재중지 시도", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 		appConfig := &config.AppConfig{}
 
 		// 시작 후 중지
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
 		s.Stop()
 		assert.False(t, s.running, "스케줄러가 중지되어야 합니다")
 
@@ -67,8 +72,8 @@ func TestScheduler_StartStop(t *testing.T) {
 
 	t.Run("스케줄 작업 등록 - Runnable이 true인 작업만", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 
 		appConfig := &config.AppConfig{
 			Tasks: []config.TaskConfig{
@@ -106,22 +111,21 @@ func TestScheduler_StartStop(t *testing.T) {
 		}
 
 		// 스케줄러 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop()
+
 		assert.True(t, s.running, "스케줄러가 실행 중이어야 합니다")
 		assert.NotNil(t, s.cron, "cron 객체가 생성되어야 합니다")
 
 		// 등록된 스케줄 작업 수 확인 (Runnable이 true인 것만)
 		entries := s.cron.Entries()
 		assert.Equal(t, 1, len(entries), "Runnable이 true인 작업만 등록되어야 합니다")
-
-		// 정리
-		s.Stop()
 	})
 
-	t.Run("스케줄 실행 시 TaskRunner 호출 검증", func(t *testing.T) {
+	t.Run("스케줄 실행 시 TaskExecutor 호출 검증", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 
 		appConfig := &config.AppConfig{
 			Tasks: []config.TaskConfig{
@@ -146,33 +150,33 @@ func TestScheduler_StartStop(t *testing.T) {
 			},
 		}
 
+		done := make(chan struct{})
+
+		// Expect TaskRun call
+		mockExecutor.On("TaskRun", TaskID("TestTask"), TaskCommandID("QuickCommand"), "test-notifier", false, TaskRunByScheduler).
+			Run(func(args mock.Arguments) {
+				close(done)
+			}).Return(true).Once()
+
 		// 스케줄러 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop()
 
-		// 스케줄이 실행될 때까지 대기 (최대 2초)
-		time.Sleep(2 * time.Second)
-
-		// TaskRunner가 호출되었는지 확인
-		calls := mockRunner.GetTaskRunCalls()
-		assert.Greater(t, len(calls), 0, "TaskRunner.TaskRun이 최소 1번 호출되어야 합니다")
-
-		// 호출 파라미터 검증
-		if len(calls) > 0 {
-			call := calls[0]
-			assert.Equal(t, TaskID("TestTask"), call.taskID, "TaskID가 일치해야 합니다")
-			assert.Equal(t, TaskCommandID("QuickCommand"), call.taskCommandID, "TaskCommandID가 일치해야 합니다")
-			assert.Equal(t, "test-notifier", call.notifierID, "NotifierID가 일치해야 합니다")
-			assert.Equal(t, TaskRunByScheduler, call.taskRunBy, "TaskRunBy가 Scheduler여야 합니다")
+		// Wait for execution
+		select {
+		case <-done:
+			// Success
+		case <-time.After(2 * time.Second):
+			t.Fatal("Timeout waiting for TaskRun")
 		}
 
-		// 정리
-		s.Stop()
+		mockExecutor.AssertExpectations(t)
 	})
 
 	t.Run("스케줄 실행 실패 시 알림 발송", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunnerWithFailure{} // 실패하는 TaskRunner
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 
 		appConfig := &config.AppConfig{
 			Tasks: []config.TaskConfig{
@@ -197,30 +201,49 @@ func TestScheduler_StartStop(t *testing.T) {
 			},
 		}
 
+		var wg sync.WaitGroup
+		wg.Add(2) // 1 for TaskRun (fail), 1 for Notify
+
+		// Expect TaskRun call (return false for failure)
+		mockExecutor.On("TaskRun", TaskID("FailTask"), TaskCommandID("FailCommand"), "fail-notifier", false, TaskRunByScheduler).
+			Run(func(args mock.Arguments) {
+				wg.Done()
+			}).Return(false).Once()
+
+		// Expect Notify call
+		mockSender.On("NotifyWithTaskContext", "fail-notifier", mock.MatchedBy(func(msg string) bool {
+			return assert.Contains(t, msg, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다")
+		}), mock.Anything).
+			Run(func(args mock.Arguments) {
+				wg.Done()
+			}).Return().Once()
+
 		// 스케줄러 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop()
 
-		// 스케줄이 실행되고 실패할 때까지 대기
-		time.Sleep(2 * time.Second)
+		// Wait for completion
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
 
-		// 알림이 발송되었는지 확인
-		assert.Greater(t, mockSender.GetNotifyWithTaskContextCallCount(), 0, "실패 시 알림이 발송되어야 합니다")
-
-		// 알림 내용 검증
-		if mockSender.GetNotifyWithTaskContextCallCount() > 0 {
-			call := mockSender.NotifyWithTaskContextCalls[0]
-			assert.Equal(t, "fail-notifier", call.NotifierID, "NotifierID가 일치해야 합니다")
-			assert.Contains(t, call.Message, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다", "실패 메시지가 포함되어야 합니다")
-			assert.NotNil(t, call.TaskCtx, "TaskContext가 있어야 합니다")
+		select {
+		case <-done:
+			// Success
+		case <-time.After(2 * time.Second):
+			t.Fatal("Timeout waiting for failure notification")
 		}
 
-		// 정리
-		s.Stop()
+		mockExecutor.AssertExpectations(t)
+		mockSender.AssertExpectations(t)
 	})
+
 	t.Run("스케줄 등록 실패 - 잘못된 TimeSpec", func(t *testing.T) {
 		s := &scheduler{}
-		mockSender := NewMockTaskNotificationSender()
-		mockRunner := &mockTaskRunner{}
+		mockSender := &MockNotificationSender{}
+		mockExecutor := &MockTaskExecutor{}
 
 		appConfig := &config.AppConfig{
 			Tasks: []config.TaskConfig{
@@ -245,77 +268,19 @@ func TestScheduler_StartStop(t *testing.T) {
 			},
 		}
 
+		// Note: The original code handled error immediately in Start loop because Start is synchronous regarding config parsing.
+		// However, Start method loop iterates configs, if Parse fails, it calls handleError.
+		// Since we want to verify this call, and it happens during Start execution (synchronously relative to config processing loop),
+		// we can just set expectation and assert after Start.
+
+		mockSender.On("NotifyWithTaskContext", "test-notifier", mock.MatchedBy(func(msg string) bool {
+			return assert.Contains(t, msg, "Cron 스케줄 파싱 실패")
+		}), mock.Anything).Return().Once()
+
 		// 스케줄러 시작
-		s.Start(appConfig, mockRunner, mockSender)
+		s.Start(appConfig, mockExecutor, mockSender)
+		defer s.Stop()
 
-		// 알림이 발송되었는지 확인
-		assert.Greater(t, mockSender.GetNotifyWithTaskContextCallCount(), 0, "오류 발생 시 알림이 발송되어야 합니다")
-
-		if mockSender.GetNotifyWithTaskContextCallCount() > 0 {
-			call := mockSender.NotifyWithTaskContextCalls[0]
-			assert.Equal(t, "test-notifier", call.NotifierID)
-			assert.Contains(t, call.Message, "Cron 스케줄 파싱 실패")
-			assert.NotNil(t, call.TaskCtx)
-		}
-
-		// 정리
-		s.Stop()
+		mockSender.AssertExpectations(t)
 	})
-}
-
-// mockTaskRunner는 테스트용 TaskRunner 구현체입니다.
-type mockTaskRunner struct {
-	mu           sync.Mutex
-	taskRunCalls []taskRunCall
-}
-
-type taskRunCall struct {
-	taskID        TaskID
-	taskCommandID TaskCommandID
-	notifierID    string
-	taskRunBy     TaskRunBy
-}
-
-func (m *mockTaskRunner) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.taskRunCalls = append(m.taskRunCalls, taskRunCall{
-		taskID:        taskID,
-		taskCommandID: taskCommandID,
-		notifierID:    notifierID,
-		taskRunBy:     taskRunBy,
-	})
-	return true
-}
-
-func (m *mockTaskRunner) GetTaskRunCalls() []taskRunCall {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Return a copy to avoid race conditions on the slice itself if modified later (though append creates new underlying array usually, better safe)
-	calls := make([]taskRunCall, len(m.taskRunCalls))
-	copy(calls, m.taskRunCalls)
-	return calls
-}
-
-func (m *mockTaskRunner) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) bool {
-	return m.TaskRun(taskID, taskCommandID, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
-}
-
-func (m *mockTaskRunner) TaskCancel(taskInstanceID TaskInstanceID) bool {
-	return true
-}
-
-// mockTaskRunnerWithFailure는 항상 실패하는 TaskRunner 구현체입니다.
-type mockTaskRunnerWithFailure struct{}
-
-func (m *mockTaskRunnerWithFailure) TaskRun(taskID TaskID, taskCommandID TaskCommandID, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) bool {
-	return false // 항상 실패
-}
-
-func (m *mockTaskRunnerWithFailure) TaskRunWithContext(taskID TaskID, taskCommandID TaskCommandID, taskCtx TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy TaskRunBy) bool {
-	return false // 항상 실패
-}
-
-func (m *mockTaskRunnerWithFailure) TaskCancel(taskInstanceID TaskInstanceID) bool {
-	return true
 }

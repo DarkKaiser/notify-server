@@ -254,7 +254,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		// 상품 페이지를 읽어들인다.
 		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
-		doc, err := task.NewHTMLDocument(t.Fetcher, productDetailPageURL)
+		doc, err := task.FetchHTMLDocument(t.Fetcher, productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}

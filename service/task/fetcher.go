@@ -18,12 +18,12 @@ type Fetcher interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// HTTPFetcher 타임아웃과 User-Agent가 설정된 HTTP 클라이언트 구현체
+// HTTPFetcher 기본 타임아웃(30초) 및 User-Agent 자동 추가 기능이 내장된 HTTP 클라이언트 구현체입니다.
 type HTTPFetcher struct {
 	client *http.Client
 }
 
-// NewHTTPFetcher 30초 타임아웃이 설정된 HTTPFetcher를 생성합니다
+// NewHTTPFetcher 기본 타임아웃(30초) 설정이 포함된 새로운 HTTPFetcher 인스턴스를 생성합니다.
 func NewHTTPFetcher() *HTTPFetcher {
 	return &HTTPFetcher{
 		client: &http.Client{
@@ -32,7 +32,8 @@ func NewHTTPFetcher() *HTTPFetcher {
 	}
 }
 
-// Get 지정된 URL로 GET 요청을 전송합니다 (User-Agent 자동 설정)
+// Get 지정된 URL로 HTTP GET 요청을 전송합니다.
+// User-Agent 헤더가 설정되지 않은 경우, 크롬 브라우저 값으로 자동 설정됩니다.
 func (h *HTTPFetcher) Get(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -41,7 +42,8 @@ func (h *HTTPFetcher) Get(url string) (*http.Response, error) {
 	return h.Do(req)
 }
 
-// Do HTTP 요청을 전송하며, User-Agent 헤더가 없으면 자동으로 추가합니다
+// Do 커스텀 HTTP 요청을 실행합니다.
+// 요청 헤더에 User-Agent가 없는 경우, 기본값(Chrome)을 자동으로 추가하여 봇 차단을 방지합니다.
 func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 	// User-Agent가 설정되지 않은 경우 기본값(Chrome) 설정
 	if req.Header.Get("User-Agent") == "" {
@@ -50,9 +52,9 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 	return h.client.Do(req)
 }
 
-// NewHTMLDocument 지정된 URL에서 HTML 문서를 가져와 goquery.Document로 파싱합니다
-// 인코딩 변환(UTF-8)을 자동으로 처리합니다
-func NewHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
+// FetchHTMLDocument 지정된 URL로 HTTP 요청을 보내 HTML 문서를 가져오고, goquery.Document로 파싱합니다.
+// 응답 헤더의 Content-Type을 분석하여, 비 UTF-8 인코딩(예: EUC-KR) 페이지도 자동으로 UTF-8로 변환하여 처리합니다.
+func FetchHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	resp, err := fetcher.Get(url)
 	if err != nil {
 		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
@@ -77,10 +79,10 @@ func NewHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 	return doc, nil
 }
 
-// NewHTMLDocumentSelection HTML 문서에서 CSS 선택자로 요소를 찾아 반환합니다
-// 선택자에 해당하는 요소가 없으면 에러를 반환합니다
-func NewHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
-	doc, err := NewHTMLDocument(fetcher, url)
+// FetchHTMLSelection 지정된 URL의 HTML 문서에서 CSS 선택자(selector)에 해당하는 요소를 찾습니다.
+// 선택된 요소가 없으면 에러를 반환하여, 변경된 웹 페이지 구조를 조기에 감지할 수 있도록 돕습니다.
+func FetchHTMLSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
+	doc, err := FetchHTMLDocument(fetcher, url)
 	if err != nil {
 		return nil, err
 	}
@@ -93,21 +95,8 @@ func NewHTMLDocumentSelection(fetcher Fetcher, url string, selector string) (*go
 	return sel, nil
 }
 
-// WebScrape HTML 문서에서 CSS 선택자로 요소들을 찾아 각 요소마다 콜백 함수를 실행합니다
-func WebScrape(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
-	sel, err := NewHTMLDocumentSelection(fetcher, url, selector)
-	if err != nil {
-		return err
-	}
-
-	sel.EachWithBreak(f)
-
-	return nil
-}
-
-// UnmarshalFromResponseJSONData HTTP 요청을 전송하고 응답 JSON을 구조체로 변환합니다
-// json.Decoder를 사용하여 스트림 방식으로 처리합니다
-func UnmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
+// FetchJSON HTTP 요청을 수행하고 응답 본문(JSON)을 지정된 구조체(v)로 디코딩합니다.
+func FetchJSON(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("페이지(%s) 접근이 실패하였습니다.", url))
@@ -130,6 +119,18 @@ func UnmarshalFromResponseJSONData(fetcher Fetcher, method, url string, header m
 	if err = json.NewDecoder(resp.Body).Decode(v); err != nil {
 		return apperrors.Wrap(err, ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.", url))
 	}
+
+	return nil
+}
+
+// ScrapeHTML 지정된 URL의 HTML 문서에서 CSS 선택자에 해당하는 모든 요소를 순회하며 콜백 함수를 실행합니다.
+func ScrapeHTML(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
+	sel, err := FetchHTMLSelection(fetcher, url, selector)
+	if err != nil {
+		return err
+	}
+
+	sel.EachWithBreak(f)
 
 	return nil
 }
