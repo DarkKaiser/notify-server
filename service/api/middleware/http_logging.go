@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 )
@@ -146,7 +146,7 @@ func maskSensitiveQueryParams(uri string) string {
 	for _, param := range sensitiveQueryParams {
 		if q.Has(param) {
 			val := q.Get(param)
-			q.Set(param, strutils.MaskSensitiveData(val))
+			q.Set(param, strutil.MaskSensitiveData(val))
 			masked = true
 		}
 	}

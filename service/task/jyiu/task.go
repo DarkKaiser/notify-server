@@ -9,7 +9,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -153,7 +153,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		}
 		id = id[pos1+1 : pos2]
 
-		title := strutils.NormalizeSpaces(as.Eq(1).Find("a").Text())
+		title := strutil.NormalizeSpaces(as.Eq(1).Find("a").Text())
 		if utf8.ValidString(title) == false {
 			title0 := ""
 			for _, v := range title {
@@ -167,7 +167,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 
 		actualityTaskResultData.Notices = append(actualityTaskResultData.Notices, &jyiuNotice{
 			Title: title,
-			Date:  strutils.NormalizeSpaces(as.Eq(3).Text()),
+			Date:  strutil.NormalizeSpaces(as.Eq(3).Text()),
 			URL:   fmt.Sprintf("%sgms_005001/view?id=%s", jyiuBaseURL, id),
 		})
 
@@ -262,7 +262,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		}
 		url = url[pos1+1 : pos2]
 
-		title := strutils.NormalizeSpaces(as.Eq(2).Text())
+		title := strutil.NormalizeSpaces(as.Eq(2).Text())
 		if utf8.ValidString(title) == false {
 			title0 := ""
 			for _, v := range title {
@@ -276,8 +276,8 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 
 		actualityTaskResultData.Educations = append(actualityTaskResultData.Educations, &jyiuEducation{
 			Title:            title,
-			TrainingPeriod:   strutils.NormalizeSpaces(as.Eq(4).Text()),
-			AcceptancePeriod: strutils.NormalizeSpaces(as.Eq(5).Text()),
+			TrainingPeriod:   strutil.NormalizeSpaces(as.Eq(4).Text()),
+			AcceptancePeriod: strutil.NormalizeSpaces(as.Eq(5).Text()),
 			URL:              fmt.Sprintf("%s%s", jyiuBaseURL, url),
 		})
 
