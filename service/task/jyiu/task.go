@@ -15,11 +15,11 @@ import (
 
 const (
 	// TaskID
-	TidJyiu task.TaskID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
+	TidJyiu task.ID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
 
 	// TaskCommandID
-	TcidJyiuWatchNewNotice    task.TaskCommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
-	TcidJyiuWatchNewEducation task.TaskCommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
+	TcidJyiuWatchNewNotice    task.CommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
+	TcidJyiuWatchNewEducation task.CommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
 )
 
 const (
@@ -77,22 +77,22 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidJyiu {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidJyiu {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &jyiuTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 				},
 			}
 
@@ -111,7 +111,7 @@ func init() {
 					return tTask.runWatchNewEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return tTask, nil
@@ -213,7 +213,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		message = "새로운 공지사항이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
@@ -320,7 +320,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		message = "새로운 교육프로그램이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {

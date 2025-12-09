@@ -23,13 +23,13 @@ type NotificationService struct {
 
 	notifierFactory NotifierFactory
 
-	taskRunner task.TaskRunner
+	executor task.Executor
 
 	// notificationStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
 	notificationStopWaiter *sync.WaitGroup
 }
 
-func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *NotificationService {
+func NewService(appConfig *config.AppConfig, executor task.Executor) *NotificationService {
 	service := &NotificationService{
 		appConfig: appConfig,
 
@@ -38,7 +38,7 @@ func NewService(appConfig *config.AppConfig, taskRunner task.TaskRunner) *Notifi
 
 		defaultNotifierHandler: nil,
 
-		taskRunner: taskRunner,
+		executor: executor,
 
 		notificationStopWaiter: &sync.WaitGroup{},
 	}
@@ -56,15 +56,15 @@ func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
 }
 
 // Run 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
-func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	applog.WithComponent("notification.service").Info("Notification 서비스 시작중...")
 
-	if s.taskRunner == nil {
+	if s.executor == nil {
 		defer serviceStopWaiter.Done()
-		return apperrors.New(apperrors.ErrInternal, "TaskRunner 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "Executor 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
@@ -91,7 +91,7 @@ func (s *NotificationService) Run(serviceStopCtx context.Context, serviceStopWai
 
 		s.notificationStopWaiter.Add(1)
 
-		go h.Run(s.taskRunner, serviceStopCtx, s.notificationStopWaiter)
+		go h.Run(s.executor, serviceStopCtx, s.notificationStopWaiter)
 
 		applog.WithComponentAndFields("notification.service", log.Fields{
 			"notifier_id": h.ID(),
@@ -128,7 +128,7 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 
 	s.runningMu.Lock()
 	s.running = false
-	s.taskRunner = nil
+	s.executor = nil
 	s.notifierHandlers = nil
 	s.defaultNotifierHandler = nil
 	s.runningMu.Unlock()

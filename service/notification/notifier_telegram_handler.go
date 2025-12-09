@@ -21,7 +21,7 @@ const (
 )
 
 // handleCommand 사용자 텔레그램 명령어 처리
-func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tgbotapi.Message) {
+func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbotapi.Message) {
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
 		n.sendUnknownCommandMessage(message.Text)
@@ -38,13 +38,13 @@ func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tg
 
 	// '/cancel_{ID}' 명령어 처리 (작업 취소)
 	if strings.HasPrefix(command, fmt.Sprintf("%s%s", telegramBotCommandCancel, telegramBotCommandSeparator)) {
-		n.handleCancelCommand(taskRunner, command)
+		n.handleCancelCommand(executor, command)
 		return
 	}
 
 	// 등록된 작업 실행 명령어인지 확인 후 처리
 	if botCommand, found := n.findBotCommand(command); found {
-		n.executeCommand(taskRunner, botCommand)
+		n.executeCommand(executor, botCommand)
 		return
 	}
 
@@ -62,11 +62,17 @@ func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, b
 	return telegramBotCommand{}, false
 }
 
-// executeCommand 주어진 봇 명령어를 TaskRunner를 통해 실행합니다.
-func (n *telegramNotifier) executeCommand(taskRunner task.TaskRunner, botCommand telegramBotCommand) {
-	// TaskRunner를 통해 작업을 비동기로 실행 요청
+// executeCommand 주어진 봇 명령어를 Executor를 통해 실행합니다.
+func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand telegramBotCommand) {
+	// Executor를 통해 작업을 비동기로 실행 요청
 	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 false 반환
-	if !taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) {
+	if !executor.Run(&task.RunRequest{
+		TaskID:        botCommand.taskID,
+		TaskCommandID: botCommand.taskCommandID,
+		NotifierID:    string(n.ID()),
+		NotifyOnStart: true,
+		RunBy:         task.RunByUser,
+	}) {
 		// 실행 실패 알림 발송
 		n.requestC <- &notifyRequest{
 			message: msgTaskExecutionFailed,
@@ -94,15 +100,15 @@ func (n *telegramNotifier) sendHelpCommandMessage() {
 }
 
 // handleCancelCommand 작업 취소 요청 처리
-func (n *telegramNotifier) handleCancelCommand(taskRunner task.TaskRunner, command string) {
+func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command string) {
 	// 취소명령 형식 : /cancel_nnnn (구분자로 분리)
 	commandSplit := strings.Split(command, telegramBotCommandSeparator)
 
 	// 올바른 형식인지 확인 (2부분으로 나뉘어야 함)
 	if len(commandSplit) == 2 {
 		taskInstanceID := commandSplit[1]
-		// TaskRunner에 취소 요청
-		if !taskRunner.TaskCancel(task.TaskInstanceID(taskInstanceID)) {
+		// Executor에 취소 요청
+		if !executor.Cancel(task.InstanceID(taskInstanceID)) {
 			// 취소 실패 시 알림
 			n.requestC <- &notifyRequest{
 				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
@@ -151,8 +157,8 @@ func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext)
 	}
 
 	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
-	taskID, ok1 := taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
-	taskCommandID, ok2 := taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+	taskID, ok1 := taskCtx.Value(task.TaskCtxKeyID).(task.ID)
+	taskCommandID, ok2 := taskCtx.Value(task.TaskCtxKeyCommandID).(task.CommandID)
 
 	if ok1 && ok2 {
 		for _, botCommand := range n.botCommands {
@@ -167,7 +173,7 @@ func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext)
 
 // appendCancelCommandAndElapsedTime TaskContext에서 작업 인스턴스 ID를 기반으로 취소 명령어를 메시지에 추가하고, 실행 경과 시간을 추가합니다.
 func (n *telegramNotifier) appendCancelCommandAndElapsedTime(message string, taskCtx task.TaskContext) string {
-	taskInstanceID, ok := taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID)
+	taskInstanceID, ok := taskCtx.Value(task.TaskCtxKeyInstanceID).(task.InstanceID)
 	if !ok {
 		return message
 	}

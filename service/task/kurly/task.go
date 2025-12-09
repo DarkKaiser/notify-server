@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	TidKurly task.TaskID = "KURLY" // 마켓컬리
+	TidKurly task.ID = "KURLY" // 마켓컬리
 
-	TcidKurlyWatchProductPrice task.TaskCommandID = "WatchProductPrice" // 마켓컬리 가격 확인
+	TcidKurlyWatchProductPrice task.CommandID = "WatchProductPrice" // 마켓컬리 가격 확인
 )
 
 const (
@@ -137,22 +137,22 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidKurly {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidKurly {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &kurlyTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 
 					Fetcher: nil,
 				},
@@ -170,9 +170,9 @@ func init() {
 				switch tTask.GetCommandID() {
 				case TcidKurlyWatchProductPrice:
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.TaskID(t.ID) {
+						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
 									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
@@ -188,7 +188,7 @@ func init() {
 						}
 					}
 				}
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return tTask, nil
@@ -480,7 +480,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {

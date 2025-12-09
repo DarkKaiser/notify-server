@@ -220,7 +220,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 			CommandID:  TcidKurlyWatchProductPrice,
 			NotifierID: "test-notifier",
 			Fetcher:    mockFetcher,
-			RunBy:      task.TaskRunByScheduler, // 스케줄러 실행으로 설정
+			RunBy:      task.RunByScheduler,
 		},
 	}
 

@@ -19,7 +19,7 @@ func TestTelegramNotifier_Run_HelpCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -78,7 +78,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -93,7 +93,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskCancel to be called
-	mockTaskRunner.On("TaskCancel", task.TaskInstanceID("1234")).Run(func(args mock.Arguments) {
+	mockTaskRunner.On("Cancel", task.InstanceID("1234")).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)
 
@@ -117,7 +117,7 @@ func TestTelegramNotifier_Run_CancelCommand(t *testing.T) {
 	case <-done:
 		// Success
 	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for TaskCancel")
+		t.Fatal("Timeout waiting for Cancel")
 	}
 
 	// Cleanup
@@ -134,7 +134,7 @@ func TestTelegramNotifier_Run_UnknownCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 	appConfig := &config.AppConfig{}
 
@@ -193,7 +193,7 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockTaskRunner := &MockTaskRunner{}
+	mockTaskRunner := &MockExecutor{}
 	chatID := int64(12345)
 
 	// Construct config with a task command
@@ -228,7 +228,13 @@ func TestTelegramNotifier_Run_TaskCommand(t *testing.T) {
 	mockBot.On("StopReceivingUpdates").Return()
 
 	// Expect TaskRun to be called
-	mockTaskRunner.On("TaskRun", task.TaskID("test_task"), task.TaskCommandID("run"), "test-notifier", true, task.TaskRunByUser).Run(func(args mock.Arguments) {
+	mockTaskRunner.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
+		return req.TaskID == "test_task" &&
+			req.TaskCommandID == "run" &&
+			req.NotifierID == "test-notifier" &&
+			req.NotifyOnStart == true &&
+			req.RunBy == task.RunByUser
+	})).Run(func(args mock.Arguments) {
 		close(done)
 	}).Return(true)
 

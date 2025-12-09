@@ -33,7 +33,7 @@ func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppCon
 	appConfig.NotifyAPI.WS.TLSServer = false
 
 	mockService := &MockNotificationService{}
-	service := NewNotifyAPIService(appConfig, mockService, common.BuildInfo{
+	service := NewService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -52,7 +52,7 @@ func TestNotifyAPIService_Run(t *testing.T) {
 	wg.Add(1)
 
 	// 서비스 시작
-	go service.Run(ctx, wg)
+	go service.Start(ctx, wg)
 
 	// 서비스 시작 대기
 	time.Sleep(500 * time.Millisecond)
@@ -84,7 +84,7 @@ func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
 	wg.Add(1)
 
 	// 서비스 시작
-	go service.Run(ctx, wg)
+	go service.Start(ctx, wg)
 
 	// 서비스가 완전히 시작될 때까지 대기
 	time.Sleep(500 * time.Millisecond)
@@ -121,11 +121,11 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 	wg.Add(2) // 두 번 시작 시도
 
 	// 첫 번째 시작
-	go service.Run(ctx, wg)
+	go service.Start(ctx, wg)
 	time.Sleep(500 * time.Millisecond)
 
 	// 두 번째 시작 시도 (이미 실행 중이므로 즉시 반환되어야 함)
-	go service.Run(ctx, wg)
+	go service.Start(ctx, wg)
 
 	// 모든 Run 호출이 완료될 때까지 대기
 	time.Sleep(500 * time.Millisecond)
@@ -153,7 +153,7 @@ func TestNotifyAPIService_NilNotificationService(t *testing.T) {
 	appConfig.NotifyAPI.WS.ListenPort = 18084
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	service := NewNotifyAPIService(appConfig, nil, common.BuildInfo{
+	service := NewService(appConfig, nil, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -166,7 +166,7 @@ func TestNotifyAPIService_NilNotificationService(t *testing.T) {
 	wg.Add(1)
 
 	// nil NotificationService로 시작 시도 - error가 반환되어야 함
-	err := service.Run(ctx, wg)
+	err := service.Start(ctx, wg)
 
 	// 초기화 되지 않은 NotificationService로 인해 에러 발생 확인
 	assert.Error(t, err)

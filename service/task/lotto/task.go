@@ -19,10 +19,10 @@ import (
 
 const (
 	// TaskID
-	TidLotto task.TaskID = "LOTTO"
+	TidLotto task.ID = "LOTTO"
 
 	// TaskCommandID
-	TcidLottoPrediction task.TaskCommandID = "Prediction" // 로또 번호 예측
+	TcidLottoPrediction task.CommandID = "Prediction" // 로또 번호 예측
 )
 
 // CommandProcess 실행 중인 프로세스를 추상화하는 인터페이스
@@ -90,14 +90,14 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidLotto {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidLotto {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
 			for _, t := range appConfig.Tasks {
-				if taskRunData.TaskID == task.TaskID(t.ID) {
+				if req.TaskID == task.ID(t.ID) {
 					taskData := &lottoTaskData{}
 					if err := task.FillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
@@ -111,15 +111,15 @@ func init() {
 
 			lottoTask := &lottoTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 				},
 
 				appPath: appPath,
@@ -133,7 +133,7 @@ func init() {
 					return lottoTask.runPrediction()
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return lottoTask, nil

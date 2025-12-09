@@ -14,10 +14,10 @@ import (
 
 const (
 	// TaskID
-	TidJdc task.TaskID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
+	TidJdc task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
 	// TaskCommandID
-	TcidJdcWatchNewOnlineEducation task.TaskCommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
+	TcidJdcWatchNewOnlineEducation task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 
 const (
@@ -53,22 +53,22 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidJdc {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidJdc {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			t := &jdcTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 				},
 			}
 
@@ -84,7 +84,7 @@ func init() {
 					return t.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return t, nil
@@ -147,7 +147,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		message = "새로운 온라인교육 강의가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.OnlineEducationCourses) == 0 {
 				message = "등록된 온라인교육 강의가 존재하지 않습니다."
 			} else {

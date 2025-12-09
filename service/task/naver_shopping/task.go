@@ -18,10 +18,10 @@ const (
 	naverShoppingWatchPriceTaskCommandIDPrefix string = "WatchPrice_"
 
 	// TaskID
-	TidNaverShopping task.TaskID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
+	TidNaverShopping task.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
 	// TaskCommandID
-	TcidNaverShoppingWatchPriceAny = task.TaskCommandID(naverShoppingWatchPriceTaskCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
+	TcidNaverShoppingWatchPriceAny = task.CommandID(naverShoppingWatchPriceTaskCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
 
 	// 네이버쇼핑 검색 URL
 	naverShoppingSearchURL = "https://openapi.naver.com/v1/search/shop.json"
@@ -104,14 +104,14 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidNaverShopping {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidNaverShopping {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			taskData := &naverShoppingTaskData{}
 			for _, t := range appConfig.Tasks {
-				if taskRunData.TaskID == task.TaskID(t.ID) {
+				if req.TaskID == task.ID(t.ID) {
 					if err := task.FillTaskDataFromMap(taskData, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
@@ -124,15 +124,15 @@ func init() {
 
 			tTask := &naverShoppingTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 
 					Fetcher: nil,
 				},
@@ -153,9 +153,9 @@ func init() {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(tTask.GetCommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.TaskID(t.ID) {
+						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									taskCommandData := &naverShoppingWatchPriceTaskCommandData{}
 									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
@@ -172,7 +172,7 @@ func init() {
 					}
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return tTask, nil
@@ -309,7 +309,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {

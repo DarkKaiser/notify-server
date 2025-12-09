@@ -23,7 +23,7 @@ func newMockService() *mockService {
 	}
 }
 
-func (m *mockService) Run(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (m *mockService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	defer serviceStopWaiter.Done()
 
 	m.mu.Lock()
@@ -57,7 +57,7 @@ func TestMockService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 
 		wg.Add(1)
-		go mock.Run(ctx, wg)
+		go mock.Start(ctx, wg)
 
 		// 서비스가 시작될 때까지 대기 (채널 사용)
 		select {
@@ -97,8 +97,8 @@ func TestMockService_Run(t *testing.T) {
 		wg := &sync.WaitGroup{}
 
 		wg.Add(2)
-		go mock1.Run(ctx, wg)
-		go mock2.Run(ctx, wg)
+		go mock1.Start(ctx, wg)
+		go mock2.Start(ctx, wg)
 
 		// 모든 서비스가 시작될 때까지 대기
 		timeout := time.After(1 * time.Second)

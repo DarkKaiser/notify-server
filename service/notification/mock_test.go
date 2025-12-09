@@ -34,22 +34,17 @@ func (m *MockTelegramBot) GetSelf() tgbotapi.User {
 	return args.Get(0).(tgbotapi.User)
 }
 
-// MockTaskRunner is a shared mock implementation of TaskRunner interface
-type MockTaskRunner struct {
+// MockExecutor is a shared mock implementation of Executor interface
+type MockExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskRunner) TaskRun(taskID task.TaskID, taskCommandID task.TaskCommandID, notifierID string, manualRun bool, runType task.TaskRunBy) bool {
-	args := m.Called(taskID, taskCommandID, notifierID, manualRun, runType)
+func (m *MockExecutor) Run(req *task.RunRequest) bool {
+	args := m.Called(req)
 	return args.Bool(0)
 }
 
-func (m *MockTaskRunner) TaskRunWithContext(taskID task.TaskID, taskCommandID task.TaskCommandID, taskCtx task.TaskContext, notifierID string, notifyResultOfTaskRunRequest bool, taskRunBy task.TaskRunBy) (succeeded bool) {
-	args := m.Called(taskID, taskCommandID, taskCtx, notifierID, notifyResultOfTaskRunRequest, taskRunBy)
-	return args.Bool(0)
-}
-
-func (m *MockTaskRunner) TaskCancel(taskInstanceID task.TaskInstanceID) bool {
-	args := m.Called(taskInstanceID)
+func (m *MockExecutor) Cancel(instanceID task.InstanceID) bool {
+	args := m.Called(instanceID)
 	return args.Bool(0)
 }

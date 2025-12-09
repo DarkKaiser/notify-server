@@ -7,71 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTaskInstanceIDGenerator_New(t *testing.T) {
-	generator := &taskInstanceIDGenerator{}
-
-	// 여러 번 호출하여 고유한 ID가 생성되는지 확인
-	ids := make(map[TaskInstanceID]bool)
-	for i := 0; i < 100; i++ {
-		id := generator.New()
-		assert.NotEmpty(t, id, "생성된 ID는 비어있지 않아야 합니다")
-		assert.False(t, ids[id], "중복된 ID가 생성되지 않아야 합니다")
-		ids[id] = true
-
-		// 짧은 대기 시간을 두어 다른 타임스탬프 보장
-		time.Sleep(time.Microsecond)
-	}
-}
-
-func TestTaskInstanceIDGenerator_ToRadixNotation62String(t *testing.T) {
-	generator := &taskInstanceIDGenerator{}
-
-	cases := []struct {
-		value    int64
-		expected string
-	}{
-		{value: 0, expected: ""},      // 0은 빈 문자열 반환
-		{value: -1, expected: ""},     // 음수는 빈 문자열 반환
-		{value: 1, expected: "1"},     // 1은 "1"
-		{value: 10, expected: "a"},    // 10은 "a"
-		{value: 35, expected: "z"},    // 35는 "z"
-		{value: 36, expected: "A"},    // 36은 "A"
-		{value: 61, expected: "Z"},    // 61은 "Z"
-		{value: 62, expected: "10"},   // 62는 "10"
-		{value: 123, expected: "1Z"},  // 123은 "1Z"
-		{value: 3843, expected: "ZZ"}, // 3843은 "ZZ"
-	}
-
-	for _, c := range cases {
-		result := generator.toRadixNotation62String(c.value)
-		assert.Equal(t, c.expected, result, "value=%d에 대한 62진법 변환 결과가 일치해야 합니다", c.value)
-	}
-}
-
-func TestTaskInstanceIDGenerator_Reverse(t *testing.T) {
-	generator := &taskInstanceIDGenerator{}
-
-	cases := []struct {
-		input    []string
-		expected []string
-	}{
-		{input: []string{}, expected: []string{}},
-		{input: []string{"a"}, expected: []string{"a"}},
-		{input: []string{"a", "b"}, expected: []string{"b", "a"}},
-		{input: []string{"a", "b", "c"}, expected: []string{"c", "b", "a"}},
-		{input: []string{"1", "2", "3", "4", "5"}, expected: []string{"5", "4", "3", "2", "1"}},
-	}
-
-	for _, c := range cases {
-		// 원본 배열을 복사하여 사용 (reverse는 원본을 수정함)
-		inputCopy := make([]string, len(c.input))
-		copy(inputCopy, c.input)
-
-		result := generator.reverse(inputCopy)
-		assert.Equal(t, c.expected, result, "배열 역순 결과가 일치해야 합니다")
-	}
-}
-
 func TestTaskContext_With(t *testing.T) {
 	ctx := NewContext()
 
@@ -88,24 +23,24 @@ func TestTaskContext_With(t *testing.T) {
 func TestTaskContext_WithTask(t *testing.T) {
 	ctx := NewContext()
 
-	taskID := TaskID("TEST_TASK")
-	commandID := TaskCommandID("TEST_COMMAND")
+	taskID := ID("TEST_TASK")
+	commandID := CommandID("TEST_COMMAND")
 
 	ctx = ctx.WithTask(taskID, commandID)
 
-	assert.Equal(t, taskID, ctx.Value(TaskCtxKeyTaskID), "TaskID가 설정되어야 합니다")
-	assert.Equal(t, commandID, ctx.Value(TaskCtxKeyTaskCommandID), "TaskCommandID가 설정되어야 합니다")
+	assert.Equal(t, taskID, ctx.Value(TaskCtxKeyID), "TaskID가 설정되어야 합니다")
+	assert.Equal(t, commandID, ctx.Value(TaskCtxKeyCommandID), "TaskCommandID가 설정되어야 합니다")
 }
 
 func TestTaskContext_WithInstanceID(t *testing.T) {
 	ctx := NewContext()
 
-	instanceID := TaskInstanceID("test_instance_123")
+	instanceID := InstanceID("test_instance_123")
 	elapsedTime := int64(42)
 
 	ctx = ctx.WithInstanceID(instanceID, elapsedTime)
 
-	assert.Equal(t, instanceID, ctx.Value(TaskCtxKeyTaskInstanceID), "TaskInstanceID가 설정되어야 합니다")
+	assert.Equal(t, instanceID, ctx.Value(TaskCtxKeyInstanceID), "TaskInstanceID가 설정되어야 합니다")
 	assert.Equal(t, elapsedTime, ctx.Value(TaskCtxKeyElapsedTimeAfterRun), "경과 시간이 설정되어야 합니다")
 }
 
@@ -120,8 +55,8 @@ func TestTaskContext_WithError(t *testing.T) {
 func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
 	cases := []struct {
 		name             string
-		configCommandID  TaskCommandID
-		compareCommandID TaskCommandID
+		configCommandID  CommandID
+		compareCommandID CommandID
 		expectedResult   bool
 		description      string
 	}{
@@ -141,21 +76,21 @@ func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
 		},
 		{
 			name:             "와일드카드 매칭 - 일치",
-			configCommandID:  TaskCommandID("WatchPrice_" + taskCommandIDAnyString),
+			configCommandID:  CommandID("WatchPrice_*"),
 			compareCommandID: "WatchPrice_Product1",
 			expectedResult:   true,
 			description:      "와일드카드 패턴과 일치하면 true를 반환해야 합니다",
 		},
 		{
 			name:             "와일드카드 매칭 - 불일치",
-			configCommandID:  TaskCommandID("WatchPrice_" + taskCommandIDAnyString),
+			configCommandID:  CommandID("WatchPrice_*"),
 			compareCommandID: "WatchStock_Product1",
 			expectedResult:   false,
 			description:      "와일드카드 패턴과 일치하지 않으면 false를 반환해야 합니다",
 		},
 		{
 			name:             "와일드카드 매칭 - 짧은 입력",
-			configCommandID:  TaskCommandID("WatchPrice_" + taskCommandIDAnyString),
+			configCommandID:  CommandID("WatchPrice_*"),
 			compareCommandID: "Watch",
 			expectedResult:   false,
 			description:      "입력이 패턴보다 짧으면 false를 반환해야 합니다",
@@ -176,8 +111,8 @@ func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
 
 func TestFindConfigFromSupportedTask(t *testing.T) {
 	// 테스트용 임시 Task 등록
-	testTaskID := TaskID("TEST_TASK_FIND_CONFIG")
-	testCommandID := TaskCommandID("TEST_COMMAND")
+	testTaskID := ID("TEST_TASK_FIND_CONFIG")
+	testCommandID := CommandID("TEST_COMMAND")
 
 	originalTasks := supportedTasks
 	defer func() {
@@ -185,7 +120,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 		supportedTasks = originalTasks
 	}()
 
-	supportedTasks = make(map[TaskID]*TaskConfig)
+	supportedTasks = make(map[ID]*TaskConfig)
 	supportedTasks[testTaskID] = &TaskConfig{
 		CommandConfigs: []*TaskCommandConfig{
 			{
@@ -207,7 +142,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 Task를 찾는 경우", func(t *testing.T) {
-		taskConfig, commandConfig, err := findConfigFromSupportedTask(TaskID("NON_EXISTENT"), testCommandID)
+		taskConfig, commandConfig, err := findConfigFromSupportedTask(ID("NON_EXISTENT"), testCommandID)
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
 		assert.Equal(t, ErrNotSupportedTask, err, "ErrNotSupportedTask 에러를 반환해야 합니다")
@@ -216,7 +151,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 Command를 찾는 경우", func(t *testing.T) {
-		taskConfig, commandConfig, err := findConfigFromSupportedTask(testTaskID, TaskCommandID("NON_EXISTENT"))
+		taskConfig, commandConfig, err := findConfigFromSupportedTask(testTaskID, CommandID("NON_EXISTENT"))
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
 		assert.Equal(t, ErrNotSupportedCommand, err, "ErrNotSupportedCommand 에러를 반환해야 합니다")
@@ -227,23 +162,23 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 
 func TestTask_BasicMethods(t *testing.T) {
 	testTask := &Task{
-		ID:         TaskID("TEST_TASK"),
-		CommandID:  TaskCommandID("TEST_COMMAND"),
-		InstanceID: TaskInstanceID("test_instance_123"),
+		ID:         ID("TEST_TASK"),
+		CommandID:  CommandID("TEST_COMMAND"),
+		InstanceID: InstanceID("test_instance_123"),
 		NotifierID: "test_notifier",
 		Canceled:   false,
 	}
 
 	t.Run("ID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskID("TEST_TASK"), testTask.GetID(), "TaskID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, ID("TEST_TASK"), testTask.GetID(), "TaskID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("CommandID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskCommandID("TEST_COMMAND"), testTask.GetCommandID(), "TaskCommandID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, CommandID("TEST_COMMAND"), testTask.GetCommandID(), "TaskCommandID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("InstanceID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, TaskInstanceID("test_instance_123"), testTask.GetInstanceID(), "TaskInstanceID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, InstanceID("test_instance_123"), testTask.GetInstanceID(), "TaskInstanceID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("NotifierID 반환 테스트", func(t *testing.T) {

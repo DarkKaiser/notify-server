@@ -16,10 +16,10 @@ import (
 
 const (
 	// TaskID
-	TidNaver task.TaskID = "NAVER" // 네이버
+	TidNaver task.ID = "NAVER" // 네이버
 
 	// TaskCommandID
-	TcidNaverWatchNewPerformances task.TaskCommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
+	TcidNaverWatchNewPerformances task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
 type naverWatchNewPerformancesTaskCommandData struct {
@@ -74,22 +74,22 @@ func init() {
 			NewTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
-			if taskRunData.TaskID != TidNaver {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+			if req.TaskID != TidNaver {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &naverTask{
 				Task: task.Task{
-					ID:         taskRunData.TaskID,
-					CommandID:  taskRunData.TaskCommandID,
+					ID:         req.TaskID,
+					CommandID:  req.TaskCommandID,
 					InstanceID: instanceID,
 
-					NotifierID: taskRunData.NotifierID,
+					NotifierID: req.NotifierID,
 
 					Canceled: false,
 
-					RunBy: taskRunData.TaskRunBy,
+					RunBy: req.RunBy,
 
 					Fetcher: nil,
 				},
@@ -107,9 +107,9 @@ func init() {
 				switch tTask.GetCommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.TaskID(t.ID) {
+						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.TaskCommandID(c.ID) {
+								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									taskCommandData := &naverWatchNewPerformancesTaskCommandData{}
 									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
@@ -126,7 +126,7 @@ func init() {
 					}
 				}
 
-				return "", nil, task.ErrNoImplementationForTaskCommand
+				return "", nil, task.ErrNotImplementedCommand
 			}
 
 			return tTask, nil
@@ -255,7 +255,7 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.TaskRunByUser {
+		if t.RunBy == task.RunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {

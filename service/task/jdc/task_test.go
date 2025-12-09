@@ -137,7 +137,7 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 				CommandID:  TcidJdcWatchNewOnlineEducation,
 				NotifierID: "test-notifier",
 				Fetcher:    mockFetcher,
-				RunBy:      task.TaskRunByScheduler,
+				RunBy:      task.RunByScheduler,
 			},
 		}
 

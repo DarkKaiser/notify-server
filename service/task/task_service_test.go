@@ -52,17 +52,19 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	// 서비스가 시작될 때까지 대기
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	taskID := TaskID("TEST_TASK")
-	commandID := TaskCommandID("TEST_COMMAND")
-	notifierID := "test-notifier"
-
-	succeeded := service.TaskRun(taskID, commandID, notifierID, false, TaskRunByUser)
+	succeeded := service.Run(&RunRequest{
+		TaskID:        "TEST_TASK",
+		TaskCommandID: "TEST_COMMAND",
+		NotifierID:    "test-notifier",
+		NotifyOnStart: false,
+		RunBy:         RunByUser,
+	})
 
 	// 검증
 	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
@@ -83,7 +85,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	// 서비스가 시작될 때까지 대기
 	time.Sleep(100 * time.Millisecond)
@@ -92,11 +94,14 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	taskCtx := NewContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	taskID := TaskID("TEST_TASK")
-	commandID := TaskCommandID("TEST_COMMAND")
-	notifierID := "test-notifier"
-
-	succeeded := service.TaskRunWithContext(taskID, commandID, taskCtx, notifierID, false, TaskRunByUser)
+	succeeded := service.Run(&RunRequest{
+		TaskID:        "TEST_TASK",
+		TaskCommandID: "TEST_COMMAND",
+		NotifierID:    "test-notifier",
+		NotifyOnStart: false,
+		RunBy:         RunByUser,
+		TaskCtx:       taskCtx,
+	})
 
 	// 검증
 	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
@@ -117,14 +122,14 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	// 서비스가 시작될 때까지 대기
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 취소 요청
-	instanceID := TaskInstanceID("test_instance_123")
-	succeeded := service.TaskCancel(instanceID)
+	instanceID := InstanceID("test_instance_123")
+	succeeded := service.Cancel(instanceID)
 
 	// 검증
 	require.True(t, succeeded, "Task 취소 요청이 성공해야 합니다")
@@ -145,17 +150,19 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	// 서비스가 시작될 때까지 대기
 	time.Sleep(100 * time.Millisecond)
 
 	// 지원되지 않는 Task 실행 요청
-	taskID := TaskID("UNSUPPORTED_TASK")
-	commandID := TaskCommandID("UNSUPPORTED_COMMAND")
-	notifierID := "test-notifier"
-
-	succeeded := service.TaskRun(taskID, commandID, notifierID, false, TaskRunByUser)
+	succeeded := service.Run(&RunRequest{
+		TaskID:        "UNSUPPORTED_TASK",
+		TaskCommandID: "UNSUPPORTED_COMMAND",
+		NotifierID:    "test-notifier",
+		NotifyOnStart: false,
+		RunBy:         RunByUser,
+	})
 
 	// 검증
 	require.True(t, succeeded, "Task 실행 요청 자체는 성공해야 합니다")
@@ -181,7 +188,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	// 서비스가 시작될 때까지 대기
 	time.Sleep(100 * time.Millisecond)
@@ -198,7 +205,13 @@ func TestTaskService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultipleInstances=true)
-				service.TaskRun(TaskID("TEST_TASK"), TaskCommandID("TEST_COMMAND"), "test-notifier", false, TaskRunByUser)
+				service.Run(&RunRequest{
+					TaskID:        "TEST_TASK",
+					TaskCommandID: "TEST_COMMAND",
+					NotifierID:    "test-notifier",
+					NotifyOnStart: false,
+					RunBy:         RunByUser,
+				})
 				time.Sleep(time.Millisecond)
 			}
 		}()
@@ -209,8 +222,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 	// 모든 요청이 처리될 때까지 잠시 대기
 	time.Sleep(500 * time.Millisecond)
 
-	// 실행 중인 핸들러 개수 확인 (정확한 개수는 타이밍에 따라 다를 수 있으므로 에러가 없는지만 확인)
-	// 하지만 적어도 서비스가 죽지 않고 살아있어야 함
+	// 실행 중인 핸들러 개수 확인
 	require.True(t, service.running, "서비스가 계속 실행 중이어야 합니다")
 
 	// 서비스 중지
@@ -228,7 +240,7 @@ func TestTaskService_CancelConcurrency(t *testing.T) {
 	defer cancel()
 	serviceStopWaiter := &sync.WaitGroup{}
 	serviceStopWaiter.Add(1)
-	go service.Run(ctx, serviceStopWaiter)
+	go service.Start(ctx, serviceStopWaiter)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -240,13 +252,19 @@ func TestTaskService_CancelConcurrency(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
-			// Task 실행 (오래 걸리는 작업 시뮬레이션은 어렵지만, 등록은 됨)
-			service.TaskRun(TaskID("TEST_TASK"), TaskCommandID("TEST_COMMAND"), "test-notifier", false, TaskRunByUser)
+			// Task 실행
+			service.Run(&RunRequest{
+				TaskID:        "TEST_TASK",
+				TaskCommandID: "TEST_COMMAND",
+				NotifierID:    "test-notifier",
+				NotifyOnStart: false,
+				RunBy:         RunByUser,
+			})
 
-			// 실행된 Task를 찾아서 취소 시도 (ID를 알기 어려우므로 모든 핸들러 취소 시도)
+			// 실행된 Task를 찾아서 취소 시도
 			service.runningMu.Lock()
 			for instanceID := range service.taskHandlers {
-				go service.TaskCancel(instanceID)
+				go service.Cancel(instanceID)
 			}
 			service.runningMu.Unlock()
 

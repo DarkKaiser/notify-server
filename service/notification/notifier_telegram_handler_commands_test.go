@@ -84,7 +84,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go notif.Run(&MockTaskRunner{}, ctx, wg)
+		go notif.Run(&MockExecutor{}, ctx, wg)
 
 		sendMessageUpdate("/unknown")
 
@@ -134,7 +134,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go notif.Run(&MockTaskRunner{}, ctx, wg)
+		go notif.Run(&MockExecutor{}, ctx, wg)
 
 		sendMessageUpdate("/help")
 
@@ -167,18 +167,19 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		notif := createTestNotifier(mockBot)
 
 		done := make(chan struct{})
-		var capturedTaskID task.TaskID
-		var capturedCommandID task.TaskCommandID
+		var capturedTaskID task.ID
+		var capturedCommandID task.CommandID
 
 		mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan)).Once()
 		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
 		mockBot.On("StopReceivingUpdates").Return().Once()
 
-		mockTaskRunner := &MockTaskRunner{}
-		mockTaskRunner.On("TaskRun", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mockTaskRunner := &MockExecutor{}
+		mockTaskRunner.On("Run", mock.Anything).
 			Run(func(args mock.Arguments) {
-				capturedTaskID = args.Get(0).(task.TaskID)
-				capturedCommandID = args.Get(1).(task.TaskCommandID)
+				req := args.Get(0).(*task.RunRequest)
+				capturedTaskID = req.TaskID
+				capturedCommandID = req.TaskCommandID
 				close(done)
 			}).Return(true)
 
@@ -196,8 +197,8 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			t.Fatal("Timeout waiting for TaskRun")
 		}
 
-		assert.Equal(t, task.TaskID("task1"), capturedTaskID)
-		assert.Equal(t, task.TaskCommandID("run"), capturedCommandID)
+		assert.Equal(t, task.ID("task1"), capturedTaskID)
+		assert.Equal(t, task.CommandID("run"), capturedCommandID)
 
 		cancel()
 		wg.Wait()

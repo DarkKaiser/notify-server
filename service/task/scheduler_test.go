@@ -153,10 +153,15 @@ func TestScheduler_StartStop(t *testing.T) {
 		done := make(chan struct{})
 
 		// Expect TaskRun call
-		mockExecutor.On("TaskRun", TaskID("TestTask"), TaskCommandID("QuickCommand"), "test-notifier", false, TaskRunByScheduler).
-			Run(func(args mock.Arguments) {
-				close(done)
-			}).Return(true).Once()
+		mockExecutor.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
+			return req.TaskID == "TestTask" &&
+				req.TaskCommandID == "QuickCommand" &&
+				req.NotifierID == "test-notifier" &&
+				req.NotifyOnStart == false &&
+				req.RunBy == RunByScheduler
+		})).Run(func(args mock.Arguments) {
+			close(done)
+		}).Return(true).Once()
 
 		// 스케줄러 시작
 		s.Start(appConfig, mockExecutor, mockSender)
@@ -205,10 +210,15 @@ func TestScheduler_StartStop(t *testing.T) {
 		wg.Add(2) // 1 for TaskRun (fail), 1 for Notify
 
 		// Expect TaskRun call (return false for failure)
-		mockExecutor.On("TaskRun", TaskID("FailTask"), TaskCommandID("FailCommand"), "fail-notifier", false, TaskRunByScheduler).
-			Run(func(args mock.Arguments) {
-				wg.Done()
-			}).Return(false).Once()
+		mockExecutor.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
+			return req.TaskID == "FailTask" &&
+				req.TaskCommandID == "FailCommand" &&
+				req.NotifierID == "fail-notifier" &&
+				req.NotifyOnStart == false &&
+				req.RunBy == RunByScheduler
+		})).Run(func(args mock.Arguments) {
+			wg.Done()
+		}).Return(false).Once()
 
 		// Expect Notify call
 		mockSender.On("NotifyWithTaskContext", "fail-notifier", mock.MatchedBy(func(msg string) bool {

@@ -87,8 +87,8 @@ func TestNewTelegramNotifierWithBot(t *testing.T) {
 				// 첫 번째 명령어 확인 (test_task_run)
 				assert.Equal(t, "test_task_run", n.botCommands[0].command, "명령어가 일치해야 합니다")
 				assert.Equal(t, "테스트 작업 > 실행", n.botCommands[0].commandTitle, "명령어 제목이 일치해야 합니다")
-				assert.Equal(t, task.TaskID("TestTask"), n.botCommands[0].taskID, "TaskID가 일치해야 합니다")
-				assert.Equal(t, task.TaskCommandID("Run"), n.botCommands[0].taskCommandID, "TaskCommandID가 일치해야 합니다")
+				assert.Equal(t, task.ID("TestTask"), n.botCommands[0].taskID, "TaskID가 일치해야 합니다")
+				assert.Equal(t, task.CommandID("Run"), n.botCommands[0].taskCommandID, "TaskCommandID가 일치해야 합니다")
 
 				// help 명령어 확인
 				assert.Equal(t, "help", n.botCommands[1].command, "help 명령어가 등록되어야 합니다")

@@ -79,8 +79,8 @@ func newTelegramNotifierWithBot(id NotifierID, botAPI TelegramBotAPI, chatID int
 					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
 					commandDescription: c.Description,                            // 설명: 커맨드 설명
 
-					taskID:        task.TaskID(t.ID),
-					taskCommandID: task.TaskCommandID(c.ID),
+					taskID:        task.ID(t.ID),
+					taskCommandID: task.CommandID(c.ID),
 				},
 			)
 		}
