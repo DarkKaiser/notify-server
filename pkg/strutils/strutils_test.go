@@ -116,20 +116,26 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 }
 
 func TestFormatCommas(t *testing.T) {
-	cases := []struct {
-		num      int
-		expected string
-	}{
-		{num: 0, expected: "0"},
-		{num: 100, expected: "100"},
-		{num: 1000, expected: "1,000"},
-		{num: 1234567, expected: "1,234,567"},
-		{num: -1234567, expected: "-1,234,567"},
-	}
+	t.Run("int", func(t *testing.T) {
+		assert.Equal(t, "0", FormatCommas(0))
+		assert.Equal(t, "100", FormatCommas(100))
+		assert.Equal(t, "1,000", FormatCommas(1000))
+		assert.Equal(t, "1,234,567", FormatCommas(1234567))
+		assert.Equal(t, "-1,234,567", FormatCommas(-1234567))
+	})
 
-	for _, c := range cases {
-		assert.Equal(t, c.expected, FormatCommas(c.num))
-	}
+	t.Run("int64", func(t *testing.T) {
+		assert.Equal(t, "9,223,372,036,854,775,807", FormatCommas(int64(9223372036854775807)))
+		assert.Equal(t, "-9,223,372,036,854,775,808", FormatCommas(int64(-9223372036854775808)))
+	})
+
+	t.Run("uint", func(t *testing.T) {
+		assert.Equal(t, "1,000", FormatCommas(uint(1000)))
+	})
+
+	t.Run("uint64", func(t *testing.T) {
+		assert.Equal(t, "18,446,744,073,709,551,615", FormatCommas(uint64(18446744073709551615)))
+	})
 }
 
 func TestSplitAndTrim(t *testing.T) {
@@ -151,5 +157,29 @@ func TestSplitAndTrim(t *testing.T) {
 
 	for _, c := range cases {
 		assert.Equal(t, c.expected, SplitAndTrim(c.s, c.sep))
+	}
+}
+
+func TestMaskSensitiveData(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"빈 문자열", "", ""},
+		{"3자 이하 (1자)", "a", "***"},
+		{"3자 이하 (2자)", "ab", "***"},
+		{"3자 이하 (3자)", "abc", "***"},
+		{"12자 이하 (4자)", "abcd", "abcd***"},
+		{"12자 이하 (12자)", "123456789012", "1234***"},
+		{"긴 문자열 (토큰)", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz", "1234***wxyz"},
+		{"긴 문자열 (일반)", "this_is_a_very_long_secret_key", "this***_key"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MaskSensitiveData(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
 	}
 }

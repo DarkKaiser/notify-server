@@ -5,6 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/pkg/strutils"
 	"github.com/darkkaiser/notify-server/service/api/handler"
 	"github.com/darkkaiser/notify-server/service/api/model/domain"
 	log "github.com/sirupsen/logrus"
@@ -61,7 +62,7 @@ func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain
 	if app.AppKey != appKey {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"application_id":   applicationID,
-			"received_app_key": applog.MaskSensitiveData(appKey),
+			"received_app_key": strutils.MaskSensitiveData(appKey),
 		}).Warn("APP_KEY 불일치")
 
 		return nil, handler.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))

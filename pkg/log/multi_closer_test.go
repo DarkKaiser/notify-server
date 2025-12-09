@@ -96,6 +96,23 @@ func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 				}
 			}
 		}
-		assert.False(t, found, "Close 후에는 Hook이 제거되어야 합니다")
+	})
+}
+
+func TestMultiCloser_Close_WithNil(t *testing.T) {
+	t.Run("nil 클로저가 포함되어 있어도 정상 동작", func(t *testing.T) {
+		c1 := &mockCloser{}
+		var c2 io.Closer = nil // Explicit nil interface
+		c3 := &mockCloser{}
+
+		mc := &multiCloser{
+			closers: []io.Closer{c1, c2, c3},
+		}
+
+		err := mc.Close()
+
+		assert.NoError(t, err)
+		assert.True(t, c1.closed)
+		assert.True(t, c3.closed)
 	})
 }

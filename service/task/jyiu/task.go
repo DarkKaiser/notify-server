@@ -79,7 +79,7 @@ func init() {
 
 		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if taskRunData.TaskID != TidJyiu {
-				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &jyiuTask{
@@ -100,7 +100,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
@@ -132,23 +132,23 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
-	err = task.WebScrape(t.Fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.ScrapeHTML(t.Fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
 			return false
 		}
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		id = id[pos1+1 : pos2]
@@ -241,23 +241,23 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
-	err = task.WebScrape(t.Fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.ScrapeHTML(t.Fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
 			return false
 		}
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		url = url[pos1+1 : pos2]

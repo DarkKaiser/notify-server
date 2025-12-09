@@ -10,53 +10,55 @@ import (
 )
 
 func TestNewHTTPServer(t *testing.T) {
-	t.Run("Echo 서버 생성 - Debug 모드 활성화", func(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      HTTPServerConfig
+		checkDebug  bool
+		checkBanner bool
+	}{
+		{
+			name: "Debug 모드 활성화",
+			config: HTTPServerConfig{
+				Debug:        true,
+				AllowOrigins: []string{"*"},
+			},
+			checkDebug:  true,
+			checkBanner: true,
+		},
+		{
+			name: "Debug 모드 비활성화",
+			config: HTTPServerConfig{
+				Debug:        false,
+				AllowOrigins: []string{"http://example.com"},
+			},
+			checkDebug:  false,
+			checkBanner: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := NewHTTPServer(tt.config)
+
+			assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
+			assert.Equal(t, tt.checkDebug, e.Debug, "Debug 모드 설정이 일치해야 합니다")
+			assert.Equal(t, tt.checkBanner, e.HideBanner, "HideBanner 설정이 일치해야 합니다")
+		})
+	}
+
+	t.Run("기본 설정 확인", func(t *testing.T) {
 		e := NewHTTPServer(HTTPServerConfig{
 			Debug:        true,
 			AllowOrigins: []string{"*"},
 		})
 
-		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
-		assert.True(t, e.Debug, "Debug 모드가 활성화되어야 합니다")
-		assert.True(t, e.HideBanner, "Banner가 숨겨져야 합니다")
-	})
-
-	t.Run("Echo 서버 생성 - Debug 모드 비활성화", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        false,
-			AllowOrigins: []string{"http://example.com"},
-		})
-
-		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
-		assert.False(t, e.Debug, "Debug 모드가 비활성화되어야 합니다")
-		assert.True(t, e.HideBanner, "Banner가 숨겨져야 합니다")
-	})
-
-	t.Run("미들웨어 설정 확인", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
-		})
-
-		// Echo 인스턴스가 정상적으로 생성되었는지 확인
-		assert.NotNil(t, e, "Echo 인스턴스가 생성되어야 합니다")
-
-		// Logger가 설정되었는지 확인
 		assert.NotNil(t, e.Logger, "Logger가 설정되어야 합니다")
-	})
 
-	t.Run("기본 라우트 테스트", func(t *testing.T) {
-		e := NewHTTPServer(HTTPServerConfig{
-			Debug:        true,
-			AllowOrigins: []string{"*"},
-		})
-
-		// 테스트 라우트 추가
+		// 기본 라우트 테스트
 		e.GET("/test", func(c echo.Context) error {
 			return c.String(200, "test")
 		})
 
-		// 라우트가 정상적으로 추가되었는지 확인
 		routes := e.Routes()
 		found := false
 		for _, route := range routes {
@@ -65,7 +67,6 @@ func TestNewHTTPServer(t *testing.T) {
 				break
 			}
 		}
-
 		assert.True(t, found, "테스트 라우트가 추가되어야 합니다")
 	})
 }

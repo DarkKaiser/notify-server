@@ -23,8 +23,9 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 		}
 	}
 
-	// 404 에러 메시지 커스터마이징
-	if code == http.StatusNotFound {
+	// HTTP 상태 코드가 404 (찾을 수 없음)이고, 기본 메시지가 "Not Found"인 경우
+	// 사용자에게 더 친숙한 한국어 메시지로 변경하여 반환합니다.
+	if code == http.StatusNotFound && message == "Not Found" {
 		message = "페이지를 찾을 수 없습니다."
 	}
 

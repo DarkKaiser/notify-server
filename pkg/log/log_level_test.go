@@ -110,3 +110,44 @@ func TestInitFileWithOptions_BothLogs(t *testing.T) {
 		assert.Equal(t, 3, len(files), "총 3개의 로그 파일이 생성되어야 합니다")
 	})
 }
+
+func TestInitFileWithOptions_EmptyOptions(t *testing.T) {
+	t.Run("옵션 없이 초기화 시 메인 로그만 생성", func(t *testing.T) {
+		// 테스트용 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		originalLogDirBasePath := logDirectoryBasePath
+		logDirectoryBasePath = tempDir + string(os.PathSeparator)
+		defer func() {
+			logDirectoryBasePath = originalLogDirBasePath
+		}()
+
+		appName := "test-app-empty"
+		closer := InitFileWithOptions(appName, 7.0, InitFileOptions{}) // Empty options
+
+		defer func() {
+			if closer != nil {
+				closer.Close()
+				log.SetOutput(os.Stdout)
+			}
+		}()
+
+		assert.NotNil(t, closer)
+
+		// 로그 디렉토리 확인
+		logDir := filepath.Join(tempDir, defaultLogDirectoryName)
+		files, err := os.ReadDir(logDir)
+		assert.NoError(t, err)
+
+		// 메인 로그만 있어야 함
+		var mainLogCount int
+		for _, file := range files {
+			if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+defaultLogFileExtension) {
+				// .critical. 이나 .verbose. 가 없어야 함
+				if !strings.Contains(file.Name(), ".critical.") && !strings.Contains(file.Name(), ".verbose.") {
+					mainLogCount++
+				}
+			}
+		}
+		assert.Equal(t, 1, mainLogCount, "메인 로그 파일 1개만 생성되어야 합니다")
+	})
+}

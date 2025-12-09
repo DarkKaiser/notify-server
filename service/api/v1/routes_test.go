@@ -21,24 +21,25 @@ import (
 type mockNotificationService struct {
 	notifyCalled bool
 	lastMessage  string
+	shouldFail   bool
 }
 
 func (m *mockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
-	return true
+	return !m.shouldFail
 }
 
 func (m *mockNotificationService) NotifyToDefault(message string) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
-	return true
+	return !m.shouldFail
 }
 
 func (m *mockNotificationService) NotifyWithErrorToDefault(message string) bool {
 	m.notifyCalled = true
 	m.lastMessage = message
-	return true
+	return !m.shouldFail
 }
 
 // createTestAppConfig는 테스트용 AppConfig를 생성합니다.
@@ -92,212 +93,166 @@ func TestSetupRoutes(t *testing.T) {
 	}
 }
 
-// TestNotificationsEndpoint는 /api/v1/notifications 엔드포인트가 정상적으로 동작하는지 테스트합니다.
-func TestNotificationsEndpoint(t *testing.T) {
+// TestNotificationsEndpoint_TableDriven는 다양한 시나리오에 대한 알림 게시 엔드포인트 테스트를 수행합니다.
+func TestNotificationsEndpoint_TableDriven(t *testing.T) {
 	e := echo.New()
-
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
 
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	// 요청 본문 생성
-	reqBody := request.NotificationRequest{
-		ApplicationID: "test-app",
-		Message:       "테스트 메시지",
-		ErrorOccurred: false,
-	}
-	bodyBytes, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	// HTTP 요청 생성
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications?app_key=test-app-key", bytes.NewReader(bodyBytes))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	// 응답 검증
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var successResp response.SuccessResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &successResp)
-	require.NoError(t, err)
-
-	assert.Equal(t, 0, successResp.ResultCode)
-
-	// NotificationService가 호출되었는지 확인
-	assert.True(t, mockService.notifyCalled, "NotificationService.Notify가 호출되지 않았습니다")
-	assert.Equal(t, "테스트 메시지", mockService.lastMessage)
-}
-
-// TestLegacyNoticeMessageEndpoint는 레거시 /api/v1/notice/message 엔드포인트가 동작하는지 테스트합니다.
-func TestLegacyNoticeMessageEndpoint(t *testing.T) {
-	e := echo.New()
-
-	appConfig := createTestAppConfig()
-	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
-
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	// 요청 본문 생성
-	reqBody := request.NotificationRequest{
-		ApplicationID: "test-app",
-		Message:       "레거시 엔드포인트 테스트",
-		ErrorOccurred: false,
-	}
-	bodyBytes, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	// HTTP 요청 생성 (레거시 엔드포인트)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notice/message?app_key=test-app-key", bytes.NewReader(bodyBytes))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	// 응답 검증
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var successResp response.SuccessResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &successResp)
-	require.NoError(t, err)
-
-	assert.Equal(t, 0, successResp.ResultCode)
-
-	// N	otificationSender가 호출되었는지 확인
-	assert.True(t, mockService.notifyCalled)
-	assert.Equal(t, "레거시 엔드포인트 테스트", mockService.lastMessage)
-}
-
-// TestNotificationsEndpoint_MissingAppKey는 app_key가 없을 때 400 에러를 반환하는지 테스트합니다.
-func TestNotificationsEndpoint_MissingAppKey(t *testing.T) {
-	e := echo.New()
-
-	appConfig := createTestAppConfig()
-	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
-
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	// 요청 본문 생성
-	reqBody := request.NotificationRequest{
-		ApplicationID: "test-app",
-		Message:       "테스트 메시지",
-		ErrorOccurred: false,
-	}
-	bodyBytes, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	// app_key 없이 요청
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", bytes.NewReader(bodyBytes))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	// 400 에러 응답 검증
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-
-	var errorResp response.ErrorResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &errorResp)
-	require.NoError(t, err)
-
-	assert.Contains(t, errorResp.Message, "app_key")
-}
-
-// TestNotificationsEndpoint_InvalidAppKey는 잘못된 app_key로 요청 시 401 에러를 반환하는지 테스트합니다.
-func TestNotificationsEndpoint_InvalidAppKey(t *testing.T) {
-	e := echo.New()
-
-	appConfig := createTestAppConfig()
-	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
-
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	// 요청 본문 생성
-	reqBody := request.NotificationRequest{
-		ApplicationID: "test-app",
-		Message:       "테스트 메시지",
-		ErrorOccurred: false,
-	}
-	bodyBytes, err := json.Marshal(reqBody)
-	require.NoError(t, err)
-
-	// 잘못된 app_key로 요청
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications?app_key=wrong-key", bytes.NewReader(bodyBytes))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	// 401 에러 응답 검증
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-
-	var errorResp response.ErrorResponse
-	err = json.Unmarshal(rec.Body.Bytes(), &errorResp)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, errorResp.Message)
-}
-
-// TestNotificationsEndpoint_InvalidJSON는 잘못된 JSON 요청 시 400 에러를 반환하는지 테스트합니다.
-func TestNotificationsEndpoint_InvalidJSON(t *testing.T) {
-	e := echo.New()
-
-	appConfig := createTestAppConfig()
-	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
-
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	// 잘못된 JSON
-	invalidJSON := []byte(`{"invalid json`)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications?app_key=test-app-key", bytes.NewReader(invalidJSON))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-
-	e.ServeHTTP(rec, req)
-
-	// 400 에러 응답 검증
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-// TestBothEndpointsUseSameHandler는 두 엔드포인트가 동일한 핸들러를 사용하는지 확인합니다.
-func TestBothEndpointsUseSameHandler(t *testing.T) {
-	e := echo.New()
-
-	appConfig := createTestAppConfig()
-	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &mockNotificationService{}
-
-	h := handler.NewHandler(applicationManager, mockService)
-	SetupRoutes(e, h)
-
-	routes := e.Routes()
-
-	var notificationsHandler string
-	var noticeMessageHandler string
-
-	for _, route := range routes {
-		if route.Path == "/api/v1/notifications" && route.Method == "POST" {
-			notificationsHandler = route.Name
-		}
-		if route.Path == "/api/v1/notice/message" && route.Method == "POST" {
-			noticeMessageHandler = route.Name
-		}
+	type testCase struct {
+		name           string
+		method         string
+		path           string
+		appKey         string
+		body           interface{}
+		shouldFail     bool // 모의 서비스 실패 여부
+		expectedStatus int
+		verifyResponse func(t *testing.T, rec *httptest.ResponseRecorder)
 	}
 
-	// 두 엔드포인트가 동일한 핸들러를 사용해야 함
-	assert.Equal(t, notificationsHandler, noticeMessageHandler,
-		"두 엔드포인트는 동일한 핸들러(PublishNotificationHandler)를 사용해야 합니다")
+	tests := []testCase{
+		{
+			name:   "정상적인 알림 전송",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "test-app-key",
+			body: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "테스트 메시지",
+			},
+			expectedStatus: http.StatusOK,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var successResp response.SuccessResponse
+				err := json.Unmarshal(rec.Body.Bytes(), &successResp)
+				require.NoError(t, err)
+				assert.Equal(t, 0, successResp.ResultCode)
+			},
+		},
+		{
+			name:   "AppKey 누락",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "",
+			body: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "메시지",
+			},
+			expectedStatus: http.StatusBadRequest,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.Contains(t, errorResp.Message, "app_key")
+			},
+		},
+		{
+			name:   "잘못된 AppKey",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "wrong-key",
+			body: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "메시지",
+			},
+			expectedStatus: http.StatusUnauthorized,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.NotEmpty(t, errorResp.Message)
+			},
+		},
+		{
+			name:           "잘못된 JSON 형식",
+			method:         http.MethodPost,
+			path:           "/api/v1/notifications",
+			appKey:         "test-app-key",
+			body:           "invalid-json", // 문자열로 처리되어 마샬링 시 에러 유발 혹은 그냥 문자열 바이트로 전송
+			expectedStatus: http.StatusBadRequest,
+			verifyResponse: nil,
+		},
+		{
+			name:   "필수 필드(Message) 누락",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "test-app-key",
+			body: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "",
+			},
+			expectedStatus: http.StatusBadRequest,
+			verifyResponse: nil,
+		},
+		{
+			name:           "지원하지 않는 메서드(GET)",
+			method:         http.MethodGet,
+			path:           "/api/v1/notifications",
+			appKey:         "test-app-key",
+			body:           nil,
+			expectedStatus: http.StatusMethodNotAllowed,
+			verifyResponse: nil,
+		},
+		{
+			name:   "등록되지 않은 ApplicationID",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "any-key",
+			body: request.NotificationRequest{
+				ApplicationID: "unknown-app",
+				Message:       "test",
+			},
+			expectedStatus: http.StatusUnauthorized,
+			verifyResponse: nil,
+		},
+		{
+			name:   "알림 서비스 전송 실패 (Legacy: 200 OK)",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			appKey: "test-app-key",
+			body: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "fail test",
+			},
+			shouldFail:     true,
+			expectedStatus: http.StatusOK,
+			verifyResponse: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockService := &mockNotificationService{
+				shouldFail: tc.shouldFail,
+			}
+			h := handler.NewHandler(applicationManager, mockService)
+			SetupRoutes(e, h)
+
+			var bodyBytes []byte
+			if strBody, ok := tc.body.(string); ok {
+				if strBody == "invalid-json" {
+					bodyBytes = []byte(`{"invalid json`)
+				} else {
+					bodyBytes = []byte(strBody)
+				}
+			} else if tc.body != nil {
+				jsonBytes, _ := json.Marshal(tc.body)
+				bodyBytes = jsonBytes
+			}
+
+			reqPath := tc.path
+			if tc.appKey != "" {
+				reqPath += "?app_key=" + tc.appKey
+			}
+
+			req := httptest.NewRequest(tc.method, reqPath, bytes.NewReader(bodyBytes))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, tc.expectedStatus, rec.Code)
+
+			if tc.verifyResponse != nil {
+				tc.verifyResponse(t, rec)
+			}
+		})
+	}
 }

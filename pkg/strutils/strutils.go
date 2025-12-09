@@ -59,18 +59,20 @@ func NormalizeMultiLineSpaces(s string) string {
 	return strings.Join(result, "\r\n")
 }
 
+// Integer 모든 정수 타입을 포괄하는 제네릭 인터페이스
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
+
 // FormatCommas 숫자를 천 단위 구분 기호(,)가 포함된 문자열로 변환합니다.
 // 예: 1234567 -> "1,234,567"
-func FormatCommas(num int) string {
-	if num == 0 {
-		return "0"
-	}
-
+func FormatCommas[T Integer](num T) string {
 	str := fmt.Sprintf("%d", num)
 
-	// 음수 처리
+	// 음수 처리 (문자열 기반으로 판단)
 	startOffset := 0
-	if num < 0 {
+	if strings.HasPrefix(str, "-") {
 		startOffset = 1
 	}
 
@@ -85,7 +87,7 @@ func FormatCommas(num int) string {
 	commaCount := (len(str) - startOffset - 1) / 3
 	builder.Grow(len(str) + commaCount)
 
-	if num < 0 {
+	if startOffset == 1 {
 		builder.WriteByte('-')
 		str = str[1:]
 	}
@@ -129,4 +131,25 @@ func SplitAndTrim(s, sep string) []string {
 	}
 
 	return result
+}
+
+// MaskSensitiveData 민감한 정보를 마스킹합니다.
+// 토큰, 키 등의 민감 정보를 안전하게 로깅하기 위해 사용합니다.
+func MaskSensitiveData(data string) string {
+	if data == "" {
+		return ""
+	}
+
+	// 3자 이하는 전체 마스킹
+	if len(data) <= 3 {
+		return "***"
+	}
+
+	// 앞 4자만 표시하고 나머지는 마스킹
+	if len(data) <= 12 {
+		return data[:4] + "***"
+	}
+
+	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
+	return data[:4] + "***" + data[len(data)-4:]
 }

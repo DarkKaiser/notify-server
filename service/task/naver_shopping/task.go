@@ -106,7 +106,7 @@ func init() {
 
 		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if taskRunData.TaskID != TidNaverShopping {
-				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			taskData := &naverShoppingTaskData{}
@@ -147,7 +147,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
@@ -212,7 +212,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
-		err = task.UnmarshalFromResponseJSONData(t.Fetcher, "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = task.FetchJSON(t.Fetcher, "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(taskCommandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}

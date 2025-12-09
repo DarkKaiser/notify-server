@@ -24,8 +24,7 @@ const (
 func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tgbotapi.Message) {
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
-		m := fmt.Sprintf(msgUnknownCommand, message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
-		n.sendMessage(m)
+		n.sendUnknownCommandMessage(message.Text)
 		return
 	}
 
@@ -33,7 +32,7 @@ func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tg
 
 	// '/help' 명령어 처리
 	if command == telegramBotCommandHelp {
-		n.sendHelpMessage()
+		n.sendHelpCommandMessage()
 		return
 	}
 
@@ -44,28 +43,46 @@ func (n *telegramNotifier) handleCommand(taskRunner task.TaskRunner, message *tg
 	}
 
 	// 등록된 작업 실행 명령어인지 확인 후 처리
-	for _, botCommand := range n.botCommands {
-		if command == botCommand.command {
-			// TaskRunner를 통해 작업을 비동기로 실행 요청
-			// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 false 반환
-			if !taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) {
-				// 실행 실패 알림 발송
-				n.requestC <- &notifyRequest{
-					message: msgTaskExecutionFailed,
-					taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
-				}
-			}
-			return
-		}
+	if botCommand, found := n.findBotCommand(command); found {
+		n.executeCommand(taskRunner, botCommand)
+		return
 	}
 
 	// 매칭되는 명령어가 없는 경우
-	m := fmt.Sprintf(msgUnknownCommand, message.Text, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+	n.sendUnknownCommandMessage(message.Text)
+}
+
+// findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
+func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, bool) {
+	for _, botCommand := range n.botCommands {
+		if command == botCommand.command {
+			return botCommand, true
+		}
+	}
+	return telegramBotCommand{}, false
+}
+
+// executeCommand 주어진 봇 명령어를 TaskRunner를 통해 실행합니다.
+func (n *telegramNotifier) executeCommand(taskRunner task.TaskRunner, botCommand telegramBotCommand) {
+	// TaskRunner를 통해 작업을 비동기로 실행 요청
+	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 false 반환
+	if !taskRunner.TaskRun(botCommand.taskID, botCommand.taskCommandID, string(n.ID()), true, task.TaskRunByUser) {
+		// 실행 실패 알림 발송
+		n.requestC <- &notifyRequest{
+			message: msgTaskExecutionFailed,
+			taskCtx: task.NewContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
+		}
+	}
+}
+
+// sendUnknownCommandMessage 알 수 없는 명령어 메시지를 전송합니다.
+func (n *telegramNotifier) sendUnknownCommandMessage(input string) {
+	m := fmt.Sprintf(msgUnknownCommand, input, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 	n.sendMessage(m)
 }
 
-// sendHelpMessage 사용 가능한 명령어 목록을 도움말 메시지로 전송
-func (n *telegramNotifier) sendHelpMessage() {
+// sendHelpCommandMessage 사용 가능한 명령어 목록을 도움말 메시지로 전송합니다.
+func (n *telegramNotifier) sendHelpCommandMessage() {
 	m := "입력 가능한 명령어는 아래와 같습니다:\n\n"
 	for i, botCommand := range n.botCommands {
 		if i != 0 {
@@ -114,36 +131,52 @@ func (n *telegramNotifier) handleNotifyRequest(req *notifyRequest) {
 // enrichMessageWithContext TaskContext 정보를 메시지에 추가 (제목, 시간, 에러 등)
 func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task.TaskContext) string {
 	// 1. 작업 제목 추가
-	title, ok := taskCtx.Value(task.TaskCtxKeyTitle).(string)
-	if ok && len(title) > 0 {
-		message = fmt.Sprintf(msgContextTitle, title, message)
-	} else {
-		// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
-		taskID, ok1 := taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
-		taskCommandID, ok2 := taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
-		if ok1 && ok2 {
-			for _, botCommand := range n.botCommands {
-				if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
-					message = fmt.Sprintf(msgContextTitle, botCommand.commandTitle, message)
-					break
-				}
+	message = n.appendTitle(message, taskCtx)
+
+	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 및 경과 시간 추가
+	message = n.appendCancelCommandAndElapsedTime(message, taskCtx)
+
+	// 3. 오류 발생 시 강조 표시 추가
+	if errorOccurred, ok := taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok && errorOccurred {
+		message = fmt.Sprintf(msgContextError, message)
+	}
+
+	return message
+}
+
+// appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
+func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext) string {
+	if title, ok := taskCtx.Value(task.TaskCtxKeyTitle).(string); ok && len(title) > 0 {
+		return fmt.Sprintf(msgContextTitle, title, message)
+	}
+
+	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
+	taskID, ok1 := taskCtx.Value(task.TaskCtxKeyTaskID).(task.TaskID)
+	taskCommandID, ok2 := taskCtx.Value(task.TaskCtxKeyTaskCommandID).(task.TaskCommandID)
+
+	if ok1 && ok2 {
+		for _, botCommand := range n.botCommands {
+			if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
+				return fmt.Sprintf(msgContextTitle, botCommand.commandTitle, message)
 			}
 		}
 	}
 
-	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 추가
-	if taskInstanceID, ok := taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID); ok {
-		message += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+	return message
+}
 
-		// 3. 작업 실행 경과 시간 추가 (실행 완료된 경우)
-		if elapsedTimeAfterRun, ok := taskCtx.Value(task.TaskCtxKeyElapsedTimeAfterRun).(int64); ok && elapsedTimeAfterRun > 0 {
-			message += formatElapsedTime(elapsedTimeAfterRun)
-		}
+// appendCancelCommandAndElapsedTime TaskContext에서 작업 인스턴스 ID를 기반으로 취소 명령어를 메시지에 추가하고, 실행 경과 시간을 추가합니다.
+func (n *telegramNotifier) appendCancelCommandAndElapsedTime(message string, taskCtx task.TaskContext) string {
+	taskInstanceID, ok := taskCtx.Value(task.TaskCtxKeyTaskInstanceID).(task.TaskInstanceID)
+	if !ok {
+		return message
 	}
 
-	// 4. 오류 발생 시 강조 표시 추가
-	if errorOccurred, ok := taskCtx.Value(task.TaskCtxKeyErrorOccurred).(bool); ok && errorOccurred {
-		message = fmt.Sprintf(msgContextError, message)
+	message += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+
+	// 작업 실행 경과 시간 추가 (실행 완료된 경우)
+	if elapsedTimeAfterRun, ok := taskCtx.Value(task.TaskCtxKeyElapsedTimeAfterRun).(int64); ok && elapsedTimeAfterRun > 0 {
+		message += formatElapsedTime(elapsedTimeAfterRun)
 	}
 
 	return message
@@ -185,10 +218,32 @@ func (n *telegramNotifier) sendMessage(message string) {
 	var messageChunk string
 	lines := strings.SplitSeq(message, "\n")
 	for line := range lines {
-		// 현재 청크 + 새 라인이 최대 길이를 넘으면 현재 청크를 먼저 전송
-		if len(messageChunk)+len(line)+1 > telegramMessageMaxLength {
-			n.sendSingleMessage(messageChunk)
-			messageChunk = line
+		neededSpace := len(line)
+		if len(messageChunk) > 0 {
+			neededSpace += 1 // 줄바꿈 문자 공간
+		}
+
+		// 현재 청크 + (줄바꿈) + 새 라인이 최대 길이를 넘으면
+		if len(messageChunk)+neededSpace > telegramMessageMaxLength {
+			// 현재까지 모은 청크가 있다면 전송
+			if len(messageChunk) > 0 {
+				n.sendSingleMessage(messageChunk)
+				messageChunk = ""
+			}
+
+			// 현재 라인 자체가 최대 길이보다 길다면 강제로 자름 (Chunking)
+			if len(line) > telegramMessageMaxLength {
+				for len(line) > telegramMessageMaxLength {
+					chunk := line[:telegramMessageMaxLength]
+					n.sendSingleMessage(chunk)
+					line = line[telegramMessageMaxLength:]
+				}
+				// 자르고 남은 뒷부분을 새로운 청크의 시작으로 설정
+				messageChunk = line
+			} else {
+				// 현재 라인은 최대 길이 이내이므로 새로운 청크로 설정
+				messageChunk = line
+			}
 		} else {
 			// 청크에 라인 추가
 			if len(messageChunk) > 0 {

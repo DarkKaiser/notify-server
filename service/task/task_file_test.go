@@ -1,6 +1,7 @@
 package task
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +15,7 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 			CommandID:  TaskCommandID("TEST_COMMAND"),
 			InstanceID: TaskInstanceID("test_instance_rw"),
 		}
+		defer os.Remove(testTask.dataFileName()) // 테스트 후 파일 삭제 cleanup
 
 		// 테스트용 데이터 구조
 		type TestResultData struct {

@@ -55,7 +55,7 @@ func init() {
 
 		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if taskRunData.TaskID != TidJdc {
-				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			t := &jdcTask{
@@ -76,7 +76,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			t.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			t.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			t.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {
@@ -170,10 +170,10 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	// 온라인교육 강의 목록페이지 URL 정보를 추출한다.
 	var err, err0 error
 	var courseURLs = make([]string, 0)
-	err = task.WebScrape(t.Fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
+	err = task.ScrapeHTML(t.Fetcher, url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
@@ -183,7 +183,7 @@ func (t *jdcTask) scrapeOnlineEducationCourses(url string) ([]*jdcOnlineEducatio
 	})
 	if err != nil {
 		// 온라인교육 강의 데이터가 없는지 확인한다.
-		if sel, _ := task.NewHTMLDocumentSelection(t.Fetcher, url, "#content > div.no-data2"); sel != nil {
+		if sel, _ := task.FetchHTMLSelection(t.Fetcher, url, "#content > div.no-data2"); sel != nil {
 			return nil, nil
 		}
 
@@ -220,7 +220,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 	var err0 error
 	var onlineEducationCourseCurriculums = make([]*jdcOnlineEducationCourse, 0)
 
-	err := task.WebScrape(t.Fetcher, fmt.Sprintf("%sproduct/%s", jdcBaseURL, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err := task.ScrapeHTML(t.Fetcher, fmt.Sprintf("%sproduct/%s", jdcBaseURL, url), "table.prdt-tbl > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {
@@ -228,24 +228,24 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 				return true
 			}
 
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
 			return false
 		}
 
 		title1Selection := as.Eq(0).Find("a")
 		if title1Selection.Length() != 1 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		title2Selection := as.Eq(0).Find("p")
 		if title2Selection.Length() != 1 {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
 		courseDetailURL, exists := title1Selection.Attr("href")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrTaskExecutionFailed, "강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(task.ErrTaskExecutionFailed, "강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.

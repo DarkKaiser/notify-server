@@ -139,7 +139,7 @@ func init() {
 
 		NewTaskFn: func(instanceID task.TaskInstanceID, taskRunData *task.TaskRunData, appConfig *config.AppConfig) (task.TaskHandler, error) {
 			if taskRunData.TaskID != TidKurly {
-				return nil, apperrors.New(apperrors.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			tTask := &kurlyTask{
@@ -163,7 +163,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(&task.HTTPFetcher{}, appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 
@@ -254,7 +254,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 
 		// 상품 페이지를 읽어들인다.
 		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
-		doc, err := task.NewHTMLDocument(t.Fetcher, productDetailPageURL)
+		doc, err := task.FetchHTMLDocument(t.Fetcher, productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}
@@ -262,11 +262,11 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		// 읽어들인 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출한다.
 		html, err := doc.Html()
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
+			return "", nil, apperrors.Wrap(err, task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
 		}
 		match := re1.FindStringSubmatch(html)
 		if len(match) < 2 {
-			return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
+			return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
 		}
 		jsonProductData := match[1]
 
@@ -289,13 +289,13 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 		if product.IsUnknownProduct == false {
 			sel := doc.Find("#product-atf > section.css-1ua1wyk")
 			if sel.Length() != 1 {
-				return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(상품정보 섹션 추출 실패)", productDetailPageURL))
+				return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(상품정보 섹션 추출 실패)", productDetailPageURL))
 			}
 
 			// 상품 이름을 확인한다.
 			ps := sel.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
 			if ps.Length() != 1 {
-				return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+				return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
 			product.Name = strutils.NormalizeSpaces(ps.Text())
 
@@ -304,40 +304,40 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			if ps.Length() == 0 /* 가격, 단위(원) */ {
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 
 				// 가격
 				product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, task.ErrTaskExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
 				}
 			} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
 				// 할인율
 				product.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, task.ErrTaskExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
 				}
 
 				// 할인 가격
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 
 				product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, apperrors.ErrTaskExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, task.ErrTaskExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
 				}
 
 				// 가격
 				ps = sel.Find("span.css-1s96j0s > span")
 				if ps.Length() != 1 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 				product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
 			} else {
-				return "", nil, apperrors.New(apperrors.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+				return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
 		}
 

@@ -136,3 +136,77 @@ func TestFormatValidationError(t *testing.T) {
 		assert.Contains(t, message, "4096")
 	})
 }
+
+// TestFormatValidationError_ComplexStruct 모든 검증 태그 테스트를 위한 구조체
+type TestStruct struct {
+	Name     string `validate:"required,min=2" korean:"이름"`
+	Age      int    `validate:"min=18" korean:"나이"`
+	Email    string `validate:"email" korean:"이메일"`
+	Homepage string `validate:"url" korean:"홈페이지"`
+	Bio      string `validate:"max=10" korean:"자기소개"`
+}
+
+func TestFormatValidationError_AllTags(t *testing.T) {
+	t.Run("min 검증 (문자열)", func(t *testing.T) {
+		req := &TestStruct{Name: "a"} // 2글자 미만
+		err := ValidateRequest(req)
+		assert.Error(t, err)
+		msg := FormatValidationError(err)
+		assert.Contains(t, msg, "이름")
+		assert.Contains(t, msg, "최소 2자")
+	})
+
+	t.Run("min 검증 (숫자)", func(t *testing.T) {
+		req := &TestStruct{Name: "Lee", Age: 10} // 18세 미만
+		err := ValidateRequest(req)
+		assert.Error(t, err)
+		msg := FormatValidationError(err)
+		assert.Contains(t, msg, "나이")
+		assert.Contains(t, msg, "최소 18 이상")
+	})
+
+	t.Run("email 검증", func(t *testing.T) {
+		req := &TestStruct{Name: "Lee", Age: 20, Email: "invalid-email"}
+		err := ValidateRequest(req)
+		assert.Error(t, err)
+		msg := FormatValidationError(err)
+		assert.Contains(t, msg, "이메일")
+		assert.Contains(t, msg, "올바른 이메일 형식")
+	})
+
+	t.Run("url 검증", func(t *testing.T) {
+		req := &TestStruct{Name: "Lee", Age: 20, Email: "test@example.com", Homepage: "invalid-url"}
+		err := ValidateRequest(req)
+		assert.Error(t, err)
+		msg := FormatValidationError(err)
+		assert.Contains(t, msg, "홈페이지")
+		assert.Contains(t, msg, "올바른 URL 형식")
+	})
+
+	t.Run("max 검증 (문자열 - 짧은 케이스)", func(t *testing.T) {
+		req := &TestStruct{
+			Name:     "Lee",
+			Age:      20,
+			Email:    "test@example.com",
+			Homepage: "https://example.com",
+			Bio:      "Too long bio description",
+		}
+		err := ValidateRequest(req)
+		assert.Error(t, err)
+		msg := FormatValidationError(err)
+		assert.Contains(t, msg, "자기소개")
+		assert.Contains(t, msg, "최대 10자")
+	})
+
+	t.Run("성공 케이스", func(t *testing.T) {
+		req := &TestStruct{
+			Name:     "Lee",
+			Age:      20,
+			Email:    "test@example.com",
+			Homepage: "https://example.com",
+			Bio:      "Short bio",
+		}
+		err := ValidateRequest(req)
+		assert.NoError(t, err)
+	})
+}

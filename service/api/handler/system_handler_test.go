@@ -43,8 +43,10 @@ func TestHealthCheckHandler(t *testing.T) {
 			var healthResp response.HealthResponse
 			err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 			assert.NoError(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, "healthy", healthResp.Status)
 			assert.Equal(t, "healthy", healthResp.Dependencies["notification_service"].Status)
+			assert.GreaterOrEqual(t, healthResp.Uptime, int64(0), "Uptime은 0 이상이어야 합니다")
 		}
 	})
 

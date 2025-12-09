@@ -130,6 +130,9 @@ func TestValidateURL(t *testing.T) {
 		{"호스트 없음", "https:///cert.pem", true},
 		{"잘못된 URL 형식", "not-a-url", true},
 		{"빈 문자열", "", false},
+		{"퓨니코드 도메인", "https://xn--989a11j08n21d.com", false}, // 한국.com
+		{"URL 인코딩된 경로", "https://example.com/path%20with%20spaces", false},
+		{"IPv6 주소 (현재 미지원)", "http://[::1]:8080", true},
 	}
 
 	for _, tt := range tests {
@@ -285,6 +288,11 @@ func TestValidateCORSOrigin_ErrorMessages(t *testing.T) {
 			name:           "빈 문자열",
 			origin:         "   ",
 			expectedErrMsg: "빈 문자열일 수 없습니다",
+		},
+		{
+			name:           "IPv6 주소 (현재 미지원)",
+			origin:         "http://[::1]",
+			expectedErrMsg: "잘못된 Origin 형식입니다",
 		},
 	}
 
