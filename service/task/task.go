@@ -53,10 +53,10 @@ func findConfigFromSupportedTask(taskID ID, taskCommandID CommandID) (*TaskConfi
 			}
 		}
 
-		return nil, nil, ErrNotSupportedCommand
+		return nil, nil, ErrCommandNotSupported
 	}
 
-	return nil, nil, ErrNotSupportedTask
+	return nil, nil, ErrTaskNotSupported
 }
 
 // TaskRunFunc

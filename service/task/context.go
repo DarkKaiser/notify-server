@@ -23,117 +23,116 @@ const (
 	taskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
 )
 
-// TaskContext 작업 실행에 필요한 컨텍스트 정보를 정의하는 인터페이스입니다.
+// TaskContext 작업 실행 흐름 전반에서 메타데이터를 전달하는 컨텍스트 인터페이스입니다.
 type TaskContext interface {
-	// With 주어진 키와 값으로 새로운 컨텍스트를 생성하여 반환합니다.
+	context.Context // 표준 Context 인터페이스 임베딩 (DeadLine, Done, Err, Value 등 지원)
+
 	With(key, val interface{}) TaskContext
-	// WithTask 작업 ID와 커맨드 ID를 포함하는 새로운 컨텍스트를 생성하여 반환합니다.
 	WithTask(taskID ID, taskCommandID CommandID) TaskContext
-	// WithInstanceID 작업 인스턴스 ID와 실행 후 경과 시간을 포함하는 새로운 컨텍스트를 생성하여 반환합니다.
 	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
-	// WithTitle 알림 메시지의 제목을 설정한 새로운 컨텍스트를 생성하여 반환합니다.
 	WithTitle(title string) TaskContext
-	// WithError 에러 발생 여부를 설정한 새로운 컨텍스트를 생성하여 반환합니다.
 	WithError() TaskContext
 
-	// Value Context에서 해당 키의 값을 반환합니다.
-	Value(key interface{}) interface{}
-
-	// GetID Context에 저장된 작업 ID를 반환합니다.
 	GetID() ID
-	// GetCommandID Context에 저장된 작업 커맨드 ID를 반환합니다.
 	GetCommandID() CommandID
-	// GetInstanceID Context에 저장된 작업 인스턴스 ID를 반환합니다.
 	GetInstanceID() InstanceID
-	// GetElapsedTimeAfterRun Context에 저장된 작업 실행 후 경과 시간을 반환합니다.
-	GetElapsedTimeAfterRun() int64
-	// IsErrorOccurred Context에 에러 발생 여부가 설정되었는지 확인합니다.
-	IsErrorOccurred() bool
-	// GetTitle Context에 저장된 제목을 반환합니다.
 	GetTitle() string
+	GetElapsedTimeAfterRun() int64
+	IsErrorOccurred() bool
 }
 
 // taskContext TaskContext 인터페이스의 구현체입니다.
+// 불변성(Immutability)을 보장하기 위해 모든 With 메서드는 새로운 인스턴스를 반환합니다.
 type taskContext struct {
-	ctx context.Context
+	context.Context // 표준 Context 구현체 임베딩 (자동 델리게이션)
 }
 
 // NewTaskContext 새로운 TaskContext를 생성합니다.
 func NewTaskContext() TaskContext {
 	return &taskContext{
-		ctx: context.Background(),
+		Context: context.Background(),
 	}
 }
 
+// With 키-값 쌍을 저장한 새로운 TaskContext를 반환합니다.
 func (c *taskContext) With(key, val interface{}) TaskContext {
-	c.ctx = context.WithValue(c.ctx, key, val)
-	return c
+	return &taskContext{
+		Context: context.WithValue(c.Context, key, val),
+	}
 }
 
+// WithTask 작업 및 커맨드 식별자를 컨텍스트에 추가합니다.
 func (c *taskContext) WithTask(taskID ID, taskCommandID CommandID) TaskContext {
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyID, taskID)
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyCommandID, taskCommandID)
-	return c
+	ctx := context.WithValue(c.Context, taskCtxKeyID, taskID)
+	ctx = context.WithValue(ctx, taskCtxKeyCommandID, taskCommandID)
+	return &taskContext{Context: ctx}
 }
 
+// WithInstanceID 실행 인스턴스 정보(ID, 경과 시간)를 컨텍스트에 추가합니다.
 func (c *taskContext) WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyInstanceID, taskInstanceID)
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
-	return c
+	ctx := context.WithValue(c.Context, taskCtxKeyInstanceID, taskInstanceID)
+	ctx = context.WithValue(ctx, taskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
+	return &taskContext{Context: ctx}
 }
 
+// WithTitle 알림 제목을 컨텍스트에 추가합니다.
 func (c *taskContext) WithTitle(title string) TaskContext {
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyTitle, title)
-	return c
+	return &taskContext{
+		Context: context.WithValue(c.Context, taskCtxKeyTitle, title),
+	}
 }
 
+// WithError 에러 발생 플래그를 true로 설정하여 컨텍스트에 추가합니다.
 func (c *taskContext) WithError() TaskContext {
-	c.ctx = context.WithValue(c.ctx, taskCtxKeyErrorOccurred, true)
-	return c
+	return &taskContext{
+		Context: context.WithValue(c.Context, taskCtxKeyErrorOccurred, true),
+	}
 }
 
-func (c *taskContext) Value(key interface{}) interface{} {
-	return c.ctx.Value(key)
-}
-
+// GetID 컨텍스트에서 Task ID를 안전하게 타입 캐스팅하여 반환합니다.
 func (c *taskContext) GetID() ID {
-	if v, ok := c.ctx.Value(taskCtxKeyID).(ID); ok {
+	if v, ok := c.Context.Value(taskCtxKeyID).(ID); ok {
 		return v
 	}
 	return ""
 }
 
+// GetCommandID 컨텍스트에서 Command ID를 안전하게 타입 캐스팅하여 반환합니다.
 func (c *taskContext) GetCommandID() CommandID {
-	if v, ok := c.ctx.Value(taskCtxKeyCommandID).(CommandID); ok {
+	if v, ok := c.Context.Value(taskCtxKeyCommandID).(CommandID); ok {
 		return v
 	}
 	return ""
 }
 
+// GetInstanceID 컨텍스트에서 Instance ID를 안전하게 타입 캐스팅하여 반환합니다.
 func (c *taskContext) GetInstanceID() InstanceID {
-	if v, ok := c.ctx.Value(taskCtxKeyInstanceID).(InstanceID); ok {
+	if v, ok := c.Context.Value(taskCtxKeyInstanceID).(InstanceID); ok {
 		return v
 	}
 	return ""
 }
 
+// GetTitle 컨텍스트에서 제목을 반환합니다.
+func (c *taskContext) GetTitle() string {
+	if v, ok := c.Context.Value(taskCtxKeyTitle).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// GetElapsedTimeAfterRun 컨텍스트에서 경과 시간을 반환합니다. (기본값: 0)
 func (c *taskContext) GetElapsedTimeAfterRun() int64 {
-	if v, ok := c.ctx.Value(taskCtxKeyElapsedTimeAfterRun).(int64); ok {
+	if v, ok := c.Context.Value(taskCtxKeyElapsedTimeAfterRun).(int64); ok {
 		return v
 	}
 	return 0
 }
 
+// IsErrorOccurred 에러 발생 여부를 확인합니다. (기본값: false)
 func (c *taskContext) IsErrorOccurred() bool {
-	if v, ok := c.ctx.Value(taskCtxKeyErrorOccurred).(bool); ok {
+	if v, ok := c.Context.Value(taskCtxKeyErrorOccurred).(bool); ok {
 		return v
 	}
 	return false
-}
-
-func (c *taskContext) GetTitle() string {
-	if v, ok := c.ctx.Value(taskCtxKeyTitle).(string); ok {
-		return v
-	}
-	return ""
 }

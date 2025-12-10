@@ -84,7 +84,7 @@ func init() {
 					return t.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return t, nil

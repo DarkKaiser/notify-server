@@ -111,7 +111,7 @@ func init() {
 					return tTask.runWatchNewEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return tTask, nil

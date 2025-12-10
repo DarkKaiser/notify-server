@@ -145,7 +145,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 		taskConfig, commandConfig, err := findConfigFromSupportedTask(ID("NON_EXISTENT"), testCommandID)
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
-		assert.Equal(t, ErrNotSupportedTask, err, "ErrNotSupportedTask 에러를 반환해야 합니다")
+		assert.Equal(t, ErrTaskNotSupported, err, "ErrTaskNotSupported 에러를 반환해야 합니다")
 		assert.Nil(t, taskConfig, "Task 설정이 nil이어야 합니다")
 		assert.Nil(t, commandConfig, "Command 설정이 nil이어야 합니다")
 	})
@@ -154,7 +154,7 @@ func TestFindConfigFromSupportedTask(t *testing.T) {
 		taskConfig, commandConfig, err := findConfigFromSupportedTask(testTaskID, CommandID("NON_EXISTENT"))
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
-		assert.Equal(t, ErrNotSupportedCommand, err, "ErrNotSupportedCommand 에러를 반환해야 합니다")
+		assert.Equal(t, ErrCommandNotSupported, err, "ErrCommandNotSupported 에러를 반환해야 합니다")
 		assert.Nil(t, taskConfig, "Task 설정이 nil이어야 합니다")
 		assert.Nil(t, commandConfig, "Command 설정이 nil이어야 합니다")
 	})
