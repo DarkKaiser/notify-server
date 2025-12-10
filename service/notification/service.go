@@ -55,7 +55,7 @@ func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
 	s.notifierFactory = factory
 }
 
-// Run 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
+// Start 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
 func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
