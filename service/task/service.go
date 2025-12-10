@@ -11,6 +11,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	defaultChannelBufferSize = 10
+)
+
 // TaskService
 type TaskService struct {
 	appConfig *config.AppConfig
@@ -48,9 +52,9 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 
 		notificationSender: nil,
 
-		taskRunC:    make(chan *RunRequest, 10),
-		taskDoneC:   make(chan InstanceID, 10),
-		taskCancelC: make(chan InstanceID, 10),
+		taskRunC:    make(chan *RunRequest, defaultChannelBufferSize),
+		taskDoneC:   make(chan InstanceID, defaultChannelBufferSize),
+		taskCancelC: make(chan InstanceID, defaultChannelBufferSize),
 
 		taskStopWaiter: &sync.WaitGroup{},
 	}
@@ -101,7 +105,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			if req.TaskContext == nil {
 				req.TaskContext = NewTaskContext()
 			}
-			req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
+			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(req.TaskID, req.TaskCommandID)
 			if err != nil {
@@ -113,7 +117,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(m)
 
-				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
+				go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
 
 				continue
 			}
@@ -132,8 +136,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.notificationSender.Notify(req.TaskContext, req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.")
+					req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+					go s.notificationSender.Notify(req.TaskContext, req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.")
 					continue
 				}
 			}
@@ -157,7 +161,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(err)
 
-				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
+				go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
 
 				continue
 			}
@@ -170,7 +174,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
-				s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
+				go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -201,13 +205,13 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"instance_id": instanceID,
 				}).Debug("Task 작업 취소")
 
-				s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.")
+				go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.")
 			} else {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,
 				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
-				s.notificationSender.NotifyDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
+				go s.notificationSender.NotifyDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
 			}
 			s.runningMu.Unlock()
 

@@ -23,10 +23,10 @@ type NotificationService struct {
 
 	notifierFactory NotifierFactory
 
-	executor task.Executor
-
 	// notificationStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
 	notificationStopWaiter *sync.WaitGroup
+
+	executor task.Executor
 }
 
 func NewService(appConfig *config.AppConfig, executor task.Executor) *NotificationService {
@@ -38,9 +38,9 @@ func NewService(appConfig *config.AppConfig, executor task.Executor) *Notificati
 
 		defaultNotifierHandler: nil,
 
-		executor: executor,
-
 		notificationStopWaiter: &sync.WaitGroup{},
+
+		executor: executor,
 	}
 
 	// Factory 생성 및 Processor 등록
@@ -153,7 +153,7 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 func (s *NotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
-		taskCtx.WithError()
+		taskCtx = taskCtx.WithError()
 	}
 
 	return s.Notify(taskCtx, notifierID, message)

@@ -60,8 +60,11 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 func newTelegramNotifierWithBot(id NotifierID, botAPI TelegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) NotifierHandler {
 	notifier := &telegramNotifier{
 		notifier: NewNotifier(id, true, 100),
-		chatID:   chatID,
-		botAPI:   botAPI,
+
+		chatID: chatID,
+
+		botAPI: botAPI,
+
 		executor: executor,
 	}
 
