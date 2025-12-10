@@ -255,7 +255,7 @@ func TestNotificationService_StartAndRun(t *testing.T) {
 
 		// Mock factory
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(c *config.AppConfig) ([]NotifierHandler, error) {
+			createNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 				return []NotifierHandler{mockNotifier}, nil
 			},
 		}
@@ -299,7 +299,7 @@ func TestNotificationService_StartErrors(t *testing.T) {
 		{
 			name: "Factory return error",
 			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig) ([]NotifierHandler, error) {
+				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return nil, errors.New("factory error")
 				}
 			},
@@ -311,7 +311,7 @@ func TestNotificationService_StartErrors(t *testing.T) {
 				c.Notifiers.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig) ([]NotifierHandler, error) {
+				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return []NotifierHandler{
 						&mockNotifierHandler{id: "other"},
 					}, nil
@@ -340,7 +340,7 @@ func TestNotificationService_StartErrors(t *testing.T) {
 				tt.factorySetup(factory)
 			} else {
 				// Default success factory if not specified but needed
-				factory.createNotifiersFunc = func(c *config.AppConfig) ([]NotifierHandler, error) {
+				factory.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return []NotifierHandler{}, nil
 				}
 			}

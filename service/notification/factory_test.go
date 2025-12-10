@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,7 +28,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []NotifierConfigProcessor{
-				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) (NotifierHandler, error) {
+				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 					return &mockNotifierHandler{id: id}, nil
 				}),
 			},
@@ -42,7 +43,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []NotifierConfigProcessor{
-				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig) (NotifierHandler, error) {
+				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 					return &mockNotifierHandler{id: id}, nil
 				}),
 			},
@@ -53,10 +54,10 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			name: "Multiple Processors",
 			cfg:  &config.AppConfig{},
 			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig) ([]NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return []NotifierHandler{&mockNotifierHandler{id: "h1"}}, nil
 				},
-				func(cfg *config.AppConfig) ([]NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return []NotifierHandler{&mockNotifierHandler{id: "h2"}}, nil
 				},
 			},
@@ -67,7 +68,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			name: "Processor Error",
 			cfg:  &config.AppConfig{},
 			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig) ([]NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return nil, errors.New("processor error")
 				},
 			},
@@ -83,7 +84,8 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				factory.RegisterProcessor(proc)
 			}
 
-			handlers, err := factory.CreateNotifiers(tt.cfg)
+			mockExecutor := &MockExecutor{}
+			handlers, err := factory.CreateNotifiers(tt.cfg, mockExecutor)
 
 			if tt.expectError {
 				assert.Error(t, err)

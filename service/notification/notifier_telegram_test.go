@@ -113,7 +113,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			}
 			mockExecutor := &MockExecutor{}
 
-			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
+			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
 
 			// Common Mock Expectations
 			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -133,7 +133,10 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(ctx, mockExecutor, wg)
+			go func() {
+				defer wg.Done()
+				notifier.Run(ctx)
+			}()
 
 			// Trigger Command
 			mockBot.updatesChan <- tgbotapi.Update{

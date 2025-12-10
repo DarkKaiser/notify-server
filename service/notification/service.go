@@ -74,7 +74,7 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 	}
 
 	// 1. Notifier들을 초기화 및 실행
-	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig)
+	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig, s.executor)
 	if err != nil {
 		defer serviceStopWaiter.Done()
 		return apperrors.Wrap(err, apperrors.ErrInternal, "Notifier 초기화 중 에러가 발생했습니다")
@@ -91,7 +91,10 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 
 		s.notificationStopWaiter.Add(1)
 
-		go h.Run(serviceStopCtx, s.executor, s.notificationStopWaiter)
+		go func(handler NotifierHandler) {
+			defer s.notificationStopWaiter.Done()
+			handler.Run(serviceStopCtx)
+		}(h)
 
 		applog.WithComponentAndFields("notification.service", log.Fields{
 			"notifier_id": h.ID(),

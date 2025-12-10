@@ -155,7 +155,7 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 			chatID := int64(12345)
 			appConfig := &config.AppConfig{}
 
-			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
+			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
 
 			// Setup expectations
 			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
@@ -171,7 +171,10 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(ctx, mockExecutor, wg)
+			go func() {
+				defer wg.Done()
+				notifier.Run(ctx)
+			}()
 
 			// Act
 			notifier.Notify(tt.taskCtx, tt.message)

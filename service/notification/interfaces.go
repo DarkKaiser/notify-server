@@ -2,7 +2,6 @@ package notification
 
 import (
 	"context"
-	"sync"
 
 	"github.com/darkkaiser/notify-server/service/task"
 )
@@ -60,7 +59,7 @@ type NotifierHandler interface {
 
 	// Run Notifier의 메인 루프를 실행합니다.
 	// 메시지 큐를 소비하여 실제 발송 작업을 수행합니다.
-	Run(notificationStopCtx context.Context, executor task.Executor, notificationStopWaiter *sync.WaitGroup)
+	Run(notificationStopCtx context.Context)
 
 	SupportsHTML() bool
 }

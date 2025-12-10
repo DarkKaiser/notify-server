@@ -97,7 +97,8 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			}
 			chatID := int64(12345)
 
-			n := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig)
+			mockExecutor := &MockExecutor{}
+			n := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
 			notifier, ok := n.(*telegramNotifier)
 			assert.True(t, ok)
 			assert.NotNil(t, notifier)

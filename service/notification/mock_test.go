@@ -2,7 +2,6 @@ package notification
 
 import (
 	"context"
-	"sync"
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
@@ -77,8 +76,7 @@ func (m *mockNotifierHandler) Notify(taskCtx task.TaskContext, message string) b
 	return true
 }
 
-func (m *mockNotifierHandler) Run(notificationStopCtx context.Context, taskRunner task.Executor, notificationStopWaiter *sync.WaitGroup) {
-	defer notificationStopWaiter.Done()
+func (m *mockNotifierHandler) Run(notificationStopCtx context.Context) {
 	<-notificationStopCtx.Done()
 }
 
@@ -88,12 +86,12 @@ func (m *mockNotifierHandler) SupportsHTML() bool {
 
 // mockNotifierFactory is a shared mock implementation of NotifierFactory for tests
 type mockNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig) ([]NotifierHandler, error)
+	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error)
 }
 
-func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig) ([]NotifierHandler, error) {
+func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 	if m.createNotifiersFunc != nil {
-		return m.createNotifiersFunc(cfg)
+		return m.createNotifiersFunc(cfg, executor)
 	}
 	return []NotifierHandler{}, nil
 }

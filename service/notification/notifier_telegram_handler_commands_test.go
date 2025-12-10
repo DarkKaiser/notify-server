@@ -100,7 +100,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			// The original file used `createTestNotifier` and ran `Run`.
 			// We will follow the same pattern: Run the bot in a goroutine and send updates.
 
-			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig)
+			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
 
 			// Common Mock Expectations
 			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
@@ -120,7 +120,10 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(ctx, mockExecutor, wg)
+			go func() {
+				defer wg.Done()
+				notifier.Run(ctx)
+			}()
 
 			// Send update
 			mockBot.updatesChan <- tgbotapi.Update{
