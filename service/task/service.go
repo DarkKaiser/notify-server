@@ -24,7 +24,7 @@ type TaskService struct {
 
 	instanceIDGenerator instanceIDGenerator
 
-	taskNotificationSender TaskNotificationSender
+	notificationSender NotificationSender
 
 	taskRunC    chan *RunRequest
 	taskDoneC   chan InstanceID
@@ -46,7 +46,7 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 
 		instanceIDGenerator: instanceIDGenerator{},
 
-		taskNotificationSender: nil,
+		notificationSender: nil,
 
 		taskRunC:    make(chan *RunRequest, 10),
 		taskDoneC:   make(chan InstanceID, 10),
@@ -62,22 +62,20 @@ func (s *TaskService) Start(serviceStopCtx context.Context, serviceStopWaiter *s
 
 	applog.WithComponent("task.service").Info("Task 서비스 시작중...")
 
-	if s.taskNotificationSender == nil {
+	// NotificationSender 검증
+	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
-
-		return apperrors.New(apperrors.ErrInternal, "TaskNotificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running == true {
 		defer serviceStopWaiter.Done()
-
 		applog.WithComponent("task.service").Warn("Task 서비스가 이미 시작됨!!!")
-
 		return nil
 	}
 
 	// Task 스케쥴러를 시작한다.
-	s.scheduler.Start(s.appConfig, s, s.taskNotificationSender)
+	s.scheduler.Start(s.appConfig, s, s.notificationSender)
 
 	go s.run0(serviceStopCtx, serviceStopWaiter)
 
@@ -100,10 +98,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				"run_by":     req.RunBy,
 			}).Debug("새로운 Task 실행 요청 수신")
 
-			if req.TaskCtx == nil {
-				req.TaskCtx = NewContext()
+			if req.TaskContext == nil {
+				req.TaskContext = NewTaskContext()
 			}
-			req.TaskCtx.WithTask(req.TaskID, req.TaskCommandID)
+			req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(req.TaskID, req.TaskCommandID)
 			if err != nil {
@@ -115,7 +113,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(m)
 
-				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, m, req.TaskCtx.WithError())
+				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
 
 				continue
 			}
@@ -134,8 +132,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					req.TaskCtx.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", req.TaskCtx)
+					req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+					s.notificationSender.Notify(req.TaskContext, req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.")
 					continue
 				}
 			}
@@ -159,7 +157,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(err)
 
-				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, err.Error(), req.TaskCtx.WithError())
+				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
 
 				continue
 			}
@@ -169,10 +167,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
-			go h.Run(s.taskNotificationSender, s.taskStopWaiter, s.taskDoneC)
+			go h.Run(s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
-				s.taskNotificationSender.NotifyWithTaskContext(req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", req.TaskCtx.WithInstanceID(instanceID, 0))
+				s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -203,13 +201,13 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"instance_id": instanceID,
 				}).Debug("Task 작업 취소")
 
-				s.taskNotificationSender.NotifyWithTaskContext(taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()))
+				s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.")
 			} else {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,
 				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
-				s.taskNotificationSender.NotifyToDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
+				s.notificationSender.NotifyDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
 			}
 			s.runningMu.Unlock()
 
@@ -237,7 +235,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Lock()
 			s.running = false
 			s.taskHandlers = nil
-			s.taskNotificationSender = nil
+			s.notificationSender = nil
 			s.runningMu.Unlock()
 
 			applog.WithComponent("task.service").Info("Task 서비스 중지됨")
@@ -247,10 +245,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
+func (s *TaskService) Run(req *RunRequest) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			succeeded = false
+			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    req.TaskID,
@@ -262,13 +260,13 @@ func (s *TaskService) Run(req *RunRequest) (succeeded bool) {
 
 	s.taskRunC <- req
 
-	return true
+	return nil
 }
 
-func (s *TaskService) Cancel(taskInstanceID InstanceID) (succeeded bool) {
+func (s *TaskService) Cancel(taskInstanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			succeeded = false
+			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"instance_id": taskInstanceID,
@@ -279,9 +277,9 @@ func (s *TaskService) Cancel(taskInstanceID InstanceID) (succeeded bool) {
 
 	s.taskCancelC <- taskInstanceID
 
-	return true
+	return nil
 }
 
-func (s *TaskService) SetTaskNotificationSender(taskNotificiationSender TaskNotificationSender) {
-	s.taskNotificationSender = taskNotificiationSender
+func (s *TaskService) SetNotificationSender(notificationSender NotificationSender) {
+	s.notificationSender = notificationSender
 }

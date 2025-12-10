@@ -55,7 +55,7 @@ func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
 	s.notifierFactory = factory
 }
 
-// Run 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
+// Start 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
 func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
@@ -74,7 +74,7 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 	}
 
 	// 1. Notifier들을 초기화 및 실행
-	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig)
+	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig, s.executor)
 	if err != nil {
 		defer serviceStopWaiter.Done()
 		return apperrors.Wrap(err, apperrors.ErrInternal, "Notifier 초기화 중 에러가 발생했습니다")
@@ -91,7 +91,10 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 
 		s.notificationStopWaiter.Add(1)
 
-		go h.Run(s.executor, serviceStopCtx, s.notificationStopWaiter)
+		go func(handler NotifierHandler) {
+			defer s.notificationStopWaiter.Done()
+			handler.Run(serviceStopCtx)
+		}(h)
 
 		applog.WithComponentAndFields("notification.service", log.Fields{
 			"notifier_id": h.ID(),
@@ -136,7 +139,7 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 	applog.WithComponent("notification.service").Info("Notification 서비스 중지됨")
 }
 
-// Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
+// NotifyWithTitle 지정된 Notifier를 통해 알림 메시지를 발송합니다.
 // API 핸들러 등 외부에서 특정 채널을 통하여 알림을 보내고 싶을 때 사용합니다.
 //
 // 파라미터:
@@ -147,23 +150,23 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	taskCtx := task.NewContext().With(task.TaskCtxKeyTitle, title)
+func (s *NotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
+	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
 		taskCtx.WithError()
 	}
 
-	return s.NotifyWithTaskContext(notifierID, message, taskCtx)
+	return s.Notify(taskCtx, notifierID, message)
 }
 
-// NotifyToDefault 시스템 기본 알림 채널로 알림 메시지를 발송합니다.
+// NotifyDefault 시스템 기본 알림 채널로 알림 메시지를 발송합니다.
 //
 // 파라미터:
 //   - message: 전송할 메시지 내용
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyToDefault(message string) bool {
+func (s *NotificationService) NotifyDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -172,10 +175,10 @@ func (s *NotificationService) NotifyToDefault(message string) bool {
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(message, nil)
+	return s.defaultNotifierHandler.Notify(nil, message)
 }
 
-// NotifyWithErrorToDefault 시스템 기본 알림 채널로 "에러" 알림 메시지를 발송합니다.
+// NotifyDefaultWithError 시스템 기본 알림 채널로 "에러" 알림 메시지를 발송합니다.
 // 시스템 오류, 작업 실패 등 관리자의 주의가 필요한 상황에서 사용합니다.
 // 내부적으로 TaskContext에 Error 속성을 추가하여 Notifier가 이를 인지할 수 있게 합니다.
 //
@@ -184,7 +187,7 @@ func (s *NotificationService) NotifyToDefault(message string) bool {
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
+func (s *NotificationService) NotifyDefaultWithError(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -193,20 +196,20 @@ func (s *NotificationService) NotifyWithErrorToDefault(message string) bool {
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(message, task.NewContext().WithError())
+	return s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), message)
 }
 
-// NotifyWithTaskContext 가장 저수준의 알림 발송 메서드입니다.
-// 구체적인 TaskContext를 직접 주입하여 세밀한 제어가 필요할 때 사용됩니다.
+// Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
+// TaskContext를 직접 생성하여 알림을 보낼 때 사용합니다.
 //
 // 파라미터:
+//   - taskCtx: 알림 발송 시 함께 전달할 TaskContext
 //   - notifierID: 알림 채널 ID
 //   - message: 전송할 메시지 내용
-//   - taskCtx: Task 컨텍스트 (nil 가능)
 //
 // 반환값:
-//   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부, ID를 못 찾은 경우 false (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
+//   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
+func (s *NotificationService) Notify(taskCtx task.TaskContext, notifierID string, message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -220,7 +223,7 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {
 		if h.ID() == id {
-			return h.Notify(message, taskCtx)
+			return h.Notify(taskCtx, message)
 		}
 	}
 
@@ -230,20 +233,20 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 		"notifier_id": notifierID,
 	}).Error(m)
 
-	s.defaultNotifierHandler.Notify(m, task.NewContext().WithError())
+	s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), m)
 
 	return false
 }
 
-// SupportsHTMLMessage 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
-func (s *NotificationService) SupportsHTMLMessage(notifierID string) bool {
+// SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
+func (s *NotificationService) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {
 		if h.ID() == id {
-			return h.SupportsHTMLMessage()
+			return h.SupportsHTML()
 		}
 	}
 

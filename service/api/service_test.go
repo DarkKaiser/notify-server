@@ -8,130 +8,51 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationService는 테스트용 간단한 알림 발송자입니다.
-type MockNotificationService struct{}
+// setupServiceHelper encapsulates common setup logic
+// Returns configured service, appConfig, WaitGroup, Context, and CancelFunc
+func setupServiceHelper(t *testing.T) (*NotifyAPIService, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
+	// Dynamic port to avoid conflicts
+	port, err := testutil.GetFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
 
-func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
-	return true
-}
-
-func (m *MockNotificationService) NotifyToDefault(message string) bool {
-	return true
-}
-
-func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
-	return true
-}
-
-// setupTestService는 테스트용 서비스를 설정합니다.
-func setupTestService(t *testing.T, port int) (*NotifyAPIService, *config.AppConfig) {
 	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = port
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockService := &MockNotificationService{}
+	mockService := &testutil.MockNotificationService{}
+
 	service := NewService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
 	})
-	return service, appConfig
-}
-
-// TestNotifyAPIService_Run은 서비스 시작을 테스트합니다.
-func TestNotifyAPIService_Run(t *testing.T) {
-	service, _ := setupTestService(t, 18081)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
-	// 서비스 시작
-	go service.Start(ctx, wg)
-
-	// 서비스 시작 대기
-	time.Sleep(500 * time.Millisecond)
-
-	// 서비스 종료
-	cancel()
-
-	// 종료 대기 (타임아웃 설정)
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// 정상 종료
-	case <-time.After(10 * time.Second):
-		t.Fatal("서비스가 제한 시간 내에 종료되지 않았습니다")
-	}
-}
-
-// TestNotifyAPIService_GracefulShutdown은 우아한 종료를 테스트합니다.
-func TestNotifyAPIService_GracefulShutdown(t *testing.T) {
-	service, _ := setupTestService(t, 18082)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
 
-	// 서비스 시작
+	return service, appConfig, wg, ctx, cancel
+}
+
+func TestNotifyAPIService_Lifecycle(t *testing.T) {
+	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
+	defer cancel() // Safety net
+
+	wg.Add(1)
 	go service.Start(ctx, wg)
 
-	// 서비스가 완전히 시작될 때까지 대기
-	time.Sleep(500 * time.Millisecond)
+	// Verify startup
+	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	assert.NoError(t, err, "Server should start within timeout")
 
-	// Graceful Shutdown 시작
+	// Verify Shutdown
 	shutdownStart := time.Now()
-	cancel()
-
-	// 종료 대기
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		shutdownDuration := time.Since(shutdownStart)
-		// 종료가 너무 오래 걸리지 않았는지 확인 (10초 이내)
-		assert.Less(t, shutdownDuration, 10*time.Second, "Graceful shutdown이 너무 오래 걸렸습니다")
-	case <-time.After(15 * time.Second):
-		t.Fatal("Graceful shutdown이 제한 시간 내에 완료되지 않았습니다")
-	}
-}
-
-// TestNotifyAPIService_DuplicateRun은 중복 시작 방지를 테스트합니다.
-func TestNotifyAPIService_DuplicateRun(t *testing.T) {
-	service, _ := setupTestService(t, 18083)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	wg := &sync.WaitGroup{}
-	wg.Add(2) // 두 번 시작 시도
-
-	// 첫 번째 시작
-	go service.Start(ctx, wg)
-	time.Sleep(500 * time.Millisecond)
-
-	// 두 번째 시작 시도 (이미 실행 중이므로 즉시 반환되어야 함)
-	go service.Start(ctx, wg)
-
-	// 모든 Run 호출이 완료될 때까지 대기
-	time.Sleep(500 * time.Millisecond)
-
-	// 종료
-	cancel()
+	cancel() // Trigger shutdown
 
 	done := make(chan struct{})
 	go func() {
@@ -141,34 +62,57 @@ func TestNotifyAPIService_DuplicateRun(t *testing.T) {
 
 	select {
 	case <-done:
-		// 정상 종료
-	case <-time.After(10 * time.Second):
-		t.Fatal("서비스 종료가 제한 시간 내에 완료되지 않았습니다")
+		// Success
+		assert.Less(t, time.Since(shutdownStart), 5*time.Second, "Shutdown took too long")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown timed out")
 	}
 }
 
-// TestNotifyAPIService_NilNotificationService는 nil NotificationService 처리를 테스트합니다.
-func TestNotifyAPIService_NilNotificationService(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.WS.ListenPort = 18084
-	appConfig.NotifyAPI.WS.TLSServer = false
-
-	service := NewService(appConfig, nil, common.BuildInfo{
-		Version:     "1.0.0",
-		BuildDate:   "2024-01-01",
-		BuildNumber: "100",
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
+func TestNotifyAPIService_DuplicateStart(t *testing.T) {
+	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	// First Start
 	wg.Add(1)
+	go service.Start(ctx, wg)
 
-	// nil NotificationService로 시작 시도 - error가 반환되어야 함
+	testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+
+	// Second Start call
+	// Since Start() calls defer wg.Done() even on early return (if checking running),
+	// we MUST increment WG to prevent negative counter panics.
+	wg.Add(1)
 	err := service.Start(ctx, wg)
+	assert.NoError(t, err)
 
-	// 초기화 되지 않은 NotificationService로 인해 에러 발생 확인
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown timeout - possibly WaitGroup mismatch")
+	}
+}
+
+func TestNotifyAPIService_NilDependencies(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	// No NotificationService
+	service := NewService(appConfig, nil, common.BuildInfo{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+
+	// Start() calls defer wg.Done() on error return too
+	wg.Add(1)
+	err := service.Start(ctx, wg)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "notificationService", "에러 메시지에 notificationService가 포함되어야 합니다")
+	assert.Contains(t, err.Error(), "notificationService")
 }

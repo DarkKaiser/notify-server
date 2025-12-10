@@ -28,24 +28,24 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service.taskStopWaiter, "taskStopWaiter가 초기화되어야 합니다")
 }
 
-func TestTaskService_SetTaskNotificationSender(t *testing.T) {
+func TestTaskService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 
-	mockSender := NewMockTaskNotificationSender()
+	mockSender := NewMockNotificationSender()
 
 	// 알림 발송자 설정
-	service.SetTaskNotificationSender(mockSender)
+	service.SetNotificationSender(mockSender)
 
 	// 검증
-	require.Equal(t, mockSender, service.taskNotificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
+	require.Equal(t, mockSender, service.notificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
 }
 
 func TestTaskService_TaskRun_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -58,7 +58,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -67,7 +67,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -77,8 +77,8 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -91,20 +91,20 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task Context 생성
-	taskCtx := NewContext().With("test_key", "test_value")
+	taskCtx := NewTaskContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
 		TaskCommandID: "TEST_COMMAND",
 		NotifierID:    "test-notifier",
 		NotifyOnStart: false,
 		RunBy:         RunByUser,
-		TaskCtx:       taskCtx,
+		TaskContext:   taskCtx,
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -114,8 +114,8 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 func TestTaskService_TaskCancel_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,10 +129,10 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 
 	// Task 취소 요청
 	instanceID := InstanceID("test_instance_123")
-	succeeded := service.Cancel(instanceID)
+	err := service.Cancel(instanceID)
 
 	// 검증
-	require.True(t, succeeded, "Task 취소 요청이 성공해야 합니다")
+	require.NoError(t, err, "Task 취소 요청이 성공해야 합니다")
 
 	// 서비스 중지
 	cancel()
@@ -142,8 +142,8 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -156,7 +156,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 지원되지 않는 Task 실행 요청
-	succeeded := service.Run(&RunRequest{
+	err := service.Run(&RunRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		TaskCommandID: "UNSUPPORTED_COMMAND",
 		NotifierID:    "test-notifier",
@@ -165,11 +165,11 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	})
 
 	// 검증
-	require.True(t, succeeded, "Task 실행 요청 자체는 성공해야 합니다")
+	require.NoError(t, err, "Task 실행 요청 자체는 성공해야 합니다")
 
 	// 알림이 발송되었는지 확인
 	time.Sleep(100 * time.Millisecond)
-	callCount := mockSender.GetNotifyWithTaskContextCallCount()
+	callCount := mockSender.GetNotifyCallCount()
 	require.Greater(t, callCount, 0, "에러 알림이 발송되어야 합니다")
 
 	// 서비스 중지
@@ -180,8 +180,8 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 func TestTaskService_Concurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -233,8 +233,8 @@ func TestTaskService_Concurrency(t *testing.T) {
 func TestTaskService_CancelConcurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

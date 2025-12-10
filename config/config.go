@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/validations"
+	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
 // 애플리케이션 기본 정보
@@ -67,14 +67,14 @@ func (c *AppConfig) Validate() error {
 func (c *AppConfig) validateTasks(notifierIDs []string) error {
 	var taskIDs []string
 	for _, t := range c.Tasks {
-		if err := validations.ValidateNoDuplicate(taskIDs, t.ID, "TaskID"); err != nil {
+		if err := validation.ValidateNoDuplicate(taskIDs, t.ID, "TaskID"); err != nil {
 			return err
 		}
 		taskIDs = append(taskIDs, t.ID)
 
 		var commandIDs []string
 		for _, cmd := range t.Commands {
-			if err := validations.ValidateNoDuplicate(commandIDs, cmd.ID, "CommandID"); err != nil {
+			if err := validation.ValidateNoDuplicate(commandIDs, cmd.ID, "CommandID"); err != nil {
 				return err
 			}
 			commandIDs = append(commandIDs, cmd.ID)
@@ -85,7 +85,7 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
-				if err := validations.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
 					return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
@@ -102,7 +102,7 @@ type HTTPRetryConfig struct {
 
 // Validate HTTPRetryConfig의 유효성을 검사합니다.
 func (c *HTTPRetryConfig) Validate() error {
-	if err := validations.ValidateDuration(c.RetryDelay); err != nil {
+	if err := validation.ValidateDuration(c.RetryDelay); err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
 	}
 	return nil
@@ -119,7 +119,7 @@ type NotifierConfig struct {
 func (c *NotifierConfig) Validate() ([]string, error) {
 	var notifierIDs []string
 	for _, telegram := range c.Telegrams {
-		if err := validations.ValidateNoDuplicate(notifierIDs, telegram.ID, "NotifierID"); err != nil {
+		if err := validation.ValidateNoDuplicate(notifierIDs, telegram.ID, "NotifierID"); err != nil {
 			return nil, err
 		}
 		notifierIDs = append(notifierIDs, telegram.ID)
@@ -185,7 +185,7 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 	// Applications 설정 검사
 	var applicationIDs []string
 	for _, app := range c.Applications {
-		if err := validations.ValidateNoDuplicate(applicationIDs, app.ID, "ApplicationID"); err != nil {
+		if err := validation.ValidateNoDuplicate(applicationIDs, app.ID, "ApplicationID"); err != nil {
 			return err
 		}
 		applicationIDs = append(applicationIDs, app.ID)
@@ -213,7 +213,7 @@ type WSConfig struct {
 // Validate WSConfig의 유효성을 검사합니다.
 func (c *WSConfig) Validate() error {
 	// 포트 번호 검증
-	if err := validations.ValidatePort(c.ListenPort); err != nil {
+	if err := validation.ValidatePort(c.ListenPort); err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
 	}
 
@@ -227,8 +227,8 @@ func (c *WSConfig) Validate() error {
 		}
 
 		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
-		_ = validations.ValidateFileExistsOrURL(c.TLSCertFile, true)
-		_ = validations.ValidateFileExistsOrURL(c.TLSKeyFile, true)
+		_ = validation.ValidateFileExistsOrURL(c.TLSCertFile, true)
+		_ = validation.ValidateFileExistsOrURL(c.TLSKeyFile, true)
 	}
 
 	return nil
@@ -253,7 +253,7 @@ func (c *CORSConfig) Validate() error {
 			continue
 		}
 
-		if err := validations.ValidateCORSOrigin(origin); err != nil {
+		if err := validation.ValidateCORSOrigin(origin); err != nil {
 			return err
 		}
 	}

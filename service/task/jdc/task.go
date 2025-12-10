@@ -8,7 +8,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -76,7 +76,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			t.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
+			t.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
 			t.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {
@@ -84,7 +84,7 @@ func init() {
 					return t.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return t, nil
@@ -224,7 +224,7 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		// 강의목록 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 3 {
-			if strutils.NormalizeSpaces(as.Text()) == "정보가 없습니다" {
+			if strutil.NormalizeSpaces(as.Text()) == "정보가 없습니다" {
 				return true
 			}
 
@@ -256,9 +256,9 @@ func (t *jdcTask) scrapeOnlineEducationCourseCurriculums(url string, curriculumW
 		}
 
 		onlineEducationCourseCurriculums = append(onlineEducationCourseCurriculums, &jdcOnlineEducationCourse{
-			Title1:         strutils.NormalizeSpaces(title1Selection.Text()),
-			Title2:         strutils.NormalizeSpaces(title2Selection.Text()),
-			TrainingPeriod: strutils.NormalizeSpaces(as.Eq(1).Text()),
+			Title1:         strutil.NormalizeSpaces(title1Selection.Text()),
+			Title2:         strutil.NormalizeSpaces(title2Selection.Text()),
+			TrainingPeriod: strutil.NormalizeSpaces(as.Eq(1).Text()),
 			URL:            courseDetailURL,
 			Err:            nil,
 		})

@@ -15,14 +15,19 @@ func TestAppError_Error(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "단일 에러 메시지",
+			name:     "Single error message",
 			err:      New(ErrInvalidInput, "invalid input"),
 			expected: "invalid input",
 		},
 		{
-			name:     "Wrap된 에러 메시지",
+			name:     "Wrapped error message",
 			err:      Wrap(errors.New("root cause"), ErrInternal, "internal error"),
 			expected: "internal error: root cause",
+		},
+		{
+			name:     "With formatting",
+			err:      New(ErrInternal, fmt.Sprintf("op %s not supported", "foo")),
+			expected: "op foo not supported",
 		},
 	}
 
@@ -41,13 +46,18 @@ func TestUnwrap(t *testing.T) {
 		expected error
 	}{
 		{
-			name:     "Wrapping된 에러 Unwrap",
+			name:     "Unwrap wrapped error",
 			err:      Wrap(rootErr, ErrInternal, "wrapped"),
 			expected: rootErr,
 		},
 		{
-			name:     "New로 생성된 에러 Unwrap (nil 기대)",
+			name:     "Unwrap new error (expect nil)",
 			err:      New(ErrInvalidInput, "new error"),
+			expected: nil,
+		},
+		{
+			name:     "Unwrap nil error",
+			err:      nil,
 			expected: nil,
 		},
 	}
@@ -69,13 +79,12 @@ func TestIs(t *testing.T) {
 		target   ErrorType
 		expected bool
 	}{
-		{"ErrNotFound 매칭", errNotFound, ErrNotFound, true},
-		{"ErrInternal 불일치", errNotFound, ErrInternal, false},
-		{"Wrapped 에러의 겉 타입 매칭", wrappedErr, ErrInternal, true},
-		// 주의: 현재 구현상 Is는 AppError의 Type만 확인하므로, 내부 에러의 타입을 확인하지 않음
-		{"Wrapped 에러의 원인 타입 불일치 (AppError 동작)", wrappedErr, ErrNotFound, false},
-		{"nil 에러", nil, ErrNotFound, false},
-		{"표준 에러", errors.New("std err"), ErrNotFound, false},
+		{"Match ErrNotFound", errNotFound, ErrNotFound, true},
+		{"Mismatch ErrInternal", errNotFound, ErrInternal, false},
+		{"Match wrapped error type", wrappedErr, ErrInternal, true},
+		{"Mismatch wrapped error cause type (AppError limitation)", wrappedErr, ErrNotFound, false},
+		{"Nil error", nil, ErrNotFound, false},
+		{"Standard error", errors.New("std err"), ErrNotFound, false},
 	}
 
 	for _, tt := range tests {
@@ -86,19 +95,51 @@ func TestIs(t *testing.T) {
 }
 
 func TestAs(t *testing.T) {
-	t.Run("AppError로 캐스팅 성공", func(t *testing.T) {
-		err := New(ErrForbidden, "forbidden")
-		var appErr *AppError
-		assert.True(t, As(err, &appErr))
-		assert.Equal(t, ErrForbidden, appErr.Type)
-	})
+	tests := []struct {
+		name        string
+		err         error
+		wantMatch   bool
+		expectedTyp ErrorType
+	}{
+		{
+			name:        "Cast to AppError success",
+			err:         New(ErrForbidden, "forbidden"),
+			wantMatch:   true,
+			expectedTyp: ErrForbidden,
+		},
+		{
+			name:        "Cast std error to AppError fail",
+			err:         errors.New("std error"),
+			wantMatch:   false,
+			expectedTyp: "",
+		},
+		{
+			name:        "Cast wrapped AppError success",
+			err:         Wrap(errors.New("root"), ErrSystem, "system"),
+			wantMatch:   true,
+			expectedTyp: ErrSystem,
+		},
+		{
+			name:        "Cast nil error fail",
+			err:         nil,
+			wantMatch:   false,
+			expectedTyp: "",
+		},
+	}
 
-	t.Run("AppError로 캐스팅 실패 (표준 에러)", func(t *testing.T) {
-		err := errors.New("std error")
-		var appErr *AppError
-		assert.False(t, As(err, &appErr))
-		assert.Nil(t, appErr)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var appErr *AppError
+			match := As(tt.err, &appErr)
+			assert.Equal(t, tt.wantMatch, match)
+			if tt.wantMatch {
+				assert.NotNil(t, appErr)
+				assert.Equal(t, tt.expectedTyp, appErr.Type)
+			} else {
+				assert.Nil(t, appErr)
+			}
+		})
+	}
 }
 
 func TestGetType(t *testing.T) {
@@ -107,10 +148,10 @@ func TestGetType(t *testing.T) {
 		err      error
 		expected ErrorType
 	}{
-		{"ErrUnauthorized 반환", New(ErrUnauthorized, "unauthorized"), ErrUnauthorized},
-		{"Wrapped 에러의 타입 반환", Wrap(errors.New("std"), ErrSystem, "system"), ErrSystem},
-		{"표준 에러는 ErrUnknown", errors.New("std error"), ErrUnknown},
-		{"nil 에러는 ErrUnknown", nil, ErrUnknown},
+		{"Return ErrUnauthorized", New(ErrUnauthorized, "unauthorized"), ErrUnauthorized},
+		{"Return wrapped error type", Wrap(errors.New("std"), ErrSystem, "system"), ErrSystem},
+		{"Standard error returns ErrUnknown", errors.New("std error"), ErrUnknown},
+		{"Nil error returns ErrUnknown", nil, ErrUnknown},
 	}
 
 	for _, tt := range tests {
@@ -127,10 +168,10 @@ func TestCause(t *testing.T) {
 		err      error
 		expected error
 	}{
-		{"Wrap된 에러의 원인", Wrap(rootErr, ErrInternal, "wrapped"), rootErr},
-		{"New로 생성된 에러의 원인은 nil", New(ErrInvalidInput, "new"), nil},
-		{"표준 에러의 원인은 nil (AppError 아님)", rootErr, nil},
-		{"nil 에러는 nil", nil, nil},
+		{"Cause of wrapped error", Wrap(rootErr, ErrInternal, "wrapped"), rootErr},
+		{"Cause of new error is nil", New(ErrInvalidInput, "new"), nil},
+		{"Cause of std error is nil", rootErr, nil},
+		{"Cause of nil is nil", nil, nil},
 	}
 
 	for _, tt := range tests {
@@ -149,37 +190,37 @@ func TestRootCause(t *testing.T) {
 		expected error
 	}{
 		{
-			name:     "nil 에러",
+			name:     "Nil error",
 			err:      nil,
 			expected: nil,
 		},
 		{
-			name:     "단일 레벨 표준 에러",
+			name:     "Single level std error",
 			err:      rootErr,
 			expected: rootErr,
 		},
 		{
-			name:     "AppError (wrapping 없음)",
+			name:     "AppError (no wrap)",
 			err:      New(ErrInvalidInput, "invalid"),
-			expected: New(ErrInvalidInput, "invalid"), // 자체 반환
+			expected: New(ErrInvalidInput, "invalid"),
 		},
 		{
-			name:     "중첩된 AppError (2단계)",
+			name:     "Nested AppError (2 levels)",
 			err:      Wrap(rootErr, ErrInternal, "level 1"),
 			expected: rootErr,
 		},
 		{
-			name:     "중첩된 AppError (3단계: AppError -> AppError -> std)",
+			name:     "Nested AppError (3 levels)",
 			err:      Wrap(Wrap(rootErr, ErrInvalidInput, "level 2"), ErrInternal, "level 1"),
 			expected: rootErr,
 		},
 		{
-			name:     "표준 wrapping (fmt.Errorf)",
+			name:     "Standard fmt.Errorf wrap",
 			err:      fmt.Errorf("wrap: %w", rootErr),
 			expected: rootErr,
 		},
 		{
-			name:     "혼합 wrapping (fmt.Errorf -> AppError -> std)",
+			name:     "Mixed wrapping",
 			err:      fmt.Errorf("std wrap: %w", Wrap(rootErr, ErrInternal, "app wrap")),
 			expected: rootErr,
 		},
@@ -193,9 +234,6 @@ func TestRootCause(t *testing.T) {
 				assert.Nil(t, result)
 			} else {
 				assert.NotNil(t, result)
-				// 에러 메시지 비교를 통해 동일 에러인지 확인 (포인터 비교가 안될 수 있는 상황 대비)
-				// 단, rootErr 변수를 직접 사용하는 케이스는 포인터 비교도 가능하나,
-				// New() 호출 결과는 새로운 포인터이므로 Error() 문자열 비교가 안전함.
 				assert.Equal(t, tt.expected.Error(), result.Error())
 			}
 		})

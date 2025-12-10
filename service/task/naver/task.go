@@ -10,7 +10,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -101,7 +101,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
@@ -126,7 +126,7 @@ func init() {
 					}
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return tTask, nil
@@ -148,10 +148,10 @@ func (t *naverTask) runWatchNewPerformances(taskCommandData *naverWatchNewPerfor
 	}
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
-	titleIncludedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.Place.ExcludedKeywords, ",")
+	titleIncludedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.Title.IncludedKeywords, ",")
+	titleExcludedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.Title.ExcludedKeywords, ",")
+	placeIncludedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.Place.IncludedKeywords, ",")
+	placeExcludedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
 	searchPerformancePageIndex := 1

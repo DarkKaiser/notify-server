@@ -10,15 +10,13 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestTelegramNotifier_HandleCommand(t *testing.T) {
-	// Setup
 	chatID := int64(12345)
 
-	// AppConfig with tasks for commands
+	// Create common app config for command tests
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
@@ -30,9 +28,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 						Description: "Run Task 1",
 						Notifier: struct {
 							Usable bool `json:"usable"`
-						}{
-							Usable: true,
-						},
+						}{Usable: true},
 					},
 				},
 			},
@@ -40,169 +36,125 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		Debug: true,
 	}
 
-	createTestNotifier := func(mockBot *MockTelegramBot) *telegramNotifier {
-		notifierObj := newTelegramNotifierWithBot(NotifierID("test-notifier"), mockBot, chatID, appConfig)
-		telegramNotifierObj, ok := notifierObj.(*telegramNotifier)
-		if !ok {
-			t.Fatal("Failed to cast notifier to *telegramNotifier")
-		}
-		return telegramNotifierObj
+	tests := []struct {
+		name          string
+		commandText   string
+		expectAction  bool
+		setupMockBot  func(*MockTelegramBot, *sync.WaitGroup)
+		setupMockExec func(*MockExecutor, *sync.WaitGroup)
+	}{
+		{
+			name:         "Unknown Command",
+			commandText:  "/unknown",
+			expectAction: true,
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(1) // Expect reply
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.Contains(msg.Text, "등록되지 않은 명령어")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil)
+			},
+		},
+		{
+			name:         "Help Command",
+			commandText:  "/help",
+			expectAction: true,
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(1) // Expect reply
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.Contains(msg.Text, "/help") && strings.Contains(msg.Text, "/task1_run")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil)
+			},
+		},
+		{
+			name:         "Task Run Command",
+			commandText:  "/task1_run",
+			expectAction: true,
+			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
+				wg.Add(1) // Expect run call
+				m.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
+					return req.TaskID == "task1" && req.TaskCommandID == "run"
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(nil)
+			},
+		},
 	}
 
-	t.Run("알 수 없는 명령어", func(t *testing.T) {
-		mockBot := &MockTelegramBot{
-			updatesChan: make(chan tgbotapi.Update, 1),
-		}
-		sendMessageUpdate := func(text string) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockBot := &MockTelegramBot{
+				updatesChan: make(chan tgbotapi.Update, 1),
+			}
+			mockExecutor := &MockExecutor{}
+
+			// Setup notifier
+			// Using type assertion to access internal method if needed, but we test public Run loop interaction
+			// Just like the previous file, but focusing on different logic aspects?
+			// Actually this file seems to duplicate the Run loop testing but focuses on logic.
+			// The original file used `createTestNotifier` and ran `Run`.
+			// We will follow the same pattern: Run the bot in a goroutine and send updates.
+
+			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
+
+			// Common Mock Expectations
+			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
+			mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan))
+			mockBot.On("StopReceivingUpdates").Return()
+
+			var wgAction sync.WaitGroup
+
+			if tt.setupMockBot != nil {
+				tt.setupMockBot(mockBot, &wgAction)
+			}
+			if tt.setupMockExec != nil {
+				tt.setupMockExec(mockExecutor, &wgAction)
+			}
+
+			// Run
+			ctx, cancel := context.WithCancel(context.Background())
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				notifier.Run(ctx)
+			}()
+
+			// Send update
 			mockBot.updatesChan <- tgbotapi.Update{
 				Message: &tgbotapi.Message{
-					Chat: &tgbotapi.Chat{
-						ID: chatID,
-					},
-					Text: text,
+					Chat: &tgbotapi.Chat{ID: chatID},
+					Text: tt.commandText,
 				},
 			}
-		}
 
-		notif := createTestNotifier(mockBot)
+			// Wait if action expected
+			if tt.expectAction {
+				done := make(chan struct{})
+				go func() {
+					wgAction.Wait()
+					close(done)
+				}()
 
-		done := make(chan struct{})
-
-		mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan)).Once()
-		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
-
-		// Expect unknown command message
-		mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
-			msg, ok := c.(tgbotapi.MessageConfig)
-			return ok && strings.Contains(msg.Text, "등록되지 않은 명령어")
-		})).Run(func(args mock.Arguments) {
-			close(done)
-		}).Return(tgbotapi.Message{}, nil).Once()
-
-		mockBot.On("StopReceivingUpdates").Return().Once()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		go notif.Run(&MockExecutor{}, ctx, wg)
-
-		sendMessageUpdate("/unknown")
-
-		select {
-		case <-done:
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for unknown command response")
-		}
-
-		cancel()
-		wg.Wait()
-		mockBot.AssertExpectations(t)
-	})
-
-	t.Run("Help 명령어", func(t *testing.T) {
-		mockBot := &MockTelegramBot{
-			updatesChan: make(chan tgbotapi.Update, 1),
-		}
-		sendMessageUpdate := func(text string) {
-			mockBot.updatesChan <- tgbotapi.Update{
-				Message: &tgbotapi.Message{
-					Chat: &tgbotapi.Chat{
-						ID: chatID,
-					},
-					Text: text,
-				},
+				select {
+				case <-done:
+					// Success
+				case <-time.After(1 * time.Second):
+					t.Fatal("Timeout waiting for command action")
+				}
 			}
-		}
 
-		notif := createTestNotifier(mockBot)
+			// Cleanup
+			cancel()
+			wg.Wait()
 
-		done := make(chan struct{})
-
-		mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan)).Once()
-		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
-
-		// Expect help message
-		mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
-			msg, ok := c.(tgbotapi.MessageConfig)
-			return ok && strings.Contains(msg.Text, "/help") && strings.Contains(msg.Text, "/task1_run")
-		})).Run(func(args mock.Arguments) {
-			close(done)
-		}).Return(tgbotapi.Message{}, nil).Once()
-
-		mockBot.On("StopReceivingUpdates").Return().Once()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		go notif.Run(&MockExecutor{}, ctx, wg)
-
-		sendMessageUpdate("/help")
-
-		select {
-		case <-done:
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for help command response")
-		}
-
-		cancel()
-		wg.Wait()
-		mockBot.AssertExpectations(t)
-	})
-
-	t.Run("작업 실행 명령어", func(t *testing.T) {
-		mockBot := &MockTelegramBot{
-			updatesChan: make(chan tgbotapi.Update, 1),
-		}
-		sendMessageUpdate := func(text string) {
-			mockBot.updatesChan <- tgbotapi.Update{
-				Message: &tgbotapi.Message{
-					Chat: &tgbotapi.Chat{
-						ID: chatID,
-					},
-					Text: text,
-				},
-			}
-		}
-
-		notif := createTestNotifier(mockBot)
-
-		done := make(chan struct{})
-		var capturedTaskID task.ID
-		var capturedCommandID task.CommandID
-
-		mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan)).Once()
-		mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
-		mockBot.On("StopReceivingUpdates").Return().Once()
-
-		mockTaskRunner := &MockExecutor{}
-		mockTaskRunner.On("Run", mock.Anything).
-			Run(func(args mock.Arguments) {
-				req := args.Get(0).(*task.RunRequest)
-				capturedTaskID = req.TaskID
-				capturedCommandID = req.TaskCommandID
-				close(done)
-			}).Return(true)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-
-		go notif.Run(mockTaskRunner, ctx, wg)
-
-		sendMessageUpdate("/task1_run") // Snake case of task1 + run
-
-		select {
-		case <-done:
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for TaskRun")
-		}
-
-		assert.Equal(t, task.ID("task1"), capturedTaskID)
-		assert.Equal(t, task.CommandID("run"), capturedCommandID)
-
-		cancel()
-		wg.Wait()
-		mockBot.AssertExpectations(t)
-		mockTaskRunner.AssertExpectations(t)
-	})
+			mockBot.AssertExpectations(t)
+			mockExecutor.AssertExpectations(t)
+		})
+	}
 }

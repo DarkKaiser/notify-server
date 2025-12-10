@@ -18,6 +18,7 @@ type RetryFetcher struct {
 	delegate   Fetcher
 	maxRetries int
 	retryDelay time.Duration
+	maxDelay   time.Duration
 }
 
 // NewRetryFetcher 새로운 RetryFetcher 인스턴스를 생성합니다.
@@ -27,7 +28,8 @@ type RetryFetcher struct {
 //   - delegate: 실제 HTTP 요청을 수행할 원본 Fetcher
 //   - maxRetries: 최대 재시도 횟수 (0-10 권장)
 //   - retryDelay: 초기 재시도 대기 시간 (최소 1초)
-func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration) *RetryFetcher {
+//   - maxDelay: 최대 대기 시간 (지수 백오프 증가 시 이 값을 넘지 않음)
+func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration, maxDelay time.Duration) *RetryFetcher {
 	// 재시도 횟수 검증 (음수 방지 및 최대값 제한)
 	if maxRetries < 0 {
 		maxRetries = 0
@@ -41,10 +43,16 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration)
 		retryDelay = time.Second // 최소 1초
 	}
 
+	// 최대 대기 시간은 초기 대기 시간보다 작을 수 없음
+	if maxDelay < retryDelay {
+		maxDelay = retryDelay
+	}
+
 	return &RetryFetcher{
 		delegate:   delegate,
 		maxRetries: maxRetries,
 		retryDelay: retryDelay,
+		maxDelay:   maxDelay,
 	}
 }
 
@@ -62,8 +70,9 @@ func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 //
 // [재시도 전략 상세]
 // 1. Exponential Backoff: 재시도 횟수가 증가할수록 대기 시간이 2배씩 증가합니다 (1초, 2초, 4초, ...).
-// 2. Full Jitter: 대기 시간 범위 내에서 무작위 값을 더하거나 빼서(+/- 10%), 여러 클라이언트가 동시에 재시도하는 'Thundering Herd' 문제를 방지합니다.
-// 3. Retry Conditions: 네트워크 오류, 5xx 서버 에러, 429(Too Many Requests) 응답 시 재시도합니다.
+// 2. Max Delay Cap: 대기 시간은 설정된 최대 시간(maxDelay)을 초과하지 않습니다.
+// 3. Full Jitter: 대기 시간 범위 내에서 무작위 값을 더하거나 빼서(+/- 10%), 여러 클라이언트가 동시에 재시도하는 'Thundering Herd' 문제를 방지합니다.
+// 4. Retry Conditions: 네트워크 오류, 5xx 서버 에러, 429(Too Many Requests) 응답 시 재시도합니다.
 func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i <= f.maxRetries; i++ {
@@ -72,6 +81,11 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			// 지수 백오프 적용: 재시도 횟수가 늘어날수록 대기 시간도 증가 (2^(i-1))
 			// 예: retryDelay가 1초라면, 1초 -> 2초 -> 4초 -> 8초 ...
 			delay := f.retryDelay * time.Duration(1<<(i-1))
+
+			// Max Delay Cap 적용
+			if delay > f.maxDelay {
+				delay = f.maxDelay
+			}
 
 			// Jitter(무작위성) 추가: +/- 10% 범위 내에서 랜덤하게 대기 시간을 조정하여
 			// 여러 클라이언트가 동시에 재시도하는 'Thundering Herd' 문제 방지

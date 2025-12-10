@@ -10,7 +10,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -85,9 +85,9 @@ type naverShoppingProduct struct {
 
 func (p *naverShoppingProduct) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, strutils.FormatCommas(p.LowPrice), mark)
+		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, strutil.FormatCommas(p.LowPrice), mark)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, strutils.FormatCommas(p.LowPrice), mark, p.Link))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
 type naverShoppingWatchPriceResultData struct {
@@ -147,7 +147,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
@@ -172,7 +172,7 @@ func init() {
 					}
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return tTask, nil
@@ -239,8 +239,8 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &naverShoppingWatchPriceResultData{}
-	includedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.IncludedKeywords, ",")
-	excludedKeywords := strutils.SplitAndTrim(taskCommandData.Filters.ExcludedKeywords, ",")
+	includedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.IncludedKeywords, ",")
+	excludedKeywords := strutil.SplitAndTrim(taskCommandData.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
@@ -289,7 +289,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 			if m != "" {
 				m += lineSpacing
 			}
-			m += originProduct.String(messageTypeHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutils.FormatCommas(actualityProduct.LowPrice)))
+			m += originProduct.String(messageTypeHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice)))
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*naverShoppingProduct)
@@ -303,7 +303,7 @@ func (t *naverShoppingTask) runWatchPrice(taskCommandData *naverShoppingWatchPri
 		return "", nil, err
 	}
 
-	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", taskCommandData.Query, taskCommandData.Filters.IncludedKeywords, taskCommandData.Filters.ExcludedKeywords, strutils.FormatCommas(taskCommandData.Filters.PriceLessThan))
+	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", taskCommandData.Query, taskCommandData.Filters.IncludedKeywords, taskCommandData.Filters.ExcludedKeywords, strutil.FormatCommas(taskCommandData.Filters.PriceLessThan))
 
 	if m != "" {
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -72,13 +72,13 @@ func (p *kurlyProduct) String(messageTypeHTML bool, mark string, previousProduct
 	formatPrice := func(price, discountedPrice, discountRate int) string {
 		// 할인 가격이 없거나 가격과 동일하면 그냥 가격을 반환한다.
 		if discountedPrice == 0 || discountedPrice == price {
-			return fmt.Sprintf("%s원", strutils.FormatCommas(price))
+			return fmt.Sprintf("%s원", strutil.FormatCommas(price))
 		}
 
 		if messageTypeHTML == true {
-			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", strutils.FormatCommas(price), strutils.FormatCommas(discountedPrice), discountRate)
+			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 		}
-		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", strutils.FormatCommas(price), strutils.FormatCommas(discountedPrice), discountRate)
+		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 	}
 
 	// 상품 이름
@@ -163,7 +163,7 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay)
+			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 
@@ -188,7 +188,7 @@ func init() {
 						}
 					}
 				}
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return tTask, nil
@@ -297,7 +297,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 			if ps.Length() != 1 {
 				return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
-			product.Name = strutils.NormalizeSpaces(ps.Text())
+			product.Name = strutil.NormalizeSpaces(ps.Text())
 
 			// 상품 가격을 추출한다.
 			ps = sel.Find("h2.css-xrp7wx > span.css-8h3us8")

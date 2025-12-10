@@ -11,18 +11,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestInstanceIDGenerator_Base62_Table verifies the encoding logic using a table
+func TestInstanceIDGenerator_Base62_Table(t *testing.T) {
+	g := &instanceIDGenerator{}
+
+	tests := []struct {
+		input    int64
+		expected string
+	}{
+		{0, "0"},
+		{1, "1"},
+		{10, "A"},
+		{35, "Z"},
+		{36, "a"},
+		{61, "z"},
+		{62, "10"},
+	}
+
+	for _, tt := range tests {
+		t.Run("Encode "+tt.expected, func(t *testing.T) {
+			result := string(g.appendBase62(nil, tt.input))
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestInstanceIDGenerator_Format_Table verifies format for multiple generated IDs
+func TestInstanceIDGenerator_Format_Table(t *testing.T) {
+	generator := &instanceIDGenerator{}
+	regex := regexp.MustCompile(`^[0-9a-zA-Z]+$`)
+
+	tests := []struct {
+		name  string
+		check func(*testing.T, InstanceID)
+	}{
+		{
+			name: "Base62 Characters Only",
+			check: func(t *testing.T, id InstanceID) {
+				assert.True(t, regex.MatchString(string(id)), "ID should contain only Base62 characters")
+			},
+		},
+		{
+			name: "Length Constraints",
+			check: func(t *testing.T, id InstanceID) {
+				l := len(string(id))
+				assert.GreaterOrEqual(t, l, 15)
+				assert.LessOrEqual(t, l, 25)
+			},
+		},
+	}
+
+	// Generate a few samples to verify
+	for i := 0; i < 5; i++ {
+		id := generator.New()
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				tt.check(t, id)
+			})
+		}
+	}
+}
+
+// Keep concurrent and monotonicity tests as they are best suited for procedural logic
 func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	generator := &instanceIDGenerator{}
-
-	// 동시성 테스트를 위해 많은 수의 고루틴 실행
-	// 100개 고루틴이 각각 1000개 ID 생성 -> 총 10만개
 	const numGoroutines = 100
 	const numIDsPerGoroutine = 1000
 
 	ids := make(chan InstanceID, numGoroutines*numIDsPerGoroutine)
 	var wg sync.WaitGroup
 
-	// 병렬로 ID 대량 생성
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func() {
@@ -36,7 +94,6 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	wg.Wait()
 	close(ids)
 
-	// 중복 검사
 	uniqueMap := make(map[InstanceID]bool)
 	count := 0
 	for id := range ids {
@@ -45,8 +102,6 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 		}
 		uniqueMap[id] = true
 		count++
-
-		// ID가 비어있지 않은지 확인
 		assert.NotEmpty(t, id)
 	}
 
@@ -65,53 +120,14 @@ func TestInstanceIDGenerator_Monotonicity(t *testing.T) {
 		}
 	}
 
-	// 생성된 ID가 정렬된 상태인지 확인
 	isSorted := sort.SliceIsSorted(ids, func(i, j int) bool {
-		// 길이 우선 비교 (Base62 특성상 길이가 길면 더 큰 수)
 		if len(ids[i]) != len(ids[j]) {
 			return len(ids[i]) < len(ids[j])
 		}
 		return ids[i] < ids[j]
 	})
 
-	require.True(t, isSorted, "Generated IDs should be monotonic (sorted by length then value)")
-}
-
-func TestInstanceIDGenerator_Format(t *testing.T) {
-	generator := &instanceIDGenerator{}
-	id := string(generator.New())
-
-	// Base62 문자셋으로만 구성되어야 함
-	matched, err := regexp.MatchString(`^[0-9a-zA-Z]+$`, id)
-	require.NoError(t, err)
-	require.True(t, matched, "ID should contain only Base62 characters")
-
-	// 길이는 어느 정도 일정해야 함
-	// 타임스탬프(약 11자) + 시퀀스(고정 6자) = 약 17자 내외
-	require.GreaterOrEqual(t, len(id), 15)
-	require.LessOrEqual(t, len(id), 25)
-}
-
-func TestInstanceIDGenerator_AppendBase62(t *testing.T) {
-	g := &instanceIDGenerator{}
-
-	tests := []struct {
-		input    int64
-		expected string
-	}{
-		{0, "0"},
-		{1, "1"},
-		{10, "A"}, // 이전 'a' (10) -> 이제 'A' (10)
-		{35, "Z"}, // 이전 'z' (35) -> 이제 'Z' (35)
-		{36, "a"}, // 이전 'A' (36) -> 이제 'a' (36)
-		{61, "z"}, // 이전 'Z' (61) -> 이제 'z' (61)
-		{62, "10"},
-	}
-
-	for _, tt := range tests {
-		res := string(g.appendBase62(nil, tt.input))
-		assert.Equal(t, tt.expected, res, "Base62 encoding incorrect for %d", tt.input)
-	}
+	require.True(t, isSorted, "Generated IDs should be monotonic")
 }
 
 func BenchmarkInstanceIDGenerator_New(b *testing.B) {

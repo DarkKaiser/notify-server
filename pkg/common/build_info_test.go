@@ -6,45 +6,59 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBuildInfo_Structure(t *testing.T) {
-	buildInfo := BuildInfo{
-		Version:     "v1.0.0",
-		BuildDate:   "2025-12-05",
-		BuildNumber: "123",
+func TestBuildInfo(t *testing.T) {
+	tests := []struct {
+		name        string
+		buildInfo   BuildInfo
+		wantVersion string
+		wantDate    string
+		wantNumber  string
+	}{
+		{
+			name: "Full build info",
+			buildInfo: BuildInfo{
+				Version:     "v1.0.0",
+				BuildDate:   "2025-12-05",
+				BuildNumber: "123",
+			},
+			wantVersion: "v1.0.0",
+			wantDate:    "2025-12-05",
+			wantNumber:  "123",
+		},
+		{
+			name:        "Empty build info",
+			buildInfo:   BuildInfo{},
+			wantVersion: "",
+			wantDate:    "",
+			wantNumber:  "",
+		},
+		{
+			name: "Partial build info",
+			buildInfo: BuildInfo{
+				Version: "dev",
+			},
+			wantVersion: "dev",
+			wantDate:    "",
+			wantNumber:  "",
+		},
+		{
+			name: "Git Commit Hash",
+			buildInfo: BuildInfo{
+				Version:     "abc123def456",
+				BuildDate:   "2025-12-05T11:30:00Z",
+				BuildNumber: "456",
+			},
+			wantVersion: "abc123def456",
+			wantDate:    "2025-12-05T11:30:00Z",
+			wantNumber:  "456",
+		},
 	}
 
-	assert.Equal(t, "v1.0.0", buildInfo.Version)
-	assert.Equal(t, "2025-12-05", buildInfo.BuildDate)
-	assert.Equal(t, "123", buildInfo.BuildNumber)
-}
-
-func TestBuildInfo_EmptyValues(t *testing.T) {
-	buildInfo := BuildInfo{}
-
-	assert.Equal(t, "", buildInfo.Version)
-	assert.Equal(t, "", buildInfo.BuildDate)
-	assert.Equal(t, "", buildInfo.BuildNumber)
-}
-
-func TestBuildInfo_PartialValues(t *testing.T) {
-	buildInfo := BuildInfo{
-		Version: "dev",
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantVersion, tt.buildInfo.Version)
+			assert.Equal(t, tt.wantDate, tt.buildInfo.BuildDate)
+			assert.Equal(t, tt.wantNumber, tt.buildInfo.BuildNumber)
+		})
 	}
-
-	assert.Equal(t, "dev", buildInfo.Version)
-	assert.Equal(t, "", buildInfo.BuildDate)
-	assert.Equal(t, "", buildInfo.BuildNumber)
-}
-
-func TestBuildInfo_GitCommitHash(t *testing.T) {
-	// Git 커밋 해시 형식 테스트
-	buildInfo := BuildInfo{
-		Version:     "abc123def456",
-		BuildDate:   "2025-12-05T11:30:00Z",
-		BuildNumber: "456",
-	}
-
-	assert.Equal(t, "abc123def456", buildInfo.Version)
-	assert.Equal(t, "2025-12-05T11:30:00Z", buildInfo.BuildDate)
-	assert.Equal(t, "456", buildInfo.BuildNumber)
 }

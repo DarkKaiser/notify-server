@@ -11,7 +11,7 @@ import (
 
 func TestTask_Run(t *testing.T) {
 	t.Run("실행 중 에러 발생", func(t *testing.T) {
-		mockSender := NewMockTaskNotificationSender()
+		mockSender := NewMockNotificationSender()
 		wg := &sync.WaitGroup{}
 		doneC := make(chan InstanceID, 1)
 
@@ -48,14 +48,14 @@ func TestTask_Run(t *testing.T) {
 		}
 		wg.Wait()
 
-		assert.Equal(t, 1, mockSender.GetNotifyWithTaskContextCallCount())
-		call := mockSender.NotifyWithTaskContextCalls[0]
-		assert.Contains(t, call.Message, "Run Error")
-		assert.Contains(t, call.Message, "작업이 실패하였습니다")
+		assert.Equal(t, 1, mockSender.GetNotifyCallCount())
+		assert.Equal(t, "test-notifier", mockSender.NotifyCalls[0].NotifierID)
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "Run Error")
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업이 실패하였습니다")
 	})
 
 	t.Run("취소된 작업", func(t *testing.T) {
-		mockSender := NewMockTaskNotificationSender()
+		mockSender := NewMockNotificationSender()
 		wg := &sync.WaitGroup{}
 		doneC := make(chan InstanceID, 1)
 
@@ -93,8 +93,8 @@ func TestTask_Run(t *testing.T) {
 		}
 		wg.Wait()
 
-		// Should not send notification if canceled
-		assert.Equal(t, 0, mockSender.GetNotifyWithTaskContextCallCount())
+		// Should not send	// No notification should be sent for duplicate
+		assert.Equal(t, 0, mockSender.GetNotifyCallCount())
 	})
 }
 
@@ -107,19 +107,19 @@ func TestTask_Cancel(t *testing.T) {
 }
 
 func TestTaskContext(t *testing.T) {
-	ctx := NewContext()
+	ctx := NewTaskContext()
 
-	ctx.With("key", "value")
+	ctx = ctx.With("key", "value")
 	assert.Equal(t, "value", ctx.Value("key"))
 
-	ctx.WithTask("TaskID", "CommandID")
-	assert.Equal(t, ID("TaskID"), ctx.Value(TaskCtxKeyID))
-	assert.Equal(t, CommandID("CommandID"), ctx.Value(TaskCtxKeyCommandID))
+	ctx = ctx.WithTask("TaskID", "CommandID")
+	assert.Equal(t, ID("TaskID"), ctx.GetID())
+	assert.Equal(t, CommandID("CommandID"), ctx.GetCommandID())
 
-	ctx.WithInstanceID("InstanceID", 100)
-	assert.Equal(t, InstanceID("InstanceID"), ctx.Value(TaskCtxKeyInstanceID))
-	assert.Equal(t, int64(100), ctx.Value(TaskCtxKeyElapsedTimeAfterRun))
+	ctx = ctx.WithInstanceID("InstanceID", 100)
+	assert.Equal(t, InstanceID("InstanceID"), ctx.GetInstanceID())
+	assert.Equal(t, int64(100), ctx.GetElapsedTimeAfterRun())
 
-	ctx.WithError()
-	assert.Equal(t, true, ctx.Value(TaskCtxKeyErrorOccurred))
+	ctx = ctx.WithError()
+	assert.True(t, ctx.IsErrorOccurred())
 }

@@ -1,7 +1,6 @@
 package task
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -54,10 +53,10 @@ func findConfigFromSupportedTask(taskID ID, taskCommandID CommandID) (*TaskConfi
 			}
 		}
 
-		return nil, nil, ErrNotSupportedCommand
+		return nil, nil, ErrCommandNotSupported
 	}
 
-	return nil, nil, ErrNotSupportedTask
+	return nil, nil, ErrTaskNotSupported
 }
 
 // TaskRunFunc
@@ -92,7 +91,7 @@ type TaskHandler interface {
 
 	ElapsedTimeAfterRun() int64
 
-	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
+	Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
 func (t *Task) GetID() ID {
@@ -123,7 +122,7 @@ func (t *Task) ElapsedTimeAfterRun() int64 {
 	return int64(time.Since(t.RunTime).Seconds())
 }
 
-func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
+func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
 	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
 	defer taskStopWaiter.Done()
@@ -133,7 +132,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 
 	t.RunTime = time.Now()
 
-	var taskCtx = NewContext().WithTask(t.GetID(), t.GetCommandID())
+	var taskCtx = NewTaskContext().WithTask(t.GetID(), t.GetCommandID())
 
 	if t.RunFn == nil {
 		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)
@@ -143,7 +142,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"command_id": t.GetCommandID(),
 		}).Error(m)
 
-		t.notifyError(taskNotificationSender, m, taskCtx)
+		t.notifyError(notificationSender, m, taskCtx)
 
 		return
 	}
@@ -166,7 +165,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"command_id": t.GetCommandID(),
 		}).Error(m)
 
-		t.notifyError(taskNotificationSender, m, taskCtx)
+		t.notifyError(notificationSender, m, taskCtx)
 
 		return
 	}
@@ -180,13 +179,13 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"error":      err,
 		}).Warn(m)
 
-		t.notify(taskNotificationSender, m, taskCtx)
+		t.notify(notificationSender, m, taskCtx)
 	}
 
-	if message, changedTaskResultData, err := t.RunFn(taskResultData, taskNotificationSender.SupportsHTMLMessage(t.NotifierID)); t.IsCanceled() == false {
+	if message, changedTaskResultData, err := t.RunFn(taskResultData, notificationSender.SupportsHTML(t.NotifierID)); t.IsCanceled() == false {
 		if err == nil {
 			if len(message) > 0 {
-				t.notify(taskNotificationSender, message, taskCtx)
+				t.notify(notificationSender, message, taskCtx)
 			}
 
 			if changedTaskResultData != nil {
@@ -199,7 +198,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 						"error":      err,
 					}).Warn(m)
 
-					t.notifyError(taskNotificationSender, m, taskCtx)
+					t.notifyError(notificationSender, m, taskCtx)
 				}
 			}
 		} else {
@@ -211,23 +210,23 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 				"error":      err,
 			}).Error(m)
 
-			t.notifyError(taskNotificationSender, m, taskCtx)
+			t.notifyError(notificationSender, m, taskCtx)
 
 			return
 		}
 	}
 }
 
-func (t *Task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx)
+func (t *Task) notify(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
+	return notificationSender.Notify(taskCtx, t.GetNotifierID(), m)
 }
 
-func (t *Task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx.WithError())
+func (t *Task) notifyError(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
+	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), m)
 }
 
 func (t *Task) dataFileName() string {
-	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutils.ToSnakeCase(string(t.GetID())), strutils.ToSnakeCase(string(t.GetCommandID())))
+	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutil.ToSnakeCase(string(t.GetID())), strutil.ToSnakeCase(string(t.GetCommandID())))
 	return strings.ReplaceAll(filename, "_", "-")
 }
 
@@ -257,49 +256,4 @@ func (t *Task) writeTaskResultDataToFile(v interface{}) error {
 	}
 
 	return nil
-}
-
-// TaskContext
-type TaskContext interface {
-	With(key, val interface{}) TaskContext
-	WithTask(taskID ID, taskCommandID CommandID) TaskContext
-	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
-	WithError() TaskContext
-	Value(key interface{}) interface{}
-}
-
-type taskContext struct {
-	ctx context.Context
-}
-
-func NewContext() TaskContext {
-	return &taskContext{
-		ctx: context.Background(),
-	}
-}
-
-func (c *taskContext) With(key, val interface{}) TaskContext {
-	c.ctx = context.WithValue(c.ctx, key, val)
-	return c
-}
-
-func (c *taskContext) WithTask(taskID ID, taskCommandID CommandID) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyID, taskID)
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyCommandID, taskCommandID)
-	return c
-}
-
-func (c *taskContext) WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyInstanceID, taskInstanceID)
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
-	return c
-}
-
-func (c *taskContext) WithError() TaskContext {
-	c.ctx = context.WithValue(c.ctx, TaskCtxKeyErrorOccurred, true)
-	return c
-}
-
-func (c *taskContext) Value(key interface{}) interface{} {
-	return c.ctx.Value(key)
 }

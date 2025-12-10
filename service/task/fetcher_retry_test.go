@@ -62,8 +62,8 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockFetcher := &TestMockFetcher{}
-			// MaxRetries: 3, MinDelay: 1ms (fast test)
-			retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond)
+			// MaxRetries: 3, MinDelay: 1ms (fast test), MaxDelay: 10ms
+			retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond, 10*time.Millisecond)
 
 			// Setup Mock
 			call := mockFetcher.On("Do", mock.Anything)
@@ -99,7 +99,7 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 func TestRetryFetcher_ContextCancel(t *testing.T) {
 	mockFetcher := &TestMockFetcher{}
 	// Set a long delay to ensure it would hang if context cancel is ignored
-	retryFetcher := NewRetryFetcher(mockFetcher, 3, 2*time.Second)
+	retryFetcher := NewRetryFetcher(mockFetcher, 3, 2*time.Second, 10*time.Second)
 
 	// Mock always fails
 	mockFetcher.On("Do", mock.Anything).Return(nil, errors.New("fail"))
@@ -132,7 +132,7 @@ func TestRetryFetcher_ContextCancel(t *testing.T) {
 // to prevent file descriptor leaks.
 func TestRetryFetcher_BodyClose(t *testing.T) {
 	mockFetcher := &TestMockFetcher{}
-	retryFetcher := NewRetryFetcher(mockFetcher, 1, time.Millisecond) // 1 Retry
+	retryFetcher := NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond) // 1 Retry
 
 	// Mock 500 response with a Body that tracks Close() calls
 	mockBody := &MockReadCloser{data: bytes.NewBufferString("error")}

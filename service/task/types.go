@@ -6,23 +6,42 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 )
 
-var (
-	ErrNotSupportedTask      = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
-	ErrNotSupportedCommand   = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
-	ErrNotImplementedCommand = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
-)
-
-// ID 작업의 고유 식별자입니다. (예: "Lotto")
+// ID 작업의 고유 식별자입니다.
 type ID string
 
-// CommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다. (예: "Check")
+func (id ID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id ID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "ID는 필수입니다")
+	}
+	return nil
+}
+
+func (id ID) String() string {
+	return string(id)
+}
+
+// CommandID 작업 내에서 실행할 구체적인 명령어의 식별자입니다.
 type CommandID string
 
-// InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
-type InstanceID string
+func (id CommandID) IsEmpty() bool {
+	return len(id) == 0
+}
 
-// Match 주어진 대상 커맨드 ID(target)가 현재 커맨드 ID 패턴과 일치하는지 확인합니다.
-// 와일드카드('*') 접미사를 지원하여, 패턴 매칭을 수행할 수 있습니다.
+func (id CommandID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 필수입니다")
+	}
+	return nil
+}
+
+// Match 대상 커맨드 ID(target)가 현재 커맨드 ID와 일치하는지, 또는 정의된 패턴에 부합하는지 검증합니다.
+//
+// 단순 일치(Exact Match)뿐만 아니라, 접미사 와일드카드('*')를 사용한 접두어 매칭(Prefix Match)을 지원합니다.
+// 예: "CMD_*"는 "CMD_A", "CMD_B" 등과 일치한다고 판단합니다.
 func (id CommandID) Match(target CommandID) bool {
 	const wildcard = "*"
 
@@ -35,34 +54,57 @@ func (id CommandID) Match(target CommandID) bool {
 	return id == target
 }
 
-// taskContextKey TaskContext에서 값을 저장하고 조회할 때 사용하는 키 타입입니다.
-type taskContextKey string
+func (id CommandID) String() string {
+	return string(id)
+}
 
-const (
-	// TaskCtxKeyTitle 알림 메시지의 제목을 지정하는 키입니다.
-	TaskCtxKeyTitle taskContextKey = "Title"
-	// TaskCtxKeyErrorOccurred 작업 실행 중 에러 발생 여부를 나타내는 키입니다.
-	TaskCtxKeyErrorOccurred taskContextKey = "ErrorOccurred"
+// InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
+type InstanceID string
 
-	// TaskCtxKeyID 작업 ID를 저장하는 키입니다.
-	TaskCtxKeyID taskContextKey = "Task.ID"
-	// TaskCtxKeyCommandID 작업 커맨드 ID를 저장하는 키입니다.
-	TaskCtxKeyCommandID taskContextKey = "Task.CommandID"
-	// TaskCtxKeyInstanceID 작업 인스턴스 ID를 저장하는 키입니다.
-	TaskCtxKeyInstanceID taskContextKey = "Task.InstanceID"
-	// TaskCtxKeyElapsedTimeAfterRun 작업 실행 후 경과 시간을 저장하는 키입니다.
-	TaskCtxKeyElapsedTimeAfterRun taskContextKey = "Task.ElapsedTimeAfterRun"
-)
+func (id InstanceID) IsEmpty() bool {
+	return len(id) == 0
+}
+
+func (id InstanceID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "InstanceID는 필수입니다")
+	}
+	return nil
+}
+
+func (id InstanceID) String() string {
+	return string(id)
+}
 
 // RunBy 누가 작업을 실행했는지를 나타내는 타입입니다.
 type RunBy int
 
 const (
+	// RunByUnknown 실행 주체가 명확하지 않은 상태 (Zero Value 안전성 확보)
+	RunByUnknown RunBy = iota
 	// RunByUser 사용자가 직접 실행 요청한 경우입니다.
-	RunByUser RunBy = iota
+	RunByUser
 	// RunByScheduler 스케줄러에 의해 자동으로 실행된 경우입니다.
 	RunByScheduler
 )
+
+// IsValid 유효한 RunBy 값인지 확인합니다.
+func (t RunBy) IsValid() bool {
+	switch t {
+	case RunByUser, RunByScheduler:
+		return true
+	default:
+		return false
+	}
+}
+
+// Validate 유효한 실행 주체인지 검증합니다.
+func (t RunBy) Validate() error {
+	if !t.IsValid() {
+		return apperrors.New(apperrors.ErrInvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
+	}
+	return nil
+}
 
 func (t RunBy) String() string {
 	switch t {
@@ -75,44 +117,43 @@ func (t RunBy) String() string {
 	}
 }
 
-// RunRequest 작업 실행 요청 정보를 담고 있는 구조체입니다.
+// RunRequest 작업 식별자, 커맨드, 컨텍스트 등 작업(Task) 실행에 필요한 모든 메타데이터와 요청 정보를 캡슐화한 구조체입니다.
+// Scheduler 또는 API 요청 등을 통해 작업을 트리거할 때 사용됩니다.
 type RunRequest struct {
-	TaskID        ID
+	// TaskID 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
+	TaskID ID
+	// TaskCommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
 	TaskCommandID CommandID
 
-	// TaskCtx 작업 실행 컨텍스트입니다. 실행 중 필요한 메타데이터를 전달하는 데 사용됩니다.
-	TaskCtx TaskContext
+	// TaskContext 작업 실행 컨텍스트입니다.
+	// 실행 흐름 전반에 걸쳐 메타데이터(Title, ID 등)를 전달하고, 취소 신호(Cancellation)를 전파하는 데 사용됩니다.
+	TaskContext TaskContext
 
+	// NotifierID 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
+	// 지정하지 않을 경우, Task 설정에 정의된 기본 Notifier가 사용됩니다.
 	NotifierID string
 
-	// NotifyOnStart 작업 시작 시 알림을 보낼지 여부입니다.
+	// NotifyOnStart 작업 시작 시점에 '시작 알림'을 발송할지 여부를 결정하는 플래그입니다.
 	NotifyOnStart bool
 
+	// RunBy 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
+	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
 	RunBy RunBy
 }
 
-type Runner interface {
-	// Run 작업을 실행합니다. 실행 성공 여부를 반환합니다.
-	Run(req *RunRequest) (succeeded bool)
-}
-
-type Canceler interface {
-	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부를 반환합니다.
-	Cancel(taskInstanceID InstanceID) (succeeded bool)
-}
-
-type Executor interface {
-	Runner
-	Canceler
-}
-
-// TaskNotificationSender 작업 상태나 결과를 알림으로 전송하는 인터페이스입니다.
-type TaskNotificationSender interface {
-	// NotifyToDefault 기본 설정된 알림 채널로 메시지를 전송합니다.
-	NotifyToDefault(message string) bool
-	// NotifyWithTaskContext 특정 알림 채널로 컨텍스트 정보와 함께 메시지를 전송합니다.
-	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
-
-	// SupportsHTMLMessage 해당 알림 채널이 HTML 메시지 형식을 지원하는지 확인합니다.
-	SupportsHTMLMessage(notifierID string) bool
+// Validate 유효한 요청인지 검증합니다.
+func (r *RunRequest) Validate() error {
+	if err := r.TaskID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskID 검증 실패")
+	}
+	if err := r.TaskCommandID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskCommandID 검증 실패")
+	}
+	if len(r.NotifierID) > 0 && strings.TrimSpace(r.NotifierID) == "" {
+		return apperrors.New(apperrors.ErrInvalidInput, "NotifierID는 공백일 수 없습니다")
+	}
+	if err := r.RunBy.Validate(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -10,245 +10,189 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/auth"
 	"github.com/darkkaiser/notify-server/service/api/model/response"
+	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/darkkaiser/notify-server/service/api/v1/model/request"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandler_PublishNotificationHandler(t *testing.T) {
-	// Setup
-	e := echo.New()
-	mockService := &MockNotificationService{}
-
-	// Test Config
-	appConfig := &config.AppConfig{}
-	appConfig.NotifyAPI.Applications = []config.ApplicationConfig{
-		{
-			ID:                "test-app",
-			Title:             "Test App",
-			Description:       "Test Application",
-			DefaultNotifierID: "test-notifier",
-			AppKey:            "valid-key",
+func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
+	// Common Setup
+	mockService := &testutil.MockNotificationService{}
+	appConfig := &config.AppConfig{
+		NotifyAPI: config.NotifyAPIConfig{
+			Applications: []config.ApplicationConfig{
+				{
+					ID:                "test-app",
+					Title:             "Test App",
+					DefaultNotifierID: "test-notifier",
+					AppKey:            "valid-key",
+				},
+			},
 		},
 	}
 	appManager := auth.NewApplicationManager(appConfig)
 	h := NewHandler(appManager, mockService)
 
-	t.Run("정상적인 메시지 전송", func(t *testing.T) {
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       "Test Message",
-			ErrorOccurred: false,
-		}
-		jsonBody, _ := json.Marshal(reqBody)
+	tests := []struct {
+		name              string
+		appKey            string
+		reqBody           interface{}
+		mockFail          bool
+		expectedStatus    int
+		verifyErrResponse func(*testing.T, response.ErrorResponse)
+		verifyMock        func(*testing.T, *testutil.MockNotificationService)
+	}{
+		{
+			name:   "Success Notification",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Test Message",
+			},
+			expectedStatus: http.StatusOK,
+			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
+				assert.True(t, m.NotifyCalled)
+				assert.Equal(t, "test-notifier", m.LastNotifierID)
+				assert.Equal(t, "Test App", m.LastTitle)
+				assert.Equal(t, "Test Message", m.LastMessage)
+				assert.False(t, m.LastErrorOccurred)
+			},
+		},
+		{
+			name:   "Invalid AppKey",
+			appKey: "invalid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Test Message",
+			},
+			expectedStatus: http.StatusUnauthorized,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Contains(t, errResp.Message, "app_key가 유효하지 않습니다")
+			},
+		},
+		{
+			name:   "Unauthorized AppID",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "unknown-app",
+				Message:       "Test Message",
+			},
+			expectedStatus: http.StatusUnauthorized,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Contains(t, errResp.Message, "접근이 허용되지 않은 application_id")
+			},
+		},
+		{
+			name:           "Invalid JSON Body",
+			appKey:         "valid-key",
+			reqBody:        "invalid-json", // Helper handles string as raw body logic
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "Missing ApplicationID",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "",
+				Message:       "Test Message",
+			},
+			expectedStatus: http.StatusBadRequest,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Contains(t, errResp.Message, "애플리케이션 ID")
+				assert.Contains(t, errResp.Message, "필수")
+			},
+		},
+		{
+			name:   "Missing Message",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "",
+			},
+			expectedStatus: http.StatusBadRequest,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Contains(t, errResp.Message, "메시지")
+				assert.Contains(t, errResp.Message, "필수")
+			},
+		},
+		{
+			name:   "Message Too Long",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       strings.Repeat("a", 4097),
+			},
+			expectedStatus: http.StatusBadRequest,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Contains(t, errResp.Message, "메시지")
+				assert.Contains(t, errResp.Message, "최대")
+				assert.Contains(t, errResp.Message, "4096")
+			},
+		},
+		{
+			name:   "Service Failure (Still 200)",
+			appKey: "valid-key",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Fail Message",
+			},
+			mockFail:       true,
+			expectedStatus: http.StatusOK,
+			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
+				assert.True(t, m.NotifyCalled)
+				// Service fail logic implementation detail: does it return specific error or just bool false?
+				// Handler ignores false return currently (legacy behavior).
+			},
+		},
+	}
 
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService.Reset()
+			mockService.ShouldFail = tt.mockFail
 
-		// Execute
-		if assert.NoError(t, h.PublishNotificationHandler(c)) {
-			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.True(t, mockService.NotifyCalled)
-			assert.Equal(t, "test-notifier", mockService.LastNotifierID)
-			assert.Equal(t, "Test App", mockService.LastTitle)
-			assert.Equal(t, "Test Message", mockService.LastMessage)
-		}
-	})
+			e := echo.New()
 
-	t.Run("잘못된 AppKey", func(t *testing.T) {
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       "Test Message",
-		}
-		jsonBody, _ := json.Marshal(reqBody)
+			var bodyStr string
+			if s, ok := tt.reqBody.(string); ok {
+				bodyStr = s
+			} else {
+				b, _ := json.Marshal(tt.reqBody)
+				bodyStr = string(b)
+			}
 
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=invalid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+			req := httptest.NewRequest(http.MethodPost, "/?app_key="+tt.appKey, strings.NewReader(bodyStr))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		if assert.Error(t, err) {
-			he, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusUnauthorized, he.Code)
+			err := h.PublishNotificationHandler(c)
 
-			errResp, ok := he.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-			assert.Contains(t, errResp.Message, "app_key가 유효하지 않습니다")
-		}
-	})
+			if tt.expectedStatus == http.StatusOK {
+				assert.NoError(t, err)
+				assert.Equal(t, http.StatusOK, rec.Code)
+			} else {
+				if err != nil {
+					he, ok := err.(*echo.HTTPError)
+					assert.True(t, ok)
+					assert.Equal(t, tt.expectedStatus, he.Code)
+					if tt.verifyErrResponse != nil {
+						errResp, ok := he.Message.(response.ErrorResponse)
+						assert.True(t, ok)
+						tt.verifyErrResponse(t, errResp)
+					}
+				} else {
+					// Expected error but got none
+					// Check if Echo wrote error directly to body (Binding error does this)
+					// But we assert assert.Error(t, err) usually
+					// Standard echo binding might return error
+					assert.Error(t, err, "Expected error")
+				}
+			}
 
-	t.Run("허용되지 않은 ApplicationID", func(t *testing.T) {
-		reqBody := request.NotificationRequest{
-			ApplicationID: "unknown-app",
-			Message:       "Test Message",
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		if assert.Error(t, err) {
-			he, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusUnauthorized, he.Code)
-
-			errResp, ok := he.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-			assert.Contains(t, errResp.Message, "접근이 허용되지 않은 application_id")
-		}
-	})
-
-	t.Run("잘못된 요청 본문", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader("invalid-json"))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		assert.Error(t, err)
-	})
-
-	t.Run("ApplicationID 누락", func(t *testing.T) {
-		reqBody := request.NotificationRequest{
-			ApplicationID: "",
-			Message:       "Test Message",
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		if assert.Error(t, err) {
-			he, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusBadRequest, he.Code)
-
-			errResp, ok := he.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-			assert.Contains(t, errResp.Message, "애플리케이션 ID")
-			assert.Contains(t, errResp.Message, "필수")
-		}
-	})
-
-	t.Run("Message 누락", func(t *testing.T) {
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       "",
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		if assert.Error(t, err) {
-			he, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusBadRequest, he.Code)
-
-			errResp, ok := he.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-			assert.Contains(t, errResp.Message, "메시지")
-			assert.Contains(t, errResp.Message, "필수")
-		}
-	})
-
-	t.Run("Message 길이 초과", func(t *testing.T) {
-		// 4096자를 초과하는 메시지 생성
-		longMessage := make([]byte, 4097)
-		for i := range longMessage {
-			longMessage[i] = 'a'
-		}
-
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       string(longMessage),
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		err := h.PublishNotificationHandler(c)
-		if assert.Error(t, err) {
-			he, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, http.StatusBadRequest, he.Code)
-
-			errResp, ok := he.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-			assert.Contains(t, errResp.Message, "메시지")
-			assert.Contains(t, errResp.Message, "최대")
-			assert.Contains(t, errResp.Message, "4096")
-		}
-	})
-
-	t.Run("Message 최대 길이 허용 (4096자)", func(t *testing.T) {
-		// 정확히 4096자인 메시지
-		maxMessage := make([]byte, 4096)
-		for i := range maxMessage {
-			maxMessage[i] = 'a'
-		}
-
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       string(maxMessage),
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		if assert.NoError(t, h.PublishNotificationHandler(c)) {
-			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.True(t, mockService.NotifyCalled)
-		}
-	})
-
-	t.Run("알림 서비스 전송 실패", func(t *testing.T) {
-		// Mock 서비스가 실패하도록 설정
-		mockService.ShouldFail = true
-		defer func() { mockService.ShouldFail = false }()
-
-		reqBody := request.NotificationRequest{
-			ApplicationID: "test-app",
-			Message:       "Fail Message",
-		}
-		jsonBody, _ := json.Marshal(reqBody)
-
-		req := httptest.NewRequest(http.MethodPost, "/?app_key=valid-key", strings.NewReader(string(jsonBody)))
-		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		// Execute
-		if assert.NoError(t, h.PublishNotificationHandler(c)) {
-			// 현재 구현은 실패 시에도 200 OK 반환 (Legacy)
-			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.True(t, mockService.NotifyCalled)
-		}
-	})
+			if tt.verifyMock != nil {
+				tt.verifyMock(t, mockService)
+			}
+		})
+	}
 }

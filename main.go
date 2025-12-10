@@ -143,7 +143,7 @@ func main() {
 		BuildNumber: BuildNumber,
 	})
 
-	taskService.SetTaskNotificationSender(notificationService)
+	taskService.SetNotificationSender(notificationService)
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())

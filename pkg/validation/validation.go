@@ -1,4 +1,4 @@
-package validations
+package validation
 
 import (
 	"fmt"
@@ -36,7 +36,7 @@ var (
 	//   - https://example.com
 	//   - http://localhost:3000
 	//   - https://192.168.1.1:8443/api
-	urlRegex = regexp.MustCompile(`^https?://(?:[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})+|localhost|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?::\d+)?(?:/[^/]+)*$`)
+	urlRegex = regexp.MustCompile(`^https?://(?:[^:@/]+(?::[^@/]+)?@)?(?:[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})+|localhost|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?::\d+)?(?:[/?#].*)?$`)
 )
 
 // ValidateRobfigCronExpression Cron 표현식의 유효성을 검사합니다.

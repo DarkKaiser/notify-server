@@ -12,7 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutils"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
@@ -133,7 +133,7 @@ func init() {
 					return lottoTask.runPrediction()
 				}
 
-				return "", nil, task.ErrNotImplementedCommand
+				return "", nil, task.ErrCommandNotImplemented
 			}
 
 			return lottoTask, nil
@@ -221,11 +221,11 @@ func (t *lottoTask) runPrediction() (message string, changedTaskResultData inter
 
 	message = regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`).FindString(analysisResultData)
 	message += "\r\n\r\n"
-	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutils.NormalizeSpaces(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
+	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
+	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
 
 	return message, nil, nil
 }
