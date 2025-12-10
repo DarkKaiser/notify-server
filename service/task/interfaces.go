@@ -28,7 +28,7 @@ type NotificationSender interface {
 	// TaskContext를 함께 전달하여 작업의 메타데이터(TaskID, Title 등)를 알림에 포함하거나 로깅에 활용할 수 있습니다.
 	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
 
-	// SupportsHTMLMessage 지정된 Notifier가 HTML 포맷의 메시지 본문을 지원하는지 확인합니다.
+	// SupportsHTML 지정된 Notifier가 HTML 포맷의 메시지 본문을 지원하는지 확인합니다.
 	// 텍스트 스타일링(굵게, 링크 등)이 필요한 경우 이 메서드를 통해 지원 여부를 먼저 확인해야 합니다.
-	SupportsHTMLMessage(notifierID string) bool
+	SupportsHTML(notifierID string) bool
 }

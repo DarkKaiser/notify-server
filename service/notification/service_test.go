@@ -18,8 +18,8 @@ func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandl
 	appConfig := &config.AppConfig{}
 	mockExecutor := &MockExecutor{}
 	mockNotifier := &mockNotifierHandler{
-		id:                  NotifierID("test-notifier"),
-		supportsHTMLMessage: true,
+		id:           NotifierID("test-notifier"),
+		supportsHTML: true,
 	}
 
 	service := NewService(appConfig, mockExecutor)
@@ -32,8 +32,8 @@ func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandl
 
 // -- Tests --
 
-func TestNotificationService_SupportsHTMLMessage(t *testing.T) {
-	mockNotifier := &mockNotifierHandler{id: "test", supportsHTMLMessage: true}
+func TestNotificationService_SupportsHTML(t *testing.T) {
+	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
 	service := &NotificationService{notifierHandlers: []NotifierHandler{mockNotifier}}
 
 	tests := []struct {
@@ -47,7 +47,7 @@ func TestNotificationService_SupportsHTMLMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, service.SupportsHTMLMessage(tt.notifierID))
+			assert.Equal(t, tt.want, service.SupportsHTML(tt.notifierID))
 		})
 	}
 }
@@ -226,8 +226,8 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 }
 
 func TestNotificationService_MultipleNotifiers(t *testing.T) {
-	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTMLMessage: true}
-	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTMLMessage: false}
+	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTML: true}
+	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
 
 	service := &NotificationService{
 		notifierHandlers: []NotifierHandler{mockNotifier1, mockNotifier2},

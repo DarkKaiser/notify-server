@@ -235,15 +235,15 @@ func (s *NotificationService) NotifyWithTaskContext(notifierID string, message s
 	return false
 }
 
-// SupportsHTMLMessage 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
-func (s *NotificationService) SupportsHTMLMessage(notifierID string) bool {
+// SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
+func (s *NotificationService) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {
 		if h.ID() == id {
-			return h.SupportsHTMLMessage()
+			return h.SupportsHTML()
 		}
 	}
 

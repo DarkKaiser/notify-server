@@ -17,17 +17,17 @@ type notifyRequest struct {
 type notifier struct {
 	id NotifierID
 
-	supportsHTMLMessage bool
+	supportsHTML bool
 
 	requestC chan *notifyRequest
 }
 
 // NewNotifier Notifier를 생성하고 초기화합니다.
-func NewNotifier(id NotifierID, supportsHTMLMessage bool, bufferSize int) notifier {
+func NewNotifier(id NotifierID, supportsHTML bool, bufferSize int) notifier {
 	return notifier{
 		id: id,
 
-		supportsHTMLMessage: supportsHTMLMessage,
+		supportsHTML: supportsHTML,
 
 		requestC: make(chan *notifyRequest, bufferSize),
 	}
@@ -65,8 +65,8 @@ func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded b
 	return true
 }
 
-func (n *notifier) SupportsHTMLMessage() bool {
-	return n.supportsHTMLMessage
+func (n *notifier) SupportsHTML() bool {
+	return n.supportsHTML
 }
 
 // Close 알림 채널을 닫고 리소스를 정리합니다.

@@ -46,8 +46,8 @@ func TestServicesIntegration(t *testing.T) {
 			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
-						id:                  notification.NotifierID("test-notifier"),
-						supportsHTMLMessage: true,
+						id:           notification.NotifierID("test-notifier"),
+						supportsHTML: true,
 					},
 				}, nil
 			},
@@ -96,8 +96,8 @@ func TestServicesIntegration(t *testing.T) {
 			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
-						id:                  notification.NotifierID("test-notifier"),
-						supportsHTMLMessage: true,
+						id:           notification.NotifierID("test-notifier"),
+						supportsHTML: true,
 					},
 				}, nil
 			},
@@ -226,8 +226,8 @@ func TestServiceLifecycle(t *testing.T) {
 			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
-						id:                  notification.NotifierID("test-notifier"),
-						supportsHTMLMessage: true,
+						id:           notification.NotifierID("test-notifier"),
+						supportsHTML: true,
 					},
 				}, nil
 			},
@@ -313,8 +313,8 @@ func TestNotificationServiceIntegration(t *testing.T) {
 			createNotifiersFunc: func(cfg *config.AppConfig) ([]notification.NotifierHandler, error) {
 				return []notification.NotifierHandler{
 					&mockNotifierHandler{
-						id:                  notification.NotifierID("default-notifier"),
-						supportsHTMLMessage: true,
+						id:           notification.NotifierID("default-notifier"),
+						supportsHTML: true,
 					},
 				}, nil
 			},
@@ -448,7 +448,7 @@ func (m *mockNotificationSender) NotifyWithTaskContext(notifierID string, messag
 	return true
 }
 
-func (m *mockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
+func (m *mockNotificationSender) SupportsHTML(notifierID string) bool {
 	return true
 }
 
@@ -465,8 +465,8 @@ func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) error {
 
 // mockNotifierHandler는 테스트용 NotifierHandler 구현체입니다.
 type mockNotifierHandler struct {
-	id                  notification.NotifierID
-	supportsHTMLMessage bool
+	id           notification.NotifierID
+	supportsHTML bool
 }
 
 func (m *mockNotifierHandler) ID() notification.NotifierID {
@@ -482,6 +482,6 @@ func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx 
 	<-notificationStopCtx.Done()
 }
 
-func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
-	return m.supportsHTMLMessage
+func (m *mockNotifierHandler) SupportsHTML() bool {
+	return m.supportsHTML
 }

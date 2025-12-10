@@ -24,7 +24,7 @@ func TestNotifier_NewNotifier(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			n := NewNotifier(NotifierID(tt.id), tt.supportsHTML, tt.bufferSize)
 			assert.Equal(t, NotifierID(tt.id), n.ID())
-			assert.Equal(t, tt.supportsHTML, n.SupportsHTMLMessage())
+			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			if tt.bufferSize > 0 {
 				assert.NotNil(t, n.requestC)
 				assert.Equal(t, tt.expectedBufferCap, cap(n.requestC))

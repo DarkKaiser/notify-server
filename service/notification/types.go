@@ -26,7 +26,7 @@ type NotifierHandler interface {
 	// 메시지 큐를 소비하여 실제 발송 작업을 수행합니다.
 	Run(executor task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
 
-	SupportsHTMLMessage() bool
+	SupportsHTML() bool
 }
 
 // Service 알림 발송 기능을 제공하는 인터페이스입니다.

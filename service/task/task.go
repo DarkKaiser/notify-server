@@ -182,7 +182,7 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 		t.notify(notificationSender, m, taskCtx)
 	}
 
-	if message, changedTaskResultData, err := t.RunFn(taskResultData, notificationSender.SupportsHTMLMessage(t.NotifierID)); t.IsCanceled() == false {
+	if message, changedTaskResultData, err := t.RunFn(taskResultData, notificationSender.SupportsHTML(t.NotifierID)); t.IsCanceled() == false {
 		if err == nil {
 			if len(message) > 0 {
 				t.notify(notificationSender, message, taskCtx)

@@ -55,9 +55,9 @@ func (m *MockExecutor) Cancel(instanceID task.InstanceID) error {
 
 // mockNotifierHandler is a shared mock implementation of NotifierHandler for tests
 type mockNotifierHandler struct {
-	id                  NotifierID
-	supportsHTMLMessage bool
-	notifyCalls         []mockNotifyCall
+	id           NotifierID
+	supportsHTML bool
+	notifyCalls  []mockNotifyCall
 }
 
 type mockNotifyCall struct {
@@ -82,8 +82,8 @@ func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx 
 	<-notificationStopCtx.Done()
 }
 
-func (m *mockNotifierHandler) SupportsHTMLMessage() bool {
-	return m.supportsHTMLMessage
+func (m *mockNotifierHandler) SupportsHTML() bool {
+	return m.supportsHTML
 }
 
 // mockNotifierFactory is a shared mock implementation of NotifierFactory for tests

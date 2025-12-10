@@ -45,7 +45,7 @@ func (m *MockTestifyNotificationSender) NotifyWithTaskContext(notifierID string,
 	return true
 }
 
-func (m *MockTestifyNotificationSender) SupportsHTMLMessage(notifierID string) bool {
+func (m *MockTestifyNotificationSender) SupportsHTML(notifierID string) bool {
 	args := m.Called(notifierID)
 	if len(args) > 0 {
 		return args.Bool(0)
