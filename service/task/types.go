@@ -28,8 +28,10 @@ func (id CommandID) String() string {
 	return string(id)
 }
 
-// Match 주어진 대상 커맨드 ID(target)가 현재 커맨드 ID 패턴과 일치하는지 확인합니다.
-// 와일드카드('*') 접미사를 지원하여, 패턴 매칭을 수행할 수 있습니다.
+// Match 대상 커맨드 ID(target)가 현재 커맨드 ID와 일치하는지, 또는 정의된 패턴에 부합하는지 검증합니다.
+//
+// 단순 일치(Exact Match)뿐만 아니라, 접미사 와일드카드('*')를 사용한 접두어 매칭(Prefix Match)을 지원합니다.
+// 예: "CMD_*"는 "CMD_A", "CMD_B" 등과 일치한다고 판단합니다.
 func (id CommandID) Match(target CommandID) bool {
 	const wildcard = "*"
 
@@ -65,6 +67,16 @@ const (
 	RunByScheduler
 )
 
+// IsValid 유효한 RunBy 값인지 확인합니다.
+func (t RunBy) IsValid() bool {
+	switch t {
+	case RunByUser, RunByScheduler:
+		return true
+	default:
+		return false
+	}
+}
+
 func (t RunBy) String() string {
 	switch t {
 	case RunByUser:
@@ -76,29 +88,27 @@ func (t RunBy) String() string {
 	}
 }
 
-// IsValid 유효한 RunBy 값인지 확인합니다.
-func (t RunBy) IsValid() bool {
-	switch t {
-	case RunByUser, RunByScheduler:
-		return true
-	default:
-		return false
-	}
-}
-
-// RunRequest 작업 실행 요청 정보를 담고 있는 구조체입니다.
+// RunRequest 작업 식별자, 커맨드, 컨텍스트 등 작업(Task) 실행에 필요한 모든 메타데이터와 요청 정보를 캡슐화한 구조체입니다.
+// Scheduler 또는 API 요청 등을 통해 작업을 트리거할 때 사용됩니다.
 type RunRequest struct {
-	TaskID        ID
+	// TaskID 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
+	TaskID ID
+	// TaskCommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
 	TaskCommandID CommandID
 
-	// TaskCtx 작업 실행 컨텍스트입니다. 실행 중 필요한 메타데이터를 전달하는 데 사용됩니다.
+	// TaskCtx 작업 실행 컨텍스트입니다.
+	// 실행 흐름 전반에 걸쳐 메타데이터(Title, ID 등)를 전달하고, 취소 신호(Cancellation)를 전파하는 데 사용됩니다.
 	TaskCtx TaskContext
 
+	// NotifierID 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
+	// 지정하지 않을 경우, Task 설정에 정의된 기본 Notifier가 사용됩니다.
 	NotifierID string
 
-	// NotifyOnStart 작업 시작 시 알림을 보낼지 여부입니다.
+	// NotifyOnStart 작업 시작 시점에 '시작 알림'을 발송할지 여부를 결정하는 플래그입니다.
 	NotifyOnStart bool
 
+	// RunBy 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
+	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
 	RunBy RunBy
 }
 

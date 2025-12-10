@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Ensure TaskContext implements context.Context at compile time
+var _ context.Context = (*taskContext)(nil)
+var _ TaskContext = (*taskContext)(nil)
+
 // TestTaskContext_Immutability verifies that With* methods return new instances
 // and do not modify the original context. This is crucial for thread safety.
 func TestTaskContext_Immutability(t *testing.T) {
@@ -44,10 +48,7 @@ func TestTaskContext_StandardCompliance(t *testing.T) {
 	ctx, cancel := context.WithCancel(tCtx)
 
 	// Should preserve TaskContext values even when wrapped
-	// Note: standard wrapper hides specialized methods, so we access via Value() or type assertion if supported by wrapper (std wrapper doesn't support type assertion back to inner usually, but Value passes through)
-	// TaskContext's functional accessors (GetTitle) won't work on `ctx` directly because `ctx` is `*cancelCtx`.
-	// But `tCtx.Value` should still work if we passed `ctx` to something consuming context.Context.
-	assert.Equal(t, "Test", ctx.Value(taskCtxKeyTitle))
+	assert.Equal(t, "Test", ctx.Value(ctxKeyTitle))
 
 	// 2. Verify cancellation propagation
 	cancel()
@@ -65,20 +66,81 @@ func TestTaskContext_StandardCompliance(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(100*time.Millisecond), dl, 10*time.Millisecond)
 }
 
-// TestTaskContext_Accessors verifies all setters and getters.
+// TestTaskContext_Accessors verifies all setters and getters using table-driven tests.
 func TestTaskContext_Accessors(t *testing.T) {
-	ctx := NewTaskContext().
-		WithTask("TASK_01", "CMD_01").
-		WithInstanceID("INST_01", 12345).
-		WithTitle("My Notification").
-		WithError()
+	tests := []struct {
+		name         string
+		setup        func(TaskContext) TaskContext
+		verification func(*testing.T, TaskContext)
+	}{
+		{
+			name: "WithTask",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithTask("TASK_01", "CMD_01")
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.Equal(t, ID("TASK_01"), ctx.GetID())
+				assert.Equal(t, CommandID("CMD_01"), ctx.GetCommandID())
+			},
+		},
+		{
+			name: "WithInstanceID",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithInstanceID("INST_01", 12345)
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.Equal(t, InstanceID("INST_01"), ctx.GetInstanceID())
+				assert.Equal(t, int64(12345), ctx.GetElapsedTimeAfterRun())
+			},
+		},
+		{
+			name: "WithTitle",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithTitle("My Notification")
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.Equal(t, "My Notification", ctx.GetTitle())
+			},
+		},
+		{
+			name: "WithError",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithError()
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.True(t, ctx.IsErrorOccurred())
+			},
+		},
+		{
+			name: "Chained Calls",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithTask("T1", "C1").WithInstanceID("I1", 100).WithTitle("Chained").WithError()
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.Equal(t, ID("T1"), ctx.GetID())
+				assert.Equal(t, InstanceID("I1"), ctx.GetInstanceID())
+				assert.Equal(t, "Chained", ctx.GetTitle())
+				assert.True(t, ctx.IsErrorOccurred())
+			},
+		},
+		{
+			name: "Override Values",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithTitle("Old").WithTitle("New")
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.Equal(t, "New", ctx.GetTitle(), "Latest value should override previous ones")
+			},
+		},
+	}
 
-	assert.Equal(t, ID("TASK_01"), ctx.GetID())
-	assert.Equal(t, CommandID("CMD_01"), ctx.GetCommandID())
-	assert.Equal(t, InstanceID("INST_01"), ctx.GetInstanceID())
-	assert.Equal(t, int64(12345), ctx.GetElapsedTimeAfterRun())
-	assert.Equal(t, "My Notification", ctx.GetTitle())
-	assert.True(t, ctx.IsErrorOccurred())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := NewTaskContext()
+			ctx = tt.setup(ctx)
+			tt.verification(t, ctx)
+		})
+	}
 }
 
 // TestTaskContext_Defaults verifies default values when keys are missing.
@@ -95,20 +157,21 @@ func TestTaskContext_Defaults(t *testing.T) {
 
 // TestTaskContext_Concurrency verifies thread safety of the immutable design.
 func TestTaskContext_Concurrency(t *testing.T) {
-	baseCtx := NewTaskContext()
-	wg := sync.WaitGroup{}
+	baseCtx := NewTaskContext().WithTitle("Base")
+	var wg sync.WaitGroup
+	workers := 100
 
-	// Create 100 concurrent goroutines deriving contexts
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
 		go func(idx int) {
 			defer wg.Done()
 
-			// Each goroutine creates its own derived context
-			myCtx := baseCtx.WithTitle("Title").WithTask(ID("ID"), CommandID("CMD"))
+			// Each worker derives a new context without affecting baseCtx
+			ctx := baseCtx.WithTitle("Worker")
 
-			// Verify value immediately
-			assert.Equal(t, "Title", myCtx.GetTitle())
+			// Introduce rigorous checking
+			assert.Equal(t, "Worker", ctx.GetTitle())
+			assert.Equal(t, "Base", baseCtx.GetTitle()) // Must remain unchanged
 		}(i)
 	}
 
