@@ -133,7 +133,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(mockExecutor, ctx, wg)
+			go notifier.Run(ctx, mockExecutor, wg)
 
 			// Trigger Command
 			mockBot.updatesChan <- tgbotapi.Update{

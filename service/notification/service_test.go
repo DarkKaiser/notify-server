@@ -206,7 +206,7 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 			case "DefaultError":
 				result = service.NotifyDefaultWithError(tt.message)
 			case "WithContext":
-				result = service.Notify(tt.targetID, tt.message, task.NewTaskContext())
+				result = service.Notify(task.NewTaskContext(), tt.targetID, tt.message)
 			}
 
 			assert.Equal(t, tt.expectSuccess, result)
@@ -238,7 +238,7 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 	}
 
 	// Notify n2
-	result := service.Notify("n2", "msg", task.NewTaskContext())
+	result := service.Notify(task.NewTaskContext(), "n2", "msg")
 	assert.True(t, result)
 	assert.Len(t, mockNotifier1.notifyCalls, 0)
 	assert.Len(t, mockNotifier2.notifyCalls, 1)

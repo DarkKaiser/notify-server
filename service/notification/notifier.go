@@ -39,7 +39,7 @@ func (n *notifier) ID() NotifierID {
 
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *notifier) Notify(message string, taskCtx task.TaskContext) (succeeded bool) {
+func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false

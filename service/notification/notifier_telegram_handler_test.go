@@ -171,10 +171,10 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(mockExecutor, ctx, wg)
+			go notifier.Run(ctx, mockExecutor, wg)
 
 			// Act
-			notifier.Notify(tt.message, tt.taskCtx)
+			notifier.Notify(tt.taskCtx, tt.message)
 
 			// Wait
 			done := make(chan struct{})

@@ -121,8 +121,8 @@ func (s *scheduler) handleError(notificationSender NotificationSender, notifierI
 	applog.WithComponentAndFields("task.scheduler", fields).Error(msg)
 
 	notificationSender.Notify(
+		NewTaskContext().WithTask(taskID, taskCommandID).WithError(),
 		notifierID,
 		msg,
-		NewTaskContext().WithTask(taskID, taskCommandID).WithError(),
 	)
 }

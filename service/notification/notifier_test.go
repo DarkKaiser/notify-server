@@ -90,7 +90,7 @@ func TestNotifier_Notify_Table(t *testing.T) {
 				ch = tt.notifier.requestC
 			}
 
-			result = tt.notifier.Notify(tt.message, tt.taskCtx)
+			result = tt.notifier.Notify(tt.taskCtx, tt.message)
 
 			if tt.expectData {
 				assert.True(t, result)

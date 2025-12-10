@@ -27,13 +27,13 @@ type NotificationSender interface {
 	// 확인할 수 있도록 지원합니다. 메시지 형식은 Notifier 구현체에 따라 달라질 수 있습니다.
 	//
 	// 파라미터:
+	//   - taskCtx: 작업 실행 컨텍스트 정보 (필수)
 	//   - notifierID: 메시지를 발송할 대상 Notifier의 고유 ID
 	//   - message: 전송할 알림 메시지 본문
-	//   - taskCtx: 작업 실행 컨텍스트 정보 (필수)
 	//
 	// 반환값:
 	//   - bool: 발송 요청이 성공적으로 처리되었는지 여부
-	Notify(notifierID string, message string, taskCtx TaskContext) bool
+	Notify(taskCtx TaskContext, notifierID string, message string) bool
 
 	// NotifyDefault 시스템 기본 알림 채널로 일반 메시지를 발송합니다.
 	// 특정 Notifier를 지정하지 않고, 시스템 설정에 정의된 기본 채널(예: 운영자 공통 채널)로

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -32,8 +33,8 @@ func (m *MockTestifyNotificationSender) NotifyDefault(message string) bool {
 	return args.Bool(0)
 }
 
-func (m *MockTestifyNotificationSender) Notify(notifierID string, message string, taskCtx TaskContext) bool {
-	args := m.Called(notifierID, message, taskCtx)
+func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) bool {
+	args := m.Called(taskCtx, notifierID, message)
 	// Return default true if return value not specified, or use args.Bool(0) if strict.
 	// For most tests, we just want to verify call, return value matters less unless logic depends on it.
 	// However, mock.Called returns Arguments, if I don't setup return, it might panic if accessing index 0?
@@ -51,6 +52,99 @@ func (m *MockTestifyNotificationSender) SupportsHTML(notifierID string) bool {
 		return args.Bool(0)
 	}
 	return true
+}
+
+// MockNotificationSender 테스트용 NotificationSender 구현체입니다.
+type MockNotificationSender struct {
+	mu sync.Mutex
+
+	// 호출 기록
+	NotifyDefaultCalls      []string
+	NotifyCalls             []NotifyCall
+	SupportsHTMLCalls       []string
+	SupportsHTMLReturnValue bool
+}
+
+// NotifyCall Notify 호출 정보를 저장합니다.
+type NotifyCall struct {
+	NotifierID  string
+	Message     string
+	TaskContext TaskContext
+}
+
+// NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
+func NewMockNotificationSender() *MockNotificationSender {
+	return &MockNotificationSender{
+		NotifyDefaultCalls:      make([]string, 0),
+		NotifyCalls:             make([]NotifyCall, 0),
+		SupportsHTMLCalls:       make([]string, 0),
+		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
+	}
+}
+
+// NotifyDefault 기본 알림을 전송합니다 (Mock).
+func (m *MockNotificationSender) NotifyDefault(message string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.NotifyDefaultCalls = append(m.NotifyDefaultCalls, message)
+	return true
+}
+
+// Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
+func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
+		NotifierID:  notifierID,
+		Message:     message,
+		TaskContext: taskCtx,
+	})
+	return true
+}
+
+// SupportsHTML HTML 메시지 지원 여부를 반환합니다 (Mock).
+func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
+	return m.SupportsHTMLReturnValue
+}
+
+// Reset 모든 호출 기록을 초기화합니다.
+func (m *MockNotificationSender) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.NotifyDefaultCalls = make([]string, 0)
+	m.NotifyCalls = make([]NotifyCall, 0)
+	m.SupportsHTMLCalls = make([]string, 0)
+}
+
+// GetNotifyDefaultCallCount NotifyDefault 호출 횟수를 반환합니다.
+func (m *MockNotificationSender) GetNotifyDefaultCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.NotifyDefaultCalls)
+}
+
+// GetNotifyCallCount Notify 호출 횟수를 반환합니다.
+func (m *MockNotificationSender) GetNotifyCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.NotifyCalls)
+}
+
+// GetSupportsHTMLCallCount SupportsHTML 호출 횟수를 반환합니다.
+func (m *MockNotificationSender) GetSupportsHTMLCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.SupportsHTMLCalls)
 }
 
 // TestMockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)

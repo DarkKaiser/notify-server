@@ -91,7 +91,7 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 
 		s.notificationStopWaiter.Add(1)
 
-		go h.Run(s.executor, serviceStopCtx, s.notificationStopWaiter)
+		go h.Run(serviceStopCtx, s.executor, s.notificationStopWaiter)
 
 		applog.WithComponentAndFields("notification.service", log.Fields{
 			"notifier_id": h.ID(),
@@ -153,7 +153,7 @@ func (s *NotificationService) NotifyWithTitle(notifierID string, title string, m
 		taskCtx.WithError()
 	}
 
-	return s.Notify(notifierID, message, taskCtx)
+	return s.Notify(taskCtx, notifierID, message)
 }
 
 // NotifyDefault 시스템 기본 알림 채널로 알림 메시지를 발송합니다.
@@ -172,7 +172,7 @@ func (s *NotificationService) NotifyDefault(message string) bool {
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(message, nil)
+	return s.defaultNotifierHandler.Notify(nil, message)
 }
 
 // NotifyDefaultWithError 시스템 기본 알림 채널로 "에러" 알림 메시지를 발송합니다.
@@ -193,20 +193,20 @@ func (s *NotificationService) NotifyDefaultWithError(message string) bool {
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(message, task.NewTaskContext().WithError())
+	return s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), message)
 }
 
 // Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
 // TaskContext를 직접 생성하여 알림을 보낼 때 사용합니다.
 //
 // 파라미터:
+//   - taskCtx: 알림 발송 시 함께 전달할 TaskContext
 //   - notifierID: 알림 채널 ID
 //   - message: 전송할 메시지 내용
-//   - taskCtx: 알림 발송 시 함께 전달할 TaskContext
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) Notify(notifierID string, message string, taskCtx task.TaskContext) bool {
+func (s *NotificationService) Notify(taskCtx task.TaskContext, notifierID string, message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -220,7 +220,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 	id := NotifierID(notifierID)
 	for _, h := range s.notifierHandlers {
 		if h.ID() == id {
-			return h.Notify(message, taskCtx)
+			return h.Notify(taskCtx, message)
 		}
 	}
 
@@ -230,7 +230,7 @@ func (s *NotificationService) Notify(notifierID string, message string, taskCtx 
 		"notifier_id": notifierID,
 	}).Error(m)
 
-	s.defaultNotifierHandler.Notify(m, task.NewTaskContext().WithError())
+	s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), m)
 
 	return false
 }

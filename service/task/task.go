@@ -218,11 +218,11 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 }
 
 func (t *Task) notify(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
-	return notificationSender.Notify(t.GetNotifierID(), m, taskCtx)
+	return notificationSender.Notify(taskCtx, t.GetNotifierID(), m)
 }
 
 func (t *Task) notifyError(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
-	return notificationSender.Notify(t.GetNotifierID(), m, taskCtx.WithError())
+	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), m)
 }
 
 func (t *Task) dataFileName() string {

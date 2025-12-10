@@ -56,11 +56,11 @@ type NotifierHandler interface {
 	//
 	// 반환값:
 	//   - succeeded: 요청이 정상적으로 접수되었는지 여부
-	Notify(message string, taskCtx task.TaskContext) (succeeded bool)
+	Notify(taskCtx task.TaskContext, message string) (succeeded bool)
 
 	// Run Notifier의 메인 루프를 실행합니다.
 	// 메시지 큐를 소비하여 실제 발송 작업을 수행합니다.
-	Run(executor task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup)
+	Run(notificationStopCtx context.Context, executor task.Executor, notificationStopWaiter *sync.WaitGroup)
 
 	SupportsHTML() bool
 }

@@ -69,7 +69,7 @@ func (m *mockNotifierHandler) ID() NotifierID {
 	return m.id
 }
 
-func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) bool {
+func (m *mockNotifierHandler) Notify(taskCtx task.TaskContext, message string) bool {
 	m.notifyCalls = append(m.notifyCalls, mockNotifyCall{
 		message: message,
 		taskCtx: taskCtx,
@@ -77,7 +77,7 @@ func (m *mockNotifierHandler) Notify(message string, taskCtx task.TaskContext) b
 	return true
 }
 
-func (m *mockNotifierHandler) Run(taskRunner task.Executor, notificationStopCtx context.Context, notificationStopWaiter *sync.WaitGroup) {
+func (m *mockNotifierHandler) Run(notificationStopCtx context.Context, taskRunner task.Executor, notificationStopWaiter *sync.WaitGroup) {
 	defer notificationStopWaiter.Done()
 	<-notificationStopCtx.Done()
 }

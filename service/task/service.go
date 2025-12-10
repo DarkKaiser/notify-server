@@ -113,7 +113,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(m)
 
-				s.notificationSender.Notify(req.NotifierID, m, req.TaskContext.WithError())
+				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
 
 				continue
 			}
@@ -133,7 +133,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 
 				if alreadyRunTaskHandler != nil {
 					req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.notificationSender.Notify(req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", req.TaskContext)
+					s.notificationSender.Notify(req.TaskContext, req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.")
 					continue
 				}
 			}
@@ -157,7 +157,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(err)
 
-				s.notificationSender.Notify(req.NotifierID, err.Error(), req.TaskContext.WithError())
+				s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
 
 				continue
 			}
@@ -170,7 +170,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
-				s.notificationSender.Notify(req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", req.TaskContext.WithInstanceID(instanceID, 0))
+				s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -201,7 +201,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"instance_id": instanceID,
 				}).Debug("Task 작업 취소")
 
-				s.notificationSender.Notify(taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.", NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()))
+				s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.")
 			} else {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,

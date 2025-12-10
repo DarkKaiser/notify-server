@@ -120,7 +120,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go notifier.Run(mockExecutor, ctx, wg)
+			go notifier.Run(ctx, mockExecutor, wg)
 
 			// Send update
 			mockBot.updatesChan <- tgbotapi.Update{
