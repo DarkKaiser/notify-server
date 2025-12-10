@@ -7,15 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
+const testAppName = "test-app"
+
+func TestFileTaskResultStorage_LoadSave(t *testing.T) {
 	t.Run("TaskResultData 파일 읽기/쓰기 테스트", func(t *testing.T) {
-		// 테스트용 임시 Task 생성
-		testTask := &Task{
-			ID:         ID("TEST_TASK"),
-			CommandID:  CommandID("TEST_COMMAND"),
-			InstanceID: InstanceID("test_instance_rw"),
-		}
-		defer os.Remove(testTask.dataFileName()) // 테스트 후 파일 삭제 cleanup
+		storage := NewFileTaskResultStorage(testAppName)
+		taskID := ID("TEST_TASK")
+		commandID := CommandID("TEST_COMMAND")
 
 		// 테스트용 데이터 구조
 		type TestResultData struct {
@@ -23,18 +21,22 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 			Count int    `json:"count"`
 		}
 
+		// 파일명 미리 계산 (cleanup용)
+		filename := storage.dataFileName(taskID, commandID)
+		defer os.Remove(filename)
+
 		// 쓰기 테스트
 		writeData := &TestResultData{
 			Value: "test_value",
 			Count: 42,
 		}
 
-		err := testTask.writeTaskResultDataToFile(writeData)
+		err := storage.Save(taskID, commandID, writeData)
 		assert.NoError(t, err, "파일 쓰기가 성공해야 합니다")
 
 		// 읽기 테스트
 		readData := &TestResultData{}
-		err = testTask.readTaskResultDataFromFile(readData)
+		err = storage.Load(taskID, commandID, readData)
 		assert.NoError(t, err, "파일 읽기가 성공해야 합니다")
 
 		// 데이터 검증
@@ -43,18 +45,16 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 파일 읽기", func(t *testing.T) {
-		testTask := &Task{
-			ID:         ID("NONEXISTENT_TASK"),
-			CommandID:  CommandID("NONEXISTENT_COMMAND"),
-			InstanceID: InstanceID("nonexistent_instance"),
-		}
+		storage := NewFileTaskResultStorage(testAppName)
+		taskID := ID("NONEXISTENT_TASK")
+		commandID := CommandID("NONEXISTENT_COMMAND")
 
 		type TestResultData struct {
 			Value string `json:"value"`
 		}
 
 		readData := &TestResultData{}
-		err := testTask.readTaskResultDataFromFile(readData)
+		err := storage.Load(taskID, commandID, readData)
 
 		// 파일이 없으면 nil을 반환함 (의도된 동작)
 		assert.NoError(t, err, "존재하지 않는 파일 읽기는 nil을 반환해야 합니다")

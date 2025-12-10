@@ -26,6 +26,8 @@ type Task struct {
 
 	RunFn TaskRunFunc
 
+	Storage TaskResultStorage
+
 	Fetcher Fetcher
 }
 
@@ -119,7 +121,21 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 
 		return
 	}
-	err := t.readTaskResultDataFromFile(taskResultData)
+
+	// Storage가 초기화되지 않았을 경우에 대한 방어 로직
+	if t.Storage == nil {
+		// 하위 호환성을 위해 nil이면 에러 로깅 후 종료하거나 기본 파일 스토리지를 쓸 수도 있지만,
+		// 리팩토링의 목적상 명시적으로 에러 처리합니다.
+		m := fmt.Sprintf("%s\n\n☑ Storage가 초기화되지 않았습니다.", errString)
+		applog.WithComponentAndFields("task.executor", log.Fields{
+			"task_id":    t.GetID(),
+			"command_id": t.GetCommandID(),
+		}).Error(m)
+		t.notifyError(notificationSender, m, taskCtx)
+		return
+	}
+
+	err := t.Storage.Load(t.GetID(), t.GetCommandID(), taskResultData)
 	if err != nil {
 		m := fmt.Sprintf("이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다.", err)
 
@@ -139,7 +155,7 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 			}
 
 			if changedTaskResultData != nil {
-				if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
+				if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
 					m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
 					applog.WithComponentAndFields("task.executor", log.Fields{

@@ -111,6 +111,7 @@ func CreateTestTask(id ID, commandID CommandID, instanceID InstanceID) *Task {
 		NotifierID: "test_notifier",
 		Canceled:   false,
 		RunBy:      RunByUser,
+		Storage:    &MockTaskResultStorage{},
 	}
 }
 
@@ -138,22 +139,24 @@ func CreateTestConfig() *config.AppConfig {
 	}
 }
 
-// CleanupTestFile 테스트 파일을 정리합니다.
-func CleanupTestFile(t *Task) error {
-	// 테스트 데이터 파일 삭제
-	filename := t.dataFileName()
-	return removeFileIfExists(filename)
+// MockTaskResultStorage 테스트용 Mock 저장소 구현체
+type MockTaskResultStorage struct {
+	LoadFn func(taskID ID, commandID CommandID, v interface{}) error
+	SaveFn func(taskID ID, commandID CommandID, v interface{}) error
 }
 
-// removeFileIfExists는 파일이 존재하면 삭제합니다.
-func removeFileIfExists(filename string) error {
-	// 파일 존재 여부 확인
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return nil // 파일이 없으면 성공
+func (m *MockTaskResultStorage) Load(taskID ID, commandID CommandID, v interface{}) error {
+	if m.LoadFn != nil {
+		return m.LoadFn(taskID, commandID, v)
 	}
+	return nil
+}
 
-	// 파일 삭제
-	return os.Remove(filename)
+func (m *MockTaskResultStorage) Save(taskID ID, commandID CommandID, v interface{}) error {
+	if m.SaveFn != nil {
+		return m.SaveFn(taskID, commandID, v)
+	}
+	return nil
 }
 
 // CreateTestCSVFile 테스트용 CSV 파일을 생성합니다.

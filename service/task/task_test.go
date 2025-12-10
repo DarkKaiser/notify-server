@@ -59,6 +59,7 @@ func TestTask_BasicMethods(t *testing.T) {
 		InstanceID: InstanceID("test_instance_123"),
 		NotifierID: "test_notifier",
 		Canceled:   false,
+		Storage:    &MockTaskResultStorage{},
 	}
 
 	t.Run("ID 반환 테스트", func(t *testing.T) {
