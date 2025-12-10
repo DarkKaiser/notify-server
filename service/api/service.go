@@ -209,7 +209,7 @@ func (s *NotifyAPIService) handleServerError(err error) {
 		"error": err,
 	}).Error(msg)
 
-	s.notificationService.NotifyWithErrorToDefault(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
+	s.notificationService.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
 }
 
 // waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.

@@ -243,7 +243,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
 
-				send.On("NotifyWithTaskContext", "N2", mock.MatchedBy(func(msg string) bool {
+				send.On("Notify", "N2", mock.MatchedBy(func(msg string) bool {
 					return msg != "" && assert.Contains(nil, msg, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") // nil passed to assert helper which is weird but works for Contains if t is not needed or we check bool
 				}), mock.Anything).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -314,7 +314,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 		},
 	}
 
-	mockSend.On("NotifyWithTaskContext", "N1", mock.MatchedBy(func(msg string) bool {
+	mockSend.On("Notify", "N1", mock.MatchedBy(func(msg string) bool {
 		return assert.Contains(t, msg, "Cron 스케줄 파싱 실패")
 	}), mock.Anything).Return().Once()
 

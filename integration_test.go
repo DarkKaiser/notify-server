@@ -332,7 +332,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// 알림 발송 테스트
-		result := notificationService.NotifyToDefault("통합 테스트 메시지")
+		result := notificationService.NotifyDefault("통합 테스트 메시지")
 		assert.True(t, result, "알림 발송이 성공해야 합니다")
 
 		cancel()
@@ -427,7 +427,7 @@ type notifyCall struct {
 	taskCtx    task.TaskContext
 }
 
-func (m *mockNotificationSender) NotifyToDefault(message string) bool {
+func (m *mockNotificationSender) NotifyDefault(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, notifyCall{
@@ -437,7 +437,7 @@ func (m *mockNotificationSender) NotifyToDefault(message string) bool {
 	return true
 }
 
-func (m *mockNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx task.TaskContext) bool {
+func (m *mockNotificationSender) Notify(notifierID string, message string, taskCtx task.TaskContext) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, notifyCall{

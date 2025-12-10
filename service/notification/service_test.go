@@ -121,7 +121,7 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 				tt.mockSetup(mockNotifier)
 			}
 
-			result := service.Notify(tt.notifierID, "title", tt.message, tt.isError)
+			result := service.NotifyWithTitle(tt.notifierID, "title", tt.message, tt.isError)
 
 			assert.Equal(t, tt.expectSuccess, result)
 			if tt.expectedCall {
@@ -140,7 +140,7 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 }
 
 func TestNotificationService_NotifyMethods_Table(t *testing.T) {
-	// Tests for NotifyToDefault, NotifyWithErrorToDefault, NotifyWithTaskContext
+	// Tests for NotifyDefault, NotifyDefaultWithError, NotifyWithTaskContext
 
 	defaultID := "default-notifier"
 
@@ -150,11 +150,12 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 		targetID        string // Used for WithContext
 		message         string
 		expectSuccess   bool
+		isError         bool // Added missing isError field
 		expectedCall    bool // on the targeted notifier
 		expectedDefCall bool // on default notifier (fallback or direct)
 	}{
 		{
-			name:            "NotifyToDefault Success",
+			name:            "NotifyDefault Success",
 			method:          "Default",
 			message:         "msg",
 			expectSuccess:   true,
@@ -163,8 +164,10 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 		{
 			name:            "NotifyWithErrorToDefault Success",
 			method:          "DefaultError",
-			message:         "err msg",
+			message:         "errorMsg",
 			expectSuccess:   true,
+			isError:         true, // Should be true for NotifyDefaultWithError
+			expectedCall:    true,
 			expectedDefCall: true,
 		},
 		{
@@ -199,11 +202,11 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 			var result bool
 			switch tt.method {
 			case "Default":
-				result = service.NotifyToDefault(tt.message)
+				result = service.NotifyDefault(tt.message)
 			case "DefaultError":
-				result = service.NotifyWithErrorToDefault(tt.message)
+				result = service.NotifyDefaultWithError(tt.message)
 			case "WithContext":
-				result = service.NotifyWithTaskContext(tt.targetID, tt.message, task.NewTaskContext())
+				result = service.Notify(tt.targetID, tt.message, task.NewTaskContext())
 			}
 
 			assert.Equal(t, tt.expectSuccess, result)
@@ -235,7 +238,7 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 	}
 
 	// Notify n2
-	result := service.NotifyWithTaskContext("n2", "msg", task.NewTaskContext())
+	result := service.Notify("n2", "msg", task.NewTaskContext())
 	assert.True(t, result)
 	assert.Len(t, mockNotifier1.notifyCalls, 0)
 	assert.Len(t, mockNotifier2.notifyCalls, 1)
@@ -269,14 +272,14 @@ func TestNotificationService_StartAndRun(t *testing.T) {
 		assert.True(t, service.running)
 
 		// Verify working
-		assert.True(t, service.NotifyToDefault("test"))
+		assert.True(t, service.NotifyDefault("test"))
 
 		// Shutdown
 		cancel()
 		wg.Wait()
 
 		assert.False(t, service.running)
-		assert.False(t, service.NotifyToDefault("fail"))
+		assert.False(t, service.NotifyDefault("fail"))
 	})
 }
 

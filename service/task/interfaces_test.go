@@ -22,14 +22,14 @@ type MockNotificationSender struct {
 	mu sync.Mutex
 
 	// 호출 기록
-	NotifyToDefaultCalls       []string
-	NotifyWithTaskContextCalls []NotifyWithTaskContextCall
-	SupportsHTMLCalls          []string
-	SupportsHTMLReturnValue    bool
+	NotifyDefaultCalls      []string
+	NotifyCalls             []NotifyCall
+	SupportsHTMLCalls       []string
+	SupportsHTMLReturnValue bool
 }
 
-// NotifyWithTaskContextCall NotifyWithTaskContext 호출 정보를 저장합니다.
-type NotifyWithTaskContextCall struct {
+// NotifyCall Notify 호출 정보를 저장합니다.
+type NotifyCall struct {
 	NotifierID  string
 	Message     string
 	TaskContext TaskContext
@@ -38,28 +38,28 @@ type NotifyWithTaskContextCall struct {
 // NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
 func NewMockNotificationSender() *MockNotificationSender {
 	return &MockNotificationSender{
-		NotifyToDefaultCalls:       make([]string, 0),
-		NotifyWithTaskContextCalls: make([]NotifyWithTaskContextCall, 0),
-		SupportsHTMLCalls:          make([]string, 0),
-		SupportsHTMLReturnValue:    true, // 기본값: HTML 지원
+		NotifyDefaultCalls:      make([]string, 0),
+		NotifyCalls:             make([]NotifyCall, 0),
+		SupportsHTMLCalls:       make([]string, 0),
+		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
 	}
 }
 
-// NotifyToDefault 기본 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
+// NotifyDefault 기본 알림을 전송합니다 (Mock).
+func (m *MockNotificationSender) NotifyDefault(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.NotifyToDefaultCalls = append(m.NotifyToDefaultCalls, message)
+	m.NotifyDefaultCalls = append(m.NotifyDefaultCalls, message)
 	return true
 }
 
-// NotifyWithTaskContext Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
+// Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
+func (m *MockNotificationSender) Notify(notifierID string, message string, taskCtx TaskContext) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.NotifyWithTaskContextCalls = append(m.NotifyWithTaskContextCalls, NotifyWithTaskContextCall{
+	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
 		NotifierID:  notifierID,
 		Message:     message,
 		TaskContext: taskCtx,
@@ -81,25 +81,25 @@ func (m *MockNotificationSender) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.NotifyToDefaultCalls = make([]string, 0)
-	m.NotifyWithTaskContextCalls = make([]NotifyWithTaskContextCall, 0)
+	m.NotifyDefaultCalls = make([]string, 0)
+	m.NotifyCalls = make([]NotifyCall, 0)
 	m.SupportsHTMLCalls = make([]string, 0)
 }
 
-// GetNotifyToDefaultCallCount NotifyToDefault 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyToDefaultCallCount() int {
+// GetNotifyDefaultCallCount NotifyDefault 호출 횟수를 반환합니다.
+func (m *MockNotificationSender) GetNotifyDefaultCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return len(m.NotifyToDefaultCalls)
+	return len(m.NotifyDefaultCalls)
 }
 
-// GetNotifyWithTaskContextCallCount NotifyWithTaskContext 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyWithTaskContextCallCount() int {
+// GetNotifyCallCount Notify 호출 횟수를 반환합니다.
+func (m *MockNotificationSender) GetNotifyCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return len(m.NotifyWithTaskContextCalls)
+	return len(m.NotifyCalls)
 }
 
 // GetSupportsHTMLCallCount SupportsHTML 호출 횟수를 반환합니다.

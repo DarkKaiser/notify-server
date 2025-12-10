@@ -27,12 +27,12 @@ type MockTestifyNotificationSender struct {
 	mock.Mock
 }
 
-func (m *MockTestifyNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockTestifyNotificationSender) NotifyDefault(message string) bool {
 	args := m.Called(message)
 	return args.Bool(0)
 }
 
-func (m *MockTestifyNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
+func (m *MockTestifyNotificationSender) Notify(notifierID string, message string, taskCtx TaskContext) bool {
 	args := m.Called(notifierID, message, taskCtx)
 	// Return default true if return value not specified, or use args.Bool(0) if strict.
 	// For most tests, we just want to verify call, return value matters less unless logic depends on it.

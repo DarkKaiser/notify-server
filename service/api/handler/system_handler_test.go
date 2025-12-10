@@ -15,15 +15,15 @@ import (
 // MockNotificationService는 테스트용 NotificationService입니다.
 type MockNotificationService struct{}
 
-func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	return true
 }
 
-func (m *MockNotificationService) NotifyToDefault(message string) bool {
+func (m *MockNotificationService) NotifyDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
+func (m *MockNotificationService) NotifyDefaultWithError(message string) bool {
 	return true
 }
 

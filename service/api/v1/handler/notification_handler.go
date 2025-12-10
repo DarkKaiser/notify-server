@@ -66,7 +66,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		"message_length": len(req.Message),
 	}).Info("알림 메시지 게시 요청 성공")
 
-	h.notificationService.Notify(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
+	h.notificationService.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 
 	// 5. 성공 응답
 	return commonhandler.NewSuccessResponse(c)

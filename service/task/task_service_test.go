@@ -169,7 +169,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 
 	// 알림이 발송되었는지 확인
 	time.Sleep(100 * time.Millisecond)
-	callCount := mockSender.GetNotifyWithTaskContextCallCount()
+	callCount := mockSender.GetNotifyCallCount()
 	require.Greater(t, callCount, 0, "에러 알림이 발송되어야 합니다")
 
 	// 서비스 중지

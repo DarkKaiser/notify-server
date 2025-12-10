@@ -19,10 +19,10 @@ type MockNotificationService struct {
 	LastErrorOccurred bool
 	ShouldFail        bool
 
-	NotifyToDefaultCalled bool
+	NotifyDefaultCalled bool
 }
 
-func (m *MockNotificationService) Notify(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -34,20 +34,20 @@ func (m *MockNotificationService) Notify(notifierID string, title string, messag
 	return !m.ShouldFail
 }
 
-func (m *MockNotificationService) NotifyToDefault(message string) bool {
+func (m *MockNotificationService) NotifyDefault(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.NotifyToDefaultCalled = true
+	m.NotifyDefaultCalled = true
 	m.LastMessage = message
 	return true
 }
 
-func (m *MockNotificationService) NotifyWithErrorToDefault(message string) bool {
+func (m *MockNotificationService) NotifyDefaultWithError(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.NotifyToDefaultCalled = true
+	m.NotifyDefaultCalled = true
 	m.LastMessage = message
 	m.LastErrorOccurred = true
 	return true
@@ -64,7 +64,7 @@ func (m *MockNotificationService) Reset() {
 	m.LastMessage = ""
 	m.LastErrorOccurred = false
 	m.ShouldFail = false
-	m.NotifyToDefaultCalled = false
+	m.NotifyDefaultCalled = false
 }
 
 // GetFreePort 테스트용으로 사용 가능한 임의의 포트를 반환합니다.

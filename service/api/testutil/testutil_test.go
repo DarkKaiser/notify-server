@@ -54,12 +54,15 @@ func TestWaitForServer(t *testing.T) {
 	})
 }
 
-func TestMockNotificationService(t *testing.T) {
+// TestMockNotificationService_NotifyWithTitle tests the NotifyWithTitle method.
+func TestMockNotificationService_NotifyWithTitle(t *testing.T) {
 	mock := &MockNotificationService{}
 
-	t.Run("Notify", func(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
 		mock.Reset()
-		success := mock.Notify("notifier1", "Title", "Message", false)
+		mock.ShouldFail = false
+		success := mock.NotifyWithTitle("notifier1", "Title", "Message", false)
+
 		assert.True(t, success)
 		assert.True(t, mock.NotifyCalled)
 		assert.Equal(t, "notifier1", mock.LastNotifierID)
@@ -68,24 +71,29 @@ func TestMockNotificationService(t *testing.T) {
 		assert.False(t, mock.LastErrorOccurred)
 	})
 
-	t.Run("Notify Fail", func(t *testing.T) {
+	t.Run("Failure", func(t *testing.T) {
 		mock.Reset()
 		mock.ShouldFail = true
-		success := mock.Notify("notifier1", "Title", "Message", false)
+		success := mock.NotifyWithTitle("notifier1", "Title", "Message", false)
+
 		assert.False(t, success)
 	})
+}
 
-	t.Run("NotifyToDefault", func(t *testing.T) {
+func TestMockNotificationService(t *testing.T) {
+	mock := &MockNotificationService{}
+
+	t.Run("NotifyDefault", func(t *testing.T) {
 		mock.Reset()
-		mock.NotifyToDefault("Default Message")
-		assert.True(t, mock.NotifyToDefaultCalled)
+		mock.NotifyDefault("Default Message")
+		assert.True(t, mock.NotifyDefaultCalled)
 		assert.Equal(t, "Default Message", mock.LastMessage)
 	})
 
-	t.Run("NotifyWithErrorToDefault", func(t *testing.T) {
+	t.Run("NotifyDefaultWithError", func(t *testing.T) {
 		mock.Reset()
-		mock.NotifyWithErrorToDefault("Error Message")
-		assert.True(t, mock.NotifyToDefaultCalled)
+		mock.NotifyDefaultWithError("Error Message")
+		assert.True(t, mock.NotifyDefaultCalled)
 		assert.Equal(t, "Error Message", mock.LastMessage)
 		assert.True(t, mock.LastErrorOccurred)
 	})
@@ -99,7 +107,7 @@ func TestMockNotificationService(t *testing.T) {
 		for i := 0; i < concurrency; i++ {
 			go func() {
 				defer wg.Done()
-				mock.Notify("id", "title", "msg", false)
+				mock.NotifyWithTitle("id", "title", "msg", false)
 			}()
 		}
 		wg.Wait()

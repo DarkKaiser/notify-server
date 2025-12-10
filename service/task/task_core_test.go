@@ -48,10 +48,10 @@ func TestTask_Run(t *testing.T) {
 		}
 		wg.Wait()
 
-		assert.Equal(t, 1, mockSender.GetNotifyWithTaskContextCallCount())
-		call := mockSender.NotifyWithTaskContextCalls[0]
-		assert.Contains(t, call.Message, "Run Error")
-		assert.Contains(t, call.Message, "작업이 실패하였습니다")
+		assert.Equal(t, 1, mockSender.GetNotifyCallCount())
+		assert.Equal(t, "test-notifier", mockSender.NotifyCalls[0].NotifierID)
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "Run Error")
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업이 실패하였습니다")
 	})
 
 	t.Run("취소된 작업", func(t *testing.T) {
@@ -93,8 +93,8 @@ func TestTask_Run(t *testing.T) {
 		}
 		wg.Wait()
 
-		// Should not send notification if canceled
-		assert.Equal(t, 0, mockSender.GetNotifyWithTaskContextCallCount())
+		// Should not send	// No notification should be sent for duplicate
+		assert.Equal(t, 0, mockSender.GetNotifyCallCount())
 	})
 }
 

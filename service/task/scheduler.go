@@ -120,8 +120,7 @@ func (s *scheduler) handleError(notificationSender NotificationSender, notifierI
 
 	applog.WithComponentAndFields("task.scheduler", fields).Error(msg)
 
-	// 관리자 알림 발송 (에러 컨텍스트 포함)
-	notificationSender.NotifyWithTaskContext(
+	notificationSender.Notify(
 		notifierID,
 		msg,
 		NewTaskContext().WithTask(taskID, taskCommandID).WithError(),
