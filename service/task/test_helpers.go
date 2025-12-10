@@ -12,8 +12,8 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 )
 
-// MockTaskNotificationSender 테스트용 TaskNotificationSender 구현체입니다.
-type MockTaskNotificationSender struct {
+// MockNotificationSender 테스트용 NotificationSender 구현체입니다.
+type MockNotificationSender struct {
 	mu sync.Mutex
 
 	// 호출 기록
@@ -30,9 +30,9 @@ type NotifyWithTaskContextCall struct {
 	TaskCtx    TaskContext
 }
 
-// NewMockTaskNotificationSender 새로운 Mock 객체를 생성합니다.
-func NewMockTaskNotificationSender() *MockTaskNotificationSender {
-	return &MockTaskNotificationSender{
+// NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
+func NewMockNotificationSender() *MockNotificationSender {
+	return &MockNotificationSender{
 		NotifyToDefaultCalls:           make([]string, 0),
 		NotifyWithTaskContextCalls:     make([]NotifyWithTaskContextCall, 0),
 		SupportsHTMLMessageCalls:       make([]string, 0),
@@ -41,7 +41,7 @@ func NewMockTaskNotificationSender() *MockTaskNotificationSender {
 }
 
 // NotifyToDefault 기본 알림을 전송합니다 (Mock).
-func (m *MockTaskNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockNotificationSender) NotifyToDefault(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -50,7 +50,7 @@ func (m *MockTaskNotificationSender) NotifyToDefault(message string) bool {
 }
 
 // NotifyWithTaskContext Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockTaskNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
+func (m *MockNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -63,7 +63,7 @@ func (m *MockTaskNotificationSender) NotifyWithTaskContext(notifierID string, me
 }
 
 // SupportsHTMLMessage HTML 메시지 지원 여부를 반환합니다 (Mock).
-func (m *MockTaskNotificationSender) SupportsHTMLMessage(notifierID string) bool {
+func (m *MockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -72,7 +72,7 @@ func (m *MockTaskNotificationSender) SupportsHTMLMessage(notifierID string) bool
 }
 
 // Reset 모든 호출 기록을 초기화합니다.
-func (m *MockTaskNotificationSender) Reset() {
+func (m *MockNotificationSender) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (m *MockTaskNotificationSender) Reset() {
 }
 
 // GetNotifyToDefaultCallCount NotifyToDefault 호출 횟수를 반환합니다.
-func (m *MockTaskNotificationSender) GetNotifyToDefaultCallCount() int {
+func (m *MockNotificationSender) GetNotifyToDefaultCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -90,7 +90,7 @@ func (m *MockTaskNotificationSender) GetNotifyToDefaultCallCount() int {
 }
 
 // GetNotifyWithTaskContextCallCount NotifyWithTaskContext 호출 횟수를 반환합니다.
-func (m *MockTaskNotificationSender) GetNotifyWithTaskContextCallCount() int {
+func (m *MockNotificationSender) GetNotifyWithTaskContextCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -98,7 +98,7 @@ func (m *MockTaskNotificationSender) GetNotifyWithTaskContextCallCount() int {
 }
 
 // GetSupportsHTMLMessageCallCount SupportsHTMLMessage 호출 횟수를 반환합니다.
-func (m *MockTaskNotificationSender) GetSupportsHTMLMessageCallCount() int {
+func (m *MockNotificationSender) GetSupportsHTMLMessageCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

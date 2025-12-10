@@ -28,24 +28,24 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service.taskStopWaiter, "taskStopWaiter가 초기화되어야 합니다")
 }
 
-func TestTaskService_SetTaskNotificationSender(t *testing.T) {
+func TestTaskService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 
-	mockSender := NewMockTaskNotificationSender()
+	mockSender := NewMockNotificationSender()
 
 	// 알림 발송자 설정
-	service.SetTaskNotificationSender(mockSender)
+	service.SetNotificationSender(mockSender)
 
 	// 검증
-	require.Equal(t, mockSender, service.taskNotificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
+	require.Equal(t, mockSender, service.notificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
 }
 
 func TestTaskService_TaskRun_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,8 +77,8 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,8 +114,8 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 func TestTaskService_TaskCancel_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -142,8 +142,8 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -180,8 +180,8 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 func TestTaskService_Concurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	// 서비스 시작
 	ctx, cancel := context.WithCancel(context.Background())
@@ -233,8 +233,8 @@ func TestTaskService_Concurrency(t *testing.T) {
 func TestTaskService_CancelConcurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockTaskNotificationSender()
-	service.SetTaskNotificationSender(mockSender)
+	mockSender := NewMockNotificationSender()
+	service.SetNotificationSender(mockSender)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

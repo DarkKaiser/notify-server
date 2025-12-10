@@ -66,7 +66,7 @@ func TestServicesIntegration(t *testing.T) {
 		assert.NotNil(t, notifyAPIService, "NotifyAPIService가 생성되어야 합니다")
 
 		// 의존성 주입 확인
-		taskService.SetTaskNotificationSender(notificationService)
+		taskService.SetNotificationSender(notificationService)
 
 		// 서비스 시작 및 중지 테스트
 		ctx, cancel := context.WithCancel(context.Background())
@@ -104,7 +104,7 @@ func TestServicesIntegration(t *testing.T) {
 		}
 		notificationService.SetNotifierFactory(mockFactory)
 
-		taskService.SetTaskNotificationSender(notificationService)
+		taskService.SetNotificationSender(notificationService)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -138,7 +138,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		}
 
 		taskService := task.NewService(appConfig)
-		taskService.SetTaskNotificationSender(mockSender)
+		taskService.SetNotificationSender(mockSender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
@@ -180,7 +180,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		}
 
 		taskService := task.NewService(appConfig)
-		taskService.SetTaskNotificationSender(mockSender)
+		taskService.SetNotificationSender(mockSender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
@@ -234,7 +234,7 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 		notificationService.SetNotifierFactory(mockFactory)
 
-		taskService.SetTaskNotificationSender(notificationService)
+		taskService.SetNotificationSender(notificationService)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -267,7 +267,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 		// 모든 서비스 시작
 		for _, svc := range services {
-			svc.SetTaskNotificationSender(&mockNotificationSender{})
+			svc.SetNotificationSender(&mockNotificationSender{})
 			wg.Add(1)
 			go svc.Start(ctx, wg)
 		}
@@ -284,7 +284,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 		for i := 0; i < 3; i++ {
 			taskService := task.NewService(appConfig)
-			taskService.SetTaskNotificationSender(&mockNotificationSender{})
+			taskService.SetNotificationSender(&mockNotificationSender{})
 
 			ctx, cancel := context.WithCancel(context.Background())
 			wg := &sync.WaitGroup{}
@@ -351,7 +351,7 @@ func TestEndToEndScenario(t *testing.T) {
 		mockSender := &mockNotificationSender{
 			notifyCalls: make([]notifyCall, 0),
 		}
-		taskService.SetTaskNotificationSender(mockSender)
+		taskService.SetNotificationSender(mockSender)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
@@ -415,7 +415,7 @@ func createTestConfigWithNotifier() *config.AppConfig {
 	return appConfig
 }
 
-// mockNotificationSender는 테스트용 TaskNotificationSender 구현체입니다.
+// mockNotificationSender는 테스트용 NotificationSender 구현체입니다.
 type mockNotificationSender struct {
 	mu          sync.Mutex
 	notifyCalls []notifyCall

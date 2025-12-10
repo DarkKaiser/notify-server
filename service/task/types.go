@@ -13,6 +13,13 @@ func (id ID) IsEmpty() bool {
 	return len(id) == 0
 }
 
+func (id ID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "ID는 필수입니다")
+	}
+	return nil
+}
+
 func (id ID) String() string {
 	return string(id)
 }
@@ -24,8 +31,11 @@ func (id CommandID) IsEmpty() bool {
 	return len(id) == 0
 }
 
-func (id CommandID) String() string {
-	return string(id)
+func (id CommandID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 필수입니다")
+	}
+	return nil
 }
 
 // Match 대상 커맨드 ID(target)가 현재 커맨드 ID와 일치하는지, 또는 정의된 패턴에 부합하는지 검증합니다.
@@ -42,6 +52,10 @@ func (id CommandID) Match(target CommandID) bool {
 	}
 
 	return id == target
+}
+
+func (id CommandID) String() string {
+	return string(id)
 }
 
 // InstanceID 실행 중인 작업 인스턴스의 고유 식별자입니다.
@@ -75,6 +89,14 @@ func (t RunBy) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// Validate 유효한 실행 주체인지 검증합니다.
+func (t RunBy) Validate() error {
+	if !t.IsValid() {
+		return apperrors.New(apperrors.ErrInvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
+	}
+	return nil
 }
 
 func (t RunBy) String() string {
@@ -114,14 +136,14 @@ type RunRequest struct {
 
 // Validate 유효한 요청인지 검증합니다.
 func (r *RunRequest) Validate() error {
-	if r.TaskID.IsEmpty() {
-		return apperrors.New(apperrors.ErrInvalidInput, "TaskID는 필수입니다")
+	if err := r.TaskID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskID 검증 실패")
 	}
-	if r.TaskCommandID.IsEmpty() {
-		return apperrors.New(apperrors.ErrInvalidInput, "TaskCommandID는 필수입니다")
+	if err := r.TaskCommandID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskCommandID 검증 실패")
 	}
-	if !r.RunBy.IsValid() {
-		return apperrors.New(apperrors.ErrInvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
+	if err := r.RunBy.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -141,13 +163,17 @@ type Executor interface {
 	Canceler
 }
 
-// TaskNotificationSender 작업 상태나 결과를 알림으로 전송하는 인터페이스입니다.
-type TaskNotificationSender interface {
-	// NotifyToDefault 기본 설정된 알림 채널로 메시지를 전송합니다.
+// NotificationSender 작업(Task)의 실행 상태, 결과, 또는 에러 상황을 외부 알림 서비스로 전송하기 위한 추상화된 인터페이스입니다.
+// 구현체는 Telegram, Slack, Email 등 구체적인 알림 수단과의 통신을 담당합니다.
+type NotificationSender interface {
+	// NotifyToDefault 사전에 정의된 기본 알림 채널(Default Notifier)로 메시지를 전송합니다.
 	NotifyToDefault(message string) bool
-	// NotifyWithTaskContext 특정 알림 채널로 컨텍스트 정보와 함께 메시지를 전송합니다.
+
+	// NotifyWithTaskContext 지정된 NotifierID를 통해 메시지를 전송합니다.
+	// TaskContext를 함께 전달하여 작업의 메타데이터(TaskID, Title 등)를 알림에 포함하거나 로깅에 활용할 수 있습니다.
 	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
 
-	// SupportsHTMLMessage 해당 알림 채널이 HTML 메시지 형식을 지원하는지 확인합니다.
+	// SupportsHTMLMessage 지정된 Notifier가 HTML 포맷의 메시지 본문을 지원하는지 확인합니다.
+	// 텍스트 스타일링(굵게, 링크 등)이 필요한 경우 이 메서드를 통해 지원 여부를 먼저 확인해야 합니다.
 	SupportsHTMLMessage(notifierID string) bool
 }

@@ -91,7 +91,7 @@ type TaskHandler interface {
 
 	ElapsedTimeAfterRun() int64
 
-	Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
+	Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
 func (t *Task) GetID() ID {
@@ -122,7 +122,7 @@ func (t *Task) ElapsedTimeAfterRun() int64 {
 	return int64(time.Since(t.RunTime).Seconds())
 }
 
-func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
+func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
 	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
 	defer taskStopWaiter.Done()
@@ -142,7 +142,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"command_id": t.GetCommandID(),
 		}).Error(m)
 
-		t.notifyError(taskNotificationSender, m, taskCtx)
+		t.notifyError(notificationSender, m, taskCtx)
 
 		return
 	}
@@ -165,7 +165,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"command_id": t.GetCommandID(),
 		}).Error(m)
 
-		t.notifyError(taskNotificationSender, m, taskCtx)
+		t.notifyError(notificationSender, m, taskCtx)
 
 		return
 	}
@@ -179,13 +179,13 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 			"error":      err,
 		}).Warn(m)
 
-		t.notify(taskNotificationSender, m, taskCtx)
+		t.notify(notificationSender, m, taskCtx)
 	}
 
-	if message, changedTaskResultData, err := t.RunFn(taskResultData, taskNotificationSender.SupportsHTMLMessage(t.NotifierID)); t.IsCanceled() == false {
+	if message, changedTaskResultData, err := t.RunFn(taskResultData, notificationSender.SupportsHTMLMessage(t.NotifierID)); t.IsCanceled() == false {
 		if err == nil {
 			if len(message) > 0 {
-				t.notify(taskNotificationSender, message, taskCtx)
+				t.notify(notificationSender, message, taskCtx)
 			}
 
 			if changedTaskResultData != nil {
@@ -198,7 +198,7 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 						"error":      err,
 					}).Warn(m)
 
-					t.notifyError(taskNotificationSender, m, taskCtx)
+					t.notifyError(notificationSender, m, taskCtx)
 				}
 			}
 		} else {
@@ -210,19 +210,19 @@ func (t *Task) Run(taskNotificationSender TaskNotificationSender, taskStopWaiter
 				"error":      err,
 			}).Error(m)
 
-			t.notifyError(taskNotificationSender, m, taskCtx)
+			t.notifyError(notificationSender, m, taskCtx)
 
 			return
 		}
 	}
 }
 
-func (t *Task) notify(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx)
+func (t *Task) notify(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
+	return notificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx)
 }
 
-func (t *Task) notifyError(taskNotificationSender TaskNotificationSender, m string, taskCtx TaskContext) bool {
-	return taskNotificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx.WithError())
+func (t *Task) notifyError(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
+	return notificationSender.NotifyWithTaskContext(t.GetNotifierID(), m, taskCtx.WithError())
 }
 
 func (t *Task) dataFileName() string {

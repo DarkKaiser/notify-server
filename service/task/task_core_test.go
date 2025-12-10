@@ -11,7 +11,7 @@ import (
 
 func TestTask_Run(t *testing.T) {
 	t.Run("실행 중 에러 발생", func(t *testing.T) {
-		mockSender := NewMockTaskNotificationSender()
+		mockSender := NewMockNotificationSender()
 		wg := &sync.WaitGroup{}
 		doneC := make(chan InstanceID, 1)
 
@@ -55,7 +55,7 @@ func TestTask_Run(t *testing.T) {
 	})
 
 	t.Run("취소된 작업", func(t *testing.T) {
-		mockSender := NewMockTaskNotificationSender()
+		mockSender := NewMockNotificationSender()
 		wg := &sync.WaitGroup{}
 		doneC := make(chan InstanceID, 1)
 

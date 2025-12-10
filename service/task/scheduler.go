@@ -19,7 +19,7 @@ type scheduler struct {
 }
 
 // Start 스케줄러를 시작하고 정의된 작업들을 Cron에 등록합니다.
-func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotificationSender TaskNotificationSender) {
+func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, notificationSender NotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -61,13 +61,13 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, taskNotifi
 					RunBy:         RunByScheduler,
 				}); err != nil {
 					msg := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
-					s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, err)
+					s.handleError(notificationSender, defaultNotifierID, taskID, taskCommandID, msg, err)
 				}
 			})
 
 			if err != nil {
 				msg := fmt.Sprintf("Cron 스케줄 파싱 실패 (TimeSpec: %s)", timeSpec)
-				s.handleError(taskNotificationSender, defaultNotifierID, taskID, taskCommandID, msg, err)
+				s.handleError(notificationSender, defaultNotifierID, taskID, taskCommandID, msg, err)
 				continue
 			}
 		}
@@ -106,7 +106,7 @@ func (s *scheduler) Stop() {
 
 // handleError 에러 로깅 및 알림 전송을 처리하는 헬퍼 메서드
 // 에러 발생 시 로그를 남기고, 설정된 Notifier를 통해 담당자에게 알림을 보냅니다.
-func (s *scheduler) handleError(taskNotificationSender TaskNotificationSender, notifierID string, taskID ID, taskCommandID CommandID, msg string, err error) {
+func (s *scheduler) handleError(notificationSender NotificationSender, notifierID string, taskID ID, taskCommandID CommandID, msg string, err error) {
 	fields := log.Fields{
 		"task_id":    taskID,
 		"command_id": taskCommandID,
@@ -121,7 +121,7 @@ func (s *scheduler) handleError(taskNotificationSender TaskNotificationSender, n
 	applog.WithComponentAndFields("task.scheduler", fields).Error(msg)
 
 	// 관리자 알림 발송 (에러 컨텍스트 포함)
-	taskNotificationSender.NotifyWithTaskContext(
+	notificationSender.NotifyWithTaskContext(
 		notifierID,
 		msg,
 		NewTaskContext().WithTask(taskID, taskCommandID).WithError(),

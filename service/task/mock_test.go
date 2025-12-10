@@ -22,17 +22,17 @@ func (m *MockTaskExecutor) Cancel(instanceID InstanceID) error {
 	return args.Error(0)
 }
 
-// MockNotificationSender is a mock implementation of TaskNotificationSender interface
-type MockNotificationSender struct {
+// MockNotificationSender is a mock implementation of NotificationSender interface
+type MockTestifyNotificationSender struct {
 	mock.Mock
 }
 
-func (m *MockNotificationSender) NotifyToDefault(message string) bool {
+func (m *MockTestifyNotificationSender) NotifyToDefault(message string) bool {
 	args := m.Called(message)
 	return args.Bool(0)
 }
 
-func (m *MockNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
+func (m *MockTestifyNotificationSender) NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool {
 	args := m.Called(notifierID, message, taskCtx)
 	// Return default true if return value not specified, or use args.Bool(0) if strict.
 	// For most tests, we just want to verify call, return value matters less unless logic depends on it.
@@ -45,7 +45,7 @@ func (m *MockNotificationSender) NotifyWithTaskContext(notifierID string, messag
 	return true
 }
 
-func (m *MockNotificationSender) SupportsHTMLMessage(notifierID string) bool {
+func (m *MockTestifyNotificationSender) SupportsHTMLMessage(notifierID string) bool {
 	args := m.Called(notifierID)
 	if len(args) > 0 {
 		return args.Bool(0)
