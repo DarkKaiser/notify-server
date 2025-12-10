@@ -49,9 +49,9 @@ type telegramNotifier struct {
 
 	botAPI TelegramBotAPI
 
-	executor task.Executor
-
 	botCommands []telegramBotCommand
+
+	executor task.Executor
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
