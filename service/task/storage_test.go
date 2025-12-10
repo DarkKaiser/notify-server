@@ -62,20 +62,3 @@ func TestTask_ReadWriteTaskResultDataFromFile(t *testing.T) {
 		assert.Equal(t, "", readData.Value, "파일이 없으면 데이터가 변경되지 않아야 합니다")
 	})
 }
-
-func TestRunBy_Values(t *testing.T) {
-	t.Run("RunBy 상수 값 테스트", func(t *testing.T) {
-		assert.Equal(t, RunBy(0), RunByUnknown, "RunByUnknown은 0이어야 합니다")
-		assert.Equal(t, RunBy(1), RunByUser, "RunByUser는 1이어야 합니다")
-		assert.Equal(t, RunBy(2), RunByScheduler, "RunByScheduler는 2이어야 합니다")
-	})
-
-	t.Run("RunBy 비교 테스트", func(t *testing.T) {
-		testTask := Task{
-			RunBy: RunByUser,
-		}
-
-		assert.Equal(t, RunByUser, testTask.RunBy, "Task의 runBy가 RunByUser여야 합니다")
-		assert.NotEqual(t, RunByScheduler, testTask.RunBy, "Task의 runBy가 RunByScheduler가 아니어야 합니다")
-	})
-}

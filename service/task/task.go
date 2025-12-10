@@ -1,63 +1,13 @@
 package task
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/darkkaiser/notify-server/config"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
 )
-
-// supportedTasks
-type NewTaskFunc func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error)
-type NewTaskResultDataFunc func() interface{}
-
-var supportedTasks = make(map[ID]*TaskConfig)
-
-func RegisterTask(taskID ID, config *TaskConfig) {
-	supportedTasks[taskID] = config
-}
-
-type TaskConfig struct {
-	CommandConfigs []*TaskCommandConfig
-
-	NewTaskFn NewTaskFunc
-}
-
-type TaskCommandConfig struct {
-	TaskCommandID CommandID
-
-	AllowMultipleInstances bool
-
-	NewTaskResultDataFn NewTaskResultDataFunc
-}
-
-func (c *TaskCommandConfig) equalsTaskCommandID(taskCommandID CommandID) bool {
-	return c.TaskCommandID.Match(taskCommandID)
-}
-
-func findConfigFromSupportedTask(taskID ID, taskCommandID CommandID) (*TaskConfig, *TaskCommandConfig, error) {
-	taskConfig, exists := supportedTasks[taskID]
-	if exists == true {
-		for _, commandConfig := range taskConfig.CommandConfigs {
-			if commandConfig.equalsTaskCommandID(taskCommandID) == true {
-				return taskConfig, commandConfig, nil
-			}
-		}
-
-		return nil, nil, ErrCommandNotSupported
-	}
-
-	return nil, nil, ErrTaskNotSupported
-}
 
 // TaskRunFunc
 type TaskRunFunc func(interface{}, bool) (string, interface{}, error)
@@ -223,37 +173,4 @@ func (t *Task) notify(notificationSender NotificationSender, m string, taskCtx T
 
 func (t *Task) notifyError(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
 	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), m)
-}
-
-func (t *Task) dataFileName() string {
-	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutil.ToSnakeCase(string(t.GetID())), strutil.ToSnakeCase(string(t.GetCommandID())))
-	return strings.ReplaceAll(filename, "_", "-")
-}
-
-func (t *Task) readTaskResultDataFromFile(v interface{}) error {
-	data, err := os.ReadFile(t.dataFileName())
-	if err != nil {
-		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
-		var pathError *os.PathError
-		if errors.As(err, &pathError) == true {
-			return nil
-		}
-
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일을 읽는데 실패했습니다")
-	}
-
-	return json.Unmarshal(data, v)
-}
-
-func (t *Task) writeTaskResultDataToFile(v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "\t")
-	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 마샬링에 실패했습니다")
-	}
-
-	if err := os.WriteFile(t.dataFileName(), data, os.FileMode(0644)); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일 쓰기에 실패했습니다")
-	}
-
-	return nil
 }
