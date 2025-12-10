@@ -98,10 +98,10 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				"run_by":     req.RunBy,
 			}).Debug("새로운 Task 실행 요청 수신")
 
-			if req.TaskCtx == nil {
-				req.TaskCtx = NewTaskContext()
+			if req.TaskContext == nil {
+				req.TaskContext = NewTaskContext()
 			}
-			req.TaskCtx.WithTask(req.TaskID, req.TaskCommandID)
+			req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
 
 			taskConfig, commandConfig, err := findConfigFromSupportedTask(req.TaskID, req.TaskCommandID)
 			if err != nil {
@@ -113,7 +113,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(m)
 
-				s.notificationSender.NotifyWithTaskContext(req.NotifierID, m, req.TaskCtx.WithError())
+				s.notificationSender.NotifyWithTaskContext(req.NotifierID, m, req.TaskContext.WithError())
 
 				continue
 			}
@@ -132,8 +132,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 				s.runningMu.Unlock()
 
 				if alreadyRunTaskHandler != nil {
-					req.TaskCtx.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					s.notificationSender.NotifyWithTaskContext(req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", req.TaskCtx)
+					req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+					s.notificationSender.NotifyWithTaskContext(req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.", req.TaskContext)
 					continue
 				}
 			}
@@ -157,7 +157,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 					"error":      err,
 				}).Error(err)
 
-				s.notificationSender.NotifyWithTaskContext(req.NotifierID, err.Error(), req.TaskCtx.WithError())
+				s.notificationSender.NotifyWithTaskContext(req.NotifierID, err.Error(), req.TaskContext.WithError())
 
 				continue
 			}
@@ -170,7 +170,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			go h.Run(s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
-				s.notificationSender.NotifyWithTaskContext(req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", req.TaskCtx.WithInstanceID(instanceID, 0))
+				s.notificationSender.NotifyWithTaskContext(req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.", req.TaskContext.WithInstanceID(instanceID, 0))
 			}
 
 		case instanceID := <-s.taskDoneC:

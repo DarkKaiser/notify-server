@@ -100,7 +100,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 		NotifierID:    "test-notifier",
 		NotifyOnStart: false,
 		RunBy:         RunByUser,
-		TaskCtx:       taskCtx,
+		TaskContext:   taskCtx,
 	})
 
 	// 검증

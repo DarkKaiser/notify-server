@@ -65,6 +65,13 @@ func (id InstanceID) IsEmpty() bool {
 	return len(id) == 0
 }
 
+func (id InstanceID) Validate() error {
+	if len(id) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "InstanceID는 필수입니다")
+	}
+	return nil
+}
+
 func (id InstanceID) String() string {
 	return string(id)
 }
@@ -118,9 +125,9 @@ type RunRequest struct {
 	// TaskCommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
 	TaskCommandID CommandID
 
-	// TaskCtx 작업 실행 컨텍스트입니다.
+	// TaskContext 작업 실행 컨텍스트입니다.
 	// 실행 흐름 전반에 걸쳐 메타데이터(Title, ID 등)를 전달하고, 취소 신호(Cancellation)를 전파하는 데 사용됩니다.
-	TaskCtx TaskContext
+	TaskContext TaskContext
 
 	// NotifierID 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
 	// 지정하지 않을 경우, Task 설정에 정의된 기본 Notifier가 사용됩니다.
@@ -142,38 +149,11 @@ func (r *RunRequest) Validate() error {
 	if err := r.TaskCommandID.Validate(); err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskCommandID 검증 실패")
 	}
+	if len(r.NotifierID) > 0 && strings.TrimSpace(r.NotifierID) == "" {
+		return apperrors.New(apperrors.ErrInvalidInput, "NotifierID는 공백일 수 없습니다")
+	}
 	if err := r.RunBy.Validate(); err != nil {
 		return err
 	}
 	return nil
-}
-
-type Runner interface {
-	// Run 작업을 실행합니다. 실행 성공 여부(error)를 반환합니다.
-	Run(req *RunRequest) error
-}
-
-type Canceler interface {
-	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
-	Cancel(taskInstanceID InstanceID) error
-}
-
-type Executor interface {
-	Runner
-	Canceler
-}
-
-// NotificationSender 작업(Task)의 실행 상태, 결과, 또는 에러 상황을 외부 알림 서비스로 전송하기 위한 추상화된 인터페이스입니다.
-// 구현체는 Telegram, Slack, Email 등 구체적인 알림 수단과의 통신을 담당합니다.
-type NotificationSender interface {
-	// NotifyToDefault 사전에 정의된 기본 알림 채널(Default Notifier)로 메시지를 전송합니다.
-	NotifyToDefault(message string) bool
-
-	// NotifyWithTaskContext 지정된 NotifierID를 통해 메시지를 전송합니다.
-	// TaskContext를 함께 전달하여 작업의 메타데이터(TaskID, Title 등)를 알림에 포함하거나 로깅에 활용할 수 있습니다.
-	NotifyWithTaskContext(notifierID string, message string, taskCtx TaskContext) bool
-
-	// SupportsHTMLMessage 지정된 Notifier가 HTML 포맷의 메시지 본문을 지원하는지 확인합니다.
-	// 텍스트 스타일링(굵게, 링크 등)이 필요한 경우 이 메서드를 통해 지원 여부를 먼저 확인해야 합니다.
-	SupportsHTMLMessage(notifierID string) bool
 }
