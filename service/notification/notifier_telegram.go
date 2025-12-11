@@ -29,8 +29,8 @@ type telegramBotCommand struct {
 	commandTitle       string
 	commandDescription string
 
-	taskID        task.ID        // 이 명령어와 연결된 작업(Task) ID
-	taskCommandID task.CommandID // 이 명령어와 연결된 작업 커맨드 ID
+	taskID    task.ID        // 이 명령어와 연결된 작업(Task) ID
+	commandID task.CommandID // 이 명령어와 연결된 작업 커맨드 ID
 }
 
 // telegramBotAPI 텔레그램 봇 API 인터페이스

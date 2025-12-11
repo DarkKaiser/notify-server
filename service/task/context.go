@@ -27,7 +27,7 @@ type TaskContext interface {
 	context.Context // 표준 Context 인터페이스 임베딩 (DeadLine, Done, Err, Value 등 지원)
 
 	With(key, val interface{}) TaskContext
-	WithTask(taskID ID, taskCommandID CommandID) TaskContext
+	WithTask(taskID ID, commandID CommandID) TaskContext
 	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
 	WithTitle(title string) TaskContext
 	WithError() TaskContext
@@ -61,9 +61,9 @@ func (c *taskContext) With(key, val interface{}) TaskContext {
 }
 
 // WithTask 작업 및 커맨드 식별자를 컨텍스트에 추가합니다.
-func (c *taskContext) WithTask(taskID ID, taskCommandID CommandID) TaskContext {
+func (c *taskContext) WithTask(taskID ID, commandID CommandID) TaskContext {
 	ctx := context.WithValue(c.Context, ctxKeyID, taskID)
-	ctx = context.WithValue(ctx, ctxKeyCommandID, taskCommandID)
+	ctx = context.WithValue(ctx, ctxKeyCommandID, commandID)
 	return &taskContext{Context: ctx}
 }
 

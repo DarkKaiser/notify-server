@@ -20,7 +20,7 @@ func dummyResultFn() NewTaskResultDataFunc {
 	return func() interface{} { return struct{}{} }
 }
 
-func TestTaskCommandConfig_EqualsTaskCommandID(t *testing.T) {
+func TestTaskCommandConfig_EqualsCommandID(t *testing.T) {
 	cases := []struct {
 		name             string
 		configCommandID  CommandID
@@ -157,7 +157,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 			expectedPanic: "Commands는 비어있을 수 없습니다",
 		},
 		{
-			name: "TaskCommandID is empty",
+			name: "CommandID is empty",
 			config: &Config{
 				NewTaskFn: dummyNewTaskFn(),
 				Commands: []*CommandConfig{
@@ -185,7 +185,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 			expectedPanic: "NewTaskResultDataFn은 nil일 수 없습니다",
 		},
 		{
-			name: "Duplicate TaskCommandID",
+			name: "Duplicate CommandID",
 			config: &Config{
 				NewTaskFn: dummyNewTaskFn(),
 				Commands: []*CommandConfig{
@@ -276,7 +276,7 @@ func TestConfig_Validate(t *testing.T) {
 			expectedError: "Commands는 비어있을 수 없습니다",
 		},
 		{
-			name: "TaskCommandID is empty",
+			name: "CommandID is empty",
 			config: &Config{
 				NewTaskFn: dummyNewTaskFn(),
 				Commands: []*CommandConfig{
@@ -320,7 +320,7 @@ func TestConfig_Validate(t *testing.T) {
 			expectedError: "NewTaskResultDataFn 결과값은 nil일 수 없습니다",
 		},
 		{
-			name: "Duplicate TaskCommandID",
+			name: "Duplicate CommandID",
 			config: &Config{
 				NewTaskFn: dummyNewTaskFn(),
 				Commands: []*CommandConfig{

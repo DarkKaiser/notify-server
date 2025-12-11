@@ -21,7 +21,7 @@ const (
 	// TaskID
 	TidLotto task.ID = "LOTTO"
 
-	// TaskCommandID
+	// CommandID
 	TcidLottoPrediction task.CommandID = "Prediction" // 로또 번호 예측
 )
 

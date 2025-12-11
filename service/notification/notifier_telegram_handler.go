@@ -68,14 +68,14 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 error 반환
 	if err := executor.Run(&task.RunRequest{
 		TaskID:        botCommand.taskID,
-		CommandID:     botCommand.taskCommandID,
+		CommandID:     botCommand.commandID,
 		NotifierID:    string(n.ID()),
 		NotifyOnStart: true,
 		RunBy:         task.RunByUser,
 	}); err != nil {
 		// 실행 실패 알림 발송
 		n.requestC <- &notifyRequest{
-			taskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
+			taskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError(),
 			message: msgTaskExecutionFailed,
 		}
 	}
@@ -157,13 +157,12 @@ func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext)
 	}
 
 	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
-	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
 	taskID := taskCtx.GetID()
-	taskCommandID := taskCtx.GetCommandID()
+	commandID := taskCtx.GetCommandID()
 
-	if !taskID.IsEmpty() && !taskCommandID.IsEmpty() {
+	if !taskID.IsEmpty() && !commandID.IsEmpty() {
 		for _, botCommand := range n.botCommands {
-			if botCommand.taskID == taskID && botCommand.taskCommandID == taskCommandID {
+			if botCommand.taskID == taskID && botCommand.commandID == commandID {
 				return fmt.Sprintf(msgContextTitle, botCommand.commandTitle, message)
 			}
 		}

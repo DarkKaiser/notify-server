@@ -16,7 +16,7 @@ const (
 	// TaskID
 	TidJdc task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
-	// TaskCommandID
+	// CommandID
 	TcidJdcWatchNewOnlineEducation task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 

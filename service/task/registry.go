@@ -144,7 +144,7 @@ func Register(taskID ID, config *Config) {
 
 // findConfig 주어진 식별자(ID)에 해당하는 Task 및 Command 설정을 검색하는 내부 메서드입니다.
 // CommandID 매칭 시 와일드카드(*) 패턴을 지원하기 위해, Map 조회 후 커맨드 목록에 대한 순차 탐색(Sequential Search)을 수행합니다.
-func (r *Registry) findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig, error) {
+func (r *Registry) findConfig(taskID ID, commandID CommandID) (*FoundConfig, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -152,7 +152,7 @@ func (r *Registry) findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig,
 	if exists {
 		// 순차 탐색을 통해 명령어 ID 매칭 (와일드카드 지원 고려)
 		for _, commandConfig := range taskConfig.Commands {
-			if commandConfig.ID.Match(taskCommandID) {
+			if commandConfig.ID.Match(commandID) {
 				return &FoundConfig{
 					Task:    taskConfig,
 					Command: commandConfig,
@@ -168,6 +168,6 @@ func (r *Registry) findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig,
 
 // findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
 // 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
-func findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig, error) {
-	return defaultRegistry.findConfig(taskID, taskCommandID)
+func findConfig(taskID ID, commandID CommandID) (*FoundConfig, error) {
+	return defaultRegistry.findConfig(taskID, commandID)
 }

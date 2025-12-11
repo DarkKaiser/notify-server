@@ -140,7 +140,7 @@ func TestCommandID_String(t *testing.T) {
 	assert.Equal(t, "CMD-1", id.String())
 }
 
-func TestTaskCommandID_Match(t *testing.T) {
+func TestCommandID_Match(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

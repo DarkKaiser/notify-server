@@ -18,7 +18,7 @@ const (
 	// TaskID
 	TidNaver task.ID = "NAVER" // 네이버
 
-	// TaskCommandID
+	// CommandID
 	TcidNaverWatchNewPerformances task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 

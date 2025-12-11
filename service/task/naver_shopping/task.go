@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	naverShoppingWatchPriceTaskCommandIDPrefix string = "WatchPrice_"
+	naverShoppingWatchPriceCommandIDPrefix string = "WatchPrice_"
 
 	// TaskID
 	TidNaverShopping task.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
-	// TaskCommandID
-	TcidNaverShoppingWatchPriceAny = task.CommandID(naverShoppingWatchPriceTaskCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
+	// CommandID
+	TcidNaverShoppingWatchPriceAny = task.CommandID(naverShoppingWatchPriceCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
 
 	// 네이버쇼핑 검색 URL
 	naverShoppingSearchURL = "https://openapi.naver.com/v1/search/shop.json"
@@ -151,7 +151,7 @@ func init() {
 
 			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
-				if strings.HasPrefix(string(tTask.GetCommandID()), naverShoppingWatchPriceTaskCommandIDPrefix) == true {
+				if strings.HasPrefix(string(tTask.GetCommandID()), naverShoppingWatchPriceCommandIDPrefix) == true {
 					for _, t := range tTask.appConfig.Tasks {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {

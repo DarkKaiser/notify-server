@@ -202,7 +202,7 @@ func TestTaskContext_WithTask(t *testing.T) {
 	ctx = ctx.WithTask(taskID, commandID)
 
 	assert.Equal(t, taskID, ctx.GetID(), "TaskID가 설정되어야 합니다")
-	assert.Equal(t, commandID, ctx.GetCommandID(), "TaskCommandID가 설정되어야 합니다")
+	assert.Equal(t, commandID, ctx.GetCommandID(), "CommandID가 설정되어야 합니다")
 }
 
 func TestTaskContext_WithInstanceID(t *testing.T) {
