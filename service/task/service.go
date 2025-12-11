@@ -277,19 +277,19 @@ func (s *Service) Run(req *RunRequest) (err error) {
 	return nil
 }
 
-func (s *Service) Cancel(taskInstanceID InstanceID) (err error) {
+func (s *Service) Cancel(instanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
-				"instance_id": taskInstanceID,
+				"instance_id": instanceID,
 				"panic":       r,
 			}).Error("Task 취소 요청중에 panic 발생")
 		}
 	}()
 
-	s.taskCancelC <- taskInstanceID
+	s.taskCancelC <- instanceID
 
 	return nil
 }

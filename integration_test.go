@@ -459,7 +459,7 @@ func (m *mockExecutor) Run(req *task.RunRequest) error {
 	return nil
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) error {
+func (m *mockExecutor) Cancel(instanceID task.InstanceID) error {
 	return nil
 }
 

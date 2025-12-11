@@ -15,7 +15,7 @@ const (
 	telegramBotCommandHelp   = "help"   // 도움말
 	telegramBotCommandCancel = "cancel" // 작업 취소
 
-	telegramBotCommandSeparator        = "_" // 명령어와 인자(예: TaskInstanceID)를 구분하는 구분자
+	telegramBotCommandSeparator        = "_" // 명령어와 인자(예: InstanceID)를 구분하는 구분자
 	telegramBotCommandInitialCharacter = "/" // 텔레그램 명령어가 시작됨을 알리는 문자
 
 	// 텔레그램 메시지 최대 길이 제한 (API Spec)

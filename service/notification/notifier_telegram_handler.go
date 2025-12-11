@@ -106,13 +106,13 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 
 	// 올바른 형식인지 확인 (2부분으로 나뉘어야 함)
 	if len(commandSplit) == 2 {
-		taskInstanceID := commandSplit[1]
+		instanceID := commandSplit[1]
 		// Executor에 취소 요청
-		if err := executor.Cancel(task.InstanceID(taskInstanceID)); err != nil {
+		if err := executor.Cancel(task.InstanceID(instanceID)); err != nil {
 			// 취소 실패 시 알림
 			n.requestC <- &notifyRequest{
 				taskCtx: task.NewTaskContext().WithError(),
-				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
+				message: fmt.Sprintf(msgTaskCancelFailed, instanceID),
 			}
 		}
 	} else {
@@ -173,12 +173,12 @@ func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext)
 
 // appendCancelCommandAndElapsedTime TaskContext에서 작업 인스턴스 ID를 기반으로 취소 명령어를 메시지에 추가하고, 실행 경과 시간을 추가합니다.
 func (n *telegramNotifier) appendCancelCommandAndElapsedTime(message string, taskCtx task.TaskContext) string {
-	taskInstanceID := taskCtx.GetInstanceID()
-	if taskInstanceID.IsEmpty() {
+	instanceID := taskCtx.GetInstanceID()
+	if instanceID.IsEmpty() {
 		return message
 	}
 
-	message += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, taskInstanceID)
+	message += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, instanceID)
 
 	// 작업 실행 경과 시간 추가 (실행 완료된 경우)
 	if elapsedTimeAfterRun := taskCtx.GetElapsedTimeAfterRun(); elapsedTimeAfterRun > 0 {

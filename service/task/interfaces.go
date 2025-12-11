@@ -9,7 +9,7 @@ type Runner interface {
 // Canceler 실행 중인 작업을 취소하는 인터페이스입니다.
 type Canceler interface {
 	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
-	Cancel(taskInstanceID InstanceID) error
+	Cancel(instanceID InstanceID) error
 }
 
 // Executor 작업을 실행하고 취소할 수 있는 Combined 인터페이스입니다.

@@ -30,7 +30,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	})
 
 	t.Run("InstanceID 반환 테스트", func(t *testing.T) {
-		assert.Equal(t, InstanceID("test_instance_123"), testTask.GetInstanceID(), "TaskInstanceID가 올바르게 반환되어야 합니다")
+		assert.Equal(t, InstanceID("test_instance_123"), testTask.GetInstanceID(), "InstanceID가 올바르게 반환되어야 합니다")
 	})
 
 	t.Run("NotifierID 반환 테스트", func(t *testing.T) {

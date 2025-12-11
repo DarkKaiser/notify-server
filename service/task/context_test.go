@@ -213,7 +213,7 @@ func TestTaskContext_WithInstanceID(t *testing.T) {
 
 	ctx = ctx.WithInstanceID(instanceID, elapsedTime)
 
-	assert.Equal(t, instanceID, ctx.GetInstanceID(), "TaskInstanceID가 설정되어야 합니다")
+	assert.Equal(t, instanceID, ctx.GetInstanceID(), "InstanceID가 설정되어야 합니다")
 	assert.Equal(t, elapsedTime, ctx.GetElapsedTimeAfterRun(), "경과 시간이 설정되어야 합니다")
 }
 

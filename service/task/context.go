@@ -28,7 +28,7 @@ type TaskContext interface {
 
 	With(key, val interface{}) TaskContext
 	WithTask(taskID ID, commandID CommandID) TaskContext
-	WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
+	WithInstanceID(instanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
 	WithTitle(title string) TaskContext
 	WithError() TaskContext
 
@@ -68,8 +68,8 @@ func (c *taskContext) WithTask(taskID ID, commandID CommandID) TaskContext {
 }
 
 // WithInstanceID 실행 인스턴스 정보(ID, 경과 시간)를 컨텍스트에 추가합니다.
-func (c *taskContext) WithInstanceID(taskInstanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
-	ctx := context.WithValue(c.Context, ctxKeyInstanceID, taskInstanceID)
+func (c *taskContext) WithInstanceID(instanceID InstanceID, elapsedTimeAfterRun int64) TaskContext {
+	ctx := context.WithValue(c.Context, ctxKeyInstanceID, instanceID)
 	ctx = context.WithValue(ctx, ctxKeyElapsedTimeAfterRun, elapsedTimeAfterRun)
 	return &taskContext{Context: ctx}
 }
