@@ -83,20 +83,20 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 
 // sendUnknownCommandMessage 알 수 없는 명령어 메시지를 전송합니다.
 func (n *telegramNotifier) sendUnknownCommandMessage(input string) {
-	m := fmt.Sprintf(msgUnknownCommand, input, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
-	n.sendMessage(m)
+	message := fmt.Sprintf(msgUnknownCommand, input, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+	n.sendMessage(message)
 }
 
 // sendHelpCommandMessage 사용 가능한 명령어 목록을 도움말 메시지로 전송합니다.
 func (n *telegramNotifier) sendHelpCommandMessage() {
-	m := "입력 가능한 명령어는 아래와 같습니다:\n\n"
+	message := "입력 가능한 명령어는 아래와 같습니다:\n\n"
 	for i, botCommand := range n.botCommands {
 		if i != 0 {
-			m += "\n\n" // 명령어 간 줄바꿈
+			message += "\n\n" // 명령어 간 줄바꿈
 		}
-		m += fmt.Sprintf("%s%s\n%s", telegramBotCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
+		message += fmt.Sprintf("%s%s\n%s", telegramBotCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
 	}
-	n.sendMessage(m)
+	n.sendMessage(message)
 }
 
 // handleCancelCommand 작업 취소 요청 처리
@@ -116,31 +116,31 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 			}
 		}
 	} else {
-		m := fmt.Sprintf(msgInvalidCancelCommandFormat, command, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
-		n.sendMessage(m)
+		message := fmt.Sprintf(msgInvalidCancelCommandFormat, command, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
+		n.sendMessage(message)
 	}
 }
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
 func (n *telegramNotifier) handleNotifyRequest(req *notifyRequest) {
-	m := req.message
+	message := req.message
 
 	// 작업 실행과 관련된 컨텍스트 정보(작업명, 경과시간 등)가 있다면 메시지에 덧붙입니다.
 	if req.taskCtx != nil {
-		m = n.enrichMessageWithContext(m, req.taskCtx)
+		message = n.enrichMessageWithContext(req.taskCtx, message)
 	}
 
 	// 최종 메시지 전송
-	n.sendMessage(m)
+	n.sendMessage(message)
 }
 
 // enrichMessageWithContext TaskContext 정보를 메시지에 추가 (제목, 시간, 에러 등)
-func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task.TaskContext) string {
+func (n *telegramNotifier) enrichMessageWithContext(taskCtx task.TaskContext, message string) string {
 	// 1. 작업 제목 추가
-	message = n.appendTitle(message, taskCtx)
+	message = n.appendTitle(taskCtx, message)
 
 	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 및 경과 시간 추가
-	message = n.appendCancelCommandAndElapsedTime(message, taskCtx)
+	message = n.appendCancelCommandAndElapsedTime(taskCtx, message)
 
 	// 3. 오류 발생 시 강조 표시 추가
 	if taskCtx.IsErrorOccurred() {
@@ -151,7 +151,7 @@ func (n *telegramNotifier) enrichMessageWithContext(message string, taskCtx task
 }
 
 // appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
-func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext) string {
+func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string) string {
 	if title := taskCtx.GetTitle(); len(title) > 0 {
 		return fmt.Sprintf(msgContextTitle, title, message)
 	}
@@ -172,7 +172,7 @@ func (n *telegramNotifier) appendTitle(message string, taskCtx task.TaskContext)
 }
 
 // appendCancelCommandAndElapsedTime TaskContext에서 작업 인스턴스 ID를 기반으로 취소 명령어를 메시지에 추가하고, 실행 경과 시간을 추가합니다.
-func (n *telegramNotifier) appendCancelCommandAndElapsedTime(message string, taskCtx task.TaskContext) string {
+func (n *telegramNotifier) appendCancelCommandAndElapsedTime(taskCtx task.TaskContext, message string) string {
 	instanceID := taskCtx.GetInstanceID()
 	if instanceID.IsEmpty() {
 		return message

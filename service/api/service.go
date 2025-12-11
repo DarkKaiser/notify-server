@@ -203,13 +203,13 @@ func (s *Service) handleServerError(err error) {
 	}
 
 	// 예상치 못한 에러 발생
-	msg := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
+	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 	applog.WithComponentAndFields("api.service", log.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
-	}).Error(msg)
+	}).Error(message)
 
-	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
+	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", message, err))
 }
 
 // waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.
