@@ -26,11 +26,11 @@ func TestRegistry_Concurrency(t *testing.T) {
 					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) {
 						return nil, nil
 					},
-					CommandConfigs: []*CommandConfig{
+					Commands: []*CommandConfig{
 						{
-							TaskCommandID:       CommandID(fmt.Sprintf("CMD_%d", index)),
+							ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
 							AllowMultiple:       true,
-							NewTaskResultDataFn: func() interface{} { return nil },
+							NewTaskResultDataFn: func() interface{} { return struct{}{} },
 						},
 					},
 				})
@@ -44,10 +44,11 @@ func TestRegistry_Concurrency(t *testing.T) {
 			taskID := ID(fmt.Sprintf("TASK_%d", i))
 			cmdID := CommandID(fmt.Sprintf("CMD_%d", i))
 
-			taskConfig, cmdConfig, err := r.findConfig(taskID, cmdID)
+			searchResult, err := r.findConfig(taskID, cmdID)
 			assert.NoError(t, err)
-			assert.NotNil(t, taskConfig)
-			assert.NotNil(t, cmdConfig)
+			assert.NotNil(t, searchResult)
+			assert.NotNil(t, searchResult.Task)
+			assert.NotNil(t, searchResult.Command)
 		}
 	})
 
@@ -62,11 +63,11 @@ func TestRegistry_Concurrency(t *testing.T) {
 				NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) {
 					return nil, nil
 				},
-				CommandConfigs: []*CommandConfig{
+				Commands: []*CommandConfig{
 					{
-						TaskCommandID:       CommandID(fmt.Sprintf("CMD_%d", i)),
+						ID:                  CommandID(fmt.Sprintf("CMD_%d", i)),
 						AllowMultiple:       true,
-						NewTaskResultDataFn: func() interface{} { return nil },
+						NewTaskResultDataFn: func() interface{} { return struct{}{} },
 					},
 				},
 			})
@@ -81,7 +82,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 					defer wg.Done()
 					taskID := ID(fmt.Sprintf("TASK_%d", index))
 					cmdID := CommandID(fmt.Sprintf("CMD_%d", index))
-					_, _, _ = r.findConfig(taskID, cmdID)
+					_, _ = r.findConfig(taskID, cmdID)
 				}(i)
 			} else {
 				// 등록
@@ -92,11 +93,11 @@ func TestRegistry_Concurrency(t *testing.T) {
 						NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) {
 							return nil, nil
 						},
-						CommandConfigs: []*CommandConfig{
+						Commands: []*CommandConfig{
 							{
-								TaskCommandID:       CommandID(fmt.Sprintf("CMD_%d", index)),
+								ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
 								AllowMultiple:       true,
-								NewTaskResultDataFn: func() interface{} { return nil },
+								NewTaskResultDataFn: func() interface{} { return struct{}{} },
 							},
 						},
 					})

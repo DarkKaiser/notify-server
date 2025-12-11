@@ -63,14 +63,14 @@ type jyiuWatchNewEducationResultData struct {
 
 func init() {
 	task.Register(TidJyiu, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidJyiuWatchNewNotice,
+		Commands: []*task.CommandConfig{{
+			ID: TcidJyiuWatchNewNotice,
 
 			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
 		}, {
-			TaskCommandID: TcidJyiuWatchNewEducation,
+			ID: TcidJyiuWatchNewEducation,
 
 			AllowMultiple: true,
 

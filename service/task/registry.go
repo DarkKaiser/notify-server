@@ -16,46 +16,19 @@ type NewTaskFunc func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, 
 // NewTaskResultDataFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
 type NewTaskResultDataFunc func() interface{}
 
-// Config 태스크의 실행 동작과 지원하는 명령어 명세를 정의하는 불변(Immutable) 설정 구조체입니다.
-// 이 구조체는 태스크 인스턴스 생성을 위한 청사진(Blueprint) 역할을 수행하며, 레지스트리에 등록된 후에는 변경되지 않습니다.
+// Config Task 생성 및 명령어(Command) 구성을 위한 메타데이터를 정의하는 불변(Immutable) 설정 객체입니다.
+// 레지스트리에 등록된 이후에는 상태가 변경되지 않으며(Read-Only), Task 인스턴스를 생성하기 위한 청사진(Blueprint)으로 사용됩니다.
 type Config struct {
-	// CommandConfigs 태스크가 지원하는 명령어(Command)들의 상세 명세 목록입니다.
-	// 각 항목은 명령어 식별자, 동시성 정책, 결과 데이터 스키마 등을 정의합니다.
-	CommandConfigs []*CommandConfig
+	// Commands 이 Task가 수행할 수 있는 모든 하위 명령어(Command)의 정의 목록입니다.
+	// Task는 최소 하나 이상의 CommandConfig를 포함해야 하며, 이를 통해 지원 가능한 기능의 범위를 결정합니다.
+	Commands []*CommandConfig
 
 	NewTaskFn NewTaskFunc
 }
 
-// Validate Config의 유효성을 검사하고, 문제가 있으면 에러를 반환합니다.
-func (c *Config) Validate() error {
-	if c.NewTaskFn == nil {
-		return apperrors.New(apperrors.ErrInvalidInput, "NewTaskFn은 nil일 수 없습니다")
-	}
-	if len(c.CommandConfigs) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "CommandConfigs는 비어있을 수 없습니다")
-	}
-
-	seenCommands := make(map[CommandID]bool)
-	for _, cmdConfig := range c.CommandConfigs {
-		if cmdConfig.TaskCommandID == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "TaskCommandID는 비어있을 수 없습니다")
-		}
-		// 명령어 ID 중복 검사
-		if seenCommands[cmdConfig.TaskCommandID] {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("중복된 TaskCommandID입니다: %s", cmdConfig.TaskCommandID))
-		}
-		if cmdConfig.NewTaskResultDataFn == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, "NewTaskResultDataFn은 nil일 수 없습니다")
-		}
-		seenCommands[cmdConfig.TaskCommandID] = true
-	}
-
-	return nil
-}
-
-// CommandConfig 개별 명령어의 동작 규칙을 정의합니다.
+// CommandConfig 개별 명령어(Command)에 대한 실행 정책과 결과 데이터 구조체를 생성하는 구조체입니다.
 type CommandConfig struct {
-	TaskCommandID CommandID
+	ID CommandID
 
 	// AllowMultiple 동일 명령어의 중복 실행(Concurrency) 허용 여부입니다.
 	// - true: 여러 인스턴스가 동시에 병렬 실행될 수 있습니다.
@@ -65,28 +38,64 @@ type CommandConfig struct {
 	NewTaskResultDataFn NewTaskResultDataFunc
 }
 
-// defaultRegistry 시스템 전역에서 공유되는 싱글톤(Singleton) 레지스트리 인스턴스입니다.
+// Validate 설정 객체(Config)의 무결성을 검증합니다.
+func (c *Config) Validate() error {
+	if len(c.Commands) == 0 {
+		return apperrors.New(apperrors.ErrInvalidInput, "Commands는 비어있을 수 없습니다")
+	}
+	if c.NewTaskFn == nil {
+		return apperrors.New(apperrors.ErrInvalidInput, "NewTaskFn은 nil일 수 없습니다")
+	}
+
+	seenCommands := make(map[CommandID]bool)
+	for _, commandConfig := range c.Commands {
+		if commandConfig.ID == "" {
+			return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 비어있을 수 없습니다")
+		}
+		// 명령어 ID 중복 검사
+		if seenCommands[commandConfig.ID] {
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
+		}
+		if commandConfig.NewTaskResultDataFn == nil {
+			return apperrors.New(apperrors.ErrInvalidInput, "NewTaskResultDataFn은 nil일 수 없습니다")
+		}
+
+		// NewTaskResultDataFn이 nil을 반환하는지 사전 검증
+		// 런타임에 발생할 수 있는 잠재적 오류를 등록 시점에 차단합니다.
+		if data := commandConfig.NewTaskResultDataFn(); data == nil {
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Command(%s)의 NewTaskResultDataFn 결과값은 nil일 수 없습니다", commandConfig.ID))
+		}
+
+		seenCommands[commandConfig.ID] = true
+	}
+
+	return nil
+}
+
+// defaultRegistry 기본 Registry 인스턴스(Singleton)입니다.
 var defaultRegistry = newRegistry()
 
-// Registry 태스크 구성요소(문서, 핸들러 등)의 설정 정보를 동시성 안전(Thread-Safe)하게 관리하는 중앙 저장소입니다.
+// Registry 등록된 모든 Task와 Command의 설정을 관리하는 중앙 저장소(Repository)입니다.
 type Registry struct {
-	// configs 등록된 태스크 설정
 	configs map[ID]*Config
 
 	mu sync.RWMutex
 }
 
-// newRegistry 새로운 Registry 인스턴스를 초기화하여 반환합니다.
-// 주로 단위 테스트 시 격리된 환경(Isolated Environment)을 구성하거나,
-// 의존성 주입(Dependency Injection)이 필요한 경우에 사용됩니다.
+// newRegistry 새로운 Registry 인스턴스를 생성합니다.
 func newRegistry() *Registry {
 	return &Registry{
 		configs: make(map[ID]*Config),
 	}
 }
 
-// Register 주어진 태스크 ID와 설정 정보를 레지스트리에 등록합니다.
-// 중복 등록 시 패닉이 발생하며, Thread-Safe하게 동작합니다.
+// FoundConfig 요청된 ID(Task/Command)를 통해 Registry에서 조회된(Found) 설정 조합입니다.
+type FoundConfig struct {
+	Task    *Config
+	Command *CommandConfig
+}
+
+// Register 주어진 태스크 ID와 설정 정보를 Registry에 등록합니다.
 func (r *Registry) Register(taskID ID, config *Config) {
 	if config == nil {
 		panic("태스크 설정(config)은 nil일 수 없습니다")
@@ -97,6 +106,13 @@ func (r *Registry) Register(taskID ID, config *Config) {
 		panic(err.Error())
 	}
 
+	// 외부에서 원본 config를 수정하더라도 레지스트리 내부 상태에 영향을 주지 않도록 복제합니다.
+	configCopy := *config
+	if config.Commands != nil {
+		configCopy.Commands = make([]*CommandConfig, len(config.Commands))
+		copy(configCopy.Commands, config.Commands)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -105,42 +121,11 @@ func (r *Registry) Register(taskID ID, config *Config) {
 		panic(fmt.Sprintf("중복된 TaskID입니다: %s", taskID))
 	}
 
-	r.configs[taskID] = config
+	r.configs[taskID] = &configCopy
 
 	applog.WithComponentAndFields("task.registry", log.Fields{
 		"task_id": taskID,
 	}).Info("태스크 정보가 성공적으로 등록되었습니다")
-}
-
-// Register 시스템 초기화 시 태스크 정보를 기본 레지스트리에 등록하는 진입점입니다.
-// "Fail Fast" 원칙을 따르며, 유효하지 않은 설정이나 중복 ID에 대해 즉시 패닉을 발생시켜 잠재적 오류를 조기에 차단합니다.
-func Register(taskID ID, config *Config) {
-	defaultRegistry.Register(taskID, config)
-}
-
-// findConfig 레지스트리 내부 저장소에서 태스크 및 명령어 설정을 검색하는 내부 구현 메서드입니다.
-func (r *Registry) findConfig(taskID ID, taskCommandID CommandID) (*Config, *CommandConfig, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	taskConfig, exists := r.configs[taskID]
-	if exists {
-		// 순차 탐색을 통해 명령어 ID 매칭 (와일드카드 지원 고려)
-		for _, commandConfig := range taskConfig.CommandConfigs {
-			if commandConfig.TaskCommandID.Match(taskCommandID) {
-				return taskConfig, commandConfig, nil
-			}
-		}
-
-		return nil, nil, ErrCommandNotSupported
-	}
-
-	return nil, nil, ErrTaskNotSupported
-}
-
-// findConfig 특정 태스크 및 명령어 ID에 해당하는 설정 정보를 스레드 안전하게 조회합니다.
-func findConfig(taskID ID, taskCommandID CommandID) (*Config, *CommandConfig, error) {
-	return defaultRegistry.findConfig(taskID, taskCommandID)
 }
 
 // registerForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
@@ -148,4 +133,41 @@ func (r *Registry) registerForTest(taskID ID, config *Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.configs[taskID] = config
+}
+
+// Register 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
+// "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시켜
+// 애플리케이션 시작 단계에서 잠재적 설정 오류를 확실하게 차단합니다.
+func Register(taskID ID, config *Config) {
+	defaultRegistry.Register(taskID, config)
+}
+
+// findConfig 주어진 식별자(ID)에 해당하는 Task 및 Command 설정을 검색하는 내부 메서드입니다.
+// CommandID 매칭 시 와일드카드(*) 패턴을 지원하기 위해, Map 조회 후 커맨드 목록에 대한 순차 탐색(Sequential Search)을 수행합니다.
+func (r *Registry) findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	taskConfig, exists := r.configs[taskID]
+	if exists {
+		// 순차 탐색을 통해 명령어 ID 매칭 (와일드카드 지원 고려)
+		for _, commandConfig := range taskConfig.Commands {
+			if commandConfig.ID.Match(taskCommandID) {
+				return &FoundConfig{
+					Task:    taskConfig,
+					Command: commandConfig,
+				}, nil
+			}
+		}
+
+		return nil, ErrCommandNotSupported
+	}
+
+	return nil, ErrTaskNotSupported
+}
+
+// findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
+// 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
+func findConfig(taskID ID, taskCommandID CommandID) (*FoundConfig, error) {
+	return defaultRegistry.findConfig(taskID, taskCommandID)
 }

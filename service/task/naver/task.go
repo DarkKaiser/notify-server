@@ -66,8 +66,8 @@ type naverWatchNewPerformancesResultData struct {
 
 func init() {
 	task.Register(TidNaver, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidNaverWatchNewPerformances,
+		Commands: []*task.CommandConfig{{
+			ID: TcidNaverWatchNewPerformances,
 
 			AllowMultiple: true,
 

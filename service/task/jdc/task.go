@@ -45,8 +45,8 @@ type jdcWatchNewOnlineEducationResultData struct {
 
 func init() {
 	task.Register(TidJdc, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidJdcWatchNewOnlineEducation,
+		Commands: []*task.CommandConfig{{
+			ID: TcidJdcWatchNewOnlineEducation,
 
 			AllowMultiple: true,
 

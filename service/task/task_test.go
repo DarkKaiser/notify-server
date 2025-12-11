@@ -85,9 +85,9 @@ func TestTask_Run(t *testing.T) {
 		// Register 사용 (NewTaskFn 더미 추가)
 		Register("ErrorTask", &Config{
 			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
-			CommandConfigs: []*CommandConfig{
+			Commands: []*CommandConfig{
 				{
-					TaskCommandID: "ErrorCommand",
+					ID: "ErrorCommand",
 					NewTaskResultDataFn: func() interface{} {
 						return map[string]interface{}{}
 					},
@@ -132,9 +132,9 @@ func TestTask_Run(t *testing.T) {
 
 		Register("CancelTask", &Config{
 			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
-			CommandConfigs: []*CommandConfig{
+			Commands: []*CommandConfig{
 				{
-					TaskCommandID: "CancelCommand",
+					ID: "CancelCommand",
 					NewTaskResultDataFn: func() interface{} {
 						return &map[string]interface{}{}
 					},

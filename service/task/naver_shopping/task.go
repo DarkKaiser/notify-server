@@ -96,8 +96,8 @@ type naverShoppingWatchPriceResultData struct {
 
 func init() {
 	task.Register(TidNaverShopping, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidNaverShoppingWatchPriceAny,
+		Commands: []*task.CommandConfig{{
+			ID: TcidNaverShoppingWatchPriceAny,
 
 			AllowMultiple: true,
 

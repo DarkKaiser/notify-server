@@ -82,8 +82,8 @@ type lottoPredictionResultData struct{}
 
 func init() {
 	task.Register(TidLotto, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidLottoPrediction,
+		Commands: []*task.CommandConfig{{
+			ID: TcidLottoPrediction,
 
 			AllowMultiple: false,
 

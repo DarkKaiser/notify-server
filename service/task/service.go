@@ -111,7 +111,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 			}
 			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
 
-			taskConfig, commandConfig, err := findConfig(req.TaskID, req.TaskCommandID)
+			searchResult, err := findConfig(req.TaskID, req.TaskCommandID)
 			if err != nil {
 				m := "등록되지 않은 작업입니다.😱"
 
@@ -126,12 +126,13 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 				continue
 			}
 
-			// 다중 인스턴스의 생성이 허용되지 않는 Task인 경우, 이미 실행중인 동일한 Task가 있는지 확인한다.
-			if commandConfig.AllowMultiple == false {
-				var alreadyRunTaskHandler TaskHandler
-
+			// 인스턴스 중복 실행 확인 (Concurrency Control)
+			// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
+			var alreadyRunTaskHandler TaskHandler
+			if !searchResult.Command.AllowMultiple {
 				s.runningMu.Lock()
 				for _, handler := range s.taskHandlers {
+					// 작업 중복 확인 로직
 					if handler.GetID() == req.TaskID && handler.GetCommandID() == req.TaskCommandID && handler.IsCanceled() == false {
 						alreadyRunTaskHandler = handler
 						break
@@ -157,7 +158,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 			}
 			s.runningMu.Unlock()
 
-			h, err := taskConfig.NewTaskFn(instanceID, req, s.appConfig)
+			h, err := searchResult.Task.NewTaskFn(instanceID, req, s.appConfig)
 			if h == nil {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    req.TaskID,

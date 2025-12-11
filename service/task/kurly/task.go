@@ -129,8 +129,8 @@ type kurlyWatchProductPriceResultData struct {
 
 func init() {
 	task.Register(TidKurly, &task.Config{
-		CommandConfigs: []*task.CommandConfig{{
-			TaskCommandID: TcidKurlyWatchProductPrice,
+		Commands: []*task.CommandConfig{{
+			ID: TcidKurlyWatchProductPrice,
 
 			AllowMultiple: true,
 
