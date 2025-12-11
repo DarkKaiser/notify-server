@@ -1,7 +1,6 @@
 package task
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +11,11 @@ const testAppName = "test-app"
 func TestFileTaskResultStorage_LoadSave(t *testing.T) {
 	t.Run("TaskResultData 파일 읽기/쓰기 테스트", func(t *testing.T) {
 		storage := NewFileTaskResultStorage(testAppName)
+
+		// 테스트 격리를 위해 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		storage.SetBaseDir(tempDir)
+
 		taskID := ID("TEST_TASK")
 		commandID := CommandID("TEST_COMMAND")
 
@@ -20,10 +24,6 @@ func TestFileTaskResultStorage_LoadSave(t *testing.T) {
 			Value string `json:"value"`
 			Count int    `json:"count"`
 		}
-
-		// 파일명 미리 계산 (cleanup용)
-		filename := storage.dataFileName(taskID, commandID)
-		defer os.Remove(filename)
 
 		// 쓰기 테스트
 		writeData := &TestResultData{
@@ -46,6 +46,11 @@ func TestFileTaskResultStorage_LoadSave(t *testing.T) {
 
 	t.Run("존재하지 않는 파일 읽기", func(t *testing.T) {
 		storage := NewFileTaskResultStorage(testAppName)
+
+		// 테스트 격리를 위해 임시 디렉토리 사용
+		tempDir := t.TempDir()
+		storage.SetBaseDir(tempDir)
+
 		taskID := ID("NONEXISTENT_TASK")
 		commandID := CommandID("NONEXISTENT_COMMAND")
 
