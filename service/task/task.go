@@ -45,7 +45,8 @@ type TaskHandler interface {
 
 	SetStorage(storage TaskResultStorage)
 
-	Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
+	// Run 작업 실행 메서드입니다. TaskContext를 통해 메타데이터를 전달받습니다.
+	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
 func (t *Task) GetID() ID {
@@ -80,7 +81,7 @@ func (t *Task) SetStorage(storage TaskResultStorage) {
 	t.Storage = storage
 }
 
-func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
+func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
 	const errString = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 
 	defer taskStopWaiter.Done()
@@ -89,8 +90,6 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 	}()
 
 	t.RunTime = time.Now()
-
-	var taskCtx = NewTaskContext().WithTask(t.GetID(), t.GetCommandID())
 
 	if t.RunFn == nil {
 		m := fmt.Sprintf("%s\n\n☑ runFn()이 초기화되지 않았습니다.", errString)

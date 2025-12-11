@@ -39,7 +39,7 @@ func TestTask_Run(t *testing.T) {
 		defer delete(supportedTasks, "ErrorTask")
 
 		wg.Add(1)
-		go taskInstance.Run(mockSender, wg, doneC)
+		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
 
 		select {
 		case id := <-doneC:
@@ -85,7 +85,7 @@ func TestTask_Run(t *testing.T) {
 		defer delete(supportedTasks, "CancelTask")
 
 		wg.Add(1)
-		go taskInstance.Run(mockSender, wg, doneC)
+		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
 
 		select {
 		case id := <-doneC:

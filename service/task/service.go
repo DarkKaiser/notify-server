@@ -179,7 +179,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			s.runningMu.Unlock()
 
 			s.taskStopWaiter.Add(1)
-			go h.Run(s.notificationSender, s.taskStopWaiter, s.taskDoneC)
+			req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
+			go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
 				go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
