@@ -21,7 +21,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		Tasks: []config.TaskConfig{
 			{
 				ID: "task1",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID:          "run",
 						Title:       "Task 1 Run",

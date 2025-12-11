@@ -124,7 +124,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				Tasks: []config.TaskConfig{
 					{
 						ID: string(TidNaver),
-						Commands: []config.TaskCommandConfig{
+						Commands: []config.CommandConfig{
 							{
 								ID: string(TcidNaverWatchNewPerformances),
 								Data: map[string]interface{}{
@@ -193,7 +193,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				Tasks: []config.TaskConfig{
 					{
 						ID: string(TidNaver),
-						Commands: []config.TaskCommandConfig{
+						Commands: []config.CommandConfig{
 							{
 								ID: string(TcidNaverWatchNewPerformances),
 								Data: map[string]interface{}{

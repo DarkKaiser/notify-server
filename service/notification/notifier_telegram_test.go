@@ -22,7 +22,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			{
 				ID:    "test_task",
 				Title: "Test Task",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID:          "run",
 						Title:       "Run Task",

@@ -20,7 +20,7 @@ func dummyResultFn() NewTaskResultDataFunc {
 	return func() interface{} { return struct{}{} }
 }
 
-func TestTaskCommandConfig_EqualsCommandID(t *testing.T) {
+func TestCommandConfig_EqualsCommandID(t *testing.T) {
 	cases := []struct {
 		name             string
 		configCommandID  CommandID

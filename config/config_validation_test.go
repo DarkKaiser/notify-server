@@ -54,7 +54,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 					{
 						ID:    "task1",
 						Title: "Task 1",
-						Commands: []TaskCommandConfig{
+						Commands: []CommandConfig{
 							{
 								ID:                "cmd1",
 								Title:             "Cmd 1",
@@ -78,7 +78,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 					{
 						ID:    "task1",
 						Title: "Task 1",
-						Commands: []TaskCommandConfig{
+						Commands: []CommandConfig{
 							{
 								ID:                "cmd1",
 								Title:             "Cmd 1",
@@ -165,7 +165,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 				c.Tasks = []TaskConfig{
 					{
 						ID: "task1",
-						Commands: []TaskCommandConfig{
+						Commands: []CommandConfig{
 							{ID: "dup", DefaultNotifierID: "telegram1"},
 							{ID: "dup", DefaultNotifierID: "telegram1"},
 						},
@@ -181,7 +181,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 				c.Tasks = []TaskConfig{
 					{
 						ID: "task1",
-						Commands: []TaskCommandConfig{
+						Commands: []CommandConfig{
 							{ID: "cmd1", DefaultNotifierID: "unknown"},
 						},
 					},

@@ -236,7 +236,7 @@ func CreateTestConfigWithTasks(tasks []struct {
 
 		// Commands 추가
 		for _, cmd := range task.Commands {
-			configCmd := config.TaskCommandConfig{
+			configCmd := config.CommandConfig{
 				ID:    cmd.ID,
 				Title: cmd.Title,
 				Scheduler: struct {

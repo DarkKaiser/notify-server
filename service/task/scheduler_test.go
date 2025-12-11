@@ -114,7 +114,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -132,7 +132,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -150,7 +150,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -202,7 +202,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			name: "Successful Execution",
 			taskConfig: config.TaskConfig{
 				ID: "T1",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "C1",
 						Scheduler: struct {
@@ -225,7 +225,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			name: "Failed Execution with Notification",
 			taskConfig: config.TaskConfig{
 				ID: "T2",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "C2",
 						Scheduler: struct {
@@ -300,7 +300,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 		Tasks: []config.TaskConfig{
 			{
 				ID: "InvalidTask",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "InvalidCmd",
 						Scheduler: struct {
