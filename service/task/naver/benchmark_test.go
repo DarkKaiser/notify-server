@@ -73,7 +73,7 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	}
 
 	// 3. 테스트 데이터 준비
-	taskCommandData := &naverWatchNewPerformancesCommandData{
+	commandData := &naverWatchNewPerformancesCommandData{
 		Query: query,
 	}
 
@@ -85,7 +85,7 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewPerformances(taskCommandData, resultData, true)
+		_, _, err := tTask.runWatchNewPerformances(commandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

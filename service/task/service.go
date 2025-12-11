@@ -13,6 +13,12 @@ import (
 
 const (
 	defaultChannelBufferSize = 10
+
+	msgTaskNotFound           = "등록되지 않은 작업입니다.😱"
+	msgTaskAlreadyRunning     = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
+	msgTaskRunning            = "작업 진행중입니다. 잠시만 기다려 주세요."
+	msgTaskCanceledByUser     = "사용자 요청에 의해 작업이 취소되었습니다."
+	msgTaskCancelInfoNotFound = "해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)"
 )
 
 // Service
@@ -113,7 +119,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 
 			searchResult, err := findConfig(req.TaskID, req.CommandID)
 			if err != nil {
-				m := "등록되지 않은 작업입니다.😱"
+				m := msgTaskNotFound
 
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    req.TaskID,
@@ -142,7 +148,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 
 				if alreadyRunTaskHandler != nil {
 					req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					go s.notificationSender.Notify(req.TaskContext, req.NotifierID, "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.")
+					go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
 					continue
 				}
 			}
@@ -184,7 +190,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 			go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
 			if req.NotifyOnStart == true {
-				go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, "작업 진행중입니다. 잠시만 기다려 주세요.")
+				go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
 			}
 
 		case instanceID := <-s.taskDoneC:
@@ -215,13 +221,13 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 					"instance_id": instanceID,
 				}).Debug("Task 작업 취소")
 
-				go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), "사용자 요청에 의해 작업이 취소되었습니다.")
+				go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), msgTaskCanceledByUser)
 			} else {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"instance_id": instanceID,
 				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
-				go s.notificationSender.NotifyDefault(fmt.Sprintf("해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)", instanceID))
+				go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskCancelInfoNotFound, instanceID))
 			}
 			s.runningMu.Unlock()
 
