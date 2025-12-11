@@ -85,7 +85,7 @@ func init() {
 			tTask := &jyiuTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,

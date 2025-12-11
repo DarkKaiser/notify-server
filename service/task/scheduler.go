@@ -55,7 +55,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, notificati
 				// 작업 실행 요청. 실패 시 에러 처리 및 알림 발송
 				if err := runner.Run(&RunRequest{
 					TaskID:        taskID,
-					TaskCommandID: taskCommandID,
+					CommandID:     taskCommandID,
 					NotifierID:    defaultNotifierID,
 					NotifyOnStart: false,
 					RunBy:         RunByScheduler,

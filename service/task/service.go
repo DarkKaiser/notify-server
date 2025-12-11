@@ -102,22 +102,22 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 		case req := <-s.taskRunC:
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    req.TaskID,
-				"command_id": req.TaskCommandID,
+				"command_id": req.CommandID,
 				"run_by":     req.RunBy,
 			}).Debug("새로운 Task 실행 요청 수신")
 
 			if req.TaskContext == nil {
 				req.TaskContext = NewTaskContext()
 			}
-			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
+			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
 
-			searchResult, err := findConfig(req.TaskID, req.TaskCommandID)
+			searchResult, err := findConfig(req.TaskID, req.CommandID)
 			if err != nil {
 				m := "등록되지 않은 작업입니다.😱"
 
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    req.TaskID,
-					"command_id": req.TaskCommandID,
+					"command_id": req.CommandID,
 					"error":      err,
 				}).Error(m)
 
@@ -133,7 +133,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 				s.runningMu.Lock()
 				for _, handler := range s.taskHandlers {
 					// 작업 중복 확인 로직
-					if handler.GetID() == req.TaskID && handler.GetCommandID() == req.TaskCommandID && handler.IsCanceled() == false {
+					if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && handler.IsCanceled() == false {
 						alreadyRunTaskHandler = handler
 						break
 					}
@@ -162,7 +162,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 			if h == nil {
 				applog.WithComponentAndFields("task.service", log.Fields{
 					"task_id":    req.TaskID,
-					"command_id": req.TaskCommandID,
+					"command_id": req.CommandID,
 					"error":      err,
 				}).Error(err)
 
@@ -266,7 +266,7 @@ func (s *Service) Run(req *RunRequest) (err error) {
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    req.TaskID,
-				"command_id": req.TaskCommandID,
+				"command_id": req.CommandID,
 				"panic":      r,
 			}).Error("Task 실행 요청중에 panic 발생")
 		}

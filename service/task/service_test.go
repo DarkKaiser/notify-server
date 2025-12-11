@@ -60,7 +60,7 @@ func TestService_TaskRun_Success(t *testing.T) {
 	// Task 실행 요청
 	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
-		TaskCommandID: "TEST_COMMAND",
+		CommandID:     "TEST_COMMAND",
 		NotifierID:    "test-notifier",
 		NotifyOnStart: false,
 		RunBy:         RunByUser,
@@ -96,7 +96,7 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	// Task 실행 요청
 	err := service.Run(&RunRequest{
 		TaskID:        "TEST_TASK",
-		TaskCommandID: "TEST_COMMAND",
+		CommandID:     "TEST_COMMAND",
 		NotifierID:    "test-notifier",
 		NotifyOnStart: false,
 		RunBy:         RunByUser,
@@ -158,7 +158,7 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	// 지원되지 않는 Task 실행 요청
 	err := service.Run(&RunRequest{
 		TaskID:        "UNSUPPORTED_TASK",
-		TaskCommandID: "UNSUPPORTED_COMMAND",
+		CommandID:     "UNSUPPORTED_COMMAND",
 		NotifierID:    "test-notifier",
 		NotifyOnStart: false,
 		RunBy:         RunByUser,
@@ -207,7 +207,7 @@ func TestService_Concurrency(t *testing.T) {
 				// Naver Shopping Task 실행 (AllowMultiple=true)
 				service.Run(&RunRequest{
 					TaskID:        "TEST_TASK",
-					TaskCommandID: "TEST_COMMAND",
+					CommandID:     "TEST_COMMAND",
 					NotifierID:    "test-notifier",
 					NotifyOnStart: false,
 					RunBy:         RunByUser,
@@ -255,7 +255,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 			// Task 실행
 			service.Run(&RunRequest{
 				TaskID:        "TEST_TASK",
-				TaskCommandID: "TEST_COMMAND",
+				CommandID:     "TEST_COMMAND",
 				NotifierID:    "test-notifier",
 				NotifyOnStart: false,
 				RunBy:         RunByUser,

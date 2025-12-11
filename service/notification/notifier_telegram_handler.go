@@ -68,7 +68,7 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 error 반환
 	if err := executor.Run(&task.RunRequest{
 		TaskID:        botCommand.taskID,
-		TaskCommandID: botCommand.taskCommandID,
+		CommandID:     botCommand.taskCommandID,
 		NotifierID:    string(n.ID()),
 		NotifyOnStart: true,
 		RunBy:         task.RunByUser,

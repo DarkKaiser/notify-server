@@ -145,7 +145,7 @@ func init() {
 			tTask := &kurlyTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,

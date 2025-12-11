@@ -153,7 +153,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
 		result := taskService.Run(&task.RunRequest{
 			TaskID:        "NON_EXISTENT",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
 			RunBy:         task.RunByUser,
@@ -197,7 +197,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		// Task 실행 (알림 요청 포함)
 		taskService.Run(&task.RunRequest{
 			TaskID:        "TEST",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
 			RunBy:         task.RunByUser,
@@ -365,7 +365,7 @@ func TestEndToEndScenario(t *testing.T) {
 		// Task 실행 시도
 		taskService.Run(&task.RunRequest{
 			TaskID:        "TEST",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: false,
 			RunBy:         task.RunByUser,
