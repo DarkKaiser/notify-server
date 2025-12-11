@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
+	"github.com/darkkaiser/notify-server/pkg/concurrency"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -22,8 +22,8 @@ type TaskResultStorage interface {
 // FileTaskResultStorage 파일 시스템 기반의 Task 결과 저장소 구현체
 type FileTaskResultStorage struct {
 	appName string
-	baseDir string     // 데이터 저장 디렉토리
-	mu      sync.Mutex // 파일 쓰기 동시성 제어를 위한 뮤텍스
+	baseDir string                  // 데이터 저장 디렉토리
+	locks   *concurrency.KeyedMutex // 파일별 락킹을 위한 KeyedMutex
 }
 
 // NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
@@ -32,6 +32,7 @@ func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
 	return &FileTaskResultStorage{
 		appName: appName,
 		baseDir: "data",
+		locks:   concurrency.NewKeyedMutex(),
 	}
 }
 
@@ -49,6 +50,11 @@ func (s *FileTaskResultStorage) dataFileName(taskID ID, commandID CommandID) str
 // Load 저장된 Task 결과를 파일에서 읽어옵니다.
 func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface{}) error {
 	filename := s.dataFileName(taskID, commandID)
+
+	// 읽기 시에도 락을 걸어서 쓰기 중인 파일에 접근하는 것을 방지합니다.
+	s.locks.Lock(filename)
+	defer s.locks.Unlock(filename)
+
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
@@ -65,15 +71,18 @@ func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface
 
 // Save Task 결과를 파일에 저장합니다. (Atomic Write 적용)
 func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface{}) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	filename := s.dataFileName(taskID, commandID)
+
+	// 파일별 락 획득
+	s.locks.Lock(filename)
+	defer s.locks.Unlock(filename)
 
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 마샬링에 실패했습니다")
 	}
 
-	filename := s.dataFileName(taskID, commandID)
+	// filename은 상단에서 이미 획득함
 	dir := filepath.Dir(filename)
 
 	// 디렉토리가 없으면 생성
