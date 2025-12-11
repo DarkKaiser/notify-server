@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -57,6 +58,13 @@ func TestTask_BasicMethods(t *testing.T) {
 }
 
 func TestTask_Run(t *testing.T) {
+	// defaultRegistry 백업 및 복원 (테스트 격리)
+	originalRegistry := defaultRegistry
+	defaultRegistry = newRegistry()
+	defer func() {
+		defaultRegistry = originalRegistry
+	}()
+
 	t.Run("실행 중 에러 발생", func(t *testing.T) {
 		mockSender := NewMockNotificationSender()
 		wg := &sync.WaitGroup{}
@@ -74,7 +82,9 @@ func TestTask_Run(t *testing.T) {
 		}
 		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		configs["ErrorTask"] = &Config{
+		// Register 사용 (NewTaskFn 더미 추가)
+		Register("ErrorTask", &Config{
+			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
 			CommandConfigs: []*CommandConfig{
 				{
 					TaskCommandID: "ErrorCommand",
@@ -83,8 +93,7 @@ func TestTask_Run(t *testing.T) {
 					},
 				},
 			},
-		}
-		defer delete(configs, "ErrorTask")
+		})
 
 		wg.Add(1)
 		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
@@ -121,7 +130,8 @@ func TestTask_Run(t *testing.T) {
 		}
 		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		configs["CancelTask"] = &Config{
+		Register("CancelTask", &Config{
+			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
 			CommandConfigs: []*CommandConfig{
 				{
 					TaskCommandID: "CancelCommand",
@@ -130,8 +140,7 @@ func TestTask_Run(t *testing.T) {
 					},
 				},
 			},
-		}
-		defer delete(configs, "CancelTask")
+		})
 
 		wg.Add(1)
 		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)

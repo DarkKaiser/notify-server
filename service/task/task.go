@@ -106,13 +106,9 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 	// TaskResultData를 초기화하고 읽어들인다.
 	var taskResultData interface{}
-	if taskConfig, exists := configs[t.GetID()]; exists == true {
-		for _, commandConfig := range taskConfig.CommandConfigs {
-			if commandConfig.TaskCommandID.Match(t.GetCommandID()) == true {
-				taskResultData = commandConfig.NewTaskResultDataFn()
-				break
-			}
-		}
+	_, commandConfig, cfgErr := findConfig(t.GetID(), t.GetCommandID())
+	if cfgErr == nil {
+		taskResultData = commandConfig.NewTaskResultDataFn()
 	}
 	if taskResultData == nil {
 		m := fmt.Sprintf("%s\n\n☑ 작업결과데이터 생성이 실패하였습니다.", errString)
