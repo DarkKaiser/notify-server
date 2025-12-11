@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// MockNotificationService NotificationService의 테스트용 Mock 구현체입니다.
+// MockNotificationSender NotificationService의 테스트용 Mock 구현체입니다.
 // service/api 및 하위 패키지(v1/handler 등) 테스트에서 공통으로 사용됩니다.
-type MockNotificationService struct {
+type MockNotificationSender struct {
 	mu sync.Mutex
 
 	NotifyCalled      bool
@@ -22,7 +22,7 @@ type MockNotificationService struct {
 	NotifyDefaultCalled bool
 }
 
-func (m *MockNotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationSender) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -34,7 +34,7 @@ func (m *MockNotificationService) NotifyWithTitle(notifierID string, title strin
 	return !m.ShouldFail
 }
 
-func (m *MockNotificationService) NotifyDefault(message string) bool {
+func (m *MockNotificationSender) NotifyDefault(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (m *MockNotificationService) NotifyDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationService) NotifyDefaultWithError(message string) bool {
+func (m *MockNotificationSender) NotifyDefaultWithError(message string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -54,7 +54,7 @@ func (m *MockNotificationService) NotifyDefaultWithError(message string) bool {
 }
 
 // Reset 상태를 초기화합니다.
-func (m *MockNotificationService) Reset() {
+func (m *MockNotificationSender) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

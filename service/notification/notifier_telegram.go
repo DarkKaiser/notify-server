@@ -33,12 +33,22 @@ type telegramBotCommand struct {
 	taskCommandID task.CommandID // 이 명령어와 연결된 작업 커맨드 ID
 }
 
-// TelegramBotAPI 텔레그램 봇 API 인터페이스
-type TelegramBotAPI interface {
+// telegramBotAPI 텔레그램 봇 API 인터페이스
+type telegramBotAPI interface {
 	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
 	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
 	StopReceivingUpdates()
 	GetSelf() tgbotapi.User
+}
+
+// telegramBotAPIClient tgbotapi.BotAPI 구현체를 래핑한 구조체 (telegramBotAPI 인터페이스 구현)
+type telegramBotAPIClient struct {
+	*tgbotapi.BotAPI
+}
+
+// GetSelf 텔레그램 봇의 정보를 반환합니다.
+func (w *telegramBotAPIClient) GetSelf() tgbotapi.User {
+	return w.Self
 }
 
 // telegramNotifier 텔레그램 알림 발송 및 봇 상호작용을 처리하는 Notifier
@@ -47,7 +57,7 @@ type telegramNotifier struct {
 
 	chatID int64
 
-	botAPI TelegramBotAPI
+	botAPI telegramBotAPI
 
 	botCommands []telegramBotCommand
 

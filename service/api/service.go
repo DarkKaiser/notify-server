@@ -41,12 +41,12 @@ const (
 type Service struct {
 	appConfig *config.AppConfig
 
-	running   bool
-	runningMu sync.Mutex
-
 	notificationSender notification.Sender
 
 	buildInfo common.BuildInfo
+
+	running   bool
+	runningMu sync.Mutex
 }
 
 // NewService Service 인스턴스를 생성합니다.
@@ -57,12 +57,12 @@ func NewService(appConfig *config.AppConfig, notificationSender notification.Sen
 	return &Service{
 		appConfig: appConfig,
 
-		running:   false,
-		runningMu: sync.Mutex{},
-
 		notificationSender: notificationSender,
 
 		buildInfo: buildInfo,
+
+		running:   false,
+		runningMu: sync.Mutex{},
 	}
 }
 
@@ -90,7 +90,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
-		return apperrors.New(apperrors.ErrInternal, "notificationService 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "notificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {

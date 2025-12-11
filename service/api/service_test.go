@@ -27,7 +27,7 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 	appConfig.NotifyAPI.WS.ListenPort = port
 	appConfig.NotifyAPI.WS.TLSServer = false
 
-	mockService := &testutil.MockNotificationService{}
+	mockService := &testutil.MockNotificationSender{}
 
 	service := NewService(appConfig, mockService, common.BuildInfo{
 		Version:     "1.0.0",
@@ -116,5 +116,5 @@ func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	wg.Add(1)
 	err := service.Start(ctx, wg)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "notificationService")
+	assert.Contains(t, err.Error(), "notificationSender")
 }

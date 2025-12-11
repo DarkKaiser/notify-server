@@ -8,8 +8,8 @@ import (
 // 이 블록은 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
 // 만약 구현체가 인터페이스를 충족하지 못하면, 컴파일 에러가 발생합니다.
 var (
-	// Service Implementation
-	_ Service = (*NotificationService)(nil)
+	// Sender Implementation
+	_ Sender = (*Service)(nil)
 
 	// NotifierHandler Implementation
 	_ NotifierHandler = (*telegramNotifier)(nil)

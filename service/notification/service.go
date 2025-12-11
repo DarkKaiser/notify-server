@@ -15,32 +15,32 @@ import (
 type Service struct {
 	appConfig *config.AppConfig
 
-	running   bool
-	runningMu sync.Mutex
-
-	notifierHandlers       []NotifierHandler
-	defaultNotifierHandler NotifierHandler
+	notifiers       []NotifierHandler
+	defaultNotifier NotifierHandler
 
 	notifierFactory NotifierFactory
 
-	// notificationStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
-	notificationStopWaiter *sync.WaitGroup
+	// notifiersStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
+	notifiersStopWaiter *sync.WaitGroup
 
 	executor task.Executor
+
+	running   bool
+	runningMu sync.Mutex
 }
 
 func NewService(appConfig *config.AppConfig, executor task.Executor) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
-		running:   false,
-		runningMu: sync.Mutex{},
+		defaultNotifier: nil,
 
-		defaultNotifierHandler: nil,
-
-		notificationStopWaiter: &sync.WaitGroup{},
+		notifiersStopWaiter: &sync.WaitGroup{},
 
 		executor: executor,
+
+		running:   false,
+		runningMu: sync.Mutex{},
 	}
 
 	// Factory 생성 및 Processor 등록
@@ -83,16 +83,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 	defaultNotifierID := NotifierID(s.appConfig.Notifiers.DefaultNotifierID)
 
 	for _, h := range notifiers {
-		s.notifierHandlers = append(s.notifierHandlers, h)
+		s.notifiers = append(s.notifiers, h)
 
 		if h.ID() == defaultNotifierID {
-			s.defaultNotifierHandler = h
+			s.defaultNotifier = h
 		}
 
-		s.notificationStopWaiter.Add(1)
+		s.notifiersStopWaiter.Add(1)
 
 		go func(handler NotifierHandler) {
-			defer s.notificationStopWaiter.Done()
+			defer s.notifiersStopWaiter.Done()
 			handler.Run(serviceStopCtx)
 		}(h)
 
@@ -102,7 +102,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 	}
 
 	// 2. 기본 Notifier 존재 여부 확인
-	if s.defaultNotifierHandler == nil {
+	if s.defaultNotifier == nil {
 		defer serviceStopWaiter.Done()
 		return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID))
 	}
@@ -126,14 +126,14 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWai
 	applog.WithComponent("notification.service").Info("Notification 서비스 중지중...")
 
 	// 등록된 모든 Notifier의 고루틴 작업이 완료(종료)될 때까지 대기합니다.
-	// 각 Notifier의 Run 메서드에서 defer s.notificationStopWaiter.Done()이 호출되어야 합니다.
-	s.notificationStopWaiter.Wait()
+	// 각 Notifier의 Run 메서드에서 defer s.notifiersStopWaiter.Done()이 호출되어야 합니다.
+	s.notifiersStopWaiter.Wait()
 
 	s.runningMu.Lock()
 	s.running = false
 	s.executor = nil
-	s.notifierHandlers = nil
-	s.defaultNotifierHandler = nil
+	s.notifiers = nil
+	s.defaultNotifier = nil
 	s.runningMu.Unlock()
 
 	applog.WithComponent("notification.service").Info("Notification 서비스 중지됨")
@@ -170,12 +170,12 @@ func (s *Service) NotifyDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	if s.defaultNotifierHandler == nil {
+	if s.defaultNotifier == nil {
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(nil, message)
+	return s.defaultNotifier.Notify(nil, message)
 }
 
 // NotifyDefaultWithError 시스템 기본 알림 채널로 "에러" 알림 메시지를 발송합니다.
@@ -191,12 +191,12 @@ func (s *Service) NotifyDefaultWithError(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	if s.defaultNotifierHandler == nil {
+	if s.defaultNotifier == nil {
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 에러 메시지를 전송할 수 없습니다")
 		return false
 	}
 
-	return s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), message)
+	return s.defaultNotifier.Notify(task.NewTaskContext().WithError(), message)
 }
 
 // Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
@@ -221,7 +221,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 	}
 
 	id := NotifierID(notifierID)
-	for _, h := range s.notifierHandlers {
+	for _, h := range s.notifiers {
 		if h.ID() == id {
 			return h.Notify(taskCtx, message)
 		}
@@ -233,7 +233,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		"notifier_id": notifierID,
 	}).Error(m)
 
-	s.defaultNotifierHandler.Notify(task.NewTaskContext().WithError(), m)
+	s.defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
 
 	return false
 }
@@ -244,7 +244,7 @@ func (s *Service) SupportsHTML(notifierID string) bool {
 	defer s.runningMu.Unlock()
 
 	id := NotifierID(notifierID)
-	for _, h := range s.notifierHandlers {
+	for _, h := range s.notifiers {
 		if h.ID() == id {
 			return h.SupportsHTML()
 		}

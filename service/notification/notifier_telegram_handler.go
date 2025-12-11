@@ -75,8 +75,8 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 	}); err != nil {
 		// 실행 실패 알림 발송
 		n.requestC <- &notifyRequest{
-			message: msgTaskExecutionFailed,
 			taskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.taskCommandID).WithError(),
+			message: msgTaskExecutionFailed,
 		}
 	}
 }
@@ -111,8 +111,8 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 		if err := executor.Cancel(task.InstanceID(taskInstanceID)); err != nil {
 			// 취소 실패 시 알림
 			n.requestC <- &notifyRequest{
-				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
 				taskCtx: task.NewTaskContext().WithError(),
+				message: fmt.Sprintf(msgTaskCancelFailed, taskInstanceID),
 			}
 		}
 	} else {

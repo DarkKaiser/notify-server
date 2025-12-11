@@ -18,7 +18,7 @@ import (
 
 func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
 	// Common Setup
-	mockService := &testutil.MockNotificationService{}
+	mockService := &testutil.MockNotificationSender{}
 	appConfig := &config.AppConfig{
 		NotifyAPI: config.NotifyAPIConfig{
 			Applications: []config.ApplicationConfig{
@@ -41,7 +41,7 @@ func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
 		mockFail          bool
 		expectedStatus    int
 		verifyErrResponse func(*testing.T, response.ErrorResponse)
-		verifyMock        func(*testing.T, *testutil.MockNotificationService)
+		verifyMock        func(*testing.T, *testutil.MockNotificationSender)
 	}{
 		{
 			name:   "Success Notification",
@@ -51,7 +51,7 @@ func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
 				Message:       "Test Message",
 			},
 			expectedStatus: http.StatusOK,
-			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
+			verifyMock: func(t *testing.T, m *testutil.MockNotificationSender) {
 				assert.True(t, m.NotifyCalled)
 				assert.Equal(t, "test-notifier", m.LastNotifierID)
 				assert.Equal(t, "Test App", m.LastTitle)
@@ -138,7 +138,7 @@ func TestHandler_PublishNotificationHandler_Table(t *testing.T) {
 			},
 			mockFail:       true,
 			expectedStatus: http.StatusOK,
-			verifyMock: func(t *testing.T, m *testutil.MockNotificationService) {
+			verifyMock: func(t *testing.T, m *testutil.MockNotificationSender) {
 				assert.True(t, m.NotifyCalled)
 				// Service fail logic implementation detail: does it return specific error or just bool false?
 				// Handler ignores false return currently (legacy behavior).
