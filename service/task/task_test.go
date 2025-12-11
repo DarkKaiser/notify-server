@@ -74,8 +74,8 @@ func TestTask_Run(t *testing.T) {
 		}
 		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		supportedTasks["ErrorTask"] = &TaskConfig{
-			CommandConfigs: []*TaskCommandConfig{
+		configs["ErrorTask"] = &Config{
+			CommandConfigs: []*CommandConfig{
 				{
 					TaskCommandID: "ErrorCommand",
 					NewTaskResultDataFn: func() interface{} {
@@ -84,7 +84,7 @@ func TestTask_Run(t *testing.T) {
 				},
 			},
 		}
-		defer delete(supportedTasks, "ErrorTask")
+		defer delete(configs, "ErrorTask")
 
 		wg.Add(1)
 		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
@@ -121,8 +121,8 @@ func TestTask_Run(t *testing.T) {
 		}
 		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		supportedTasks["CancelTask"] = &TaskConfig{
-			CommandConfigs: []*TaskCommandConfig{
+		configs["CancelTask"] = &Config{
+			CommandConfigs: []*CommandConfig{
 				{
 					TaskCommandID: "CancelCommand",
 					NewTaskResultDataFn: func() interface{} {
@@ -131,7 +131,7 @@ func TestTask_Run(t *testing.T) {
 				},
 			},
 		}
-		defer delete(supportedTasks, "CancelTask")
+		defer delete(configs, "CancelTask")
 
 		wg.Add(1)
 		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)

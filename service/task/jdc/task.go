@@ -44,11 +44,11 @@ type jdcWatchNewOnlineEducationResultData struct {
 }
 
 func init() {
-	task.RegisterTask(TidJdc, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
+	task.Register(TidJdc, &task.Config{
+		CommandConfigs: []*task.CommandConfig{{
 			TaskCommandID: TcidJdcWatchNewOnlineEducation,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},

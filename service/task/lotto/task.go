@@ -81,11 +81,11 @@ type lottoTaskData struct {
 type lottoPredictionResultData struct{}
 
 func init() {
-	task.RegisterTask(TidLotto, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
+	task.Register(TidLotto, &task.Config{
+		CommandConfigs: []*task.CommandConfig{{
 			TaskCommandID: TcidLottoPrediction,
 
-			AllowMultipleInstances: false,
+			AllowMultiple: false,
 
 			NewTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},

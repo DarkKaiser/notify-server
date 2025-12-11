@@ -15,8 +15,8 @@ const (
 	defaultChannelBufferSize = 10
 )
 
-// TaskService
-type TaskService struct {
+// Service
+type Service struct {
 	appConfig *config.AppConfig
 
 	running   bool
@@ -39,8 +39,8 @@ type TaskService struct {
 	taskStorage TaskResultStorage
 }
 
-func NewService(appConfig *config.AppConfig) *TaskService {
-	return &TaskService{
+func NewService(appConfig *config.AppConfig) *Service {
+	return &Service{
 		appConfig: appConfig,
 
 		running:   false,
@@ -64,7 +64,7 @@ func NewService(appConfig *config.AppConfig) *TaskService {
 	}
 }
 
-func (s *TaskService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -94,7 +94,7 @@ func (s *TaskService) Start(serviceStopCtx context.Context, serviceStopWaiter *s
 	return nil
 }
 
-func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	for {
@@ -111,7 +111,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.TaskCommandID)
 
-			taskConfig, commandConfig, err := findConfigFromSupportedTask(req.TaskID, req.TaskCommandID)
+			taskConfig, commandConfig, err := findConfig(req.TaskID, req.TaskCommandID)
 			if err != nil {
 				m := "등록되지 않은 작업입니다.😱"
 
@@ -127,7 +127,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 
 			// 다중 인스턴스의 생성이 허용되지 않는 Task인 경우, 이미 실행중인 동일한 Task가 있는지 확인한다.
-			if commandConfig.AllowMultipleInstances == false {
+			if commandConfig.AllowMultiple == false {
 				var alreadyRunTaskHandler TaskHandler
 
 				s.runningMu.Lock()
@@ -258,7 +258,7 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 	}
 }
 
-func (s *TaskService) Run(req *RunRequest) (err error) {
+func (s *Service) Run(req *RunRequest) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
@@ -276,7 +276,7 @@ func (s *TaskService) Run(req *RunRequest) (err error) {
 	return nil
 }
 
-func (s *TaskService) Cancel(taskInstanceID InstanceID) (err error) {
+func (s *Service) Cancel(taskInstanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
@@ -293,6 +293,6 @@ func (s *TaskService) Cancel(taskInstanceID InstanceID) (err error) {
 	return nil
 }
 
-func (s *TaskService) SetNotificationSender(notificationSender NotificationSender) {
+func (s *Service) SetNotificationSender(notificationSender NotificationSender) {
 	s.notificationSender = notificationSender
 }

@@ -28,7 +28,7 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service.taskStopWaiter, "taskStopWaiter가 초기화되어야 합니다")
 }
 
-func TestTaskService_SetNotificationSender(t *testing.T) {
+func TestService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 
@@ -41,7 +41,7 @@ func TestTaskService_SetNotificationSender(t *testing.T) {
 	require.Equal(t, mockSender, service.notificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
 }
 
-func TestTaskService_TaskRun_Success(t *testing.T) {
+func TestService_TaskRun_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
@@ -74,7 +74,7 @@ func TestTaskService_TaskRun_Success(t *testing.T) {
 	serviceStopWaiter.Wait()
 }
 
-func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
+func TestService_TaskRunWithContext_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
@@ -111,7 +111,7 @@ func TestTaskService_TaskRunWithContext_Success(t *testing.T) {
 	serviceStopWaiter.Wait()
 }
 
-func TestTaskService_TaskCancel_Success(t *testing.T) {
+func TestService_TaskCancel_Success(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
@@ -139,7 +139,7 @@ func TestTaskService_TaskCancel_Success(t *testing.T) {
 	serviceStopWaiter.Wait()
 }
 
-func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
+func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
@@ -177,7 +177,7 @@ func TestTaskService_TaskRun_UnsupportedTask(t *testing.T) {
 	serviceStopWaiter.Wait()
 }
 
-func TestTaskService_Concurrency(t *testing.T) {
+func TestService_Concurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
@@ -204,7 +204,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
-				// Naver Shopping Task 실행 (AllowMultipleInstances=true)
+				// Naver Shopping Task 실행 (AllowMultiple=true)
 				service.Run(&RunRequest{
 					TaskID:        "TEST_TASK",
 					TaskCommandID: "TEST_COMMAND",
@@ -230,7 +230,7 @@ func TestTaskService_Concurrency(t *testing.T) {
 	serviceStopWaiter.Wait()
 }
 
-func TestTaskService_CancelConcurrency(t *testing.T) {
+func TestService_CancelConcurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()

@@ -106,9 +106,9 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 	// TaskResultData를 초기화하고 읽어들인다.
 	var taskResultData interface{}
-	if taskConfig, exists := supportedTasks[t.GetID()]; exists == true {
+	if taskConfig, exists := configs[t.GetID()]; exists == true {
 		for _, commandConfig := range taskConfig.CommandConfigs {
-			if commandConfig.equalsTaskCommandID(t.GetCommandID()) == true {
+			if commandConfig.TaskCommandID.Match(t.GetCommandID()) == true {
 				taskResultData = commandConfig.NewTaskResultDataFn()
 				break
 			}

@@ -257,7 +257,7 @@ func TestServiceLifecycle(t *testing.T) {
 		appConfig := createTestConfig()
 
 		// 여러 서비스 생성
-		services := make([]*task.TaskService, 3)
+		services := make([]*task.Service, 3)
 		for i := 0; i < 3; i++ {
 			services[i] = task.NewService(appConfig)
 		}

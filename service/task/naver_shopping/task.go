@@ -95,11 +95,11 @@ type naverShoppingWatchPriceResultData struct {
 }
 
 func init() {
-	task.RegisterTask(TidNaverShopping, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
+	task.Register(TidNaverShopping, &task.Config{
+		CommandConfigs: []*task.CommandConfig{{
 			TaskCommandID: TcidNaverShoppingWatchPriceAny,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},
