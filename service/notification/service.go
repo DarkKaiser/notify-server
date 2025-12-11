@@ -12,7 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type NotificationService struct {
+type Service struct {
 	appConfig *config.AppConfig
 
 	running   bool
@@ -29,8 +29,8 @@ type NotificationService struct {
 	executor task.Executor
 }
 
-func NewService(appConfig *config.AppConfig, executor task.Executor) *NotificationService {
-	service := &NotificationService{
+func NewService(appConfig *config.AppConfig, executor task.Executor) *Service {
+	service := &Service{
 		appConfig: appConfig,
 
 		running:   false,
@@ -51,12 +51,12 @@ func NewService(appConfig *config.AppConfig, executor task.Executor) *Notificati
 	return service
 }
 
-func (s *NotificationService) SetNotifierFactory(factory NotifierFactory) {
+func (s *Service) SetNotifierFactory(factory NotifierFactory) {
 	s.notifierFactory = factory
 }
 
 // Start 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
-func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -118,7 +118,7 @@ func (s *NotificationService) Start(serviceStopCtx context.Context, serviceStopW
 }
 
 // waitForShutdown 서비스의 종료 신호를 감지하고 리소스를 안전하게 정리합니다.
-func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	<-serviceStopCtx.Done()
@@ -150,7 +150,7 @@ func (s *NotificationService) waitForShutdown(serviceStopCtx context.Context, se
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
+func (s *Service) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
 		taskCtx = taskCtx.WithError()
@@ -166,7 +166,7 @@ func (s *NotificationService) NotifyWithTitle(notifierID string, title string, m
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyDefault(message string) bool {
+func (s *Service) NotifyDefault(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -187,7 +187,7 @@ func (s *NotificationService) NotifyDefault(message string) bool {
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) NotifyDefaultWithError(message string) bool {
+func (s *Service) NotifyDefaultWithError(message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -209,7 +209,7 @@ func (s *NotificationService) NotifyDefaultWithError(message string) bool {
 //
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
-func (s *NotificationService) Notify(taskCtx task.TaskContext, notifierID string, message string) bool {
+func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -239,7 +239,7 @@ func (s *NotificationService) Notify(taskCtx task.TaskContext, notifierID string
 }
 
 // SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
-func (s *NotificationService) SupportsHTML(notifierID string) bool {
+func (s *Service) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 

@@ -14,7 +14,7 @@ import (
 // -- Mocks and Setup Helpers --
 
 // setupMockService creates a service with mocks for testing
-func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandler) {
+func setupMockService() (*Service, *MockExecutor, *mockNotifierHandler) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &MockExecutor{}
 	mockNotifier := &mockNotifierHandler{
@@ -34,7 +34,7 @@ func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandl
 
 func TestNotificationService_SupportsHTML(t *testing.T) {
 	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
-	service := &NotificationService{notifierHandlers: []NotifierHandler{mockNotifier}}
+	service := &Service{notifierHandlers: []NotifierHandler{mockNotifier}}
 
 	tests := []struct {
 		name       string
@@ -232,7 +232,7 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTML: true}
 	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
 
-	service := &NotificationService{
+	service := &Service{
 		notifierHandlers: []NotifierHandler{mockNotifier1, mockNotifier2},
 		running:          true,
 	}

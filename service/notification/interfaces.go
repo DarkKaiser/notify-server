@@ -6,9 +6,9 @@ import (
 	"github.com/darkkaiser/notify-server/service/task"
 )
 
-// Service 알림 발송 기능을 제공하는 인터페이스입니다.
+// Sender 알림 발송 기능을 제공하는 인터페이스입니다.
 // 외부 컴포넌트(API, 스케줄러 등)는 이 인터페이스를 통해 알림 서비스를 사용합니다.
-type Service interface {
+type Sender interface {
 	// NotifyWithTitle 지정된 NotifierID로 제목(Title)이 포함된 알림 메시지를 발송합니다.
 	// 일반 메시지뿐만 아니라 제목을 명시하여 알림의 맥락을 명확히 전달할 수 있습니다.
 	// errorOccurred 플래그를 통해 해당 알림이 오류 상황에 대한 것인지 명시할 수 있습니다.

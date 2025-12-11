@@ -44,7 +44,7 @@ type Service struct {
 	running   bool
 	runningMu sync.Mutex
 
-	notificationService notification.Service
+	notificationSender notification.Sender
 
 	buildInfo common.BuildInfo
 }
@@ -53,14 +53,14 @@ type Service struct {
 //
 // Returns:
 //   - 초기화된 Service 인스턴스
-func NewService(appConfig *config.AppConfig, notificationService notification.Service, buildInfo common.BuildInfo) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo common.BuildInfo) *Service {
 	return &Service{
 		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		notificationService: notificationService,
+		notificationSender: notificationSender,
 
 		buildInfo: buildInfo,
 	}
@@ -88,7 +88,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 	applog.WithComponent("api.service").Info("API 서비스 시작중...")
 
-	if s.notificationService == nil {
+	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
 		return apperrors.New(apperrors.ErrInternal, "notificationService 객체가 초기화되지 않았습니다")
 	}
@@ -139,8 +139,8 @@ func (s *Service) setupServer() *echo.Echo {
 	applicationManager := apiauth.NewApplicationManager(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationService, s.buildInfo)
-	v1Handler := v1handler.NewHandler(applicationManager, s.notificationService)
+	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
+	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
 
 	// Echo 서버 생성
 	e := NewHTTPServer(HTTPServerConfig{
@@ -209,7 +209,7 @@ func (s *Service) handleServerError(err error) {
 		"error": err,
 	}).Error(msg)
 
-	s.notificationService.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
+	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
 }
 
 // waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.
@@ -246,7 +246,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	// 상태 정리
 	s.runningMu.Lock()
 	s.running = false
-	s.notificationService = nil
+	s.notificationSender = nil
 	s.runningMu.Unlock()
 
 	applog.WithComponent("api.service").Info("API 서비스 중지됨")

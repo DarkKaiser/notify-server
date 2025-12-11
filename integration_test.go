@@ -300,9 +300,9 @@ func TestServiceLifecycle(t *testing.T) {
 	})
 }
 
-// TestNotificationServiceIntegration은 NotificationService 통합을 테스트합니다.
-func TestNotificationServiceIntegration(t *testing.T) {
-	t.Run("NotificationService 생성 및 초기화", func(t *testing.T) {
+// TestServiceIntegration은 Service 통합을 테스트합니다.
+func TestServiceIntegration(t *testing.T) {
+	t.Run("Service 생성 및 초기화", func(t *testing.T) {
 		appConfig := createTestConfigWithNotifier()
 
 		mockTaskRunner := &mockExecutor{}
@@ -322,7 +322,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		notificationService.SetNotifierFactory(mockFactory)
 
 		// 서비스가 정상적으로 생성되었는지 확인
-		assert.NotNil(t, notificationService, "NotificationService가 생성되어야 합니다")
+		assert.NotNil(t, notificationService, "Notification Service가 생성되어야 합니다")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}

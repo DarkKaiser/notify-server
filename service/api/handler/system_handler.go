@@ -24,7 +24,7 @@ const (
 
 // SystemHandler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
 type SystemHandler struct {
-	notificationService notification.Service
+	notificationSender notification.Sender
 
 	buildInfo common.BuildInfo
 
@@ -32,9 +32,9 @@ type SystemHandler struct {
 }
 
 // NewSystemHandler SystemHandler 인스턴스를 생성합니다.
-func NewSystemHandler(notificationService notification.Service, buildInfo common.BuildInfo) *SystemHandler {
+func NewSystemHandler(notificationSender notification.Sender, buildInfo common.BuildInfo) *SystemHandler {
 	return &SystemHandler{
-		notificationService: notificationService,
+		notificationSender: notificationSender,
 
 		buildInfo: buildInfo,
 
@@ -68,7 +68,7 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 	deps := make(map[string]response.DependencyStatus)
 
 	// NotificationService 상태 체크
-	if h.notificationService != nil {
+	if h.notificationSender != nil {
 		deps[dependencyNotificationService] = response.DependencyStatus{
 			Status:  statusHealthy,
 			Message: "정상 작동 중",
