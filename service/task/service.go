@@ -171,14 +171,8 @@ func (s *TaskService) run0(serviceStopCtx context.Context, serviceStopWaiter *sy
 			}
 
 			// 생성된 Task에 Storage 주입
-			// NewTaskFn이 반환하는 TaskHandler는 인터페이스이므로, 실제 Task 구조체인지 확인 후 주입
-			if t, ok := h.(*Task); ok {
-				t.Storage = s.taskStorage
-			} else {
-				// 만약 *Task가 아닌 다른 구현체를 사용한다면 이 부분에서 별도 처리가 필요할 수 있음
-				// 현재는 모든 Task가 *Task 구조체를 기반으로 하므로 로그만 남기거나 무시 가능
-				// 하지만 명시적인 확인을 위해 디버그 로그 추가 가능
-			}
+			// TaskHandler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
+			h.SetStorage(s.taskStorage)
 
 			s.runningMu.Lock()
 			s.taskHandlers[instanceID] = h

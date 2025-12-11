@@ -43,6 +43,8 @@ type TaskHandler interface {
 
 	ElapsedTimeAfterRun() int64
 
+	SetStorage(storage TaskResultStorage)
+
 	Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
@@ -72,6 +74,10 @@ func (t *Task) IsCanceled() bool {
 
 func (t *Task) ElapsedTimeAfterRun() int64 {
 	return int64(time.Since(t.RunTime).Seconds())
+}
+
+func (t *Task) SetStorage(storage TaskResultStorage) {
+	t.Storage = storage
 }
 
 func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
