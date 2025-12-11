@@ -65,10 +65,10 @@ func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 }
 
 func FillTaskDataFromMap(d interface{}, m map[string]interface{}) error {
-	return FillTaskCommandDataFromMap(d, m)
+	return FillCommandDataFromMap(d, m)
 }
 
-func FillTaskCommandDataFromMap(d interface{}, m map[string]interface{}) error {
+func FillCommandDataFromMap(d interface{}, m map[string]interface{}) error {
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err

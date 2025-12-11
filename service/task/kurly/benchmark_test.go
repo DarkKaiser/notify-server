@@ -84,7 +84,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: tmpfile.Name(),
 	}
 

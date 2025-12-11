@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNaverWatchNewPerformancesTaskCommandData_Validate(t *testing.T) {
+func TestNaverWatchNewPerformancesCommandData_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		data := &naverWatchNewPerformancesTaskCommandData{
+		data := &naverWatchNewPerformancesCommandData{
 			Query: "뮤지컬",
 		}
 
@@ -20,7 +20,7 @@ func TestNaverWatchNewPerformancesTaskCommandData_Validate(t *testing.T) {
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		data := &naverWatchNewPerformancesTaskCommandData{
+		data := &naverWatchNewPerformancesCommandData{
 			Query: "",
 		}
 
@@ -150,7 +150,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		// 초기 실행 (이전 데이터 없음)
 		taskResultData := &naverWatchNewPerformancesResultData{}
 		message, changedData, err := tTask.runWatchNewPerformances(
-			&naverWatchNewPerformancesTaskCommandData{Query: "뮤지컬"},
+			&naverWatchNewPerformancesCommandData{Query: "뮤지컬"},
 			taskResultData,
 			false,
 		)
@@ -214,7 +214,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// 실행
 		taskResultData := &naverWatchNewPerformancesResultData{}
-		commandData := &naverWatchNewPerformancesTaskCommandData{
+		commandData := &naverWatchNewPerformancesCommandData{
 			Query: "공연",
 		}
 		commandData.Filters.Title.IncludedKeywords = "뮤지컬"

@@ -73,7 +73,7 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	}
 
 	// 3. 테스트 데이터 준비
-	taskCommandData := &naverWatchNewPerformancesTaskCommandData{
+	taskCommandData := &naverWatchNewPerformancesCommandData{
 		Query: query,
 	}
 

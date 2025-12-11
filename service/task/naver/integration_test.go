@@ -39,7 +39,7 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverWatchNewPerformancesTaskCommandData{
+	commandData := &naverWatchNewPerformancesCommandData{
 		Query: "전라도",
 	}
 	commandData.Filters.Title.IncludedKeywords = ""

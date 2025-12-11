@@ -53,7 +53,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	}
 
 	// 3. 테스트 데이터 준비
-	taskCommandData := &naverShoppingWatchPriceTaskCommandData{
+	taskCommandData := &naverShoppingWatchPriceCommandData{
 		Query: query,
 		Filters: struct {
 			IncludedKeywords string `json:"included_keywords"`

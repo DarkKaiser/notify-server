@@ -37,7 +37,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 	commandData.Filters.IncludedKeywords = ""
@@ -91,7 +91,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 	resultData := &naverShoppingWatchPriceResultData{}
@@ -123,7 +123,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 	resultData := &naverShoppingWatchPriceResultData{}
@@ -178,7 +178,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		clientSecret: "test-client-secret",
 	}
 
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 
@@ -242,7 +242,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		clientSecret: "test-client-secret",
 	}
 
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 	commandData.Filters.PriceLessThan = 100000 // 가격 필터 설정
@@ -327,7 +327,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		clientSecret: "test-client-secret",
 	}
 
-	commandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: "테스트",
 	}
 	// 가격 필터: 20000원 미만만
