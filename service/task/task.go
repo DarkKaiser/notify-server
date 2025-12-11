@@ -1,63 +1,13 @@
 package task
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/darkkaiser/notify-server/config"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
 )
-
-// supportedTasks
-type NewTaskFunc func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error)
-type NewTaskResultDataFunc func() interface{}
-
-var supportedTasks = make(map[ID]*TaskConfig)
-
-func RegisterTask(taskID ID, config *TaskConfig) {
-	supportedTasks[taskID] = config
-}
-
-type TaskConfig struct {
-	CommandConfigs []*TaskCommandConfig
-
-	NewTaskFn NewTaskFunc
-}
-
-type TaskCommandConfig struct {
-	TaskCommandID CommandID
-
-	AllowMultipleInstances bool
-
-	NewTaskResultDataFn NewTaskResultDataFunc
-}
-
-func (c *TaskCommandConfig) equalsTaskCommandID(taskCommandID CommandID) bool {
-	return c.TaskCommandID.Match(taskCommandID)
-}
-
-func findConfigFromSupportedTask(taskID ID, taskCommandID CommandID) (*TaskConfig, *TaskCommandConfig, error) {
-	taskConfig, exists := supportedTasks[taskID]
-	if exists == true {
-		for _, commandConfig := range taskConfig.CommandConfigs {
-			if commandConfig.equalsTaskCommandID(taskCommandID) == true {
-				return taskConfig, commandConfig, nil
-			}
-		}
-
-		return nil, nil, ErrCommandNotSupported
-	}
-
-	return nil, nil, ErrTaskNotSupported
-}
 
 // TaskRunFunc
 type TaskRunFunc func(interface{}, bool) (string, interface{}, error)
@@ -75,6 +25,8 @@ type Task struct {
 	RunTime time.Time
 
 	RunFn TaskRunFunc
+
+	Storage TaskResultStorage
 
 	Fetcher Fetcher
 }
@@ -169,7 +121,21 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 
 		return
 	}
-	err := t.readTaskResultDataFromFile(taskResultData)
+
+	// Storage가 초기화되지 않았을 경우에 대한 방어 로직
+	if t.Storage == nil {
+		// 하위 호환성을 위해 nil이면 에러 로깅 후 종료하거나 기본 파일 스토리지를 쓸 수도 있지만,
+		// 리팩토링의 목적상 명시적으로 에러 처리합니다.
+		m := fmt.Sprintf("%s\n\n☑ Storage가 초기화되지 않았습니다.", errString)
+		applog.WithComponentAndFields("task.executor", log.Fields{
+			"task_id":    t.GetID(),
+			"command_id": t.GetCommandID(),
+		}).Error(m)
+		t.notifyError(notificationSender, m, taskCtx)
+		return
+	}
+
+	err := t.Storage.Load(t.GetID(), t.GetCommandID(), taskResultData)
 	if err != nil {
 		m := fmt.Sprintf("이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다.", err)
 
@@ -189,7 +155,7 @@ func (t *Task) Run(notificationSender NotificationSender, taskStopWaiter *sync.W
 			}
 
 			if changedTaskResultData != nil {
-				if err := t.writeTaskResultDataToFile(changedTaskResultData); err != nil {
+				if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
 					m := fmt.Sprintf("작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s", err)
 
 					applog.WithComponentAndFields("task.executor", log.Fields{
@@ -223,37 +189,4 @@ func (t *Task) notify(notificationSender NotificationSender, m string, taskCtx T
 
 func (t *Task) notifyError(notificationSender NotificationSender, m string, taskCtx TaskContext) bool {
 	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), m)
-}
-
-func (t *Task) dataFileName() string {
-	filename := fmt.Sprintf("%s-task-%s-%s.json", config.AppName, strutil.ToSnakeCase(string(t.GetID())), strutil.ToSnakeCase(string(t.GetCommandID())))
-	return strings.ReplaceAll(filename, "_", "-")
-}
-
-func (t *Task) readTaskResultDataFromFile(v interface{}) error {
-	data, err := os.ReadFile(t.dataFileName())
-	if err != nil {
-		// 아직 데이터 파일이 생성되기 전이라면 nil을 반환한다.
-		var pathError *os.PathError
-		if errors.As(err, &pathError) == true {
-			return nil
-		}
-
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일을 읽는데 실패했습니다")
-	}
-
-	return json.Unmarshal(data, v)
-}
-
-func (t *Task) writeTaskResultDataToFile(v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "\t")
-	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 마샬링에 실패했습니다")
-	}
-
-	if err := os.WriteFile(t.dataFileName(), data, os.FileMode(0644)); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일 쓰기에 실패했습니다")
-	}
-
-	return nil
 }

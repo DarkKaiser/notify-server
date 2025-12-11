@@ -23,6 +23,7 @@ func TestTask_Run(t *testing.T) {
 			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "", nil, errors.New("Run Error")
 			},
+			Storage: &MockTaskResultStorage{},
 		}
 
 		supportedTasks["ErrorTask"] = &TaskConfig{
@@ -68,6 +69,7 @@ func TestTask_Run(t *testing.T) {
 			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "Should Not Send", nil, nil
 			},
+			Storage: &MockTaskResultStorage{},
 		}
 
 		supportedTasks["CancelTask"] = &TaskConfig{

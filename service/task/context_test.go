@@ -60,7 +60,9 @@ func TestTaskContext_StandardCompliance(t *testing.T) {
 	}
 
 	// 3. Verify Deadline propagation
-	deadlineCtx, _ := context.WithTimeout(tCtx, 100*time.Millisecond)
+	deadlineCtx, cancel := context.WithTimeout(tCtx, 100*time.Millisecond)
+	defer cancel()
+
 	dl, ok := deadlineCtx.Deadline()
 	assert.True(t, ok)
 	assert.WithinDuration(t, time.Now().Add(100*time.Millisecond), dl, 10*time.Millisecond)
