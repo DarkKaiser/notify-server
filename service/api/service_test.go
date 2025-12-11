@@ -14,7 +14,9 @@ import (
 
 // setupServiceHelper encapsulates common setup logic
 // Returns configured service, appConfig, WaitGroup, Context, and CancelFunc
-func setupServiceHelper(t *testing.T) (*NotifyAPIService, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
+// setupServiceHelper encapsulates common setup logic
+// Returns configured service, appConfig, WaitGroup, Context, and CancelFunc
+func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
 	// Dynamic port to avoid conflicts
 	port, err := testutil.GetFreePort()
 	if err != nil {

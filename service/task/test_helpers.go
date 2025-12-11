@@ -1,14 +1,131 @@
 package task
 
 import (
+	"bytes"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/stretchr/testify/mock"
 )
 
 // TestHelpers - 테스트 헬퍼 함수들
+
+// MockTaskResultStorage 테스트용 Mock Storage
+type MockTaskResultStorage struct {
+	mock.Mock
+}
+
+func (m *MockTaskResultStorage) Get(taskID ID, commandID CommandID) (string, error) {
+	args := m.Called(taskID, commandID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTaskResultStorage) Save(taskID ID, commandID CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
+}
+
+func (m *MockTaskResultStorage) SetStorage(storage TaskResultStorage) {
+	// Mock에서는 아무것도 하지 않음 or Mock 동작 정의
+}
+
+func (m *MockTaskResultStorage) Load(taskID ID, commandID CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
+}
+
+// MockHTTPFetcher 테스트용 Mock Fetcher
+type MockHTTPFetcher struct {
+	mu sync.Mutex
+
+	// URL별 응답 설정
+	Responses map[string][]byte // URL -> 응답 바이트
+	Errors    map[string]error  // URL -> 에러
+
+	// 호출 기록
+	RequestedURLs []string
+}
+
+// NewMockHTTPFetcher 새로운 MockHTTPFetcher를 생성합니다.
+func NewMockHTTPFetcher() *MockHTTPFetcher {
+	return &MockHTTPFetcher{
+		Responses:     make(map[string][]byte),
+		Errors:        make(map[string]error),
+		RequestedURLs: make([]string, 0),
+	}
+}
+
+// SetResponse 특정 URL에 대한 응답을 설정합니다.
+func (m *MockHTTPFetcher) SetResponse(url string, response []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Responses[url] = response
+}
+
+// SetError 특정 URL에 대한 에러를 설정합니다.
+func (m *MockHTTPFetcher) SetError(url string, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Errors[url] = err
+}
+
+// Get Mock HTTP Get 요청을 수행합니다.
+func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 호출 기록 저장
+	m.RequestedURLs = append(m.RequestedURLs, url)
+
+	// 에러가 설정되어 있으면 에러 반환
+	if err, ok := m.Errors[url]; ok {
+		return nil, err
+	}
+
+	// 응답이 설정되어 있으면 응답 반환
+	if responseBody, ok := m.Responses[url]; ok {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(responseBody)),
+		}, nil
+	}
+
+	// 설정되지 않은 URL은 404 반환 (또는 빈 응답)
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(bytes.NewReader([]byte{})),
+	}, nil
+}
+
+// Do Mock HTTP 요청을 수행합니다.
+func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
+	return m.Get(req.URL.String())
+}
+
+// GetRequestedURLs 요청된 URL 목록을 반환합니다.
+func (m *MockHTTPFetcher) GetRequestedURLs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	urls := make([]string, len(m.RequestedURLs))
+	copy(urls, m.RequestedURLs)
+	return urls
+}
+
+// Reset 모든 설정과 기록을 초기화합니다.
+func (m *MockHTTPFetcher) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.Responses = make(map[string][]byte)
+	m.Errors = make(map[string]error)
+	m.RequestedURLs = make([]string, 0)
+}
 
 // CreateTestTask 테스트용 Task 인스턴스를 생성합니다.
 func CreateTestTask(id ID, commandID CommandID, instanceID InstanceID) *Task {

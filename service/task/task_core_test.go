@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestTask_Run(t *testing.T) {
@@ -25,6 +26,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			Storage: &MockTaskResultStorage{},
 		}
+		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		supportedTasks["ErrorTask"] = &TaskConfig{
 			CommandConfigs: []*TaskCommandConfig{
@@ -71,6 +73,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			Storage: &MockTaskResultStorage{},
 		}
+		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		supportedTasks["CancelTask"] = &TaskConfig{
 			CommandConfigs: []*TaskCommandConfig{
