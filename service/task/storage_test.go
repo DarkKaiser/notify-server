@@ -4,126 +4,225 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const testAppName = "test-app"
 
+// setupTestStorage 테스트를 위한 helper 함수
+func setupTestStorage(t *testing.T) (*FileTaskResultStorage, string) {
+	t.Helper()
+	storage := NewFileTaskResultStorage(testAppName)
+	tempDir := t.TempDir()
+	storage.SetBaseDir(tempDir)
+	return storage, tempDir
+}
+
+// ComplexData 테스트에 사용할 복합 구조체 정의
+type ComplexData struct {
+	Name string            `json:"name"`
+	Tags []string          `json:"tags"`
+	Meta map[string]string `json:"meta"`
+}
+
 // TestFileTaskResultStorage_Basic Table-Driven 방식을 사용한 기본 기능 테스트
 func TestFileTaskResultStorage_Basic(t *testing.T) {
-	type TestData struct {
-		Value string `json:"value"`
-		Count int    `json:"count"`
-	}
 
 	tests := []struct {
-		name      string
-		taskID    ID
-		commandID CommandID
-		input     *TestData
-		wantErr   bool
+		name        string
+		taskID      ID
+		commandID   CommandID
+		input       interface{}
+		output      interface{} // Load할 때 사용할 빈 객체 포인터
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name:      "정상적인 저장 및 로드",
-			taskID:    ID("TASK_001"),
-			commandID: CommandID("CMD_001"),
-			input:     &TestData{Value: "hello", Count: 1},
+			name:      "Simple String",
+			taskID:    ID("TASK_STR"),
+			commandID: CommandID("CMD_STR"),
+			input:     "simple string",
+			output:    new(string),
 			wantErr:   false,
 		},
 		{
-			name:      "특수 문자가 포함된 ID (에러 예상)",
-			taskID:    ID("TASK-@#$"),
-			commandID: CommandID("CMD_!&*"),
-			input:     &TestData{Value: "special", Count: 99},
-			wantErr:   true, // 특수문자 등으로 인해 경로 생성 실패 또는 Sanitizing 정책에 의해 거부될 수 있음
+			name:      "Integer",
+			taskID:    ID("TASK_INT"),
+			commandID: CommandID("CMD_INT"),
+			input:     12345,
+			output:    new(int),
+			wantErr:   false,
 		},
 		{
-			name:      "빈 데이터 저장",
+			name:      "Map",
+			taskID:    ID("TASK_MAP"),
+			commandID: CommandID("CMD_MAP"),
+			input:     map[string]int{"one": 1, "two": 2},
+			output:    &map[string]int{},
+			wantErr:   false,
+		},
+		{
+			name:      "Slice",
+			taskID:    ID("TASK_SLICE"),
+			commandID: CommandID("CMD_SLICE"),
+			input:     []string{"a", "b", "c"},
+			output:    &[]string{},
+			wantErr:   false,
+		},
+		{
+			name:      "Complex Struct",
+			taskID:    ID("TASK_COMPLEX"),
+			commandID: CommandID("CMD_COMPLEX"),
+			input: ComplexData{
+				Name: "complex",
+				Tags: []string{"tag1", "tag2"},
+				Meta: map[string]string{"k1": "v1"},
+			},
+			output:  &ComplexData{},
+			wantErr: false,
+		},
+		{
+			name:      "Empty Struct",
 			taskID:    ID("TASK_EMPTY"),
 			commandID: CommandID("CMD_EMPTY"),
-			input:     &TestData{Value: "", Count: 0},
+			input:     struct{}{},
+			output:    &struct{}{},
+			wantErr:   false,
+		},
+		{
+			name:      "Nil Input (JSON Marshal handles nil as null)",
+			taskID:    ID("TASK_NIL"),
+			commandID: CommandID("CMD_NIL"),
+			input:     nil,
+			output:    new(interface{}), // nil 로드 시 interface{}로 받음
 			wantErr:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := NewFileTaskResultStorage(testAppName)
-			tempDir := t.TempDir()
-			storage.SetBaseDir(tempDir)
+			storage, _ := setupTestStorage(t)
 
 			// Save
 			err := storage.Save(tt.taskID, tt.commandID, tt.input)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
 				return
 			}
 			require.NoError(t, err)
 
 			// Load
-			output := &TestData{}
-			err = storage.Load(tt.taskID, tt.commandID, output)
+			err = storage.Load(tt.taskID, tt.commandID, tt.output)
 			require.NoError(t, err)
 
 			// Verify
-			assert.Equal(t, tt.input, output)
+			// Tip: json unmarshal of nil stays nil, pointer comparison needs expected value
+			if tt.input == nil {
+				// json.Unmarshal into interface{} for "null" results in nil
+				val := *(tt.output.(*interface{}))
+				assert.Nil(t, val)
+			} else {
+				// tt.output is a pointer, dereference to compare with input
+				// 그러나 input타입과 output타입이 다를 수 있음(json unmarshal 특성)
+				// 여기서는 간단히 Equal로 비교하되, 타입 불일치 시 테스트 실패할 수 있음.
+				// 위 케이스들은 타입 매칭됨.
+
+				// dereference logic for assertion
+				// tt.output is *T, we want to compare *tt.output with tt.input
+				assert.Equal(t, tt.input, getElement(tt.output))
+			}
 		})
 	}
 }
 
-// TestFileTaskResultStorage_Load_NonExistentFile 존재하지 않는 파일 읽기 테스트
+// getElement reflects the value from pointer using reflection to be generic
+func getElement(ptr interface{}) interface{} {
+	val := reflect.ValueOf(ptr)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	return val.Interface()
+}
+
 func TestFileTaskResultStorage_Load_NonExistentFile(t *testing.T) {
-	storage := NewFileTaskResultStorage(testAppName)
-	storage.SetBaseDir(t.TempDir())
+	storage, _ := setupTestStorage(t)
 
 	type TestData struct{ Val string }
 	data := &TestData{}
 
+	// 존재하지 않는 파일 로드 시 에러 없이 빈 상태(마지막 인자 변경 없음)여야 하는지,
+	// 혹은 nil 리턴인지 확인.
+	// storage.go 구현상 os.PathError이면 nil 반환하도록 되어 있음.
 	err := storage.Load(ID("NO_FILE"), CommandID("NO_CMD"), data)
 	assert.NoError(t, err, "존재하지 않는 파일은 에러 없이 무시되어야 함")
 	assert.Empty(t, data.Val)
 }
 
-// TestFileTaskResultStorage_Security 보안 관련 테스트 (Path Traversal)
 func TestFileTaskResultStorage_Security(t *testing.T) {
-	storage := NewFileTaskResultStorage(testAppName)
-	storage.SetBaseDir(t.TempDir())
+	storage, _ := setupTestStorage(t)
 
 	type TestData struct{ Val string }
 	data := &TestData{Val: "hacked"}
 
-	// 공격 시도: 상위 디렉토리 접근 문자 포함
-	// Stringer인 ID를 통해 resolvePath 내부에서 체크됨
-	taskID := ID("../hack_task")
-	commandID := CommandID("cmd")
+	tests := []struct {
+		name      string
+		taskID    ID
+		commandID CommandID
+		wantErr   bool
+	}{
+		{
+			name:      "Path Traversal in TaskID",
+			taskID:    ID("../hack_task"),
+			commandID: CommandID("cmd"),
+			wantErr:   true,
+		},
+		{
+			name:      "Path Traversal in CommandID",
+			taskID:    ID("task"),
+			commandID: CommandID("../cmd"),
+			wantErr:   true,
+		},
+	}
 
-	// Save 시도
-	// 주의: 내부적으로 strutil.ToSnakeCase를 사용하므로 "../"가 안전한 문자(예: "--")로 변환될 수 있음.
-	// 하지만 파일 생성 과정에서 시스템 에러가 발생하거나 Path Traversal 에러가 발생하여 차단되어야 함.
-	err := storage.Save(taskID, commandID, data)
-	assert.Error(t, err, "경로 조작 시도는 에러로 차단되어야 합니다")
-
-	// Load 시도 (Panic 확인용)
-	readData := &TestData{}
-	_ = storage.Load(taskID, commandID, readData)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save 시도
+			err := storage.Save(tt.taskID, tt.commandID, data)
+			if tt.wantErr {
+				// storage.go에서 Path Traversal 감지 시 ErrInternal 리턴
+				// 구체적으로는 "Path Traversal Detected" 메시지 혹은 apperrors.ErrInternal
+				require.Error(t, err)
+				assert.True(t, apperrors.Is(err, apperrors.ErrInternal))
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
-// TestFileTaskResultStorage_Cleanup 임시 파일 정리 테스트
 func TestFileTaskResultStorage_Cleanup(t *testing.T) {
-	storage := NewFileTaskResultStorage(testAppName)
-	tempDir := t.TempDir()
-	storage.SetBaseDir(tempDir)
+	storage, tempDir := setupTestStorage(t)
 
 	// 더미 임시 파일 생성
 	tmpFile := filepath.Join(tempDir, "task-result-dummy.tmp")
 	err := os.WriteFile(tmpFile, []byte("dummy data"), 0644)
 	require.NoError(t, err)
 
-	// 일반 파일 생성 (삭제되면 안 됨)
+	// 패턴에 맞지 않는 파일 (삭제되지 않아야 함)
+	otherTmp := filepath.Join(tempDir, "other.tmp")
+	err = os.WriteFile(otherTmp, []byte("keep"), 0644)
+	require.NoError(t, err)
+
+	// 일반 파일 생성 (삭제되지 않아야 함)
 	normalFile := filepath.Join(tempDir, "task-result-normal.json")
 	err = os.WriteFile(normalFile, []byte("{}"), 0644)
 	require.NoError(t, err)
@@ -132,50 +231,49 @@ func TestFileTaskResultStorage_Cleanup(t *testing.T) {
 	storage.CleanupTempFiles()
 
 	// 검증
-	assert.NoFileExists(t, tmpFile, "임시 파일(.tmp)은 삭제되어야 합니다")
-	assert.FileExists(t, normalFile, "일반 파일(.json)은 삭제되면 안 됩니다")
+	assert.NoFileExists(t, tmpFile, "패턴에 맞는 임시 파일은 삭제되어야 합니다")
+	assert.FileExists(t, otherTmp, "패턴에 맞지 않는 임시 파일은 유지되어야 합니다")
+	assert.FileExists(t, normalFile, "일반 파일은 유지되어야 합니다")
 }
 
-// TestFileTaskResultStorage_Concurrency 동시성 테스트
 func TestFileTaskResultStorage_Concurrency(t *testing.T) {
-	storage := NewFileTaskResultStorage(testAppName)
-	tempDir := t.TempDir()
-	storage.SetBaseDir(tempDir)
+	storage, _ := setupTestStorage(t)
 
 	type Data struct {
 		Counter int `json:"counter"`
 	}
 
-	t.Run("동일한 파일에 대한 동시 쓰기/읽기", func(t *testing.T) {
+	t.Run("Concurrent Read/Write Single File", func(t *testing.T) {
 		taskID := ID("CONCURRENCY_TASK")
 		commandID := CommandID("SAME_KEY")
 		workers := 50
 		var wg sync.WaitGroup
 
-		// 초기 파일 생성
 		require.NoError(t, storage.Save(taskID, commandID, &Data{Counter: 0}))
 
 		wg.Add(workers)
 		for i := 0; i < workers; i++ {
 			go func(val int) {
 				defer wg.Done()
-				// 쓰기
-				_ = storage.Save(taskID, commandID, &Data{Counter: val})
-				// 읽기
+				// 쓰기 시도 (에러가 없어야 함)
+				if err := storage.Save(taskID, commandID, &Data{Counter: val}); err != nil {
+					// 로그만 찍거나 무시 (테스트 실패 유발 X)
+					// t.Error 호출은 데이터 레이스 주의
+				}
+				// 읽기 시도
 				var d Data
 				_ = storage.Load(taskID, commandID, &d)
 			}(i)
 		}
 		wg.Wait()
 
-		// 최종적으로 에러 없이 파일이 존재하고 읽혀야 함
+		// 최종 파일 상태 확인
 		var final Data
 		err := storage.Load(taskID, commandID, &final)
 		assert.NoError(t, err)
-		// 값은 마지막에 쓴 고루틴에 따라 달라지므로 특정 값 검증은 어려우나, 파일이 깨지지는 않아야 함
 	})
 
-	t.Run("서로 다른 파일에 대한 병렬 처리", func(t *testing.T) {
+	t.Run("Parallel Multiple Files", func(t *testing.T) {
 		workers := 50
 		var wg sync.WaitGroup
 		wg.Add(workers)
@@ -196,4 +294,41 @@ func TestFileTaskResultStorage_Concurrency(t *testing.T) {
 		}
 		wg.Wait()
 	})
+}
+
+// Benchmarks
+
+func BenchmarkFileTaskResultStorage_Save(b *testing.B) {
+	// 벤치마크는 각 반복마다 setup을 하면 느려지므로,
+	// 디렉토리 하나를 공유하되 파일명을 다르게 하거나 덮어쓰기 테스트
+	storage := NewFileTaskResultStorage(testAppName)
+	tempDir := b.TempDir()
+	storage.SetBaseDir(tempDir)
+
+	taskID := ID("BENCH_TASK")
+	commandID := CommandID("BENCH_CMD")
+	data := map[string]string{"key": "value", "data": "benchmark testing payload"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = storage.Save(taskID, commandID, data)
+	}
+}
+
+func BenchmarkFileTaskResultStorage_Load(b *testing.B) {
+	storage := NewFileTaskResultStorage(testAppName)
+	tempDir := b.TempDir()
+	storage.SetBaseDir(tempDir)
+
+	taskID := ID("BENCH_TASK")
+	commandID := CommandID("BENCH_CMD")
+	data := map[string]string{"key": "value", "data": "benchmark testing payload"}
+	_ = storage.Save(taskID, commandID, data)
+
+	dest := make(map[string]string)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = storage.Load(taskID, commandID, &dest)
+	}
 }

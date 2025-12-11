@@ -30,13 +30,16 @@ type FileTaskResultStorage struct {
 	locks *concurrency.KeyedMutex // 파일별 락킹을 위한 KeyedMutex
 }
 
+// defaultDataDirectory 기본 데이터 저장 디렉토리 이름
+const defaultDataDirectory = "data"
+
 // NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
 // 기본 저장 디렉토리는 "data" 입니다.
 func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
 	s := &FileTaskResultStorage{
 		appName: appName,
 
-		baseDir: "data",
+		baseDir: defaultDataDirectory,
 
 		locks: concurrency.NewKeyedMutex(),
 	}

@@ -179,3 +179,48 @@ func TestTaskContext_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestTaskContext_With(t *testing.T) {
+	ctx := NewTaskContext()
+
+	// 값 설정
+	ctx = ctx.With("key1", "value1")
+	ctx = ctx.With("key2", 123)
+
+	// 값 조회
+	assert.Equal(t, "value1", ctx.Value("key1"), "설정한 값을 조회할 수 있어야 합니다")
+	assert.Equal(t, 123, ctx.Value("key2"), "설정한 값을 조회할 수 있어야 합니다")
+	assert.Nil(t, ctx.Value("key3"), "설정하지 않은 키는 nil을 반환해야 합니다")
+}
+
+func TestTaskContext_WithTask(t *testing.T) {
+	ctx := NewTaskContext()
+
+	taskID := ID("TEST_TASK")
+	commandID := CommandID("TEST_COMMAND")
+
+	ctx = ctx.WithTask(taskID, commandID)
+
+	assert.Equal(t, taskID, ctx.GetID(), "TaskID가 설정되어야 합니다")
+	assert.Equal(t, commandID, ctx.GetCommandID(), "TaskCommandID가 설정되어야 합니다")
+}
+
+func TestTaskContext_WithInstanceID(t *testing.T) {
+	ctx := NewTaskContext()
+
+	instanceID := InstanceID("test_instance_123")
+	elapsedTime := int64(42)
+
+	ctx = ctx.WithInstanceID(instanceID, elapsedTime)
+
+	assert.Equal(t, instanceID, ctx.GetInstanceID(), "TaskInstanceID가 설정되어야 합니다")
+	assert.Equal(t, elapsedTime, ctx.GetElapsedTimeAfterRun(), "경과 시간이 설정되어야 합니다")
+}
+
+func TestTaskContext_WithError(t *testing.T) {
+	ctx := NewTaskContext()
+
+	ctx = ctx.WithError()
+
+	assert.Equal(t, true, ctx.IsErrorOccurred(), "에러 상태가 설정되어야 합니다")
+}

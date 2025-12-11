@@ -122,6 +122,7 @@ func (t RunBy) String() string {
 type RunRequest struct {
 	// TaskID 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
 	TaskID ID
+
 	// TaskCommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
 	TaskCommandID CommandID
 

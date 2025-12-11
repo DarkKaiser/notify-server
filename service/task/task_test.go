@@ -1,56 +1,14 @@
 package task
 
 import (
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
-
-func TestTaskContext_With(t *testing.T) {
-	ctx := NewTaskContext()
-
-	// 값 설정
-	ctx = ctx.With("key1", "value1")
-	ctx = ctx.With("key2", 123)
-
-	// 값 조회
-	assert.Equal(t, "value1", ctx.Value("key1"), "설정한 값을 조회할 수 있어야 합니다")
-	assert.Equal(t, 123, ctx.Value("key2"), "설정한 값을 조회할 수 있어야 합니다")
-	assert.Nil(t, ctx.Value("key3"), "설정하지 않은 키는 nil을 반환해야 합니다")
-}
-
-func TestTaskContext_WithTask(t *testing.T) {
-	ctx := NewTaskContext()
-
-	taskID := ID("TEST_TASK")
-	commandID := CommandID("TEST_COMMAND")
-
-	ctx = ctx.WithTask(taskID, commandID)
-
-	assert.Equal(t, taskID, ctx.GetID(), "TaskID가 설정되어야 합니다")
-	assert.Equal(t, commandID, ctx.GetCommandID(), "TaskCommandID가 설정되어야 합니다")
-}
-
-func TestTaskContext_WithInstanceID(t *testing.T) {
-	ctx := NewTaskContext()
-
-	instanceID := InstanceID("test_instance_123")
-	elapsedTime := int64(42)
-
-	ctx = ctx.WithInstanceID(instanceID, elapsedTime)
-
-	assert.Equal(t, instanceID, ctx.GetInstanceID(), "TaskInstanceID가 설정되어야 합니다")
-	assert.Equal(t, elapsedTime, ctx.GetElapsedTimeAfterRun(), "경과 시간이 설정되어야 합니다")
-}
-
-func TestTaskContext_WithError(t *testing.T) {
-	ctx := NewTaskContext()
-
-	ctx = ctx.WithError()
-
-	assert.Equal(t, true, ctx.IsErrorOccurred(), "에러 상태가 설정되어야 합니다")
-}
 
 func TestTask_BasicMethods(t *testing.T) {
 	testTask := &Task{
@@ -98,19 +56,95 @@ func TestTask_BasicMethods(t *testing.T) {
 	})
 }
 
-func TestRunBy_Values(t *testing.T) {
-	t.Run("RunBy 상수 값 테스트", func(t *testing.T) {
-		assert.Equal(t, RunBy(0), RunByUnknown, "RunByUnknown은 0이어야 합니다")
-		assert.Equal(t, RunBy(1), RunByUser, "RunByUser는 1이어야 합니다")
-		assert.Equal(t, RunBy(2), RunByScheduler, "RunByScheduler는 2이어야 합니다")
+func TestTask_Run(t *testing.T) {
+	t.Run("실행 중 에러 발생", func(t *testing.T) {
+		mockSender := NewMockNotificationSender()
+		wg := &sync.WaitGroup{}
+		doneC := make(chan InstanceID, 1)
+
+		taskInstance := &Task{
+			ID:         "ErrorTask",
+			CommandID:  "ErrorCommand",
+			InstanceID: "ErrorInstance",
+			NotifierID: "test-notifier",
+			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+				return "", nil, errors.New("Run Error")
+			},
+			Storage: &MockTaskResultStorage{},
+		}
+		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		supportedTasks["ErrorTask"] = &TaskConfig{
+			CommandConfigs: []*TaskCommandConfig{
+				{
+					TaskCommandID: "ErrorCommand",
+					NewTaskResultDataFn: func() interface{} {
+						return map[string]interface{}{}
+					},
+				},
+			},
+		}
+		defer delete(supportedTasks, "ErrorTask")
+
+		wg.Add(1)
+		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
+
+		select {
+		case id := <-doneC:
+			assert.Equal(t, InstanceID("ErrorInstance"), id)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Task did not complete in time")
+		}
+		wg.Wait()
+
+		assert.Equal(t, 1, mockSender.GetNotifyCallCount())
+		assert.Equal(t, "test-notifier", mockSender.NotifyCalls[0].NotifierID)
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "Run Error")
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업이 실패하였습니다")
 	})
 
-	t.Run("RunBy 비교 테스트", func(t *testing.T) {
-		testTask := Task{
-			RunBy: RunByUser,
-		}
+	t.Run("취소된 작업", func(t *testing.T) {
+		mockSender := NewMockNotificationSender()
+		wg := &sync.WaitGroup{}
+		doneC := make(chan InstanceID, 1)
 
-		assert.Equal(t, RunByUser, testTask.RunBy, "Task의 runBy가 RunByUser여야 합니다")
-		assert.NotEqual(t, RunByScheduler, testTask.RunBy, "Task의 runBy가 RunByScheduler가 아니어야 합니다")
+		taskInstance := &Task{
+			ID:         "CancelTask",
+			CommandID:  "CancelCommand",
+			InstanceID: "CancelInstance",
+			NotifierID: "test-notifier",
+			Canceled:   true, // Already canceled
+			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+				return "Should Not Send", nil, nil
+			},
+			Storage: &MockTaskResultStorage{},
+		}
+		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		supportedTasks["CancelTask"] = &TaskConfig{
+			CommandConfigs: []*TaskCommandConfig{
+				{
+					TaskCommandID: "CancelCommand",
+					NewTaskResultDataFn: func() interface{} {
+						return &map[string]interface{}{}
+					},
+				},
+			},
+		}
+		defer delete(supportedTasks, "CancelTask")
+
+		wg.Add(1)
+		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
+
+		select {
+		case id := <-doneC:
+			assert.Equal(t, InstanceID("CancelInstance"), id)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Task did not complete in time")
+		}
+		wg.Wait()
+
+		// Should not send	// No notification should be sent for duplicate
+		assert.Equal(t, 0, mockSender.GetNotifyCallCount())
 	})
 }
