@@ -133,7 +133,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	}
 	req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
 
-	searchResult, err := findConfig(req.TaskID, req.CommandID)
+	cfg, err := findConfig(req.TaskID, req.CommandID)
 	if err != nil {
 		m := msgTaskNotFound
 
@@ -151,7 +151,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	// 인스턴스 중복 실행 확인 (Concurrency Control)
 	// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
 	var alreadyRunHandler Handler
-	if !searchResult.Command.AllowMultiple {
+	if !cfg.Command.AllowMultiple {
 		s.runningMu.Lock()
 		for _, handler := range s.handlers {
 			// 작업 중복 확인 로직
@@ -180,7 +180,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	}
 	s.runningMu.Unlock()
 
-	h, err := searchResult.Task.NewTask(instanceID, req, s.appConfig)
+	h, err := cfg.Task.NewTask(instanceID, req, s.appConfig)
 	if h == nil {
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"task_id":    req.TaskID,

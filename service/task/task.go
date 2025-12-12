@@ -138,9 +138,9 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	}
 
 	var taskResultData interface{}
-	found, findErr := findConfig(t.GetID(), t.GetCommandID())
+	cfg, findErr := findConfig(t.GetID(), t.GetCommandID())
 	if findErr == nil {
-		taskResultData = found.Command.NewTaskResultDataFn()
+		taskResultData = cfg.Command.NewTaskResultDataFn()
 	}
 	if taskResultData == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgTaskResultDataCreationFailed)
