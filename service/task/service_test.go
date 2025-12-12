@@ -21,7 +21,7 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service, "서비스가 생성되어야 합니다")
 	require.Equal(t, appConfig, service.appConfig, "설정이 올바르게 설정되어야 합니다")
 	require.False(t, service.running, "초기 상태에서는 실행 중이 아니어야 합니다")
-	require.NotNil(t, service.taskHandlers, "taskHandlers가 초기화되어야 합니다")
+	require.NotNil(t, service.handlers, "handlers가 초기화되어야 합니다")
 	require.NotNil(t, service.taskRunC, "taskRunC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskDoneC, "taskDoneC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskCancelC, "taskCancelC 채널이 초기화되어야 합니다")
@@ -263,7 +263,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 
 			// 실행된 Task를 찾아서 취소 시도
 			service.runningMu.Lock()
-			for instanceID := range service.taskHandlers {
+			for instanceID := range service.handlers {
 				go service.Cancel(instanceID)
 			}
 			service.runningMu.Unlock()

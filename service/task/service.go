@@ -30,7 +30,7 @@ type Service struct {
 
 	scheduler scheduler
 
-	taskHandlers map[InstanceID]TaskHandler
+	handlers map[InstanceID]Handler
 
 	instanceIDGenerator instanceIDGenerator
 
@@ -54,7 +54,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		scheduler: scheduler{},
 
-		taskHandlers: make(map[InstanceID]TaskHandler),
+		handlers: make(map[InstanceID]Handler),
 
 		instanceIDGenerator: instanceIDGenerator{},
 
@@ -150,20 +150,20 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 
 	// 인스턴스 중복 실행 확인 (Concurrency Control)
 	// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
-	var alreadyRunTaskHandler TaskHandler
+	var alreadyRunHandler Handler
 	if !searchResult.Command.AllowMultiple {
 		s.runningMu.Lock()
-		for _, handler := range s.taskHandlers {
+		for _, handler := range s.handlers {
 			// 작업 중복 확인 로직
 			if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && handler.IsCanceled() == false {
-				alreadyRunTaskHandler = handler
+				alreadyRunHandler = handler
 				break
 			}
 		}
 		s.runningMu.Unlock()
 
-		if alreadyRunTaskHandler != nil {
-			req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+		if alreadyRunHandler != nil {
+			req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunHandler.GetInstanceID(), alreadyRunHandler.ElapsedTimeAfterRun())
 			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
 			return
 		}
@@ -174,7 +174,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	s.runningMu.Lock()
 	for {
 		instanceID = s.instanceIDGenerator.New()
-		if _, exists := s.taskHandlers[instanceID]; exists == false {
+		if _, exists := s.handlers[instanceID]; exists == false {
 			break
 		}
 	}
@@ -194,11 +194,11 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	}
 
 	// 생성된 Task에 Storage 주입
-	// TaskHandler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
+	// Handler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
 	h.SetStorage(s.taskStorage)
 
 	s.runningMu.Lock()
-	s.taskHandlers[instanceID] = h
+	s.handlers[instanceID] = h
 	s.runningMu.Unlock()
 
 	s.taskStopWaiter.Add(1)
@@ -212,14 +212,14 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 
 func (s *Service) handleTaskDone(instanceID InstanceID) {
 	s.runningMu.Lock()
-	if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
+	if handler, exists := s.handlers[instanceID]; exists == true {
 		applog.WithComponentAndFields("task.service", log.Fields{
-			"task_id":     taskHandler.GetID(),
-			"command_id":  taskHandler.GetCommandID(),
+			"task_id":     handler.GetID(),
+			"command_id":  handler.GetCommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 완료")
 
-		delete(s.taskHandlers, instanceID)
+		delete(s.handlers, instanceID)
 	} else {
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"instance_id": instanceID,
@@ -230,16 +230,16 @@ func (s *Service) handleTaskDone(instanceID InstanceID) {
 
 func (s *Service) handleTaskCancel(instanceID InstanceID) {
 	s.runningMu.Lock()
-	if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-		taskHandler.Cancel()
+	if handler, exists := s.handlers[instanceID]; exists == true {
+		handler.Cancel()
 
 		applog.WithComponentAndFields("task.service", log.Fields{
-			"task_id":     taskHandler.GetID(),
-			"command_id":  taskHandler.GetCommandID(),
+			"task_id":     handler.GetID(),
+			"command_id":  handler.GetCommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 취소")
 
-		go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), msgTaskCanceledByUser)
+		go s.notificationSender.Notify(NewTaskContext().WithTask(handler.GetID(), handler.GetCommandID()), handler.GetNotifierID(), msgTaskCanceledByUser)
 	} else {
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"instance_id": instanceID,
@@ -258,7 +258,7 @@ func (s *Service) handleStop() {
 
 	s.runningMu.Lock()
 	// 현재 작업중인 Task의 작업을 모두 취소한다.
-	for _, handler := range s.taskHandlers {
+	for _, handler := range s.handlers {
 		handler.Cancel()
 	}
 	s.runningMu.Unlock()
@@ -273,7 +273,7 @@ func (s *Service) handleStop() {
 
 	s.runningMu.Lock()
 	s.running = false
-	s.taskHandlers = nil
+	s.handlers = nil
 	s.notificationSender = nil
 	s.runningMu.Unlock()
 

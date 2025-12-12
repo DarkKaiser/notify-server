@@ -22,12 +22,12 @@ type Executor interface {
 	Canceler
 }
 
-// TaskHandler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
+// Handler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
 //
-// TaskHandler는 Service 레이어와 개별 Task 구현체(Task 구조체) 사이의 계약(Contract)을 정의합니다.
+// Handler는 Service 레이어와 개별 Task 구현체(Task 구조체) 사이의 계약(Contract)을 정의합니다.
 // Service는 이 인터페이스를 통해 Task의 구체적인 구현(RunFn 등)을 알 필요 없이,
 // 표준화된 방식으로 실행(Run), 취소(Cancel), 상태 확인 등을 수행할 수 있습니다.
-type TaskHandler interface {
+type Handler interface {
 	GetID() ID
 	GetCommandID() CommandID
 	GetInstanceID() InstanceID

@@ -10,7 +10,7 @@ import (
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
 func dummyNewTaskFn() NewTaskFunc {
-	return func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) {
+	return func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
 		return nil, nil
 	}
 }
