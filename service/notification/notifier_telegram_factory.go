@@ -15,12 +15,12 @@ type telegramNotifierCreatorFunc func(id NotifierID, botToken string, chatID int
 
 // NewTelegramConfigProcessor 텔레그램 Notifier 설정을 처리하는 NotifierConfigProcessor를 생성하여 반환합니다.
 // 이 처리기는 애플리케이션 설정에 따라 텔레그램 Notifier 인스턴스들을 초기화합니다.
-func NewTelegramConfigProcessor(creatorFn telegramNotifierCreatorFunc) NotifierConfigProcessor {
+func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierConfigProcessor {
 	return func(appConfig *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 		var handlers []NotifierHandler
 
 		for _, telegram := range appConfig.Notifiers.Telegrams {
-			h, err := creatorFn(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
+			h, err := creator(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
 			if err != nil {
 				return nil, err
 			}
