@@ -15,6 +15,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// defaultDataDirectory 기본 데이터 저장 디렉토리 이름
+const defaultDataDirectory = "data"
+
 // TaskResultStorage Task 실행 결과를 저장하고 불러오는 저장소 인터페이스
 type TaskResultStorage interface {
 	Load(taskID ID, commandID CommandID, v interface{}) error
@@ -30,9 +33,6 @@ type FileTaskResultStorage struct {
 	locks *concurrency.KeyedMutex // 파일별 락킹을 위한 KeyedMutex
 }
 
-// defaultDataDirectory 기본 데이터 저장 디렉토리 이름
-const defaultDataDirectory = "data"
-
 // NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
 // 기본 저장 디렉토리는 "data" 입니다.
 func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
@@ -45,7 +45,7 @@ func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
 	}
 
 	// 시작 시 오래된 임시 파일 정리 (Best Effort)
-	s.CleanupTempFiles()
+	s.cleanupTempFiles()
 
 	return s
 }
@@ -55,8 +55,8 @@ func (s *FileTaskResultStorage) SetBaseDir(dir string) {
 	s.baseDir = dir
 }
 
-// CleanupTempFiles 작업 도중 비정상 종료 등으로 남겨진 임시 파일(*.tmp)을 정리합니다.
-func (s *FileTaskResultStorage) CleanupTempFiles() {
+// cleanupTempFiles 작업 도중 비정상 종료 등으로 남겨진 임시 파일(*.tmp)을 정리합니다.
+func (s *FileTaskResultStorage) cleanupTempFiles() {
 	pattern := filepath.Join(s.baseDir, "task-result-*.tmp")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
