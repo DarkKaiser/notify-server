@@ -72,7 +72,7 @@ func TestTask_Run(t *testing.T) {
 		taskID               string
 		commandID            string
 		canceled             bool
-		runFn                TaskRunFunc
+		runFn                RunFunc
 		storageSetup         func(*MockTaskResultStorage)
 		configSetup          func()
 		expectedNotifyCount  int

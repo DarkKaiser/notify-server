@@ -11,42 +11,58 @@ import (
 )
 
 const (
-	msgTaskExecutionFailed          = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
-	msgRunFnNotInitialized          = "runFn()이 초기화되지 않았습니다."
-	msgTaskResultDataCreationFailed = "작업결과데이터 생성이 실패하였습니다."
-	msgStorageNotInitialized        = "Storage가 초기화되지 않았습니다."
-	msgPreviousDataLoadFailed       = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다."
-	msgCurrentDataSaveFailed        = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
+	msgRunFuncNotInitialized            = "runFn()이 초기화되지 않았습니다."
+	msgStorageNotInitialized            = "Storage가 초기화되지 않았습니다."
+	msgTaskExecutionFailed              = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
+	msgTaskResultDataCreationFailed     = "작업결과데이터 생성이 실패하였습니다."
+	msgCurrentTaskResultDataSaveFailed  = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
+	msgPreviousTaskResultDataLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다."
 )
 
-// TaskRunFunc
-type TaskRunFunc func(interface{}, bool) (string, interface{}, error)
+// RunFunc 작업 실행 로직을 정의하는 함수 타입입니다.
+//
+// 이 함수는 순수 함수(Pure Function)에 가깝게 구현되어야 하며,
+// 작업에 필요한 데이터(data)를 받아 처리한 후 결과 메시지와 변경된 데이터를 반환합니다.
+//
+// 매개변수:
+//   - data: 이전 실행 시 저장된 TaskResultData (상태 복원용). 최초 실행 시에는 초기값이 전달됩니다.
+//   - supportHTML: 알림 채널(Notifier)이 HTML 포맷을 지원하는지 여부.
+//
+// 반환값:
+//   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
+//   - interface{}: 실행 완료 후 저장할 새로운 TaskResultData. 다음 실행 시 data 인자로 전달됩니다.
+//   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
+type RunFunc func(data interface{}, supportHTML bool) (string, interface{}, error)
 
 // Task 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
+//
+// Task는 불변 상태(ID, Config 등)와 가변 상태(Canceled, Storage 상태 등)를 모두 포함하며,
+// Service에 의해 생성되고 생명주기가 관리됩니다. 이 구조체는 '작업의 정의'와 '실행 상태'를 모두 캡슐화합니다.
+//
+// 주요 특징:
+//   - 상태 보존 (Stateful): Storage를 통해 실행 결과를 영속화하여, 스크래핑 작업 간의 데이터 연속성을 보장합니다.
+//   - 실행 제어 (Control): Cancel() 메서드를 통해 실행 중인 작업을 안전하게 중단할 수 있습니다.
+//   - 의존성 주입 (DI): Storage, Fetcher 등의 외부 의존성을 필드로 주입받아 테스트 용이성을 높입니다.
 type Task struct {
-	ID         ID
-	CommandID  CommandID
-	InstanceID InstanceID
+	// Identity Fields: 작업의 고유성을 식별하는 필드들
+	ID         ID         // Task 고유 식별자 (예: "naver_shopping")
+	CommandID  CommandID  // Command 식별자 (예: "watch_price")
+	InstanceID InstanceID // 이번 실행 인스턴스의 고유 ID (UUID 등)
 
-	// NotifierID는 알림을 발송할 대상 메신저의 ID입니다. (예: "telegram")
-	NotifierID string
+	NotifierID string // 알림을 발송할 대상 메신저 ID (예: "telegram")
 
-	// Canceled는 작업 취소 여부를 나타내는 플래그입니다.
-	Canceled bool
+	Canceled bool // 작업 취소 여부 플래그
 
-	// RunBy는 작업이 실행된 트리거 주체(스케줄러, 수동 실행 등)를 나타냅니다.
-	RunBy RunBy
-	// RunTime은 작업이 실제 실행을 시작한 시각입니다.
-	RunTime time.Time
+	RunBy   RunBy     // 작업 실행 트리거 (Scheduler, UserRequest 등)
+	RunTime time.Time // 작업 실행 시작 시각
 
-	// RunFn은 실제 비즈니스 로직을 수행하는 함수입니다.
-	// 순수 함수(Pure Function)에 가깝게 구현되어야 하며, 외부 의존성(Storage 등)은 인자로 주입받습니다.
-	RunFn TaskRunFunc
+	// RunFn은 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
+	RunFn RunFunc
 
-	// Storage는 작업의 이전 실행 결과를 저장하고 불러오는 인터페이스입니다.
+	// Storage는 작업의 상태(이전 데이터)를 저장하고 불러오는 인터페이스입니다.
 	Storage TaskResultStorage
 
-	// Fetcher는 웹 스크래핑 등을 수행하는 HTTP 클라이언트 추상화입니다.
+	// Fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
 	Fetcher Fetcher
 }
 
@@ -129,10 +145,10 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 // - 이전 데이터 로드 실패 시에는 Warn 레벨 로그를 남기지만, 빈 데이터로 실행을 계속합니다.
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
 	if t.RunFn == nil {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgRunFnNotInitialized)
+		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgRunFuncNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-		return nil, apperrors.New(apperrors.ErrInternal, msgRunFnNotInitialized)
+		return nil, apperrors.New(apperrors.ErrInternal, msgRunFuncNotInitialized)
 	}
 
 	// TaskResultData를 초기화하고 읽어들인다.
@@ -158,7 +174,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 
 	err := t.Storage.Load(t.GetID(), t.GetCommandID(), taskResultData)
 	if err != nil {
-		message := fmt.Sprintf(msgPreviousDataLoadFailed, err)
+		message := fmt.Sprintf(msgPreviousTaskResultDataLoadFailed, err)
 		t.log(log.WarnLevel, message, err)
 		t.notify(taskCtx, notificationSender, message)
 	}
@@ -196,7 +212,7 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 
 		if changedTaskResultData != nil {
 			if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
-				message := fmt.Sprintf(msgCurrentDataSaveFailed, err)
+				message := fmt.Sprintf(msgCurrentTaskResultDataSaveFailed, err)
 				t.log(log.WarnLevel, message, err)
 				t.notifyError(taskCtx, notificationSender, message)
 			}

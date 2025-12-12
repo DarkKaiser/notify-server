@@ -4,24 +4,6 @@ import (
 	"sync"
 )
 
-// Runner 작업을 실행하는 인터페이스입니다.
-type Runner interface {
-	// Run 작업을 실행합니다. 실행 성공 여부(error)를 반환합니다.
-	Run(req *RunRequest) error
-}
-
-// Canceler 실행 중인 작업을 취소하는 인터페이스입니다.
-type Canceler interface {
-	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
-	Cancel(instanceID InstanceID) error
-}
-
-// Executor 작업을 실행하고 취소할 수 있는 Combined 인터페이스입니다.
-type Executor interface {
-	Runner
-	Canceler
-}
-
 // Handler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
 //
 // Handler는 Service 레이어와 개별 Task 구현체(Task 구조체) 사이의 계약(Contract)을 정의합니다.
@@ -53,6 +35,24 @@ type Handler interface {
 
 	// Run 작업을 실행하는 메인 메서드입니다.
 	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
+}
+
+// Runner 작업을 실행하는 인터페이스입니다.
+type Runner interface {
+	// Run 작업을 실행합니다. 실행 성공 여부(error)를 반환합니다.
+	Run(req *RunRequest) error
+}
+
+// Canceler 실행 중인 작업을 취소하는 인터페이스입니다.
+type Canceler interface {
+	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
+	Cancel(instanceID InstanceID) error
+}
+
+// Executor 작업을 실행하고 취소할 수 있는 Combined 인터페이스입니다.
+type Executor interface {
+	Runner
+	Canceler
 }
 
 // NotificationSender Task 실행 중 발생하는 다양한 이벤트(시작, 성공, 실패 등)를 외부로 알리기 위한 인터페이스입니다.
