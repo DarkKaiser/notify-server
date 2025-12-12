@@ -82,6 +82,15 @@ func (s *FileTaskResultStorage) CleanupTempFiles() {
 }
 
 func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (string, error) {
+	// 입력값 보안 검증: Path Traversal 문자가 포함되어 있는지 확인
+	// strutil.ToSnakeCase 변환 전에 검증해야 함 (변환 과정에서 위험 문자가 사라질 수 있음)
+	if strings.Contains(string(taskID), "..") || strings.Contains(string(taskID), "/") || strings.Contains(string(taskID), "\\") {
+		return "", apperrors.New(apperrors.ErrInternal, "TaskID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
+	}
+	if strings.Contains(string(commandID), "..") || strings.Contains(string(commandID), "/") || strings.Contains(string(commandID), "\\") {
+		return "", apperrors.New(apperrors.ErrInternal, "CommandID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
+	}
+
 	filename := fmt.Sprintf("%s-task-%s-%s.json", s.appName, strutil.ToSnakeCase(string(taskID)), strutil.ToSnakeCase(string(commandID)))
 	filename = strings.ReplaceAll(filename, "_", "-")
 
