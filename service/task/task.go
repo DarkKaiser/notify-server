@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
@@ -91,7 +92,6 @@ func (t *Task) SetStorage(storage TaskResultStorage) {
 }
 
 func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
-
 	defer taskStopWaiter.Done()
 	defer func() {
 		taskDoneC <- t.InstanceID
@@ -99,6 +99,21 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 	t.RunTime = time.Now()
 
+	taskResultData, err := t.prepareExecution(taskCtx, notificationSender)
+	if err != nil {
+		return
+	}
+
+	message, changedTaskResultData, err := t.execute(taskResultData, notificationSender)
+
+	if t.IsCanceled() {
+		return
+	}
+
+	t.handleExecutionResult(taskCtx, notificationSender, message, changedTaskResultData, err)
+}
+
+func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
 	if t.RunFn == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgRunFnNotInitialized)
 
@@ -109,7 +124,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 		t.notifyError(taskCtx, notificationSender, message)
 
-		return
+		return nil, apperrors.New(apperrors.ErrInternal, msgRunFnNotInitialized)
 	}
 
 	// TaskResultData를 초기화하고 읽어들인다.
@@ -128,20 +143,18 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 		t.notifyError(taskCtx, notificationSender, message)
 
-		return
+		return nil, apperrors.New(apperrors.ErrInternal, msgTaskResultDataCreationFailed)
 	}
 
 	// Storage가 초기화되지 않았을 경우에 대한 방어 로직
 	if t.Storage == nil {
-		// 하위 호환성을 위해 nil이면 에러 로깅 후 종료하거나 기본 파일 스토리지를 쓸 수도 있지만,
-		// 리팩토링의 목적상 명시적으로 에러 처리합니다.
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
 		applog.WithComponentAndFields("task.executor", log.Fields{
 			"task_id":    t.GetID(),
 			"command_id": t.GetCommandID(),
 		}).Error(message)
 		t.notifyError(taskCtx, notificationSender, message)
-		return
+		return nil, apperrors.New(apperrors.ErrInternal, msgStorageNotInitialized)
 	}
 
 	err := t.Storage.Load(t.GetID(), t.GetCommandID(), taskResultData)
@@ -157,38 +170,42 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 		t.notify(taskCtx, notificationSender, message)
 	}
 
-	if message, changedTaskResultData, err := t.RunFn(taskResultData, notificationSender.SupportsHTML(t.NotifierID)); t.IsCanceled() == false {
-		if err == nil {
-			if len(message) > 0 {
-				t.notify(taskCtx, notificationSender, message)
-			}
+	return taskResultData, nil
+}
 
-			if changedTaskResultData != nil {
-				if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
-					message := fmt.Sprintf(msgCurrentDataSaveFailed, err)
+func (t *Task) execute(taskResultData interface{}, notificationSender NotificationSender) (string, interface{}, error) {
+	return t.RunFn(taskResultData, notificationSender.SupportsHTML(t.NotifierID))
+}
 
-					applog.WithComponentAndFields("task.executor", log.Fields{
-						"task_id":    t.GetID(),
-						"command_id": t.GetCommandID(),
-						"error":      err,
-					}).Warn(message)
-
-					t.notifyError(taskCtx, notificationSender, message)
-				}
-			}
-		} else {
-			message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
-
-			applog.WithComponentAndFields("task.executor", log.Fields{
-				"task_id":    t.GetID(),
-				"command_id": t.GetCommandID(),
-				"error":      err,
-			}).Error(message)
-
-			t.notifyError(taskCtx, notificationSender, message)
-
-			return
+func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender NotificationSender, message string, changedTaskResultData interface{}, runErr error) {
+	if runErr == nil {
+		if len(message) > 0 {
+			t.notify(taskCtx, notificationSender, message)
 		}
+
+		if changedTaskResultData != nil {
+			if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
+				message := fmt.Sprintf(msgCurrentDataSaveFailed, err)
+
+				applog.WithComponentAndFields("task.executor", log.Fields{
+					"task_id":    t.GetID(),
+					"command_id": t.GetCommandID(),
+					"error":      err,
+				}).Warn(message)
+
+				t.notifyError(taskCtx, notificationSender, message)
+			}
+		}
+	} else {
+		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, runErr)
+
+		applog.WithComponentAndFields("task.executor", log.Fields{
+			"task_id":    t.GetID(),
+			"command_id": t.GetCommandID(),
+			"error":      runErr,
+		}).Error(message)
+
+		t.notifyError(taskCtx, notificationSender, message)
 	}
 }
 
