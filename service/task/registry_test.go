@@ -9,7 +9,7 @@ import (
 )
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
-func dummyNewTaskFn() NewTaskFunc {
+func dummyNewTask() NewTaskFunc {
 	return func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
 		return nil, nil
 	}
@@ -93,7 +93,7 @@ func TestFindConfig(t *testing.T) {
 				NewTaskResultDataFn: dummyResultFn(),
 			},
 		},
-		NewTaskFn: nil,
+		NewTask: nil,
 	})
 
 	t.Run("존재하는 Task와 Command를 찾는 경우", func(t *testing.T) {
@@ -135,9 +135,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 			expectedPanic: "태스크 설정(config)은 nil일 수 없습니다",
 		},
 		{
-			name: "NewTaskFn is nil",
+			name: "NewTask is nil",
 			config: &Config{
-				NewTaskFn: nil,
+				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
 						ID:                  "DummyCommand",
@@ -146,20 +146,20 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "NewTaskFn은 nil일 수 없습니다",
+			expectedPanic: "NewTask는 nil일 수 없습니다",
 		},
 		{
 			name: "CommandConfigs is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
-				Commands:  []*CommandConfig{},
+				NewTask:  dummyNewTask(),
+				Commands: []*CommandConfig{},
 			},
 			expectedPanic: "Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "",
@@ -173,7 +173,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		{
 			name: "NewTaskResultDataFn is nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
@@ -187,7 +187,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		{
 			name: "Duplicate CommandID",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "DuplicateCommand",
@@ -221,7 +221,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 
 		// 먼저 정상 등록
 		r.Register(taskID, &Config{
-			NewTaskFn: dummyNewTaskFn(),
+			NewTask: dummyNewTask(),
 			Commands: []*CommandConfig{
 				{
 					ID:                  "SomeCommand",
@@ -234,7 +234,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		// 동일 ID로 재등록 시 패닉 발생 확인
 		assert.PanicsWithValue(t, fmt.Sprintf("중복된 TaskID입니다: %s", taskID), func() {
 			r.Register(taskID, &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "OtherCommand",
@@ -254,9 +254,9 @@ func TestConfig_Validate(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name: "NewTaskFn is nil",
+			name: "NewTask is nil",
 			config: &Config{
-				NewTaskFn: nil,
+				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
 						ID:                  "DummyCommand",
@@ -265,20 +265,20 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "NewTaskFn은 nil일 수 없습니다",
+			expectedError: "NewTask는 nil일 수 없습니다",
 		},
 		{
 			name: "CommandConfigs is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
-				Commands:  []*CommandConfig{},
+				NewTask:  dummyNewTask(),
+				Commands: []*CommandConfig{},
 			},
 			expectedError: "Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "",
@@ -292,7 +292,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "NewTaskResultDataFn is nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
@@ -306,7 +306,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "NewTaskResultDataFn returns nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "NilDataCommand",
@@ -322,7 +322,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "Duplicate CommandID",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "DuplicateCommand",
@@ -341,7 +341,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "Valid Config",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:                  "ValidCommand",

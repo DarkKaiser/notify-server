@@ -180,7 +180,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	}
 	s.runningMu.Unlock()
 
-	h, err := searchResult.Task.NewTaskFn(instanceID, req, s.appConfig)
+	h, err := searchResult.Task.NewTask(instanceID, req, s.appConfig)
 	if h == nil {
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"task_id":    req.TaskID,

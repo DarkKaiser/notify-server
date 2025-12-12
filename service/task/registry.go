@@ -23,7 +23,7 @@ type Config struct {
 	// Task는 최소 하나 이상의 CommandConfig를 포함해야 하며, 이를 통해 지원 가능한 기능의 범위를 결정합니다.
 	Commands []*CommandConfig
 
-	NewTaskFn NewTaskFunc
+	NewTask NewTaskFunc
 }
 
 // CommandConfig 개별 명령어(Command)에 대한 실행 정책과 결과 데이터 구조체를 생성하는 구조체입니다.
@@ -43,8 +43,8 @@ func (c *Config) Validate() error {
 	if len(c.Commands) == 0 {
 		return apperrors.New(apperrors.ErrInvalidInput, "Commands는 비어있을 수 없습니다")
 	}
-	if c.NewTaskFn == nil {
-		return apperrors.New(apperrors.ErrInvalidInput, "NewTaskFn은 nil일 수 없습니다")
+	if c.NewTask == nil {
+		return apperrors.New(apperrors.ErrInvalidInput, "NewTask는 nil일 수 없습니다")
 	}
 
 	seenCommands := make(map[CommandID]bool)
