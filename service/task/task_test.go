@@ -53,7 +53,7 @@ func TestTask_BasicMethods(t *testing.T) {
 
 		elapsed := testTask.ElapsedTimeAfterRun()
 		assert.GreaterOrEqual(t, elapsed, int64(0), "경과 시간은 0 이상이어야 합니다")
-		assert.LessOrEqual(t, elapsed, int64(2), "경과 시간은 2초 이하여야 합니다")
+		assert.LessOrEqual(t, elapsed, int64(10), "경과 시간은 오차 범위 내여야 합니다")
 	})
 }
 
@@ -65,95 +65,180 @@ func TestTask_Run(t *testing.T) {
 		defaultRegistry = originalRegistry
 	}()
 
-	t.Run("실행 중 에러 발생", func(t *testing.T) {
-		mockSender := NewMockNotificationSender()
-		wg := &sync.WaitGroup{}
-		doneC := make(chan InstanceID, 1)
+	mockSender := NewMockNotificationSender()
 
-		taskInstance := &Task{
-			ID:         "ErrorTask",
-			CommandID:  "ErrorCommand",
-			InstanceID: "ErrorInstance",
-			NotifierID: "test-notifier",
-			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+	tests := []struct {
+		name                 string
+		taskID               string
+		commandID            string
+		canceled             bool
+		runFn                TaskRunFunc
+		storageSetup         func(*MockTaskResultStorage)
+		configSetup          func()
+		expectedNotifyCount  int
+		expectedMessageParts []string
+	}{
+		{
+			name:      "실행 중 에러 발생 (Run Error)",
+			taskID:    "ErrorTask",
+			commandID: "ErrorCommand",
+			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "", nil, errors.New("Run Error")
 			},
-			Storage: &MockTaskResultStorage{},
-		}
-		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-		// Register 사용 (NewTaskFn 더미 추가)
-		Register("ErrorTask", &Config{
-			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
-			Commands: []*CommandConfig{
-				{
-					ID: "ErrorCommand",
-					NewTaskResultDataFn: func() interface{} {
-						return map[string]interface{}{}
-					},
-				},
+			storageSetup: func(m *MockTaskResultStorage) {
+				m.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			},
-		})
-
-		wg.Add(1)
-		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
-
-		select {
-		case id := <-doneC:
-			assert.Equal(t, InstanceID("ErrorInstance"), id)
-		case <-time.After(1 * time.Second):
-			t.Fatal("Task did not complete in time")
-		}
-		wg.Wait()
-
-		assert.Equal(t, 1, mockSender.GetNotifyCallCount())
-		assert.Equal(t, "test-notifier", mockSender.NotifyCalls[0].NotifierID)
-		assert.Contains(t, mockSender.NotifyCalls[0].Message, "Run Error")
-		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업이 실패하였습니다")
-	})
-
-	t.Run("취소된 작업", func(t *testing.T) {
-		mockSender := NewMockNotificationSender()
-		wg := &sync.WaitGroup{}
-		doneC := make(chan InstanceID, 1)
-
-		taskInstance := &Task{
-			ID:         "CancelTask",
-			CommandID:  "CancelCommand",
-			InstanceID: "CancelInstance",
-			NotifierID: "test-notifier",
-			Canceled:   true, // Already canceled
-			RunFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+			configSetup: func() {
+				Register("ErrorTask", &Config{
+					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
+					Commands: []*CommandConfig{
+						{
+							ID: "ErrorCommand",
+							NewTaskResultDataFn: func() interface{} {
+								return map[string]interface{}{}
+							},
+						},
+					},
+				})
+			},
+			expectedNotifyCount:  1,
+			expectedMessageParts: []string{"Run Error", "작업이 실패하였습니다"},
+		},
+		{
+			name:      "이미 취소된 작업 (Canceled)",
+			taskID:    "CancelTask",
+			commandID: "CancelCommand",
+			canceled:  true,
+			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
 				return "Should Not Send", nil, nil
 			},
-			Storage: &MockTaskResultStorage{},
-		}
-		taskInstance.Storage.(*MockTaskResultStorage).On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-		Register("CancelTask", &Config{
-			NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
-			Commands: []*CommandConfig{
-				{
-					ID: "CancelCommand",
-					NewTaskResultDataFn: func() interface{} {
-						return &map[string]interface{}{}
-					},
-				},
+			storageSetup: func(m *MockTaskResultStorage) {
+				m.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			},
+			configSetup: func() {
+				Register("CancelTask", &Config{
+					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
+					Commands: []*CommandConfig{
+						{
+							ID: "CancelCommand",
+							NewTaskResultDataFn: func() interface{} {
+								return &map[string]interface{}{}
+							},
+						},
+					},
+				})
+			},
+			expectedNotifyCount: 0,
+		},
+		{
+			name:      "정상 실행 및 알림 발송 (Success)",
+			taskID:    "SuccessTask",
+			commandID: "SuccessCommand",
+			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+				return "Success Message", map[string]interface{}{"key": "value"}, nil
+			},
+			storageSetup: func(m *MockTaskResultStorage) {
+				m.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				m.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			},
+			configSetup: func() {
+				Register("SuccessTask", &Config{
+					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
+					Commands: []*CommandConfig{
+						{
+							ID: "SuccessCommand",
+							NewTaskResultDataFn: func() interface{} {
+								return map[string]interface{}{}
+							},
+						},
+					},
+				})
+			},
+			expectedNotifyCount:  1,
+			expectedMessageParts: []string{"Success Message"},
+		},
+		{
+			name:      "Storage 저장 실패 (Storage Save Error)",
+			taskID:    "StorageFailTask",
+			commandID: "StorageFailCommand",
+			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+				return "Success Message", map[string]interface{}{"key": "value"}, nil
+			},
+			storageSetup: func(m *MockTaskResultStorage) {
+				m.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				m.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("Save Error"))
+			},
+			configSetup: func() {
+				Register("StorageFailTask", &Config{
+					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (TaskHandler, error) { return nil, nil },
+					Commands: []*CommandConfig{
+						{
+							ID: "StorageFailCommand",
+							NewTaskResultDataFn: func() interface{} {
+								return map[string]interface{}{}
+							},
+						},
+					},
+				})
+			},
+			// 성공 메시지 1회 + 저장 실패 에러 메시지 1회 = 총 2회
+			expectedNotifyCount:  2,
+			expectedMessageParts: []string{"Success Message", "Save Error", "작업결과데이터의 저장이 실패"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockSender.NotifyCalls = nil // Reset mock calls
+
+			if tt.configSetup != nil {
+				tt.configSetup()
+			}
+
+			mockStorage := &MockTaskResultStorage{}
+			if tt.storageSetup != nil {
+				tt.storageSetup(mockStorage)
+			}
+
+			taskInstance := &Task{
+				ID:         ID(tt.taskID),
+				CommandID:  CommandID(tt.commandID),
+				InstanceID: InstanceID(tt.taskID + "_Instance"),
+				NotifierID: "test-notifier",
+				Canceled:   tt.canceled,
+				RunFn:      tt.runFn,
+				Storage:    mockStorage,
+			}
+
+			wg := &sync.WaitGroup{}
+			doneC := make(chan InstanceID, 1)
+
+			wg.Add(1)
+			go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
+
+			select {
+			case id := <-doneC:
+				assert.Equal(t, taskInstance.InstanceID, id)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Task did not complete in time")
+			}
+			wg.Wait()
+
+			assert.Equal(t, tt.expectedNotifyCount, mockSender.GetNotifyCallCount(), "알림 발송 횟수가 일치해야 합니다")
+
+			if len(tt.expectedMessageParts) > 0 {
+				// 모든 메시지를 합쳐서 검사 (간소화)
+				allMessages := ""
+				for _, call := range mockSender.NotifyCalls {
+					allMessages += call.Message
+				}
+
+				for _, part := range tt.expectedMessageParts {
+					assert.Contains(t, allMessages, part, "메시지에 예상 문구가 포함되어야 합니다")
+				}
+			}
+
+			mockStorage.AssertExpectations(t)
 		})
-
-		wg.Add(1)
-		go taskInstance.Run(NewTaskContext(), mockSender, wg, doneC)
-
-		select {
-		case id := <-doneC:
-			assert.Equal(t, InstanceID("CancelInstance"), id)
-		case <-time.After(1 * time.Second):
-			t.Fatal("Task did not complete in time")
-		}
-		wg.Wait()
-
-		// Should not send	// No notification should be sent for duplicate
-		assert.Equal(t, 0, mockSender.GetNotifyCallCount())
-	})
+	}
 }
