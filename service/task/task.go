@@ -116,14 +116,8 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
 	if t.RunFn == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgRunFnNotInitialized)
-
-		applog.WithComponentAndFields("task.executor", log.Fields{
-			"task_id":    t.GetID(),
-			"command_id": t.GetCommandID(),
-		}).Error(message)
-
+		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-
 		return nil, apperrors.New(apperrors.ErrInternal, msgRunFnNotInitialized)
 	}
 
@@ -135,24 +129,15 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	}
 	if taskResultData == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgTaskResultDataCreationFailed)
-
-		applog.WithComponentAndFields("task.executor", log.Fields{
-			"task_id":    t.GetID(),
-			"command_id": t.GetCommandID(),
-		}).Error(message)
-
+		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-
 		return nil, apperrors.New(apperrors.ErrInternal, msgTaskResultDataCreationFailed)
 	}
 
 	// Storage가 초기화되지 않았을 경우에 대한 방어 로직
 	if t.Storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
-		applog.WithComponentAndFields("task.executor", log.Fields{
-			"task_id":    t.GetID(),
-			"command_id": t.GetCommandID(),
-		}).Error(message)
+		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
 		return nil, apperrors.New(apperrors.ErrInternal, msgStorageNotInitialized)
 	}
@@ -160,13 +145,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	err := t.Storage.Load(t.GetID(), t.GetCommandID(), taskResultData)
 	if err != nil {
 		message := fmt.Sprintf(msgPreviousDataLoadFailed, err)
-
-		applog.WithComponentAndFields("task.executor", log.Fields{
-			"task_id":    t.GetID(),
-			"command_id": t.GetCommandID(),
-			"error":      err,
-		}).Warn(message)
-
+		t.log(log.WarnLevel, message, err)
 		t.notify(taskCtx, notificationSender, message)
 	}
 
@@ -186,25 +165,13 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 		if changedTaskResultData != nil {
 			if err := t.Storage.Save(t.GetID(), t.GetCommandID(), changedTaskResultData); err != nil {
 				message := fmt.Sprintf(msgCurrentDataSaveFailed, err)
-
-				applog.WithComponentAndFields("task.executor", log.Fields{
-					"task_id":    t.GetID(),
-					"command_id": t.GetCommandID(),
-					"error":      err,
-				}).Warn(message)
-
+				t.log(log.WarnLevel, message, err)
 				t.notifyError(taskCtx, notificationSender, message)
 			}
 		}
 	} else {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, runErr)
-
-		applog.WithComponentAndFields("task.executor", log.Fields{
-			"task_id":    t.GetID(),
-			"command_id": t.GetCommandID(),
-			"error":      runErr,
-		}).Error(message)
-
+		t.log(log.ErrorLevel, message, runErr)
 		t.notifyError(taskCtx, notificationSender, message)
 	}
 }
@@ -215,4 +182,16 @@ func (t *Task) notify(taskCtx TaskContext, notificationSender NotificationSender
 
 func (t *Task) notifyError(taskCtx TaskContext, notificationSender NotificationSender, message string) bool {
 	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), message)
+}
+
+func (t *Task) log(level log.Level, message string, err error) {
+	fields := log.Fields{
+		"task_id":    t.GetID(),
+		"command_id": t.GetCommandID(),
+	}
+	if err != nil {
+		fields["error"] = err
+	}
+
+	applog.WithComponentAndFields("task.executor", fields).Log(level, message)
 }
