@@ -106,163 +106,178 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 	for {
 		select {
 		case req := <-s.taskRunC:
-			applog.WithComponentAndFields("task.service", log.Fields{
-				"task_id":    req.TaskID,
-				"command_id": req.CommandID,
-				"run_by":     req.RunBy,
-			}).Debug("새로운 Task 실행 요청 수신")
-
-			if req.TaskContext == nil {
-				req.TaskContext = NewTaskContext()
-			}
-			req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
-
-			searchResult, err := findConfig(req.TaskID, req.CommandID)
-			if err != nil {
-				m := msgTaskNotFound
-
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":    req.TaskID,
-					"command_id": req.CommandID,
-					"error":      err,
-				}).Error(m)
-
-				go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
-
-				continue
-			}
-
-			// 인스턴스 중복 실행 확인 (Concurrency Control)
-			// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
-			var alreadyRunTaskHandler TaskHandler
-			if !searchResult.Command.AllowMultiple {
-				s.runningMu.Lock()
-				for _, handler := range s.taskHandlers {
-					// 작업 중복 확인 로직
-					if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && handler.IsCanceled() == false {
-						alreadyRunTaskHandler = handler
-						break
-					}
-				}
-				s.runningMu.Unlock()
-
-				if alreadyRunTaskHandler != nil {
-					req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
-					go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
-					continue
-				}
-			}
-
-			var instanceID InstanceID
-
-			s.runningMu.Lock()
-			for {
-				instanceID = s.instanceIDGenerator.New()
-				if _, exists := s.taskHandlers[instanceID]; exists == false {
-					break
-				}
-			}
-			s.runningMu.Unlock()
-
-			h, err := searchResult.Task.NewTaskFn(instanceID, req, s.appConfig)
-			if h == nil {
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":    req.TaskID,
-					"command_id": req.CommandID,
-					"error":      err,
-				}).Error(err)
-
-				go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
-
-				continue
-			}
-
-			// 생성된 Task에 Storage 주입
-			// TaskHandler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
-			h.SetStorage(s.taskStorage)
-
-			s.runningMu.Lock()
-			s.taskHandlers[instanceID] = h
-			s.runningMu.Unlock()
-
-			s.taskStopWaiter.Add(1)
-			req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
-			go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
-
-			if req.NotifyOnStart == true {
-				go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
-			}
+			s.handleRunRequest(req)
 
 		case instanceID := <-s.taskDoneC:
-			s.runningMu.Lock()
-			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":     taskHandler.GetID(),
-					"command_id":  taskHandler.GetCommandID(),
-					"instance_id": instanceID,
-				}).Debug("Task 작업 완료")
-
-				delete(s.taskHandlers, instanceID)
-			} else {
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"instance_id": instanceID,
-				}).Warn("등록되지 않은 Task에 대한 작업완료 메시지 수신")
-			}
-			s.runningMu.Unlock()
+			s.handleTaskDone(instanceID)
 
 		case instanceID := <-s.taskCancelC:
-			s.runningMu.Lock()
-			if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
-				taskHandler.Cancel()
-
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"task_id":     taskHandler.GetID(),
-					"command_id":  taskHandler.GetCommandID(),
-					"instance_id": instanceID,
-				}).Debug("Task 작업 취소")
-
-				go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), msgTaskCanceledByUser)
-			} else {
-				applog.WithComponentAndFields("task.service", log.Fields{
-					"instance_id": instanceID,
-				}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
-
-				go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskCancelInfoNotFound, instanceID))
-			}
-			s.runningMu.Unlock()
+			s.handleTaskCancel(instanceID)
 
 		case <-serviceStopCtx.Done():
-			applog.WithComponent("task.service").Info("Task 서비스 중지중...")
-
-			// Task 스케쥴러를 중지한다.
-			s.scheduler.Stop()
-
-			s.runningMu.Lock()
-			// 현재 작업중인 Task의 작업을 모두 취소한다.
-			for _, handler := range s.taskHandlers {
-				handler.Cancel()
-			}
-			s.runningMu.Unlock()
-
-			close(s.taskRunC)
-			close(s.taskCancelC)
-
-			// Task의 작업이 모두 취소될 때까지 대기한다.
-			s.taskStopWaiter.Wait()
-
-			close(s.taskDoneC)
-
-			s.runningMu.Lock()
-			s.running = false
-			s.taskHandlers = nil
-			s.notificationSender = nil
-			s.runningMu.Unlock()
-
-			applog.WithComponent("task.service").Info("Task 서비스 중지됨")
-
+			s.handleStop()
 			return
 		}
 	}
+}
+
+func (s *Service) handleRunRequest(req *RunRequest) {
+	applog.WithComponentAndFields("task.service", log.Fields{
+		"task_id":    req.TaskID,
+		"command_id": req.CommandID,
+		"run_by":     req.RunBy,
+	}).Debug("새로운 Task 실행 요청 수신")
+
+	if req.TaskContext == nil {
+		req.TaskContext = NewTaskContext()
+	}
+	req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
+
+	searchResult, err := findConfig(req.TaskID, req.CommandID)
+	if err != nil {
+		m := msgTaskNotFound
+
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"task_id":    req.TaskID,
+			"command_id": req.CommandID,
+			"error":      err,
+		}).Error(m)
+
+		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, m)
+
+		return
+	}
+
+	// 인스턴스 중복 실행 확인 (Concurrency Control)
+	// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
+	var alreadyRunTaskHandler TaskHandler
+	if !searchResult.Command.AllowMultiple {
+		s.runningMu.Lock()
+		for _, handler := range s.taskHandlers {
+			// 작업 중복 확인 로직
+			if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && handler.IsCanceled() == false {
+				alreadyRunTaskHandler = handler
+				break
+			}
+		}
+		s.runningMu.Unlock()
+
+		if alreadyRunTaskHandler != nil {
+			req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunTaskHandler.GetInstanceID(), alreadyRunTaskHandler.ElapsedTimeAfterRun())
+			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
+			return
+		}
+	}
+
+	var instanceID InstanceID
+
+	s.runningMu.Lock()
+	for {
+		instanceID = s.instanceIDGenerator.New()
+		if _, exists := s.taskHandlers[instanceID]; exists == false {
+			break
+		}
+	}
+	s.runningMu.Unlock()
+
+	h, err := searchResult.Task.NewTaskFn(instanceID, req, s.appConfig)
+	if h == nil {
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"task_id":    req.TaskID,
+			"command_id": req.CommandID,
+			"error":      err,
+		}).Error(err)
+
+		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
+
+		return
+	}
+
+	// 생성된 Task에 Storage 주입
+	// TaskHandler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
+	h.SetStorage(s.taskStorage)
+
+	s.runningMu.Lock()
+	s.taskHandlers[instanceID] = h
+	s.runningMu.Unlock()
+
+	s.taskStopWaiter.Add(1)
+	req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
+	go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
+
+	if req.NotifyOnStart == true {
+		go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
+	}
+}
+
+func (s *Service) handleTaskDone(instanceID InstanceID) {
+	s.runningMu.Lock()
+	if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"task_id":     taskHandler.GetID(),
+			"command_id":  taskHandler.GetCommandID(),
+			"instance_id": instanceID,
+		}).Debug("Task 작업 완료")
+
+		delete(s.taskHandlers, instanceID)
+	} else {
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"instance_id": instanceID,
+		}).Warn("등록되지 않은 Task에 대한 작업완료 메시지 수신")
+	}
+	s.runningMu.Unlock()
+}
+
+func (s *Service) handleTaskCancel(instanceID InstanceID) {
+	s.runningMu.Lock()
+	if taskHandler, exists := s.taskHandlers[instanceID]; exists == true {
+		taskHandler.Cancel()
+
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"task_id":     taskHandler.GetID(),
+			"command_id":  taskHandler.GetCommandID(),
+			"instance_id": instanceID,
+		}).Debug("Task 작업 취소")
+
+		go s.notificationSender.Notify(NewTaskContext().WithTask(taskHandler.GetID(), taskHandler.GetCommandID()), taskHandler.GetNotifierID(), msgTaskCanceledByUser)
+	} else {
+		applog.WithComponentAndFields("task.service", log.Fields{
+			"instance_id": instanceID,
+		}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
+
+		go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskCancelInfoNotFound, instanceID))
+	}
+	s.runningMu.Unlock()
+}
+
+func (s *Service) handleStop() {
+	applog.WithComponent("task.service").Info("Task 서비스 중지중...")
+
+	// Task 스케쥴러를 중지한다.
+	s.scheduler.Stop()
+
+	s.runningMu.Lock()
+	// 현재 작업중인 Task의 작업을 모두 취소한다.
+	for _, handler := range s.taskHandlers {
+		handler.Cancel()
+	}
+	s.runningMu.Unlock()
+
+	close(s.taskRunC)
+	close(s.taskCancelC)
+
+	// Task의 작업이 모두 취소될 때까지 대기한다.
+	s.taskStopWaiter.Wait()
+
+	close(s.taskDoneC)
+
+	s.runningMu.Lock()
+	s.running = false
+	s.taskHandlers = nil
+	s.notificationSender = nil
+	s.runningMu.Unlock()
+
+	applog.WithComponent("task.service").Info("Task 서비스 중지됨")
 }
 
 func (s *Service) Run(req *RunRequest) (err error) {
