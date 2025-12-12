@@ -53,7 +53,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	}
 
 	// 3. 테스트 데이터 준비
-	taskCommandData := &naverShoppingWatchPriceTaskCommandData{
+	commandData := &naverShoppingWatchPriceCommandData{
 		Query: query,
 		Filters: struct {
 			IncludedKeywords string `json:"included_keywords"`
@@ -72,7 +72,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchPrice(taskCommandData, resultData, true)
+		_, _, err := tTask.runWatchPrice(commandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

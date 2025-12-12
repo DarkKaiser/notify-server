@@ -38,7 +38,7 @@ func TestSetupRoutes_Table(t *testing.T) {
 	e := echo.New()
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &testutil.MockNotificationService{}
+	mockService := &testutil.MockNotificationSender{}
 	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
@@ -183,7 +183,7 @@ func TestNotificationsEndpoint_Integration_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Per-test Setup
 			e := echo.New()
-			mockService := &testutil.MockNotificationService{ShouldFail: tt.shouldFail}
+			mockService := &testutil.MockNotificationSender{ShouldFail: tt.shouldFail}
 			h := handler.NewHandler(applicationManager, mockService)
 			SetupRoutes(e, h)
 

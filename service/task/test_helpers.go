@@ -10,9 +10,36 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
+	"github.com/stretchr/testify/mock"
 )
 
-// MockHTTPFetcher HTTP 요청을 Mock하는 구조체입니다.
+// TestHelpers - 테스트 헬퍼 함수들
+
+// MockTaskResultStorage 테스트용 Mock Storage
+type MockTaskResultStorage struct {
+	mock.Mock
+}
+
+func (m *MockTaskResultStorage) Get(taskID ID, commandID CommandID) (string, error) {
+	args := m.Called(taskID, commandID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTaskResultStorage) Save(taskID ID, commandID CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
+}
+
+func (m *MockTaskResultStorage) SetStorage(storage TaskResultStorage) {
+	// Mock에서는 아무것도 하지 않음 or Mock 동작 정의
+}
+
+func (m *MockTaskResultStorage) Load(taskID ID, commandID CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
+}
+
+// MockHTTPFetcher 테스트용 Mock Fetcher
 type MockHTTPFetcher struct {
 	mu sync.Mutex
 
@@ -100,8 +127,6 @@ func (m *MockHTTPFetcher) Reset() {
 	m.RequestedURLs = make([]string, 0)
 }
 
-// TestHelpers - 테스트 헬퍼 함수들
-
 // CreateTestTask 테스트용 Task 인스턴스를 생성합니다.
 func CreateTestTask(id ID, commandID CommandID, instanceID InstanceID) *Task {
 	return &Task{
@@ -137,26 +162,6 @@ func CreateTestConfig() *config.AppConfig {
 			},
 		},
 	}
-}
-
-// MockTaskResultStorage 테스트용 Mock 저장소 구현체
-type MockTaskResultStorage struct {
-	LoadFn func(taskID ID, commandID CommandID, v interface{}) error
-	SaveFn func(taskID ID, commandID CommandID, v interface{}) error
-}
-
-func (m *MockTaskResultStorage) Load(taskID ID, commandID CommandID, v interface{}) error {
-	if m.LoadFn != nil {
-		return m.LoadFn(taskID, commandID, v)
-	}
-	return nil
-}
-
-func (m *MockTaskResultStorage) Save(taskID ID, commandID CommandID, v interface{}) error {
-	if m.SaveFn != nil {
-		return m.SaveFn(taskID, commandID, v)
-	}
-	return nil
 }
 
 // CreateTestCSVFile 테스트용 CSV 파일을 생성합니다.
@@ -231,7 +236,7 @@ func CreateTestConfigWithTasks(tasks []struct {
 
 		// Commands 추가
 		for _, cmd := range task.Commands {
-			configCmd := config.TaskCommandConfig{
+			configCmd := config.CommandConfig{
 				ID:    cmd.ID,
 				Title: cmd.Title,
 				Scheduler: struct {

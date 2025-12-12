@@ -31,16 +31,6 @@ func NewTelegramConfigProcessor(creatorFn telegramNotifierCreatorFunc) NotifierC
 	}
 }
 
-// telegramBotAPIClient tgbotapi.BotAPI 구현체를 래핑한 구조체
-type telegramBotAPIClient struct {
-	*tgbotapi.BotAPI
-}
-
-// GetSelf 텔레그램 봇의 정보를 반환합니다.
-func (w *telegramBotAPIClient) GetSelf() tgbotapi.User {
-	return w.Self
-}
-
 // newTelegramNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
@@ -56,8 +46,8 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, chatID, appConfig, executor), nil
 }
 
-// newTelegramNotifierWithBot TelegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id NotifierID, botAPI TelegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) NotifierHandler {
+// newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
+func newTelegramNotifierWithBot(id NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) NotifierHandler {
 	notifier := &telegramNotifier{
 		notifier: NewNotifier(id, true, 100),
 
@@ -83,8 +73,8 @@ func newTelegramNotifierWithBot(id NotifierID, botAPI TelegramBotAPI, chatID int
 					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
 					commandDescription: c.Description,                            // 설명: 커맨드 설명
 
-					taskID:        task.ID(t.ID),
-					taskCommandID: task.CommandID(c.ID),
+					taskID:    task.ID(t.ID),
+					commandID: task.CommandID(c.ID),
 				},
 			)
 		}

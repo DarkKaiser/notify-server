@@ -49,7 +49,7 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 					{
 						ID:    "TestTask",
 						Title: "Test Task",
-						Commands: []config.TaskCommandConfig{
+						Commands: []config.CommandConfig{
 							{
 								ID:          "Run",
 								Title:       "Run",
@@ -73,7 +73,7 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 					{
 						ID:    "TestTask",
 						Title: "Test Task",
-						Commands: []config.TaskCommandConfig{
+						Commands: []config.CommandConfig{
 							{
 								ID:    "Stop",
 								Title: "Stop",

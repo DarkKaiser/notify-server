@@ -21,7 +21,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		Tasks: []config.TaskConfig{
 			{
 				ID: "task1",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID:          "run",
 						Title:       "Task 1 Run",
@@ -78,7 +78,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1) // Expect run call
 				m.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
-					return req.TaskID == "task1" && req.TaskCommandID == "run"
+					return req.TaskID == "task1" && req.CommandID == "run"
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil)

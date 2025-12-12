@@ -22,7 +22,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			{
 				ID:    "test_task",
 				Title: "Test Task",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID:          "run",
 						Title:       "Run Task",
@@ -95,7 +95,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 				wg.Add(1)
 				m.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
 					return req.TaskID == "test_task" &&
-						req.TaskCommandID == "run" &&
+						req.CommandID == "run" &&
 						req.NotifierID == "test-notifier" &&
 						req.RunBy == task.RunByUser
 				})).Run(func(args mock.Arguments) {

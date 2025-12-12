@@ -10,7 +10,9 @@ import (
 
 	"github.com/darkkaiser/notify-server/pkg/concurrency"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
+	log "github.com/sirupsen/logrus"
 )
 
 // TaskResultStorage Task 실행 결과를 저장하고 불러오는 저장소 인터페이스
@@ -22,34 +24,96 @@ type TaskResultStorage interface {
 // FileTaskResultStorage 파일 시스템 기반의 Task 결과 저장소 구현체
 type FileTaskResultStorage struct {
 	appName string
-	baseDir string                  // 데이터 저장 디렉토리
-	locks   *concurrency.KeyedMutex // 파일별 락킹을 위한 KeyedMutex
+
+	baseDir string // 데이터 저장 디렉토리
+
+	locks *concurrency.KeyedMutex // 파일별 락킹을 위한 KeyedMutex
 }
+
+// defaultDataDirectory 기본 데이터 저장 디렉토리 이름
+const defaultDataDirectory = "data"
 
 // NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
 // 기본 저장 디렉토리는 "data" 입니다.
 func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
-	return &FileTaskResultStorage{
+	s := &FileTaskResultStorage{
 		appName: appName,
-		baseDir: "data",
-		locks:   concurrency.NewKeyedMutex(),
+
+		baseDir: defaultDataDirectory,
+
+		locks: concurrency.NewKeyedMutex(),
 	}
+
+	// 시작 시 오래된 임시 파일 정리 (Best Effort)
+	s.CleanupTempFiles()
+
+	return s
 }
 
-// SetBaseDir 데이터 저장 디렉토리를 변경합니다. (주로 테스트용)
+// SetBaseDir 데이터 저장 디렉토리를 변경합니다.
 func (s *FileTaskResultStorage) SetBaseDir(dir string) {
 	s.baseDir = dir
 }
 
-func (s *FileTaskResultStorage) dataFileName(taskID ID, commandID CommandID) string {
+// CleanupTempFiles 작업 도중 비정상 종료 등으로 남겨진 임시 파일(*.tmp)을 정리합니다.
+func (s *FileTaskResultStorage) CleanupTempFiles() {
+	pattern := filepath.Join(s.baseDir, "task-result-*.tmp")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		applog.WithComponentAndFields("storage", log.Fields{
+			"pattern": pattern,
+			"error":   err,
+		}).Warn("임시 파일 정리 중 패턴 매칭 실패")
+		return
+	}
+
+	for _, match := range matches {
+		if err := os.Remove(match); err != nil {
+			applog.WithComponentAndFields("storage", log.Fields{
+				"file":  match,
+				"error": err,
+			}).Warn("남겨진 임시 파일 삭제 실패")
+		} else {
+			applog.WithComponentAndFields("storage", log.Fields{
+				"file": match,
+			}).Info("남겨진 임시 파일을 삭제했습니다")
+		}
+	}
+}
+
+func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (string, error) {
 	filename := fmt.Sprintf("%s-task-%s-%s.json", s.appName, strutil.ToSnakeCase(string(taskID)), strutil.ToSnakeCase(string(commandID)))
 	filename = strings.ReplaceAll(filename, "_", "-")
-	return filepath.Join(s.baseDir, filename)
+
+	// Base 디렉토리의 절대 경로
+	basePath, err := filepath.Abs(s.baseDir)
+	if err != nil {
+		return "", apperrors.Wrap(err, apperrors.ErrInternal, "데이터 디렉토리 절대 경로 확인 실패")
+	}
+
+	// 타겟 파일의 절대 경로
+	fullPath := filepath.Join(basePath, filename)
+	cleanPath := filepath.Clean(fullPath)
+
+	// Path Traversal 검사: 생성된 경로가 반드시 Base 디렉토리로 시작해야 함
+	if !strings.HasPrefix(cleanPath, basePath) {
+		applog.WithComponentAndFields("storage", log.Fields{
+			"task_id":    taskID,
+			"command_id": commandID,
+			"path":       cleanPath,
+		}).Error("비정상적인 파일 경로 접근 시도가 감지되었습니다")
+		return "", apperrors.New(apperrors.ErrInternal, "유효하지 않은 파일 경로입니다 (Path Traversal Detected)")
+	}
+
+	return cleanPath, nil
 }
 
 // Load 저장된 Task 결과를 파일에서 읽어옵니다.
 func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface{}) error {
-	filename := s.dataFileName(taskID, commandID)
+	filename, err := s.resolvePath(taskID, commandID)
+	if err != nil {
+		return err
+	}
 
 	// 읽기 시에도 락을 걸어서 쓰기 중인 파일에 접근하는 것을 방지합니다.
 	s.locks.Lock(filename)
@@ -71,7 +135,10 @@ func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface
 
 // Save Task 결과를 파일에 저장합니다. (Atomic Write 적용)
 func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface{}) error {
-	filename := s.dataFileName(taskID, commandID)
+	filename, err := s.resolvePath(taskID, commandID)
+	if err != nil {
+		return err
+	}
 
 	// 파일별 락 획득
 	s.locks.Lock(filename)

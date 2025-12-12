@@ -21,7 +21,7 @@ const (
 	// TaskID
 	TidLotto task.ID = "LOTTO"
 
-	// TaskCommandID
+	// CommandID
 	TcidLottoPrediction task.CommandID = "Prediction" // 로또 번호 예측
 )
 
@@ -81,16 +81,16 @@ type lottoTaskData struct {
 type lottoPredictionResultData struct{}
 
 func init() {
-	task.RegisterTask(TidLotto, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
-			TaskCommandID: TcidLottoPrediction,
+	task.Register(TidLotto, &task.Config{
+		Commands: []*task.CommandConfig{{
+			ID: TcidLottoPrediction,
 
-			AllowMultipleInstances: false,
+			AllowMultiple: false,
 
 			NewTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
 			if req.TaskID != TidLotto {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -112,7 +112,7 @@ func init() {
 			lottoTask := &lottoTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,

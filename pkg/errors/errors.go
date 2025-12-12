@@ -82,18 +82,18 @@ func (e *AppError) Unwrap() error {
 }
 
 // New 새로운 에러를 생성합니다.
-func New(errType ErrorType, msg string) error {
+func New(errType ErrorType, message string) error {
 	return &AppError{
 		Type:    errType,
-		Message: msg,
+		Message: message,
 	}
 }
 
 // Wrap 기존 에러를 감싸서 새로운 에러를 생성합니다.
-func Wrap(err error, errType ErrorType, msg string) error {
+func Wrap(err error, errType ErrorType, message string) error {
 	return &AppError{
 		Type:    errType,
-		Message: msg,
+		Message: message,
 		Cause:   err,
 	}
 }

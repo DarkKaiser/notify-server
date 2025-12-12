@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestKurlyWatchProductPriceTaskCommandData_Validate(t *testing.T) {
+func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		data := &kurlyWatchProductPriceTaskCommandData{
+		data := &kurlyWatchProductPriceCommandData{
 			WatchProductsFile: "test.csv",
 		}
 
@@ -17,7 +17,7 @@ func TestKurlyWatchProductPriceTaskCommandData_Validate(t *testing.T) {
 	})
 
 	t.Run("파일 경로가 비어있는 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceTaskCommandData{
+		data := &kurlyWatchProductPriceCommandData{
 			WatchProductsFile: "",
 		}
 
@@ -27,7 +27,7 @@ func TestKurlyWatchProductPriceTaskCommandData_Validate(t *testing.T) {
 	})
 
 	t.Run("CSV 파일이 아닌 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceTaskCommandData{
+		data := &kurlyWatchProductPriceCommandData{
 			WatchProductsFile: "test.txt",
 		}
 
@@ -44,7 +44,7 @@ func TestKurlyWatchProductPriceTaskCommandData_Validate(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceTaskCommandData{
+			data := &kurlyWatchProductPriceCommandData{
 				WatchProductsFile: filename,
 			}
 
@@ -276,9 +276,9 @@ func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
 	})
 }
 
-func TestKurlyWatchProductPriceTaskCommandData_Validate_ErrorCases(t *testing.T) {
+func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
 	t.Run("빈 파일 경로", func(t *testing.T) {
-		data := &kurlyWatchProductPriceTaskCommandData{
+		data := &kurlyWatchProductPriceCommandData{
 			WatchProductsFile: "",
 		}
 
@@ -296,7 +296,7 @@ func TestKurlyWatchProductPriceTaskCommandData_Validate_ErrorCases(t *testing.T)
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceTaskCommandData{
+			data := &kurlyWatchProductPriceCommandData{
 				WatchProductsFile: filename,
 			}
 

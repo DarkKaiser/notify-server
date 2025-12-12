@@ -54,9 +54,9 @@ func TestWaitForServer(t *testing.T) {
 	})
 }
 
-// TestMockNotificationService_NotifyWithTitle tests the NotifyWithTitle method.
-func TestMockNotificationService_NotifyWithTitle(t *testing.T) {
-	mock := &MockNotificationService{}
+// TestMockNotificationSender_NotifyWithTitle tests the NotifyWithTitle method.
+func TestMockNotificationSender_NotifyWithTitle(t *testing.T) {
+	mock := &MockNotificationSender{}
 
 	t.Run("Success", func(t *testing.T) {
 		mock.Reset()
@@ -80,8 +80,8 @@ func TestMockNotificationService_NotifyWithTitle(t *testing.T) {
 	})
 }
 
-func TestMockNotificationService(t *testing.T) {
-	mock := &MockNotificationService{}
+func TestMockNotificationSender(t *testing.T) {
+	mock := &MockNotificationSender{}
 
 	t.Run("NotifyDefault", func(t *testing.T) {
 		mock.Reset()

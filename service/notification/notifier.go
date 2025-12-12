@@ -8,8 +8,8 @@ import (
 
 // notifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
 type notifyRequest struct {
-	message string
 	taskCtx task.TaskContext
+	message string
 }
 
 // notifier NotifierHandler의 기본 구현체입니다.
@@ -58,8 +58,8 @@ func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded b
 	}
 
 	n.requestC <- &notifyRequest{
-		message: message,
 		taskCtx: taskCtx,
+		message: message,
 	}
 
 	return true

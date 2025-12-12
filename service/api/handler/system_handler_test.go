@@ -12,32 +12,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationService는 테스트용 NotificationService입니다.
-type MockNotificationService struct{}
+// MockNotificationSender는 테스트용 NotificationService입니다.
+type MockNotificationSender struct{}
 
-func (m *MockNotificationService) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
+func (m *MockNotificationSender) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
 	return true
 }
 
-func (m *MockNotificationService) NotifyDefault(message string) bool {
+func (m *MockNotificationSender) NotifyDefault(message string) bool {
 	return true
 }
 
-func (m *MockNotificationService) NotifyDefaultWithError(message string) bool {
+func (m *MockNotificationSender) NotifyDefaultWithError(message string) bool {
 	return true
 }
 
 func TestHealthCheckHandler_Table(t *testing.T) {
 	tests := []struct {
 		name              string
-		mockService       *MockNotificationService
+		mockService       *MockNotificationSender
 		useNilService     bool
 		expectedStatus    string
 		expectedDepStatus string
 	}{
 		{
 			name:              "Healthy",
-			mockService:       &MockNotificationService{},
+			mockService:       &MockNotificationSender{},
 			useNilService:     false,
 			expectedStatus:    "healthy",
 			expectedDepStatus: "healthy",
@@ -106,7 +106,7 @@ func TestVersionHandler_Table(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			h := NewSystemHandler(&MockNotificationService{}, tt.buildInfo)
+			h := NewSystemHandler(&MockNotificationSender{}, tt.buildInfo)
 
 			if assert.NoError(t, h.VersionHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)

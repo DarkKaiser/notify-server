@@ -27,7 +27,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-// NotifyAPIService Notify API 서버의 생명주기를 관리하는 서비스입니다.
+// Service Notify API 서버의 생명주기를 관리하는 서비스입니다.
 //
 // 이 서비스는 다음과 같은 역할을 수행합니다:
 //   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
@@ -38,31 +38,31 @@ const (
 //
 // 서비스는 고루틴으로 실행되며, context를 통해 종료 신호를 받습니다.
 // Start() 메서드로 시작하고, context 취소로 종료됩니다.
-type NotifyAPIService struct {
+type Service struct {
 	appConfig *config.AppConfig
+
+	notificationSender notification.Sender
+
+	buildInfo common.BuildInfo
 
 	running   bool
 	runningMu sync.Mutex
-
-	notificationService notification.Service
-
-	buildInfo common.BuildInfo
 }
 
-// NewService NotifyAPIService 인스턴스를 생성합니다.
+// NewService Service 인스턴스를 생성합니다.
 //
 // Returns:
-//   - 초기화된 NotifyAPIService 인스턴스
-func NewService(appConfig *config.AppConfig, notificationService notification.Service, buildInfo common.BuildInfo) *NotifyAPIService {
-	return &NotifyAPIService{
+//   - 초기화된 Service 인스턴스
+func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo common.BuildInfo) *Service {
+	return &Service{
 		appConfig: appConfig,
+
+		notificationSender: notificationSender,
+
+		buildInfo: buildInfo,
 
 		running:   false,
 		runningMu: sync.Mutex{},
-
-		notificationService: notificationService,
-
-		buildInfo: buildInfo,
 	}
 }
 
@@ -82,20 +82,20 @@ func NewService(appConfig *config.AppConfig, notificationService notification.Se
 //   - error: notificationService가 nil이거나 이미 실행 중인 경우 에러 반환
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
-func (s *NotifyAPIService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent("api.service").Info("NotifyAPI 서비스 시작중...")
+	applog.WithComponent("api.service").Info("API 서비스 시작중...")
 
-	if s.notificationService == nil {
+	if s.notificationSender == nil {
 		defer serviceStopWaiter.Done()
-		return apperrors.New(apperrors.ErrInternal, "notificationService 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.ErrInternal, "notificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
 		defer serviceStopWaiter.Done()
-		applog.WithComponent("api.service").Warn("NotifyAPI 서비스가 이미 시작됨!!!")
+		applog.WithComponent("api.service").Warn("API 서비스가 이미 시작됨!!!")
 		return nil
 	}
 
@@ -103,14 +103,14 @@ func (s *NotifyAPIService) Start(serviceStopCtx context.Context, serviceStopWait
 
 	s.running = true
 
-	applog.WithComponent("api.service").Info("NotifyAPI 서비스 시작됨")
+	applog.WithComponent("api.service").Info("API 서비스 시작됨")
 
 	return nil
 }
 
 // runServiceLoop 서비스의 메인 실행 루프입니다.
 // 서버 설정, HTTP 서버 시작, Shutdown 대기를 순차적으로 수행합니다.
-func (s *NotifyAPIService) runServiceLoop(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
+func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
 
 	// 서버 설정
@@ -134,13 +134,13 @@ func (s *NotifyAPIService) runServiceLoop(serviceStopCtx context.Context, servic
 //
 // Returns:
 //   - 설정이 완료된 Echo 인스턴스
-func (s *NotifyAPIService) setupServer() *echo.Echo {
+func (s *Service) setupServer() *echo.Echo {
 	// ApplicationManager 생성
 	applicationManager := apiauth.NewApplicationManager(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationService, s.buildInfo)
-	v1Handler := v1handler.NewHandler(applicationManager, s.notificationService)
+	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
+	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
 
 	// Echo 서버 생성
 	e := NewHTTPServer(HTTPServerConfig{
@@ -165,13 +165,13 @@ func (s *NotifyAPIService) setupServer() *echo.Echo {
 //   - done: 서버 종료 신호를 보내기 위한 채널
 //
 // Note: 이 함수는 블로킹되며, 서버가 종료될 때까지 반환되지 않습니다.
-func (s *NotifyAPIService) startHTTPServer(e *echo.Echo, done chan struct{}) {
+func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	defer close(done)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
 	applog.WithComponentAndFields("api.service", log.Fields{
 		"port": port,
-	}).Debug("NotifyAPI 서비스 > http 서버 시작")
+	}).Debug("API 서비스 > http 서버 시작")
 
 	var err error
 	if s.appConfig.NotifyAPI.WS.TLSServer {
@@ -190,7 +190,7 @@ func (s *NotifyAPIService) startHTTPServer(e *echo.Echo, done chan struct{}) {
 // handleServerError 서버 에러를 처리합니다.
 // 정상 종료(http.ErrServerClosed)는 Info 레벨로 로깅하고,
 // 그 외의 에러는 Error 레벨로 로깅하며 텔레그램 알림을 전송합니다.
-func (s *NotifyAPIService) handleServerError(err error) {
+func (s *Service) handleServerError(err error) {
 	// 에러가 없으면 처리하지 않음 (정상 종료)
 	if err == nil {
 		return
@@ -198,18 +198,18 @@ func (s *NotifyAPIService) handleServerError(err error) {
 
 	// 정상적인 서버 종료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent("api.service").Info("NotifyAPI 서비스 > http 서버 중지됨")
+		applog.WithComponent("api.service").Info("API 서비스 > http 서버 중지됨")
 		return
 	}
 
 	// 예상치 못한 에러 발생
-	msg := "NotifyAPI 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
+	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 	applog.WithComponentAndFields("api.service", log.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
-	}).Error(msg)
+	}).Error(message)
 
-	s.notificationService.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", msg, err))
+	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", message, err))
 }
 
 // waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.
@@ -226,10 +226,10 @@ func (s *NotifyAPIService) handleServerError(err error) {
 //   - httpServerDone: HTTP 서버 종료 완료 신호를 받기 위한 채널
 //
 // Note: 이 함수는 서비스가 완전히 종료될 때까지 블로킹됩니다.
-func (s *NotifyAPIService) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
+func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
 	<-serviceStopCtx.Done()
 
-	applog.WithComponent("api.service").Info("NotifyAPI 서비스 중지중...")
+	applog.WithComponent("api.service").Info("API 서비스 중지중...")
 
 	// 웹서버 종료
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -246,8 +246,8 @@ func (s *NotifyAPIService) waitForShutdown(serviceStopCtx context.Context, e *ec
 	// 상태 정리
 	s.runningMu.Lock()
 	s.running = false
-	s.notificationService = nil
+	s.notificationSender = nil
 	s.runningMu.Unlock()
 
-	applog.WithComponent("api.service").Info("NotifyAPI 서비스 중지됨")
+	applog.WithComponent("api.service").Info("API 서비스 중지됨")
 }

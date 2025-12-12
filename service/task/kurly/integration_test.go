@@ -62,7 +62,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 
@@ -118,7 +118,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
@@ -154,7 +154,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	}
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
@@ -224,7 +224,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		},
 	}
 
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -303,7 +303,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		},
 	}
 
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -366,7 +366,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		},
 	}
 
-	commandData := &kurlyWatchProductPriceTaskCommandData{
+	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)

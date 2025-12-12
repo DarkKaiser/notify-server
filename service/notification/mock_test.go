@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockTelegramBot is a shared mock implementation of TelegramBotAPI
+// MockTelegramBot is a shared mock implementation of telegramBotAPI
 type MockTelegramBot struct {
 	mock.Mock
 	updatesChan chan tgbotapi.Update

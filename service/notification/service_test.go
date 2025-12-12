@@ -14,7 +14,7 @@ import (
 // -- Mocks and Setup Helpers --
 
 // setupMockService creates a service with mocks for testing
-func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandler) {
+func setupMockService() (*Service, *MockExecutor, *mockNotifierHandler) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &MockExecutor{}
 	mockNotifier := &mockNotifierHandler{
@@ -23,9 +23,9 @@ func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandl
 	}
 
 	service := NewService(appConfig, mockExecutor)
-	service.notifierHandlers = []NotifierHandler{mockNotifier}
+	service.notifiers = []NotifierHandler{mockNotifier}
 	// For convenience in some tests
-	service.defaultNotifierHandler = mockNotifier
+	service.defaultNotifier = mockNotifier
 
 	return service, mockExecutor, mockNotifier
 }
@@ -34,7 +34,7 @@ func setupMockService() (*NotificationService, *MockExecutor, *mockNotifierHandl
 
 func TestNotificationService_SupportsHTML(t *testing.T) {
 	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
-	service := &NotificationService{notifierHandlers: []NotifierHandler{mockNotifier}}
+	service := &Service{notifiers: []NotifierHandler{mockNotifier}}
 
 	tests := []struct {
 		name       string
@@ -61,7 +61,7 @@ func TestNotificationService_NewService(t *testing.T) {
 	assert.Equal(t, appConfig, service.appConfig)
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
-	assert.NotNil(t, service.notificationStopWaiter)
+	assert.NotNil(t, service.notifiersStopWaiter)
 }
 
 func TestNotificationService_Notify_Table(t *testing.T) {
@@ -196,8 +196,8 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 
 			// Setup default notifier specifically with correct ID
 			mockNotifier.id = NotifierID(defaultID)
-			service.defaultNotifierHandler = mockNotifier
-			service.notifierHandlers = []NotifierHandler{mockNotifier}
+			service.defaultNotifier = mockNotifier
+			service.notifiers = []NotifierHandler{mockNotifier}
 
 			var result bool
 			switch tt.method {
@@ -232,9 +232,9 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTML: true}
 	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
 
-	service := &NotificationService{
-		notifierHandlers: []NotifierHandler{mockNotifier1, mockNotifier2},
-		running:          true,
+	service := &Service{
+		notifiers: []NotifierHandler{mockNotifier1, mockNotifier2},
+		running:   true,
 	}
 
 	// Notify n2

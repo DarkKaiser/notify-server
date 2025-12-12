@@ -114,7 +114,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -132,7 +132,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -150,7 +150,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 			tasks: []config.TaskConfig{
 				{
 					ID: "T1",
-					Commands: []config.TaskCommandConfig{
+					Commands: []config.CommandConfig{
 						{
 							ID: "C1",
 							Scheduler: struct {
@@ -202,7 +202,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			name: "Successful Execution",
 			taskConfig: config.TaskConfig{
 				ID: "T1",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "C1",
 						Scheduler: struct {
@@ -215,7 +215,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
-					return req.TaskID == "T1" && req.TaskCommandID == "C1" && req.RunBy == RunByScheduler
+					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == RunByScheduler
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil).Once()
@@ -225,7 +225,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			name: "Failed Execution with Notification",
 			taskConfig: config.TaskConfig{
 				ID: "T2",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "C2",
 						Scheduler: struct {
@@ -238,7 +238,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
-					return req.TaskID == "T2" && req.TaskCommandID == "C2" && req.RunBy == RunByScheduler
+					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == RunByScheduler
 				})).Run(func(args mock.Arguments) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
@@ -300,7 +300,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 		Tasks: []config.TaskConfig{
 			{
 				ID: "InvalidTask",
-				Commands: []config.TaskCommandConfig{
+				Commands: []config.CommandConfig{
 					{
 						ID: "InvalidCmd",
 						Scheduler: struct {

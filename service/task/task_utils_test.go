@@ -172,7 +172,7 @@ func TestFillTaskDataFromMap(t *testing.T) {
 	})
 }
 
-func TestFillTaskCommandDataFromMap(t *testing.T) {
+func TestFillCommandDataFromMap(t *testing.T) {
 	type TestCommandData struct {
 		Query string `json:"query"`
 		Limit int    `json:"limit"`
@@ -185,7 +185,7 @@ func TestFillTaskCommandDataFromMap(t *testing.T) {
 		}
 
 		var result TestCommandData
-		err := FillTaskCommandDataFromMap(&result, inputMap)
+		err := FillCommandDataFromMap(&result, inputMap)
 
 		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
 		assert.Equal(t, "test query", result.Query, "Query 필드가 올바르게 설정되어야 합니다")

@@ -137,7 +137,7 @@ func main() {
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	notifyAPIService := api.NewService(appConfig, notificationService, common.BuildInfo{
+	apiService := api.NewService(appConfig, notificationService, common.BuildInfo{
 		Version:     Version,
 		BuildDate:   BuildDate,
 		BuildNumber: BuildNumber,
@@ -150,7 +150,7 @@ func main() {
 	serviceStopWaiter := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
-	services := []service.Service{taskService, notificationService, notifyAPIService}
+	services := []service.Service{taskService, notificationService, apiService}
 	for _, s := range services {
 		serviceStopWaiter.Add(1)
 		if err := s.Start(serviceStopCtx, serviceStopWaiter); err != nil {

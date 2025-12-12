@@ -16,7 +16,7 @@ const (
 	// TaskID
 	TidJdc task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
-	// TaskCommandID
+	// CommandID
 	TcidJdcWatchNewOnlineEducation task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 
@@ -44,16 +44,16 @@ type jdcWatchNewOnlineEducationResultData struct {
 }
 
 func init() {
-	task.RegisterTask(TidJdc, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
-			TaskCommandID: TcidJdcWatchNewOnlineEducation,
+	task.Register(TidJdc, &task.Config{
+		Commands: []*task.CommandConfig{{
+			ID: TcidJdcWatchNewOnlineEducation,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
 			if req.TaskID != TidJdc {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -61,7 +61,7 @@ func init() {
 			t := &jdcTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,

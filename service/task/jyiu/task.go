@@ -17,7 +17,7 @@ const (
 	// TaskID
 	TidJyiu task.ID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
 
-	// TaskCommandID
+	// CommandID
 	TcidJyiuWatchNewNotice    task.CommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
 	TcidJyiuWatchNewEducation task.CommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
 )
@@ -62,22 +62,22 @@ type jyiuWatchNewEducationResultData struct {
 }
 
 func init() {
-	task.RegisterTask(TidJyiu, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
-			TaskCommandID: TcidJyiuWatchNewNotice,
+	task.Register(TidJyiu, &task.Config{
+		Commands: []*task.CommandConfig{{
+			ID: TcidJyiuWatchNewNotice,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
 		}, {
-			TaskCommandID: TcidJyiuWatchNewEducation,
+			ID: TcidJyiuWatchNewEducation,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
 			if req.TaskID != TidJyiu {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -85,7 +85,7 @@ func init() {
 			tTask := &jyiuTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,

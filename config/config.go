@@ -143,12 +143,12 @@ type TelegramConfig struct {
 type TaskConfig struct {
 	ID       string                 `json:"id"`
 	Title    string                 `json:"title"`
-	Commands []TaskCommandConfig    `json:"commands"`
+	Commands []CommandConfig        `json:"commands"`
 	Data     map[string]interface{} `json:"data"`
 }
 
-// TaskCommandConfig Task 명령 설정 구조체
-type TaskCommandConfig struct {
+// CommandConfig Task 명령 설정 구조체
+type CommandConfig struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`

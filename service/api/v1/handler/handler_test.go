@@ -55,7 +55,7 @@ func TestNewHandler_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockService := &testutil.MockNotificationService{}
+			mockService := &testutil.MockNotificationSender{}
 			appManager := auth.NewApplicationManager(tt.appConfig)
 
 			h := NewHandler(appManager, mockService)

@@ -122,8 +122,9 @@ func (t RunBy) String() string {
 type RunRequest struct {
 	// TaskID 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
 	TaskID ID
-	// TaskCommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
-	TaskCommandID CommandID
+
+	// CommandID 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
+	CommandID CommandID
 
 	// TaskContext 작업 실행 컨텍스트입니다.
 	// 실행 흐름 전반에 걸쳐 메타데이터(Title, ID 등)를 전달하고, 취소 신호(Cancellation)를 전파하는 데 사용됩니다.
@@ -146,8 +147,8 @@ func (r *RunRequest) Validate() error {
 	if err := r.TaskID.Validate(); err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskID 검증 실패")
 	}
-	if err := r.TaskCommandID.Validate(); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskCommandID 검증 실패")
+	if err := r.CommandID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "CommandID 검증 실패")
 	}
 	if len(r.NotifierID) > 0 && strings.TrimSpace(r.NotifierID) == "" {
 		return apperrors.New(apperrors.ErrInvalidInput, "NotifierID는 공백일 수 없습니다")

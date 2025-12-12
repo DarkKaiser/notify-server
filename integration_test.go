@@ -153,7 +153,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
 		result := taskService.Run(&task.RunRequest{
 			TaskID:        "NON_EXISTENT",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
 			RunBy:         task.RunByUser,
@@ -197,7 +197,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		// Task 실행 (알림 요청 포함)
 		taskService.Run(&task.RunRequest{
 			TaskID:        "TEST",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: true,
 			RunBy:         task.RunByUser,
@@ -257,7 +257,7 @@ func TestServiceLifecycle(t *testing.T) {
 		appConfig := createTestConfig()
 
 		// 여러 서비스 생성
-		services := make([]*task.TaskService, 3)
+		services := make([]*task.Service, 3)
 		for i := 0; i < 3; i++ {
 			services[i] = task.NewService(appConfig)
 		}
@@ -300,9 +300,9 @@ func TestServiceLifecycle(t *testing.T) {
 	})
 }
 
-// TestNotificationServiceIntegration은 NotificationService 통합을 테스트합니다.
-func TestNotificationServiceIntegration(t *testing.T) {
-	t.Run("NotificationService 생성 및 초기화", func(t *testing.T) {
+// TestServiceIntegration은 Service 통합을 테스트합니다.
+func TestServiceIntegration(t *testing.T) {
+	t.Run("Service 생성 및 초기화", func(t *testing.T) {
 		appConfig := createTestConfigWithNotifier()
 
 		mockTaskRunner := &mockExecutor{}
@@ -322,7 +322,7 @@ func TestNotificationServiceIntegration(t *testing.T) {
 		notificationService.SetNotifierFactory(mockFactory)
 
 		// 서비스가 정상적으로 생성되었는지 확인
-		assert.NotNil(t, notificationService, "NotificationService가 생성되어야 합니다")
+		assert.NotNil(t, notificationService, "Notification Service가 생성되어야 합니다")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
@@ -365,7 +365,7 @@ func TestEndToEndScenario(t *testing.T) {
 		// Task 실행 시도
 		taskService.Run(&task.RunRequest{
 			TaskID:        "TEST",
-			TaskCommandID: "TEST",
+			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
 			NotifyOnStart: false,
 			RunBy:         task.RunByUser,
@@ -459,7 +459,7 @@ func (m *mockExecutor) Run(req *task.RunRequest) error {
 	return nil
 }
 
-func (m *mockExecutor) Cancel(taskInstanceID task.InstanceID) error {
+func (m *mockExecutor) Cancel(instanceID task.InstanceID) error {
 	return nil
 }
 

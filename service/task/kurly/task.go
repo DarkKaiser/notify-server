@@ -42,11 +42,11 @@ const (
 	WatchStatusDisabled = "0"
 )
 
-type kurlyWatchProductPriceTaskCommandData struct {
+type kurlyWatchProductPriceCommandData struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (d *kurlyWatchProductPriceTaskCommandData) validate() error {
+func (d *kurlyWatchProductPriceCommandData) validate() error {
 	if d.WatchProductsFile == "" {
 		return apperrors.New(apperrors.ErrInvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
 	}
@@ -128,16 +128,16 @@ type kurlyWatchProductPriceResultData struct {
 }
 
 func init() {
-	task.RegisterTask(TidKurly, &task.TaskConfig{
-		CommandConfigs: []*task.TaskCommandConfig{{
-			TaskCommandID: TcidKurlyWatchProductPrice,
+	task.Register(TidKurly, &task.Config{
+		Commands: []*task.CommandConfig{{
+			ID: TcidKurlyWatchProductPrice,
 
-			AllowMultipleInstances: true,
+			AllowMultiple: true,
 
 			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
-		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.TaskHandler, error) {
+		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
 			if req.TaskID != TidKurly {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -145,7 +145,7 @@ func init() {
 			tTask := &kurlyTask{
 				Task: task.Task{
 					ID:         req.TaskID,
-					CommandID:  req.TaskCommandID,
+					CommandID:  req.CommandID,
 					InstanceID: instanceID,
 
 					NotifierID: req.NotifierID,
@@ -173,15 +173,15 @@ func init() {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
 								if tTask.GetCommandID() == task.CommandID(c.ID) {
-									taskCommandData := &kurlyWatchProductPriceTaskCommandData{}
-									if err := task.FillTaskCommandDataFromMap(taskCommandData, c.Data); err != nil {
+									commandData := &kurlyWatchProductPriceCommandData{}
+									if err := task.FillCommandDataFromMap(commandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
-									if err := taskCommandData.validate(); err != nil {
+									if err := commandData.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.runWatchProductPrice(taskCommandData, taskResultData, messageTypeHTML)
+									return tTask.runWatchProductPrice(commandData, taskResultData, messageTypeHTML)
 								}
 							}
 							break
@@ -203,7 +203,7 @@ type kurlyTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPriceTaskCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	originTaskResultData, ok := taskResultData.(*kurlyWatchProductPriceResultData)
 	if ok == false {
 		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", taskResultData))
@@ -212,7 +212,7 @@ func (t *kurlyTask) runWatchProductPrice(taskCommandData *kurlyWatchProductPrice
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(taskCommandData.WatchProductsFile)
+	f, err := os.Open(commandData.WatchProductsFile)
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}
