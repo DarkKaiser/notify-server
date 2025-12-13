@@ -99,7 +99,7 @@ func init() {
 							for _, c := range t.Commands {
 								if tTask.GetCommandID() == task.CommandID(c.ID) {
 									commandData := &naverWatchNewPerformancesCommandData{}
-									if err := task.FillCommandDataFromMap(commandData, c.Data); err != nil {
+									if err := task.DecodeMap(commandData, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 									if err := commandData.validate(); err != nil {

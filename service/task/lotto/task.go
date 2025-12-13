@@ -99,7 +99,7 @@ func init() {
 			for _, t := range appConfig.Tasks {
 				if req.TaskID == task.ID(t.ID) {
 					taskData := &lottoTaskData{}
-					if err := task.FillTaskDataFromMap(taskData, t.Data); err != nil {
+					if err := task.DecodeMap(taskData, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
 

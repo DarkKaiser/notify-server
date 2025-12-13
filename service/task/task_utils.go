@@ -32,11 +32,11 @@ func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 		return errors.New("equalFn()이 할당되지 않았습니다")
 	}
 	sourceSlice, ok := TakeSliceArg(source)
-	if ok == false {
+	if !ok {
 		return errors.New("source 인자의 Slice 타입 변환이 실패하였습니다")
 	}
 	targetSlice, ok := TakeSliceArg(target)
-	if ok == false {
+	if !ok {
 		return errors.New("target 인자의 Slice 타입 변환이 실패하였습니다")
 	}
 
@@ -46,7 +46,7 @@ func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 			if err != nil {
 				return err
 			}
-			if equal == true {
+			if equal {
 				if onFoundFn != nil {
 					onFoundFn(sourceElemment, targetElement)
 				}
@@ -64,11 +64,10 @@ func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 	return nil
 }
 
-func FillTaskDataFromMap(d interface{}, m map[string]interface{}) error {
-	return FillCommandDataFromMap(d, m)
-}
-
-func FillCommandDataFromMap(d interface{}, m map[string]interface{}) error {
+// DecodeMap 맵 형태의 데이터를 구조체로 디코딩합니다.
+// json 패키지를 사용하여 마샬링 후 다시 언마샬링하는 방식으로 동작합니다.
+// d는 대상 구조체의 포인터여야 합니다.
+func DecodeMap(d interface{}, m map[string]interface{}) error {
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -83,25 +82,25 @@ func Filter(s string, includedKeywords, excludedKeywords []string) bool {
 	for _, k := range includedKeywords {
 		includedOneOfManyKeywords := strutil.SplitAndTrim(k, "|")
 		if len(includedOneOfManyKeywords) == 1 {
-			if strings.Contains(s, k) == false {
+			if !strings.Contains(s, k) {
 				return false
 			}
 		} else {
 			var contains = false
 			for _, keyword := range includedOneOfManyKeywords {
-				if strings.Contains(s, keyword) == true {
+				if strings.Contains(s, keyword) {
 					contains = true
 					break
 				}
 			}
-			if contains == false {
+			if !contains {
 				return false
 			}
 		}
 	}
 
 	for _, k := range excludedKeywords {
-		if strings.Contains(s, k) == true {
+		if strings.Contains(s, k) {
 			return false
 		}
 	}
