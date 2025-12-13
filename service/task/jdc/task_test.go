@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -40,7 +41,7 @@ func TestJdcOnlineEducationCourse_String(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 	t.Run("정상적인 강의 정보 파싱", func(t *testing.T) {
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// 1. Digital Education List Page
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"
@@ -118,7 +119,7 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 	})
 
 	t.Run("데이터가 없는 경우", func(t *testing.T) {
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// Empty Lists
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"

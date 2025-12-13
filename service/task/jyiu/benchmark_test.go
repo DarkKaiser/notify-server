@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
 func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 공지사항 목록 HTML 생성
 	noticeHTML := `<html><body><div id="contents"><table class="bbsList"><tbody>`
@@ -51,7 +52,7 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 교육 프로그램 목록 HTML 생성
 	eduHTML := `<html><body><div class="gms_003001"><table class="bbsList"><tbody>`

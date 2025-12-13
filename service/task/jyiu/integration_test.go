@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	noticeTitle := "테스트 공지사항"
@@ -76,7 +77,7 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	eduTitle := "테스트 교육"
@@ -145,7 +146,7 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := "https://www.jyiu.or.kr/gms_005001/"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
@@ -167,7 +168,7 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := "https://www.jyiu.or.kr/gms_003001/experienceList"
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Education Info</h1></body></html>`))
@@ -192,7 +193,7 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	noticeTitle := "테스트 공지사항"
 	noticeDate := "2025-11-28"
 	noticeID := "12345"
@@ -246,7 +247,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	// 신규 공지사항 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	noticeTitle1 := "기존 공지사항"
 	noticeDate1 := "2025-11-27"
 	noticeID1 := "12345"
@@ -317,7 +318,7 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	eduTitle := "테스트 교육"
 	eduTrainingPeriod := "2025-12-01 ~ 2025-12-31"
 	eduAcceptancePeriod := "2025-11-01 ~ 2025-11-30"
@@ -375,7 +376,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	// 신규 교육프로그램 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	eduTitle1 := "기존 교육"
 	eduTrainingPeriod1 := "2025-12-01 ~ 2025-12-31"
 	eduAcceptancePeriod1 := "2025-11-01 ~ 2025-11-30"

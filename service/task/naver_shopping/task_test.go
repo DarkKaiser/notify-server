@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -124,7 +124,7 @@ func TestNaverShoppingProduct_String(t *testing.T) {
 func TestNaverShoppingWatchPriceSearchResultData_Parsing(t *testing.T) {
 	t.Run("JSON 파싱 테스트", func(t *testing.T) {
 		// testdata에서 샘플 JSON 로드
-		jsonData := task.LoadTestData(t, "api_response.json")
+		jsonData := testutil.LoadTestData(t, "api_response.json")
 
 		var result naverShoppingWatchPriceSearchResultData
 		err := json.Unmarshal(jsonData, &result)

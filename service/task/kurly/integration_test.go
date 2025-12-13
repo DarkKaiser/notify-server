@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	productID := "12345"
@@ -64,7 +65,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// CSV 파일 생성 (테스트용 임시 파일)
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	// 초기 결과 데이터 (비어있음)
@@ -98,7 +99,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
@@ -114,7 +115,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	resultData := &kurlyWatchProductPriceResultData{}
@@ -129,7 +130,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
 	// 필수 요소가 누락된 HTML
@@ -146,7 +147,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	resultData := &kurlyWatchProductPriceResultData{}
@@ -163,7 +164,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -211,7 +212,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (동일한 데이터)
@@ -238,7 +239,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	// 가격 변경 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -286,7 +287,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (이전 가격)
@@ -320,7 +321,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	// 품절(알 수 없는 상품) 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 
@@ -345,7 +346,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := task.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandData.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (정상 판매 중)

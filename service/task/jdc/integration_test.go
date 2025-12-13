@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath := "detail_course"
@@ -113,7 +114,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := jdcBaseURL + "product/list?type=digital_edu"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
@@ -135,7 +136,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := jdcBaseURL + "product/list?type=digital_edu"
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Course Info</h1></body></html>`))
@@ -160,7 +161,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath := "detail_course"
@@ -254,7 +255,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	// 신규 강의 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 상세 페이지 URL (목록에서 추출될 값)
 	detailPath1 := "detail_course_1"

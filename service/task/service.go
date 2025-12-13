@@ -15,8 +15,8 @@ const (
 	defaultChannelBufferSize = 10
 
 	msgTaskNotFound           = "등록되지 않은 작업입니다.😱"
-	msgTaskAlreadyRunning     = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
 	msgTaskRunning            = "작업 진행중입니다. 잠시만 기다려 주세요."
+	msgTaskAlreadyRunning     = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
 	msgTaskCanceledByUser     = "사용자 요청에 의해 작업이 취소되었습니다."
 	msgTaskCancelInfoNotFound = "해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)"
 )
@@ -42,7 +42,7 @@ type Service struct {
 
 	taskStopWaiter *sync.WaitGroup
 
-	taskStorage TaskResultStorage
+	storage TaskResultStorage
 }
 
 func NewService(appConfig *config.AppConfig) *Service {
@@ -66,7 +66,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		taskStopWaiter: &sync.WaitGroup{},
 
-		taskStorage: NewFileTaskResultStorage(config.AppName),
+		storage: NewFileTaskResultStorage(config.AppName),
 	}
 }
 
@@ -206,7 +206,7 @@ func (s *Service) createAndStartTask(req *RunRequest, cfg *ConfigLookup) {
 
 	// 생성된 Task에 Storage 주입
 	// Handler 인터페이스를 통해 주입하므로 구체적인 타입을 알 필요가 없음
-	h.SetStorage(s.taskStorage)
+	h.SetStorage(s.storage)
 
 	s.runningMu.Lock()
 	s.handlers[instanceID] = h

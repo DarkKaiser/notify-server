@@ -7,11 +7,12 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
 func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	query := "뮤지컬"
 	encodedQuery := url.QueryEscape(query)
 	// Naver Task는 페이지 인덱스를 1부터 증가시키며 데이터를 가져옴

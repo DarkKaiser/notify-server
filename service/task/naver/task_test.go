@@ -5,6 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,7 +102,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 	t.Run("정상적인 공연 정보 파싱", func(t *testing.T) {
 		// Mock Fetcher 설정
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// Page 1 Response
 		page1URL := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=1&u8=all&u3=&u1=%EB%AE%A4%EC%A7%80%EC%BB%AC&u2=all&u4=ingplan&u6=N&u5=date"
@@ -166,7 +167,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 	t.Run("필터링 테스트", func(t *testing.T) {
 		// Mock Fetcher 설정
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// Page 1 Response
 		// Query: "공연" -> encoded: %EA%B3%B5%EC%97%B0

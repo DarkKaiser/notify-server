@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
 func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 목록 페이지 HTML 생성 (여러 개의 강의 포함)
 	listHTML := `<html><body><div id="content"><ul class="prdt-list2">`
