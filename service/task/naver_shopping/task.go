@@ -123,19 +123,7 @@ func init() {
 			}
 
 			tTask := &naverShoppingTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-
-					Fetcher: nil,
-				},
+				Task: task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 				appConfig: appConfig,
 
@@ -147,9 +135,9 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+			tTask.SetFetcher(task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(tTask.GetCommandID()), naverShoppingWatchPriceCommandIDPrefix) == true {
 					for _, t := range tTask.appConfig.Tasks {
@@ -178,7 +166,7 @@ func init() {
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
-			}
+			})
 
 			return tTask, nil
 		},
@@ -213,7 +201,7 @@ func (t *naverShoppingTask) executeWatchPrice(commandData *naverShoppingWatchPri
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &naverShoppingWatchPriceSearchResultData{}
-		err = task.FetchJSON(t.Fetcher, "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(commandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = task.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", naverShoppingSearchURL, url.QueryEscape(commandData.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}
@@ -310,7 +298,7 @@ func (t *naverShoppingTask) executeWatchPrice(commandData *naverShoppingWatchPri
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {

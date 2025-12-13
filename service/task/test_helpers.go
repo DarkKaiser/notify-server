@@ -129,15 +129,9 @@ func (m *MockHTTPFetcher) Reset() {
 
 // CreateTestTask 테스트용 Task 인스턴스를 생성합니다.
 func CreateTestTask(id ID, commandID CommandID, instanceID InstanceID) *Task {
-	return &Task{
-		ID:         id,
-		CommandID:  commandID,
-		InstanceID: instanceID,
-		NotifierID: "test_notifier",
-		Canceled:   false,
-		RunBy:      RunByUser,
-		Storage:    &MockTaskResultStorage{},
-	}
+	t := NewBaseTask(id, commandID, instanceID, "test_notifier", RunByUser)
+	t.SetStorage(&MockTaskResultStorage{})
+	return &t
 }
 
 // CreateTestConfig 테스트용 AppConfig를 생성합니다.

@@ -53,13 +53,9 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	commandData := &kurlyWatchProductPriceCommandData{
@@ -109,13 +105,9 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	commandData := &kurlyWatchProductPriceCommandData{
@@ -145,13 +137,9 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	commandData := &kurlyWatchProductPriceCommandData{
@@ -215,14 +203,9 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
@@ -295,13 +278,9 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",
@@ -358,13 +337,9 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	commandData := &kurlyWatchProductPriceCommandData{
 		WatchProductsFile: "test_products.csv",

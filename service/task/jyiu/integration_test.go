@@ -42,14 +42,9 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &jyiuWatchNewNoticeResultData{
@@ -115,14 +110,9 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &jyiuWatchNewEducationResultData{
@@ -161,14 +151,9 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	resultData := &jyiuWatchNewNoticeResultData{}
 
@@ -189,14 +174,9 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	resultData := &jyiuWatchNewEducationResultData{}
 
@@ -241,14 +221,9 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	resultData := &jyiuWatchNewNoticeResultData{
 		Notices: []*jyiuNotice{
@@ -310,14 +285,9 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (기존 공지사항만 있음)
 	resultData := &jyiuWatchNewNoticeResultData{
@@ -378,14 +348,9 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (동일한 데이터)
 	resultData := &jyiuWatchNewEducationResultData{
@@ -453,14 +418,9 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (기존 교육만 있음)
 	resultData := &jyiuWatchNewEducationResultData{

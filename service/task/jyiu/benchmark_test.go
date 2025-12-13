@@ -29,13 +29,9 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	resultData := &jyiuWatchNewNoticeResultData{
@@ -76,13 +72,9 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	resultData := &jyiuWatchNewEducationResultData{

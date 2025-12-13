@@ -80,19 +80,7 @@ func init() {
 			}
 
 			tTask := &naverTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-
-					Fetcher: nil,
-				},
+				Task: task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 				appConfig: appConfig,
 			}
@@ -101,9 +89,9 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+			tTask.SetFetcher(task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range tTask.appConfig.Tasks {
@@ -132,7 +120,7 @@ func init() {
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
-			}
+			})
 
 			return tTask, nil
 		},
@@ -158,7 +146,7 @@ func (t *naverTask) executeWatchNewPerformances(commandData *naverWatchNewPerfor
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = task.FetchJSON(t.Fetcher, "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandData.Query)), nil, nil, searchResultData)
+		err = task.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandData.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}
@@ -256,7 +244,7 @@ func (t *naverTask) executeWatchNewPerformances(commandData *naverWatchNewPerfor
 		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == task.RunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {

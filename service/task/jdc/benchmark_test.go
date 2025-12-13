@@ -45,13 +45,9 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	resultData := &jdcWatchNewOnlineEducationResultData{

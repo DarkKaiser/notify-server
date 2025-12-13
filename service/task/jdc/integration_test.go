@@ -78,13 +78,9 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &jdcWatchNewOnlineEducationResultData{
@@ -123,13 +119,9 @@ func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
@@ -150,13 +142,9 @@ func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
@@ -239,14 +227,9 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(fullDetailURL, []byte(detailHTML))
 
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (동일한 데이터)
 	resultData := &jdcWatchNewOnlineEducationResultData{
@@ -357,13 +340,9 @@ func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	mockFetcher.SetResponse(jdcBaseURL+"product/"+detailPath2, []byte(detailHTML2))
 
 	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (기존 강의만 있음)
 	resultData := &jdcWatchNewOnlineEducationResultData{

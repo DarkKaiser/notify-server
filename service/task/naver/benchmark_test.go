@@ -63,14 +63,10 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	}
 
 	tTask := &naverTask{
-		Task: task.Task{
-			ID:         TidNaver,
-			CommandID:  TcidNaverWatchNewPerformances,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task:      task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test-notifier", task.RunByUnknown),
 		appConfig: appConfig,
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	commandData := &naverWatchNewPerformancesCommandData{

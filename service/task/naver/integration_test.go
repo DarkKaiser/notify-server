@@ -30,13 +30,9 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
 	tTask := &naverTask{
-		Task: task.Task{
-			ID:         TidNaver,
-			CommandID:  TcidNaverWatchNewPerformances,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
 	commandData := &naverWatchNewPerformancesCommandData{

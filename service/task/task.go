@@ -36,80 +36,112 @@ type ExecuteFunc func(previousSnapshot interface{}, supportsHTML bool) (string, 
 
 // Task 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
-// Task는 불변 상태(ID, Config 등)와 가변 상태(Canceled, Storage 상태 등)를 모두 포함하며,
+// Task는 불변 상태(id, commandID 등)와 가변 상태(canceled, storage 상태 등)를 모두 포함하며,
 // Service에 의해 생성되고 생명주기가 관리됩니다. 이 구조체는 '작업의 정의'와 '실행 상태'를 모두 캡슐화합니다.
 //
 // 주요 특징:
-//   - 상태 보존 (Stateful): Storage를 통해 실행 결과를 영속화하여, 스크래핑 작업 간의 데이터 연속성을 보장합니다.
+//   - 상태 보존 (Stateful): storage를 통해 실행 결과를 영속화하여, 스크래핑 작업 간의 데이터 연속성을 보장합니다.
 //   - 실행 제어 (Control): Cancel() 메서드를 통해 실행 중인 작업을 안전하게 중단할 수 있습니다.
-//   - 의존성 주입 (DI): Storage, Fetcher 등의 외부 의존성을 필드로 주입받아 테스트 용이성을 높입니다.
+//   - 의존성 주입 (DI): storage, fetcher 등의 외부 의존성을 필드로 주입받아 테스트 용이성을 높입니다.
 type Task struct {
-	ID         ID         // 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
-	CommandID  CommandID  // 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
-	InstanceID InstanceID // 이번 작업 실행 인스턴스에 할당된 유일한 식별자(UUID 등)입니다.
+	id         ID         // 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
+	commandID  CommandID  // 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
+	instanceID InstanceID // 이번 작업 실행 인스턴스에 할당된 유일한 식별자(UUID 등)입니다.
 
 	// 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
-	NotifierID string
+	notifierID string
 
 	// 작업 취소 여부 플래그
-	Canceled bool
+	canceled bool
 
 	// 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
 	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
-	RunBy RunBy
+	runBy RunBy
 	// 작업 실행 시작 시각
-	RunTime time.Time
+	runTime time.Time
 
-	// Execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
-	Execute ExecuteFunc
+	// execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
+	execute ExecuteFunc
 
-	// Fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
-	Fetcher Fetcher
+	// fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
+	fetcher Fetcher
 
-	// Storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
-	Storage TaskResultStorage
+	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
+	storage TaskResultStorage
+}
+
+// NewBaseTask Task 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
+// 하위 Task 구현체는 이 함수를 사용하여 기본 Task 필드를 초기화해야 합니다.
+func NewBaseTask(id ID, commandID CommandID, instanceID InstanceID, notifierID string, runBy RunBy) Task {
+	return Task{
+		id:         id,
+		commandID:  commandID,
+		instanceID: instanceID,
+		notifierID: notifierID,
+		runBy:      runBy,
+	}
 }
 
 func (t *Task) GetID() ID {
-	return t.ID
+	return t.id
 }
 
 func (t *Task) GetCommandID() CommandID {
-	return t.CommandID
+	return t.commandID
 }
 
 func (t *Task) GetInstanceID() InstanceID {
-	return t.InstanceID
+	return t.instanceID
 }
 
 func (t *Task) GetNotifierID() string {
-	return t.NotifierID
+	return t.notifierID
 }
 
 func (t *Task) Cancel() {
-	t.Canceled = true
+	t.canceled = true
 }
 
 func (t *Task) IsCanceled() bool {
-	return t.Canceled
+	return t.canceled
 }
 
 func (t *Task) ElapsedTimeAfterRun() int64 {
-	return int64(time.Since(t.RunTime).Seconds())
+	return int64(time.Since(t.runTime).Seconds())
 }
 
 func (t *Task) SetStorage(storage TaskResultStorage) {
-	t.Storage = storage
+	t.storage = storage
+}
+
+func (t *Task) SetExecute(fn ExecuteFunc) {
+	t.execute = fn
+}
+
+func (t *Task) SetFetcher(f Fetcher) {
+	t.fetcher = f
+}
+
+func (t *Task) GetFetcher() Fetcher {
+	return t.fetcher
+}
+
+func (t *Task) SetRunBy(runBy RunBy) {
+	t.runBy = runBy
+}
+
+func (t *Task) GetRunBy() RunBy {
+	return t.runBy
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
 func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
 	defer taskStopWaiter.Done()
 	defer func() {
-		taskDoneC <- t.InstanceID
+		taskDoneC <- t.instanceID
 	}()
 
-	t.RunTime = time.Now()
+	t.runTime = time.Now()
 
 	// 1. 사전 검증 및 데이터 준비
 	previousSnapshot, err := t.prepareExecution(taskCtx, notificationSender)
@@ -118,7 +150,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 	}
 
 	// 2. 작업 실행
-	message, newSnapshot, err := t.execute(previousSnapshot, notificationSender.SupportsHTML(t.NotifierID))
+	message, newSnapshot, err := t.executeTask(previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
 
 	if t.IsCanceled() {
 		return
@@ -130,7 +162,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 // prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
-	if t.Execute == nil {
+	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
@@ -149,14 +181,14 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 		return nil, apperrors.New(apperrors.ErrInternal, msgSnapshotCreationFailed)
 	}
 
-	if t.Storage == nil {
+	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
 		return nil, apperrors.New(apperrors.ErrInternal, msgStorageNotInitialized)
 	}
 
-	err := t.Storage.Load(t.GetID(), t.GetCommandID(), snapshot)
+	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
 	if err != nil {
 		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
 		t.log(log.WarnLevel, message, err)
@@ -166,9 +198,9 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	return snapshot, nil
 }
 
-// execute 실제 비즈니스 로직(Execute)을 실행합니다.
-func (t *Task) execute(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-	return t.Execute(previousSnapshot, supportsHTML)
+// executeTask 실제 비즈니스 로직(execute)을 실행합니다.
+func (t *Task) executeTask(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+	return t.execute(previousSnapshot, supportsHTML)
 }
 
 // handleExecutionResult 작업 실행 결과를 처리합니다.
@@ -179,7 +211,7 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 		}
 
 		if newSnapshot != nil {
-			if err0 := t.Storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
+			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
 				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
 				t.log(log.WarnLevel, message, err0)
 				t.notifyError(taskCtx, notificationSender, message)

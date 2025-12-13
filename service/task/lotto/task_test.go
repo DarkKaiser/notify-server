@@ -206,11 +206,7 @@ func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 
 		// lottoTask 생성
 		tTask := &lottoTask{
-			Task: task.Task{
-				ID:        TidLotto,
-				CommandID: TcidLottoPrediction,
-				Canceled:  false,
-			},
+			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -233,11 +229,7 @@ func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task: task.Task{
-				ID:        TidLotto,
-				CommandID: TcidLottoPrediction,
-				Canceled:  false,
-			},
+			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -261,11 +253,7 @@ func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task: task.Task{
-				ID:        TidLotto,
-				CommandID: TcidLottoPrediction,
-				Canceled:  false,
-			},
+			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -289,11 +277,7 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task: task.Task{
-				ID:        TidLotto,
-				CommandID: TcidLottoPrediction,
-				Canceled:  false,
-			},
+			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}

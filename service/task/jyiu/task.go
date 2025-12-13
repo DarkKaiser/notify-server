@@ -83,26 +83,16 @@ func init() {
 			}
 
 			tTask := &jyiuTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-				},
+				Task: task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 			}
 
 			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+			tTask.SetFetcher(task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
 				case TcidJyiuWatchNewNotice:
 					originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewNoticeResultData)
@@ -122,7 +112,7 @@ func init() {
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
-			}
+			})
 
 			return tTask, nil
 		},
@@ -138,7 +128,7 @@ func (t *jyiuTask) executeWatchNewNotice(originTaskResultData *jyiuWatchNewNotic
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewNoticeResultData{}
-	err = task.ScrapeHTML(t.Fetcher, fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.ScrapeHTML(t.GetFetcher(), fmt.Sprintf("%sgms_005001/", jyiuBaseURL), "#contents table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
@@ -219,7 +209,7 @@ func (t *jyiuTask) executeWatchNewNotice(originTaskResultData *jyiuWatchNewNotic
 		message = "새로운 공지사항이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == task.RunByUser {
 			if len(actualityTaskResultData.Notices) == 0 {
 				message = "등록된 공지사항이 존재하지 않습니다."
 			} else {
@@ -243,7 +233,7 @@ func (t *jyiuTask) executeWatchNewEducation(originTaskResultData *jyiuWatchNewEd
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error
 	var actualityTaskResultData = &jyiuWatchNewEducationResultData{}
-	err = task.ScrapeHTML(t.Fetcher, fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
+	err = task.ScrapeHTML(t.GetFetcher(), fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), "div.gms_003001 table.bbsList > tbody > tr", func(i int, s *goquery.Selection) bool {
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
@@ -322,7 +312,7 @@ func (t *jyiuTask) executeWatchNewEducation(originTaskResultData *jyiuWatchNewEd
 		message = "새로운 교육프로그램이 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == task.RunByUser {
 			if len(actualityTaskResultData.Educations) == 0 {
 				message = "등록된 교육프로그램이 존재하지 않습니다."
 			} else {

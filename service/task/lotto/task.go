@@ -110,31 +110,21 @@ func init() {
 			}
 
 			lottoTask := &lottoTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-				},
+				Task: task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 				appPath: appPath,
 
 				executor: &DefaultCommandExecutor{},
 			}
 
-			lottoTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			lottoTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch lottoTask.GetCommandID() {
 				case TcidLottoPrediction:
 					return lottoTask.executePrediction()
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
-			}
+			})
 
 			return lottoTask, nil
 		},

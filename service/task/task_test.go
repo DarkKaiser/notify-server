@@ -12,14 +12,15 @@ import (
 )
 
 func TestTask_BasicMethods(t *testing.T) {
-	testTask := &Task{
-		ID:         ID("TEST_TASK"),
-		CommandID:  CommandID("TEST_COMMAND"),
-		InstanceID: InstanceID("test_instance_123"),
-		NotifierID: "test_notifier",
-		Canceled:   false,
-		Storage:    &MockTaskResultStorage{},
-	}
+	taskVal := NewBaseTask(
+		ID("TEST_TASK"),
+		CommandID("TEST_COMMAND"),
+		InstanceID("test_instance_123"),
+		"test_notifier",
+		RunByUser,
+	)
+	testTask := &taskVal
+	testTask.SetStorage(&MockTaskResultStorage{})
 
 	t.Run("ID 반환 테스트", func(t *testing.T) {
 		assert.Equal(t, ID("TEST_TASK"), testTask.GetID(), "TaskID가 올바르게 반환되어야 합니다")
@@ -46,7 +47,7 @@ func TestTask_BasicMethods(t *testing.T) {
 
 	t.Run("ElapsedTimeAfterRun 테스트", func(t *testing.T) {
 		// runTime을 현재 시간으로 설정
-		testTask.RunTime = time.Now()
+		testTask.runTime = time.Now()
 
 		// 짧은 대기
 		time.Sleep(100 * time.Millisecond)
@@ -200,15 +201,19 @@ func TestTask_Run(t *testing.T) {
 				tt.storageSetup(mockStorage)
 			}
 
-			taskInstance := &Task{
-				ID:         ID(tt.taskID),
-				CommandID:  CommandID(tt.commandID),
-				InstanceID: InstanceID(tt.taskID + "_Instance"),
-				NotifierID: "test-notifier",
-				Canceled:   tt.canceled,
-				Execute:    tt.execute,
-				Storage:    mockStorage,
+			taskVal := NewBaseTask(
+				ID(tt.taskID),
+				CommandID(tt.commandID),
+				InstanceID(tt.taskID+"_Instance"),
+				"test-notifier",
+				RunByScheduler,
+			)
+			taskInstance := &taskVal
+			if tt.canceled {
+				taskInstance.Cancel()
 			}
+			taskInstance.SetExecute(tt.execute)
+			taskInstance.SetStorage(mockStorage)
 
 			wg := &sync.WaitGroup{}
 			doneC := make(chan InstanceID, 1)
@@ -218,7 +223,7 @@ func TestTask_Run(t *testing.T) {
 
 			select {
 			case id := <-doneC:
-				assert.Equal(t, taskInstance.InstanceID, id)
+				assert.Equal(t, taskInstance.instanceID, id)
 			case <-time.After(1 * time.Second):
 				t.Fatal("Task did not complete in time")
 			}

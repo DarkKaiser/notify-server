@@ -98,12 +98,9 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 
 		// Task Setup
 		tTask := &jdcTask{
-			Task: task.Task{
-				ID:        TidJdc,
-				CommandID: TcidJdcWatchNewOnlineEducation,
-				Fetcher:   mockFetcher,
-			},
+			Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// Initial Run
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}
@@ -132,14 +129,9 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 
 		// Task Setup
 		tTask := &jdcTask{
-			Task: task.Task{
-				ID:         TidJdc,
-				CommandID:  TcidJdcWatchNewOnlineEducation,
-				NotifierID: "test-notifier",
-				Fetcher:    mockFetcher,
-				RunBy:      task.RunByScheduler,
-			},
+			Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByScheduler),
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// Initial Run (Data empty)
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}

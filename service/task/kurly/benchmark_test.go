@@ -54,13 +54,9 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 
 	// 2. Setup Task
 	tTask := &kurlyTask{
-		Task: task.Task{
-			ID:         TidKurly,
-			CommandID:  TcidKurlyWatchProductPrice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. Setup Command Data
 	// We use a temporary file for the CSV, created once

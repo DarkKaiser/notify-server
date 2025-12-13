@@ -115,11 +115,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// Task 설정
 		tTask := &naverTask{
-			Task: task.Task{
-				ID:        TidNaver,
-				CommandID: TcidNaverWatchNewPerformances,
-				Fetcher:   mockFetcher,
-			},
+			Task: task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test_notifier", task.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -146,6 +142,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				},
 			},
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// 초기 실행 (이전 데이터 없음)
 		taskResultData := &naverWatchNewPerformancesResultData{}
@@ -184,11 +181,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// Task 설정 (필터 적용)
 		tTask := &naverTask{
-			Task: task.Task{
-				ID:        TidNaver,
-				CommandID: TcidNaverWatchNewPerformances,
-				Fetcher:   mockFetcher,
-			},
+			Task: task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test_notifier", task.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -211,6 +204,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 				},
 			},
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// 실행
 		taskResultData := &naverWatchNewPerformancesResultData{}

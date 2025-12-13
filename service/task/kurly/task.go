@@ -143,19 +143,7 @@ func init() {
 			}
 
 			tTask := &kurlyTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-
-					Fetcher: nil,
-				},
+				Task:      task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 				appConfig: appConfig,
 			}
 
@@ -163,9 +151,9 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+			tTask.SetFetcher(task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 
 				switch tTask.GetCommandID() {
 				case TcidKurlyWatchProductPrice:
@@ -194,7 +182,7 @@ func init() {
 					}
 				}
 				return "", nil, task.ErrCommandNotImplemented
-			}
+			})
 
 			return tTask, nil
 		},
@@ -255,7 +243,7 @@ func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPrice
 
 		// 상품 페이지를 읽어들인다.
 		productDetailPageURL := fmt.Sprintf("%sgoods/%d", kurlyBaseURL, no)
-		doc, err := task.FetchHTMLDocument(t.Fetcher, productDetailPageURL)
+		doc, err := task.FetchHTMLDocument(t.GetFetcher(), productDetailPageURL)
 		if err != nil {
 			return "", nil, err
 		}
@@ -481,7 +469,7 @@ func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPrice
 
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == task.RunByUser {
 			if len(actualityTaskResultData.Products) == 0 {
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {
