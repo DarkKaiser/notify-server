@@ -164,7 +164,12 @@ func init() {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.executeWatchPrice(commandData, previousSnapshot, supportsHTML)
+									originTaskResultData, ok := previousSnapshot.(*naverShoppingWatchPriceResultData)
+									if ok == false {
+										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", previousSnapshot))
+									}
+
+									return tTask.executeWatchPrice(commandData, originTaskResultData, supportsHTML)
 								}
 							}
 							break
@@ -190,11 +195,7 @@ type naverShoppingTask struct {
 }
 
 // noinspection GoUnhandledErrorResult
-func (t *naverShoppingTask) executeWatchPrice(commandData *naverShoppingWatchPriceCommandData, previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := previousSnapshot.(*naverShoppingWatchPriceResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", previousSnapshot))
-	}
+func (t *naverShoppingTask) executeWatchPrice(commandData *naverShoppingWatchPriceCommandData, originTaskResultData *naverShoppingWatchPriceResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 상품에 대한 정보를 검색한다.

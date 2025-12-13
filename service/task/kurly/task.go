@@ -181,7 +181,12 @@ func init() {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.executeWatchProductPrice(commandData, previousSnapshot, supportsHTML)
+									originTaskResultData, ok := previousSnapshot.(*kurlyWatchProductPriceResultData)
+									if ok == false {
+										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", previousSnapshot))
+									}
+
+									return tTask.executeWatchProductPrice(commandData, originTaskResultData, supportsHTML)
 								}
 							}
 							break
@@ -203,11 +208,7 @@ type kurlyTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := previousSnapshot.(*kurlyWatchProductPriceResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", previousSnapshot))
-	}
+func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, originTaskResultData *kurlyWatchProductPriceResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 감시할 상품 목록을 읽어들인다.

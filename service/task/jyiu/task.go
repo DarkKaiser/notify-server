@@ -105,10 +105,20 @@ func init() {
 			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
 				case TcidJyiuWatchNewNotice:
-					return tTask.executeWatchNewNotice(previousSnapshot, supportsHTML)
+					originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewNoticeResultData)
+					if ok == false {
+						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", previousSnapshot))
+					}
+
+					return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
 
 				case TcidJyiuWatchNewEducation:
-					return tTask.executeWatchNewEducation(previousSnapshot, supportsHTML)
+					originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewEducationResultData)
+					if ok == false {
+						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", previousSnapshot))
+					}
+
+					return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
@@ -123,11 +133,7 @@ type jyiuTask struct {
 	task.Task
 }
 
-func (t *jyiuTask) executeWatchNewNotice(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewNoticeResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", previousSnapshot))
-	}
+func (t *jyiuTask) executeWatchNewNotice(originTaskResultData *jyiuWatchNewNoticeResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
 	var err0 error
@@ -232,11 +238,7 @@ func (t *jyiuTask) executeWatchNewNotice(previousSnapshot interface{}, supportsH
 	return message, changedTaskResultData, nil
 }
 
-func (t *jyiuTask) executeWatchNewEducation(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewEducationResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", previousSnapshot))
-	}
+func (t *jyiuTask) executeWatchNewEducation(originTaskResultData *jyiuWatchNewEducationResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
 	var err0 error

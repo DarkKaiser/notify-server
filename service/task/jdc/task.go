@@ -81,7 +81,12 @@ func init() {
 			t.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {
 				case TcidJdcWatchNewOnlineEducation:
-					return t.executeWatchNewOnlineEducation(previousSnapshot, supportsHTML)
+					originTaskResultData, ok := previousSnapshot.(*jdcWatchNewOnlineEducationResultData)
+					if ok == false {
+						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", previousSnapshot))
+					}
+
+					return t.executeWatchNewOnlineEducation(originTaskResultData, supportsHTML)
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
@@ -96,11 +101,7 @@ type jdcTask struct {
 	task.Task
 }
 
-func (t *jdcTask) executeWatchNewOnlineEducation(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := previousSnapshot.(*jdcWatchNewOnlineEducationResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", previousSnapshot))
-	}
+func (t *jdcTask) executeWatchNewOnlineEducation(originTaskResultData *jdcWatchNewOnlineEducationResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	actualityTaskResultData := &jdcWatchNewOnlineEducationResultData{}
 

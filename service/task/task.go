@@ -30,7 +30,7 @@ const (
 //
 // 반환값:
 //   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
-//   - interface{}: 실행 완료 후 저장할 새로운 데이터(data). 다음 실행 시 data 인자로 전달됩니다.
+//   - interface{}: 실행 완료 후 저장할 새로운 데이터. 다음 실행 시 data 인자로 전달됩니다.
 //   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
 type ExecuteFunc func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
 
@@ -63,11 +63,11 @@ type Task struct {
 	// Execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
 	Execute ExecuteFunc
 
-	// Storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
-	Storage TaskResultStorage
-
 	// Fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
 	Fetcher Fetcher
+
+	// Storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
+	Storage TaskResultStorage
 }
 
 func (t *Task) GetID() ID {
