@@ -62,7 +62,7 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
+		_, _, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

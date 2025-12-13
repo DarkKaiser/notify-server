@@ -12,14 +12,14 @@ import (
 
 const (
 	msgTaskExecutionFailed        = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
-	msgRunFuncNotInitialized      = "runFn()이 초기화되지 않았습니다."
 	msgStorageNotInitialized      = "Storage가 초기화되지 않았습니다."
+	msgExecuteFuncNotInitialized  = "Execute()가 초기화되지 않았습니다."
 	msgSnapshotCreationFailed     = "작업결과데이터 생성이 실패하였습니다."
-	msgCurrentSnapshotSaveFailed  = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
+	msgNewSnapshotSaveFailed      = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
 	msgPreviousSnapshotLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다."
 )
 
-// RunFunc 작업 실행 로직을 정의하는 함수 타입입니다.
+// ExecuteFunc 작업 실행 로직을 정의하는 함수 타입입니다.
 //
 // 이 함수는 순수 함수(Pure Function)에 가깝게 구현되어야 하며,
 // 작업에 필요한 데이터(Snapshot)를 받아 처리한 후 결과 메시지와 변경된 데이터를 반환합니다.
@@ -32,7 +32,7 @@ const (
 //   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
 //   - interface{}: 실행 완료 후 저장할 새로운 데이터(data). 다음 실행 시 data 인자로 전달됩니다.
 //   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
-type RunFunc func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
+type ExecuteFunc func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
 
 // Task 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
@@ -60,8 +60,8 @@ type Task struct {
 	// 작업 실행 시작 시각
 	RunTime time.Time
 
-	// RunFn은 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
-	RunFn RunFunc
+	// Execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
+	Execute ExecuteFunc
 
 	// Storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
 	Storage TaskResultStorage
@@ -130,11 +130,11 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 // prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
-	if t.RunFn == nil {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgRunFuncNotInitialized)
+	if t.Execute == nil {
+		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-		return nil, apperrors.New(apperrors.ErrInternal, msgRunFuncNotInitialized)
+		return nil, apperrors.New(apperrors.ErrInternal, msgExecuteFuncNotInitialized)
 	}
 
 	var snapshot interface{}
@@ -166,9 +166,9 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	return snapshot, nil
 }
 
-// execute 실제 비즈니스 로직(RunFn)을 실행합니다.
+// execute 실제 비즈니스 로직(Execute)을 실행합니다.
 func (t *Task) execute(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-	return t.RunFn(previousSnapshot, supportsHTML)
+	return t.Execute(previousSnapshot, supportsHTML)
 }
 
 // handleExecutionResult 작업 실행 결과를 처리합니다.
@@ -180,7 +180,7 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 
 		if newSnapshot != nil {
 			if err0 := t.Storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
-				message := fmt.Sprintf(msgCurrentSnapshotSaveFailed, err0)
+				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
 				t.log(log.WarnLevel, message, err0)
 				t.notifyError(taskCtx, notificationSender, message)
 			}

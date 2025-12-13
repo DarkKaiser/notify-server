@@ -103,7 +103,7 @@ func init() {
 			}
 			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
-			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
 				case TcidNaverWatchNewPerformances:
 					for _, t := range tTask.appConfig.Tasks {
@@ -118,7 +118,7 @@ func init() {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.runWatchNewPerformances(commandData, taskResultData, messageTypeHTML)
+									return tTask.executeWatchNewPerformances(commandData, previousSnapshot, supportsHTML)
 								}
 							}
 							break
@@ -141,10 +141,10 @@ type naverTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformancesCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
+func (t *naverTask) executeWatchNewPerformances(commandData *naverWatchNewPerformancesCommandData, previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*naverWatchNewPerformancesResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverWatchNewPerformancesResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverWatchNewPerformancesResultData, got: %T)", previousSnapshot))
 	}
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
@@ -245,7 +245,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityPerformance.String(messageTypeHTML, " 🆕")
+		m += actualityPerformance.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -263,7 +263,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityPerformance.String(messageTypeHTML, "")
+					m += actualityPerformance.String(supportsHTML, "")
 				}
 
 				message = "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + m

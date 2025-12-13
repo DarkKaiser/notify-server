@@ -50,7 +50,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.runWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	resultData := &naverShoppingWatchPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.runWatchPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -129,7 +129,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	resultData := &naverShoppingWatchPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.runWatchPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -195,7 +195,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -260,7 +260,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -340,7 +340,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

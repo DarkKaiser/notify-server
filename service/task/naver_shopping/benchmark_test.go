@@ -72,7 +72,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchPrice(commandData, resultData, true)
+		_, _, err := tTask.executeWatchPrice(commandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

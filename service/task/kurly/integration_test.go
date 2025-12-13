@@ -77,7 +77,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	resultData := &kurlyWatchProductPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -164,7 +164,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	resultData := &kurlyWatchProductPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -245,7 +245,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -324,7 +324,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -388,7 +388,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

@@ -53,7 +53,7 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.runWatchNewPerformances(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchNewPerformances(commandData, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)

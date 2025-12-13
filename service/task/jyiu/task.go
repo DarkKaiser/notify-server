@@ -102,13 +102,13 @@ func init() {
 			}
 			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
-			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
 				case TcidJyiuWatchNewNotice:
-					return tTask.runWatchNewNotice(taskResultData, messageTypeHTML)
+					return tTask.executeWatchNewNotice(previousSnapshot, supportsHTML)
 
 				case TcidJyiuWatchNewEducation:
-					return tTask.runWatchNewEducation(taskResultData, messageTypeHTML)
+					return tTask.executeWatchNewEducation(previousSnapshot, supportsHTML)
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
@@ -123,10 +123,10 @@ type jyiuTask struct {
 	task.Task
 }
 
-func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*jyiuWatchNewNoticeResultData)
+func (t *jyiuTask) executeWatchNewNotice(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewNoticeResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", previousSnapshot))
 	}
 
 	// 공지사항 페이지를 읽어서 정보를 추출한다.
@@ -183,7 +183,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	// 신규로 등록된 공지사항이 존재하는지 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	if messageTypeHTML == true {
+	if supportsHTML == true {
 		lineSpacing = "\n"
 	}
 	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Notices, originTaskResultData.Notices, func(selem, telem interface{}) (bool, error) {
@@ -203,7 +203,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityNotice.String(messageTypeHTML, " 🆕")
+		m += actualityNotice.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -221,7 +221,7 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityNotice.String(messageTypeHTML, "")
+					m += actualityNotice.String(supportsHTML, "")
 				}
 
 				message = "신규로 등록된 공지사항이 없습니다.\n\n현재 등록된 공지사항은 아래와 같습니다:\n\n" + m
@@ -232,10 +232,10 @@ func (t *jyiuTask) runWatchNewNotice(taskResultData interface{}, messageTypeHTML
 	return message, changedTaskResultData, nil
 }
 
-func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*jyiuWatchNewEducationResultData)
+func (t *jyiuTask) executeWatchNewEducation(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewEducationResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", previousSnapshot))
 	}
 
 	// 교육프로그램 페이지를 읽어서 정보를 추출한다.
@@ -310,7 +310,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityEducation.String(messageTypeHTML, " 🆕")
+		m += actualityEducation.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -328,7 +328,7 @@ func (t *jyiuTask) runWatchNewEducation(taskResultData interface{}, messageTypeH
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityEducation.String(messageTypeHTML, "")
+					m += actualityEducation.String(supportsHTML, "")
 				}
 
 				message = "신규로 등록된 교육프로그램이 없습니다.\n\n현재 등록된 교육프로그램은 아래와 같습니다:\n\n" + m

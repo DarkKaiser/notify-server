@@ -78,10 +78,10 @@ func init() {
 			}
 			t.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
-			t.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			t.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {
 				case TcidJdcWatchNewOnlineEducation:
-					return t.runWatchNewOnlineEducation(taskResultData, messageTypeHTML)
+					return t.executeWatchNewOnlineEducation(previousSnapshot, supportsHTML)
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
@@ -96,10 +96,10 @@ type jdcTask struct {
 	task.Task
 }
 
-func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*jdcWatchNewOnlineEducationResultData)
+func (t *jdcTask) executeWatchNewOnlineEducation(previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*jdcWatchNewOnlineEducationResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", previousSnapshot))
 	}
 
 	actualityTaskResultData := &jdcWatchNewOnlineEducationResultData{}
@@ -137,7 +137,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityEducationCourse.String(messageTypeHTML, " 🆕")
+		m += actualityEducationCourse.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -155,7 +155,7 @@ func (t *jdcTask) runWatchNewOnlineEducation(taskResultData interface{}, message
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityEducationCourse.String(messageTypeHTML, "")
+					m += actualityEducationCourse.String(supportsHTML, "")
 				}
 
 				message = "신규로 등록된 온라인교육 강의가 없습니다.\n\n현재 등록된 온라인교육 강의는 아래와 같습니다:\n\n" + m

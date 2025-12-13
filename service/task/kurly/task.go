@@ -165,7 +165,7 @@ func init() {
 			}
 			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
-			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 
 				switch tTask.GetCommandID() {
 				case TcidKurlyWatchProductPrice:
@@ -181,7 +181,7 @@ func init() {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.runWatchProductPrice(commandData, taskResultData, messageTypeHTML)
+									return tTask.executeWatchProductPrice(commandData, previousSnapshot, supportsHTML)
 								}
 							}
 							break
@@ -203,10 +203,10 @@ type kurlyTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*kurlyWatchProductPriceResultData)
+func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*kurlyWatchProductPriceResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", previousSnapshot))
 	}
 
 	//
@@ -349,7 +349,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 	//
 	m := ""
 	lineSpacing := "\n\n"
-	if messageTypeHTML == true {
+	if supportsHTML == true {
 		lineSpacing = "\n"
 	}
 	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
@@ -379,7 +379,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 			if m != "" {
 				m += lineSpacing
 			}
-			m += actualityProduct.String(messageTypeHTML, " 🆕", nil)
+			m += actualityProduct.String(supportsHTML, " 🆕", nil)
 
 			return
 		}
@@ -395,7 +395,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 			if m != "" {
 				m += lineSpacing
 			}
-			m += actualityProduct.String(messageTypeHTML, " 🔁", originProduct)
+			m += actualityProduct.String(supportsHTML, " 🔁", originProduct)
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*kurlyProduct)
@@ -411,7 +411,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityProduct.String(messageTypeHTML, " 🆕", nil)
+		m += actualityProduct.String(supportsHTML, " 🆕", nil)
 	})
 	if err != nil {
 		return "", nil, err
@@ -431,7 +431,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 		productNo := strings.TrimSpace(product[WatchProductColumnNo])
 		productName := template.HTMLEscapeString(strings.TrimSpace(product[WatchProductColumnName]))
 
-		if messageTypeHTML == true {
+		if supportsHTML == true {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseURL, productNo, productName))
 		} else {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
@@ -451,7 +451,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 					productNo := strings.TrimSpace(watchProduct[WatchProductColumnNo])
 					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[WatchProductColumnName]))
 
-					if messageTypeHTML == true {
+					if supportsHTML == true {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", kurlyBaseURL, productNo, productName))
 					} else {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
@@ -488,7 +488,7 @@ func (t *kurlyTask) runWatchProductPrice(commandData *kurlyWatchProductPriceComm
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityProduct.String(messageTypeHTML, "", nil)
+					m += actualityProduct.String(supportsHTML, "", nil)
 				}
 
 				message = fmt.Sprintf("변경된 상품 정보가 없습니다.\n\n%s현재 등록된 상품 정보는 아래와 같습니다:", m)

@@ -107,7 +107,7 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 
 		// Initial Run
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
+		message, changedData, err := tTask.executeWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Contains(t, message, "디지털 기초", "디지털 교육 제목이 포함되어야 합니다")
@@ -143,7 +143,7 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 
 		// Initial Run (Data empty)
 		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
+		message, changedData, err := tTask.executeWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Empty(t, message, "데이터가 없으면 메시지도 없어야 합니다 (초기 실행 아님)")

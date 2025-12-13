@@ -95,7 +95,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	b.ResetTimer() // Reset timer to ignore setup time
 
 	for i := 0; i < b.N; i++ {
-		_, _, err := tTask.runWatchProductPrice(commandData, resultData, true)
+		_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

@@ -57,7 +57,7 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 	}
 
 	// 3. 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 	}
 
 	// 3. 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
@@ -173,7 +173,7 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 	resultData := &jyiuWatchNewNoticeResultData{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewNotice(resultData, true)
+	_, _, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -201,7 +201,7 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 	resultData := &jyiuWatchNewEducationResultData{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewEducation(resultData, true)
+	_, _, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -261,7 +261,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -331,7 +331,7 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -400,7 +400,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -475,7 +475,7 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)

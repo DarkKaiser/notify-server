@@ -149,7 +149,7 @@ func init() {
 			}
 			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
 
-			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			tTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
 				if strings.HasPrefix(string(tTask.GetCommandID()), naverShoppingWatchPriceCommandIDPrefix) == true {
 					for _, t := range tTask.appConfig.Tasks {
@@ -164,7 +164,7 @@ func init() {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.runWatchPrice(commandData, taskResultData, messageTypeHTML)
+									return tTask.executeWatchPrice(commandData, previousSnapshot, supportsHTML)
 								}
 							}
 							break
@@ -190,10 +190,10 @@ type naverShoppingTask struct {
 }
 
 // noinspection GoUnhandledErrorResult
-func (t *naverShoppingTask) runWatchPrice(commandData *naverShoppingWatchPriceCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*naverShoppingWatchPriceResultData)
+func (t *naverShoppingTask) executeWatchPrice(commandData *naverShoppingWatchPriceCommandData, previousSnapshot interface{}, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	originTaskResultData, ok := previousSnapshot.(*naverShoppingWatchPriceResultData)
 	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", taskResultData))
+		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverShoppingWatchPriceResultData, got: %T)", previousSnapshot))
 	}
 
 	//
@@ -267,7 +267,7 @@ func (t *naverShoppingTask) runWatchPrice(commandData *naverShoppingWatchPriceCo
 	//
 	m := ""
 	lineSpacing := "\n\n"
-	if messageTypeHTML == true {
+	if supportsHTML == true {
 		lineSpacing = "\n"
 	}
 	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
@@ -289,7 +289,7 @@ func (t *naverShoppingTask) runWatchPrice(commandData *naverShoppingWatchPriceCo
 			if m != "" {
 				m += lineSpacing
 			}
-			m += originProduct.String(messageTypeHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice)))
+			m += originProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice)))
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*naverShoppingProduct)
@@ -297,7 +297,7 @@ func (t *naverShoppingTask) runWatchPrice(commandData *naverShoppingWatchPriceCo
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityProduct.String(messageTypeHTML, " 🆕")
+		m += actualityProduct.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -317,7 +317,7 @@ func (t *naverShoppingTask) runWatchPrice(commandData *naverShoppingWatchPriceCo
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityProduct.String(messageTypeHTML, "")
+					m += actualityProduct.String(supportsHTML, "")
 				}
 
 				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, m)

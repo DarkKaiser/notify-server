@@ -72,7 +72,7 @@ func TestTask_Run(t *testing.T) {
 		taskID               string
 		commandID            string
 		canceled             bool
-		runFn                RunFunc
+		execute              ExecuteFunc
 		storageSetup         func(*MockTaskResultStorage)
 		configSetup          func()
 		expectedNotifyCount  int
@@ -82,7 +82,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "실행 중 에러 발생 (Run Error)",
 			taskID:    "ErrorTask",
 			commandID: "ErrorCommand",
-			runFn: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "", nil, errors.New("Run Error")
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -109,7 +109,7 @@ func TestTask_Run(t *testing.T) {
 			taskID:    "CancelTask",
 			commandID: "CancelCommand",
 			canceled:  true,
-			runFn: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Should Not Send", nil, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -134,7 +134,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "정상 실행 및 알림 발송 (Success)",
 			taskID:    "SuccessTask",
 			commandID: "SuccessCommand",
-			runFn: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Success Message", map[string]interface{}{"key": "value"}, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -161,7 +161,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "Storage 저장 실패 (Storage Save Error)",
 			taskID:    "StorageFailTask",
 			commandID: "StorageFailCommand",
-			runFn: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Success Message", map[string]interface{}{"key": "value"}, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -206,7 +206,7 @@ func TestTask_Run(t *testing.T) {
 				InstanceID: InstanceID(tt.taskID + "_Instance"),
 				NotifierID: "test-notifier",
 				Canceled:   tt.canceled,
-				RunFn:      tt.runFn,
+				Execute:    tt.execute,
 				Storage:    mockStorage,
 			}
 

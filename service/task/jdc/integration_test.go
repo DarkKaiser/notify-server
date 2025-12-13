@@ -92,7 +92,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 	}
 
 	// 3. 실행
-	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
+	_, _, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -161,7 +161,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 	resultData := &jdcWatchNewOnlineEducationResultData{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
+	_, _, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -261,7 +261,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -378,7 +378,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewOnlineEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)

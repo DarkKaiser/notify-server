@@ -149,7 +149,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// 초기 실행 (이전 데이터 없음)
 		taskResultData := &naverWatchNewPerformancesResultData{}
-		message, changedData, err := tTask.runWatchNewPerformances(
+		message, changedData, err := tTask.executeWatchNewPerformances(
 			&naverWatchNewPerformancesCommandData{Query: "뮤지컬"},
 			taskResultData,
 			false,
@@ -219,7 +219,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		}
 		commandData.Filters.Title.IncludedKeywords = "뮤지컬"
 
-		message, changedData, err := tTask.runWatchNewPerformances(
+		message, changedData, err := tTask.executeWatchNewPerformances(
 			commandData,
 			taskResultData,
 			false,

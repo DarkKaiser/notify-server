@@ -215,8 +215,8 @@ func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 			executor: mockExecutor,
 		}
 
-		// runPrediction 실행
-		message, changedData, err := tTask.runPrediction()
+		// executePrediction 실행
+		message, changedData, err := tTask.executePrediction()
 
 		assert.NoError(t, err, "정상 실행 시 에러가 없어야 합니다")
 		assert.Nil(t, changedData, "changedData는 nil이어야 합니다")
@@ -242,7 +242,7 @@ func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
 			executor: mockExecutor,
 		}
 
-		_, _, err := tTask.runPrediction()
+		_, _, err := tTask.executePrediction()
 
 		assert.Error(t, err, "StartCommand 실패 시 에러가 발생해야 합니다")
 	})
@@ -270,7 +270,7 @@ func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
 			executor: mockExecutor,
 		}
 
-		_, _, err := tTask.runPrediction()
+		_, _, err := tTask.executePrediction()
 
 		assert.Error(t, err, "Wait 실패 시 에러가 발생해야 합니다")
 	})
@@ -298,7 +298,7 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 			executor: mockExecutor,
 		}
 
-		_, _, err := tTask.runPrediction()
+		_, _, err := tTask.executePrediction()
 
 		assert.Error(t, err, "잘못된 출력 형식 시 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "정상적으로 완료되었는지 확인할 수 없습니다", "적절한 에러 메시지가 반환되어야 합니다")

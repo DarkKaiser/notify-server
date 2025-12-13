@@ -127,10 +127,10 @@ func init() {
 				executor: &DefaultCommandExecutor{},
 			}
 
-			lottoTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			lottoTask.Execute = func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch lottoTask.GetCommandID() {
 				case TcidLottoPrediction:
-					return lottoTask.runPrediction()
+					return lottoTask.executePrediction()
 				}
 
 				return "", nil, task.ErrCommandNotImplemented
@@ -149,7 +149,7 @@ type lottoTask struct {
 	executor CommandExecutor
 }
 
-func (t *lottoTask) runPrediction() (message string, changedTaskResultData interface{}, err error) {
+func (t *lottoTask) executePrediction() (message string, changedTaskResultData interface{}, err error) {
 	// 비동기적으로 작업을 시작한다.
 	process, err := t.executor.StartCommand("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 	if err != nil {

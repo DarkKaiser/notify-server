@@ -46,7 +46,7 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewNotice(resultData, true)
+		_, _, err := tTask.executeWatchNewNotice(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
@@ -93,7 +93,7 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewEducation(resultData, true)
+		_, _, err := tTask.executeWatchNewEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
