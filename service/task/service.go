@@ -82,7 +82,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
-	if s.running == true {
+	if s.running {
 		defer serviceStopWaiter.Done()
 		applog.WithComponent("task.service").Warn("Task 서비스가 이미 시작됨!!!")
 		return nil
@@ -149,32 +149,43 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	}
 
 	// 인스턴스 중복 실행 확인 (Concurrency Control)
-	// AllowMultiple=false인 경우, 이미 실행 중인 동일 CommandID의 태스크가 있다면 실행을 거부합니다.
-	var alreadyRunHandler Handler
 	if !cfg.Command.AllowMultiple {
-		s.runningMu.Lock()
-		for _, handler := range s.handlers {
-			// 작업 중복 확인 로직
-			if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && handler.IsCanceled() == false {
-				alreadyRunHandler = handler
-				break
-			}
-		}
-		s.runningMu.Unlock()
-
-		if alreadyRunHandler != nil {
-			req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunHandler.GetInstanceID(), alreadyRunHandler.ElapsedTimeAfterRun())
-			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
+		if s.checkConcurrencyLimit(req) {
 			return
 		}
 	}
 
+	s.createAndStartTask(req, cfg)
+}
+
+func (s *Service) checkConcurrencyLimit(req *RunRequest) bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+
+	var alreadyRunHandler Handler
+	for _, handler := range s.handlers {
+		if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && !handler.IsCanceled() {
+			alreadyRunHandler = handler
+			break
+		}
+	}
+
+	if alreadyRunHandler != nil {
+		req.TaskContext = req.TaskContext.WithInstanceID(alreadyRunHandler.GetInstanceID(), alreadyRunHandler.ElapsedTimeAfterRun())
+		go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
+		return true
+	}
+
+	return false
+}
+
+func (s *Service) createAndStartTask(req *RunRequest, cfg *ConfigLookup) {
 	var instanceID InstanceID
 
 	s.runningMu.Lock()
 	for {
 		instanceID = s.instanceIDGenerator.New()
-		if _, exists := s.handlers[instanceID]; exists == false {
+		if _, exists := s.handlers[instanceID]; !exists {
 			break
 		}
 	}
@@ -205,14 +216,14 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
 	go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
 
-	if req.NotifyOnStart == true {
+	if req.NotifyOnStart {
 		go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
 	}
 }
 
 func (s *Service) handleTaskDone(instanceID InstanceID) {
 	s.runningMu.Lock()
-	if handler, exists := s.handlers[instanceID]; exists == true {
+	if handler, exists := s.handlers[instanceID]; exists {
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"task_id":     handler.GetID(),
 			"command_id":  handler.GetCommandID(),
@@ -230,7 +241,7 @@ func (s *Service) handleTaskDone(instanceID InstanceID) {
 
 func (s *Service) handleTaskCancel(instanceID InstanceID) {
 	s.runningMu.Lock()
-	if handler, exists := s.handlers[instanceID]; exists == true {
+	if handler, exists := s.handlers[instanceID]; exists {
 		handler.Cancel()
 
 		applog.WithComponentAndFields("task.service", log.Fields{
