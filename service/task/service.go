@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
@@ -78,12 +79,12 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 	// NotificationSender 검증
 	if s.notificationSender == nil {
-		defer serviceStopWaiter.Done()
+		serviceStopWaiter.Done()
 		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
-		defer serviceStopWaiter.Done()
+		serviceStopWaiter.Done()
 		applog.WithComponent("task.service").Warn("Task 서비스가 이미 시작됨!!!")
 		return nil
 	}
@@ -102,6 +103,14 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
 	defer serviceStopWaiter.Done()
+
+	defer func() {
+		if r := recover(); r != nil {
+			applog.WithComponentAndFields("task.service", log.Fields{
+				"panic": r,
+			}).Error("Critical: Task Service 메인 루프 Panic 발생")
+		}
+	}()
 
 	for {
 		select {
@@ -180,13 +189,17 @@ func (s *Service) checkConcurrencyLimit(req *RunRequest) bool {
 }
 
 func (s *Service) createAndStartTask(req *RunRequest, cfg *ConfigLookup) {
-	var instanceID InstanceID
+	// ID 생성을 락 밖에서 수행하여 Lock Holding Time을 최소화한다.
+	var instanceID = s.instanceIDGenerator.New()
 
 	s.runningMu.Lock()
-	for {
-		instanceID = s.instanceIDGenerator.New()
-		if _, exists := s.handlers[instanceID]; !exists {
-			break
+	// ID 충돌(매우 희박) 발생 시에만 락 내부에서 재생성한다.
+	if _, exists := s.handlers[instanceID]; exists {
+		for {
+			instanceID = s.instanceIDGenerator.New()
+			if _, exists := s.handlers[instanceID]; !exists {
+				break
+			}
 		}
 	}
 	s.runningMu.Unlock()
@@ -277,8 +290,19 @@ func (s *Service) handleStop() {
 	close(s.taskRunC)
 	close(s.taskCancelC)
 
-	// Task의 작업이 모두 취소될 때까지 대기한다.
-	s.taskStopWaiter.Wait()
+	// Task의 작업이 모두 취소될 때까지 대기한다. (최대 30초)
+	done := make(chan struct{})
+	go func() {
+		s.taskStopWaiter.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 정상적으로 모든 태스크가 종료됨
+	case <-time.After(30 * time.Second):
+		applog.WithComponent("task.service").Warn("Service 종료 대기 시간 초과! (30s) 강제 종료합니다.")
+	}
 
 	close(s.taskDoneC)
 
@@ -304,9 +328,19 @@ func (s *Service) Run(req *RunRequest) (err error) {
 		}
 	}()
 
-	s.taskRunC <- req
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 
-	return nil
+	if !s.running {
+		return apperrors.New(apperrors.ErrInternal, "Task 서비스가 실행중이 아닙니다.")
+	}
+
+	select {
+	case s.taskRunC <- req:
+		return nil
+	default:
+		return apperrors.New(apperrors.ErrInternal, "Task 실행 요청 큐가 가득 찼습니다.")
+	}
 }
 
 func (s *Service) Cancel(instanceID InstanceID) (err error) {
@@ -321,9 +355,19 @@ func (s *Service) Cancel(instanceID InstanceID) (err error) {
 		}
 	}()
 
-	s.taskCancelC <- instanceID
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 
-	return nil
+	if !s.running {
+		return apperrors.New(apperrors.ErrInternal, "Task 서비스가 실행중이 아닙니다.")
+	}
+
+	select {
+	case s.taskCancelC <- instanceID:
+		return nil
+	default:
+		return apperrors.New(apperrors.ErrInternal, "Task 취소 요청 큐가 가득 찼습니다.")
+	}
 }
 
 func (s *Service) SetNotificationSender(notificationSender NotificationSender) {
