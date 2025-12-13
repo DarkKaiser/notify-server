@@ -15,8 +15,8 @@ func dummyNewTask() NewTaskFunc {
 	}
 }
 
-// 헬퍼 함수: 더미 NewTaskResultDataFunc 생성
-func dummyResultFn() NewTaskResultDataFunc {
+// 헬퍼 함수: 더미 NewSnapshotFunc 생성
+func dummyResultFn() NewSnapshotFunc {
 	return func() interface{} { return struct{}{} }
 }
 
@@ -88,9 +88,9 @@ func TestFindConfig(t *testing.T) {
 	r.registerForTest(testTaskID, &Config{
 		Commands: []*CommandConfig{
 			{
-				ID:                  testCommandID,
-				AllowMultiple:       true,
-				NewTaskResultDataFn: dummyResultFn(),
+				ID:            testCommandID,
+				AllowMultiple: true,
+				NewSnapshot:   dummyResultFn(),
 			},
 		},
 		NewTask: nil,
@@ -140,9 +140,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DummyCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DummyCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -162,27 +162,27 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
 			expectedPanic: "CommandID는 비어있을 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn is nil",
+			name: "NewSnapshot is nil",
 			config: &Config{
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
-						// NewTaskResultDataFn missing
+						// NewSnapshot missing
 					},
 				},
 			},
-			expectedPanic: "NewTaskResultDataFn은 nil일 수 없습니다",
+			expectedPanic: "NewSnapshot은 nil일 수 없습니다",
 		},
 		{
 			name: "Duplicate CommandID",
@@ -190,14 +190,14 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -224,9 +224,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 			NewTask: dummyNewTask(),
 			Commands: []*CommandConfig{
 				{
-					ID:                  "SomeCommand",
-					AllowMultiple:       true,
-					NewTaskResultDataFn: dummyResultFn(),
+					ID:            "SomeCommand",
+					AllowMultiple: true,
+					NewSnapshot:   dummyResultFn(),
 				},
 			},
 		})
@@ -237,9 +237,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "OtherCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "OtherCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			})
@@ -259,9 +259,9 @@ func TestConfig_Validate(t *testing.T) {
 				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DummyCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DummyCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -281,43 +281,43 @@ func TestConfig_Validate(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
 			expectedError: "CommandID는 비어있을 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn is nil",
+			name: "NewSnapshot is nil",
 			config: &Config{
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
-						// NewTaskResultDataFn missing
+						// NewSnapshot missing
 					},
 				},
 			},
-			expectedError: "NewTaskResultDataFn은 nil일 수 없습니다",
+			expectedError: "NewSnapshot은 nil일 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn returns nil",
+			name: "NewSnapshot returns nil",
 			config: &Config{
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "NilDataCommand",
 						AllowMultiple: true,
-						NewTaskResultDataFn: func() interface{} {
+						NewSnapshot: func() interface{} {
 							return nil
 						},
 					},
 				},
 			},
-			expectedError: "NewTaskResultDataFn 결과값은 nil일 수 없습니다",
+			expectedError: "NewSnapshot 결과값은 nil일 수 없습니다",
 		},
 		{
 			name: "Duplicate CommandID",
@@ -325,14 +325,14 @@ func TestConfig_Validate(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -344,9 +344,9 @@ func TestConfig_Validate(t *testing.T) {
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "ValidCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "ValidCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},

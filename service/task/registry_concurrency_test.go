@@ -28,9 +28,9 @@ func TestRegistry_Concurrency(t *testing.T) {
 					},
 					Commands: []*CommandConfig{
 						{
-							ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
-							AllowMultiple:       true,
-							NewTaskResultDataFn: func() interface{} { return struct{}{} },
+							ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+							AllowMultiple: true,
+							NewSnapshot:   func() interface{} { return struct{}{} },
 						},
 					},
 				})
@@ -65,9 +65,9 @@ func TestRegistry_Concurrency(t *testing.T) {
 				},
 				Commands: []*CommandConfig{
 					{
-						ID:                  CommandID(fmt.Sprintf("CMD_%d", i)),
-						AllowMultiple:       true,
-						NewTaskResultDataFn: func() interface{} { return struct{}{} },
+						ID:            CommandID(fmt.Sprintf("CMD_%d", i)),
+						AllowMultiple: true,
+						NewSnapshot:   func() interface{} { return struct{}{} },
 					},
 				},
 			})
@@ -95,9 +95,9 @@ func TestRegistry_Concurrency(t *testing.T) {
 						},
 						Commands: []*CommandConfig{
 							{
-								ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
-								AllowMultiple:       true,
-								NewTaskResultDataFn: func() interface{} { return struct{}{} },
+								ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+								AllowMultiple: true,
+								NewSnapshot:   func() interface{} { return struct{}{} },
 							},
 						},
 					})

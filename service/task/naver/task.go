@@ -71,7 +71,7 @@ func init() {
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
+			NewSnapshot: func() interface{} { return &naverWatchNewPerformancesResultData{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {

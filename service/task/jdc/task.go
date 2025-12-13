@@ -50,7 +50,7 @@ func init() {
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
+			NewSnapshot: func() interface{} { return &jdcWatchNewOnlineEducationResultData{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {

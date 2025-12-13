@@ -94,7 +94,7 @@ func TestTask_Run(t *testing.T) {
 					Commands: []*CommandConfig{
 						{
 							ID: "ErrorCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},
@@ -121,7 +121,7 @@ func TestTask_Run(t *testing.T) {
 					Commands: []*CommandConfig{
 						{
 							ID: "CancelCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return &map[string]interface{}{}
 							},
 						},
@@ -147,7 +147,7 @@ func TestTask_Run(t *testing.T) {
 					Commands: []*CommandConfig{
 						{
 							ID: "SuccessCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},
@@ -174,7 +174,7 @@ func TestTask_Run(t *testing.T) {
 					Commands: []*CommandConfig{
 						{
 							ID: "StorageFailCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},

@@ -134,7 +134,7 @@ func init() {
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &kurlyWatchProductPriceResultData{} },
+			NewSnapshot: func() interface{} { return &kurlyWatchProductPriceResultData{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {

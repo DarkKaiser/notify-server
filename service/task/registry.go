@@ -13,8 +13,8 @@ import (
 // NewTaskFunc Task 인스턴스를 생성하는 팩토리 함수입니다.
 type NewTaskFunc func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error)
 
-// NewTaskResultDataFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
-type NewTaskResultDataFunc func() interface{}
+// NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
+type NewSnapshotFunc func() interface{}
 
 // Config Task 생성 및 명령어(Command) 구성을 위한 메타데이터를 정의하는 불변(Immutable) 설정 객체입니다.
 // 레지스트리에 등록된 이후에는 상태가 변경되지 않으며(Read-Only), Task 인스턴스를 생성하기 위한 청사진(Blueprint)으로 사용됩니다.
@@ -35,7 +35,7 @@ type CommandConfig struct {
 	// - false: 이미 실행 중인 인스턴스가 있다면 새로운 요청은 무시됩니다 (Throttling/Idempotency).
 	AllowMultiple bool
 
-	NewTaskResultDataFn NewTaskResultDataFunc
+	NewSnapshot NewSnapshotFunc
 }
 
 // ConfigLookup 요청된 ID(Task/Command)를 통해 Registry에서 조회된(Found) 설정 조합입니다.
@@ -79,14 +79,14 @@ func (c *Config) Validate() error {
 		if seenCommands[commandConfig.ID] {
 			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
 		}
-		if commandConfig.NewTaskResultDataFn == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, "NewTaskResultDataFn은 nil일 수 없습니다")
+		if commandConfig.NewSnapshot == nil {
+			return apperrors.New(apperrors.ErrInvalidInput, "NewSnapshot은 nil일 수 없습니다")
 		}
 
-		// NewTaskResultDataFn이 nil을 반환하는지 사전 검증
+		// NewSnapshot이 nil을 반환하는지 사전 검증
 		// 런타임에 발생할 수 있는 잠재적 오류를 등록 시점에 차단합니다.
-		if data := commandConfig.NewTaskResultDataFn(); data == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Command(%s)의 NewTaskResultDataFn 결과값은 nil일 수 없습니다", commandConfig.ID))
+		if snapshot := commandConfig.NewSnapshot(); snapshot == nil {
+			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Command(%s)의 NewSnapshot 결과값은 nil일 수 없습니다", commandConfig.ID))
 		}
 
 		seenCommands[commandConfig.ID] = true

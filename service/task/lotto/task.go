@@ -87,7 +87,7 @@ func init() {
 
 			AllowMultiple: false,
 
-			NewTaskResultDataFn: func() interface{} { return &lottoPredictionResultData{} },
+			NewSnapshot: func() interface{} { return &lottoPredictionResultData{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {

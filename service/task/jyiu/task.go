@@ -68,13 +68,13 @@ func init() {
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
+			NewSnapshot: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
 		}, {
 			ID: TcidJyiuWatchNewEducation,
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &jyiuWatchNewEducationResultData{} },
+			NewSnapshot: func() interface{} { return &jyiuWatchNewEducationResultData{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
