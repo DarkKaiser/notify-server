@@ -37,7 +37,7 @@ type Service struct {
 
 	notificationSender NotificationSender
 
-	taskRunC    chan *RunRequest
+	taskSubmitC chan *SubmitRequest
 	taskDoneC   chan InstanceID
 	taskCancelC chan InstanceID
 
@@ -61,7 +61,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		notificationSender: nil,
 
-		taskRunC:    make(chan *RunRequest, defaultChannelBufferSize),
+		taskSubmitC: make(chan *SubmitRequest, defaultChannelBufferSize),
 		taskDoneC:   make(chan InstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan InstanceID, defaultChannelBufferSize),
 
@@ -114,8 +114,8 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 
 	for {
 		select {
-		case req := <-s.taskRunC:
-			s.handleRunRequest(req)
+		case req := <-s.taskSubmitC:
+			s.handleSubmitRequest(req)
 
 		case instanceID := <-s.taskDoneC:
 			s.handleTaskDone(instanceID)
@@ -130,7 +130,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 	}
 }
 
-func (s *Service) handleRunRequest(req *RunRequest) {
+func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 	applog.WithComponentAndFields("task.service", log.Fields{
 		"task_id":    req.TaskID,
 		"command_id": req.CommandID,
@@ -167,7 +167,7 @@ func (s *Service) handleRunRequest(req *RunRequest) {
 	s.createAndStartTask(req, cfg)
 }
 
-func (s *Service) checkConcurrencyLimit(req *RunRequest) bool {
+func (s *Service) checkConcurrencyLimit(req *SubmitRequest) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -188,7 +188,7 @@ func (s *Service) checkConcurrencyLimit(req *RunRequest) bool {
 	return false
 }
 
-func (s *Service) createAndStartTask(req *RunRequest, cfg *ConfigLookup) {
+func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 	// ID 생성을 락 밖에서 수행하여 Lock Holding Time을 최소화한다.
 	var instanceID = s.instanceIDGenerator.New()
 
@@ -287,7 +287,7 @@ func (s *Service) handleStop() {
 	}
 	s.runningMu.Unlock()
 
-	close(s.taskRunC)
+	close(s.taskSubmitC)
 	close(s.taskCancelC)
 
 	// Task의 작업이 모두 취소될 때까지 대기한다. (최대 30초)
@@ -315,7 +315,7 @@ func (s *Service) handleStop() {
 	applog.WithComponent("task.service").Info("Task 서비스 중지됨")
 }
 
-func (s *Service) Run(req *RunRequest) (err error) {
+func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
@@ -336,14 +336,14 @@ func (s *Service) Run(req *RunRequest) (err error) {
 	}
 
 	select {
-	case s.taskRunC <- req:
+	case s.taskSubmitC <- req:
 		return nil
 	default:
 		return apperrors.New(apperrors.ErrInternal, "Task 실행 요청 큐가 가득 찼습니다.")
 	}
 }
 
-func (s *Service) Cancel(instanceID InstanceID) (err error) {
+func (s *Service) CancelTask(instanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))

@@ -320,17 +320,17 @@ func TestRunBy_Validity_And_String(t *testing.T) {
 	}
 }
 
-func TestRunRequest_Validate(t *testing.T) {
+func TestSubmitRequest_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
-		req         *RunRequest
+		req         *SubmitRequest
 		expectedErr bool
 	}{
 		{
 			name: "정상 요청",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:    "TASK-1",
 				CommandID: "CMD-1",
 				RunBy:     RunByUser,
@@ -339,7 +339,7 @@ func TestRunRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "필수값 누락: TaskID",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:    "",
 				CommandID: "CMD-1",
 				RunBy:     RunByUser,
@@ -348,7 +348,7 @@ func TestRunRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "필수값 누락: CommandID",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:    "TASK-1",
 				CommandID: "",
 				RunBy:     RunByUser,
@@ -357,7 +357,7 @@ func TestRunRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "잘못된 실행 주체 (RunBy)",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:    "TASK-1",
 				CommandID: "CMD-1",
 				RunBy:     RunByUnknown,
@@ -366,7 +366,7 @@ func TestRunRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "NotifierID 포함 (정상)",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:     "TASK-1",
 				CommandID:  "CMD-1",
 				RunBy:      RunByUser,
@@ -376,7 +376,7 @@ func TestRunRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "잘못된 NotifierID (공백)",
-			req: &RunRequest{
+			req: &SubmitRequest{
 				TaskID:     "TASK-1",
 				CommandID:  "CMD-1",
 				RunBy:      RunByUser,

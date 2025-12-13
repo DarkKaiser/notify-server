@@ -19,7 +19,7 @@ type scheduler struct {
 }
 
 // Start 스케줄러를 시작하고 정의된 작업들을 Cron에 등록합니다.
-func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, notificationSender NotificationSender) {
+func (s *scheduler) Start(appConfig *config.AppConfig, submitter Submitter, notificationSender NotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -53,7 +53,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, runner Runner, notificati
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
 				// 작업 실행 요청. 실패 시 에러 처리 및 알림 발송
-				if err := runner.Run(&RunRequest{
+				if err := submitter.SubmitTask(&SubmitRequest{
 					TaskID:        taskID,
 					CommandID:     commandID,
 					NotifierID:    defaultNotifierID,

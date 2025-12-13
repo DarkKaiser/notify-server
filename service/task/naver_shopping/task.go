@@ -104,7 +104,7 @@ func init() {
 			NewSnapshot: func() interface{} { return &naverShoppingWatchPriceResultData{} },
 		}},
 
-		NewTask: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
+		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
 			if req.TaskID != TidNaverShopping {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}

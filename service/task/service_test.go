@@ -22,7 +22,7 @@ func TestNewService(t *testing.T) {
 	require.Equal(t, appConfig, service.appConfig, "설정이 올바르게 설정되어야 합니다")
 	require.False(t, service.running, "초기 상태에서는 실행 중이 아니어야 합니다")
 	require.NotNil(t, service.handlers, "handlers가 초기화되어야 합니다")
-	require.NotNil(t, service.taskRunC, "taskRunC 채널이 초기화되어야 합니다")
+	require.NotNil(t, service.taskSubmitC, "taskSubmitC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskDoneC, "taskDoneC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskCancelC, "taskCancelC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskStopWaiter, "taskStopWaiter가 초기화되어야 합니다")
@@ -58,7 +58,7 @@ func TestService_TaskRun_Success(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Task 실행 요청
-	err := service.Run(&RunRequest{
+	err := service.SubmitTask(&SubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -94,7 +94,7 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	taskCtx := NewTaskContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	err := service.Run(&RunRequest{
+	err := service.SubmitTask(&SubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
 		NotifierID:    "test-notifier",
@@ -129,7 +129,7 @@ func TestService_TaskCancel_Success(t *testing.T) {
 
 	// Task 취소 요청
 	instanceID := InstanceID("test_instance_123")
-	err := service.Cancel(instanceID)
+	err := service.CancelTask(instanceID)
 
 	// 검증
 	require.NoError(t, err, "Task 취소 요청이 성공해야 합니다")
@@ -156,7 +156,7 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// 지원되지 않는 Task 실행 요청
-	err := service.Run(&RunRequest{
+	err := service.SubmitTask(&SubmitRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		CommandID:     "UNSUPPORTED_COMMAND",
 		NotifierID:    "test-notifier",
@@ -205,7 +205,7 @@ func TestService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultiple=true)
-				service.Run(&RunRequest{
+				service.SubmitTask(&SubmitRequest{
 					TaskID:        "TEST_TASK",
 					CommandID:     "TEST_COMMAND",
 					NotifierID:    "test-notifier",
@@ -253,7 +253,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
 			// Task 실행
-			service.Run(&RunRequest{
+			service.SubmitTask(&SubmitRequest{
 				TaskID:        "TEST_TASK",
 				CommandID:     "TEST_COMMAND",
 				NotifierID:    "test-notifier",
@@ -264,7 +264,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 			// 실행된 Task를 찾아서 취소 시도
 			service.runningMu.Lock()
 			for instanceID := range service.handlers {
-				go service.Cancel(instanceID)
+				go service.CancelTask(instanceID)
 			}
 			service.runningMu.Unlock()
 

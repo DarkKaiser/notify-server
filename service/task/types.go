@@ -117,9 +117,9 @@ func (t RunBy) String() string {
 	}
 }
 
-// RunRequest 작업 식별자, 커맨드, 컨텍스트 등 작업(Task) 실행에 필요한 모든 메타데이터와 요청 정보를 캡슐화한 구조체입니다.
+// SubmitRequest 작업 식별자, 커맨드, 컨텍스트 등 작업(Task) 실행에 필요한 모든 메타데이터와 요청 정보를 캡슐화한 구조체입니다.
 // Scheduler 또는 API 요청 등을 통해 작업을 트리거할 때 사용됩니다.
-type RunRequest struct {
+type SubmitRequest struct {
 	// TaskID 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
 	TaskID ID
 
@@ -143,7 +143,7 @@ type RunRequest struct {
 }
 
 // Validate 유효한 요청인지 검증합니다.
-func (r *RunRequest) Validate() error {
+func (r *SubmitRequest) Validate() error {
 	if err := r.TaskID.Validate(); err != nil {
 		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskID 검증 실패")
 	}

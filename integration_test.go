@@ -151,7 +151,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
-		result := taskService.Run(&task.RunRequest{
+		result := taskService.SubmitTask(&task.SubmitRequest{
 			TaskID:        "NON_EXISTENT",
 			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
@@ -195,7 +195,7 @@ func TestTaskToNotificationFlow(t *testing.T) {
 		initialCallCount := len(mockSender.notifyCalls)
 
 		// Task 실행 (알림 요청 포함)
-		taskService.Run(&task.RunRequest{
+		taskService.SubmitTask(&task.SubmitRequest{
 			TaskID:        "TEST",
 			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
@@ -363,7 +363,7 @@ func TestEndToEndScenario(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Task 실행 시도
-		taskService.Run(&task.RunRequest{
+		taskService.SubmitTask(&task.SubmitRequest{
 			TaskID:        "TEST",
 			CommandID:     "TEST",
 			NotifierID:    "test-notifier",
@@ -455,11 +455,11 @@ func (m *mockNotificationSender) SupportsHTML(notifierID string) bool {
 // mockExecutor는 테스트용 Executor 구현체입니다.
 type mockExecutor struct{}
 
-func (m *mockExecutor) Run(req *task.RunRequest) error {
+func (m *mockExecutor) SubmitTask(req *task.SubmitRequest) error {
 	return nil
 }
 
-func (m *mockExecutor) Cancel(instanceID task.InstanceID) error {
+func (m *mockExecutor) CancelTask(instanceID task.InstanceID) error {
 	return nil
 }
 

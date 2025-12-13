@@ -13,12 +13,12 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) Run(req *RunRequest) error {
+func (m *MockTaskExecutor) SubmitTask(req *SubmitRequest) error {
 	args := m.Called(req)
 	return args.Error(0)
 }
 
-func (m *MockTaskExecutor) Cancel(instanceID InstanceID) error {
+func (m *MockTaskExecutor) CancelTask(instanceID InstanceID) error {
 	args := m.Called(instanceID)
 	return args.Error(0)
 }

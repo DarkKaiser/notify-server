@@ -37,21 +37,21 @@ type Handler interface {
 	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
-// Runner 작업을 실행하는 인터페이스입니다.
-type Runner interface {
-	// Run 작업을 실행합니다. 실행 성공 여부(error)를 반환합니다.
-	Run(req *RunRequest) error
+// Submitter 작업을 제출하는 인터페이스입니다.
+type Submitter interface {
+	// SubmitTask 작업을 제출합니다. 제출 성공 여부(error)를 반환합니다.
+	SubmitTask(req *SubmitRequest) error
 }
 
 // Canceler 실행 중인 작업을 취소하는 인터페이스입니다.
 type Canceler interface {
-	// Cancel 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
-	Cancel(instanceID InstanceID) error
+	// CancelTask 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
+	CancelTask(instanceID InstanceID) error
 }
 
 // Executor 작업을 실행하고 취소할 수 있는 Combined 인터페이스입니다.
 type Executor interface {
-	Runner
+	Submitter
 	Canceler
 }
 

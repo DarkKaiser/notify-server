@@ -91,7 +91,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("ErrorTask", &Config{
-					NewTask: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "ErrorCommand",
@@ -118,7 +118,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("CancelTask", &Config{
-					NewTask: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "CancelCommand",
@@ -144,7 +144,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("SuccessTask", &Config{
-					NewTask: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "SuccessCommand",
@@ -171,7 +171,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("StorageFailTask", &Config{
-					NewTask: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "StorageFailCommand",
