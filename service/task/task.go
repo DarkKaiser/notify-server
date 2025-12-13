@@ -106,12 +106,16 @@ func (t *Task) IsCanceled() bool {
 	return t.canceled
 }
 
-func (t *Task) ElapsedTimeAfterRun() int64 {
-	return int64(time.Since(t.runTime).Seconds())
+func (t *Task) SetRunBy(runBy RunBy) {
+	t.runBy = runBy
 }
 
-func (t *Task) SetStorage(storage TaskResultStorage) {
-	t.storage = storage
+func (t *Task) GetRunBy() RunBy {
+	return t.runBy
+}
+
+func (t *Task) ElapsedTimeAfterRun() int64 {
+	return int64(time.Since(t.runTime).Seconds())
 }
 
 func (t *Task) SetExecute(fn ExecuteFunc) {
@@ -126,12 +130,8 @@ func (t *Task) GetFetcher() Fetcher {
 	return t.fetcher
 }
 
-func (t *Task) SetRunBy(runBy RunBy) {
-	t.runBy = runBy
-}
-
-func (t *Task) GetRunBy() RunBy {
-	return t.runBy
+func (t *Task) SetStorage(storage TaskResultStorage) {
+	t.storage = storage
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
@@ -150,7 +150,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 	}
 
 	// 2. 작업 실행
-	message, newSnapshot, err := t.executeTask(previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
+	message, newSnapshot, err := t.execute(previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
 
 	if t.IsCanceled() {
 		return
@@ -196,11 +196,6 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	}
 
 	return snapshot, nil
-}
-
-// executeTask 실제 비즈니스 로직(execute)을 실행합니다.
-func (t *Task) executeTask(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-	return t.execute(previousSnapshot, supportsHTML)
 }
 
 // handleExecutionResult 작업 실행 결과를 처리합니다.
