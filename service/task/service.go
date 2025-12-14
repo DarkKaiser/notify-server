@@ -41,7 +41,7 @@ type Service struct {
 	taskDoneC   chan InstanceID
 	taskCancelC chan InstanceID
 
-	taskStopWaiter *sync.WaitGroup
+	taskStopWG *sync.WaitGroup
 
 	storage TaskResultStorage
 }
@@ -65,13 +65,17 @@ func NewService(appConfig *config.AppConfig) *Service {
 		taskDoneC:   make(chan InstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan InstanceID, defaultChannelBufferSize),
 
-		taskStopWaiter: &sync.WaitGroup{},
+		taskStopWG: &sync.WaitGroup{},
 
 		storage: NewFileTaskResultStorage(config.AppName),
 	}
 }
 
-func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) SetNotificationSender(notificationSender NotificationSender) {
+	s.notificationSender = notificationSender
+}
+
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -79,30 +83,30 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 	// NotificationSender 검증
 	if s.notificationSender == nil {
-		serviceStopWaiter.Done()
+		serviceStopWG.Done()
 		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
-		serviceStopWaiter.Done()
+		serviceStopWG.Done()
 		applog.WithComponent("task.service").Warn("Task 서비스가 이미 시작됨!!!")
 		return nil
 	}
 
-	// Task 스케쥴러를 시작한다.
-	s.scheduler.Start(s.appConfig, s, s.notificationSender)
-
-	go s.run0(serviceStopCtx, serviceStopWaiter)
+	go s.run0(serviceStopCtx, serviceStopWG)
 
 	s.running = true
+
+	// Task 스케쥴러를 시작한다.
+	s.scheduler.Start(s.appConfig, s, s.notificationSender)
 
 	applog.WithComponent("task.service").Info("Task 서비스 시작됨")
 
 	return nil
 }
 
-func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
-	defer serviceStopWaiter.Done()
+func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) {
+	defer serviceStopWG.Done()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -114,7 +118,10 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWaiter *sync.W
 
 	for {
 		select {
-		case req := <-s.taskSubmitC:
+		case req, ok := <-s.taskSubmitC:
+			if !ok {
+				return
+			}
 			s.handleSubmitRequest(req)
 
 		case instanceID := <-s.taskDoneC:
@@ -225,9 +232,9 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 	s.handlers[instanceID] = h
 	s.runningMu.Unlock()
 
-	s.taskStopWaiter.Add(1)
+	s.taskStopWG.Add(1)
 	req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
-	go h.Run(req.TaskContext, s.notificationSender, s.taskStopWaiter, s.taskDoneC)
+	go h.Run(req.TaskContext, s.notificationSender, s.taskStopWG, s.taskDoneC)
 
 	if req.NotifyOnStart {
 		go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
@@ -281,6 +288,13 @@ func (s *Service) handleStop() {
 	s.scheduler.Stop()
 
 	s.runningMu.Lock()
+
+	// [Race Condition 방지]
+	// SubmitTask가 running 상태를 확인하고 채널에 전송하기(send) 전에,
+	// 여기서 먼저 running을 false로 설정하여 "닫힌 채널에 전송(Panic)"을 원천 차단합니다.
+	// (SubmitTask는 runningMu를 획득해야만 진행 가능하므로, 여기서 running=false 설정 시 안전이 보장됨)
+	s.running = false
+
 	// 현재 작업중인 Task의 작업을 모두 취소한다.
 	for _, handler := range s.handlers {
 		handler.Cancel()
@@ -293,7 +307,7 @@ func (s *Service) handleStop() {
 	// Task의 작업이 모두 취소될 때까지 대기한다. (최대 30초)
 	done := make(chan struct{})
 	go func() {
-		s.taskStopWaiter.Wait()
+		s.taskStopWG.Wait()
 		close(done)
 	}()
 
@@ -307,7 +321,6 @@ func (s *Service) handleStop() {
 	close(s.taskDoneC)
 
 	s.runningMu.Lock()
-	s.running = false
 	s.handlers = nil
 	s.notificationSender = nil
 	s.runningMu.Unlock()
@@ -327,6 +340,12 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 			}).Error("Task 실행 요청중에 panic 발생")
 		}
 	}()
+
+	// 요청된 TaskID와 CommandID가 유효한지 먼저 검증합니다.
+	// 유효하지 않은 요청을 큐에 넣지 않고 즉시 거부함으로써, 리소스 낭비를 막고 호출자에게 빠른 피드백을 제공합니다.
+	if _, err := findConfig(req.TaskID, req.CommandID); err != nil {
+		return err
+	}
 
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
@@ -368,8 +387,4 @@ func (s *Service) CancelTask(instanceID InstanceID) (err error) {
 	default:
 		return apperrors.New(apperrors.ErrInternal, "Task 취소 요청 큐가 가득 찼습니다.")
 	}
-}
-
-func (s *Service) SetNotificationSender(notificationSender NotificationSender) {
-	s.notificationSender = notificationSender
 }

@@ -135,10 +135,24 @@ func (t *Task) SetStorage(storage TaskResultStorage) {
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
-func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID) {
-	defer taskStopWaiter.Done()
+func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- InstanceID) {
+	defer taskStopWG.Done()
+
+	// [Deep Panic Safety] defer는 역순(LIFO)으로 실행되므로, recover보다 늦게, taskStopWG.Done()보다 먼저 실행되도록 위치시킵니다.
+	// 1. Recover (Panic 복구) -> 2. taskDoneC 전송 (완료 신호) -> 3. Done (WaitGroup 감소, 채널 닫힘 가능성)
+	// 순서로 실행되어야 "닫힌 채널에 전송"하는 Panic을 방지할 수 있습니다.
 	defer func() {
 		taskDoneC <- t.instanceID
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			err := apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
+			t.log(log.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", err)
+
+			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
+			t.handleExecutionResult(taskCtx, notificationSender, "", nil, err)
+		}
 	}()
 
 	t.runTime = time.Now()

@@ -23,8 +23,8 @@ func newMockService() *mockService {
 	}
 }
 
-func (m *mockService) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
-	defer serviceStopWaiter.Done()
+func (m *mockService) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
+	defer serviceStopWG.Done()
 
 	m.mu.Lock()
 	m.runCalled = true

@@ -159,14 +159,14 @@ func TestTaskToNotificationFlow(t *testing.T) {
 			RunBy:         task.RunByUser,
 		})
 
-		// TaskRun은 비동기 요청이므로 성공적으로 큐에 들어가면 nil을 반환함
-		assert.NoError(t, result, "Task 실행 요청은 성공해야 합니다")
+		// TaskRun은 Fail Fast로 인해 즉시 에러를 반환해야 함
+		assert.Error(t, result, "지원되지 않는 Task는 에러를 반환해야 합니다")
 
 		// 알림 발송 확인 (처리 대기)
 		time.Sleep(200 * time.Millisecond)
 
-		// 에러 알림이 발송되었는지 확인
-		assert.Greater(t, len(mockSender.notifyCalls), 0, "에러 알림이 발송되어야 합니다")
+		// Fail Fast이므로 비동기 에러 알림은 발송되지 않음 (호출자가 처리)
+		assert.Equal(t, 0, len(mockSender.notifyCalls), "Fail Fast로 인해 비동기 알림은 없어야 합니다")
 
 		cancel()
 		wg.Wait()

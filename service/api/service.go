@@ -76,30 +76,30 @@ func NewService(appConfig *config.AppConfig, notificationSender notification.Sen
 //
 // Parameters:
 //   - serviceStopCtx: 종료 신호를 받기 위한 Context (cancel 호출 시 종료)
-//   - serviceStopWaiter: 서비스 종료 대기를 위한 WaitGroup
+//   - serviceStopWG: 서비스 종료 대기를 위한 WaitGroup
 //
 // Returns:
 //   - error: notificationService가 nil이거나 이미 실행 중인 경우 에러 반환
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
-func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	applog.WithComponent("api.service").Info("API 서비스 시작중...")
 
 	if s.notificationSender == nil {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		return apperrors.New(apperrors.ErrInternal, "notificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		applog.WithComponent("api.service").Warn("API 서비스가 이미 시작됨!!!")
 		return nil
 	}
 
-	go s.runServiceLoop(serviceStopCtx, serviceStopWaiter)
+	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
 	s.running = true
 
@@ -110,8 +110,8 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 // runServiceLoop 서비스의 메인 실행 루프입니다.
 // 서버 설정, HTTP 서버 시작, Shutdown 대기를 순차적으로 수행합니다.
-func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
-	defer serviceStopWaiter.Done()
+func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) {
+	defer serviceStopWG.Done()
 
 	// 서버 설정
 	e := s.setupServer()

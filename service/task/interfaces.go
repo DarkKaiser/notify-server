@@ -34,7 +34,7 @@ type Handler interface {
 	SetStorage(storage TaskResultStorage)
 
 	// Run 작업을 실행하는 메인 메서드입니다.
-	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWaiter *sync.WaitGroup, taskDoneC chan<- InstanceID)
+	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- InstanceID)
 }
 
 // Submitter 작업을 제출하는 인터페이스입니다.

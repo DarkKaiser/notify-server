@@ -20,8 +20,8 @@ type Service struct {
 
 	notifierFactory NotifierFactory
 
-	// notifiersStopWaiter 모든 하위 Notifier의 종료를 대기하는 WaitGroup
-	notifiersStopWaiter *sync.WaitGroup
+	// notifiersStopWG 모든 하위 Notifier의 종료를 대기하는 WaitGroup
+	notifiersStopWG *sync.WaitGroup
 
 	executor task.Executor
 
@@ -35,7 +35,7 @@ func NewService(appConfig *config.AppConfig, executor task.Executor) *Service {
 
 		defaultNotifier: nil,
 
-		notifiersStopWaiter: &sync.WaitGroup{},
+		notifiersStopWG: &sync.WaitGroup{},
 
 		executor: executor,
 
@@ -56,19 +56,19 @@ func (s *Service) SetNotifierFactory(factory NotifierFactory) {
 }
 
 // Start 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
-func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	applog.WithComponent("notification.service").Info("Notification 서비스 시작중...")
 
 	if s.executor == nil {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		return apperrors.New(apperrors.ErrInternal, "Executor 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 이미 시작됨!!!")
 		return nil
 	}
@@ -76,7 +76,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 	// 1. Notifier들을 초기화 및 실행
 	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig, s.executor)
 	if err != nil {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		return apperrors.Wrap(err, apperrors.ErrInternal, "Notifier 초기화 중 에러가 발생했습니다")
 	}
 
@@ -89,10 +89,10 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 			s.defaultNotifier = h
 		}
 
-		s.notifiersStopWaiter.Add(1)
+		s.notifiersStopWG.Add(1)
 
 		go func(handler NotifierHandler) {
-			defer s.notifiersStopWaiter.Done()
+			defer s.notifiersStopWG.Done()
 			handler.Run(serviceStopCtx)
 		}(h)
 
@@ -103,12 +103,12 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 
 	// 2. 기본 Notifier 존재 여부 확인
 	if s.defaultNotifier == nil {
-		defer serviceStopWaiter.Done()
+		defer serviceStopWG.Done()
 		return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID))
 	}
 
 	// 3. 서비스 종료 감시 루틴 실행
-	go s.waitForShutdown(serviceStopCtx, serviceStopWaiter)
+	go s.waitForShutdown(serviceStopCtx, serviceStopWG)
 
 	s.running = true
 
@@ -118,16 +118,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWaiter *sync.
 }
 
 // waitForShutdown 서비스의 종료 신호를 감지하고 리소스를 안전하게 정리합니다.
-func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWaiter *sync.WaitGroup) {
-	defer serviceStopWaiter.Done()
+func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) {
+	defer serviceStopWG.Done()
 
 	<-serviceStopCtx.Done()
 
 	applog.WithComponent("notification.service").Info("Notification 서비스 중지중...")
 
 	// 등록된 모든 Notifier의 고루틴 작업이 완료(종료)될 때까지 대기합니다.
-	// 각 Notifier의 Run 메서드에서 defer s.notifiersStopWaiter.Done()이 호출되어야 합니다.
-	s.notifiersStopWaiter.Wait()
+	// 각 Notifier의 Run 메서드에서 defer s.notifiersStopWG.Done()이 호출되어야 합니다.
+	s.notifiersStopWG.Wait()
 
 	s.runningMu.Lock()
 	s.running = false
