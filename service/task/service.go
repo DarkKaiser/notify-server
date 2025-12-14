@@ -15,11 +15,11 @@ import (
 const (
 	defaultChannelBufferSize = 10
 
-	msgTaskNotFound           = "등록되지 않은 작업입니다.😱"
-	msgTaskRunning            = "작업 진행중입니다. 잠시만 기다려 주세요."
-	msgTaskAlreadyRunning     = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
-	msgTaskCanceledByUser     = "사용자 요청에 의해 작업이 취소되었습니다."
-	msgTaskCancelInfoNotFound = "해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)"
+	msgTaskUnregistered   = "등록되지 않은 작업입니다.😱"
+	msgTaskRunning        = "작업 진행중입니다. 잠시만 기다려 주세요."
+	msgTaskAlreadyRunning = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
+	msgTaskCanceledByUser = "사용자 요청에 의해 작업이 취소되었습니다."
+	msgTaskNotFound       = "해당 작업에 대한 정보를 찾을 수 없습니다.😱\n취소 요청이 실패하였습니다.(ID:%s)"
 )
 
 // Service
@@ -151,7 +151,7 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 
 	cfg, err := findConfig(req.TaskID, req.CommandID)
 	if err != nil {
-		m := msgTaskNotFound
+		m := msgTaskUnregistered
 
 		applog.WithComponentAndFields("task.service", log.Fields{
 			"task_id":    req.TaskID,
@@ -276,7 +276,7 @@ func (s *Service) handleTaskCancel(instanceID InstanceID) {
 			"instance_id": instanceID,
 		}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
-		go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskCancelInfoNotFound, instanceID))
+		go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskNotFound, instanceID))
 	}
 	s.runningMu.Unlock()
 }
