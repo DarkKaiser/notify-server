@@ -116,14 +116,14 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// Task 설정
 		tTask := &naverTask{
-			Task: task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test_notifier", task.RunByScheduler),
+			Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", task.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
-						ID: string(TidNaver),
+						ID: string(ID),
 						Commands: []config.CommandConfig{
 							{
-								ID: string(TcidNaverWatchNewPerformances),
+								ID: string(WatchNewPerformancesCommand),
 								Data: map[string]interface{}{
 									"query": "뮤지컬",
 									"filters": map[string]interface{}{
@@ -182,14 +182,14 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// Task 설정 (필터 적용)
 		tTask := &naverTask{
-			Task: task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test_notifier", task.RunByScheduler),
+			Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", task.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
-						ID: string(TidNaver),
+						ID: string(ID),
 						Commands: []config.CommandConfig{
 							{
-								ID: string(TcidNaverWatchNewPerformances),
+								ID: string(WatchNewPerformancesCommand),
 								Data: map[string]interface{}{
 									"query": "공연",
 									"filters": map[string]interface{}{

@@ -17,12 +17,11 @@ import (
 const (
 	naverShoppingWatchPriceCommandIDPrefix string = "WatchPrice_"
 
-	// TaskID
-	TidNaverShopping task.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
+	// ID TaskID
+	ID task.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
 	// CommandID
-	TcidNaverShoppingWatchPriceAny = task.CommandID(naverShoppingWatchPriceCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
-
+	WatchPriceAnyCommand = task.CommandID(naverShoppingWatchPriceCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
 	// 네이버쇼핑 검색 URL
 	naverShoppingSearchURL = "https://openapi.naver.com/v1/search/shop.json"
 )
@@ -95,9 +94,9 @@ type naverShoppingWatchPriceResultData struct {
 }
 
 func init() {
-	task.Register(TidNaverShopping, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidNaverShoppingWatchPriceAny,
+			ID: WatchPriceAnyCommand,
 
 			AllowMultiple: true,
 
@@ -105,7 +104,7 @@ func init() {
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidNaverShopping {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 

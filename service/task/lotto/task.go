@@ -19,22 +19,22 @@ import (
 
 const (
 	// TaskID
-	TidLotto task.ID = "LOTTO"
+	ID task.ID = "LOTTO"
 
 	// CommandID
-	TcidLottoPrediction task.CommandID = "Prediction" // 로또 번호 예측
+	PredictionCommand task.CommandID = "Prediction" // 로또 번호 예측 명령
 )
 
-// CommandProcess 실행 중인 프로세스를 추상화하는 인터페이스
-type CommandProcess interface {
+// commandProcess 실행 중인 프로세스를 추상화하는 인터페이스
+type commandProcess interface {
 	Wait() error
 	Kill() error
 	Output() string
 }
 
-// CommandExecutor 외부 명령 실행을 추상화하는 인터페이스
-type CommandExecutor interface {
-	StartCommand(name string, args ...string) (CommandProcess, error)
+// commandExecutor 외부 명령 실행을 추상화하는 인터페이스
+type commandExecutor interface {
+	StartCommand(name string, args ...string) (commandProcess, error)
 }
 
 // defaultCommandProcess exec.Cmd를 래핑한 기본 프로세스 구현
@@ -55,10 +55,10 @@ func (p *defaultCommandProcess) Output() string {
 	return p.outBuffer.String()
 }
 
-// DefaultCommandExecutor 기본 명령 실행기 (os/exec 사용)
-type DefaultCommandExecutor struct{}
+// defaultCommandExecutor 기본 명령 실행기 (os/exec 사용)
+type defaultCommandExecutor struct{}
 
-func (e *DefaultCommandExecutor) StartCommand(name string, args ...string) (CommandProcess, error) {
+func (e *defaultCommandExecutor) StartCommand(name string, args ...string) (commandProcess, error) {
 	cmd := exec.Command(name, args...)
 	var outBuffer bytes.Buffer
 	cmd.Stdout = &outBuffer
@@ -78,20 +78,20 @@ type lottoTaskData struct {
 	AppPath string `json:"app_path"`
 }
 
-type lottoPredictionResultData struct{}
+type predictionSnapshot struct{}
 
 func init() {
-	task.Register(TidLotto, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidLottoPrediction,
+			ID: PredictionCommand,
 
 			AllowMultiple: false,
 
-			NewSnapshot: func() interface{} { return &lottoPredictionResultData{} },
+			NewSnapshot: func() interface{} { return &predictionSnapshot{} },
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidLotto {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
@@ -114,12 +114,12 @@ func init() {
 
 				appPath: appPath,
 
-				executor: &DefaultCommandExecutor{},
+				executor: &defaultCommandExecutor{},
 			}
 
 			lottoTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch lottoTask.GetCommandID() {
-				case TcidLottoPrediction:
+				case PredictionCommand:
 					return lottoTask.executePrediction()
 				}
 
@@ -136,7 +136,7 @@ type lottoTask struct {
 
 	appPath string
 
-	executor CommandExecutor
+	executor commandExecutor
 }
 
 func (t *lottoTask) executePrediction() (message string, changedTaskResultData interface{}, err error) {
@@ -150,7 +150,7 @@ func (t *lottoTask) executePrediction() (message string, changedTaskResultData i
 	ticker := time.NewTicker(time.Millisecond * 500)
 	tickerStopC := make(chan bool, 1)
 
-	go func(ticker *time.Ticker, process CommandProcess) {
+	go func(ticker *time.Ticker, process commandProcess) {
 		for {
 			select {
 			case <-ticker.C:

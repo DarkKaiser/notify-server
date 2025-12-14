@@ -122,7 +122,7 @@ func TestLottoTask_ResultFileReading(t *testing.T) {
 
 func TestLottoTask_CancelLogic(t *testing.T) {
 	t.Run("작업 취소 플래그 테스트", func(t *testing.T) {
-		testTask := testutil.CreateTestTask(TidLotto, TcidLottoPrediction, "test_instance")
+		testTask := testutil.CreateTestTask(ID, PredictionCommand, "test_instance")
 
 		// 초기 상태 확인
 		assert.False(t, testTask.IsCanceled(), "초기 상태에서는 취소되지 않아야 합니다")
@@ -179,7 +179,7 @@ type MockCommandExecutor struct {
 	err     error
 }
 
-func (m *MockCommandExecutor) StartCommand(name string, args ...string) (CommandProcess, error) {
+func (m *MockCommandExecutor) StartCommand(name string, args ...string) (commandProcess, error) {
 	return m.process, m.err
 }
 
@@ -207,7 +207,7 @@ func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 
 		// lottoTask 생성
 		tTask := &lottoTask{
-			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
+			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -230,7 +230,7 @@ func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
+			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -254,7 +254,7 @@ func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
+			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -278,7 +278,7 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 		}
 
 		tTask := &lottoTask{
-			Task:     task.NewBaseTask(TidLotto, TcidLottoPrediction, "test_instance", "test-notifier", task.RunByUnknown),
+			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -297,10 +297,10 @@ func TestDefaultCommandExecutor_RealExecution(t *testing.T) {
 			t.Skip("short 모드에서는 실제 명령어 실행 테스트를 건너뜁니다")
 		}
 
-		executor := &DefaultCommandExecutor{}
+		executor := &defaultCommandExecutor{}
 
 		// 운영체제에 따라 다른 명령어 사용
-		var process CommandProcess
+		var process commandProcess
 		var err error
 
 		// Windows에서는 cmd /c echo를, Linux/Unix에서는 sh -c echo를 사용

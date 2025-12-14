@@ -16,10 +16,10 @@ import (
 
 const (
 	// TaskID
-	TidNaver task.ID = "NAVER" // 네이버
+	ID task.ID = "NAVER" // 네이버
 
 	// CommandID
-	TcidNaverWatchNewPerformances task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
+	WatchNewPerformancesCommand task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
 type naverWatchNewPerformancesCommandData struct {
@@ -65,9 +65,9 @@ type naverWatchNewPerformancesResultData struct {
 }
 
 func init() {
-	task.Register(TidNaver, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidNaverWatchNewPerformances,
+			ID: WatchNewPerformancesCommand,
 
 			AllowMultiple: true,
 
@@ -75,7 +75,7 @@ func init() {
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidNaver {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
@@ -93,7 +93,7 @@ func init() {
 
 			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
-				case TcidNaverWatchNewPerformances:
+				case WatchNewPerformancesCommand:
 					for _, t := range tTask.appConfig.Tasks {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {

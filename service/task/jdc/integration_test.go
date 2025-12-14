@@ -79,7 +79,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -120,7 +120,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -143,7 +143,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -228,7 +228,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(fullDetailURL, []byte(detailHTML))
 
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -341,7 +341,7 @@ func TestJdcTask_RunWatchNewOnlineEducation_NewEducation(t *testing.T) {
 	mockFetcher.SetResponse(jdcBaseURL+"product/"+detailPath2, []byte(detailHTML2))
 
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 

@@ -40,10 +40,10 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(TidNaver),
+				ID: string(ID),
 				Commands: []config.CommandConfig{
 					{
-						ID: string(TcidNaverWatchNewPerformances),
+						ID: string(WatchNewPerformancesCommand),
 						Data: map[string]interface{}{
 							"query": query,
 							"filters": map[string]interface{}{
@@ -63,8 +63,10 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 		},
 	}
 
+	// Task Setup
+	// noinspection GoBoolExpressions
 	tTask := &naverTask{
-		Task:      task.NewBaseTask(TidNaver, TcidNaverWatchNewPerformances, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:      task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", task.RunByScheduler),
 		appConfig: appConfig,
 	}
 	tTask.SetFetcher(mockFetcher)

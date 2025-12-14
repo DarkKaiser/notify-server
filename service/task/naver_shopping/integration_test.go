@@ -27,7 +27,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -77,7 +77,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -105,7 +105,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -156,7 +156,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByScheduler),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByScheduler),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -216,7 +216,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -297,7 +297,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(TidNaverShopping, TcidNaverShoppingWatchPriceAny, "test_instance", "test-notifier", task.RunByUnknown),
+		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}

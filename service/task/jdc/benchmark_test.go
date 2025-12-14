@@ -45,8 +45,10 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	}
 
 	// 2. Task 초기화
+	// Task Setup
+	// noinspection GoBoolExpressions
 	tTask := &jdcTask{
-		Task: task.NewBaseTask(TidJdc, TcidJdcWatchNewOnlineEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 

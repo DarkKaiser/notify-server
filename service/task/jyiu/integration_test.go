@@ -43,7 +43,7 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -111,7 +111,7 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -152,7 +152,7 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -175,7 +175,7 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -222,7 +222,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -286,7 +286,7 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -349,7 +349,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -419,7 +419,7 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 

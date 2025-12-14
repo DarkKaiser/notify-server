@@ -28,9 +28,10 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", jyiuBaseURL), []byte(noticeHTML))
 
-	// 2. Task 초기화
+	// Task Setup
+	// noinspection GoBoolExpressions
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewNotice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -71,9 +72,10 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 
 	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), []byte(eduHTML))
 
-	// 2. Task 초기화
+	// Task Setup
+	// noinspection GoBoolExpressions
 	tTask := &jyiuTask{
-		Task: task.NewBaseTask(TidJyiu, TcidJyiuWatchNewEducation, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 

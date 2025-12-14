@@ -17,9 +17,11 @@ import (
 )
 
 const (
-	TidKurly task.ID = "KURLY" // 마켓컬리
+	// ID TaskID
+	ID task.ID = "KURLY" // 마켓컬리 (https://www.kurly.com/)
 
-	TcidKurlyWatchProductPrice task.CommandID = "WatchProductPrice" // 마켓컬리 가격 확인
+	// CommandID
+	WatchProductPriceCommand task.CommandID = "WatchProductPrice" // 상품 가격 변화 감시
 )
 
 const (
@@ -128,9 +130,9 @@ type kurlyWatchProductPriceResultData struct {
 }
 
 func init() {
-	task.Register(TidKurly, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidKurlyWatchProductPrice,
+			ID: WatchProductPriceCommand,
 
 			AllowMultiple: true,
 
@@ -138,7 +140,7 @@ func init() {
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidKurly {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
@@ -156,7 +158,7 @@ func init() {
 			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 
 				switch tTask.GetCommandID() {
-				case TcidKurlyWatchProductPrice:
+				case WatchProductPriceCommand:
 					for _, t := range tTask.appConfig.Tasks {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {

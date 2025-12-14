@@ -54,7 +54,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -106,7 +106,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -138,7 +138,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -204,7 +204,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByScheduler),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -279,7 +279,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -338,7 +338,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	tTask := &kurlyTask{
-		Task: task.NewBaseTask(TidKurly, TcidKurlyWatchProductPrice, "test_instance", "test-notifier", task.RunByUnknown),
+		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 

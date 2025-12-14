@@ -15,11 +15,11 @@ import (
 
 const (
 	// TaskID
-	TidJyiu task.ID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
+	ID task.ID = "JYIU" // 전남여수산학융합원(https://www.jyiu.or.kr/)
 
 	// CommandID
-	TcidJyiuWatchNewNotice    task.CommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
-	TcidJyiuWatchNewEducation task.CommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
+	WatchNewNoticeCommand    task.CommandID = "WatchNewNotice"    // 전남여수산학융합원 공지사항 새글 확인
+	WatchNewEducationCommand task.CommandID = "WatchNewEducation" // 전남여수산학융합원 신규 교육프로그램 확인
 )
 
 const (
@@ -62,15 +62,15 @@ type jyiuWatchNewEducationResultData struct {
 }
 
 func init() {
-	task.Register(TidJyiu, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidJyiuWatchNewNotice,
+			ID: WatchNewNoticeCommand,
 
 			AllowMultiple: true,
 
 			NewSnapshot: func() interface{} { return &jyiuWatchNewNoticeResultData{} },
 		}, {
-			ID: TcidJyiuWatchNewEducation,
+			ID: WatchNewEducationCommand,
 
 			AllowMultiple: true,
 
@@ -78,7 +78,7 @@ func init() {
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidJyiu {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
@@ -94,7 +94,7 @@ func init() {
 
 			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
-				case TcidJyiuWatchNewNotice:
+				case WatchNewNoticeCommand:
 					originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewNoticeResultData)
 					if ok == false {
 						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewNoticeResultData, got: %T)", previousSnapshot))
@@ -102,7 +102,7 @@ func init() {
 
 					return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
 
-				case TcidJyiuWatchNewEducation:
+				case WatchNewEducationCommand:
 					originTaskResultData, ok := previousSnapshot.(*jyiuWatchNewEducationResultData)
 					if ok == false {
 						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jyiuWatchNewEducationResultData, got: %T)", previousSnapshot))

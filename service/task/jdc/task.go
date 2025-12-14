@@ -14,10 +14,10 @@ import (
 
 const (
 	// TaskID
-	TidJdc task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
+	ID task.ID = "JDC" // 전남디지털역량교육(http://전남디지털역량.com/)
 
 	// CommandID
-	TcidJdcWatchNewOnlineEducation task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
+	WatchNewOnlineEducationCommand task.CommandID = "WatchNewOnlineEducation" // 신규 비대면 온라인 특별/정규교육 확인
 )
 
 const (
@@ -44,9 +44,9 @@ type jdcWatchNewOnlineEducationResultData struct {
 }
 
 func init() {
-	task.Register(TidJdc, &task.Config{
+	task.Register(ID, &task.Config{
 		Commands: []*task.CommandConfig{{
-			ID: TcidJdcWatchNewOnlineEducation,
+			ID: WatchNewOnlineEducationCommand,
 
 			AllowMultiple: true,
 
@@ -54,7 +54,7 @@ func init() {
 		}},
 
 		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidJdc {
+			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
@@ -70,7 +70,7 @@ func init() {
 
 			t.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch t.GetCommandID() {
-				case TcidJdcWatchNewOnlineEducation:
+				case WatchNewOnlineEducationCommand:
 					originTaskResultData, ok := previousSnapshot.(*jdcWatchNewOnlineEducationResultData)
 					if ok == false {
 						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *jdcWatchNewOnlineEducationResultData, got: %T)", previousSnapshot))
