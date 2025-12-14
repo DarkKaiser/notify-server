@@ -44,15 +44,15 @@ const (
 	WatchStatusDisabled = "0"
 )
 
-type kurlyWatchProductPriceCommandData struct {
+type watchProductPriceConfig struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (d *kurlyWatchProductPriceCommandData) validate() error {
-	if d.WatchProductsFile == "" {
+func (c *watchProductPriceConfig) validate() error {
+	if c.WatchProductsFile == "" {
 		return apperrors.New(apperrors.ErrInvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
 	}
-	if strings.HasSuffix(strings.ToLower(d.WatchProductsFile), ".csv") == false {
+	if strings.HasSuffix(strings.ToLower(c.WatchProductsFile), ".csv") == false {
 		return apperrors.New(apperrors.ErrInvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
 	}
 	return nil
@@ -163,11 +163,11 @@ func init() {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
 								if tTask.GetCommandID() == task.CommandID(c.ID) {
-									commandData := &kurlyWatchProductPriceCommandData{}
-									if err := task.DecodeMap(commandData, c.Data); err != nil {
+									commandConfig := &watchProductPriceConfig{}
+									if err := task.DecodeMap(commandConfig, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
-									if err := commandData.validate(); err != nil {
+									if err := commandConfig.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
@@ -176,7 +176,7 @@ func init() {
 										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *kurlyWatchProductPriceResultData, got: %T)", previousSnapshot))
 									}
 
-									return tTask.executeWatchProductPrice(commandData, originTaskResultData, supportsHTML)
+									return tTask.executeWatchProductPrice(commandConfig, originTaskResultData, supportsHTML)
 								}
 							}
 							break
@@ -198,12 +198,12 @@ type kurlyTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *kurlyTask) executeWatchProductPrice(commandData *kurlyWatchProductPriceCommandData, originTaskResultData *kurlyWatchProductPriceResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *kurlyTask) executeWatchProductPrice(commandConfig *watchProductPriceConfig, originTaskResultData *kurlyWatchProductPriceResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(commandData.WatchProductsFile)
+	f, err := os.Open(commandConfig.WatchProductsFile)
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}

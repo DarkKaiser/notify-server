@@ -6,32 +6,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
+func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceConfig{
 			WatchProductsFile: "test.csv",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
 	})
 
 	t.Run("파일 경로가 비어있는 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceConfig{
 			WatchProductsFile: "",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err, "파일 경로가 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다", "적절한 에러 메시지를 반환해야 합니다")
 	})
 
 	t.Run("CSV 파일이 아닌 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceConfig{
 			WatchProductsFile: "test.txt",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err, "CSV 파일이 아니면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), ".CSV 파일만 사용할 수 있습니다", "적절한 에러 메시지를 반환해야 합니다")
 	})
@@ -44,11 +44,11 @@ func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceCommandData{
+			commandConfig := &watchProductPriceConfig{
 				WatchProductsFile: filename,
 			}
 
-			err := data.validate()
+			err := commandConfig.validate()
 			assert.NoError(t, err, "CSV 확장자는 대소문자 구분 없이 허용해야 합니다: %s", filename)
 		}
 	})
@@ -276,13 +276,13 @@ func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
 	})
 }
 
-func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
+func TestKurlyWatchProductPriceConfig_Validate_ErrorCases(t *testing.T) {
 	t.Run("빈 파일 경로", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceConfig{
 			WatchProductsFile: "",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다")
 	})
@@ -296,11 +296,11 @@ func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceCommandData{
+			commandConfig := &watchProductPriceConfig{
 				WatchProductsFile: filename,
 			}
 
-			err := data.validate()
+			err := commandConfig.validate()
 			assert.Error(t, err, "파일 확장자가 CSV가 아니면 에러가 발생해야 합니다: %s", filename)
 		}
 	})

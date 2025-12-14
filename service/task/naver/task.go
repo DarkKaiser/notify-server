@@ -22,7 +22,7 @@ const (
 	WatchNewPerformancesCommand task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
-type naverWatchNewPerformancesCommandData struct {
+type watchNewPerformancesConfig struct {
 	Query   string `json:"query"`
 	Filters struct {
 		Title struct {
@@ -36,8 +36,8 @@ type naverWatchNewPerformancesCommandData struct {
 	} `json:"filters"`
 }
 
-func (d *naverWatchNewPerformancesCommandData) validate() error {
-	if d.Query == "" {
+func (c *watchNewPerformancesConfig) validate() error {
+	if c.Query == "" {
 		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
 	}
 	return nil
@@ -98,11 +98,11 @@ func init() {
 						if tTask.GetID() == task.ID(t.ID) {
 							for _, c := range t.Commands {
 								if tTask.GetCommandID() == task.CommandID(c.ID) {
-									commandData := &naverWatchNewPerformancesCommandData{}
-									if err := task.DecodeMap(commandData, c.Data); err != nil {
+									commandConfig := &watchNewPerformancesConfig{}
+									if err := task.DecodeMap(commandConfig, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
-									if err := commandData.validate(); err != nil {
+									if err := commandConfig.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
@@ -111,7 +111,7 @@ func init() {
 										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverWatchNewPerformancesResultData, got: %T)", previousSnapshot))
 									}
 
-									return tTask.executeWatchNewPerformances(commandData, originTaskResultData, supportsHTML)
+									return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
 								}
 							}
 							break
@@ -134,19 +134,19 @@ type naverTask struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *naverTask) executeWatchNewPerformances(commandData *naverWatchNewPerformancesCommandData, originTaskResultData *naverWatchNewPerformancesResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *naverTask) executeWatchNewPerformances(commandConfig *watchNewPerformancesConfig, originTaskResultData *naverWatchNewPerformancesResultData, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
-	titleIncludedKeywords := strutil.SplitAndTrim(commandData.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := strutil.SplitAndTrim(commandData.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := strutil.SplitAndTrim(commandData.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := strutil.SplitAndTrim(commandData.Filters.Place.ExcludedKeywords, ",")
+	titleIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.IncludedKeywords, ",")
+	titleExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.ExcludedKeywords, ",")
+	placeIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.IncludedKeywords, ",")
+	placeExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = task.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandData.Query)), nil, nil, searchResultData)
+		err = task.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandConfig.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}

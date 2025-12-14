@@ -81,7 +81,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: tmpfile.Name(),
 	}
 
@@ -92,7 +92,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	b.ResetTimer() // Reset timer to ignore setup time
 
 	for i := 0; i < b.N; i++ {
-		_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+		_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

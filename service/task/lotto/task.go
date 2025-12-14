@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/darkkaiser/notify-server/config"
+	appconfig "github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -74,7 +74,7 @@ func (e *defaultCommandExecutor) StartCommand(name string, args ...string) (comm
 	}, nil
 }
 
-type lottoTaskData struct {
+type config struct {
 	AppPath string `json:"app_path"`
 }
 
@@ -90,7 +90,7 @@ func init() {
 			NewSnapshot: func() interface{} { return &predictionSnapshot{} },
 		}},
 
-		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *config.AppConfig) (task.Handler, error) {
+		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *appconfig.AppConfig) (task.Handler, error) {
 			if req.TaskID != ID {
 				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
@@ -98,12 +98,12 @@ func init() {
 			var appPath string
 			for _, t := range appConfig.Tasks {
 				if req.TaskID == task.ID(t.ID) {
-					taskData := &lottoTaskData{}
-					if err := task.DecodeMap(taskData, t.Data); err != nil {
+					taskConfig := &config{}
+					if err := task.DecodeMap(taskConfig, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
 
-					appPath = strings.Trim(taskData.AppPath, " ")
+					appPath = strings.Trim(taskConfig.AppPath, " ")
 
 					break
 				}

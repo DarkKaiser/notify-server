@@ -10,22 +10,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNaverWatchNewPerformancesCommandData_Validate(t *testing.T) {
+func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		data := &naverWatchNewPerformancesCommandData{
+		commandConfig := &watchNewPerformancesConfig{
 			Query: "뮤지컬",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		data := &naverWatchNewPerformancesCommandData{
+		commandConfig := &watchNewPerformancesConfig{
 			Query: "",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err, "Query가 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "query", "적절한 에러 메시지를 반환해야 합니다")
 	})
@@ -148,7 +148,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		// 초기 실행 (이전 데이터 없음)
 		taskResultData := &naverWatchNewPerformancesResultData{}
 		message, changedData, err := tTask.executeWatchNewPerformances(
-			&naverWatchNewPerformancesCommandData{Query: "뮤지컬"},
+			&watchNewPerformancesConfig{Query: "뮤지컬"},
 			taskResultData,
 			false,
 		)
@@ -209,13 +209,13 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 
 		// 실행
 		taskResultData := &naverWatchNewPerformancesResultData{}
-		commandData := &naverWatchNewPerformancesCommandData{
+		commandConfig := &watchNewPerformancesConfig{
 			Query: "공연",
 		}
-		commandData.Filters.Title.IncludedKeywords = "뮤지컬"
+		commandConfig.Filters.Title.IncludedKeywords = "뮤지컬"
 
 		message, changedData, err := tTask.executeWatchNewPerformances(
-			commandData,
+			commandConfig,
 			taskResultData,
 			false,
 		)

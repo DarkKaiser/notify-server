@@ -36,13 +36,13 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverWatchNewPerformancesCommandData{
+	commandConfig := &watchNewPerformancesConfig{
 		Query: "전라도",
 	}
-	commandData.Filters.Title.IncludedKeywords = ""
-	commandData.Filters.Title.ExcludedKeywords = ""
-	commandData.Filters.Place.IncludedKeywords = ""
-	commandData.Filters.Place.ExcludedKeywords = ""
+	commandConfig.Filters.Title.IncludedKeywords = ""
+	commandConfig.Filters.Title.ExcludedKeywords = ""
+	commandConfig.Filters.Place.IncludedKeywords = ""
+	commandConfig.Filters.Place.ExcludedKeywords = ""
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &naverWatchNewPerformancesResultData{
@@ -50,7 +50,7 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchNewPerformances(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchNewPerformances(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)

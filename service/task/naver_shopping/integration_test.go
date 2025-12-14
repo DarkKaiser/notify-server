@@ -34,12 +34,12 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
-	commandData.Filters.IncludedKeywords = ""
-	commandData.Filters.ExcludedKeywords = ""
-	commandData.Filters.PriceLessThan = 100000
+	commandConfig.Filters.IncludedKeywords = ""
+	commandConfig.Filters.ExcludedKeywords = ""
+	commandConfig.Filters.PriceLessThan = 100000
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &naverShoppingWatchPriceResultData{
@@ -47,7 +47,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -84,13 +84,13 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
 	resultData := &naverShoppingWatchPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -112,13 +112,13 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
 	resultData := &naverShoppingWatchPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -162,7 +162,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
 
@@ -179,7 +179,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -222,10 +222,10 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
-	commandData.Filters.PriceLessThan = 100000 // 가격 필터 설정
+	commandConfig.Filters.PriceLessThan = 100000 // 가격 필터 설정
 
 	// 기존 결과 데이터 (이전 가격)
 	resultData := &naverShoppingWatchPriceResultData{
@@ -240,7 +240,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -303,20 +303,20 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &naverShoppingWatchPriceCommandData{
+	commandConfig := &watchPriceConfig{
 		Query: "테스트",
 	}
 	// 가격 필터: 20000원 미만만
-	commandData.Filters.PriceLessThan = 20000
+	commandConfig.Filters.PriceLessThan = 20000
 	// 포함 키워드: "테스트"
-	commandData.Filters.IncludedKeywords = "테스트"
+	commandConfig.Filters.IncludedKeywords = "테스트"
 
 	resultData := &naverShoppingWatchPriceResultData{
 		Products: make([]*naverShoppingProduct, 0),
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

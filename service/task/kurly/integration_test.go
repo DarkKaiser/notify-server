@@ -59,14 +59,14 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 
 	// CSV 파일 생성 (테스트용 임시 파일)
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &kurlyWatchProductPriceResultData{
@@ -74,7 +74,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -111,17 +111,17 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	resultData := &kurlyWatchProductPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -143,17 +143,17 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	resultData := &kurlyWatchProductPriceResultData{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -208,12 +208,12 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (동일한 데이터)
 	resultData := &kurlyWatchProductPriceResultData{
@@ -229,7 +229,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -283,12 +283,12 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (이전 가격)
 	resultData := &kurlyWatchProductPriceResultData{
@@ -304,7 +304,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -342,12 +342,12 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandData := &kurlyWatchProductPriceCommandData{
+	commandConfig := &watchProductPriceConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
-	commandData.WatchProductsFile = csvFile
+	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (정상 판매 중)
 	resultData := &kurlyWatchProductPriceResultData{
@@ -364,7 +364,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

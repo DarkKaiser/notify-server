@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
@@ -36,43 +35,16 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 	url2 := fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", encodedQuery)
 	mockFetcher.SetResponse(url2, []byte(emptyResultJSON))
 
-	// 2. Task 초기화
-	appConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(ID),
-				Commands: []config.CommandConfig{
-					{
-						ID: string(WatchNewPerformancesCommand),
-						Data: map[string]interface{}{
-							"query": query,
-							"filters": map[string]interface{}{
-								"title": map[string]interface{}{
-									"included_keywords": "",
-									"excluded_keywords": "",
-								},
-								"place": map[string]interface{}{
-									"included_keywords": "",
-									"excluded_keywords": "",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
 	// Task Setup
 	// noinspection GoBoolExpressions
 	tTask := &naverTask{
-		Task:      task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", task.RunByScheduler),
-		appConfig: appConfig,
+		Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", task.RunByScheduler),
+		// appConfig is not needed for executeWatchNewPerformances direct call
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverWatchNewPerformancesCommandData{
+	commandDataForExecution := &watchNewPerformancesConfig{
 		Query: query,
 	}
 
@@ -84,7 +56,7 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.executeWatchNewPerformances(commandData, resultData, true)
+		_, _, err := tTask.executeWatchNewPerformances(commandDataForExecution, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
