@@ -8,6 +8,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestNewTask_InvalidCommand(t *testing.T) {
+	mockFetcher := testutil.NewMockHTTPFetcher()
+	req := &tasksvc.SubmitRequest{
+		TaskID:    ID,
+		CommandID: "InvalidCommandID",
+	}
+
+	_, err := createTask("test_instance", req, mockFetcher)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "지원하지 않는 명령입니다")
+}
+
 func TestJdcOnlineEducationCourse_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
 		course := &onlineEducationCourse{

@@ -72,19 +72,20 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 
 	t.SetFetcher(fetcher)
 
-	t.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-		switch t.GetCommandID() {
-		case WatchNewOnlineEducationCommand:
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchNewOnlineEducationCommand:
+		t.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewOnlineEducationSnapshot)
 			if ok == false {
 				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewOnlineEducationSnapshot, got: %T)", previousSnapshot))
 			}
 
 			return t.executeWatchNewOnlineEducation(originTaskResultData, supportsHTML)
-		}
-
-		return "", nil, tasksvc.ErrCommandNotImplemented
-	})
+		})
+	default:
+		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
 	return t, nil
 }

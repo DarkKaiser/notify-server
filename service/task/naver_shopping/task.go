@@ -141,9 +141,9 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	tTask.SetFetcher(fetcher)
 
-	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-		// 'WatchPrice_'로 시작되는 명령인지 확인한다.
-		if strings.HasPrefix(string(tTask.GetCommandID()), watchPriceCommandIDPrefix) == true {
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	if strings.HasPrefix(string(req.CommandID), watchPriceCommandIDPrefix) {
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			for _, t := range tTask.appConfig.Tasks {
 				if tTask.GetID() == tasksvc.ID(t.ID) {
 					for _, c := range t.Commands {
@@ -167,10 +167,11 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 					break
 				}
 			}
-		}
-
-		return "", nil, tasksvc.ErrCommandNotImplemented
-	})
+			return "", nil, apperrors.New(apperrors.ErrInternal, "Command configuration not found")
+		})
+	} else {
+		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
 	return tTask, nil
 }

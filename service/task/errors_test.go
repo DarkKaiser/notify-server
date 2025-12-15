@@ -63,19 +63,19 @@ func TestSentinelErrors(t *testing.T) {
 			name:         "ErrTaskNotSupported",
 			actualErr:    ErrTaskNotSupported,
 			expectedType: errors.ErrInvalidInput,
-			expectedMsg:  "지원되지 않는 작업입니다",
+			expectedMsg:  "지원하지 않는 작업입니다",
 		},
 		{
 			name:         "ErrCommandNotSupported",
 			actualErr:    ErrCommandNotSupported,
 			expectedType: errors.ErrInvalidInput,
-			expectedMsg:  "지원되지 않는 작업 커맨드입니다",
+			expectedMsg:  "지원하지 않는 명령입니다",
 		},
 		{
 			name:         "ErrCommandNotImplemented",
 			actualErr:    ErrCommandNotImplemented,
 			expectedType: errors.ErrInternal,
-			expectedMsg:  "작업 커맨드에 대한 구현이 없습니다",
+			expectedMsg:  "작업 명령에 대한 구현이 없습니다",
 		},
 	}
 

@@ -10,6 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewTask_InvalidCommand(t *testing.T) {
+	mockFetcher := testutil.NewMockHTTPFetcher()
+	req := &tasksvc.SubmitRequest{
+		TaskID:    ID,
+		CommandID: "InvalidCommandID",
+	}
+	appConfig := &config.AppConfig{}
+
+	_, err := createTask("test_instance", req, appConfig, mockFetcher)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "지원하지 않는 명령입니다")
+}
+
 func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
 		commandConfig := &watchNewPerformancesCommandConfig{

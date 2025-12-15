@@ -96,27 +96,31 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 
 	tTask.SetFetcher(fetcher)
 
-	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-		switch tTask.GetCommandID() {
-		case WatchNewNoticeCommand:
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchNewNoticeCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
 			if ok == false {
 				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
 			}
 
 			return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
+		})
 
-		case WatchNewEducationCommand:
+	case WatchNewEducationCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
 			if ok == false {
 				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewEducationSnapshot, got: %T)", previousSnapshot))
 			}
 
 			return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
-		}
+		})
 
-		return "", nil, tasksvc.ErrCommandNotImplemented
-	})
+	default:
+		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
 	return tTask, nil
 }

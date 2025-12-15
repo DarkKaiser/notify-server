@@ -146,3 +146,29 @@ func TestNewTask_RegistrationCheck(t *testing.T) {
 	_, ok := snapshot.(*predictionSnapshot)
 	assert.True(t, ok)
 }
+
+func TestNewTask_InvalidCommand(t *testing.T) {
+	cfgLookup, _ := tasksvc.FindConfigForTest(ID, PredictionCommand)
+
+	// 유효한 AppConfig 준비 (TaskID 검사는 통과해야 함)
+	tmpDir := t.TempDir()
+	appConfig := &appconfig.AppConfig{
+		Tasks: []appconfig.TaskConfig{
+			{
+				ID:   string(ID),
+				Data: map[string]interface{}{"app_path": tmpDir},
+			},
+		},
+	}
+
+	// 잘못된 CommandID 요청
+	req := &tasksvc.SubmitRequest{
+		TaskID:    ID,
+		CommandID: "InvalidCommandID",
+	}
+
+	_, err := cfgLookup.Task.NewTask("test", req, appConfig)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "지원하지 않는 명령입니다")
+}

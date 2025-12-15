@@ -97,9 +97,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	tTask.SetFetcher(fetcher)
 
-	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-		switch tTask.GetCommandID() {
-		case WatchNewPerformancesCommand:
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchNewPerformancesCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			for _, t := range tTask.appConfig.Tasks {
 				if tTask.GetID() == tasksvc.ID(t.ID) {
 					for _, c := range t.Commands {
@@ -123,10 +124,11 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 					break
 				}
 			}
-		}
-
-		return "", nil, tasksvc.ErrCommandNotImplemented
-	})
+			return "", nil, apperrors.New(apperrors.ErrInternal, "Command configuration not found")
+		})
+	default:
+		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
 	return tTask, nil
 }

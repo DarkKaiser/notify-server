@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	appconfig "github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
@@ -37,11 +37,11 @@ func init() {
 	})
 }
 
-func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *appconfig.AppConfig) (tasksvc.Handler, error) {
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
 	return createTask(instanceID, req, appConfig, &defaultCommandExecutor{})
 }
 
-func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *appconfig.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
 		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 	}
@@ -84,14 +84,15 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		executor: executor,
 	}
 
-	lottoTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-		switch lottoTask.GetCommandID() {
-		case PredictionCommand:
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case PredictionCommand:
+		lottoTask.SetExecute(func(_ interface{}, _ bool) (string, interface{}, error) {
 			return lottoTask.executePrediction()
-		}
-
-		return "", nil, tasksvc.ErrCommandNotImplemented
-	})
+		})
+	default:
+		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
 	return lottoTask, nil
 }
