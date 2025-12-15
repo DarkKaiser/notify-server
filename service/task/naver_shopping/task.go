@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
@@ -108,11 +107,7 @@ func init() {
 }
 
 func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-	retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-	if err != nil {
-		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-	}
-	fetcher := tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
 
 	return createTask(instanceID, req, appConfig, fetcher)
 }

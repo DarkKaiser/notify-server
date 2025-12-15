@@ -162,7 +162,17 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByScheduler,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
@@ -228,7 +238,17 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
@@ -315,7 +335,17 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)

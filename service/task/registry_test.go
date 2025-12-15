@@ -2,7 +2,10 @@ package task
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/stretchr/testify/assert"
@@ -365,4 +368,101 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRegistry_DeepCopy는 등록 시 Config 객체가 복사되어
+// 원본 맵이 수정되더라도 레지스트리 내부 상태는 안전함을 보장합니다.
+func TestRegistry_DeepCopy(t *testing.T) {
+	r := newRegistry()
+	taskID := ID("TEST_IMMUTABLE")
+	cmdID := CommandID("TEST_CMD")
+
+	// 1. 초기 Config 생성
+	commands := []*CommandConfig{
+		{
+			ID:            cmdID,
+			AllowMultiple: true,
+			NewSnapshot:   dummyResultFn(),
+		},
+	}
+
+	config := &Config{
+		Commands: commands,
+		NewTask:  dummyNewTask(),
+	}
+
+	// 2. 등록
+	r.Register(taskID, config)
+
+	// 3. 원본 슬라이스 변조 (새 커맨드 추가 등)
+	commands[0].AllowMultiple = false // 원본 수정
+	commands = append(commands, &CommandConfig{
+		ID:            "HACKED_CMD",
+		AllowMultiple: true,
+		NewSnapshot:   dummyResultFn(),
+	})
+
+	// 4. 레지스트리에서 조회하여 불변성 확인
+	result, err := r.findConfig(taskID, cmdID)
+	assert.NoError(t, err)
+
+	// 등록 시점의 값이 유지되어야 함 (AllowMultiple: true)
+	assert.True(t, result.Command.AllowMultiple, "원본 슬라이스 변조가 레지스트리에 영향을 주면 안 됩니다")
+	// "HACKED_CMD"는 등록되지 않아야 함
+	_, errHack := r.findConfig(taskID, "HACKED_CMD")
+	assert.Equal(t, ErrCommandNotSupported, errHack)
+}
+
+// TestRegistry_Concurrency_Stress는 과도한 동시성 요청 하에서 레지스트리의 안정성(Race Condition)을 검증합니다.
+func TestRegistry_Concurrency_Stress(t *testing.T) {
+	r := newRegistry()
+	var wg sync.WaitGroup
+
+	// Worker 개수
+	readers := 50
+	writers := 20
+	iterations := 100
+
+	// Writer: 랜덤하게 Task 등록
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(writerID int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				// Random delay to mix read/write operations
+				time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
+
+				taskID := ID(fmt.Sprintf("TASK_%d_%d", writerID, j))
+				cmdID := CommandID("CMD")
+
+				// 동시성 테스트에서는 Panic이 발생할 수 있는데(중복 ID 등), 여기서는 고유 ID를 생성한다고 가정하거나
+				// Register 내부 Lock이 잘 동작하는지 확인
+				r.Register(taskID, &Config{
+					NewTask: dummyNewTask(),
+					Commands: []*CommandConfig{{
+						ID:          cmdID,
+						NewSnapshot: dummyResultFn(),
+					}},
+				})
+			}
+		}(i)
+	}
+
+	// Reader: 무작위 Task 조회 시도 (존재하지 않을 수도 있음 - 에러 처리 확인)
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func(readerID int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				// Random Writer의 Task ID 추측
+				targetWriter := rand.Intn(writers)
+				targetIter := rand.Intn(iterations)
+				taskID := ID(fmt.Sprintf("TASK_%d_%d", targetWriter, targetIter))
+
+				_, _ = r.findConfig(taskID, "CMD")
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }

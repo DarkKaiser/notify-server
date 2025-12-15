@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -95,6 +97,70 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 	}
 }
 
+// TestRetryFetcher_Do_BodyRewind verifies that request body is rewound (via GetBody) on retries.
+// This is critical for POST/PUT requests where the body is consumed.
+func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
+	mockFetcher := &TestMockFetcher{}
+	// Retry once
+	retryFetcher := NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond)
+
+	// Mock server always returns 500
+	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("", 500), nil)
+
+	// Create Request with Body
+	payload := []byte(`{"key":"value"}`)
+	req, err := http.NewRequest("POST", "http://example.com", bytes.NewReader(payload))
+	assert.NoError(t, err)
+
+	// Wrap GetBody to count calls
+	originalGetBody := req.GetBody
+	getBodyCalls := 0
+	req.GetBody = func() (io.ReadCloser, error) {
+		getBodyCalls++
+		return originalGetBody()
+	}
+
+	// Execute
+	_, err = retryFetcher.Do(req)
+
+	// Verification
+	assert.Error(t, err)                                                        // Should fail after retries
+	mockFetcher.AssertNumberOfCalls(t, "Do", 2)                                 // Initial + 1 Retry
+	assert.Equal(t, 2, getBodyCalls, "GetBody should be called to rewind body") // Initial NewRequest doesn't call GetBody, but Do logic might call it before *each* attempt or just retries?
+	// Logic check:
+	// Do() loop:
+	// i=0: GetBody called? Code: "if req.GetBody != nil { body, _ := req.GetBody() ... }"
+	// Yes, code calls GetBody inside the loop *before* delegate.Do(req) to ensure fresh body.
+	// So for i=0 and i=1, it calls GetBody. Total 2 calls.
+}
+
+// TestRetryFetcher_Get verifies that Get method correctly delegates to Do with retry logic.
+func TestRetryFetcher_Get(t *testing.T) {
+	mockFetcher := &TestMockFetcher{}
+	retryFetcher := NewRetryFetcher(mockFetcher, 2, time.Millisecond, 10*time.Millisecond)
+
+	// Simulate failure then success
+	// 1st call: 500 Error
+	// 2nd call: 500 Error
+	// 3rd call: 200 OK
+	mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.Method == "GET" && req.URL.String() == "http://example.com"
+	})).Return(NewMockResponse("", 500), nil).Once()
+
+	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("", 500), nil).Once()
+
+	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("success", 200), nil).Once()
+
+	// Execute
+	resp, err := retryFetcher.Get("http://example.com")
+
+	// Verification
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
+	mockFetcher.AssertNumberOfCalls(t, "Do", 3)
+}
+
 // TestRetryFetcher_ContextCancel verifies that retry loop aborts immediately on context cancel.
 func TestRetryFetcher_ContextCancel(t *testing.T) {
 	mockFetcher := &TestMockFetcher{}
@@ -167,4 +233,71 @@ func (m *MockReadCloser) Read(p []byte) (n int, err error) {
 func (m *MockReadCloser) Close() error {
 	m.closeCount++
 	return nil
+}
+
+func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
+	tests := []struct {
+		name                 string
+		configRetryDelay     string
+		configMaxRetries     int
+		expectedRetryDelay   time.Duration
+		expectedMaxRetries   int
+		expectedFetcherType  string
+		expectedInternalType string
+	}{
+		{
+			name:                 "Valid Config",
+			configRetryDelay:     "3s",
+			configMaxRetries:     5,
+			expectedRetryDelay:   3 * time.Second,
+			expectedMaxRetries:   5,
+			expectedFetcherType:  "*task.RetryFetcher",
+			expectedInternalType: "*task.HTTPFetcher",
+		},
+		{
+			name:                 "Invalid Duration - Fallback to Default",
+			configRetryDelay:     "invalid",
+			configMaxRetries:     3,
+			expectedRetryDelay:   2 * time.Second, // DefaultRetryDelay is "2s"
+			expectedMaxRetries:   3,
+			expectedFetcherType:  "*task.RetryFetcher",
+			expectedInternalType: "*task.HTTPFetcher",
+		},
+		{
+			name:                 "Empty Duration - Fallback to Default",
+			configRetryDelay:     "",
+			configMaxRetries:     10,
+			expectedRetryDelay:   2 * time.Second, // DefaultRetryDelay is "2s"
+			expectedMaxRetries:   10,
+			expectedFetcherType:  "*task.RetryFetcher",
+			expectedInternalType: "*task.HTTPFetcher",
+		},
+		{
+			name:                 "Negative Retries - Correted",
+			configRetryDelay:     "1s",
+			configMaxRetries:     -1,
+			expectedRetryDelay:   1 * time.Second,
+			expectedMaxRetries:   0,
+			expectedFetcherType:  "*task.RetryFetcher",
+			expectedInternalType: "*task.HTTPFetcher",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := NewRetryFetcherFromConfig(tt.configMaxRetries, tt.configRetryDelay)
+
+			// 1. Check outer type
+			// f is already *RetryFetcher, no assertion needed
+			assert.NotNil(t, f)
+			assert.Equal(t, tt.expectedFetcherType, fmt.Sprintf("%T", f))
+
+			// 2. Check internal state (accessing unexported fields for test)
+			assert.Equal(t, tt.expectedMaxRetries, f.maxRetries)
+			assert.Equal(t, tt.expectedRetryDelay, f.retryDelay)
+
+			// 3. Check wrapped fetcher type
+			assert.Equal(t, tt.expectedInternalType, fmt.Sprintf("%T", f.delegate))
+		})
+	}
 }
