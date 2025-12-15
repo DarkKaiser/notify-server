@@ -8,7 +8,7 @@ import (
 
 func TestJyiuNotice_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		notice := &jyiuNotice{
+		notice := &notice{
 			Title: "테스트 공지",
 			Date:  "2025-01-01",
 			URL:   "https://example.com/notice/1",
@@ -21,7 +21,7 @@ func TestJyiuNotice_String(t *testing.T) {
 	})
 
 	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		notice := &jyiuNotice{
+		notice := &notice{
 			Title: "테스트 공지",
 			Date:  "2025-01-01",
 			URL:   "https://example.com/notice/1",
@@ -36,7 +36,7 @@ func TestJyiuNotice_String(t *testing.T) {
 
 func TestJyiuEducation_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		education := &jyiuEducation{
+		education := &education{
 			Title:            "테스트 교육",
 			TrainingPeriod:   "2025-01-01 ~ 2025-01-31",
 			AcceptancePeriod: "2024-12-01 ~ 2024-12-31",
@@ -52,7 +52,7 @@ func TestJyiuEducation_String(t *testing.T) {
 	})
 
 	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		education := &jyiuEducation{
+		education := &education{
 			Title:            "테스트 교육",
 			TrainingPeriod:   "2025-01-01 ~ 2025-01-31",
 			AcceptancePeriod: "2024-12-01 ~ 2024-12-31",

@@ -11,7 +11,7 @@ import (
 
 func TestNaverShoppingConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		taskConfig := &config{
+		taskConfig := &taskConfig{
 			ClientID:     "test_client_id",
 			ClientSecret: "test_client_secret",
 		}
@@ -21,7 +21,7 @@ func TestNaverShoppingConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("ClientID가 비어있는 경우", func(t *testing.T) {
-		taskConfig := &config{
+		taskConfig := &taskConfig{
 			ClientID:     "",
 			ClientSecret: "test_client_secret",
 		}
@@ -32,7 +32,7 @@ func TestNaverShoppingConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("ClientSecret이 비어있는 경우", func(t *testing.T) {
-		taskConfig := &config{
+		taskConfig := &taskConfig{
 			ClientID:     "test_client_id",
 			ClientSecret: "",
 		}
@@ -43,9 +43,9 @@ func TestNaverShoppingConfig_Validate(t *testing.T) {
 	})
 }
 
-func TestNaverShoppingWatchPriceConfig_Validate(t *testing.T) {
+func TestNaverShoppingWatchPriceCommandConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchPriceConfig{
+		commandConfig := &watchPriceCommandConfig{
 			Query: "테스트 상품",
 		}
 		commandConfig.Filters.PriceLessThan = 10000
@@ -55,7 +55,7 @@ func TestNaverShoppingWatchPriceConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchPriceConfig{
+		commandConfig := &watchPriceCommandConfig{
 			Query: "",
 		}
 
@@ -65,7 +65,7 @@ func TestNaverShoppingWatchPriceConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("PriceLessThan이 0 이하인 경우", func(t *testing.T) {
-		commandConfig := &watchPriceConfig{
+		commandConfig := &watchPriceCommandConfig{
 			Query: "테스트 상품",
 		}
 		commandConfig.Filters.PriceLessThan = 0
@@ -78,7 +78,7 @@ func TestNaverShoppingWatchPriceConfig_Validate(t *testing.T) {
 
 func TestNaverShoppingProduct_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		product := &naverShoppingProduct{
+		product := &product{
 			Title:       "테스트 상품",
 			Link:        "https://shopping.naver.com/product/1",
 			LowPrice:    10000,
@@ -94,7 +94,7 @@ func TestNaverShoppingProduct_String(t *testing.T) {
 	})
 
 	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		product := &naverShoppingProduct{
+		product := &product{
 			Title:       "테스트 상품",
 			Link:        "https://shopping.naver.com/product/1",
 			LowPrice:    10000,
@@ -110,7 +110,7 @@ func TestNaverShoppingProduct_String(t *testing.T) {
 	})
 
 	t.Run("마크 표시", func(t *testing.T) {
-		product := &naverShoppingProduct{
+		product := &product{
 			Title:    "테스트 상품",
 			LowPrice: 10000,
 		}
@@ -126,7 +126,7 @@ func TestNaverShoppingWatchPriceSearchResultData_Parsing(t *testing.T) {
 		// testdata에서 샘플 JSON 로드
 		jsonData := testutil.LoadTestData(t, "api_response.json")
 
-		var result naverShoppingWatchPriceSearchResultData
+		var result searchResponse
 		err := json.Unmarshal(jsonData, &result)
 
 		assert.NoError(t, err, "JSON 파싱이 성공해야 합니다")
@@ -175,7 +175,7 @@ func TestNaverShoppingTask_APIError(t *testing.T) {
 			Response: []byte("{}"),
 		}
 
-		var result naverShoppingWatchPriceSearchResultData
+		var result searchResponse
 		err := json.Unmarshal(mockClient.Response, &result)
 
 		assert.NoError(t, err, "빈 JSON도 파싱할 수 있어야 합니다")

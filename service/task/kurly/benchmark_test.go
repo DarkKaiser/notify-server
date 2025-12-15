@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
@@ -13,7 +13,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 
 	// Create a reasonably large HTML content to simulate real parsing load
 	htmlContent := fmt.Sprintf(`
@@ -54,8 +54,8 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Setup Task
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -81,12 +81,12 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: tmpfile.Name(),
 	}
 
-	resultData := &kurlyWatchProductPriceResultData{
-		Products: make([]*kurlyProduct, 0),
+	resultData := &watchProductPriceSnapshot{
+		Products: make([]*product, 0),
 	}
 
 	b.ResetTimer() // Reset timer to ignore setup time

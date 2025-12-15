@@ -13,16 +13,16 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	// TaskID
-	ID task.ID = "LOTTO"
+	ID tasksvc.ID = "LOTTO"
 
 	// CommandID
-	PredictionCommand task.CommandID = "Prediction" // 로또 번호 예측 명령
+	PredictionCommand tasksvc.CommandID = "Prediction" // 로또 번호 예측 명령
 )
 
 // commandProcess 실행 중인 프로세스를 추상화하는 인터페이스
@@ -74,15 +74,15 @@ func (e *defaultCommandExecutor) StartCommand(name string, args ...string) (comm
 	}, nil
 }
 
-type config struct {
+type taskConfig struct {
 	AppPath string `json:"app_path"`
 }
 
 type predictionSnapshot struct{}
 
 func init() {
-	task.Register(ID, &task.Config{
-		Commands: []*task.CommandConfig{{
+	tasksvc.Register(ID, &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{{
 			ID: PredictionCommand,
 
 			AllowMultiple: false,
@@ -90,16 +90,16 @@ func init() {
 			NewSnapshot: func() interface{} { return &predictionSnapshot{} },
 		}},
 
-		NewTask: func(instanceID task.InstanceID, req *task.SubmitRequest, appConfig *appconfig.AppConfig) (task.Handler, error) {
+		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *appconfig.AppConfig) (tasksvc.Handler, error) {
 			if req.TaskID != ID {
-				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
 			var appPath string
 			for _, t := range appConfig.Tasks {
-				if req.TaskID == task.ID(t.ID) {
-					taskConfig := &config{}
-					if err := task.DecodeMap(taskConfig, t.Data); err != nil {
+				if req.TaskID == tasksvc.ID(t.ID) {
+					taskConfig := &taskConfig{}
+					if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 					}
 
@@ -109,8 +109,8 @@ func init() {
 				}
 			}
 
-			lottoTask := &lottoTask{
-				Task: task.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+			lottoTask := &task{
+				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 				appPath: appPath,
 
@@ -123,7 +123,7 @@ func init() {
 					return lottoTask.executePrediction()
 				}
 
-				return "", nil, task.ErrCommandNotImplemented
+				return "", nil, tasksvc.ErrCommandNotImplemented
 			})
 
 			return lottoTask, nil
@@ -131,15 +131,15 @@ func init() {
 	})
 }
 
-type lottoTask struct {
-	task.Task
+type task struct {
+	tasksvc.Task
 
 	appPath string
 
 	executor commandExecutor
 }
 
-func (t *lottoTask) executePrediction() (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executePrediction() (message string, changedTaskResultData interface{}, err error) {
 	// 비동기적으로 작업을 시작한다.
 	process, err := t.executor.StartCommand("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 	if err != nil {
@@ -187,11 +187,11 @@ func (t *lottoTask) executePrediction() (message string, changedTaskResultData i
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
 	analysisFilePath := regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`).FindString(cmdOutString)
 	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 	analysisFilePath = regexp.MustCompile(`경로:(.*)\.log`).FindString(analysisFilePath)
 	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 	analysisFilePath = string([]rune(analysisFilePath)[3:]) // '경로:' 문자열을 제거한다.
 
@@ -205,7 +205,7 @@ func (t *lottoTask) executePrediction() (message string, changedTaskResultData i
 	analysisResultData := string(data)
 	index := strings.Index(analysisResultData, "- 분석결과")
 	if index == -1 {
-		return "", nil, apperrors.New(task.ErrTaskExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
+		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
 	}
 	analysisResultData = analysisResultData[index:]
 

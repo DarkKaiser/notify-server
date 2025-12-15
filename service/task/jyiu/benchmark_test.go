@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
@@ -26,18 +26,18 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	}
 	noticeHTML += `</tbody></table></div></body></html>`
 
-	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", jyiuBaseURL), []byte(noticeHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", baseURL), []byte(noticeHTML))
 
 	// Task Setup
 	// noinspection GoBoolExpressions
-	tTask := &jyiuTask{
-		Task: task.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", task.RunByScheduler),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	resultData := &jyiuWatchNewNoticeResultData{
-		Notices: make([]*jyiuNotice, 0),
+	resultData := &watchNewNoticeSnapshot{
+		Notices: make([]*notice, 0),
 	}
 
 	b.ResetTimer()
@@ -70,18 +70,18 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	}
 	eduHTML += `</tbody></table></div></body></html>`
 
-	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), []byte(eduHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", baseURL), []byte(eduHTML))
 
 	// Task Setup
 	// noinspection GoBoolExpressions
-	tTask := &jyiuTask{
-		Task: task.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", task.RunByScheduler),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	resultData := &jyiuWatchNewEducationResultData{
-		Educations: make([]*jyiuEducation, 0),
+	resultData := &watchNewEducationSnapshot{
+		Educations: make([]*education, 0),
 	}
 
 	b.ResetTimer()

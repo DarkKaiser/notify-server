@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -26,15 +26,15 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	// 2. Task 초기화
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
 	commandConfig.Filters.IncludedKeywords = ""
@@ -42,8 +42,8 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	commandConfig.Filters.PriceLessThan = 100000
 
 	// 초기 결과 데이터 (비어있음)
-	resultData := &naverShoppingWatchPriceResultData{
-		Products: make([]*naverShoppingProduct, 0),
+	resultData := &watchPriceSnapshot{
+		Products: make([]*product, 0),
 	}
 
 	// 4. 실행
@@ -54,7 +54,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	require.NotNil(t, newResultData)
 
 	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*naverShoppingWatchPriceResultData)
+	typedResultData, ok := newResultData.(*watchPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
 
@@ -76,18 +76,18 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
-	resultData := &naverShoppingWatchPriceResultData{}
+	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
 	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
@@ -104,18 +104,18 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(`{invalid json`))
 
 	// 2. Task 초기화
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
-	resultData := &naverShoppingWatchPriceResultData{}
+	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
 	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
@@ -155,20 +155,20 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByScheduler),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
 
 	// 기존 결과 데이터 (이미 동일한 상품이 있음)
-	resultData := &naverShoppingWatchPriceResultData{
-		Products: []*naverShoppingProduct{
+	resultData := &watchPriceSnapshot{
+		Products: []*product{
 			{
 				Title:     productTitle,
 				LowPrice:  10000,
@@ -215,21 +215,21 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
 	commandConfig.Filters.PriceLessThan = 100000 // 가격 필터 설정
 
 	// 기존 결과 데이터 (이전 가격)
-	resultData := &naverShoppingWatchPriceResultData{
-		Products: []*naverShoppingProduct{
+	resultData := &watchPriceSnapshot{
+		Products: []*product{
 			{
 				Title:     productTitle,
 				LowPrice:  10000,
@@ -248,7 +248,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	// 가격 변경 시 메시지에 상품 정보 포함 확인
 	require.Contains(t, message, productTitle)
 
-	typedResultData, ok := newResultData.(*naverShoppingWatchPriceResultData)
+	typedResultData, ok := newResultData.(*watchPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
 	require.Equal(t, 8000, typedResultData.Products[0].LowPrice)
@@ -296,14 +296,14 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &naverShoppingTask{
-		Task:         task.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchPriceConfig{
+	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
 	}
 	// 가격 필터: 20000원 미만만
@@ -311,8 +311,8 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	// 포함 키워드: "테스트"
 	commandConfig.Filters.IncludedKeywords = "테스트"
 
-	resultData := &naverShoppingWatchPriceResultData{
-		Products: make([]*naverShoppingProduct, 0),
+	resultData := &watchPriceSnapshot{
+		Products: make([]*product, 0),
 	}
 
 	// 실행
@@ -322,7 +322,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, message)
 
-	typedResultData, ok := newResultData.(*naverShoppingWatchPriceResultData)
+	typedResultData, ok := newResultData.(*watchPriceSnapshot)
 	require.True(t, ok)
 	// 필터링 결과: "일반 테스트 상품"만 포함 (가격 15000원, "테스트" 포함)
 	require.Equal(t, 1, len(typedResultData.Products))

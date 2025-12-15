@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +12,7 @@ import (
 
 func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchNewPerformancesConfig{
+		commandConfig := &watchNewPerformancesCommandConfig{
 			Query: "뮤지컬",
 		}
 
@@ -21,7 +21,7 @@ func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchNewPerformancesConfig{
+		commandConfig := &watchNewPerformancesCommandConfig{
 			Query: "",
 		}
 
@@ -33,7 +33,7 @@ func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 
 func TestNaverPerformance_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		performance := &naverPerformance{
+		performance := &performance{
 			Title:     "테스트 공연",
 			Place:     "테스트 극장",
 			Thumbnail: "https://example.com/thumb.jpg",
@@ -47,7 +47,7 @@ func TestNaverPerformance_String(t *testing.T) {
 	})
 
 	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		performance := &naverPerformance{
+		performance := &performance{
 			Title:     "테스트 공연",
 			Place:     "테스트 극장",
 			Thumbnail: "https://example.com/thumb.jpg",
@@ -61,7 +61,7 @@ func TestNaverPerformance_String(t *testing.T) {
 	})
 
 	t.Run("마크 표시", func(t *testing.T) {
-		performance := &naverPerformance{
+		performance := &performance{
 			Title: "테스트 공연",
 			Place: "테스트 극장",
 		}
@@ -78,7 +78,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"뮤지컬"}
 		excludedKeywords := []string{}
 
-		result := task.Filter("뮤지컬 오페라의 유령", includedKeywords, excludedKeywords)
+		result := tasksvc.Filter("뮤지컬 오페라의 유령", includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -86,7 +86,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"뮤지컬"}
 		excludedKeywords := []string{"아동"}
 
-		result := task.Filter("뮤지컬 아동극", includedKeywords, excludedKeywords)
+		result := tasksvc.Filter("뮤지컬 아동극", includedKeywords, excludedKeywords)
 		assert.False(t, result, "제외 키워드가 있으면 false를 반환해야 합니다")
 	})
 
@@ -94,7 +94,7 @@ func TestNaverTask_FilterPerformances(t *testing.T) {
 		includedKeywords := []string{"서울"}
 		excludedKeywords := []string{}
 
-		result := task.Filter("서울 예술의전당", includedKeywords, excludedKeywords)
+		result := tasksvc.Filter("서울 예술의전당", includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 }
@@ -115,8 +115,8 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		mockFetcher.SetResponse(page2URL, []byte(mockJSON2))
 
 		// Task 설정
-		tTask := &naverTask{
-			Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", task.RunByScheduler),
+		tTask := &task{
+			Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", tasksvc.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -146,9 +146,9 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		tTask.SetFetcher(mockFetcher)
 
 		// 초기 실행 (이전 데이터 없음)
-		taskResultData := &naverWatchNewPerformancesResultData{}
+		taskResultData := &watchNewPerformancesSnapshot{}
 		message, changedData, err := tTask.executeWatchNewPerformances(
-			&watchNewPerformancesConfig{Query: "뮤지컬"},
+			&watchNewPerformancesCommandConfig{Query: "뮤지컬"},
 			taskResultData,
 			false,
 		)
@@ -159,7 +159,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		require.NotNil(t, changedData, "변경된 데이터가 반환되어야 합니다")
 
 		// 데이터 검증
-		resultData, ok := changedData.(*naverWatchNewPerformancesResultData)
+		resultData, ok := changedData.(*watchNewPerformancesSnapshot)
 		require.True(t, ok, "반환된 데이터 타입이 올바라야 합니다")
 		assert.Equal(t, 1, len(resultData.Performances), "1개의 공연 정보가 추출되어야 합니다")
 		assert.Equal(t, "뮤지컬 오페라의 유령", resultData.Performances[0].Title, "공연 제목이 일치해야 합니다")
@@ -181,8 +181,8 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		mockFetcher.SetResponse(page2URL, []byte(mockJSON2))
 
 		// Task 설정 (필터 적용)
-		tTask := &naverTask{
-			Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", task.RunByScheduler),
+		tTask := &task{
+			Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test_notifier", tasksvc.RunByScheduler),
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -208,8 +208,8 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		tTask.SetFetcher(mockFetcher)
 
 		// 실행
-		taskResultData := &naverWatchNewPerformancesResultData{}
-		commandConfig := &watchNewPerformancesConfig{
+		taskResultData := &watchNewPerformancesSnapshot{}
+		commandConfig := &watchNewPerformancesCommandConfig{
 			Query: "공연",
 		}
 		commandConfig.Filters.Title.IncludedKeywords = "뮤지컬"
@@ -225,7 +225,7 @@ func TestNaverTask_RunWatchNewPerformances(t *testing.T) {
 		assert.NotContains(t, message, "연극 햄릿", "필터링되지 않은 공연은 포함되지 않아야 합니다")
 
 		require.NotNil(t, changedData)
-		resultData := changedData.(*naverWatchNewPerformancesResultData)
+		resultData := changedData.(*watchNewPerformancesSnapshot)
 		assert.Equal(t, 1, len(resultData.Performances), "1개의 공연만 추출되어야 합니다")
 	})
 }

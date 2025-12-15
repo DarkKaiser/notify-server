@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -49,17 +49,17 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		</html>
 	`, productID, productName, discountRate, discountedPrice, originalPrice)
 
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Task 초기화
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 
@@ -69,8 +69,8 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	commandConfig.WatchProductsFile = csvFile
 
 	// 초기 결과 데이터 (비어있음)
-	resultData := &kurlyWatchProductPriceResultData{
-		Products: make([]*kurlyProduct, 0),
+	resultData := &watchProductPriceSnapshot{
+		Products: make([]*product, 0),
 	}
 
 	// 4. 실행
@@ -81,7 +81,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	require.NotNil(t, newResultData)
 
 	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*kurlyWatchProductPriceResultData)
+	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
 
@@ -101,24 +101,24 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
-	resultData := &kurlyWatchProductPriceResultData{}
+	resultData := &watchProductPriceSnapshot{}
 
 	// 4. 실행
 	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
@@ -132,25 +132,25 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Product Info</h1></body></html>`))
 
 	// 2. Task 초기화
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
-	resultData := &kurlyWatchProductPriceResultData{}
+	resultData := &watchProductPriceSnapshot{}
 
 	// 4. 실행
 	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
@@ -200,15 +200,15 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		</html>
 	`, productID, productName, discountRate, discountedPrice, price)
 
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByScheduler),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -216,8 +216,8 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (동일한 데이터)
-	resultData := &kurlyWatchProductPriceResultData{
-		Products: []*kurlyProduct{
+	resultData := &watchProductPriceSnapshot{
+		Products: []*product{
 			{
 				No:              12345,
 				Name:            productName,
@@ -275,15 +275,15 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		</html>
 	`, productID, productName, newDiscountRate, newDiscountedPrice, price)
 
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -291,8 +291,8 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (이전 가격)
-	resultData := &kurlyWatchProductPriceResultData{
-		Products: []*kurlyProduct{
+	resultData := &watchProductPriceSnapshot{
+		Products: []*product{
 			{
 				No:              12345,
 				Name:            productName,
@@ -313,7 +313,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	require.Contains(t, message, "🔁")      // 변경 마크
 	require.Contains(t, message, "5,000원") // 새로운 가격
 
-	typedResultData, ok := newResultData.(*kurlyWatchProductPriceResultData)
+	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
 	require.Equal(t, 5000, typedResultData.Products[0].DiscountedPrice)
@@ -334,15 +334,15 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		</html>
 	`)
 
-	url := fmt.Sprintf("%sgoods/%s", kurlyBaseURL, productID)
+	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &kurlyTask{
-		Task: task.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", task.RunByUnknown),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	commandConfig := &watchProductPriceConfig{
+	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -350,8 +350,8 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (정상 판매 중)
-	resultData := &kurlyWatchProductPriceResultData{
-		Products: []*kurlyProduct{
+	resultData := &watchProductPriceSnapshot{
+		Products: []*product{
 			{
 				No:               12345,
 				Name:             productName,
@@ -372,7 +372,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	require.Contains(t, message, "알 수 없는 상품 목록")
 	require.Contains(t, message, productName)
 
-	typedResultData, ok := newResultData.(*kurlyWatchProductPriceResultData)
+	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
 	require.True(t, typedResultData.Products[0].IsUnknownProduct)

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
@@ -37,19 +37,19 @@ func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
 
 	// Task Setup
 	// noinspection GoBoolExpressions
-	tTask := &naverTask{
-		Task: task.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", task.RunByScheduler),
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 		// appConfig is not needed for executeWatchNewPerformances direct call
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandDataForExecution := &watchNewPerformancesConfig{
+	commandDataForExecution := &watchNewPerformancesCommandConfig{
 		Query: query,
 	}
 
-	resultData := &naverWatchNewPerformancesResultData{
-		Performances: make([]*naverPerformance, 0),
+	resultData := &watchNewPerformancesSnapshot{
+		Performances: make([]*performance, 0),
 	}
 
 	b.ResetTimer()

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -206,8 +206,8 @@ func TestLottoTask_WithMockExecutor_Success(t *testing.T) {
 		}
 
 		// lottoTask 생성
-		tTask := &lottoTask{
-			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
+		tTask := &task{
+			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -229,8 +229,8 @@ func TestLottoTask_WithMockExecutor_StartCommandError(t *testing.T) {
 			err:     assert.AnError,
 		}
 
-		tTask := &lottoTask{
-			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
+		tTask := &task{
+			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -253,8 +253,8 @@ func TestLottoTask_WithMockExecutor_WaitError(t *testing.T) {
 			err:     nil,
 		}
 
-		tTask := &lottoTask{
-			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
+		tTask := &task{
+			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
@@ -277,8 +277,8 @@ func TestLottoTask_WithMockExecutor_InvalidOutput(t *testing.T) {
 			err:     nil,
 		}
 
-		tTask := &lottoTask{
-			Task:     task.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", task.RunByUnknown),
+		tTask := &task{
+			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 			appPath:  "/test/path",
 			executor: mockExecutor,
 		}
