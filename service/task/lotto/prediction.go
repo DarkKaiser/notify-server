@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -13,6 +14,17 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	reLottoAnalysisEnd = regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`)
+	reLogFilePath      = regexp.MustCompile(`경로:(.*\.log)`)
+	reAnalysisResult   = regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`)
+	reLottoNum1        = regexp.MustCompile("당첨번호1(.*)")
+	reLottoNum2        = regexp.MustCompile("당첨번호2(.*)")
+	reLottoNum3        = regexp.MustCompile("당첨번호3(.*)")
+	reLottoNum4        = regexp.MustCompile("당첨번호4(.*)")
+	reLottoNum5        = regexp.MustCompile("당첨번호5(.*)")
 )
 
 func (t *task) executePrediction() (message string, changedTaskResultData interface{}, err error) {
@@ -38,8 +50,11 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 		}
 	}()
 
+	// 안전한 경로 생성 (filepath.Join)
+	jarPath := filepath.Join(t.appPath, "lottoprediction-1.0.0.jar")
+
 	// 비동기적으로 작업을 시작한다 (Context 전달).
-	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
+	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", jarPath)
 	if err != nil {
 		return "", nil, err
 	}
@@ -67,13 +82,13 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	cmdOutString := process.Output()
 
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
-	analysisFilePath := regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`).FindString(cmdOutString)
+	analysisFilePath := reLottoAnalysisEnd.FindString(cmdOutString)
 	if len(analysisFilePath) == 0 {
 		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 
 	// 정규식 캡처 그룹을 사용하여 경로를 안전하게 추출합니다.
-	matches := regexp.MustCompile(`경로:(.*\.log)`).FindStringSubmatch(analysisFilePath)
+	matches := reLogFilePath.FindStringSubmatch(analysisFilePath)
 	if len(matches) < 2 {
 		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
@@ -93,13 +108,14 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	}
 	analysisResultData = analysisResultData[index:]
 
-	message = regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`).FindString(analysisResultData)
-	message += "\r\n\r\n"
-	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호1(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호2(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호3(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호4(.*)").FindString(analysisResultData)) + "\r\n"
-	message += "• " + strutil.NormalizeSpaces(regexp.MustCompile("당첨번호5(.*)").FindString(analysisResultData))
+	var sb strings.Builder
+	sb.WriteString(reAnalysisResult.FindString(analysisResultData))
+	sb.WriteString("\r\n\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum1.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum2.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum3.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum4.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum5.FindString(analysisResultData)))
 
-	return message, nil, nil
+	return sb.String(), nil, nil
 }

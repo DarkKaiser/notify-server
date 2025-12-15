@@ -38,12 +38,12 @@ const (
 )
 
 var (
-	// ErrTaskNotSupported 지원되지 않는 작업(Task)에 접근하려 할 때 반환됩니다.
-	ErrTaskNotSupported = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업입니다")
+	// ErrTaskNotSupported 지원하지 않는 작업(Task)에 접근하려 할 때 반환됩니다.
+	ErrTaskNotSupported = apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 작업입니다")
 
-	// ErrCommandNotSupported 해당 작업(Task)은 존재하지만, 요청된 커맨드(Command)가 지원되지 않을 때 반환됩니다.
-	ErrCommandNotSupported = apperrors.New(apperrors.ErrInvalidInput, "지원되지 않는 작업 커맨드입니다")
+	// ErrCommandNotSupported 해당 작업(Task)은 존재하지만, 요청된 명령(Command)을 지원하지 않을 때 반환됩니다.
+	ErrCommandNotSupported = apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다")
 
-	// ErrCommandNotImplemented 커맨드가 정의되어 있으나, 실제 실행 로직(Handler)이 구현되지 않았을 때 반환됩니다.
-	ErrCommandNotImplemented = apperrors.New(apperrors.ErrInternal, "작업 커맨드에 대한 구현이 없습니다")
+	// ErrCommandNotImplemented 명령(Command)이 정의되어 있으나, 실제 실행 로직이 구현되지 않았을 때 반환됩니다.
+	ErrCommandNotImplemented = apperrors.New(apperrors.ErrInternal, "작업 명령에 대한 구현이 없습니다")
 )

@@ -122,6 +122,18 @@ func TestNewTask_InvalidAppPath(t *testing.T) {
 	}
 }
 
+func TestNewTask_ConfigNotFound(t *testing.T) {
+	cfgLookup, _ := tasksvc.FindConfigForTest(ID, PredictionCommand)
+	req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+	// Empty config (no tasks)
+	appConfig := &appconfig.AppConfig{Tasks: []appconfig.TaskConfig{}}
+
+	_, err := cfgLookup.Task.NewTask("test", req, appConfig)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Lotto 작업을 위한 설정을 찾을 수 없습니다")
+}
+
 func TestNewTask_RegistrationCheck(t *testing.T) {
 	assert.Equal(t, tasksvc.ID("LOTTO"), ID)
 	assert.Equal(t, tasksvc.CommandID("Prediction"), PredictionCommand)

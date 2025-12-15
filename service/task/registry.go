@@ -110,7 +110,13 @@ func (r *Registry) Register(taskID ID, config *Config) {
 	configCopy := *config
 	if config.Commands != nil {
 		configCopy.Commands = make([]*CommandConfig, len(config.Commands))
-		copy(configCopy.Commands, config.Commands)
+		for i, commandConfig := range config.Commands {
+			if commandConfig != nil {
+				// CommandConfig 구조체 자체를 복사하여 포인터가 가리키는 원본이 수정되어도 영향이 없도록 합니다 (Deep Copy).
+				copiedCommand := *commandConfig
+				configCopy.Commands[i] = &copiedCommand
+			}
+		}
 	}
 
 	r.mu.Lock()

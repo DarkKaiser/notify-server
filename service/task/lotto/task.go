@@ -47,6 +47,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	}
 
 	var appPath string
+	found := false
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
 			taskConfig := &taskConfig{}
@@ -58,12 +59,21 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			if appPath == "" {
 				return nil, apperrors.New(apperrors.ErrInvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
 			}
-			if _, err := os.Stat(appPath); os.IsNotExist(err) {
-				return nil, apperrors.New(apperrors.ErrInvalidInput, "설정된 AppPath 경로가 존재하지 않습니다: "+appPath)
+			if _, err := os.Stat(appPath); err != nil {
+				if os.IsNotExist(err) {
+					return nil, apperrors.New(apperrors.ErrInvalidInput, "설정된 AppPath 경로가 존재하지 않습니다: "+appPath)
+				}
+				// 권한 문제 등 다른 에러
+				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "AppPath 경로에 접근할 수 없습니다: "+appPath)
 			}
 
+			found = true
 			break
 		}
+	}
+
+	if !found {
+		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
 	}
 
 	lottoTask := &task{
