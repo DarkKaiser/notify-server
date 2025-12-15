@@ -63,7 +63,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
-		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+		return nil, tasksvc.ErrTaskUnregistered
 	}
 
 	t := &task{

@@ -94,10 +94,6 @@ func (e *AppError) Error() string {
 	return e.Message
 }
 
-func (e *AppError) Unwrap() error {
-	return e.Cause
-}
-
 // New 새로운 에러를 생성합니다.
 func New(errType ErrorType, message string) error {
 	return &AppError{
@@ -121,6 +117,10 @@ func Wrap(err error, errType ErrorType, message string) error {
 
 func Wrapf(err error, errType ErrorType, format string, args ...interface{}) error {
 	return Wrap(err, errType, fmt.Sprintf(format, args...))
+}
+
+func (e *AppError) Unwrap() error {
+	return e.Cause
 }
 
 // Is 에러 타입이 일치하는지 확인합니다.

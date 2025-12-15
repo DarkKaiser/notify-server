@@ -43,7 +43,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
-		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+		return nil, tasksvc.ErrTaskUnregistered
 	}
 
 	var appPath string
@@ -69,7 +69,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	}
 
 	if !found {
-		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
+		return nil, apperrors.New(apperrors.ErrNotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
 	}
 
 	lottoTask := &task{
