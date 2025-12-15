@@ -1,6 +1,7 @@
 package lotto
 
 import (
+	"os"
 	"strings"
 
 	appconfig "github.com/darkkaiser/notify-server/config"
@@ -46,6 +47,12 @@ func init() {
 					}
 
 					appPath = strings.Trim(taskConfig.AppPath, " ")
+					if appPath == "" {
+						return nil, apperrors.New(apperrors.ErrInvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
+					}
+					if _, err := os.Stat(appPath); os.IsNotExist(err) {
+						return nil, apperrors.New(apperrors.ErrInvalidInput, "설정된 AppPath 경로가 존재하지 않습니다: "+appPath)
+					}
 
 					break
 				}

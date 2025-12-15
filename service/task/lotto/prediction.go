@@ -1,6 +1,7 @@
 package lotto
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,45 +16,51 @@ import (
 )
 
 func (t *task) executePrediction() (message string, changedTaskResultData interface{}, err error) {
-	// 비동기적으로 작업을 시작한다.
-	process, err := t.executor.StartCommand("java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
+	// 별도의 Context 생성을 통해 타임아웃(10분)과 취소 처리를 통합 관리합니다.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	// 백그라운드 고루틴: Task 취소 플래그(t.canceled)를 주기적으로 확인하여 Context를 취소합니다.
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if t.IsCanceled() {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	// 비동기적으로 작업을 시작한다 (Context 전달).
+	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", fmt.Sprintf("%s%slottoprediction-1.0.0.jar", t.appPath, string(os.PathSeparator)))
 	if err != nil {
 		return "", nil, err
 	}
 
-	// 일정 시간마다 사용자가 작업을 취소하였는지의 여부를 확인한다.
-	ticker := time.NewTicker(time.Millisecond * 500)
-	tickerStopC := make(chan bool, 1)
-
-	go func(ticker *time.Ticker, process commandProcess) {
-		for {
-			select {
-			case <-ticker.C:
-				if t.IsCanceled() {
-					ticker.Stop()
-					err0 := process.Kill()
-					if err0 != nil {
-						applog.WithComponentAndFields("task.lotto", log.Fields{
-							"task_id":    t.GetID(),
-							"command_id": t.GetCommandID(),
-							"error":      err0,
-						}).Error("작업 취소 중 외부 프로그램 종료 실패")
-					}
-					return
-				}
-
-			case <-tickerStopC:
-				ticker.Stop()
-				return
-			}
-		}
-	}(ticker, process)
-
 	// 작업이 완료될 때까지 대기한다.
 	err = process.Wait()
-	tickerStopC <- true
-
 	if err != nil {
+		// 취소된 경우 에러가 아님 (조용한 종료)
+		if ctx.Err() == context.Canceled {
+			return "", nil, nil
+		}
+
+		// 에러 발생 시 Stderr 내용을 포함하여 로깅합니다.
+		stderr := process.Stderr()
+		if len(stderr) > 0 {
+			applog.WithComponentAndFields("task.lotto", log.Fields{
+				"task_id":    t.GetID(),
+				"command_id": t.GetCommandID(),
+				"stderr":     stderr,
+			}).Error("외부 프로세스 실행 중 에러 발생")
+		}
 		return "", nil, err
 	}
 
@@ -64,11 +71,13 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	if len(analysisFilePath) == 0 {
 		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
-	analysisFilePath = regexp.MustCompile(`경로:(.*)\.log`).FindString(analysisFilePath)
-	if len(analysisFilePath) == 0 {
+
+	// 정규식 캡처 그룹을 사용하여 경로를 안전하게 추출합니다.
+	matches := regexp.MustCompile(`경로:(.*\.log)`).FindStringSubmatch(analysisFilePath)
+	if len(matches) < 2 {
 		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
-	analysisFilePath = string([]rune(analysisFilePath)[3:]) // '경로:' 문자열을 제거한다.
+	analysisFilePath = matches[1]
 
 	// 당첨번호 예측 결과 파일을 읽어들인다.
 	data, err := os.ReadFile(analysisFilePath)
