@@ -44,6 +44,43 @@ func TestNewTask_Success(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestCreateTask_WithMockExecutor(t *testing.T) {
+	mockExecutor := new(MockCommandExecutor)
+
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  PredictionCommand,
+		NotifierID: "telegram",
+		RunBy:      tasksvc.RunByUser,
+	}
+	appConfig := &appconfig.AppConfig{} // AppConfig is not used for internal logic validation in this test, but verified in createTask
+
+	// createTask internally expects AppPath to be valid if loaded from config,
+	// but here we are injecting executor.
+	// Wait, createTask checks AppConfig for AppPath.
+	// So we must provide valid AppConfig.
+
+	tmpDir := t.TempDir()
+	appConfig = &appconfig.AppConfig{
+		Tasks: []appconfig.TaskConfig{
+			{
+				ID:   string(ID),
+				Data: map[string]interface{}{"app_path": tmpDir},
+			},
+		},
+	}
+
+	handler, err := createTask("test-instance", req, appConfig, mockExecutor)
+	assert.NoError(t, err)
+	assert.NotNil(t, handler)
+
+	lottoTask, ok := handler.(*task)
+	assert.True(t, ok)
+
+	// Verify that the executor is the one we passed
+	assert.Equal(t, mockExecutor, lottoTask.executor)
+}
+
 func TestNewTask_InvalidAppPath(t *testing.T) {
 	cfgLookup, _ := tasksvc.FindConfigForTest(ID, PredictionCommand)
 

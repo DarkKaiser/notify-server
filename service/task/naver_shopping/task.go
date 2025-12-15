@@ -108,6 +108,16 @@ func init() {
 }
 
 func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
+	if err != nil {
+		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
+	}
+	fetcher := tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+
+	return createTask(instanceID, req, appConfig, fetcher)
+}
+
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
 		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 	}
@@ -134,11 +144,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 		clientSecret: taskConfig.ClientSecret,
 	}
 
-	retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-	if err != nil {
-		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-	}
-	tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
+	tTask.SetFetcher(fetcher)
 
 	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 		// 'WatchPrice_'로 시작되는 명령인지 확인한다.

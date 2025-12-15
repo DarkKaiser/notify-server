@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/config"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -53,10 +54,19 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Task 초기화
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+	// 2. Task 초기화
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceCommandConfig{
@@ -105,10 +115,19 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+	// 2. Task 초기화
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceCommandConfig{
@@ -121,7 +140,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	resultData := &watchProductPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	_, _, err = tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -137,10 +156,19 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Product Info</h1></body></html>`))
 
 	// 2. Task 초기화
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+	// 2. Task 초기화
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceCommandConfig{
@@ -153,7 +181,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	resultData := &watchProductPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	_, _, err = tTask.executeWatchProductPrice(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -203,10 +231,17 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByScheduler,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
@@ -278,10 +313,17 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",
@@ -337,10 +379,17 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchProductPriceCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchProductPriceCommandConfig{
 		WatchProductsFile: "test_products.csv",

@@ -38,6 +38,10 @@ func init() {
 }
 
 func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *appconfig.AppConfig) (tasksvc.Handler, error) {
+	return createTask(instanceID, req, appConfig, &defaultCommandExecutor{})
+}
+
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *appconfig.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
 		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 	}
@@ -67,7 +71,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 		appPath: appPath,
 
-		executor: &defaultCommandExecutor{},
+		executor: executor,
 	}
 
 	lottoTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {

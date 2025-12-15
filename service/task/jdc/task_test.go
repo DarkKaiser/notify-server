@@ -98,10 +98,16 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		mockFetcher.SetResponse(detailUntactURL, []byte(detailUntactHTML))
 
 		// Task Setup
-		tTask := &task{
-			Task: tasksvc.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		req := &tasksvc.SubmitRequest{
+			TaskID:     ID,
+			CommandID:  WatchNewOnlineEducationCommand,
+			NotifierID: "test-notifier",
+			RunBy:      tasksvc.RunByUnknown,
 		}
-		tTask.SetFetcher(mockFetcher)
+		handler, err := createTask("test_instance", req, mockFetcher)
+		assert.NoError(t, err)
+		tTask, ok := handler.(*task)
+		assert.True(t, ok)
 
 		// Initial Run
 		taskResultData := &watchNewOnlineEducationSnapshot{}
@@ -129,10 +135,16 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		mockFetcher.SetResponse(untactListURL, []byte(`<div id="content"><div class="no-data2">데이터가 없습니다</div></div>`))
 
 		// Task Setup
-		tTask := &task{
-			Task: tasksvc.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+		req := &tasksvc.SubmitRequest{
+			TaskID:     ID,
+			CommandID:  WatchNewOnlineEducationCommand,
+			NotifierID: "test-notifier",
+			RunBy:      tasksvc.RunByScheduler,
 		}
-		tTask.SetFetcher(mockFetcher)
+		handler, err := createTask("test_instance", req, mockFetcher)
+		assert.NoError(t, err)
+		tTask, ok := handler.(*task)
+		assert.True(t, ok)
 
 		// Initial Run (Data empty)
 		taskResultData := &watchNewOnlineEducationSnapshot{}

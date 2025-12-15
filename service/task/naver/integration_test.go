@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/config"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -30,10 +31,19 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
 	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
-	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+	// 2. Task 초기화
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchNewPerformancesCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByScheduler,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchNewPerformancesCommandConfig{
