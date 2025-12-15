@@ -23,14 +23,14 @@ func TestRegistry_Concurrency(t *testing.T) {
 
 				taskID := ID(fmt.Sprintf("TASK_%d", index))
 				r.Register(taskID, &Config{
-					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
 						return nil, nil
 					},
 					Commands: []*CommandConfig{
 						{
-							ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
-							AllowMultiple:       true,
-							NewTaskResultDataFn: func() interface{} { return struct{}{} },
+							ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+							AllowMultiple: true,
+							NewSnapshot:   func() interface{} { return struct{}{} },
 						},
 					},
 				})
@@ -60,14 +60,14 @@ func TestRegistry_Concurrency(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			taskID := ID(fmt.Sprintf("TASK_%d", i))
 			r.Register(taskID, &Config{
-				NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
+				NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
 					return nil, nil
 				},
 				Commands: []*CommandConfig{
 					{
-						ID:                  CommandID(fmt.Sprintf("CMD_%d", i)),
-						AllowMultiple:       true,
-						NewTaskResultDataFn: func() interface{} { return struct{}{} },
+						ID:            CommandID(fmt.Sprintf("CMD_%d", i)),
+						AllowMultiple: true,
+						NewSnapshot:   func() interface{} { return struct{}{} },
 					},
 				},
 			})
@@ -90,14 +90,14 @@ func TestRegistry_Concurrency(t *testing.T) {
 					defer wg.Done()
 					taskID := ID(fmt.Sprintf("TASK_%d", index))
 					r.Register(taskID, &Config{
-						NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
+						NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
 							return nil, nil
 						},
 						Commands: []*CommandConfig{
 							{
-								ID:                  CommandID(fmt.Sprintf("CMD_%d", index)),
-								AllowMultiple:       true,
-								NewTaskResultDataFn: func() interface{} { return struct{}{} },
+								ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+								AllowMultiple: true,
+								NewSnapshot:   func() interface{} { return struct{}{} },
 							},
 						},
 					})

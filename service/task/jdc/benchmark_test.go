@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
 func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 목록 페이지 HTML 생성 (여러 개의 강의 포함)
 	listHTML := `<html><body><div id="content"><ul class="prdt-list2">`
@@ -19,8 +20,8 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	listHTML += `</ul></div></body></html>`
 
 	// 목록 페이지 응답 설정 (두 가지 타입 모두)
-	mockFetcher.SetResponse(fmt.Sprintf("%sproduct/list?type=digital_edu", jdcBaseURL), []byte(listHTML))
-	mockFetcher.SetResponse(fmt.Sprintf("%sproduct/list?type=untact_edu", jdcBaseURL), []byte(listHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sproduct/list?type=digital_edu", baseURL), []byte(listHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sproduct/list?type=untact_edu", baseURL), []byte(listHTML))
 
 	// 상세 페이지 HTML 생성 및 응답 설정
 	detailHTML := `
@@ -40,29 +41,27 @@ func BenchmarkJdcTask_RunWatchNewOnlineEducation(b *testing.B) {
 	// 목록에 있는 모든 상세 페이지에 대해 응답 설정
 	// 목록에 있는 모든 상세 페이지에 대해 응답 설정
 	for i := 0; i < 20; i++ {
-		mockFetcher.SetResponse(fmt.Sprintf("%sproduct/detail?id=%d", jdcBaseURL, i), []byte(detailHTML))
+		mockFetcher.SetResponse(fmt.Sprintf("%sproduct/detail?id=%d", baseURL, i), []byte(detailHTML))
 	}
 
 	// 2. Task 초기화
-	tTask := &jdcTask{
-		Task: task.Task{
-			ID:         TidJdc,
-			CommandID:  TcidJdcWatchNewOnlineEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+	// Task Setup
+	// noinspection GoBoolExpressions
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	resultData := &jdcWatchNewOnlineEducationResultData{
-		OnlineEducationCourses: make([]*jdcOnlineEducationCourse, 0),
+	resultData := &watchNewOnlineEducationSnapshot{
+		OnlineEducationCourses: make([]*onlineEducationCourse, 0),
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewOnlineEducation(resultData, true)
+		_, _, err := tTask.executeWatchNewOnlineEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

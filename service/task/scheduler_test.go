@@ -214,7 +214,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
-				exe.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
+				exe.On("SubmitTask", mock.MatchedBy(func(req *SubmitRequest) bool {
 					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == RunByScheduler
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -237,7 +237,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
-				exe.On("Run", mock.MatchedBy(func(req *RunRequest) bool {
+				exe.On("SubmitTask", mock.MatchedBy(func(req *SubmitRequest) bool {
 					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == RunByScheduler
 				})).Run(func(args mock.Arguments) {
 					// We don't call wg.Done here because we wait for Notify

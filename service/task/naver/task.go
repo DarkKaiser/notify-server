@@ -11,18 +11,18 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
 const (
 	// TaskID
-	TidNaver task.ID = "NAVER" // 네이버
+	ID tasksvc.ID = "NAVER" // 네이버
 
 	// CommandID
-	TcidNaverWatchNewPerformances task.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
+	WatchNewPerformancesCommand tasksvc.CommandID = "WatchNewPerformances" // 네이버 신규 공연정보 확인
 )
 
-type naverWatchNewPerformancesCommandData struct {
+type watchNewPerformancesCommandConfig struct {
 	Query   string `json:"query"`
 	Filters struct {
 		Title struct {
@@ -36,63 +36,51 @@ type naverWatchNewPerformancesCommandData struct {
 	} `json:"filters"`
 }
 
-func (d *naverWatchNewPerformancesCommandData) validate() error {
-	if d.Query == "" {
+func (c *watchNewPerformancesCommandConfig) validate() error {
+	if c.Query == "" {
 		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
 	}
 	return nil
 }
 
-type naverWatchNewPerformancesSearchResultData struct {
+type performanceSearchResponse struct {
 	HTML string `json:"html"`
 }
 
-type naverPerformance struct {
+type performance struct {
 	Title     string `json:"title"`
 	Place     string `json:"place"`
 	Thumbnail string `json:"thumbnail"`
 }
 
-func (p *naverPerformance) String(messageTypeHTML bool, mark string) string {
+func (p *performance) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML == true {
 		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Place))
 }
 
-type naverWatchNewPerformancesResultData struct {
-	Performances []*naverPerformance `json:"performances"`
+type watchNewPerformancesSnapshot struct {
+	Performances []*performance `json:"performances"`
 }
 
 func init() {
-	task.Register(TidNaver, &task.Config{
-		Commands: []*task.CommandConfig{{
-			ID: TcidNaverWatchNewPerformances,
+	tasksvc.Register(ID, &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{{
+			ID: WatchNewPerformancesCommand,
 
 			AllowMultiple: true,
 
-			NewTaskResultDataFn: func() interface{} { return &naverWatchNewPerformancesResultData{} },
+			NewSnapshot: func() interface{} { return &watchNewPerformancesSnapshot{} },
 		}},
 
-		NewTaskFn: func(instanceID task.InstanceID, req *task.RunRequest, appConfig *config.AppConfig) (task.Handler, error) {
-			if req.TaskID != TidNaver {
-				return nil, apperrors.New(task.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+			if req.TaskID != ID {
+				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
 			}
 
-			tTask := &naverTask{
-				Task: task.Task{
-					ID:         req.TaskID,
-					CommandID:  req.CommandID,
-					InstanceID: instanceID,
-
-					NotifierID: req.NotifierID,
-
-					Canceled: false,
-
-					RunBy: req.RunBy,
-
-					Fetcher: nil,
-				},
+			tTask := &task{
+				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 				appConfig: appConfig,
 			}
@@ -101,24 +89,29 @@ func init() {
 			if err != nil {
 				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
 			}
-			tTask.Fetcher = task.NewRetryFetcher(task.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second)
+			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-			tTask.RunFn = func(taskResultData interface{}, messageTypeHTML bool) (string, interface{}, error) {
+			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 				switch tTask.GetCommandID() {
-				case TcidNaverWatchNewPerformances:
+				case WatchNewPerformancesCommand:
 					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == task.ID(t.ID) {
+						if tTask.GetID() == tasksvc.ID(t.ID) {
 							for _, c := range t.Commands {
-								if tTask.GetCommandID() == task.CommandID(c.ID) {
-									commandData := &naverWatchNewPerformancesCommandData{}
-									if err := task.FillCommandDataFromMap(commandData, c.Data); err != nil {
+								if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
+									commandConfig := &watchNewPerformancesCommandConfig{}
+									if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
-									if err := commandData.validate(); err != nil {
+									if err := commandConfig.validate(); err != nil {
 										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 									}
 
-									return tTask.runWatchNewPerformances(commandData, taskResultData, messageTypeHTML)
+									originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
+									if ok == false {
+										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewPerformancesSnapshot, got: %T)", previousSnapshot))
+									}
+
+									return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
 								}
 							}
 							break
@@ -126,45 +119,41 @@ func init() {
 					}
 				}
 
-				return "", nil, task.ErrCommandNotImplemented
-			}
+				return "", nil, tasksvc.ErrCommandNotImplemented
+			})
 
 			return tTask, nil
 		},
 	})
 }
 
-type naverTask struct {
-	task.Task
+type task struct {
+	tasksvc.Task
 
 	appConfig *config.AppConfig
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformancesCommandData, taskResultData interface{}, messageTypeHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	originTaskResultData, ok := taskResultData.(*naverWatchNewPerformancesResultData)
-	if ok == false {
-		return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *naverWatchNewPerformancesResultData, got: %T)", taskResultData))
-	}
+func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCommandConfig, originTaskResultData *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
-	actualityTaskResultData := &naverWatchNewPerformancesResultData{}
-	titleIncludedKeywords := strutil.SplitAndTrim(commandData.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := strutil.SplitAndTrim(commandData.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := strutil.SplitAndTrim(commandData.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := strutil.SplitAndTrim(commandData.Filters.Place.ExcludedKeywords, ",")
+	actualityTaskResultData := &watchNewPerformancesSnapshot{}
+	titleIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.IncludedKeywords, ",")
+	titleExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.ExcludedKeywords, ",")
+	placeIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.IncludedKeywords, ",")
+	placeExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.ExcludedKeywords, ",")
 
 	// 전라도 지역 공연정보를 읽어온다.
 	searchPerformancePageIndex := 1
 	for {
-		var searchResultData = &naverWatchNewPerformancesSearchResultData{}
-		err = task.FetchJSON(t.Fetcher, "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandData.Query)), nil, nil, searchResultData)
+		var searchResultData = &performanceSearchResponse{}
+		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandConfig.Query)), nil, nil, searchResultData)
 		if err != nil {
 			return "", nil, err
 		}
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, task.ErrTaskExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
+			return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.
@@ -173,7 +162,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 			// 제목
 			pis := s.Find("div.item > div.title_box > strong.name")
 			if pis.Length() != 1 {
-				err = apperrors.New(task.ErrTaskExecutionFailed, "공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			title := strings.TrimSpace(pis.Text())
@@ -181,7 +170,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 			// 장소
 			pis = s.Find("div.item > div.title_box > span.sub_text")
 			if pis.Length() != 1 {
-				err = apperrors.New(task.ErrTaskExecutionFailed, "공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			place := strings.TrimSpace(pis.Text())
@@ -189,21 +178,21 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 			// 썸네일 이미지
 			pis = s.Find("div.item > div.thumb > img")
 			if pis.Length() != 1 {
-				err = apperrors.New(task.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			thumbnailSrc, exists := pis.Attr("src")
 			if exists == false {
-				err = apperrors.New(task.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 				return false
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
 
-			if task.Filter(title, titleIncludedKeywords, titleExcludedKeywords) == false || task.Filter(place, placeIncludedKeywords, placeExcludedKeywords) == false {
+			if tasksvc.Filter(title, titleIncludedKeywords, titleExcludedKeywords) == false || tasksvc.Filter(place, placeIncludedKeywords, placeExcludedKeywords) == false {
 				return true
 			}
 
-			actualityTaskResultData.Performances = append(actualityTaskResultData.Performances, &naverPerformance{
+			actualityTaskResultData.Performances = append(actualityTaskResultData.Performances, &performance{
 				Title:     title,
 				Place:     place,
 				Thumbnail: thumbnail,
@@ -228,9 +217,9 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 	// 신규 공연정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	err = task.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
-		actualityPerformance, ok1 := selem.(*naverPerformance)
-		originPerformance, ok2 := telem.(*naverPerformance)
+	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
+		actualityPerformance, ok1 := selem.(*performance)
+		originPerformance, ok2 := telem.(*performance)
 		if ok1 == false || ok2 == false {
 			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
 		} else {
@@ -240,12 +229,12 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 		}
 		return false, nil
 	}, nil, func(selem interface{}) {
-		actualityPerformance := selem.(*naverPerformance)
+		actualityPerformance := selem.(*performance)
 
 		if m != "" {
 			m += lineSpacing
 		}
-		m += actualityPerformance.String(messageTypeHTML, " 🆕")
+		m += actualityPerformance.String(supportsHTML, " 🆕")
 	})
 	if err != nil {
 		return "", nil, err
@@ -255,7 +244,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 		message = "새로운 공연정보가 등록되었습니다.\n\n" + m
 		changedTaskResultData = actualityTaskResultData
 	} else {
-		if t.RunBy == task.RunByUser {
+		if t.GetRunBy() == tasksvc.RunByUser {
 			if len(actualityTaskResultData.Performances) == 0 {
 				message = "등록된 공연정보가 존재하지 않습니다."
 			} else {
@@ -263,7 +252,7 @@ func (t *naverTask) runWatchNewPerformances(commandData *naverWatchNewPerformanc
 					if m != "" {
 						m += lineSpacing
 					}
-					m += actualityPerformance.String(messageTypeHTML, "")
+					m += actualityPerformance.String(supportsHTML, "")
 				}
 
 				message = "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + m

@@ -12,14 +12,15 @@ import (
 )
 
 func TestTask_BasicMethods(t *testing.T) {
-	testTask := &Task{
-		ID:         ID("TEST_TASK"),
-		CommandID:  CommandID("TEST_COMMAND"),
-		InstanceID: InstanceID("test_instance_123"),
-		NotifierID: "test_notifier",
-		Canceled:   false,
-		Storage:    &MockTaskResultStorage{},
-	}
+	taskVal := NewBaseTask(
+		ID("TEST_TASK"),
+		CommandID("TEST_COMMAND"),
+		InstanceID("test_instance_123"),
+		"test_notifier",
+		RunByUser,
+	)
+	testTask := &taskVal
+	testTask.SetStorage(&MockTaskResultStorage{})
 
 	t.Run("ID 반환 테스트", func(t *testing.T) {
 		assert.Equal(t, ID("TEST_TASK"), testTask.GetID(), "TaskID가 올바르게 반환되어야 합니다")
@@ -46,7 +47,7 @@ func TestTask_BasicMethods(t *testing.T) {
 
 	t.Run("ElapsedTimeAfterRun 테스트", func(t *testing.T) {
 		// runTime을 현재 시간으로 설정
-		testTask.RunTime = time.Now()
+		testTask.runTime = time.Now()
 
 		// 짧은 대기
 		time.Sleep(100 * time.Millisecond)
@@ -72,7 +73,7 @@ func TestTask_Run(t *testing.T) {
 		taskID               string
 		commandID            string
 		canceled             bool
-		runFn                RunFunc
+		execute              ExecuteFunc
 		storageSetup         func(*MockTaskResultStorage)
 		configSetup          func()
 		expectedNotifyCount  int
@@ -82,7 +83,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "실행 중 에러 발생 (Run Error)",
 			taskID:    "ErrorTask",
 			commandID: "ErrorCommand",
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "", nil, errors.New("Run Error")
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -90,11 +91,11 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("ErrorTask", &Config{
-					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "ErrorCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},
@@ -109,7 +110,7 @@ func TestTask_Run(t *testing.T) {
 			taskID:    "CancelTask",
 			commandID: "CancelCommand",
 			canceled:  true,
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Should Not Send", nil, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -117,11 +118,11 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("CancelTask", &Config{
-					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "CancelCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return &map[string]interface{}{}
 							},
 						},
@@ -134,7 +135,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "정상 실행 및 알림 발송 (Success)",
 			taskID:    "SuccessTask",
 			commandID: "SuccessCommand",
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Success Message", map[string]interface{}{"key": "value"}, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -143,11 +144,11 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("SuccessTask", &Config{
-					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "SuccessCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},
@@ -161,7 +162,7 @@ func TestTask_Run(t *testing.T) {
 			name:      "Storage 저장 실패 (Storage Save Error)",
 			taskID:    "StorageFailTask",
 			commandID: "StorageFailCommand",
-			runFn: func(data interface{}, supportHTML bool) (string, interface{}, error) {
+			execute: func(data interface{}, supportsHTML bool) (string, interface{}, error) {
 				return "Success Message", map[string]interface{}{"key": "value"}, nil
 			},
 			storageSetup: func(m *MockTaskResultStorage) {
@@ -170,11 +171,11 @@ func TestTask_Run(t *testing.T) {
 			},
 			configSetup: func() {
 				Register("StorageFailTask", &Config{
-					NewTaskFn: func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
 					Commands: []*CommandConfig{
 						{
 							ID: "StorageFailCommand",
-							NewTaskResultDataFn: func() interface{} {
+							NewSnapshot: func() interface{} {
 								return map[string]interface{}{}
 							},
 						},
@@ -200,15 +201,19 @@ func TestTask_Run(t *testing.T) {
 				tt.storageSetup(mockStorage)
 			}
 
-			taskInstance := &Task{
-				ID:         ID(tt.taskID),
-				CommandID:  CommandID(tt.commandID),
-				InstanceID: InstanceID(tt.taskID + "_Instance"),
-				NotifierID: "test-notifier",
-				Canceled:   tt.canceled,
-				RunFn:      tt.runFn,
-				Storage:    mockStorage,
+			taskVal := NewBaseTask(
+				ID(tt.taskID),
+				CommandID(tt.commandID),
+				InstanceID(tt.taskID+"_Instance"),
+				"test-notifier",
+				RunByScheduler,
+			)
+			taskInstance := &taskVal
+			if tt.canceled {
+				taskInstance.Cancel()
 			}
+			taskInstance.SetExecute(tt.execute)
+			taskInstance.SetStorage(mockStorage)
 
 			wg := &sync.WaitGroup{}
 			doneC := make(chan InstanceID, 1)
@@ -218,7 +223,7 @@ func TestTask_Run(t *testing.T) {
 
 			select {
 			case id := <-doneC:
-				assert.Equal(t, taskInstance.InstanceID, id)
+				assert.Equal(t, taskInstance.instanceID, id)
 			case <-time.After(1 * time.Second):
 				t.Fatal("Task did not complete in time")
 			}

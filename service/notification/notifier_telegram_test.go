@@ -66,7 +66,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			},
 			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				m.On("Cancel", task.InstanceID("1234")).Run(func(args mock.Arguments) {
+				m.On("CancelTask", task.InstanceID("1234")).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil)
 			},
@@ -93,7 +93,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			},
 			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				m.On("Run", mock.MatchedBy(func(req *task.RunRequest) bool {
+				m.On("SubmitTask", mock.MatchedBy(func(req *task.SubmitRequest) bool {
 					return req.TaskID == "test_task" &&
 						req.CommandID == "run" &&
 						req.NotifierID == "test-notifier" &&

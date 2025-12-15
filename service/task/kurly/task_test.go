@@ -6,32 +6,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
+func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceCommandConfig{
 			WatchProductsFile: "test.csv",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
 	})
 
 	t.Run("파일 경로가 비어있는 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceCommandConfig{
 			WatchProductsFile: "",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err, "파일 경로가 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다", "적절한 에러 메시지를 반환해야 합니다")
 	})
 
 	t.Run("CSV 파일이 아닌 경우", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceCommandConfig{
 			WatchProductsFile: "test.txt",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err, "CSV 파일이 아니면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), ".CSV 파일만 사용할 수 있습니다", "적절한 에러 메시지를 반환해야 합니다")
 	})
@@ -44,11 +44,11 @@ func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceCommandData{
+			commandConfig := &watchProductPriceCommandConfig{
 				WatchProductsFile: filename,
 			}
 
-			err := data.validate()
+			err := commandConfig.validate()
 			assert.NoError(t, err, "CSV 확장자는 대소문자 구분 없이 허용해야 합니다: %s", filename)
 		}
 	})
@@ -56,7 +56,7 @@ func TestKurlyWatchProductPriceCommandData_Validate(t *testing.T) {
 
 func TestKurlyProduct_String(t *testing.T) {
 	t.Run("일반 가격 - HTML 메시지", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:              12345,
 			Name:            "테스트 상품",
 			Price:           10000,
@@ -72,7 +72,7 @@ func TestKurlyProduct_String(t *testing.T) {
 	})
 
 	t.Run("할인 가격 - HTML 메시지", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:              12345,
 			Name:            "할인 상품",
 			Price:           10000,
@@ -90,7 +90,7 @@ func TestKurlyProduct_String(t *testing.T) {
 	})
 
 	t.Run("일반 가격 - 텍스트 메시지", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:              12345,
 			Name:            "테스트 상품",
 			Price:           10000,
@@ -106,7 +106,7 @@ func TestKurlyProduct_String(t *testing.T) {
 	})
 
 	t.Run("할인 가격 - 텍스트 메시지", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:              12345,
 			Name:            "할인 상품",
 			Price:           10000,
@@ -124,7 +124,7 @@ func TestKurlyProduct_String(t *testing.T) {
 	})
 
 	t.Run("마크 표시", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:    12345,
 			Name:  "테스트 상품",
 			Price: 10000,
@@ -136,13 +136,13 @@ func TestKurlyProduct_String(t *testing.T) {
 	})
 
 	t.Run("이전 가격 정보 포함", func(t *testing.T) {
-		previousProduct := &kurlyProduct{
+		previousProduct := &product{
 			Price:           12000,
 			DiscountedPrice: 0,
 			DiscountRate:    0,
 		}
 
-		currentProduct := &kurlyProduct{
+		currentProduct := &product{
 			No:    12345,
 			Name:  "가격 변경 상품",
 			Price: 10000,
@@ -157,7 +157,7 @@ func TestKurlyProduct_String(t *testing.T) {
 
 func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 	t.Run("최저 가격이 없는 경우 - 일반 가격", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           10000,
 			DiscountedPrice: 0,
 			LowestPrice:     0,
@@ -170,7 +170,7 @@ func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 	})
 
 	t.Run("최저 가격이 없는 경우 - 할인 가격", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           10000,
 			DiscountedPrice: 8000,
 			LowestPrice:     0,
@@ -182,7 +182,7 @@ func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 	})
 
 	t.Run("기존 최저 가격보다 낮은 가격", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           7000,
 			DiscountedPrice: 0,
 			LowestPrice:     9000,
@@ -194,7 +194,7 @@ func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 	})
 
 	t.Run("기존 최저 가격보다 높은 가격", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           11000,
 			DiscountedPrice: 0,
 			LowestPrice:     9000,
@@ -206,7 +206,7 @@ func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 	})
 
 	t.Run("할인 가격이 최저 가격보다 낮은 경우", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           10000,
 			DiscountedPrice: 7500,
 			LowestPrice:     9000,
@@ -219,7 +219,7 @@ func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
 }
 
 func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
-	task := &kurlyTask{}
+	task := &task{}
 
 	t.Run("중복이 없는 경우", func(t *testing.T) {
 		products := [][]string{
@@ -276,13 +276,13 @@ func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
 	})
 }
 
-func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
+func TestKurlyWatchProductPriceConfig_Validate_ErrorCases(t *testing.T) {
 	t.Run("빈 파일 경로", func(t *testing.T) {
-		data := &kurlyWatchProductPriceCommandData{
+		commandConfig := &watchProductPriceCommandConfig{
 			WatchProductsFile: "",
 		}
 
-		err := data.validate()
+		err := commandConfig.validate()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다")
 	})
@@ -296,11 +296,11 @@ func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			data := &kurlyWatchProductPriceCommandData{
+			commandConfig := &watchProductPriceCommandConfig{
 				WatchProductsFile: filename,
 			}
 
-			err := data.validate()
+			err := commandConfig.validate()
 			assert.Error(t, err, "파일 확장자가 CSV가 아니면 에러가 발생해야 합니다: %s", filename)
 		}
 	})
@@ -308,7 +308,7 @@ func TestKurlyWatchProductPriceCommandData_Validate_ErrorCases(t *testing.T) {
 
 func TestKurlyProduct_UpdateLowestPrice_EdgeCases(t *testing.T) {
 	t.Run("가격이 0인 경우", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			Price:           0,
 			DiscountedPrice: 0,
 			LowestPrice:     0,
@@ -322,7 +322,7 @@ func TestKurlyProduct_UpdateLowestPrice_EdgeCases(t *testing.T) {
 }
 
 func TestKurlyTask_NormalizeDuplicateProducts_EdgeCases(t *testing.T) {
-	task := &kurlyTask{}
+	task := &task{}
 
 	t.Run("빈 입력", func(t *testing.T) {
 		products := [][]string{}
@@ -376,7 +376,7 @@ func TestKurlyTask_NormalizeDuplicateProducts_EdgeCases(t *testing.T) {
 
 func TestKurlyProduct_String_EdgeCases(t *testing.T) {
 	t.Run("특수 문자가 포함된 상품명 - HTML", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:    12345,
 			Name:  "<script>alert('test')</script>",
 			Price: 10000,
@@ -395,7 +395,7 @@ func TestKurlyProduct_String_EdgeCases(t *testing.T) {
 			longName = longName[:i] + "가"
 		}
 
-		product := &kurlyProduct{
+		product := &product{
 			No:    12345,
 			Name:  longName[:500], // 500자 상품명
 			Price: 10000,
@@ -408,7 +408,7 @@ func TestKurlyProduct_String_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("가격이 매우 큰 경우", func(t *testing.T) {
-		product := &kurlyProduct{
+		product := &product{
 			No:              12345,
 			Name:            "고가 상품",
 			Price:           999999999,

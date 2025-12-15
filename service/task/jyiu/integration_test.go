@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	noticeTitle := "테스트 공지사항"
@@ -41,30 +42,25 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 초기 결과 데이터 (비어있음)
-	resultData := &jyiuWatchNewNoticeResultData{
-		Notices: make([]*jyiuNotice, 0),
+	resultData := &watchNewNoticeSnapshot{
+		Notices: make([]*notice, 0),
 	}
 
 	// 3. 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
 	require.NotNil(t, newResultData)
 
 	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*jyiuWatchNewNoticeResultData)
+	typedResultData, ok := newResultData.(*watchNewNoticeSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Notices))
 
@@ -81,7 +77,7 @@ func TestJyiuTask_RunWatchNewNotice_Integration(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	eduTitle := "테스트 교육"
@@ -114,30 +110,25 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 초기 결과 데이터 (비어있음)
-	resultData := &jyiuWatchNewEducationResultData{
-		Educations: make([]*jyiuEducation, 0),
+	resultData := &watchNewEducationSnapshot{
+		Educations: make([]*education, 0),
 	}
 
 	// 3. 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 4. 검증
 	require.NoError(t, err)
 	require.NotNil(t, newResultData)
 
 	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*jyiuWatchNewEducationResultData)
+	typedResultData, ok := newResultData.(*watchNewEducationSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Educations))
 
@@ -155,25 +146,20 @@ func TestJyiuTask_RunWatchNewEducation_Integration(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := "https://www.jyiu.or.kr/gms_005001/"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
-	resultData := &jyiuWatchNewNoticeResultData{}
+	resultData := &watchNewNoticeSnapshot{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewNotice(resultData, true)
+	_, _, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -182,26 +168,21 @@ func TestJyiuTask_RunWatchNewNotice_NetworkError(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	url := "https://www.jyiu.or.kr/gms_003001/experienceList"
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Education Info</h1></body></html>`))
 
 	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
-	resultData := &jyiuWatchNewEducationResultData{}
+	resultData := &watchNewEducationSnapshot{}
 
 	// 3. 실행
-	_, _, err := tTask.runWatchNewEducation(resultData, true)
+	_, _, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 4. 검증
 	require.Error(t, err)
@@ -212,7 +193,7 @@ func TestJyiuTask_RunWatchNewEducation_ParsingError(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	noticeTitle := "테스트 공지사항"
 	noticeDate := "2025-11-28"
 	noticeID := "12345"
@@ -240,18 +221,13 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	url := "https://www.jyiu.or.kr/gms_005001/"
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
-	resultData := &jyiuWatchNewNoticeResultData{
-		Notices: []*jyiuNotice{
+	resultData := &watchNewNoticeSnapshot{
+		Notices: []*notice{
 			{
 				Title: noticeTitle,
 				Date:  noticeDate,
@@ -261,7 +237,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -271,7 +247,7 @@ func TestJyiuTask_RunWatchNewNotice_NoChange(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	// 신규 공지사항 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	noticeTitle1 := "기존 공지사항"
 	noticeDate1 := "2025-11-27"
 	noticeID1 := "12345"
@@ -309,19 +285,14 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	url := "https://www.jyiu.or.kr/gms_005001/"
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (기존 공지사항만 있음)
-	resultData := &jyiuWatchNewNoticeResultData{
-		Notices: []*jyiuNotice{
+	resultData := &watchNewNoticeSnapshot{
+		Notices: []*notice{
 			{
 				Title: noticeTitle1,
 				Date:  noticeDate1,
@@ -331,7 +302,7 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewNotice(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewNotice(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -340,14 +311,14 @@ func TestJyiuTask_RunWatchNewNotice_NewNotice(t *testing.T) {
 	require.Contains(t, message, noticeTitle2)
 	require.Contains(t, message, "🆕")
 
-	typedResultData, ok := newResultData.(*jyiuWatchNewNoticeResultData)
+	typedResultData, ok := newResultData.(*watchNewNoticeSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 2, len(typedResultData.Notices))
 }
 
 func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	eduTitle := "테스트 교육"
 	eduTrainingPeriod := "2025-12-01 ~ 2025-12-31"
 	eduAcceptancePeriod := "2025-11-01 ~ 2025-11-30"
@@ -377,19 +348,14 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	url := "https://www.jyiu.or.kr/gms_003001/experienceList"
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (동일한 데이터)
-	resultData := &jyiuWatchNewEducationResultData{
-		Educations: []*jyiuEducation{
+	resultData := &watchNewEducationSnapshot{
+		Educations: []*education{
 			{
 				Title:            eduTitle,
 				TrainingPeriod:   eduTrainingPeriod,
@@ -400,7 +366,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -410,7 +376,7 @@ func TestJyiuTask_RunWatchNewEducation_NoChange(t *testing.T) {
 
 func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	// 신규 교육프로그램 시나리오
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 	eduTitle1 := "기존 교육"
 	eduTrainingPeriod1 := "2025-12-01 ~ 2025-12-31"
 	eduAcceptancePeriod1 := "2025-11-01 ~ 2025-11-30"
@@ -452,19 +418,14 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	url := "https://www.jyiu.or.kr/gms_003001/experienceList"
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-			RunBy:      task.RunByScheduler,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 기존 결과 데이터 (기존 교육만 있음)
-	resultData := &jyiuWatchNewEducationResultData{
-		Educations: []*jyiuEducation{
+	resultData := &watchNewEducationSnapshot{
+		Educations: []*education{
 			{
 				Title:            eduTitle1,
 				TrainingPeriod:   eduTrainingPeriod1,
@@ -475,7 +436,7 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.runWatchNewEducation(resultData, true)
+	message, newResultData, err := tTask.executeWatchNewEducation(resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -484,7 +445,7 @@ func TestJyiuTask_RunWatchNewEducation_NewEducation(t *testing.T) {
 	require.Contains(t, message, eduTitle2)
 	require.Contains(t, message, "🆕")
 
-	typedResultData, ok := newResultData.(*jyiuWatchNewEducationResultData)
+	typedResultData, ok := newResultData.(*watchNewEducationSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 2, len(typedResultData.Educations))
 }

@@ -3,13 +3,14 @@ package jdc
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestJdcOnlineEducationCourse_String(t *testing.T) {
 	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		course := &jdcOnlineEducationCourse{
+		course := &onlineEducationCourse{
 			Title1:         "테스트 교육",
 			Title2:         "상세 제목",
 			TrainingPeriod: "2025-01-01 ~ 2025-01-31",
@@ -24,7 +25,7 @@ func TestJdcOnlineEducationCourse_String(t *testing.T) {
 	})
 
 	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		course := &jdcOnlineEducationCourse{
+		course := &onlineEducationCourse{
 			Title1:         "테스트 교육",
 			Title2:         "상세 제목",
 			TrainingPeriod: "2025-01-01 ~ 2025-01-31",
@@ -40,7 +41,7 @@ func TestJdcOnlineEducationCourse_String(t *testing.T) {
 
 func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 	t.Run("정상적인 강의 정보 파싱", func(t *testing.T) {
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// 1. Digital Education List Page
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"
@@ -97,17 +98,14 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		mockFetcher.SetResponse(detailUntactURL, []byte(detailUntactHTML))
 
 		// Task Setup
-		tTask := &jdcTask{
-			Task: task.Task{
-				ID:        TidJdc,
-				CommandID: TcidJdcWatchNewOnlineEducation,
-				Fetcher:   mockFetcher,
-			},
+		tTask := &task{
+			Task: tasksvc.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// Initial Run
-		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
+		taskResultData := &watchNewOnlineEducationSnapshot{}
+		message, changedData, err := tTask.executeWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Contains(t, message, "디지털 기초", "디지털 교육 제목이 포함되어야 합니다")
@@ -116,12 +114,12 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		assert.Contains(t, message, "줌 활용법", "비대면 교육 상세 제목이 포함되어야 합니다")
 
 		assert.NotNil(t, changedData)
-		resultData := changedData.(*jdcWatchNewOnlineEducationResultData)
+		resultData := changedData.(*watchNewOnlineEducationSnapshot)
 		assert.Equal(t, 2, len(resultData.OnlineEducationCourses), "2개의 강의가 추출되어야 합니다")
 	})
 
 	t.Run("데이터가 없는 경우", func(t *testing.T) {
-		mockFetcher := task.NewMockHTTPFetcher()
+		mockFetcher := testutil.NewMockHTTPFetcher()
 
 		// Empty Lists
 		digitalListURL := "http://전남디지털역량.com/product/list?type=digital_edu"
@@ -131,19 +129,14 @@ func TestJdcTask_RunWatchNewOnlineEducation(t *testing.T) {
 		mockFetcher.SetResponse(untactListURL, []byte(`<div id="content"><div class="no-data2">데이터가 없습니다</div></div>`))
 
 		// Task Setup
-		tTask := &jdcTask{
-			Task: task.Task{
-				ID:         TidJdc,
-				CommandID:  TcidJdcWatchNewOnlineEducation,
-				NotifierID: "test-notifier",
-				Fetcher:    mockFetcher,
-				RunBy:      task.RunByScheduler,
-			},
+		tTask := &task{
+			Task: tasksvc.NewBaseTask(ID, WatchNewOnlineEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 		}
+		tTask.SetFetcher(mockFetcher)
 
 		// Initial Run (Data empty)
-		taskResultData := &jdcWatchNewOnlineEducationResultData{}
-		message, changedData, err := tTask.runWatchNewOnlineEducation(taskResultData, false)
+		taskResultData := &watchNewOnlineEducationSnapshot{}
+		message, changedData, err := tTask.executeWatchNewOnlineEducation(taskResultData, false)
 
 		assert.NoError(t, err)
 		assert.Empty(t, message, "데이터가 없으면 메시지도 없어야 합니다 (초기 실행 아님)")

@@ -9,14 +9,14 @@ import (
 )
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
-func dummyNewTaskFn() NewTaskFunc {
-	return func(InstanceID, *RunRequest, *config.AppConfig) (Handler, error) {
+func dummyNewTask() NewTaskFunc {
+	return func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
 		return nil, nil
 	}
 }
 
-// 헬퍼 함수: 더미 NewTaskResultDataFunc 생성
-func dummyResultFn() NewTaskResultDataFunc {
+// 헬퍼 함수: 더미 NewSnapshotFunc 생성
+func dummyResultFn() NewSnapshotFunc {
 	return func() interface{} { return struct{}{} }
 }
 
@@ -88,12 +88,12 @@ func TestFindConfig(t *testing.T) {
 	r.registerForTest(testTaskID, &Config{
 		Commands: []*CommandConfig{
 			{
-				ID:                  testCommandID,
-				AllowMultiple:       true,
-				NewTaskResultDataFn: dummyResultFn(),
+				ID:            testCommandID,
+				AllowMultiple: true,
+				NewSnapshot:   dummyResultFn(),
 			},
 		},
-		NewTaskFn: nil,
+		NewTask: nil,
 	})
 
 	t.Run("존재하는 Task와 Command를 찾는 경우", func(t *testing.T) {
@@ -135,69 +135,69 @@ func TestRegistry_Register_Validation(t *testing.T) {
 			expectedPanic: "태스크 설정(config)은 nil일 수 없습니다",
 		},
 		{
-			name: "NewTaskFn is nil",
+			name: "NewTask is nil",
 			config: &Config{
-				NewTaskFn: nil,
+				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DummyCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DummyCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
-			expectedPanic: "NewTaskFn은 nil일 수 없습니다",
+			expectedPanic: "NewTask는 nil일 수 없습니다",
 		},
 		{
 			name: "CommandConfigs is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
-				Commands:  []*CommandConfig{},
+				NewTask:  dummyNewTask(),
+				Commands: []*CommandConfig{},
 			},
 			expectedPanic: "Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
 			expectedPanic: "CommandID는 비어있을 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn is nil",
+			name: "NewSnapshot is nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
-						// NewTaskResultDataFn missing
+						// NewSnapshot missing
 					},
 				},
 			},
-			expectedPanic: "NewTaskResultDataFn은 nil일 수 없습니다",
+			expectedPanic: "NewSnapshot은 nil일 수 없습니다",
 		},
 		{
 			name: "Duplicate CommandID",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -221,12 +221,12 @@ func TestRegistry_Register_Validation(t *testing.T) {
 
 		// 먼저 정상 등록
 		r.Register(taskID, &Config{
-			NewTaskFn: dummyNewTaskFn(),
+			NewTask: dummyNewTask(),
 			Commands: []*CommandConfig{
 				{
-					ID:                  "SomeCommand",
-					AllowMultiple:       true,
-					NewTaskResultDataFn: dummyResultFn(),
+					ID:            "SomeCommand",
+					AllowMultiple: true,
+					NewSnapshot:   dummyResultFn(),
 				},
 			},
 		})
@@ -234,12 +234,12 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		// 동일 ID로 재등록 시 패닉 발생 확인
 		assert.PanicsWithValue(t, fmt.Sprintf("중복된 TaskID입니다: %s", taskID), func() {
 			r.Register(taskID, &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "OtherCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "OtherCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			})
@@ -254,85 +254,85 @@ func TestConfig_Validate(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name: "NewTaskFn is nil",
+			name: "NewTask is nil",
 			config: &Config{
-				NewTaskFn: nil,
+				NewTask: nil,
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DummyCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DummyCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
-			expectedError: "NewTaskFn은 nil일 수 없습니다",
+			expectedError: "NewTask는 nil일 수 없습니다",
 		},
 		{
 			name: "CommandConfigs is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
-				Commands:  []*CommandConfig{},
+				NewTask:  dummyNewTask(),
+				Commands: []*CommandConfig{},
 			},
 			expectedError: "Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
 			expectedError: "CommandID는 비어있을 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn is nil",
+			name: "NewSnapshot is nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
-						// NewTaskResultDataFn missing
+						// NewSnapshot missing
 					},
 				},
 			},
-			expectedError: "NewTaskResultDataFn은 nil일 수 없습니다",
+			expectedError: "NewSnapshot은 nil일 수 없습니다",
 		},
 		{
-			name: "NewTaskResultDataFn returns nil",
+			name: "NewSnapshot returns nil",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
 						ID:            "NilDataCommand",
 						AllowMultiple: true,
-						NewTaskResultDataFn: func() interface{} {
+						NewSnapshot: func() interface{} {
 							return nil
 						},
 					},
 				},
 			},
-			expectedError: "NewTaskResultDataFn 결과값은 nil일 수 없습니다",
+			expectedError: "NewSnapshot 결과값은 nil일 수 없습니다",
 		},
 		{
 			name: "Duplicate CommandID",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 					{
-						ID:                  "DuplicateCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "DuplicateCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},
@@ -341,12 +341,12 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "Valid Config",
 			config: &Config{
-				NewTaskFn: dummyNewTaskFn(),
+				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
-						ID:                  "ValidCommand",
-						AllowMultiple:       true,
-						NewTaskResultDataFn: dummyResultFn(),
+						ID:            "ValidCommand",
+						AllowMultiple: true,
+						NewSnapshot:   dummyResultFn(),
 					},
 				},
 			},

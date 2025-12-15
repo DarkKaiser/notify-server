@@ -228,7 +228,7 @@ func TestFileTaskResultStorage_Cleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// 정리 수행
-	storage.CleanupTempFiles()
+	storage.cleanupTempFiles()
 
 	// 검증
 	assert.NoFileExists(t, tmpFile, "패턴에 맞는 임시 파일은 삭제되어야 합니다")

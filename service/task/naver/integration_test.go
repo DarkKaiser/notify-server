@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 테스트용 JSON 응답 생성
 	performanceTitle := "테스트 공연"
@@ -29,38 +30,34 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
 	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
-	tTask := &naverTask{
-		Task: task.Task{
-			ID:         TidNaver,
-			CommandID:  TcidNaverWatchNewPerformances,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandData := &naverWatchNewPerformancesCommandData{
+	commandConfig := &watchNewPerformancesCommandConfig{
 		Query: "전라도",
 	}
-	commandData.Filters.Title.IncludedKeywords = ""
-	commandData.Filters.Title.ExcludedKeywords = ""
-	commandData.Filters.Place.IncludedKeywords = ""
-	commandData.Filters.Place.ExcludedKeywords = ""
+	commandConfig.Filters.Title.IncludedKeywords = ""
+	commandConfig.Filters.Title.ExcludedKeywords = ""
+	commandConfig.Filters.Place.IncludedKeywords = ""
+	commandConfig.Filters.Place.ExcludedKeywords = ""
 
 	// 초기 결과 데이터 (비어있음)
-	resultData := &naverWatchNewPerformancesResultData{
-		Performances: make([]*naverPerformance, 0),
+	resultData := &watchNewPerformancesSnapshot{
+		Performances: make([]*performance, 0),
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.runWatchNewPerformances(commandData, resultData, true)
+	message, newResultData, err := tTask.executeWatchNewPerformances(commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
 	require.NotNil(t, newResultData)
 
 	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*naverWatchNewPerformancesResultData)
+	typedResultData, ok := newResultData.(*watchNewPerformancesSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Performances))
 

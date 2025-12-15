@@ -61,7 +61,7 @@ func TestNotificationService_NewService(t *testing.T) {
 	assert.Equal(t, appConfig, service.appConfig)
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
-	assert.NotNil(t, service.notifiersStopWaiter)
+	assert.NotNil(t, service.notifiersStopWG)
 }
 
 func TestNotificationService_Notify_Table(t *testing.T) {

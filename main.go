@@ -147,19 +147,19 @@ func main() {
 
 	// Set up cancellation context and waitgroup
 	serviceStopCtx, cancel := context.WithCancel(context.Background())
-	serviceStopWaiter := &sync.WaitGroup{}
+	serviceStopWG := &sync.WaitGroup{}
 
 	// 서비스를 시작한다.
 	services := []service.Service{taskService, notificationService, apiService}
 	for _, s := range services {
-		serviceStopWaiter.Add(1)
-		if err := s.Start(serviceStopCtx, serviceStopWaiter); err != nil {
+		serviceStopWG.Add(1)
+		if err := s.Start(serviceStopCtx, serviceStopWG); err != nil {
 			applog.WithComponentAndFields("main", log.Fields{
 				"error": err,
 			}).Error("서비스 초기화 실패")
 
 			cancel() // 다른 서비스들도 종료
-			serviceStopWaiter.Wait()
+			serviceStopWG.Wait()
 
 			log.Fatal("서비스 초기화 실패로 프로그램을 종료합니다")
 		}
@@ -173,6 +173,6 @@ func main() {
 
 	// Handle shutdown
 	applog.WithComponent("main").Info("Shutdown signal received")
-	cancel()                 // Signal cancellation to context.Context
-	serviceStopWaiter.Wait() // Block here until are workers are done
+	cancel()             // Signal cancellation to context.Context
+	serviceStopWG.Wait() // Block here until are workers are done
 }

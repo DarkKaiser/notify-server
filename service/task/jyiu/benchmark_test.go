@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/service/task"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 )
 
 func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 공지사항 목록 HTML 생성
 	noticeHTML := `<html><body><div id="contents"><table class="bbsList"><tbody>`
@@ -25,28 +26,25 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 	}
 	noticeHTML += `</tbody></table></div></body></html>`
 
-	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", jyiuBaseURL), []byte(noticeHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sgms_005001/", baseURL), []byte(noticeHTML))
 
-	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewNotice,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+	// Task Setup
+	// noinspection GoBoolExpressions
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewNoticeCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	resultData := &jyiuWatchNewNoticeResultData{
-		Notices: make([]*jyiuNotice, 0),
+	resultData := &watchNewNoticeSnapshot{
+		Notices: make([]*notice, 0),
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewNotice(resultData, true)
+		_, _, err := tTask.executeWatchNewNotice(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
@@ -55,7 +53,7 @@ func BenchmarkJyiuTask_RunWatchNewNotice(b *testing.B) {
 
 func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := task.NewMockHTTPFetcher()
+	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	// 교육 프로그램 목록 HTML 생성
 	eduHTML := `<html><body><div class="gms_003001"><table class="bbsList"><tbody>`
@@ -72,28 +70,25 @@ func BenchmarkJyiuTask_RunWatchNewEducation(b *testing.B) {
 	}
 	eduHTML += `</tbody></table></div></body></html>`
 
-	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", jyiuBaseURL), []byte(eduHTML))
+	mockFetcher.SetResponse(fmt.Sprintf("%sgms_003001/experienceList", baseURL), []byte(eduHTML))
 
-	// 2. Task 초기화
-	tTask := &jyiuTask{
-		Task: task.Task{
-			ID:         TidJyiu,
-			CommandID:  TcidJyiuWatchNewEducation,
-			NotifierID: "test-notifier",
-			Fetcher:    mockFetcher,
-		},
+	// Task Setup
+	// noinspection GoBoolExpressions
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewEducationCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
+	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	resultData := &jyiuWatchNewEducationResultData{
-		Educations: make([]*jyiuEducation, 0),
+	resultData := &watchNewEducationSnapshot{
+		Educations: make([]*education, 0),
 	}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.runWatchNewEducation(resultData, true)
+		_, _, err := tTask.executeWatchNewEducation(resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}
