@@ -85,7 +85,7 @@ func TestFindConfig(t *testing.T) {
 	// 독립적인 레지스트리 인스턴스 생성
 	r := newRegistry()
 
-	r.registerForTest(testTaskID, &Config{
+	r.RegisterForTest(testTaskID, &Config{
 		Commands: []*CommandConfig{
 			{
 				ID:            testCommandID,

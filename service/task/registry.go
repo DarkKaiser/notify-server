@@ -152,13 +152,6 @@ func (r *Registry) findConfig(taskID ID, commandID CommandID) (*ConfigLookup, er
 	return nil, ErrTaskNotSupported
 }
 
-// registerForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
-func (r *Registry) registerForTest(taskID ID, config *Config) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.configs[taskID] = config
-}
-
 // Register 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
 // "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시켜
 // 애플리케이션 시작 단계에서 잠재적 설정 오류를 확실하게 차단합니다.
@@ -169,5 +162,17 @@ func Register(taskID ID, config *Config) {
 // findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
 // 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
 func findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
+	return defaultRegistry.findConfig(taskID, commandID)
+}
+
+// RegisterForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
+func (r *Registry) RegisterForTest(taskID ID, config *Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.configs[taskID] = config
+}
+
+// FindConfigForTest 테스트 목적으로 설정 정보를 조회합니다. (프로덕션 사용 금지).
+func FindConfigForTest(taskID ID, commandID CommandID) (*ConfigLookup, error) {
 	return defaultRegistry.findConfig(taskID, commandID)
 }
