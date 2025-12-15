@@ -14,7 +14,6 @@ func TestErrorTypes(t *testing.T) {
 		errType  errors.ErrorType
 		expected string
 	}{
-		{"ErrTaskNotFound", ErrTaskNotFound, "TaskNotFound"},
 		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed, "TaskExecutionFailed"},
 	}
 
@@ -31,7 +30,7 @@ func TestErrorCreation(t *testing.T) {
 		name    string
 		errType errors.ErrorType
 	}{
-		{"ErrTaskNotFound", ErrTaskNotFound},
+
 		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed},
 	}
 

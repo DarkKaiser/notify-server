@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/darkkaiser/notify-server/config"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/darkkaiser/notify-server/service/task"
@@ -35,11 +36,11 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"bot_token": strutil.MaskSensitiveData(botToken),
-	}).Debug("Telegram Bot 초기화 시도")
+	}).Debug("텔레그램 봇 초기화 시도")
 
 	botAPI, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
-		return nil, fmt.Errorf("telegram bot 초기화 실패: %w", err)
+		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "텔레그램 봇 초기화 실패 (토큰을 확인해주세요)")
 	}
 	botAPI.Debug = appConfig.Debug
 

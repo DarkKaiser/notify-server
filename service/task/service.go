@@ -15,7 +15,6 @@ import (
 const (
 	defaultChannelBufferSize = 10
 
-	msgTaskUnregistered   = "등록되지 않은 작업입니다.😱"
 	msgTaskRunning        = "작업 진행중입니다. 잠시만 기다려 주세요."
 	msgTaskAlreadyRunning = "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요."
 	msgTaskCanceledByUser = "사용자 요청에 의해 작업이 취소되었습니다."
@@ -183,9 +182,9 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 			"task_id":    req.TaskID,
 			"command_id": req.CommandID,
 			"error":      err,
-		}).Error(msgTaskUnregistered)
+		}).Error(ErrTaskUnregistered.Error())
 
-		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, msgTaskUnregistered)
+		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskUnregistered.Error())
 
 		return
 	}

@@ -1,11 +1,11 @@
 package lotto
 
 import (
-	"os"
 	"strings"
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/validation"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -55,16 +55,12 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 			}
 
-			appPath = strings.Trim(taskConfig.AppPath, " ")
+			appPath = strings.TrimSpace(taskConfig.AppPath)
 			if appPath == "" {
 				return nil, apperrors.New(apperrors.ErrInvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
 			}
-			if _, err := os.Stat(appPath); err != nil {
-				if os.IsNotExist(err) {
-					return nil, apperrors.New(apperrors.ErrInvalidInput, "설정된 AppPath 경로가 존재하지 않습니다: "+appPath)
-				}
-				// 권한 문제 등 다른 에러
-				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "AppPath 경로에 접근할 수 없습니다: "+appPath)
+			if err := validation.ValidateFileExists(appPath, false); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "AppPath 경로가 유효하지 않습니다")
 			}
 
 			found = true

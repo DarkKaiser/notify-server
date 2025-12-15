@@ -1,6 +1,8 @@
 package task
 
 import (
+	"fmt"
+
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 )
 
@@ -22,13 +24,6 @@ import (
 //
 // ------------------------------------------------------------------------------------------------
 const (
-	// ErrTaskNotFound 요청된 작업을 찾을 수 없을 때 발생하는 에러 타입입니다.
-	//
-	// [사용 시나리오]
-	//  - 유효하지 않거나 등록되지 않은 Task ID로 작업을 조회하거나 실행하려 할 때 사용됩니다.
-	//  - 예: DB나 실행 목록에 해당 ID의 작업이 존재하지 않음.
-	ErrTaskNotFound apperrors.ErrorType = "TaskNotFound"
-
 	// ErrTaskExecutionFailed 작업 실행 중에 예기치 않은 오류가 발생했을 때 사용하는 에러 타입입니다.
 	//
 	// [사용 시나리오]
@@ -46,4 +41,15 @@ var (
 
 	// ErrCommandNotImplemented 명령(Command)이 정의되어 있으나, 실제 실행 로직이 구현되지 않았을 때 반환됩니다.
 	ErrCommandNotImplemented = apperrors.New(apperrors.ErrInternal, "작업 명령에 대한 구현이 없습니다")
+
+	// ErrTaskUnregistered 등록되지 않은 작업에 접근하려 할 때 반환됩니다.
+	ErrTaskUnregistered = apperrors.New(apperrors.ErrNotFound, "등록되지 않은 작업입니다.😱")
+
+	// ErrInvalidTaskData 작업 설정 데이터(JSON/Map) 디코딩 실패 시 반환됩니다.
+	ErrInvalidTaskData = apperrors.New(apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
 )
+
+// NewErrCommandNotSupported 지원하지 않는 명령(Command)일 때 상세 메시지와 함께 에러를 반환합니다.
+func NewErrCommandNotSupported(commandID CommandID) error {
+	return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID))
+}

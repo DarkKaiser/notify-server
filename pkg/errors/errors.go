@@ -12,27 +12,9 @@ type ErrorType string
 //
 // 각 에러 타입은 특정 상황에서 사용되며, 에러 처리 로직에서 타입별로 다른 처리를 할 수 있습니다.
 const (
-	// 일반적인 에러 타입
-
 	// ErrUnknown 알 수 없는 에러 (기본값)
 	// 사용 시나리오: 에러 타입을 특정할 수 없거나, AppError가 아닌 표준 에러인 경우
 	ErrUnknown ErrorType = "Unknown"
-
-	// ErrInvalidInput 잘못된 입력값
-	// 사용 시나리오:
-	//   - 유효성 검사 실패 (예: 잘못된 이메일 형식, 범위 초과)
-	//   - JSON 파싱 실패
-	//   - 필수 파라미터 누락
-	//   - 잘못된 설정 값
-	ErrInvalidInput ErrorType = "InvalidInput"
-
-	// ErrNotFound 리소스를 찾을 수 없음
-	// 사용 시나리오:
-	//   - 파일이 존재하지 않음
-	//   - 데이터베이스 레코드가 없음
-	//   - API 엔드포인트가 존재하지 않음
-	//   - 설정에서 참조하는 ID가 없음
-	ErrNotFound ErrorType = "NotFound"
 
 	// ErrInternal 내부 처리 오류
 	// 사용 시나리오:
@@ -40,6 +22,14 @@ const (
 	//   - 복구 불가능한 상태
 	//   - 프로그래밍 오류 (버그)
 	ErrInternal ErrorType = "Internal"
+
+	// ErrSystem 시스템 레벨 오류
+	// 사용 시나리오:
+	//   - 파일 시스템 오류 (읽기/쓰기 실패)
+	//   - 네트워크 오류
+	//   - 외부 시스템 연동 실패
+	//   - 리소스 부족 (메모리, 디스크)
+	ErrSystem ErrorType = "System"
 
 	// ErrUnauthorized 인증 실패
 	// 사용 시나리오:
@@ -54,13 +44,40 @@ const (
 	//   - 역할 기반 접근 제어(RBAC) 위반
 	ErrForbidden ErrorType = "Forbidden"
 
-	// ErrSystem 시스템 레벨 오류
+	// ErrInvalidInput 잘못된 입력값
 	// 사용 시나리오:
-	//   - 파일 시스템 오류 (읽기/쓰기 실패)
-	//   - 네트워크 오류
-	//   - 외부 시스템 연동 실패
-	//   - 리소스 부족 (메모리, 디스크)
-	ErrSystem ErrorType = "System"
+	//   - 유효성 검사 실패 (예: 잘못된 이메일 형식, 범위 초과)
+	//   - JSON 파싱 실패
+	//   - 필수 파라미터 누락
+	//   - 잘못된 설정 값
+	ErrInvalidInput ErrorType = "InvalidInput"
+
+	// ErrConflict 리소스 충돌 (이미 존재함)
+	// 사용 시나리오:
+	//   - 중복된 ID로 생성 시도
+	//   - 데이터 무결성 위반
+	ErrConflict ErrorType = "Conflict"
+
+	// ErrNotFound 리소스를 찾을 수 없음
+	// 사용 시나리오:
+	//   - 파일이 존재하지 않음
+	//   - 데이터베이스 레코드가 없음
+	//   - API 엔드포인트가 존재하지 않음
+	//   - 설정에서 참조하는 ID가 없음
+	ErrNotFound ErrorType = "NotFound"
+
+	// ErrTimeout 작업 수행 시간 초과
+	// 사용 시나리오:
+	//   - 외부 API 응답 지연
+	//   - DB 쿼리 타임아웃
+	//   - 컨텍스트 데드라인 초과
+	ErrTimeout ErrorType = "Timeout"
+
+	// ErrUnavailable 일시적인 서비스 사용 불가
+	// 사용 시나리오:
+	//   - 외부 시스템(스크래핑 대상) 장애
+	//   - 트래픽 폭주로 인한 차단
+	ErrUnavailable ErrorType = "Unavailable"
 )
 
 // AppError 애플리케이션 전용 에러 구조체
@@ -89,6 +106,10 @@ func New(errType ErrorType, message string) error {
 	}
 }
 
+func Newf(errType ErrorType, format string, args ...interface{}) error {
+	return New(errType, fmt.Sprintf(format, args...))
+}
+
 // Wrap 기존 에러를 감싸서 새로운 에러를 생성합니다.
 func Wrap(err error, errType ErrorType, message string) error {
 	return &AppError{
@@ -96,6 +117,10 @@ func Wrap(err error, errType ErrorType, message string) error {
 		Message: message,
 		Cause:   err,
 	}
+}
+
+func Wrapf(err error, errType ErrorType, format string, args ...interface{}) error {
+	return Wrap(err, errType, fmt.Sprintf(format, args...))
 }
 
 // Is 에러 타입이 일치하는지 확인합니다.

@@ -97,7 +97,7 @@ func TestNewTask_InvalidAppPath(t *testing.T) {
 		{
 			name:        "Non-existent AppPath",
 			appPath:     "C:\\NonExistent\\Path\\For\\Test",
-			expectedErr: "설정된 AppPath 경로가 존재하지 않습니다", // Fail Fast 재적용 확인
+			expectedErr: "AppPath 경로가 유효하지 않습니다", // Fail Fast 재적용 확인
 		},
 	}
 
