@@ -74,57 +74,59 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchNewPerformancesSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
+		NewTask: newTask,
+	})
+}
 
-			tTask := &task{
-				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+	}
 
-				appConfig: appConfig,
-			}
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
+		appConfig: appConfig,
+	}
 
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-				switch tTask.GetCommandID() {
-				case WatchNewPerformancesCommand:
-					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == tasksvc.ID(t.ID) {
-							for _, c := range t.Commands {
-								if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-									commandConfig := &watchNewPerformancesCommandConfig{}
-									if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
-									if err := commandConfig.validate(); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
+	retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
+	if err != nil {
+		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
+	}
+	tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
 
-									originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
-									if ok == false {
-										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewPerformancesSnapshot, got: %T)", previousSnapshot))
-									}
-
-									return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
-								}
+	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		switch tTask.GetCommandID() {
+		case WatchNewPerformancesCommand:
+			for _, t := range tTask.appConfig.Tasks {
+				if tTask.GetID() == tasksvc.ID(t.ID) {
+					for _, c := range t.Commands {
+						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
+							commandConfig := &watchNewPerformancesCommandConfig{}
+							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
-							break
+							if err := commandConfig.validate(); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+							}
+
+							originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
+							if ok == false {
+								return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewPerformancesSnapshot, got: %T)", previousSnapshot))
+							}
+
+							return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
 						}
 					}
+					break
 				}
+			}
+		}
 
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
-
-			return tTask, nil
-		},
+		return "", nil, tasksvc.ErrCommandNotImplemented
 	})
+
+	return tTask, nil
 }
 
 type task struct {

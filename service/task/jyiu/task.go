@@ -77,46 +77,48 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchNewEducationSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
-
-			tTask := &task{
-				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
-			}
-
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
-
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-				switch tTask.GetCommandID() {
-				case WatchNewNoticeCommand:
-					originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
-					if ok == false {
-						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
-					}
-
-					return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
-
-				case WatchNewEducationCommand:
-					originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
-					if ok == false {
-						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewEducationSnapshot, got: %T)", previousSnapshot))
-					}
-
-					return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
-				}
-
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
-
-			return tTask, nil
-		},
+		NewTask: newTask,
 	})
+}
+
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+	}
+
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+	}
+
+	retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
+	if err != nil {
+		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
+	}
+	tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
+
+	tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		switch tTask.GetCommandID() {
+		case WatchNewNoticeCommand:
+			originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
+			if ok == false {
+				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
+			}
+
+			return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
+
+		case WatchNewEducationCommand:
+			originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
+			if ok == false {
+				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewEducationSnapshot, got: %T)", previousSnapshot))
+			}
+
+			return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
+		}
+
+		return "", nil, tasksvc.ErrCommandNotImplemented
+	})
+
+	return tTask, nil
 }
 
 type task struct {
