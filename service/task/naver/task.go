@@ -115,7 +115,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 							originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
 							if ok == false {
-								return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewPerformancesSnapshot, got: %T)", previousSnapshot))
+								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewPerformancesSnapshot{}, previousSnapshot)
 							}
 
 							return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
@@ -159,7 +159,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
+			return "", nil, apperrors.Wrap(err, apperrors.ErrExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.
@@ -168,7 +168,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 제목
 			pis := s.Find("div.item > div.title_box > strong.name")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
 				return false
 			}
 			title := strings.TrimSpace(pis.Text())
@@ -176,7 +176,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 장소
 			pis = s.Find("div.item > div.title_box > span.sub_text")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
 				return false
 			}
 			place := strings.TrimSpace(pis.Text())
@@ -184,12 +184,12 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 썸네일 이미지
 			pis = s.Find("div.item > div.thumb > img")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 				return false
 			}
 			thumbnailSrc, exists := pis.Attr("src")
 			if exists == false {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 				return false
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
@@ -227,7 +227,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 		actualityPerformance, ok1 := selem.(*performance)
 		originPerformance, ok2 := telem.(*performance)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &performance{}, selem)
 		} else {
 			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
 				return true, nil

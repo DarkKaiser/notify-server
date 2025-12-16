@@ -13,9 +13,7 @@ func TestErrorTypes(t *testing.T) {
 		name     string
 		errType  errors.ErrorType
 		expected string
-	}{
-		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed, "TaskExecutionFailed"},
-	}
+	}{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -29,10 +27,7 @@ func TestErrorCreation(t *testing.T) {
 	tests := []struct {
 		name    string
 		errType errors.ErrorType
-	}{
-
-		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed},
-	}
+	}{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

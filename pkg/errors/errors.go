@@ -66,6 +66,12 @@ const (
 	//   - 설정에서 참조하는 ID가 없음
 	ErrNotFound ErrorType = "NotFound"
 
+	// ErrExecutionFailed 비즈니스 로직이나 작업 실행 과정에서 실패가 발생했을 때 사용합니다.
+	// 사용 시나리오:
+	//   - 크롤링/스크래핑 작업 수행 실패 (파싱 에러, 타임아웃 등)
+	//   - 외부 커맨드 또는 프로세스 실행 실패
+	ErrExecutionFailed ErrorType = "ExecutionFailed"
+
 	// ErrTimeout 작업 수행 시간 초과
 	// 사용 시나리오:
 	//   - 외부 API 응답 지연

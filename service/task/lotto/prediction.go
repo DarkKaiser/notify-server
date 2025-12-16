@@ -12,7 +12,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
-	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -84,13 +83,13 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
 	analysisFilePath := reLottoAnalysisEnd.FindString(cmdOutString)
 	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(apperrors.ErrExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 
 	// 정규식 캡처 그룹을 사용하여 경로를 안전하게 추출합니다.
 	matches := reLogFilePath.FindStringSubmatch(analysisFilePath)
 	if len(matches) < 2 {
-		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+		return "", nil, apperrors.New(apperrors.ErrExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
 	}
 	analysisFilePath = matches[1]
 
@@ -104,7 +103,7 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	analysisResultData := string(data)
 	index := strings.Index(analysisResultData, "- 분석결과")
 	if index == -1 {
-		return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
+		return "", nil, apperrors.New(apperrors.ErrExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
 	}
 	analysisResultData = analysisResultData[index:]
 

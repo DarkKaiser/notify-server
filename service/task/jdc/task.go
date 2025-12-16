@@ -78,7 +78,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 		t.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewOnlineEducationSnapshot)
 			if ok == false {
-				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewOnlineEducationSnapshot, got: %T)", previousSnapshot))
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewOnlineEducationSnapshot{}, previousSnapshot)
 			}
 
 			return t.executeWatchNewOnlineEducation(originTaskResultData, supportsHTML)
@@ -118,7 +118,7 @@ func (t *task) executeWatchNewOnlineEducation(originTaskResultData *watchNewOnli
 		actualityEducationCourse, ok1 := selem.(*onlineEducationCourse)
 		originEducationCourse, ok2 := telem.(*onlineEducationCourse)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &onlineEducationCourse{}, selem)
 		} else {
 			if actualityEducationCourse.Title1 == originEducationCourse.Title1 && actualityEducationCourse.Title2 == originEducationCourse.Title2 && actualityEducationCourse.TrainingPeriod == originEducationCourse.TrainingPeriod {
 				return true, nil
@@ -167,7 +167,7 @@ func (t *task) scrapeOnlineEducationCourses(url string) ([]*onlineEducationCours
 	err = tasksvc.ScrapeHTML(t.GetFetcher(), url, "#content > ul.prdt-list2 > li > a.link", func(i int, s *goquery.Selection) bool {
 		courseURL, exists := s.Attr("href")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "강의 목록페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
@@ -222,24 +222,24 @@ func (t *task) scrapeOnlineEducationCourseCurriculums(url string, curriculumWebS
 				return true
 			}
 
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("목록 컬럼 개수 불일치:%d", as.Length()))
 			return false
 		}
 
 		title1Selection := as.Eq(0).Find("a")
 		if title1Selection.Length() != 1 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "교육과정_제목1 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		title2Selection := as.Eq(0).Find("p")
 		if title2Selection.Length() != 1 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "교육과정_제목2 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 
 		courseDetailURL, exists := title1Selection.Attr("href")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "강의 상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		// '마감되었습니다', '정원이 초과 되었습니다' 등의 알림창이 뜨도록 되어있는 경우인지 확인한다.

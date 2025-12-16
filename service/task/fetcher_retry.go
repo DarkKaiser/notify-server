@@ -75,7 +75,7 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration,
 func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, "failed to create request")
+		return nil, apperrors.Wrap(err, apperrors.ErrExecutionFailed, "failed to create request")
 	}
 	return f.Do(req)
 }
@@ -155,11 +155,11 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			resp.Body.Close()
 			if err == nil {
 				// 에러 객체가 없지만 상태 코드가 500 이상인 경우 에러 생성
-				lastErr = apperrors.New(ErrTaskExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
+				lastErr = apperrors.New(apperrors.ErrExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
 			}
 		}
 	}
-	return nil, apperrors.Wrap(lastErr, ErrTaskExecutionFailed, "max retries exceeded")
+	return nil, apperrors.Wrap(lastErr, apperrors.ErrExecutionFailed, "max retries exceeded")
 }
 
 // shouldRetry 응답 상태와 에러를 분석하여 재시도 수행 여부를 결정합니다.

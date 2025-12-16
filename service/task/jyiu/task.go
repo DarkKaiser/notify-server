@@ -87,7 +87,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
-		return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
+		return nil, tasksvc.ErrTaskUnregistered
 	}
 
 	tTask := &task{
@@ -112,7 +112,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
 			if ok == false {
-				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewEducationSnapshot, got: %T)", previousSnapshot))
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewEducationSnapshot{}, previousSnapshot)
 			}
 
 			return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
@@ -138,19 +138,19 @@ func (t *task) executeWatchNewNotice(originTaskResultData *watchNewNoticeSnapsho
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("컬럼 개수 불일치:%d", as.Length()))
 			return false
 		}
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		id = id[pos1+1 : pos2]
@@ -192,7 +192,7 @@ func (t *task) executeWatchNewNotice(originTaskResultData *watchNewNoticeSnapsho
 		actualityNotice, ok1 := selem.(*notice)
 		originNotice, ok2 := telem.(*notice)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selem/telm", &notice{}, selem)
 		} else {
 			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.URL == originNotice.URL {
 				return true, nil
@@ -243,19 +243,19 @@ func (t *task) executeWatchNewEducation(originTaskResultData *watchNewEducationS
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("컬럼 개수 불일치:%d", as.Length()))
 			return false
 		}
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		url = url[pos1+1 : pos2]
@@ -295,7 +295,7 @@ func (t *task) executeWatchNewEducation(originTaskResultData *watchNewEducationS
 		actualityEducation, ok1 := selem.(*education)
 		originEducation, ok2 := telem.(*education)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selem/telm", &education{}, selem)
 		} else {
 			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.URL == originEducation.URL {
 				return true, nil

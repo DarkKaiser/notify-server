@@ -158,7 +158,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 							originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
 							if ok == false {
-								return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchPriceSnapshot, got: %T)", previousSnapshot))
+								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchPriceSnapshot{}, previousSnapshot)
 							}
 
 							return tTask.executeWatchPrice(commandConfig, originTaskResultData, supportsHTML)
@@ -266,7 +266,7 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
 		} else {
 			if actualityProduct.Link == originProduct.Link {
 				return true, nil
