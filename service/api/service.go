@@ -90,7 +90,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	if s.notificationSender == nil {
 		defer serviceStopWG.Done()
-		return apperrors.New(apperrors.ErrInternal, "notificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.Internal, "notificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {

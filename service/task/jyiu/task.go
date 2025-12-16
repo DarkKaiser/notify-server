@@ -102,7 +102,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
 			if ok == false {
-				return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
+				return "", nil, apperrors.New(apperrors.Internal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
 			}
 
 			return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
@@ -119,7 +119,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetch
 		})
 
 	default:
-		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
 	}
 
 	return tTask, nil
@@ -144,13 +144,13 @@ func (t *task) executeWatchNewNotice(originTaskResultData *watchNewNoticeSnapsho
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		id = id[pos1+1 : pos2]
@@ -249,13 +249,13 @@ func (t *task) executeWatchNewEducation(originTaskResultData *watchNewEducationS
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(apperrors.ErrExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		url = url[pos1+1 : pos2]

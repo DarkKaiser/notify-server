@@ -14,14 +14,14 @@ type ErrorType string
 const (
 	// ErrUnknown 알 수 없는 에러 (기본값)
 	// 사용 시나리오: 에러 타입을 특정할 수 없거나, AppError가 아닌 표준 에러인 경우
-	ErrUnknown ErrorType = "Unknown"
+	Unknown ErrorType = "Unknown"
 
 	// ErrInternal 내부 처리 오류
 	// 사용 시나리오:
 	//   - 예상치 못한 내부 로직 오류
 	//   - 복구 불가능한 상태
 	//   - 프로그래밍 오류 (버그)
-	ErrInternal ErrorType = "Internal"
+	Internal ErrorType = "Internal"
 
 	// ErrSystem 시스템 레벨 오류
 	// 사용 시나리오:
@@ -29,20 +29,20 @@ const (
 	//   - 네트워크 오류
 	//   - 외부 시스템 연동 실패
 	//   - 리소스 부족 (메모리, 디스크)
-	ErrSystem ErrorType = "System"
+	System ErrorType = "System"
 
 	// ErrUnauthorized 인증 실패
 	// 사용 시나리오:
 	//   - 인증 토큰이 없거나 만료됨
 	//   - 잘못된 자격 증명
 	//   - API 키가 유효하지 않음
-	ErrUnauthorized ErrorType = "Unauthorized"
+	Unauthorized ErrorType = "Unauthorized"
 
 	// ErrForbidden 권한 없음
 	// 사용 시나리오:
 	//   - 인증은 되었으나 해당 리소스에 접근 권한이 없음
 	//   - 역할 기반 접근 제어(RBAC) 위반
-	ErrForbidden ErrorType = "Forbidden"
+	Forbidden ErrorType = "Forbidden"
 
 	// ErrInvalidInput 잘못된 입력값
 	// 사용 시나리오:
@@ -50,13 +50,13 @@ const (
 	//   - JSON 파싱 실패
 	//   - 필수 파라미터 누락
 	//   - 잘못된 설정 값
-	ErrInvalidInput ErrorType = "InvalidInput"
+	InvalidInput ErrorType = "InvalidInput"
 
 	// ErrConflict 리소스 충돌 (이미 존재함)
 	// 사용 시나리오:
 	//   - 중복된 ID로 생성 시도
 	//   - 데이터 무결성 위반
-	ErrConflict ErrorType = "Conflict"
+	Conflict ErrorType = "Conflict"
 
 	// ErrNotFound 리소스를 찾을 수 없음
 	// 사용 시나리오:
@@ -64,26 +64,26 @@ const (
 	//   - 데이터베이스 레코드가 없음
 	//   - API 엔드포인트가 존재하지 않음
 	//   - 설정에서 참조하는 ID가 없음
-	ErrNotFound ErrorType = "NotFound"
+	NotFound ErrorType = "NotFound"
 
 	// ErrExecutionFailed 비즈니스 로직이나 작업 실행 과정에서 실패가 발생했을 때 사용합니다.
 	// 사용 시나리오:
 	//   - 크롤링/스크래핑 작업 수행 실패 (파싱 에러, 타임아웃 등)
 	//   - 외부 커맨드 또는 프로세스 실행 실패
-	ErrExecutionFailed ErrorType = "ExecutionFailed"
+	ExecutionFailed ErrorType = "ExecutionFailed"
 
 	// ErrTimeout 작업 수행 시간 초과
 	// 사용 시나리오:
 	//   - 외부 API 응답 지연
 	//   - DB 쿼리 타임아웃
 	//   - 컨텍스트 데드라인 초과
-	ErrTimeout ErrorType = "Timeout"
+	Timeout ErrorType = "Timeout"
 
 	// ErrUnavailable 일시적인 서비스 사용 불가
 	// 사용 시나리오:
 	//   - 외부 시스템(스크래핑 대상) 장애
 	//   - 트래픽 폭주로 인한 차단
-	ErrUnavailable ErrorType = "Unavailable"
+	Unavailable ErrorType = "Unavailable"
 )
 
 // AppError 애플리케이션 전용 에러 구조체
@@ -167,12 +167,12 @@ func RootCause(err error) error {
 // GetType 에러 타입을 반환합니다. AppError가 아니거나 nil이면 ErrUnknown을 반환합니다.
 func GetType(err error) ErrorType {
 	if err == nil {
-		return ErrUnknown
+		return Unknown
 	}
 
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return appErr.Type
 	}
-	return ErrUnknown
+	return Unknown
 }

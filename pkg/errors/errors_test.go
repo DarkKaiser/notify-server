@@ -16,17 +16,17 @@ func TestAppError_Error(t *testing.T) {
 	}{
 		{
 			name:     "Single error message",
-			err:      New(ErrInvalidInput, "invalid input"),
+			err:      New(InvalidInput, "invalid input"),
 			expected: "invalid input",
 		},
 		{
 			name:     "Wrapped error message",
-			err:      Wrap(errors.New("root cause"), ErrInternal, "internal error"),
+			err:      Wrap(errors.New("root cause"), Internal, "internal error"),
 			expected: "internal error: root cause",
 		},
 		{
 			name:     "With formatting",
-			err:      New(ErrInternal, fmt.Sprintf("op %s not supported", "foo")),
+			err:      New(Internal, fmt.Sprintf("op %s not supported", "foo")),
 			expected: "op foo not supported",
 		},
 	}
@@ -47,12 +47,12 @@ func TestUnwrap(t *testing.T) {
 	}{
 		{
 			name:     "Unwrap wrapped error",
-			err:      Wrap(rootErr, ErrInternal, "wrapped"),
+			err:      Wrap(rootErr, Internal, "wrapped"),
 			expected: rootErr,
 		},
 		{
 			name:     "Unwrap new error (expect nil)",
-			err:      New(ErrInvalidInput, "new error"),
+			err:      New(InvalidInput, "new error"),
 			expected: nil,
 		},
 		{
@@ -70,8 +70,8 @@ func TestUnwrap(t *testing.T) {
 }
 
 func TestIs(t *testing.T) {
-	errNotFound := New(ErrNotFound, "not found")
-	wrappedErr := Wrap(errNotFound, ErrInternal, "wrapped")
+	errNotFound := New(NotFound, "not found")
+	wrappedErr := Wrap(errNotFound, Internal, "wrapped")
 
 	tests := []struct {
 		name     string
@@ -79,12 +79,12 @@ func TestIs(t *testing.T) {
 		target   ErrorType
 		expected bool
 	}{
-		{"Match ErrNotFound", errNotFound, ErrNotFound, true},
-		{"Mismatch ErrInternal", errNotFound, ErrInternal, false},
-		{"Match wrapped error type", wrappedErr, ErrInternal, true},
-		{"Mismatch wrapped error cause type (AppError limitation)", wrappedErr, ErrNotFound, false},
-		{"Nil error", nil, ErrNotFound, false},
-		{"Standard error", errors.New("std err"), ErrNotFound, false},
+		{"Match NotFound", errNotFound, NotFound, true},
+		{"Mismatch Internal", errNotFound, Internal, false},
+		{"Match wrapped error type", wrappedErr, Internal, true},
+		{"Mismatch wrapped error cause type (AppError limitation)", wrappedErr, NotFound, false},
+		{"Nil error", nil, NotFound, false},
+		{"Standard error", errors.New("std err"), NotFound, false},
 	}
 
 	for _, tt := range tests {
@@ -103,21 +103,21 @@ func TestAs(t *testing.T) {
 	}{
 		{
 			name:        "Cast to AppError success",
-			err:         New(ErrForbidden, "forbidden"),
+			err:         New(Forbidden, "forbidden"),
 			wantMatch:   true,
-			expectedTyp: ErrForbidden,
+			expectedTyp: Forbidden,
 		},
 		{
-			name:        "Cast std error to AppError fail",
+			name:        "Cast std error to AppUnavailable",
 			err:         errors.New("std error"),
 			wantMatch:   false,
 			expectedTyp: "",
 		},
 		{
 			name:        "Cast wrapped AppError success",
-			err:         Wrap(errors.New("root"), ErrSystem, "system"),
+			err:         Wrap(errors.New("root"), System, "system"),
 			wantMatch:   true,
-			expectedTyp: ErrSystem,
+			expectedTyp: System,
 		},
 		{
 			name:        "Cast nil error fail",
@@ -148,10 +148,10 @@ func TestGetType(t *testing.T) {
 		err      error
 		expected ErrorType
 	}{
-		{"Return ErrUnauthorized", New(ErrUnauthorized, "unauthorized"), ErrUnauthorized},
-		{"Return wrapped error type", Wrap(errors.New("std"), ErrSystem, "system"), ErrSystem},
-		{"Standard error returns ErrUnknown", errors.New("std error"), ErrUnknown},
-		{"Nil error returns ErrUnknown", nil, ErrUnknown},
+		{"Return Unauthorized", New(Unauthorized, "unauthorized"), Unauthorized},
+		{"Return wrapped error type", Wrap(errors.New("std"), System, "system"), System},
+		{"Standard error returns Unknown", errors.New("std error"), Unknown},
+		{"Nil error returns Unknown", nil, Unknown},
 	}
 
 	for _, tt := range tests {
@@ -168,8 +168,8 @@ func TestCause(t *testing.T) {
 		err      error
 		expected error
 	}{
-		{"Cause of wrapped error", Wrap(rootErr, ErrInternal, "wrapped"), rootErr},
-		{"Cause of new error is nil", New(ErrInvalidInput, "new"), nil},
+		{"Cause of wrapped error", Wrap(rootErr, Internal, "wrapped"), rootErr},
+		{"Cause of new error is nil", New(InvalidInput, "new"), nil},
 		{"Cause of std error is nil", rootErr, nil},
 		{"Cause of nil is nil", nil, nil},
 	}
@@ -201,17 +201,17 @@ func TestRootCause(t *testing.T) {
 		},
 		{
 			name:     "AppError (no wrap)",
-			err:      New(ErrInvalidInput, "invalid"),
-			expected: New(ErrInvalidInput, "invalid"),
+			err:      New(InvalidInput, "invalid"),
+			expected: New(InvalidInput, "invalid"),
 		},
 		{
 			name:     "Nested AppError (2 levels)",
-			err:      Wrap(rootErr, ErrInternal, "level 1"),
+			err:      Wrap(rootErr, Internal, "level 1"),
 			expected: rootErr,
 		},
 		{
 			name:     "Nested AppError (3 levels)",
-			err:      Wrap(Wrap(rootErr, ErrInvalidInput, "level 2"), ErrInternal, "level 1"),
+			err:      Wrap(Wrap(rootErr, InvalidInput, "level 2"), Internal, "level 1"),
 			expected: rootErr,
 		},
 		{
@@ -221,7 +221,7 @@ func TestRootCause(t *testing.T) {
 		},
 		{
 			name:     "Mixed wrapping",
-			err:      fmt.Errorf("std wrap: %w", Wrap(rootErr, ErrInternal, "app wrap")),
+			err:      fmt.Errorf("std wrap: %w", Wrap(rootErr, Internal, "app wrap")),
 			expected: rootErr,
 		},
 	}

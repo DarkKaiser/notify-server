@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -56,19 +57,19 @@ func TestSentinelErrors(t *testing.T) {
 		{
 			name:         "ErrTaskNotSupported",
 			actualErr:    ErrTaskNotSupported,
-			expectedType: errors.ErrInvalidInput,
+			expectedType: apperrors.InvalidInput,
 			expectedMsg:  "지원하지 않는 작업입니다",
 		},
 		{
 			name:         "ErrCommandNotSupported",
 			actualErr:    ErrCommandNotSupported,
-			expectedType: errors.ErrInvalidInput,
+			expectedType: apperrors.InvalidInput,
 			expectedMsg:  "지원하지 않는 명령입니다",
 		},
 		{
 			name:         "ErrCommandNotImplemented",
 			actualErr:    ErrCommandNotImplemented,
-			expectedType: errors.ErrInternal,
+			expectedType: apperrors.Internal,
 			expectedMsg:  "작업 명령에 대한 구현이 없습니다",
 		},
 	}

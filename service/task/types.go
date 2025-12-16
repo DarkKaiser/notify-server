@@ -15,7 +15,7 @@ func (id ID) IsEmpty() bool {
 
 func (id ID) Validate() error {
 	if len(id) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "ID는 필수입니다")
+		return apperrors.New(apperrors.InvalidInput, "ID는 필수입니다")
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func (id CommandID) IsEmpty() bool {
 
 func (id CommandID) Validate() error {
 	if len(id) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 필수입니다")
+		return apperrors.New(apperrors.InvalidInput, "CommandID는 필수입니다")
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func (id InstanceID) IsEmpty() bool {
 
 func (id InstanceID) Validate() error {
 	if len(id) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "InstanceID는 필수입니다")
+		return apperrors.New(apperrors.InvalidInput, "InstanceID는 필수입니다")
 	}
 	return nil
 }
@@ -101,7 +101,7 @@ func (t RunBy) IsValid() bool {
 // Validate 유효한 실행 주체인지 검증합니다.
 func (t RunBy) Validate() error {
 	if !t.IsValid() {
-		return apperrors.New(apperrors.ErrInvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
+		return apperrors.New(apperrors.InvalidInput, "유효하지 않은 실행 주체(RunBy)입니다")
 	}
 	return nil
 }
@@ -145,13 +145,13 @@ type SubmitRequest struct {
 // Validate 유효한 요청인지 검증합니다.
 func (r *SubmitRequest) Validate() error {
 	if err := r.TaskID.Validate(); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "TaskID 검증 실패")
+		return apperrors.Wrap(err, apperrors.InvalidInput, "TaskID 검증 실패")
 	}
 	if err := r.CommandID.Validate(); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "CommandID 검증 실패")
+		return apperrors.Wrap(err, apperrors.InvalidInput, "CommandID 검증 실패")
 	}
 	if len(r.NotifierID) > 0 && strings.TrimSpace(r.NotifierID) == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "NotifierID는 공백일 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "NotifierID는 공백일 수 없습니다")
 	}
 	if err := r.RunBy.Validate(); err != nil {
 		return err

@@ -80,13 +80,13 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 			commandIDs = append(commandIDs, cmd.ID)
 
 			if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
-				return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
+				return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
 			}
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
 				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
-					return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
+					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
 		}
@@ -103,7 +103,7 @@ type HTTPRetryConfig struct {
 // Validate HTTPRetryConfig의 유효성을 검사합니다.
 func (c *HTTPRetryConfig) Validate() error {
 	if err := validation.ValidateDuration(c.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "HTTP Retry 설정 오류")
+		return apperrors.Wrap(err, apperrors.InvalidInput, "HTTP Retry 설정 오류")
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (c *NotifierConfig) Validate() ([]string, error) {
 	}
 
 	if !slices.Contains(notifierIDs, c.DefaultNotifierID) {
-		return nil, apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
+		return nil, apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 기본 NotifierID(%s)가 존재하지 않습니다", c.DefaultNotifierID))
 	}
 
 	return notifierIDs, nil
@@ -191,11 +191,11 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		applicationIDs = append(applicationIDs, app.ID)
 
 		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
-			return apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
+			return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}
 
 		if strings.TrimSpace(app.AppKey) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("%s Application의 APP_KEY가 입력되지 않았습니다", app.ID))
 		}
 	}
 
@@ -214,16 +214,16 @@ type WSConfig struct {
 func (c *WSConfig) Validate() error {
 	// 포트 번호 검증
 	if err := validation.ValidatePort(c.ListenPort); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, "웹서버 포트 설정 오류")
+		return apperrors.Wrap(err, apperrors.InvalidInput, "웹서버 포트 설정 오류")
 	}
 
 	// TLS 설정 검사
 	if c.TLSServer {
 		if strings.TrimSpace(c.TLSCertFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+			return apperrors.New(apperrors.InvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
 		}
 		if strings.TrimSpace(c.TLSKeyFile) == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
+			return apperrors.New(apperrors.InvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
 		}
 
 		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
@@ -242,13 +242,13 @@ type CORSConfig struct {
 // Validate CORS 설정의 유효성을 검사합니다.
 func (c *CORSConfig) Validate() error {
 	if len(c.AllowOrigins) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "CORS AllowOrigins 설정이 비어있습니다")
+		return apperrors.New(apperrors.InvalidInput, "CORS AllowOrigins 설정이 비어있습니다")
 	}
 
 	for _, origin := range c.AllowOrigins {
 		if origin == "*" {
 			if len(c.AllowOrigins) > 1 {
-				return apperrors.New(apperrors.ErrInvalidInput, "CORS AllowOrigins에 와일드카드(*)가 포함된 경우, 다른 Origin과 함께 사용할 수 없습니다")
+				return apperrors.New(apperrors.InvalidInput, "CORS AllowOrigins에 와일드카드(*)가 포함된 경우, 다른 Origin과 함께 사용할 수 없습니다")
 			}
 			continue
 		}
@@ -278,14 +278,14 @@ func InitAppConfig() (*AppConfig, error) {
 func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrSystem, fmt.Sprintf("%s 파일을 열 수 없습니다", filename))
+		return nil, apperrors.Wrap(err, apperrors.System, fmt.Sprintf("%s 파일을 열 수 없습니다", filename))
 	}
 	defer file.Close()
 
 	var appConfig AppConfig
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&appConfig); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s 파일의 JSON 파싱이 실패하였습니다", filename))
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 파일의 JSON 파싱이 실패하였습니다", filename))
 	}
 
 	// 기본값 설정
@@ -295,7 +295,7 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	// 파일 내용에 대해 유효성 검사를 한다.
 	//
 	if err := appConfig.Validate(); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("%s 파일의 내용이 유효하지 않습니다", filename))
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 파일의 내용이 유효하지 않습니다", filename))
 	}
 
 	return &appConfig, nil

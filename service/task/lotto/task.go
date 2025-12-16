@@ -52,15 +52,15 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		if req.TaskID == tasksvc.ID(t.ID) {
 			taskConfig := &taskConfig{}
 			if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
 			}
 
 			appPath = strings.TrimSpace(taskConfig.AppPath)
 			if appPath == "" {
-				return nil, apperrors.New(apperrors.ErrInvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
+				return nil, apperrors.New(apperrors.InvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
 			}
 			if err := validation.ValidateFileExists(appPath, false); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "AppPath 경로가 유효하지 않습니다")
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "AppPath 경로가 유효하지 않습니다")
 			}
 
 			found = true
@@ -69,7 +69,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	}
 
 	if !found {
-		return nil, apperrors.New(apperrors.ErrNotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
+		return nil, apperrors.New(apperrors.NotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
 	}
 
 	lottoTask := &task{
@@ -87,7 +87,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			return lottoTask.executePrediction()
 		})
 	default:
-		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
 	}
 
 	return lottoTask, nil

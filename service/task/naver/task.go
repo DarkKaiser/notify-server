@@ -38,7 +38,7 @@ type watchNewPerformancesCommandConfig struct {
 
 func (c *watchNewPerformancesCommandConfig) validate() error {
 	if c.Query == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 	return nil
 }
@@ -107,10 +107,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
 							commandConfig := &watchNewPerformancesCommandConfig{}
 							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
 							if err := commandConfig.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
 
 							originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
@@ -124,10 +124,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 					break
 				}
 			}
-			return "", nil, apperrors.New(apperrors.ErrInternal, "Command configuration not found")
+			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
 		})
 	default:
-		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
 	}
 
 	return tTask, nil
@@ -159,7 +159,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, apperrors.ErrExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
+			return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.

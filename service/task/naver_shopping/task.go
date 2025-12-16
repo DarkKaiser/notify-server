@@ -32,10 +32,10 @@ type taskConfig struct {
 
 func (c *taskConfig) validate() error {
 	if c.ClientID == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "client_id가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "client_id가 입력되지 않았습니다")
 	}
 	if c.ClientSecret == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "client_secret이 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "client_secret이 입력되지 않았습니다")
 	}
 	return nil
 }
@@ -51,10 +51,10 @@ type watchPriceCommandConfig struct {
 
 func (c *watchPriceCommandConfig) validate() error {
 	if c.Query == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 	if c.Filters.PriceLessThan <= 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
+		return apperrors.New(apperrors.InvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
 	}
 	return nil
 }
@@ -121,13 +121,13 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
 			if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
 			}
 			break
 		}
 	}
 	if err := taskConfig.validate(); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
 	}
 
 	tTask := &task{
@@ -150,10 +150,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
 							commandConfig := &watchPriceCommandConfig{}
 							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
 							if err := commandConfig.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
 
 							originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
@@ -167,10 +167,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 					break
 				}
 			}
-			return "", nil, apperrors.New(apperrors.ErrInternal, "Command configuration not found")
+			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
 		})
 	} else {
-		return nil, apperrors.New(apperrors.ErrInvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
 	}
 
 	return tTask, nil

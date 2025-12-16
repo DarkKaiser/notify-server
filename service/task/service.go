@@ -107,7 +107,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	if s.notificationSender == nil {
 		serviceStopWG.Done()
-		return apperrors.New(apperrors.ErrInternal, "NotificationSender 객체가 초기화되지 않았습니다")
+		return apperrors.New(apperrors.Internal, "NotificationSender 객체가 초기화되지 않았습니다")
 	}
 
 	if s.running {
@@ -394,7 +394,7 @@ func (s *Service) handleStop() {
 func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
+			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"task_id":    req.TaskID,
@@ -414,7 +414,7 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 
 	// 2. 상태 검증: 서비스가 실행 중인지 확인합니다.
 	if !s.running {
-		return apperrors.New(apperrors.ErrInternal, "Task 서비스가 실행중이 아닙니다.")
+		return apperrors.New(apperrors.Internal, "Task 서비스가 실행중이 아닙니다.")
 	}
 
 	// 3. 큐잉: 버퍼드 채널에 요청을 넣습니다.
@@ -422,7 +422,7 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 	case s.taskSubmitC <- req:
 		return nil
 	default:
-		return apperrors.New(apperrors.ErrInternal, "Task 실행 요청 큐가 가득 찼습니다.")
+		return apperrors.New(apperrors.Internal, "Task 실행 요청 큐가 가득 찼습니다.")
 	}
 }
 
@@ -430,7 +430,7 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 func (s *Service) CancelTask(instanceID InstanceID) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
+			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
 
 			applog.WithComponentAndFields("task.service", log.Fields{
 				"instance_id": instanceID,
@@ -443,13 +443,13 @@ func (s *Service) CancelTask(instanceID InstanceID) (err error) {
 	defer s.runningMu.Unlock()
 
 	if !s.running {
-		return apperrors.New(apperrors.ErrInternal, "Task 서비스가 실행중이 아닙니다.")
+		return apperrors.New(apperrors.Internal, "Task 서비스가 실행중이 아닙니다.")
 	}
 
 	select {
 	case s.taskCancelC <- instanceID:
 		return nil
 	default:
-		return apperrors.New(apperrors.ErrInternal, "Task 취소 요청 큐가 가득 찼습니다.")
+		return apperrors.New(apperrors.Internal, "Task 취소 요청 큐가 가득 찼습니다.")
 	}
 }

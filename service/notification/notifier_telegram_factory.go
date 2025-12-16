@@ -40,7 +40,7 @@ func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig
 
 	botAPI, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "텔레그램 봇 초기화 실패 (토큰을 확인해주세요)")
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 초기화 실패 (토큰을 확인해주세요)")
 	}
 	botAPI.Debug = appConfig.Debug
 

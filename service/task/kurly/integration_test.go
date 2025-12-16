@@ -368,13 +368,13 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	productName := "Test Product"
 
 	// product: null 로 설정하여 알 수 없는 상품 시뮬레이션
-	htmlContent := fmt.Sprintf(`
+	htmlContent := `
 		<html>
 		<body>
 			<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"product":null}}}</script>
 		</body>
 		</html>
-	`)
+	`
 
 	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))

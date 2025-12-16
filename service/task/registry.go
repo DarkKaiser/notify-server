@@ -64,29 +64,29 @@ func newRegistry() *Registry {
 // Validate 설정 객체(Config)의 무결성을 검증합니다.
 func (c *Config) Validate() error {
 	if len(c.Commands) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "Commands는 비어있을 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "Commands는 비어있을 수 없습니다")
 	}
 	if c.NewTask == nil {
-		return apperrors.New(apperrors.ErrInvalidInput, "NewTask는 nil일 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "NewTask는 nil일 수 없습니다")
 	}
 
 	seenCommands := make(map[CommandID]bool)
 	for _, commandConfig := range c.Commands {
 		if commandConfig.ID == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 비어있을 수 없습니다")
+			return apperrors.New(apperrors.InvalidInput, "CommandID는 비어있을 수 없습니다")
 		}
 		// 명령어 ID 중복 검사
 		if seenCommands[commandConfig.ID] {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
 		}
 		if commandConfig.NewSnapshot == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, "NewSnapshot은 nil일 수 없습니다")
+			return apperrors.New(apperrors.InvalidInput, "NewSnapshot은 nil일 수 없습니다")
 		}
 
 		// NewSnapshot이 nil을 반환하는지 사전 검증
 		// 런타임에 발생할 수 있는 잠재적 오류를 등록 시점에 차단합니다.
 		if snapshot := commandConfig.NewSnapshot(); snapshot == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Command(%s)의 NewSnapshot 결과값은 nil일 수 없습니다", commandConfig.ID))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Command(%s)의 NewSnapshot 결과값은 nil일 수 없습니다", commandConfig.ID))
 		}
 
 		seenCommands[commandConfig.ID] = true
