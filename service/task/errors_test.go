@@ -66,12 +66,6 @@ func TestSentinelErrors(t *testing.T) {
 			expectedType: apperrors.InvalidInput,
 			expectedMsg:  "지원하지 않는 명령입니다",
 		},
-		{
-			name:         "ErrCommandNotImplemented",
-			actualErr:    ErrCommandNotImplemented,
-			expectedType: apperrors.Internal,
-			expectedMsg:  "작업 명령에 대한 구현이 없습니다",
-		},
 	}
 
 	for _, tt := range tests {

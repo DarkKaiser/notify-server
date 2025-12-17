@@ -116,5 +116,5 @@ func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	wg.Add(1)
 	err := service.Start(ctx, wg)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "notificationSender")
+	assert.Contains(t, err.Error(), "NotificationSender")
 }
