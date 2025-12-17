@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/text/encoding/korean"
@@ -34,6 +35,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		url         string
 		setupMock   func(*TestMockFetcher)
 		wantErr     bool
+		errType     apperrors.ErrorType
 		errContains string
 		validateDoc func(*testing.T, *goquery.Document)
 	}{
@@ -84,6 +86,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				m.On("Get", "http://example.com/error").Return(nil, errors.New("network error"))
 			},
 			wantErr:     true,
+			errType:     apperrors.Unavailable,
 			errContains: "HTML 페이지(http://example.com/error) 요청 중 네트워크 또는 클라이언트 에러가 발생했습니다.",
 		},
 		{
@@ -95,7 +98,20 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				m.On("Get", "http://example.com/500").Return(resp, nil)
 			},
 			wantErr:     true,
+			errType:     apperrors.Unavailable,
 			errContains: "HTML 페이지(http://example.com/500) 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
+		},
+		{
+			name: "HTTP 404 Error (Client Error)",
+			url:  "http://example.com/404",
+			setupMock: func(m *TestMockFetcher) {
+				resp := NewMockResponse("", 404)
+				resp.Status = "404 Not Found"
+				m.On("Get", "http://example.com/404").Return(resp, nil)
+			},
+			wantErr:     true,
+			errType:     apperrors.ExecutionFailed, // 4xx is ExecutionFailed (as per refactor plan)
+			errContains: "HTML 페이지(http://example.com/404) 요청이 실패했습니다. 상태 코드: 404 Not Found",
 		},
 	}
 
@@ -112,6 +128,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				assert.Error(t, err)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				if tt.errType != "" {
+					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
 				}
 				assert.Nil(t, doc)
 			} else {
@@ -213,6 +232,7 @@ func TestFetchJSON_Table(t *testing.T) {
 		body        interface{} // Object to serialize to JSON for body
 		setupMock   func(*TestMockFetcher)
 		wantErr     bool
+		errType     apperrors.ErrorType
 		errContains string
 		validateRes func(*testing.T, TestData)
 	}{
@@ -258,6 +278,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
+			errType:     apperrors.ExecutionFailed, // Parsing error
 			errContains: "JSON 변환이 실패하였습니다",
 		},
 		{
@@ -270,7 +291,21 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
+			errType:     apperrors.ExecutionFailed, // Client Error
 			errContains: "JSON API(http://example.com/404) 요청이 실패했습니다. 상태 코드: 404 Not Found",
+		},
+		{
+			name:   "Error - HTTP 500 Status (Unavailable)",
+			method: "GET",
+			url:    "http://example.com/500",
+			setupMock: func(m *TestMockFetcher) {
+				resp := NewMockResponse(`error`, 500)
+				resp.Status = "500 Internal Server Error"
+				m.On("Do", mock.Anything).Return(resp, nil)
+			},
+			wantErr:     true,
+			errType:     apperrors.Unavailable,
+			errContains: "JSON API(http://example.com/500) 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
 		},
 	}
 
@@ -295,6 +330,9 @@ func TestFetchJSON_Table(t *testing.T) {
 				assert.Error(t, err)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				if tt.errType != "" {
+					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
 				}
 			} else {
 				assert.NoError(t, err)
@@ -351,5 +389,7 @@ func TestScrapeHTML(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "scrape error")
+		// FetchHTMLDocument returns Unavailable for network errors
+		assert.True(t, apperrors.Is(err, apperrors.Unavailable))
 	})
 }

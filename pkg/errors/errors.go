@@ -12,18 +12,18 @@ type ErrorType string
 //
 // 각 에러 타입은 특정 상황에서 사용되며, 에러 처리 로직에서 타입별로 다른 처리를 할 수 있습니다.
 const (
-	// ErrUnknown 알 수 없는 에러 (기본값)
+	// Unknown 알 수 없는 에러 (기본값)
 	// 사용 시나리오: 에러 타입을 특정할 수 없거나, AppError가 아닌 표준 에러인 경우
 	Unknown ErrorType = "Unknown"
 
-	// ErrInternal 내부 처리 오류
+	// Internal 내부 처리 오류
 	// 사용 시나리오:
 	//   - 예상치 못한 내부 로직 오류
 	//   - 복구 불가능한 상태
 	//   - 프로그래밍 오류 (버그)
 	Internal ErrorType = "Internal"
 
-	// ErrSystem 시스템 레벨 오류
+	// System 시스템 레벨 오류
 	// 사용 시나리오:
 	//   - 파일 시스템 오류 (읽기/쓰기 실패)
 	//   - 네트워크 오류
@@ -31,20 +31,20 @@ const (
 	//   - 리소스 부족 (메모리, 디스크)
 	System ErrorType = "System"
 
-	// ErrUnauthorized 인증 실패
+	// Unauthorized 인증 실패
 	// 사용 시나리오:
 	//   - 인증 토큰이 없거나 만료됨
 	//   - 잘못된 자격 증명
 	//   - API 키가 유효하지 않음
 	Unauthorized ErrorType = "Unauthorized"
 
-	// ErrForbidden 권한 없음
+	// Forbidden 권한 없음
 	// 사용 시나리오:
 	//   - 인증은 되었으나 해당 리소스에 접근 권한이 없음
 	//   - 역할 기반 접근 제어(RBAC) 위반
 	Forbidden ErrorType = "Forbidden"
 
-	// ErrInvalidInput 잘못된 입력값
+	// InvalidInput 잘못된 입력값
 	// 사용 시나리오:
 	//   - 유효성 검사 실패 (예: 잘못된 이메일 형식, 범위 초과)
 	//   - JSON 파싱 실패
@@ -52,13 +52,13 @@ const (
 	//   - 잘못된 설정 값
 	InvalidInput ErrorType = "InvalidInput"
 
-	// ErrConflict 리소스 충돌 (이미 존재함)
+	// Conflict 리소스 충돌 (이미 존재함)
 	// 사용 시나리오:
 	//   - 중복된 ID로 생성 시도
 	//   - 데이터 무결성 위반
 	Conflict ErrorType = "Conflict"
 
-	// ErrNotFound 리소스를 찾을 수 없음
+	// NotFound 리소스를 찾을 수 없음
 	// 사용 시나리오:
 	//   - 파일이 존재하지 않음
 	//   - 데이터베이스 레코드가 없음
@@ -66,20 +66,20 @@ const (
 	//   - 설정에서 참조하는 ID가 없음
 	NotFound ErrorType = "NotFound"
 
-	// ErrExecutionFailed 비즈니스 로직이나 작업 실행 과정에서 실패가 발생했을 때 사용합니다.
+	// ExecutionFailed 비즈니스 로직이나 작업 실행 과정에서 실패가 발생했을 때 사용합니다.
 	// 사용 시나리오:
 	//   - 크롤링/스크래핑 작업 수행 실패 (파싱 에러, 타임아웃 등)
 	//   - 외부 커맨드 또는 프로세스 실행 실패
 	ExecutionFailed ErrorType = "ExecutionFailed"
 
-	// ErrTimeout 작업 수행 시간 초과
+	// Timeout 작업 수행 시간 초과
 	// 사용 시나리오:
 	//   - 외부 API 응답 지연
 	//   - DB 쿼리 타임아웃
 	//   - 컨텍스트 데드라인 초과
 	Timeout ErrorType = "Timeout"
 
-	// ErrUnavailable 일시적인 서비스 사용 불가
+	// Unavailable 일시적인 서비스 사용 불가
 	// 사용 시나리오:
 	//   - 외부 시스템(스크래핑 대상) 장애
 	//   - 트래픽 폭주로 인한 차단

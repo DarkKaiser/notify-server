@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -84,6 +85,8 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 				// If it retries until exhaustion, it should return an error (max retries exceeded)
 				// or the wrapped error. Currently implemented to ensure error return on exhaustion.
 				assert.Error(t, err)
+				// Max retries exceeded -> Unavailable
+				assert.True(t, apperrors.Is(err, apperrors.Unavailable), "Expected Unavailable error on max retries")
 			} else {
 				if tt.status >= 400 && tt.status != 429 {
 					// 4xx errors (except 429) are considered effective success in terms of transport
