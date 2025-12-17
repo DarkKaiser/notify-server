@@ -122,38 +122,6 @@
 			]
 		},
 		{
-			"id": "JYIU",
-			"title": "전남여수산학융합원",
-			"commands": [
-				{
-					"id": "WatchNewNotice",
-					"title": "공지사항 새글 확인",
-					"description": "전남여수산학융합원 공지사항에 새로운 글이 등록되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 3 9-18 * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				},
-				{
-					"id": "WatchNewEducation",
-					"title": "신규 교육프로그램 확인",
-					"description": "전남여수산학융합원에 신규 교육프로그램 정보가 등록되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 4 9-18 * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				}
-			]
-		},
-		{
 			"id": "LOTTO",
 			"title": "로또",
 			"commands": [
