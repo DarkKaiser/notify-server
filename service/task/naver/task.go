@@ -38,7 +38,7 @@ type watchNewPerformancesCommandConfig struct {
 
 func (c *watchNewPerformancesCommandConfig) validate() error {
 	if c.Query == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 	return nil
 }
@@ -74,57 +74,63 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchNewPerformancesSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
+		NewTask: newTask,
+	})
+}
 
-			tTask := &task{
-				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
 
-				appConfig: appConfig,
-			}
+	return createTask(instanceID, req, appConfig, fetcher)
+}
 
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, tasksvc.ErrTaskUnregistered
+	}
 
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-				switch tTask.GetCommandID() {
-				case WatchNewPerformancesCommand:
-					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == tasksvc.ID(t.ID) {
-							for _, c := range t.Commands {
-								if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-									commandConfig := &watchNewPerformancesCommandConfig{}
-									if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
-									if err := commandConfig.validate(); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
-									originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
-									if ok == false {
-										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewPerformancesSnapshot, got: %T)", previousSnapshot))
-									}
+		appConfig: appConfig,
+	}
 
-									return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
-								}
+	tTask.SetFetcher(fetcher)
+
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchNewPerformancesCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			for _, t := range tTask.appConfig.Tasks {
+				if tTask.GetID() == tasksvc.ID(t.ID) {
+					for _, c := range t.Commands {
+						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
+							commandConfig := &watchNewPerformancesCommandConfig{}
+							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
-							break
+							if err := commandConfig.validate(); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+							}
+
+							originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
+							if ok == false {
+								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewPerformancesSnapshot{}, previousSnapshot)
+							}
+
+							return tTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
 						}
 					}
+					break
 				}
+			}
+			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+		})
+	default:
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
-
-			return tTask, nil
-		},
-	})
+	return tTask, nil
 }
 
 type task struct {
@@ -153,7 +159,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
+			return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.
@@ -162,7 +168,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 제목
 			pis := s.Find("div.item > div.title_box > strong.name")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 제목 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
 				return false
 			}
 			title := strings.TrimSpace(pis.Text())
@@ -170,7 +176,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 장소
 			pis = s.Find("div.item > div.title_box > span.sub_text")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 장소 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
 				return false
 			}
 			place := strings.TrimSpace(pis.Text())
@@ -178,12 +184,12 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			// 썸네일 이미지
 			pis = s.Find("div.item > div.thumb > img")
 			if pis.Length() != 1 {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 				return false
 			}
 			thumbnailSrc, exists := pis.Attr("src")
 			if exists == false {
-				err = apperrors.New(tasksvc.ErrTaskExecutionFailed, "공연 썸네일 이미지 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+				err = tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 				return false
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
@@ -221,7 +227,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 		actualityPerformance, ok1 := selem.(*performance)
 		originPerformance, ok2 := telem.(*performance)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &performance{}, selem)
 		} else {
 			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
 				return true, nil

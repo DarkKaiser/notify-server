@@ -85,10 +85,10 @@ func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (str
 	// 입력값 보안 검증: Path Traversal 문자가 포함되어 있는지 확인
 	// strutil.ToSnakeCase 변환 전에 검증해야 함 (변환 과정에서 위험 문자가 사라질 수 있음)
 	if strings.Contains(string(taskID), "..") || strings.Contains(string(taskID), "/") || strings.Contains(string(taskID), "\\") {
-		return "", apperrors.New(apperrors.ErrInternal, "TaskID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
+		return "", apperrors.New(apperrors.Internal, "TaskID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
 	}
 	if strings.Contains(string(commandID), "..") || strings.Contains(string(commandID), "/") || strings.Contains(string(commandID), "\\") {
-		return "", apperrors.New(apperrors.ErrInternal, "CommandID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
+		return "", apperrors.New(apperrors.Internal, "CommandID에 유효하지 않은 문자가 포함되어 있습니다 (Path Traversal Detected)")
 	}
 
 	filename := fmt.Sprintf("%s-task-%s-%s.json", s.appName, strutil.ToSnakeCase(string(taskID)), strutil.ToSnakeCase(string(commandID)))
@@ -97,7 +97,7 @@ func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (str
 	// Base 디렉토리의 절대 경로
 	basePath, err := filepath.Abs(s.baseDir)
 	if err != nil {
-		return "", apperrors.Wrap(err, apperrors.ErrInternal, "데이터 디렉토리 절대 경로 확인 실패")
+		return "", apperrors.Wrap(err, apperrors.Internal, "데이터 디렉토리 절대 경로 확인 실패")
 	}
 
 	// 타겟 파일의 절대 경로
@@ -111,7 +111,7 @@ func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (str
 			"command_id": commandID,
 			"path":       cleanPath,
 		}).Error("비정상적인 파일 경로 접근 시도가 감지되었습니다")
-		return "", apperrors.New(apperrors.ErrInternal, "유효하지 않은 파일 경로입니다 (Path Traversal Detected)")
+		return "", apperrors.New(apperrors.Internal, "유효하지 않은 파일 경로입니다 (Path Traversal Detected)")
 	}
 
 	return cleanPath, nil
@@ -136,7 +136,7 @@ func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface
 			return nil
 		}
 
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 파일을 읽는데 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "작업 결과 데이터 파일을 읽는데 실패했습니다")
 	}
 
 	return json.Unmarshal(data, v)
@@ -155,7 +155,7 @@ func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface
 
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "작업 결과 데이터 마샬링에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "작업 결과 데이터 마샬링에 실패했습니다")
 	}
 
 	// filename은 상단에서 이미 획득함
@@ -163,13 +163,13 @@ func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface
 
 	// 디렉토리가 없으면 생성
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "데이터 디렉토리 생성에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "데이터 디렉토리 생성에 실패했습니다")
 	}
 
 	// 임시 파일 생성 (같은 디렉토리 내에 생성해야 Rename이 안전함)
 	tmpFile, err := os.CreateTemp(dir, "task-result-*.tmp")
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "임시 파일 생성에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "임시 파일 생성에 실패했습니다")
 	}
 	tmpName := tmpFile.Name()
 
@@ -179,25 +179,25 @@ func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface
 	// 데이터 쓰기
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
-		return apperrors.Wrap(err, apperrors.ErrInternal, "임시 파일 쓰기에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "임시 파일 쓰기에 실패했습니다")
 	}
 
 	// 파일 닫기 (Windows에서는 닫지 않으면 Rename 불가)
 	if err := tmpFile.Close(); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "임시 파일 닫기에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "임시 파일 닫기에 실패했습니다")
 	}
 
 	// Windows 호환성을 위한 원본 파일 삭제
 	// (Linux 등에서는 Rename이 Atomic하게 덮어쓰지만, Windows는 타겟이 있으면 실패할 수 있음)
 	if _, err := os.Stat(filename); err == nil {
 		if err := os.Remove(filename); err != nil {
-			return apperrors.Wrap(err, apperrors.ErrInternal, "기존 파일 삭제에 실패했습니다")
+			return apperrors.Wrap(err, apperrors.Internal, "기존 파일 삭제에 실패했습니다")
 		}
 	}
 
 	// 임시 파일을 원본 파일명으로 변경
 	if err := os.Rename(tmpName, filename); err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInternal, "파일 이름 변경(저장)에 실패했습니다")
+		return apperrors.Wrap(err, apperrors.Internal, "파일 이름 변경(저장)에 실패했습니다")
 	}
 
 	return nil

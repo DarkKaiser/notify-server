@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,10 +14,7 @@ func TestErrorTypes(t *testing.T) {
 		name     string
 		errType  errors.ErrorType
 		expected string
-	}{
-		{"ErrTaskNotFound", ErrTaskNotFound, "TaskNotFound"},
-		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed, "TaskExecutionFailed"},
-	}
+	}{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -30,10 +28,7 @@ func TestErrorCreation(t *testing.T) {
 	tests := []struct {
 		name    string
 		errType errors.ErrorType
-	}{
-		{"ErrTaskNotFound", ErrTaskNotFound},
-		{"ErrTaskExecutionFailed", ErrTaskExecutionFailed},
-	}
+	}{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,20 +57,20 @@ func TestSentinelErrors(t *testing.T) {
 		{
 			name:         "ErrTaskNotSupported",
 			actualErr:    ErrTaskNotSupported,
-			expectedType: errors.ErrInvalidInput,
-			expectedMsg:  "지원되지 않는 작업입니다",
+			expectedType: apperrors.InvalidInput,
+			expectedMsg:  "지원하지 않는 작업입니다",
 		},
 		{
 			name:         "ErrCommandNotSupported",
 			actualErr:    ErrCommandNotSupported,
-			expectedType: errors.ErrInvalidInput,
-			expectedMsg:  "지원되지 않는 작업 커맨드입니다",
+			expectedType: apperrors.InvalidInput,
+			expectedMsg:  "지원하지 않는 명령입니다",
 		},
 		{
 			name:         "ErrCommandNotImplemented",
 			actualErr:    ErrCommandNotImplemented,
-			expectedType: errors.ErrInternal,
-			expectedMsg:  "작업 커맨드에 대한 구현이 없습니다",
+			expectedType: apperrors.Internal,
+			expectedMsg:  "작업 명령에 대한 구현이 없습니다",
 		},
 	}
 

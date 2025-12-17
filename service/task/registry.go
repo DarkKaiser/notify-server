@@ -64,29 +64,29 @@ func newRegistry() *Registry {
 // Validate 설정 객체(Config)의 무결성을 검증합니다.
 func (c *Config) Validate() error {
 	if len(c.Commands) == 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "Commands는 비어있을 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "Commands는 비어있을 수 없습니다")
 	}
 	if c.NewTask == nil {
-		return apperrors.New(apperrors.ErrInvalidInput, "NewTask는 nil일 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "NewTask는 nil일 수 없습니다")
 	}
 
 	seenCommands := make(map[CommandID]bool)
 	for _, commandConfig := range c.Commands {
 		if commandConfig.ID == "" {
-			return apperrors.New(apperrors.ErrInvalidInput, "CommandID는 비어있을 수 없습니다")
+			return apperrors.New(apperrors.InvalidInput, "CommandID는 비어있을 수 없습니다")
 		}
 		// 명령어 ID 중복 검사
 		if seenCommands[commandConfig.ID] {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 CommandID입니다: %s", commandConfig.ID))
 		}
 		if commandConfig.NewSnapshot == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, "NewSnapshot은 nil일 수 없습니다")
+			return apperrors.New(apperrors.InvalidInput, "NewSnapshot은 nil일 수 없습니다")
 		}
 
 		// NewSnapshot이 nil을 반환하는지 사전 검증
 		// 런타임에 발생할 수 있는 잠재적 오류를 등록 시점에 차단합니다.
 		if snapshot := commandConfig.NewSnapshot(); snapshot == nil {
-			return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Command(%s)의 NewSnapshot 결과값은 nil일 수 없습니다", commandConfig.ID))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Command(%s)의 NewSnapshot 결과값은 nil일 수 없습니다", commandConfig.ID))
 		}
 
 		seenCommands[commandConfig.ID] = true
@@ -110,7 +110,13 @@ func (r *Registry) Register(taskID ID, config *Config) {
 	configCopy := *config
 	if config.Commands != nil {
 		configCopy.Commands = make([]*CommandConfig, len(config.Commands))
-		copy(configCopy.Commands, config.Commands)
+		for i, commandConfig := range config.Commands {
+			if commandConfig != nil {
+				// CommandConfig 구조체 자체를 복사하여 포인터가 가리키는 원본이 수정되어도 영향이 없도록 합니다 (Deep Copy).
+				copiedCommand := *commandConfig
+				configCopy.Commands[i] = &copiedCommand
+			}
+		}
 	}
 
 	r.mu.Lock()
@@ -152,13 +158,6 @@ func (r *Registry) findConfig(taskID ID, commandID CommandID) (*ConfigLookup, er
 	return nil, ErrTaskNotSupported
 }
 
-// registerForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
-func (r *Registry) registerForTest(taskID ID, config *Config) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.configs[taskID] = config
-}
-
 // Register 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
 // "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시켜
 // 애플리케이션 시작 단계에서 잠재적 설정 오류를 확실하게 차단합니다.
@@ -169,5 +168,17 @@ func Register(taskID ID, config *Config) {
 // findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
 // 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
 func findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
+	return defaultRegistry.findConfig(taskID, commandID)
+}
+
+// RegisterForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
+func (r *Registry) RegisterForTest(taskID ID, config *Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.configs[taskID] = config
+}
+
+// FindConfigForTest 테스트 목적으로 설정 정보를 조회합니다. (프로덕션 사용 금지).
+func FindConfigForTest(taskID ID, commandID CommandID) (*ConfigLookup, error) {
 	return defaultRegistry.findConfig(taskID, commandID)
 }

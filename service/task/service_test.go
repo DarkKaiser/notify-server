@@ -53,7 +53,7 @@ func init() {
 			return &MockHandler{id: req.TaskID, commandID: req.CommandID, instanceID: instanceID}, nil
 		},
 	}
-	defaultRegistry.registerForTest("TEST_TASK", config)
+	defaultRegistry.RegisterForTest("TEST_TASK", config)
 }
 
 // setupTestService 중복되는 테스트 초기화 로직을 캡슐화하는 헬퍼 함수

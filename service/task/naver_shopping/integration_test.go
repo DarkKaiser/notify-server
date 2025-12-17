@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/config"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -155,12 +156,28 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchPriceAnyCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByScheduler,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
@@ -215,12 +232,28 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchPriceAnyCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",
@@ -296,12 +329,28 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
+	req := &tasksvc.SubmitRequest{
+		TaskID:     ID,
+		CommandID:  WatchPriceAnyCommand,
+		NotifierID: "test-notifier",
+		RunBy:      tasksvc.RunByUnknown,
 	}
-	tTask.SetFetcher(mockFetcher)
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+			},
+		},
+	}
+
+	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	require.NoError(t, err)
+	tTask, ok := handler.(*task)
+	require.True(t, ok)
 
 	commandConfig := &watchPriceCommandConfig{
 		Query: "테스트",

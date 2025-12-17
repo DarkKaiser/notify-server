@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
@@ -33,10 +32,10 @@ type taskConfig struct {
 
 func (c *taskConfig) validate() error {
 	if c.ClientID == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "client_id가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "client_id가 입력되지 않았습니다")
 	}
 	if c.ClientSecret == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "client_secret이 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "client_secret이 입력되지 않았습니다")
 	}
 	return nil
 }
@@ -52,10 +51,10 @@ type watchPriceCommandConfig struct {
 
 func (c *watchPriceCommandConfig) validate() error {
 	if c.Query == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "query가 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 	if c.Filters.PriceLessThan <= 0 {
-		return apperrors.New(apperrors.ErrInvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
+		return apperrors.New(apperrors.InvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
 	}
 	return nil
 }
@@ -103,73 +102,78 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
+		NewTask: newTask,
+	})
+}
 
-			taskConfig := &taskConfig{}
-			for _, t := range appConfig.Tasks {
-				if req.TaskID == tasksvc.ID(t.ID) {
-					if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
-						return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
+
+	return createTask(instanceID, req, appConfig, fetcher)
+}
+
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, tasksvc.ErrTaskUnregistered
+	}
+
+	taskConfig := &taskConfig{}
+	for _, t := range appConfig.Tasks {
+		if req.TaskID == tasksvc.ID(t.ID) {
+			if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+			}
+			break
+		}
+	}
+	if err := taskConfig.validate(); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+	}
+
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+
+		appConfig: appConfig,
+
+		clientID:     taskConfig.ClientID,
+		clientSecret: taskConfig.ClientSecret,
+	}
+
+	tTask.SetFetcher(fetcher)
+
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	if strings.HasPrefix(string(req.CommandID), watchPriceCommandIDPrefix) {
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			for _, t := range tTask.appConfig.Tasks {
+				if tTask.GetID() == tasksvc.ID(t.ID) {
+					for _, c := range t.Commands {
+						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
+							commandConfig := &watchPriceCommandConfig{}
+							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+							}
+							if err := commandConfig.validate(); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+							}
+
+							originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
+							if ok == false {
+								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchPriceSnapshot{}, previousSnapshot)
+							}
+
+							return tTask.executeWatchPrice(commandConfig, originTaskResultData, supportsHTML)
+						}
 					}
 					break
 				}
 			}
-			if err := taskConfig.validate(); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 데이터가 유효하지 않습니다")
-			}
+			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+		})
+	} else {
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
-			tTask := &task{
-				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
-
-				appConfig: appConfig,
-
-				clientID:     taskConfig.ClientID,
-				clientSecret: taskConfig.ClientSecret,
-			}
-
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
-
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-				// 'WatchPrice_'로 시작되는 명령인지 확인한다.
-				if strings.HasPrefix(string(tTask.GetCommandID()), watchPriceCommandIDPrefix) == true {
-					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == tasksvc.ID(t.ID) {
-							for _, c := range t.Commands {
-								if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-									commandConfig := &watchPriceCommandConfig{}
-									if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
-									if err := commandConfig.validate(); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
-
-									originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
-									if ok == false {
-										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchPriceSnapshot, got: %T)", previousSnapshot))
-									}
-
-									return tTask.executeWatchPrice(commandConfig, originTaskResultData, supportsHTML)
-								}
-							}
-							break
-						}
-					}
-				}
-
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
-
-			return tTask, nil
-		},
-	})
+	return tTask, nil
 }
 
 type task struct {
@@ -262,7 +266,7 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
 		} else {
 			if actualityProduct.Link == originProduct.Link {
 				return true, nil

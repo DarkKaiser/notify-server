@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
@@ -21,13 +22,26 @@ type RetryFetcher struct {
 	maxDelay   time.Duration
 }
 
+// NewRetryFetcherFromConfig 설정값(재시도 횟수, 지연 시간 문자열)을 기반으로 RetryFetcher 인스턴스를 생성합니다.
+//
+// Parameters:
+//   - maxRetries: 최대 재시도 횟수 (0-10 권장)
+//   - retryDelayStr: 재시도 대기 시간 문자열 (최소 1초)
+func NewRetryFetcherFromConfig(maxRetries int, retryDelayStr string) *RetryFetcher {
+	retryDelay, err := time.ParseDuration(retryDelayStr)
+	if err != nil {
+		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
+	}
+	return NewRetryFetcher(NewHTTPFetcher(), maxRetries, retryDelay, 30*time.Second)
+}
+
 // NewRetryFetcher 새로운 RetryFetcher 인스턴스를 생성합니다.
 // 안정적인 동작을 위해 maxRetries는 0~10 범위로 자동 보정되며, retryDelay는 최소 1초 이상으로 설정됩니다.
 //
 // Parameters:
 //   - delegate: 실제 HTTP 요청을 수행할 원본 Fetcher
 //   - maxRetries: 최대 재시도 횟수 (0-10 권장)
-//   - retryDelay: 초기 재시도 대기 시간 (최소 1초)
+//   - retryDelay: 재시도 대기 시간 (최소 1초)
 //   - maxDelay: 최대 대기 시간 (지수 백오프 증가 시 이 값을 넘지 않음)
 func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration, maxDelay time.Duration) *RetryFetcher {
 	// 재시도 횟수 검증 (음수 방지 및 최대값 제한)
@@ -61,7 +75,7 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration,
 func (f *RetryFetcher) Get(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, apperrors.Wrap(err, ErrTaskExecutionFailed, "failed to create request")
+		return nil, apperrors.Wrap(err, apperrors.Internal, "failed to create request")
 	}
 	return f.Do(req)
 }
@@ -141,11 +155,11 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			resp.Body.Close()
 			if err == nil {
 				// 에러 객체가 없지만 상태 코드가 500 이상인 경우 에러 생성
-				lastErr = apperrors.New(ErrTaskExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
+				lastErr = apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("HTTP status %s", resp.Status))
 			}
 		}
 	}
-	return nil, apperrors.Wrap(lastErr, ErrTaskExecutionFailed, "max retries exceeded")
+	return nil, apperrors.Wrap(lastErr, apperrors.Unavailable, "max retries exceeded")
 }
 
 // shouldRetry 응답 상태와 에러를 분석하여 재시도 수행 여부를 결정합니다.

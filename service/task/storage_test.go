@@ -199,9 +199,9 @@ func TestFileTaskResultStorage_Security(t *testing.T) {
 			err := storage.Save(tt.taskID, tt.commandID, data)
 			if tt.wantErr {
 				// storage.go에서 Path Traversal 감지 시 ErrInternal 리턴
-				// 구체적으로는 "Path Traversal Detected" 메시지 혹은 apperrors.ErrInternal
+				// 구체적으로는 "Path Traversal Detected" 메시지 혹은 apperrors.Internal
 				require.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.ErrInternal))
+				assert.True(t, apperrors.Is(err, apperrors.Internal))
 			} else {
 				assert.NoError(t, err)
 			}

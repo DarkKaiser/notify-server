@@ -50,10 +50,10 @@ type watchProductPriceCommandConfig struct {
 
 func (c *watchProductPriceCommandConfig) validate() error {
 	if c.WatchProductsFile == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
 	}
 	if strings.HasSuffix(strings.ToLower(c.WatchProductsFile), ".csv") == false {
-		return apperrors.New(apperrors.ErrInvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
+		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
 	}
 	return nil
 }
@@ -139,56 +139,61 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
+		NewTask: newTask,
+	})
+}
 
-			tTask := &task{
-				Task:      tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
-				appConfig: appConfig,
-			}
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
+	return createTask(instanceID, req, appConfig, fetcher)
+}
 
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, tasksvc.ErrTaskUnregistered
+	}
 
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+	tTask := &task{
+		Task:      tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		appConfig: appConfig,
+	}
 
-				switch tTask.GetCommandID() {
-				case WatchProductPriceCommand:
-					for _, t := range tTask.appConfig.Tasks {
-						if tTask.GetID() == tasksvc.ID(t.ID) {
-							for _, c := range t.Commands {
-								if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-									commandConfig := &watchProductPriceCommandConfig{}
-									if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
-									if err := commandConfig.validate(); err != nil {
-										return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-									}
+	tTask.SetFetcher(fetcher)
 
-									originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
-									if ok == false {
-										return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchProductPriceSnapshot, got: %T)", previousSnapshot))
-									}
-
-									return tTask.executeWatchProductPrice(commandConfig, originTaskResultData, supportsHTML)
-								}
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchProductPriceCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			for _, t := range tTask.appConfig.Tasks {
+				if tTask.GetID() == tasksvc.ID(t.ID) {
+					for _, c := range t.Commands {
+						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
+							commandConfig := &watchProductPriceCommandConfig{}
+							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
-							break
+							if err := commandConfig.validate(); err != nil {
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+							}
+
+							originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
+							if ok == false {
+								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
+							}
+
+							return tTask.executeWatchProductPrice(commandConfig, originTaskResultData, supportsHTML)
 						}
 					}
+					break
 				}
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
+			}
+			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+		})
+	default:
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
 
-			return tTask, nil
-		},
-	})
+	return tTask, nil
 }
 
 type task struct {
@@ -205,14 +210,14 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 	//
 	f, err := os.Open(commandConfig.WatchProductsFile)
 	if err != nil {
-		return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
+		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}
 	defer f.Close()
 
 	r := csv.NewReader(f)
 	watchProducts, err := r.ReadAll()
 	if err != nil {
-		return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "상품 목록을 불러올 수 없습니다")
+		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
 	}
 
 	// 감시할 상품 목록의 헤더를 제거한다.
@@ -240,7 +245,7 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 		// 상품 코드를 숫자로 변환한다.
 		no, err := strconv.Atoi(watchProduct[WatchProductColumnNo])
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, apperrors.ErrInvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
+			return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
 		}
 
 		// 상품 페이지를 읽어들인다.
@@ -253,11 +258,11 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 		// 읽어들인 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출한다.
 		html, err := doc.Html()
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
+			return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
 		}
 		match := re1.FindStringSubmatch(html)
 		if len(match) < 2 {
-			return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
+			return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
 		}
 		jsonProductData := match[1]
 
@@ -280,13 +285,13 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 		if product.IsUnknownProduct == false {
 			sel := doc.Find("#product-atf > section.css-1ua1wyk")
 			if sel.Length() != 1 {
-				return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지(%s)의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(상품정보 섹션 추출 실패)", productDetailPageURL))
+				return "", nil, tasksvc.NewErrHTMLStructureChanged(productDetailPageURL, "상품정보 섹션 추출 실패")
 			}
 
 			// 상품 이름을 확인한다.
 			ps := sel.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
 			if ps.Length() != 1 {
-				return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+				return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
 			product.Name = strutil.NormalizeSpaces(ps.Text())
 
@@ -295,40 +300,40 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 			if ps.Length() == 0 /* 가격, 단위(원) */ {
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 
 				// 가격
 				product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
 				}
 			} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
 				// 할인율
 				product.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
 				}
 
 				// 할인 가격
 				ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 				if ps.Length() != 2 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 
 				product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
 				if err != nil {
-					return "", nil, apperrors.Wrap(err, tasksvc.ErrTaskExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
+					return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
 				}
 
 				// 가격
 				ps = sel.Find("span.css-1s96j0s > span")
 				if ps.Length() != 1 /* 가격 + 단위(원) */ {
-					return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+					return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 				}
 				product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
 			} else {
-				return "", nil, apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+				return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
 			}
 		}
 
@@ -347,7 +352,7 @@ func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandC
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
 		} else {
 			if actualityProduct.No == originProduct.No {
 				return true, nil

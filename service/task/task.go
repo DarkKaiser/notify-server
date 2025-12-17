@@ -147,7 +147,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 	defer func() {
 		if r := recover(); r != nil {
-			err := apperrors.New(apperrors.ErrInternal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
+			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
 			t.log(log.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
@@ -180,7 +180,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-		return nil, apperrors.New(apperrors.ErrInternal, msgExecuteFuncNotInitialized)
+		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
 	}
 
 	var snapshot interface{}
@@ -192,14 +192,14 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-		return nil, apperrors.New(apperrors.ErrInternal, msgSnapshotCreationFailed)
+		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
 	}
 
 	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
 		t.log(log.ErrorLevel, message, nil)
 		t.notifyError(taskCtx, notificationSender, message)
-		return nil, apperrors.New(apperrors.ErrInternal, msgStorageNotInitialized)
+		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
 	}
 
 	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)

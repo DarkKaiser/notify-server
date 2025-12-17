@@ -26,7 +26,7 @@ func PanicRecovery() echo.MiddlewareFunc {
 				if r := recover(); r != nil {
 					err, ok := r.(error)
 					if !ok {
-						err = apperrors.New(apperrors.ErrInternal, fmt.Sprintf("%v", r))
+						err = apperrors.New(apperrors.Internal, fmt.Sprintf("%v", r))
 					}
 
 					// 스택 트레이스 수집

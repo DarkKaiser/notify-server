@@ -45,7 +45,7 @@ var (
 func ValidateRobfigCronExpression(spec string) error {
 	_, err := cronParser.Parse(spec)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 Cron 표현식입니다: %s", spec))
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 Cron 표현식입니다: %s", spec))
 	}
 	return nil
 }
@@ -54,7 +54,7 @@ func ValidateRobfigCronExpression(spec string) error {
 func ValidateDuration(d string) error {
 	_, err := time.ParseDuration(d)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d))
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d))
 	}
 	return nil
 }
@@ -85,7 +85,7 @@ func ValidateFileExists(path string, warnOnly bool) error {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			errMsg := apperrors.New(apperrors.ErrNotFound, fmt.Sprintf("파일이 존재하지 않습니다: %s", path))
+			errMsg := apperrors.New(apperrors.NotFound, fmt.Sprintf("파일이 존재하지 않습니다: %s", path))
 			if warnOnly {
 				applog.WithComponentAndFields("validation", log.Fields{
 					"file_path": path,
@@ -94,7 +94,7 @@ func ValidateFileExists(path string, warnOnly bool) error {
 			}
 			return errMsg
 		}
-		return apperrors.Wrap(err, apperrors.ErrInternal, fmt.Sprintf("파일 접근 오류: %s", path))
+		return apperrors.Wrap(err, apperrors.Internal, fmt.Sprintf("파일 접근 오류: %s", path))
 	}
 	return nil
 }
@@ -107,23 +107,23 @@ func ValidateURL(urlStr string) error {
 
 	// 1. 정규식으로 기본 형식 검사
 	if !urlRegex.MatchString(urlStr) {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 URL 형식입니다 (정규식 불일치): %s", urlStr))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("잘못된 URL 형식입니다 (정규식 불일치): %s", urlStr))
 	}
 
 	// 2. url.Parse로 상세 파싱 검사
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 URL 형식입니다 (URL 파싱 실패): %s", urlStr))
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 URL 형식입니다 (URL 파싱 실패): %s", urlStr))
 	}
 
 	// Scheme 검증 (http 또는 https만 허용) - 정규식에서 이미 체크하지만 이중 확인
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("URL은 http 또는 https 스키마를 사용해야 합니다: %s", urlStr))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("URL은 http 또는 https 스키마를 사용해야 합니다: %s", urlStr))
 	}
 
 	// Host 검증
 	if parsedURL.Host == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("URL에 호스트가 없습니다: %s", urlStr))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("URL에 호스트가 없습니다: %s", urlStr))
 	}
 
 	return nil
@@ -140,33 +140,33 @@ func ValidateCORSOrigin(origin string) error {
 	// 빈 문자열 또는 공백만 있는 경우 체크
 	trimmedOrigin := strings.TrimSpace(origin)
 	if trimmedOrigin == "" {
-		return apperrors.New(apperrors.ErrInvalidInput, "Origin은 빈 문자열일 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "Origin은 빈 문자열일 수 없습니다")
 	}
 
 	if strings.HasSuffix(origin, "/") {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Origin은 슬래시(/)로 끝날 수 없습니다: %s", origin))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin은 슬래시(/)로 끝날 수 없습니다: %s", origin))
 	}
 
 	parsedURL, err := url.Parse(origin)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다: %s", origin))
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다: %s", origin))
 	}
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Origin은 http 또는 https 스키마를 사용해야 합니다: %s", origin))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin은 http 또는 https 스키마를 사용해야 합니다: %s", origin))
 	}
 
 	if parsedURL.Path != "" && parsedURL.Path != "/" {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Origin에는 경로(Path)를 포함할 수 없습니다: %s", origin))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin에는 경로(Path)를 포함할 수 없습니다: %s", origin))
 	}
 
 	if parsedURL.RawQuery != "" {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("Origin에는 쿼리 스트링을 포함할 수 없습니다: %s", origin))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin에는 쿼리 스트링을 포함할 수 없습니다: %s", origin))
 	}
 
 	// 호스트 검증 (정규식 사용)
 	if !urlRegex.MatchString(origin) {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다 (호스트/포트 오류): %s", origin))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다 (호스트/포트 오류): %s", origin))
 	}
 
 	return nil
@@ -176,7 +176,7 @@ func ValidateCORSOrigin(origin string) error {
 // 유효 범위: 1-65535, 1024 미만 포트는 시스템 예약 포트로 경고를 출력합니다.
 func ValidatePort(port int) error {
 	if port < 1 || port > 65535 {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port))
 	}
 	if port < 1024 {
 		// 경고만 로그로 출력 (에러는 아님)
@@ -190,7 +190,7 @@ func ValidatePort(port int) error {
 // ValidateNoDuplicate 목록에 중복된 값이 없는지 검사합니다.
 func ValidateNoDuplicate(list []string, value, valueType string) error {
 	if slices.Contains(list, value) {
-		return apperrors.New(apperrors.ErrInvalidInput, fmt.Sprintf("%s(%s)가 중복되었습니다", valueType, value))
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("%s(%s)가 중복되었습니다", valueType, value))
 	}
 	return nil
 }

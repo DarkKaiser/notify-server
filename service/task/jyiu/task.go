@@ -3,7 +3,6 @@ package jyiu
 import (
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
@@ -77,46 +76,53 @@ func init() {
 			NewSnapshot: func() interface{} { return &watchNewEducationSnapshot{} },
 		}},
 
-		NewTask: func(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			if req.TaskID != ID {
-				return nil, apperrors.New(tasksvc.ErrTaskNotFound, "등록되지 않은 작업입니다.😱")
-			}
-
-			tTask := &task{
-				Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
-			}
-
-			retryDelay, err := time.ParseDuration(appConfig.HTTPRetry.RetryDelay)
-			if err != nil {
-				retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-			}
-			tTask.SetFetcher(tasksvc.NewRetryFetcher(tasksvc.NewHTTPFetcher(), appConfig.HTTPRetry.MaxRetries, retryDelay, 30*time.Second))
-
-			tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-				switch tTask.GetCommandID() {
-				case WatchNewNoticeCommand:
-					originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
-					if ok == false {
-						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
-					}
-
-					return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
-
-				case WatchNewEducationCommand:
-					originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
-					if ok == false {
-						return "", nil, apperrors.New(apperrors.ErrInternal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewEducationSnapshot, got: %T)", previousSnapshot))
-					}
-
-					return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
-				}
-
-				return "", nil, tasksvc.ErrCommandNotImplemented
-			})
-
-			return tTask, nil
-		},
+		NewTask: newTask,
 	})
+}
+
+func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
+	return createTask(instanceID, req, fetcher)
+}
+
+func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != ID {
+		return nil, tasksvc.ErrTaskUnregistered
+	}
+
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+	}
+
+	tTask.SetFetcher(fetcher)
+
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	switch req.CommandID {
+	case WatchNewNoticeCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			originTaskResultData, ok := previousSnapshot.(*watchNewNoticeSnapshot)
+			if ok == false {
+				return "", nil, apperrors.New(apperrors.Internal, fmt.Sprintf("TaskResultData의 타입 변환이 실패하였습니다 (expected: *watchNewNoticeSnapshot, got: %T)", previousSnapshot))
+			}
+
+			return tTask.executeWatchNewNotice(originTaskResultData, supportsHTML)
+		})
+
+	case WatchNewEducationCommand:
+		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			originTaskResultData, ok := previousSnapshot.(*watchNewEducationSnapshot)
+			if ok == false {
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewEducationSnapshot{}, previousSnapshot)
+			}
+
+			return tTask.executeWatchNewEducation(originTaskResultData, supportsHTML)
+		})
+
+	default:
+		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+	}
+
+	return tTask, nil
 }
 
 type task struct {
@@ -132,19 +138,19 @@ func (t *task) executeWatchNewNotice(originTaskResultData *watchNewNoticeSnapsho
 		// 공지사항 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 5 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("컬럼 개수 불일치:%d", as.Length()))
 			return false
 		}
 
 		id, exists := as.Eq(1).Find("a").Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(id, "(")
 		pos2 := strings.LastIndex(id, ")")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		id = id[pos1+1 : pos2]
@@ -186,7 +192,7 @@ func (t *task) executeWatchNewNotice(originTaskResultData *watchNewNoticeSnapsho
 		actualityNotice, ok1 := selem.(*notice)
 		originNotice, ok2 := telem.(*notice)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selem/telm", &notice{}, selem)
 		} else {
 			if actualityNotice.Title == originNotice.Title && actualityNotice.Date == originNotice.Date && actualityNotice.URL == originNotice.URL {
 				return true, nil
@@ -237,19 +243,19 @@ func (t *task) executeWatchNewEducation(originTaskResultData *watchNewEducationS
 		// 교육프로그램 컬럼 개수를 확인한다.
 		as := s.Find("td")
 		if as.Length() != 6 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, fmt.Sprintf("불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요.(컬럼 개수 불일치:%d)", as.Length()))
+			err0 = tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("컬럼 개수 불일치:%d", as.Length()))
 			return false
 		}
 
 		url, exists := s.Attr("onclick")
 		if exists == false {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		pos1 := strings.Index(url, "'")
 		pos2 := strings.LastIndex(url, "'")
 		if pos1 == -1 || pos2 == -1 || pos1 == pos2 {
-			err0 = apperrors.New(tasksvc.ErrTaskExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
+			err0 = apperrors.New(apperrors.ExecutionFailed, "상세페이지 URL 추출이 실패하였습니다. CSS셀렉터를 확인하세요")
 			return false
 		}
 		url = url[pos1+1 : pos2]
@@ -289,7 +295,7 @@ func (t *task) executeWatchNewEducation(originTaskResultData *watchNewEducationS
 		actualityEducation, ok1 := selem.(*education)
 		originEducation, ok2 := telem.(*education)
 		if ok1 == false || ok2 == false {
-			return false, apperrors.New(apperrors.ErrInternal, "selem/telem의 타입 변환이 실패하였습니다")
+			return false, tasksvc.NewErrTypeAssertionFailed("selem/telm", &education{}, selem)
 		} else {
 			if actualityEducation.Title == originEducation.Title && actualityEducation.TrainingPeriod == originEducation.TrainingPeriod && actualityEducation.AcceptancePeriod == originEducation.AcceptancePeriod && actualityEducation.URL == originEducation.URL {
 				return true, nil
