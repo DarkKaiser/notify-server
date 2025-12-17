@@ -5,25 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"time"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
-)
-
-var (
-	reLottoAnalysisEnd = regexp.MustCompile(`로또 당첨번호 예측작업이 종료되었습니다. [0-9]+개의 대상 당첨번호가 추출되었습니다.\((.*)\)`)
-	reLogFilePath      = regexp.MustCompile(`경로:(.*\.log)`)
-	reAnalysisResult   = regexp.MustCompile(`당첨 확률이 높은 당첨번호 목록\([0-9]+개\)중에서 [0-9]+개의 당첨번호가 추출되었습니다.`)
-	reLottoNum1        = regexp.MustCompile("당첨번호1(.*)")
-	reLottoNum2        = regexp.MustCompile("당첨번호2(.*)")
-	reLottoNum3        = regexp.MustCompile("당첨번호3(.*)")
-	reLottoNum4        = regexp.MustCompile("당첨번호4(.*)")
-	reLottoNum5        = regexp.MustCompile("당첨번호5(.*)")
 )
 
 func (t *task) executePrediction() (message string, changedTaskResultData interface{}, err error) {
@@ -81,17 +66,10 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 	cmdOutString := process.Output()
 
 	// 당첨번호 예측 결과가 저장되어 있는 파일의 경로를 추출한다.
-	analysisFilePath := reLottoAnalysisEnd.FindString(cmdOutString)
-	if len(analysisFilePath) == 0 {
-		return "", nil, apperrors.New(apperrors.ExecutionFailed, "당첨번호 예측 작업이 정상적으로 완료되었는지 확인할 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
+	analysisFilePath, err := extractLogFilePath(cmdOutString)
+	if err != nil {
+		return "", nil, err
 	}
-
-	// 정규식 캡처 그룹을 사용하여 경로를 안전하게 추출합니다.
-	matches := reLogFilePath.FindStringSubmatch(analysisFilePath)
-	if len(matches) < 2 {
-		return "", nil, apperrors.New(apperrors.ExecutionFailed, "당첨번호 예측 결과가 저장되어 있는 파일의 경로를 찾을 수 없습니다. 자세한 내용은 로그를 확인하여 주세요")
-	}
-	analysisFilePath = matches[1]
 
 	// 당첨번호 예측 결과 파일을 읽어들인다.
 	data, err := os.ReadFile(analysisFilePath)
@@ -101,20 +79,10 @@ func (t *task) executePrediction() (message string, changedTaskResultData interf
 
 	// 당첨번호 예측 결과를 추출한다.
 	analysisResultData := string(data)
-	index := strings.Index(analysisResultData, "- 분석결과")
-	if index == -1 {
-		return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("당첨번호 예측 결과 파일의 내용이 유효하지 않습니다. 자세한 내용은 로그를 확인하여 주세요.\r\n(%s)", analysisFilePath))
+	message, err = parseAnalysisResult(analysisResultData)
+	if err != nil {
+		return "", nil, fmt.Errorf("%w\r\n(%s)", err, analysisFilePath)
 	}
-	analysisResultData = analysisResultData[index:]
 
-	var sb strings.Builder
-	sb.WriteString(reAnalysisResult.FindString(analysisResultData))
-	sb.WriteString("\r\n\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum1.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum2.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum3.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum4.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum5.FindString(analysisResultData)))
-
-	return sb.String(), nil, nil
+	return message, nil, nil
 }

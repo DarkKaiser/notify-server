@@ -178,8 +178,8 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	})
 
 	// 검증
-	require.Error(t, err, "지원되지 않는 Task는 즉시 에러를 반환해야 합니다")
-	require.Contains(t, err.Error(), "지원되지 않는", "에러 메시지에 원인이 포함되어야 합니다")
+	require.Error(t, err, "지원하지 않는 Task는 즉시 에러를 반환해야 합니다")
+	require.Contains(t, err.Error(), "지원하지 않는", "에러 메시지에 원인이 포함되어야 합니다")
 
 	// 큐에 들어가지 않았으므로 비동기 알림은 발송되지 않아야 합니다 (단, Fail Fast로 인해 호출자가 직접 처리 가능)
 	time.Sleep(100 * time.Millisecond) // 알림 발송 대기 (비동기 확인용)
