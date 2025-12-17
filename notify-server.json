@@ -174,25 +174,6 @@
 			"data": {
 				"app_path": "/usr/local/lotto-prediction"
 			}
-		},
-		{
-			"id": "JDC",
-			"title": "전남디지털역량교육",
-			"commands": [
-				{
-					"id": "WatchNewOnlineEducation",
-					"title": "신규 비대면 온라인 특별/정규교육 확인",
-					"description": "전남디지털역량교육 비대면 온라인 특별/정규교육에 새로운 교육이 등록되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 6 9-18 * * *"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				}
-			]
 		}
 	],
 	"notify_api": {
