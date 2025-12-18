@@ -22,7 +22,8 @@ const (
 	// CSS Selectors
 	// selectorPerformanceItem 네이버 공연 검색 결과의 리스트 컨테이너(ul) 내에서
 	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
-	selectorPerformanceItem = "ul > li"
+	// ".title_box" 클래스를 가진 요소가 내부에 존재하는 li만 선택하여, 광고나 네비게이션 등 불필요한 리스트 아이템을 제외합니다.
+	selectorPerformanceItem = "li:has(.title_box)"
 
 	// selectorTitle 공연 정보 카드 내 타이틀 영역(.title_box)에 위치한
 	// 실제 공연명 텍스트(.name)를 추출하기 위한 선택자입니다.
@@ -278,14 +279,14 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소가 비어있습니다")
 	}
 
-	// 썸네일 이미지
+	// 썸네일 이미지 (Optional - Soft Fail)
+	// 썸네일이 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.
+	var thumbnailSrc string
 	pis = s.Find(selectorThumbnail)
-	if pis.Length() != 1 {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
-	}
-	thumbnailSrc, exists := pis.Attr("src")
-	if !exists {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
+	if pis.Length() > 0 {
+		if src, exists := pis.Attr("src"); exists {
+			thumbnailSrc = src
+		}
 	}
 	thumbnail := thumbnailSrc
 
