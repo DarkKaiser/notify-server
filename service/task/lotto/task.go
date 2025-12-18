@@ -17,25 +17,17 @@ const (
 	ID tasksvc.ID = "LOTTO"
 
 	// CommandID
-	PredictionCommand tasksvc.CommandID = "Prediction" // 로또 번호 예측 명령
+	PredictionCommand tasksvc.CommandID = "Prediction" // 로또 번호 예측
 
-	// lottoJarFileName PredictionCommand 수행 시 실행되는 외부 Java 애플리케이션의 아티팩트 파일명입니다.
-	lottoJarFileName = "lottoprediction-1.0.0.jar"
+	// jarFileName PredictionCommand 수행 시 실행되는 JAR 파일명
+	jarFileName = "lottoprediction-1.0.0.jar"
 )
 
-// execLookPath os/exec 패키지의 LookPath 함수에 대한 참조를 담고 있는 패키지 레벨 변수입니다.
-//
-// 이 변수는 프로덕션 코드에서는 기본적으로 exec.LookPath를 가리키지만,
-// 단위 테스트(Unit Test) 환경에서는 Mock 구현체로 교체(Swapping)하여
-// 외부 시스템(파일 시스템, PATH 환경 변수)에 대한 의존성 없이
-// '명령어 존재 여부'에 따른 로직 분기를 격리된 환경에서 검증할 수 있게 해줍니다.
 var execLookPath = exec.LookPath
 
 type taskConfig struct {
 	AppPath string `json:"app_path"`
 }
-
-type predictionSnapshot struct{}
 
 func init() {
 	tasksvc.Register(ID, &tasksvc.Config{
@@ -88,9 +80,9 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 			// JAR 파일 존재 여부 검증
 			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
-			jarPath := filepath.Join(appPath, lottoJarFileName)
+			jarPath := filepath.Join(appPath, jarFileName)
 			if err := validation.ValidateFileExists(jarPath, false); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", lottoJarFileName))
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName))
 			}
 
 			// Java 실행 가능 여부 검증
