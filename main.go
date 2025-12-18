@@ -16,8 +16,6 @@ import (
 	"github.com/darkkaiser/notify-server/service/api"
 	"github.com/darkkaiser/notify-server/service/notification"
 	"github.com/darkkaiser/notify-server/service/task"
-	_ "github.com/darkkaiser/notify-server/service/task/jdc"
-	_ "github.com/darkkaiser/notify-server/service/task/jyiu"
 	_ "github.com/darkkaiser/notify-server/service/task/kurly"
 	_ "github.com/darkkaiser/notify-server/service/task/lotto"
 	_ "github.com/darkkaiser/notify-server/service/task/naver"

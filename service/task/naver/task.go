@@ -46,7 +46,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	naverTask.SetFetcher(fetcher)
 
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case WatchNewPerformancesCommand:
 		naverTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
@@ -76,7 +76,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
 		})
 	default:
-		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
 	return naverTask, nil
