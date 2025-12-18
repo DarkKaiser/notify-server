@@ -29,7 +29,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 	setupValidEnv := func(t *testing.T) (string, *appconfig.AppConfig) {
 		tmpDir := t.TempDir()
 		// JAR 파일 생성
-		f, err := os.Create(filepath.Join(tmpDir, lottoJarFileName))
+		f, err := os.Create(filepath.Join(tmpDir, jarFileName))
 		require.NoError(t, err)
 		f.Close()
 
@@ -118,7 +118,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
 				return req, cfg, func() {}
 			},
-			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", lottoJarFileName),
+			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName),
 		},
 		{
 			name: "Missing Java Runtime",

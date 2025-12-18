@@ -13,6 +13,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type predictionSnapshot struct {
+}
+
 func (t *task) executePrediction() (message string, _ interface{}, err error) {
 	// 별도의 Context 생성을 통해 타임아웃(10분)과 취소 처리를 통합 관리합니다.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -36,7 +39,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		}
 	}()
 
-	jarPath := filepath.Join(t.appPath, lottoJarFileName)
+	jarPath := filepath.Join(t.appPath, jarFileName)
 
 	// 비동기적으로 작업을 시작한다
 	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", jarPath)

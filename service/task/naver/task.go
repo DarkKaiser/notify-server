@@ -49,31 +49,38 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case WatchNewPerformancesCommand:
-		naverTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-			for _, t := range naverTask.appConfig.Tasks {
-				if naverTask.GetID() == tasksvc.ID(t.ID) {
-					for _, c := range t.Commands {
-						if naverTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-							commandConfig := &watchNewPerformancesCommandConfig{}
-							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-							}
-							if err := commandConfig.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-							}
+		var commandConfig *watchNewPerformancesCommandConfig
 
-							originTaskResultData, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
-							if ok == false {
-								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewPerformancesSnapshot{}, previousSnapshot)
-							}
-
-							return naverTask.executeWatchNewPerformances(commandConfig, originTaskResultData, supportsHTML)
+		for _, t := range appConfig.Tasks {
+			if req.TaskID == tasksvc.ID(t.ID) {
+				for _, c := range t.Commands {
+					if req.CommandID == tasksvc.CommandID(c.ID) {
+						cfg := &watchNewPerformancesCommandConfig{}
+						if err := tasksvc.DecodeMap(cfg, c.Data); err != nil {
+							return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
 						}
+						if err := cfg.validate(); err != nil {
+							return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
+						}
+						commandConfig = cfg
+						break
 					}
-					break
 				}
+				break
 			}
-			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+		}
+
+		if commandConfig == nil {
+			return nil, tasksvc.ErrCommandConfigNotFound
+		}
+
+		naverTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			prevSnapshot, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
+			if ok == false {
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewPerformancesSnapshot{}, previousSnapshot)
+			}
+
+			return naverTask.executeWatchNewPerformances(commandConfig, prevSnapshot, supportsHTML)
 		})
 	default:
 		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)

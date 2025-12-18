@@ -13,6 +13,11 @@ import (
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
+const (
+	// pageFetchDelay 페이지 요청 간 대기 시간 (API Rate Limiting 방지)
+	pageFetchDelay = 100 * time.Millisecond
+)
+
 type watchNewPerformancesCommandConfig struct {
 	Query   string `json:"query"`
 	Filters struct {
@@ -45,7 +50,7 @@ type performance struct {
 }
 
 func (p *performance) String(messageTypeHTML bool, mark string) string {
-	if messageTypeHTML == true {
+	if messageTypeHTML {
 		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Place))
@@ -56,8 +61,7 @@ type watchNewPerformancesSnapshot struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCommandConfig, originTaskResultData *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-
+func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCommandConfig, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	actualityTaskResultData := &watchNewPerformancesSnapshot{}
 	titleIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.IncludedKeywords, ",")
 	titleExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.ExcludedKeywords, ",")
@@ -104,13 +108,13 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 				return false
 			}
 			thumbnailSrc, exists := pis.Attr("src")
-			if exists == false {
+			if !exists {
 				err = tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 				return false
 			}
 			thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
 
-			if tasksvc.Filter(title, titleIncludedKeywords, titleExcludedKeywords) == false || tasksvc.Filter(place, placeIncludedKeywords, placeExcludedKeywords) == false {
+			if !tasksvc.Filter(title, titleIncludedKeywords, titleExcludedKeywords) || !tasksvc.Filter(place, placeIncludedKeywords, placeExcludedKeywords) {
 				return true
 			}
 
@@ -133,16 +137,16 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 			break
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(pageFetchDelay)
 	}
 
 	// 신규 공연정보를 확인한다.
 	m := ""
 	lineSpacing := "\n\n"
-	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, originTaskResultData.Performances, func(selem, telem interface{}) (bool, error) {
+	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Performances, prevSnapshot.Performances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*performance)
 		originPerformance, ok2 := telem.(*performance)
-		if ok1 == false || ok2 == false {
+		if !ok1 || !ok2 {
 			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &performance{}, selem)
 		} else {
 			if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
