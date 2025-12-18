@@ -31,14 +31,31 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
 	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
-	// 2. Task 초기화
 	req := &tasksvc.SubmitRequest{
 		TaskID:     ID,
 		CommandID:  WatchNewPerformancesCommand,
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByScheduler,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchNewPerformancesCommand),
+						Data: map[string]interface{}{
+							"query": "전라도", // 유효성 검사(Fail-Fsat) 통과용
+							"filters": map[string]interface{}{
+								"title": map[string]interface{}{"included_keywords": "", "excluded_keywords": ""},
+								"place": map[string]interface{}{"included_keywords": "", "excluded_keywords": ""},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
