@@ -51,6 +51,30 @@ type watchNewPerformancesCommandConfig struct {
 			ExcludedKeywords string `json:"excluded_keywords"`
 		} `json:"place"`
 	} `json:"filters"`
+
+	// parsedFilters 필터링 키워드 파싱 결과 캐시
+	parsedFilters *parsedFilters `json:"-"`
+}
+
+type parsedFilters struct {
+	TitleIncluded []string
+	TitleExcluded []string
+	PlaceIncluded []string
+	PlaceExcluded []string
+}
+
+func (c *watchNewPerformancesCommandConfig) getParsedFilters() *parsedFilters {
+	if c.parsedFilters != nil {
+		return c.parsedFilters
+	}
+
+	c.parsedFilters = &parsedFilters{
+		TitleIncluded: strutil.SplitAndTrim(c.Filters.Title.IncludedKeywords, ","),
+		TitleExcluded: strutil.SplitAndTrim(c.Filters.Title.ExcludedKeywords, ","),
+		PlaceIncluded: strutil.SplitAndTrim(c.Filters.Place.IncludedKeywords, ","),
+		PlaceExcluded: strutil.SplitAndTrim(c.Filters.Place.ExcludedKeywords, ","),
+	}
+	return c.parsedFilters
 }
 
 func (c *watchNewPerformancesCommandConfig) validate() error {
@@ -68,6 +92,10 @@ type performance struct {
 	Title     string `json:"title"`
 	Place     string `json:"place"`
 	Thumbnail string `json:"thumbnail"`
+}
+
+func (p *performance) Equals(other *performance) bool {
+	return p.Title == other.Title && p.Place == other.Place
 }
 
 func (p *performance) String(messageTypeHTML bool, mark string) string {
@@ -100,10 +128,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 // fetchPerformances 네이버 검색 페이지를 순회하며 공연 정보를 수집합니다.
 func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfig) ([]*performance, error) {
 	var performances []*performance
-	titleIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.IncludedKeywords, ",")
-	titleExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Title.ExcludedKeywords, ",")
-	placeIncludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.IncludedKeywords, ",")
-	placeExcludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.Place.ExcludedKeywords, ",")
+	filters := commandConfig.getParsedFilters()
 
 	searchPerformancePageIndex := 1
 	for {
@@ -140,7 +165,7 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 				return false
 			}
 
-			if !tasksvc.Filter(p.Title, titleIncludedKeywords, titleExcludedKeywords) || !tasksvc.Filter(p.Place, placeIncludedKeywords, placeExcludedKeywords) {
+			if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 				return true
 			}
 
@@ -208,7 +233,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		if !ok1 || !ok2 {
 			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &performance{}, selem)
 		}
-		if actualityPerformance.Title == originPerformance.Title && actualityPerformance.Place == originPerformance.Place {
+		if actualityPerformance.Equals(originPerformance) {
 			return true, nil
 		}
 		return false, nil
