@@ -17,6 +17,26 @@ import (
 const (
 	// pageFetchDelay 페이지 요청 간 대기 시간 (API Rate Limiting 방지)
 	pageFetchDelay = 100 * time.Millisecond
+
+	// searchBaseURL 네이버 검색 API의 엔드포인트 URL입니다.
+	searchBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+
+	// CSS Selectors
+	// selectorPerformanceItem 네이버 공연 검색 결과의 리스트 컨테이너(ul) 내에서
+	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
+	selectorPerformanceItem = "ul > li"
+
+	// selectorTitle 공연 정보 카드 내 타이틀 영역(div.title_box)에 위치한
+	// 실제 공연명 텍스트(strong.name)를 추출하기 위한 선택자입니다.
+	selectorTitle = "div.item > div.title_box > strong.name"
+
+	// selectorPlace 타이틀 영역 하단에 위치하며, 공연 장소 정보(span.sub_text)를
+	// 텍스트 형태로 포함하고 있는 요소를 지칭합니다.
+	selectorPlace = "div.item > div.title_box > span.sub_text"
+
+	// selectorThumbnail 공연 정보 카드의 좌측 썸네일 영역(div.thumb) 내에 존재하는
+	// 이미지 태그(img)를 선택하여 src 속성을 추출하기 위해 사용됩니다.
+	selectorThumbnail = "div.item > div.thumb > img"
 )
 
 type watchNewPerformancesCommandConfig struct {
@@ -88,7 +108,6 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &performanceSearchResponse{}
-		baseURL := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 		params := url.Values{}
 		params.Set("key", "kbList")
 		params.Set("pkid", "269")
@@ -102,7 +121,7 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 		params.Set("u7", strconv.Itoa(searchPerformancePageIndex))
 		params.Set("u8", "all")
 
-		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", baseURL, params.Encode()), nil, nil, searchResultData)
+		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", searchBaseURL, params.Encode()), nil, nil, searchResultData)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +132,7 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 		}
 
 		// 읽어온 페이지에서 공연정보를 추출한다.
-		ps := doc.Find("ul > li")
+		ps := doc.Find(selectorPerformanceItem)
 		ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
 			p, parseErr := parsePerformance(s)
 			if parseErr != nil {
@@ -148,21 +167,21 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 // parsePerformance 단일 공연 정보를 파싱합니다.
 func parsePerformance(s *goquery.Selection) (*performance, error) {
 	// 제목
-	pis := s.Find("div.item > div.title_box > strong.name")
+	pis := s.Find(selectorTitle)
 	if pis.Length() != 1 {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
 	}
 	title := strings.TrimSpace(pis.Text())
 
 	// 장소
-	pis = s.Find("div.item > div.title_box > span.sub_text")
+	pis = s.Find(selectorPlace)
 	if pis.Length() != 1 {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
 	}
 	place := strings.TrimSpace(pis.Text())
 
 	// 썸네일 이미지
-	pis = s.Find("div.item > div.thumb > img")
+	pis = s.Find(selectorThumbnail)
 	if pis.Length() != 1 {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 	}
