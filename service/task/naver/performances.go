@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,7 +88,21 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 	searchPerformancePageIndex := 1
 	for {
 		var searchResultData = &performanceSearchResponse{}
-		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=%d&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", searchPerformancePageIndex, url.QueryEscape(commandConfig.Query)), nil, nil, searchResultData)
+		baseURL := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+		params := url.Values{}
+		params.Set("key", "kbList")
+		params.Set("pkid", "269")
+		params.Set("where", "nexearch")
+		params.Set("u1", commandConfig.Query)
+		params.Set("u2", "all")
+		params.Set("u3", "")
+		params.Set("u4", "ingplan")
+		params.Set("u5", "date")
+		params.Set("u6", "N")
+		params.Set("u7", strconv.Itoa(searchPerformancePageIndex))
+		params.Set("u8", "all")
+
+		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", baseURL, params.Encode()), nil, nil, searchResultData)
 		if err != nil {
 			return nil, err
 		}

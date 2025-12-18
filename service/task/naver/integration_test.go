@@ -24,11 +24,12 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 		"html": "<ul><li><div class=\"item\"><div class=\"thumb\"><img src=\"https://example.com/thumb.jpg\"></div><div class=\"title_box\"><strong class=\"name\">%s</strong><span class=\"sub_text\">%s</span></div><div class=\"info_group\"><span class=\"date\">%s</span></div><a href=\"%s\"></a></div></li></ul>"
 	}`, performanceTitle, performancePlace, performanceDate, performanceURL)
 
-	url := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=1&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
+	// url.Values는 키를 알파벳 순으로 정렬합니다. (key -> pkid -> u1... -> where)
+	url := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u3=&u4=ingplan&u5=date&u6=N&u7=1&u8=all&where=nexearch"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	// 페이지 2에 대한 빈 응답 (페이지네이션 종료)
-	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u4=ingplan&u6=N&u5=date"
+	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u3=&u4=ingplan&u5=date&u6=N&u7=2&u8=all&where=nexearch"
 	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
 	// 2. Task 초기화
 	req := &tasksvc.SubmitRequest{
