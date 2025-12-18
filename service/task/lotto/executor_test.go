@@ -6,92 +6,98 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestLimitWriter_Write_WithinLimit(t *testing.T) {
-	var buf bytes.Buffer
-	limit := 100
-	lw := &limitWriter{w: &buf, limit: limit}
+// --- LimitWriter Unit Tests ---
 
-	data := []byte("hello world")
-	n, err := lw.Write(data)
+func TestLimitWriter_Write(t *testing.T) {
+	tests := []struct {
+		name          string
+		limit         int
+		inputs        [][]byte // 여러 번 Write 할 수 있음
+		expectedN     []int    // 각 Write 호출의 반환값
+		expectedTotal int      // 최종 written 카운트
+		expectedBuf   string   // 버퍼에 담긴 내용
+	}{
+		{
+			name:          "Within Limit",
+			limit:         100,
+			inputs:        [][]byte{[]byte("hello world")},
+			expectedN:     []int{11},
+			expectedTotal: 11,
+			expectedBuf:   "hello world",
+		},
+		{
+			name:          "Exact Limit",
+			limit:         5,
+			inputs:        [][]byte{[]byte("12345")},
+			expectedN:     []int{5},
+			expectedTotal: 5,
+			expectedBuf:   "12345",
+		},
+		{
+			name:          "Exceed Limit Single Write",
+			limit:         5,
+			inputs:        [][]byte{[]byte("1234567890")},
+			expectedN:     []int{10}, // 반환값은 입력 길이 (에러 방지)
+			expectedTotal: 5,         // 실제 기록은 제한값
+			expectedBuf:   "12345\n... (truncated)",
+		},
+		{
+			name:          "Exceed Limit Multiple Writes",
+			limit:         10,
+			inputs:        [][]byte{[]byte("12345"), []byte("67890ABC")},
+			expectedN:     []int{5, 8}, // 5바이트 씀, 8바이트 시도(3바이트 초과)
+			expectedTotal: 10,
+			expectedBuf:   "1234567890\n... (truncated)",
+		},
+		{
+			name:          "Already Full",
+			limit:         5,
+			inputs:        [][]byte{[]byte("12345"), []byte("ABC")},
+			expectedN:     []int{5, 3},
+			expectedTotal: 5,
+			expectedBuf:   "12345\n... (truncated)", // 이제 정확히 꽉 찼어도 이후 쓰기 시도가 있으면 Truncated Msg가 써짐
+		},
+	}
 
-	assert.NoError(t, err)
-	assert.Equal(t, len(data), n)
-	assert.Equal(t, "hello world", buf.String())
-	assert.Equal(t, len(data), lw.written)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			lw := &limitWriter{w: &buf, limit: tt.limit}
 
-func TestLimitWriter_Write_ExactLimit(t *testing.T) {
-	var buf bytes.Buffer
-	limit := 5
-	lw := &limitWriter{w: &buf, limit: limit}
+			for i, input := range tt.inputs {
+				n, err := lw.Write(input)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedN[i], n)
+			}
 
-	data := []byte("12345")
-	n, err := lw.Write(data)
-
-	assert.NoError(t, err)
-	assert.Equal(t, 5, n)
-	assert.Equal(t, "12345", buf.String())
-	assert.Equal(t, 5, lw.written)
-}
-
-func TestLimitWriter_Write_ExceedsLimit_SingleWrite(t *testing.T) {
-	var buf bytes.Buffer
-	limit := 5
-	lw := &limitWriter{w: &buf, limit: limit}
-
-	// 5바이트 제한인데 10바이트 씀
-	data := []byte("1234567890")
-	n, err := lw.Write(data)
-
-	assert.NoError(t, err)
-	assert.Equal(t, 10, n, "실제 쓰인 양과 무관하게 입력받은 길이를 반환해야 함 (에러 방지)")
-	assert.Equal(t, "12345\n... (truncated)", buf.String(), "버퍼에는 제한된 양만 있어야 함")
-	assert.Equal(t, 5, lw.written, "실제 기록된 양은 제한값이어야 함")
-}
-
-func TestLimitWriter_Write_ExceedsLimit_MultipleWrites(t *testing.T) {
-	var buf bytes.Buffer
-	limit := 10
-	lw := &limitWriter{w: &buf, limit: limit}
-
-	// 1. 5바이트 씀 (여유 5)
-	n, err := lw.Write([]byte("12345"))
-	assert.NoError(t, err)
-	assert.Equal(t, 5, n)
-	assert.Equal(t, 5, lw.written)
-
-	// 2. 8바이트 씀 (여유 5인데 8 들어옴 -> 5만 쓰고 3 버림)
-	n, err = lw.Write([]byte("67890ABC"))
-	assert.NoError(t, err)
-	assert.Equal(t, 8, n)
-
-	assert.Equal(t, "1234567890\n... (truncated)", buf.String()) // 정확히 10바이트만 저장됨 + Truncated Msg
-	assert.Equal(t, 10, lw.written)
-
-	// 3. 이미 꽉 참 (여유 0 -> 전부 버림)
-	n, err = lw.Write([]byte("DEF"))
-	assert.NoError(t, err)
-	assert.Equal(t, 3, n)
-	assert.Equal(t, "1234567890\n... (truncated)", buf.String()) // 변화 없음
+			// 결과 검증
+			assert.Equal(t, tt.expectedTotal, lw.written, "internal written count mismatch")
+			assert.Equal(t, tt.expectedBuf, buf.String())
+		})
+	}
 }
 
 func TestLimitWriter_LargeData(t *testing.T) {
 	// 1MB 데이터 생성
 	largeData := make([]byte, 1024*1024)
-	rand.Read(largeData)
+	n, _ := rand.Read(largeData)
+	require.Equal(t, len(largeData), n)
 
 	var buf bytes.Buffer
 	limit := 1024 // 1kb 제한
 	lw := &limitWriter{w: &buf, limit: limit}
 
-	n, err := lw.Write(largeData)
+	written, err := lw.Write(largeData)
 	assert.NoError(t, err)
-	assert.Equal(t, len(largeData), n)
+	assert.Equal(t, len(largeData), written)
 
 	truncatedMsg := []byte("\n... (truncated)")
 	assert.Equal(t, limit+len(truncatedMsg), buf.Len())
@@ -100,47 +106,128 @@ func TestLimitWriter_LargeData(t *testing.T) {
 	assert.Equal(t, expected, buf.Bytes())
 }
 
-func TestDefaultCommandExecutor_StartCommand_LimitOutput(t *testing.T) {
-	// Helper Process 패턴을 사용하여 실제 프로세스 실행 시 제한이 동작하는지 검증
-	limit := 10 // 10바이트 제한
+// --- DefaultCommandExecutor Integration Tests ---
 
-	// 명시적으로 환경변수를 주입하여 자식 프로세스가 Helper로 동작하도록 함
-	executor := &defaultCommandExecutor{
-		limit: limit,
-		env:   []string{"TEST_HELPER_PROCESS=1"},
+// TestHelperProcess는 테스트 목적의 자식 프로세스로 실행됩니다.
+// -test.run=TestHelperProcess 플래그와 함께 실행되어야 합니다.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
+		return
 	}
+	defer os.Exit(0)
+
+	mode := os.Getenv("HELPER_MODE")
+	switch mode {
+	case "echo":
+		fmt.Print(os.Getenv("HELPER_PAYLOAD"))
+	case "env":
+		fmt.Print(os.Getenv("TARGET_ENV_KEY"))
+	case "sleep":
+		time.Sleep(10 * time.Second) // 충분히 길게 대기
+	case "stderr":
+		fmt.Fprint(os.Stderr, os.Getenv("HELPER_PAYLOAD"))
+	case "large-output":
+		fmt.Print(strings.Repeat("A", 1024*1024)) // 1MB 출력
+	}
+}
+
+// makeHelperCommand는 자기 자신을 자식 프로세스로 실행하는 명령어를 생성합니다.
+func makeHelperCommand(ctx context.Context, executor commandExecutor, mode string, env map[string]string) (commandProcess, error) {
+	// 현재 실행 중인 테스트 바이너리 경로
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+
+	// 기본 환경변수에 헬퍼 모드 추가
+	defaultEnv := []string{"GO_TEST_HELPER_PROCESS=1", "HELPER_MODE=" + mode}
+	for k, v := range env {
+		defaultEnv = append(defaultEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// executor가 defaultCommandExecutor인 경우 환경변수 설정
+	if dexec, ok := executor.(*defaultCommandExecutor); ok {
+		dexec.env = defaultEnv
+	} else {
+		return nil, fmt.Errorf("executor type mismatch")
+	}
+
+	args := []string{"-test.run=TestHelperProcess", "-test.v=false"} // -test.v=false로 노이즈 최소화
+	return executor.StartCommand(ctx, exe, args...)
+}
+
+func TestDefaultCommandExecutor_Env(t *testing.T) {
+	executor := &defaultCommandExecutor{}
 	ctx := context.Background()
 
-	// 자기 자신을 다시 실행하되, "-test.run=TestHelperProcess"를 통해 TestHelperProcess 함수만 실행되도록 함
-	proc, err := executor.StartCommand(ctx, os.Args[0], "-test.run=TestHelperProcess", "-test.v")
-	assert.NoError(t, err)
+	// 헬퍼가 TARGET_ENV_KEY 값을 출력하도록 요청
+	proc, err := makeHelperCommand(ctx, executor, "env", map[string]string{
+		"TARGET_ENV_KEY": "SUPER_SECRET_VALUE",
+	})
+	require.NoError(t, err)
 
 	err = proc.Wait()
 	assert.NoError(t, err)
 
 	output := proc.Stdout()
-
-	// 출력 길이 제한 확인
-	// 주의: go test 출력(PASS 등)이 섞일 수 있으므로 정확한 매칭보다는
-	// 1. 길이가 제한값(10)인지 확인 (limitWriter가 정상 작동했는지)
-	// 2. 내용에 우리가 출력한 데이터가 일부 포함되어 있는지 확인
-	truncatedMsg := "\n... (truncated)"
-	assert.Equal(t, limit+len(truncatedMsg), len(output), "출력은 제한 크기 + Truncated Msg여야 함")
-
-	// "1234567890ABCDE" 중 앞부분이 포함되어야 함.
-	// 하지만 limitWriter는 앞에서부터 자르므로 "1234567890"이 되어야 함.
-	// 만약 "PASS" 같은게 먼저 나오면 그게 담길 수도 있음.
-	// 테스트 신뢰성을 위해, TestHelperProcess가 최대한 먼저 출력하도록 유도했지만 보장할 순 없음.
-	// 적어도 비어있지는 않아야 함.
-	assert.NotEmpty(t, output)
+	// go test 출력에 섞일 수 있으므로 Contains로 확인
+	assert.Contains(t, output, "SUPER_SECRET_VALUE")
 }
 
-// TestHelperProcess는 테스트 목적의 자식 프로세스로 실행됩니다.
-func TestHelperProcess(t *testing.T) {
-	if os.Getenv("TEST_HELPER_PROCESS") != "1" {
-		return
+func TestDefaultCommandExecutor_CaptureStderr(t *testing.T) {
+	executor := &defaultCommandExecutor{}
+	ctx := context.Background()
+
+	payload := "This is error message"
+	proc, err := makeHelperCommand(ctx, executor, "stderr", map[string]string{
+		"HELPER_PAYLOAD": payload,
+	})
+	require.NoError(t, err)
+
+	err = proc.Wait()
+	assert.NoError(t, err)
+
+	assert.Contains(t, proc.Stderr(), payload)
+	assert.Empty(t, proc.Stdout())
+}
+
+func TestDefaultCommandExecutor_ContextCancel(t *testing.T) {
+	executor := &defaultCommandExecutor{}
+	// 100ms 타임아웃
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// 10초 동안 자는 프로세스 실행
+	proc, err := makeHelperCommand(ctx, executor, "sleep", nil)
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = proc.Wait()
+	duration := time.Since(start)
+
+	// Context 취소로 인해 에러가 반환되어야 함 (주로 signal: killed 또는 exit status 등)
+	assert.Error(t, err)
+
+	// 10초가 아니라 타임아웃(100ms) + 알파 내에 종료되어야 함
+	assert.Less(t, duration, 2*time.Second, "프로세스가 타임아웃에 의해 강제 종료되지 않았습니다")
+}
+
+func TestDefaultCommandExecutor_LimitOutput(t *testing.T) {
+	limit := 1024 // 1KB
+	executor := &defaultCommandExecutor{
+		limit: limit,
 	}
-	// "go test"의 다른 출력이 나오기 전에 최대한 빨리 출력하고 종료
-	fmt.Print("1234567890ABCDE")
-	os.Exit(0)
+	ctx := context.Background()
+
+	// 1MB 출력 요청
+	proc, err := makeHelperCommand(ctx, executor, "large-output", nil)
+	require.NoError(t, err)
+
+	err = proc.Wait()
+	assert.NoError(t, err)
+
+	output := proc.Stdout()
+	truncatedMark := "\n... (truncated)"
+	assert.Equal(t, limit+len(truncatedMark), len(output))
+	assert.Contains(t, output, truncatedMark)
 }

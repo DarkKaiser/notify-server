@@ -92,13 +92,19 @@ func (e *defaultCommandExecutor) StartCommand(ctx context.Context, name string, 
 }
 
 type limitWriter struct {
-	w       io.Writer
-	limit   int
-	written int
+	w                io.Writer
+	limit            int
+	written          int
+	truncatedWritten bool
 }
 
 func (l *limitWriter) Write(p []byte) (n int, err error) {
 	if l.written >= l.limit {
+		// 이미 제한에 도달했지만, 아직 잘림 메시지를 쓰지 않았다면 씁니다.
+		if !l.truncatedWritten {
+			l.truncatedWritten = true
+			_, _ = l.w.Write([]byte("\n... (truncated)"))
+		}
 		return len(p), nil // 제한 초과 시 조용히 버림
 	}
 
@@ -112,12 +118,11 @@ func (l *limitWriter) Write(p []byte) (n int, err error) {
 	n, err = l.w.Write(toWrite)
 	l.written += n
 
+	// 이번 쓰기로 인해 남은 공간을 초과하거나 꽉 찼고, 원본 데이터가 더 있었다면
 	if len(p) > remaining {
-		if err == nil {
-			// 제한에 도달했으므로 잘림 표시를 추가합니다. (에러 무시)
+		if err == nil && !l.truncatedWritten {
+			l.truncatedWritten = true
 			_, _ = l.w.Write([]byte("\n... (truncated)"))
-			// 이후 쓰기를 막기 위해 written을 limit 이상으로 설정
-			l.written = l.limit
 		}
 		// 실제로는 일부만 썼지만, 호출자에게는 다 썼다고 거짓말하여 에러 방지
 		return len(p), nil

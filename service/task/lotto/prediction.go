@@ -94,7 +94,14 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 	analysisFilePath = absAnalysisPath
 	defer func() {
 		// 분석이 끝난 로그 파일은 삭제한다.
-		_ = os.Remove(analysisFilePath)
+		if err := os.Remove(analysisFilePath); err != nil {
+			applog.WithComponentAndFields("task.lotto", log.Fields{
+				"task_id":    t.GetID(),
+				"command_id": t.GetCommandID(),
+				"path":       analysisFilePath,
+				"error":      err,
+			}).Warn("분석 결과 임시 파일 삭제 실패")
+		}
 	}()
 
 	// 당첨번호 예측 결과 파일을 읽어들인다.
