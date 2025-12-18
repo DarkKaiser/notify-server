@@ -111,7 +111,7 @@ func (p *performance) String(messageTypeHTML bool, mark string) string {
 		if p.Thumbnail != "" {
 			thumbnailLink = fmt.Sprintf(`<a href="%s">&#8205;</a>`, p.Thumbnail)
 		}
-		return fmt.Sprintf("%s☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", thumbnailLink, url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
+		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s%s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place, thumbnailLink)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", p.Title, mark, p.Place))
 }
