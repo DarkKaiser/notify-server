@@ -232,10 +232,17 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 썸네일)",
-			html:        `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
-			filters:     &parsedFilters{},
-			expectError: true,
+			name:          "성공: 썸네일 누락 (Soft Fail)",
+			html:          `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
+			filters:       &parsedFilters{},
+			expectedCount: 1,
+			expectedRaw:   1,
+			expectError:   false,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "T", performances[0].Title)
+				assert.Equal(t, "P", performances[0].Place)
+				assert.Equal(t, "", performances[0].Thumbnail, "썸네일이 없으면 빈 문자열이어야 합니다")
+			},
 		},
 		{
 			name:          "성공: 빈 결과",
