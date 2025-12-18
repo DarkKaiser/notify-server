@@ -105,7 +105,12 @@ func (p *performance) Equals(other *performance) bool {
 
 func (p *performance) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML {
-		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
+		// 텔레그램 등에서 링크 미리보기(썸네일)를 표시하기 위해 메시지 가장 앞에 보이지 않는 문자(Zero Width Joiner)로 링크를 삽입합니다.
+		var thumbnailLink string
+		if p.Thumbnail != "" {
+			thumbnailLink = fmt.Sprintf(`<a href="%s">&#8205;</a>`, p.Thumbnail)
+		}
+		return fmt.Sprintf("%s☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", thumbnailLink, url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", p.Title, mark, p.Place))
 }
@@ -282,7 +287,7 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	if !exists {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 썸네일 이미지 추출이 실패하였습니다")
 	}
-	thumbnail := fmt.Sprintf(`<img src="%s">`, thumbnailSrc)
+	thumbnail := thumbnailSrc
 
 	return &performance{
 		Title:     title,
