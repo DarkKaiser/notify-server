@@ -13,8 +13,8 @@ var (
 	// ErrCommandNotSupported 해당 작업(Task)은 존재하지만, 요청된 명령(Command)을 지원하지 않을 때 반환됩니다.
 	ErrCommandNotSupported = apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다")
 
-	// ErrTaskUnregistered 등록되지 않은 작업에 접근하려 할 때 반환됩니다.
-	ErrTaskUnregistered = apperrors.New(apperrors.NotFound, "등록되지 않은 작업입니다.😱")
+	// ErrTaskConfigNotFound 작업 실행에 필요한 설정(Config)을 찾을 수 없을 때 반환됩니다.
+	ErrTaskConfigNotFound = apperrors.New(apperrors.NotFound, "해당 작업 생성에 필요한 구성 정보가 존재하지 않습니다")
 
 	// ErrInvalidTaskData 작업 설정 데이터(JSON/Map) 디코딩 실패 시 반환됩니다.
 	ErrInvalidTaskData = apperrors.New(apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
@@ -28,7 +28,8 @@ func NewErrCommandNotSupported(commandID CommandID) error {
 	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID))
 }
 
-// NewErrHTMLStructureChanged HTML 구조 변경 에러에 상세 정보(URL, 추가 설명 등)를 덧붙여 반환합니다.
+// NewErrHTMLStructureChanged HTML 페이지의 DOM 구조 변경으로 인한 파싱 실패 시,
+// 디버깅에 필요한 컨텍스트(대상 URL, CSS 선택자 등 상세 정보)를 포함한 구조화된 에러를 생성합니다.
 func NewErrHTMLStructureChanged(url, details string) error {
 	message := ErrHTMLStructureChanged.Error()
 	if url != "" {
@@ -42,5 +43,5 @@ func NewErrHTMLStructureChanged(url, details string) error {
 
 // NewErrTypeAssertionFailed 타입 단언(Type Assertion) 실패 시 사용하는 에러를 생성합니다.
 func NewErrTypeAssertionFailed(targetName string, expected, got interface{}) error {
-	return apperrors.New(apperrors.Internal, fmt.Sprintf("%s의 타입 변환이 실패하였습니다 (expected: %T, got: %T)", targetName, expected, got))
+	return apperrors.New(apperrors.Internal, fmt.Sprintf("%s의 타입 변환에 실패하였습니다 (expected: %T, got: %T)", targetName, expected, got))
 }

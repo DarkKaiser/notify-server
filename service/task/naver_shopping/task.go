@@ -114,7 +114,7 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
-		return nil, tasksvc.ErrTaskUnregistered
+		return nil, tasksvc.ErrTaskNotSupported
 	}
 
 	taskConfig := &taskConfig{}

@@ -182,9 +182,9 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 			"task_id":    req.TaskID,
 			"command_id": req.CommandID,
 			"error":      err,
-		}).Error(ErrTaskUnregistered.Error())
+		}).Error(ErrTaskNotSupported.Error())
 
-		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskUnregistered.Error())
+		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskNotSupported.Error())
 
 		return
 	}

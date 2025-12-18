@@ -21,7 +21,7 @@ func (m *MockCommandProcess) Kill() error {
 	return args.Error(0)
 }
 
-func (m *MockCommandProcess) Output() string {
+func (m *MockCommandProcess) Stdout() string {
 	args := m.Called()
 	return args.String(0)
 }

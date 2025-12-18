@@ -1,6 +1,9 @@
 package lotto
 
 import (
+	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/darkkaiser/notify-server/config"
@@ -15,7 +18,18 @@ const (
 
 	// CommandID
 	PredictionCommand tasksvc.CommandID = "Prediction" // 로또 번호 예측 명령
+
+	// lottoJarFileName PredictionCommand 수행 시 실행되는 외부 Java 애플리케이션의 아티팩트 파일명입니다.
+	lottoJarFileName = "lottoprediction-1.0.0.jar"
 )
+
+// execLookPath os/exec 패키지의 LookPath 함수에 대한 참조를 담고 있는 패키지 레벨 변수입니다.
+//
+// 이 변수는 프로덕션 코드에서는 기본적으로 exec.LookPath를 가리키지만,
+// 단위 테스트(Unit Test) 환경에서는 Mock 구현체로 교체(Swapping)하여
+// 외부 시스템(파일 시스템, PATH 환경 변수)에 대한 의존성 없이
+// '명령어 존재 여부'에 따른 로직 분기를 격리된 환경에서 검증할 수 있게 해줍니다.
+var execLookPath = exec.LookPath
 
 type taskConfig struct {
 	AppPath string `json:"app_path"`
@@ -43,33 +57,55 @@ func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfi
 
 func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
 	if req.TaskID != ID {
-		return nil, tasksvc.ErrTaskUnregistered
+		return nil, tasksvc.ErrTaskNotSupported
 	}
 
 	var appPath string
+
 	found := false
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
-			taskConfig := &taskConfig{}
-			if err := tasksvc.DecodeMap(taskConfig, t.Data); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+			cfg := &taskConfig{}
+			if err := tasksvc.DecodeMap(cfg, t.Data); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskData.Error())
 			}
 
-			appPath = strings.TrimSpace(taskConfig.AppPath)
+			appPath = strings.TrimSpace(cfg.AppPath)
 			if appPath == "" {
-				return nil, apperrors.New(apperrors.InvalidInput, "Lotto Task의 AppPath 설정이 비어있습니다")
+				return nil, apperrors.New(apperrors.InvalidInput, "필수 구성 항목인 'app_path' 값이 설정되지 않았습니다")
 			}
+
+			// 절대 경로로 변환하여 실행 위치(CWD)에 독립적으로 만듭니다.
+			absPath, err := filepath.Abs(appPath)
+			if err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'에 대한 절대 경로 변환 처리에 실패하였습니다")
+			}
+			appPath = absPath
+
 			if err := validation.ValidateFileExists(appPath, false); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "AppPath 경로가 유효하지 않습니다")
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다")
+			}
+
+			// JAR 파일 존재 여부 검증
+			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
+			jarPath := filepath.Join(appPath, lottoJarFileName)
+			if err := validation.ValidateFileExists(jarPath, false); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", lottoJarFileName))
+			}
+
+			// Java 실행 가능 여부 검증
+			if _, err := execLookPath("java"); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.System, "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다. PATH 설정을 확인해 주십시오")
 			}
 
 			found = true
+
 			break
 		}
 	}
 
 	if !found {
-		return nil, apperrors.New(apperrors.NotFound, "Lotto 작업을 위한 설정을 찾을 수 없습니다.")
+		return nil, tasksvc.ErrTaskConfigNotFound
 	}
 
 	lottoTask := &task{
@@ -80,14 +116,14 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		executor: executor,
 	}
 
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case PredictionCommand:
 		lottoTask.SetExecute(func(_ interface{}, _ bool) (string, interface{}, error) {
 			return lottoTask.executePrediction()
 		})
 	default:
-		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
 	return lottoTask, nil
