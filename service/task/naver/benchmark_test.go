@@ -1,64 +1,163 @@
 package naver
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
+	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkNaverTask_RunWatchNewPerformances(b *testing.B) {
-	// 1. Mock 설정
+// generateLargeHTML 대량의 공연 데이터가 포함된 HTML을 생성합니다.
+func generateLargeHTML(count int) string {
+	var sb strings.Builder
+	sb.WriteString("<ul class=\"list_news\">")
+	for i := 0; i < count; i++ {
+		sb.WriteString(fmt.Sprintf(`
+			<li class="bx">
+				<div class="item">
+					<div class="title_box">
+						<strong class="name">Performance %d</strong>
+						<span class="sub_text">Place %d</span>
+					</div>
+					<div class="thumb">
+						<img src="http://example.com/thumb%d.jpg">
+					</div>
+				</div>
+			</li>`, i, i, i))
+	}
+	sb.WriteString("</ul>")
+	return sb.String()
+}
+
+// setupBenchmarkTask 벤치마크 수행을 위한 Task와 Config를 초기화합니다.
+func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPerformancesCommandConfig) {
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	query := "뮤지컬"
-	encodedQuery := url.QueryEscape(query)
-	// Naver Task는 페이지 인덱스를 1부터 증가시키며 데이터를 가져옴
-	// 여기서는 1페이지만 가져오고 종료되도록 설정 (데이터가 없으면 종료됨)
 
-	// 검색 결과 JSON (공연 정보 포함)
-	searchResultJSON := `{
-		"total": 1,
-		"html": "<ul class=\"list_news\"> <li class=\"bx\"> <div class=\"item\"> <div class=\"title_box\"> <strong class=\"name\">Test Performance</strong> <span class=\"sub_text\">Test Place</span> </div> <div class=\"thumb\"> <img src=\"http://example.com/thumb.jpg\"> </div> </div> </li> </ul>"
-	}`
+	htmlContent := generateLargeHTML(performanceCount)
+	htmlBytes, _ := json.Marshal(htmlContent)
+	searchResultJSON := fmt.Sprintf(`{"total": %d, "html": %s}`, performanceCount, string(htmlBytes))
 
-	// 첫 번째 페이지 요청에 대한 응답 설정
-	url1 := fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=1&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", encodedQuery)
-	mockFetcher.SetResponse(url1, []byte(searchResultJSON))
+	// URL 생성 Helper
+	makeURL := func(page int) string {
+		v := url.Values{}
+		v.Set("key", "kbList")
+		v.Set("pkid", "269")
+		v.Set("where", "nexearch")
+		v.Set("u1", query) // Mock uses raw query? No, Encode() escapes it.
+		v.Set("u2", "all")
+		v.Set("u3", "")
+		v.Set("u4", "ingplan")
+		v.Set("u5", "date")
+		v.Set("u6", "N")
+		v.Set("u7", fmt.Sprintf("%d", page))
+		v.Set("u8", "all")
+		return "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?" + v.Encode()
+	}
 
-	// 두 번째 페이지 요청 (빈 데이터 -> 종료)
-	emptyResultJSON := `{
-		"total": 1,
-		"html": ""
-	}`
-	url2 := fmt.Sprintf("https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&where=nexearch&u7=2&u8=all&u3=&u1=%s&u2=all&u4=ingplan&u6=N&u5=date", encodedQuery)
-	mockFetcher.SetResponse(url2, []byte(emptyResultJSON))
+	// 첫 페이지: 데이터 있음
+	mockFetcher.SetResponse(makeURL(1), []byte(searchResultJSON))
 
-	// Task Setup
-	// noinspection GoBoolExpressions
+	// 두 번째 페이지: 빈 데이터 (종료)
+	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
+
 	tTask := &task{
 		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
-		// appConfig is not needed for executeWatchNewPerformances direct call
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	// 3. 테스트 데이터 준비
-	commandDataForExecution := &watchNewPerformancesCommandConfig{
+	config := &watchNewPerformancesCommandConfig{
 		Query: query,
 	}
+	// Eager Initialization (중요: Panic 방지 및 Thread Safety 확보)
+	err := config.validate()
+	require.NoError(b, err)
 
-	resultData := &watchNewPerformancesSnapshot{
-		Performances: make([]*performance, 0),
+	return tTask, config
+}
+
+func BenchmarkNaverTask_Execution(b *testing.B) {
+	// 시나리오 1: 소규모 데이터 (일반적인 케이스)
+	b.Run("SmallData_Serial", func(b *testing.B) {
+		tTask, config := setupBenchmarkTask(b, 5)
+		resultData := &watchNewPerformancesSnapshot{Performances: []*performance{}}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+			if err != nil {
+				b.Fatalf("Execution failed: %v", err)
+			}
+		}
+	})
+
+	// 시나리오 2: 대규모 데이터 (스트레스 테스트) - 파싱 및 메모리 할당 부하 측정
+	b.Run("LargeData_Serial_100Items", func(b *testing.B) {
+		tTask, config := setupBenchmarkTask(b, 100)
+		resultData := &watchNewPerformancesSnapshot{Performances: []*performance{}}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+			if err != nil {
+				b.Fatalf("Execution failed: %v", err)
+			}
+		}
+	})
+
+	// 시나리오 3: 소규모 데이터 병렬 실행 (동시성/Race Condition 검증)
+	b.Run("SmallData_Parallel", func(b *testing.B) {
+		tTask, config := setupBenchmarkTask(b, 5)
+		resultData := &watchNewPerformancesSnapshot{Performances: []*performance{}}
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+				if err != nil {
+					b.Fatalf("Execution failed: %v", err)
+				}
+			}
+		})
+	})
+}
+
+// BenchmarkNaverTask_DiffOnly 는 네트워크/파싱을 제외한 순수 Diff 로직의 성능을 측정합니다.
+func BenchmarkNaverTask_DiffOnly(b *testing.B) {
+	// 데이터 준비
+	count := 1000
+	currentSnapshot := &watchNewPerformancesSnapshot{Performances: make([]*performance, count)}
+	prevSnapshot := &watchNewPerformancesSnapshot{Performances: make([]*performance, count)}
+
+	for i := 0; i < count; i++ {
+		p := &performance{Title: fmt.Sprintf("Perf %d", i), Place: "Place"}
+		currentSnapshot.Performances[i] = p
+		// 절반은 같고 절반은 다르게 설정
+		if i%2 == 0 {
+			prevSnapshot.Performances[i] = p
+		} else {
+			prevSnapshot.Performances[i] = &performance{Title: "Old", Place: "Old"}
+		}
 	}
 
-	b.ResetTimer()
+	tTask := &task{
+		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+	}
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// 벤치마크 실행
-		_, _, err := tTask.executeWatchNewPerformances(commandDataForExecution, resultData, true)
-		if err != nil {
-			b.Fatalf("Task run failed: %v", err)
-		}
+		// executeWatchNewPerformances 대신 내부 로직인 diffAndNotify를 직접 호출할 수도 있지만,
+		// task 구조체에 메서드로 있으므로 export되지 않았다면 호출 불가.
+		// diffAndNotify는 unexported이므로 동일 패키지 테스트에서는 호출 가능.
+		_, _, _ = tTask.diffAndNotify(currentSnapshot, prevSnapshot, true)
 	}
 }

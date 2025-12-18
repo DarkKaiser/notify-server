@@ -12,12 +12,10 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/sirupsen/logrus"
 )
 
 const (
-	// pageFetchDelay 페이지 요청 간 대기 시간 (API Rate Limiting 방지)
-	pageFetchDelay = 100 * time.Millisecond
-
 	// searchBaseURL 네이버 검색 API의 엔드포인트 URL입니다.
 	searchBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 
@@ -52,7 +50,11 @@ type watchNewPerformancesCommandConfig struct {
 		} `json:"place"`
 	} `json:"filters"`
 
-	// parsedFilters 필터링 키워드 파싱 결과 캐시
+	// Optional Configuration (기본값 제공됨)
+	MaxPages       int `json:"max_pages"`           // 최대 수집 페이지 수
+	PageFetchDelay int `json:"page_fetch_delay_ms"` // 페이지 수집 간 대기 시간 (ms)
+
+	// parsedFilters 필터링 키워드 파싱 결과 캐시 (Eagerly initialized)
 	parsedFilters *parsedFilters `json:"-"`
 }
 
@@ -63,24 +65,27 @@ type parsedFilters struct {
 	PlaceExcluded []string
 }
 
-func (c *watchNewPerformancesCommandConfig) getParsedFilters() *parsedFilters {
-	if c.parsedFilters != nil {
-		return c.parsedFilters
+func (c *watchNewPerformancesCommandConfig) validate() error {
+	if c.Query == "" {
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 
+	// 기본 설정값 적용
+	if c.MaxPages <= 0 {
+		c.MaxPages = 50
+	}
+	if c.PageFetchDelay <= 0 {
+		c.PageFetchDelay = 100
+	}
+
+	// 필터 미리 파싱 (Eager Initialization for Thread Safety)
 	c.parsedFilters = &parsedFilters{
 		TitleIncluded: strutil.SplitAndTrim(c.Filters.Title.IncludedKeywords, ","),
 		TitleExcluded: strutil.SplitAndTrim(c.Filters.Title.ExcludedKeywords, ","),
 		PlaceIncluded: strutil.SplitAndTrim(c.Filters.Place.IncludedKeywords, ","),
 		PlaceExcluded: strutil.SplitAndTrim(c.Filters.Place.ExcludedKeywords, ","),
 	}
-	return c.parsedFilters
-}
 
-func (c *watchNewPerformancesCommandConfig) validate() error {
-	if c.Query == "" {
-		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
-	}
 	return nil
 }
 
@@ -128,23 +133,42 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 // fetchPerformances 네이버 검색 페이지를 순회하며 공연 정보를 수집합니다.
 func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfig) ([]*performance, error) {
 	var performances []*performance
-	filters := commandConfig.getParsedFilters()
+	// 이미 validate() 시점에 파싱된 안전한 필터 사용
+	filters := commandConfig.parsedFilters
 
 	searchPerformancePageIndex := 1
+
 	for {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			logrus.Info("작업이 취소되어 공연 정보 수집을 중단합니다")
+			return nil, nil
+		}
+
+		if searchPerformancePageIndex > commandConfig.MaxPages {
+			logrus.Warnf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages)
+			break
+		}
+
+		// 페이지네이션 로깅
+		logrus.WithFields(logrus.Fields{
+			"page":  searchPerformancePageIndex,
+			"query": commandConfig.Query,
+		}).Debug("공연 정보 페이지를 수집합니다")
+
 		var searchResultData = &performanceSearchResponse{}
 		params := url.Values{}
-		params.Set("key", "kbList")
-		params.Set("pkid", "269")
-		params.Set("where", "nexearch")
-		params.Set("u1", commandConfig.Query)
-		params.Set("u2", "all")
-		params.Set("u3", "")
-		params.Set("u4", "ingplan")
-		params.Set("u5", "date")
-		params.Set("u6", "N")
-		params.Set("u7", strconv.Itoa(searchPerformancePageIndex))
-		params.Set("u8", "all")
+		params.Set("key", "kbList")                                // 지식베이스(Knowledge Base) 리스트 식별자 (고정값)
+		params.Set("pkid", "269")                                  // 공연/전시 정보 식별자 (269: 공연/전시)
+		params.Set("where", "nexearch")                            // 검색 영역
+		params.Set("u1", commandConfig.Query)                      // 검색어 (지역명 등)
+		params.Set("u2", "all")                                    // 장르 (all: 전체)
+		params.Set("u3", "")                                       // 날짜 범위 (빈 문자열: 전체)
+		params.Set("u4", "ingplan")                                // 공연 상태 (ingplan: 진행중/예정)
+		params.Set("u5", "date")                                   // 정렬 순서 (date: 최신순)
+		params.Set("u6", "N")                                      // 성인 공연 포함 여부 (N: 제외)
+		params.Set("u7", strconv.Itoa(searchPerformancePageIndex)) // 페이지 번호
+		params.Set("u8", "all")                                    // 세부 장르 (all: 전체)
 
 		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", searchBaseURL, params.Encode()), nil, nil, searchResultData)
 		if err != nil {
@@ -166,6 +190,8 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 			}
 
 			if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+				// 필터링 로깅 (Verbose)
+				// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
 				return true
 			}
 
@@ -180,12 +206,14 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 		// 불러온 데이터가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
 		if ps.Length() == 0 {
+			logrus.WithField("last_page", searchPerformancePageIndex-1).Debug("더 이상 공연 정보가 없어 수집을 종료합니다")
 			break
 		}
 
-		time.Sleep(pageFetchDelay)
+		time.Sleep(time.Duration(commandConfig.PageFetchDelay) * time.Millisecond)
 	}
 
+	logrus.WithField("total_count", len(performances)).Info("공연 정보 수집을 완료했습니다")
 	return performances, nil
 }
 
@@ -225,7 +253,7 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 
 // diffAndNotify 이전 스냅샷과 비교하여 변경 사항을 알림 메시지로 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
-	m := ""
+	var sb strings.Builder
 	lineSpacing := "\n\n"
 	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevSnapshot.Performances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*performance)
@@ -240,17 +268,17 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 	}, nil, func(selem interface{}) {
 		actualityPerformance := selem.(*performance)
 
-		if m != "" {
-			m += lineSpacing
+		if sb.Len() > 0 {
+			sb.WriteString(lineSpacing)
 		}
-		m += actualityPerformance.String(supportsHTML, " 🆕")
+		sb.WriteString(actualityPerformance.String(supportsHTML, " 🆕"))
 	})
 	if err != nil {
 		return "", nil, err
 	}
 
-	if m != "" {
-		return "새로운 공연정보가 등록되었습니다.\n\n" + m, currentSnapshot, nil
+	if sb.Len() > 0 {
+		return "새로운 공연정보가 등록되었습니다.\n\n" + sb.String(), currentSnapshot, nil
 	}
 
 	if t.GetRunBy() == tasksvc.RunByUser {
@@ -259,12 +287,12 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		}
 
 		for _, actualityPerformance := range currentSnapshot.Performances {
-			if m != "" {
-				m += lineSpacing
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
 			}
-			m += actualityPerformance.String(supportsHTML, "")
+			sb.WriteString(actualityPerformance.String(supportsHTML, ""))
 		}
-		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + m, nil, nil
+		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
 	}
 
 	return "", nil, nil

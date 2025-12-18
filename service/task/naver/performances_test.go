@@ -5,93 +5,143 @@ import (
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
-	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchNewPerformancesCommandConfig{
-			Query: "뮤지컬",
-		}
+	tests := []struct {
+		name          string
+		config        *watchNewPerformancesCommandConfig
+		expectedError string
+		validate      func(t *testing.T, c *watchNewPerformancesCommandConfig)
+	}{
+		{
+			name: "성공: 정상적인 데이터 (기본값 적용 확인)",
+			config: &watchNewPerformancesCommandConfig{
+				Query: "뮤지컬",
+			},
+			validate: func(t *testing.T, c *watchNewPerformancesCommandConfig) {
+				assert.Equal(t, 50, c.MaxPages, "MaxPages 기본값이 적용되어야 합니다")
+				assert.Equal(t, 100, c.PageFetchDelay, "PageFetchDelay 기본값이 적용되어야 합니다")
+				assert.NotNil(t, c.parsedFilters, "필터가 Eager Initialization 되어야 합니다")
+			},
+		},
+		{
+			name: "성공: 사용자 정의 설정",
+			config: &watchNewPerformancesCommandConfig{
+				Query:          "뮤지컬",
+				MaxPages:       10,
+				PageFetchDelay: 200,
+			},
+			validate: func(t *testing.T, c *watchNewPerformancesCommandConfig) {
+				assert.Equal(t, 10, c.MaxPages)
+				assert.Equal(t, 200, c.PageFetchDelay)
+			},
+		},
+		{
+			name: "실패: Query 누락",
+			config: &watchNewPerformancesCommandConfig{
+				Query: "",
+			},
+			expectedError: "query가 입력되지 않았습니다",
+		},
+	}
 
-		err := commandConfig.validate()
-		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.validate()
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				if tt.validate != nil {
+					tt.validate(t, tt.config)
+				}
+			}
+		})
+	}
+}
 
-	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchNewPerformancesCommandConfig{
-			Query: "",
-		}
+func TestNaverWatchNewPerformancesCommandConfig_FilterParsing(t *testing.T) {
+	config := &watchNewPerformancesCommandConfig{
+		Query: "뮤지컬",
+	}
+	config.Filters.Title.IncludedKeywords = "A,B"
+	config.Filters.Title.ExcludedKeywords = "C"
 
-		err := commandConfig.validate()
-		assert.Error(t, err, "Query가 비어있으면 에러가 발생해야 합니다")
-		assert.Contains(t, err.Error(), "query", "적절한 에러 메시지를 반환해야 합니다")
-	})
+	err := config.validate()
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"A", "B"}, config.parsedFilters.TitleIncluded)
+	assert.Equal(t, []string{"C"}, config.parsedFilters.TitleExcluded)
 }
 
 func TestNaverPerformance_String(t *testing.T) {
-	t.Run("HTML 메시지 포맷", func(t *testing.T) {
-		performance := &performance{
-			Title:     "테스트 공연",
-			Place:     "테스트 극장",
-			Thumbnail: "https://example.com/thumb.jpg",
-		}
+	perf := &performance{
+		Title:     "테스트 공연",
+		Place:     "테스트 극장",
+		Thumbnail: "<img src=\"https://example.com/thumb.jpg\">",
+	}
 
-		result := performance.String(true, "")
+	tests := []struct {
+		name         string
+		supportsHTML bool
+		mark         string
+		validate     func(t *testing.T, result string)
+	}{
+		{
+			name:         "HTML 포맷 확인",
+			supportsHTML: true,
+			mark:         "🆕",
+			validate: func(t *testing.T, result string) {
+				assert.Contains(t, result, "<b>테스트 공연</b>")
+				assert.Contains(t, result, "테스트 극장")
+				assert.Contains(t, result, "🆕")
+			},
+		},
+		{
+			name:         "Text 포맷 확인",
+			supportsHTML: false,
+			mark:         "",
+			validate: func(t *testing.T, result string) {
+				assert.Contains(t, result, "테스트 공연")
+				assert.Contains(t, result, "테스트 극장")
+				assert.NotContains(t, result, "<b>")
+			},
+		},
+	}
 
-		assert.Contains(t, result, "테스트 공연", "공연 제목이 포함되어야 합니다")
-		assert.Contains(t, result, "테스트 극장", "공연 장소가 포함되어야 합니다")
-		assert.Contains(t, result, "<b>", "HTML 태그가 포함되어야 합니다")
-	})
-
-	t.Run("텍스트 메시지 포맷", func(t *testing.T) {
-		performance := &performance{
-			Title:     "테스트 공연",
-			Place:     "테스트 극장",
-			Thumbnail: "https://example.com/thumb.jpg",
-		}
-
-		result := performance.String(false, "")
-
-		assert.Contains(t, result, "테스트 공연", "공연 제목이 포함되어야 합니다")
-		assert.Contains(t, result, "테스트 극장", "공연 장소가 포함되어야 합니다")
-		assert.NotContains(t, result, "<b>", "HTML 태그가 포함되지 않아야 합니다")
-	})
-
-	t.Run("마크 표시", func(t *testing.T) {
-		performance := &performance{
-			Title: "테스트 공연",
-			Place: "테스트 극장",
-		}
-
-		result := performance.String(false, " 🆕")
-
-		assert.Contains(t, result, "🆕", "마크가 포함되어야 합니다")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := perf.String(tt.supportsHTML, tt.mark)
+			tt.validate(t, result)
+		})
+	}
 }
 
-func TestNaverTask_FilterPerformances(t *testing.T) {
-	t.Run("제목 필터링 - 포함 키워드", func(t *testing.T) {
-		// filter 함수는 task_utils.go에 정의되어 있으므로 별도 테스트
-		includedKeywords := []string{"뮤지컬"}
-		excludedKeywords := []string{}
+// TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 필터링 규칙 예시를 나열합니다.
+func TestNaverTask_Filtering_Behavior(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     string
+		included []string
+		excluded []string
+		want     bool
+	}{
+		{"기본: 키워드 없음", "Anything", nil, nil, true},
+		{"포함: 매칭", "Musical Cats", []string{"Cats"}, nil, true},
+		{"포함: 미매칭", "Musical Dogs", []string{"Cats"}, nil, false},
+		{"제외: 매칭", "Musical Cats", nil, []string{"Cats"}, false},
+		{"제외: 미매칭", "Musical Dogs", nil, []string{"Cats"}, true},
+		{"복합: 포함O 제외X", "Musical Cats", []string{"Cats"}, []string{"Dogs"}, true},
+		{"복합: 포함O 제외O", "Musical Cats Dogs", []string{"Cats"}, []string{"Dogs"}, false},
+	}
 
-		result := tasksvc.Filter("뮤지컬 오페라의 유령", includedKeywords, excludedKeywords)
-		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
-	})
-
-	t.Run("제목 필터링 - 제외 키워드", func(t *testing.T) {
-		includedKeywords := []string{"뮤지컬"}
-		excludedKeywords := []string{"아동"}
-
-		result := tasksvc.Filter("뮤지컬 아동극", includedKeywords, excludedKeywords)
-		assert.False(t, result, "제외 키워드가 있으면 false를 반환해야 합니다")
-	})
-
-	t.Run("장소 필터링", func(t *testing.T) {
-		includedKeywords := []string{"서울"}
-		excludedKeywords := []string{}
-
-		result := tasksvc.Filter("서울 예술의전당", includedKeywords, excludedKeywords)
-		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tasksvc.Filter(tt.item, tt.included, tt.excluded)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

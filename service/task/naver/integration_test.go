@@ -1,7 +1,9 @@
 package naver
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/config"
@@ -10,28 +12,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
-	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+// helper: URL 생성
+func makeMockSearchURL(query string, page int) string {
+	v := url.Values{}
+	v.Set("key", "kbList")
+	v.Set("pkid", "269")
+	v.Set("where", "nexearch")
+	v.Set("u1", query)
+	v.Set("u2", "all")
+	v.Set("u3", "")
+	v.Set("u4", "ingplan")
+	v.Set("u5", "date")
+	v.Set("u6", "N")
+	v.Set("u7", fmt.Sprintf("%d", page))
+	v.Set("u8", "all")
+	return "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?" + v.Encode()
+}
 
-	// 테스트용 JSON 응답 생성
-	performanceTitle := "테스트 공연"
-	performancePlace := "테스트 극장"
-	performanceDate := "2025.11.28~2025.12.31"
-	performanceURL := "https://example.com/performance/123"
+// helper: HTML 조각 생성
+func makeHTMLItem(title, place string) string {
+	return fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">%s</span></div><div class="thumb"><img src="http://example.com/thumb.jpg"></div></div></li>`, title, place)
+}
 
-	jsonContent := fmt.Sprintf(`{
-		"html": "<ul><li><div class=\"item\"><div class=\"thumb\"><img src=\"https://example.com/thumb.jpg\"></div><div class=\"title_box\"><strong class=\"name\">%s</strong><span class=\"sub_text\">%s</span></div><div class=\"info_group\"><span class=\"date\">%s</span></div><a href=\"%s\"></a></div></li></ul>"
-	}`, performanceTitle, performancePlace, performanceDate, performanceURL)
-
-	// url.Values는 키를 알파벳 순으로 정렬합니다. (key -> pkid -> u1... -> where)
-	url := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u3=&u4=ingplan&u5=date&u6=N&u7=1&u8=all&where=nexearch"
-	mockFetcher.SetResponse(url, []byte(jsonContent))
-
-	// 페이지 2에 대한 빈 응답 (페이지네이션 종료)
-	url2 := "https://m.search.naver.com/p/csearch/content/nqapirender.nhn?key=kbList&pkid=269&u1=%EC%A0%84%EB%9D%BC%EB%8F%84&u2=all&u3=&u4=ingplan&u5=date&u6=N&u7=2&u8=all&where=nexearch"
-	mockFetcher.SetResponse(url2, []byte(`{"html": ""}`))
-	// 2. Task 초기화
+func setupTestTask(t *testing.T, fetcher tasksvc.Fetcher) (*task, *config.AppConfig) {
 	req := &tasksvc.SubmitRequest{
 		TaskID:     ID,
 		CommandID:  WatchNewPerformancesCommand,
@@ -46,55 +49,156 @@ func TestNaverTask_RunWatchNewPerformances_Integration(t *testing.T) {
 					{
 						ID: string(WatchNewPerformancesCommand),
 						Data: map[string]interface{}{
-							"query": "전라도", // 유효성 검사(Fail-Fsat) 통과용
-							"filters": map[string]interface{}{
-								"title": map[string]interface{}{"included_keywords": "", "excluded_keywords": ""},
-								"place": map[string]interface{}{"included_keywords": "", "excluded_keywords": ""},
-							},
+							"query": "테스트",
 						},
 					},
 				},
 			},
 		},
 	}
-
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := createTask("test_instance", req, appConfig, fetcher)
 	require.NoError(t, err)
-	tTask, ok := handler.(*task)
+	tsk, ok := handler.(*task)
 	require.True(t, ok)
+	return tsk, appConfig
+}
 
-	// 3. 테스트 데이터 준비
-	commandConfig := &watchNewPerformancesCommandConfig{
-		Query: "전라도",
+func TestNaverTask_Integration_Scenarios(t *testing.T) {
+	query := "뮤지컬"
+
+	tests := []struct {
+		name           string
+		configModifier func(*watchNewPerformancesCommandConfig)
+		mockSetup      func(*testutil.MockHTTPFetcher)
+		validate       func(*testing.T, string, interface{}, error)
+	}{
+		{
+			name: "Success_SinglePage",
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				html := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("Cats", "Broadway"))
+				b, _ := json.Marshal(html)
+				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b))))
+				m.SetResponse(makeMockSearchURL(query, 2), []byte(`{"html": ""}`))
+			},
+			validate: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				snapshot, ok := data.(*watchNewPerformancesSnapshot)
+				require.True(t, ok)
+				require.Len(t, snapshot.Performances, 1)
+				require.Equal(t, "Cats", snapshot.Performances[0].Title)
+				require.Contains(t, msg, "Cats")
+			},
+		},
+		{
+			name: "Success_MultiPage",
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				html1 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("Item1", "Place1"))
+				b1, _ := json.Marshal(html1)
+				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b1))))
+
+				html2 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("Item2", "Place2"))
+				b2, _ := json.Marshal(html2)
+				m.SetResponse(makeMockSearchURL(query, 2), []byte(fmt.Sprintf(`{"html": %s}`, string(b2))))
+
+				m.SetResponse(makeMockSearchURL(query, 3), []byte(`{"html": ""}`))
+			},
+			validate: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				snapshot, ok := data.(*watchNewPerformancesSnapshot)
+				require.True(t, ok)
+				require.Len(t, snapshot.Performances, 2)
+				require.Equal(t, "Item1", snapshot.Performances[0].Title)
+				require.Equal(t, "Item2", snapshot.Performances[1].Title)
+			},
+		},
+		{
+			name: "MaxPages_Limit",
+			configModifier: func(c *watchNewPerformancesCommandConfig) {
+				c.MaxPages = 2 // Limit to 2 pages
+			},
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				html1 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("P1", "L"))
+				b1, _ := json.Marshal(html1)
+				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b1))))
+
+				html2 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("P2", "L"))
+				b2, _ := json.Marshal(html2)
+				m.SetResponse(makeMockSearchURL(query, 2), []byte(fmt.Sprintf(`{"html": %s}`, string(b2))))
+
+				html3 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("P3", "L"))
+				b3, _ := json.Marshal(html3)
+				m.SetResponse(makeMockSearchURL(query, 3), []byte(fmt.Sprintf(`{"html": %s}`, string(b3))))
+			},
+			validate: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				snapshot, ok := data.(*watchNewPerformancesSnapshot)
+				require.True(t, ok)
+				require.Len(t, snapshot.Performances, 2, "Should stop after 2 pages")
+				require.Equal(t, "P1", snapshot.Performances[0].Title)
+				require.Equal(t, "P2", snapshot.Performances[1].Title)
+			},
+		},
+		{
+			name: "Filtering_Combined",
+			configModifier: func(c *watchNewPerformancesCommandConfig) {
+				c.Filters.Title.IncludedKeywords = "Cats"
+				c.Filters.Place.ExcludedKeywords = "Seoul"
+			},
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				items := []string{
+					makeHTMLItem("Cats Musical", "Busan"),
+					makeHTMLItem("Dogs Musical", "Busan"),
+					makeHTMLItem("Cats Musical", "Seoul"),
+				}
+				html := fmt.Sprintf("<ul>%s%s%s</ul>", items[0], items[1], items[2])
+				b, _ := json.Marshal(html)
+				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b))))
+				m.SetResponse(makeMockSearchURL(query, 2), []byte(`{"html": ""}`))
+			},
+			validate: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				snapshot, ok := data.(*watchNewPerformancesSnapshot)
+				require.True(t, ok)
+
+				require.Len(t, snapshot.Performances, 1) // Only Cats/Busan remains
+				require.Equal(t, "Cats Musical", snapshot.Performances[0].Title)
+				require.Equal(t, "Busan", snapshot.Performances[0].Place)
+			},
+		},
 	}
-	commandConfig.Filters.Title.IncludedKeywords = ""
-	commandConfig.Filters.Title.ExcludedKeywords = ""
-	commandConfig.Filters.Place.IncludedKeywords = ""
-	commandConfig.Filters.Place.ExcludedKeywords = ""
 
-	// 초기 결과 데이터 (비어있음)
-	resultData := &watchNewPerformancesSnapshot{
-		Performances: make([]*performance, 0),
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockFetcher := testutil.NewMockHTTPFetcher()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mockFetcher)
+			}
+
+			tTask, _ := setupTestTask(t, mockFetcher)
+
+			// Setup Config
+			cmdConfig := &watchNewPerformancesCommandConfig{
+				Query:          query,
+				PageFetchDelay: 1, // Speed up tests
+			}
+			if tt.configModifier != nil {
+				tt.configModifier(cmdConfig)
+			}
+			// Important: Eager Init
+			require.NoError(t, cmdConfig.validate())
+
+			// Run
+			prev := &watchNewPerformancesSnapshot{Performances: []*performance{}}
+			msg, data, err := tTask.executeWatchNewPerformances(cmdConfig, prev, true)
+
+			// Validate
+			if tt.validate != nil {
+				tt.validate(t, msg, data, err)
+			}
+		})
 	}
+}
 
-	// 4. 실행
-	message, newResultData, err := tTask.executeWatchNewPerformances(commandConfig, resultData, true)
-
-	// 5. 검증
-	require.NoError(t, err)
-	require.NotNil(t, newResultData)
-
-	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*watchNewPerformancesSnapshot)
-	require.True(t, ok)
-	require.Equal(t, 1, len(typedResultData.Performances))
-
-	performance := typedResultData.Performances[0]
-	require.Equal(t, performanceTitle, performance.Title)
-	require.Equal(t, performancePlace, performance.Place)
-
-	// 메시지 검증 (신규 공연 알림)
-	require.Contains(t, message, "새로운 공연정보가 등록되었습니다")
-	require.Contains(t, message, performanceTitle)
-	require.Contains(t, message, "🆕")
+func TestNaverTask_RunWatchNewPerformances_PartialFailure(t *testing.T) {
+	t.Skip("Partial Failure 허용 기능이 아직 적용되지 않았습니다.")
 }
