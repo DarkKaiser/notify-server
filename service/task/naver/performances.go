@@ -219,12 +219,13 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 	}
 
-	var performances []*performance
-	var parseError error
-
 	// 읽어온 페이지에서 공연정보를 추출한다.
 	ps := doc.Find(selectorPerformanceItem)
 	rawCount := ps.Length()
+
+	// 미리 용량을 할당하여 메모리 재할당 최소화 (Micro-Optimization)
+	performances := make([]*performance, 0, rawCount)
+	var parseError error
 
 	ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
 		p, parseErr := parsePerformance(s)
