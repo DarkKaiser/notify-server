@@ -24,17 +24,17 @@ const (
 	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
 	selectorPerformanceItem = "ul > li"
 
-	// selectorTitle 공연 정보 카드 내 타이틀 영역(div.title_box)에 위치한
-	// 실제 공연명 텍스트(strong.name)를 추출하기 위한 선택자입니다.
-	selectorTitle = "div.item > div.title_box > strong.name"
+	// selectorTitle 공연 정보 카드 내 타이틀 영역(.title_box)에 위치한
+	// 실제 공연명 텍스트(.name)를 추출하기 위한 선택자입니다.
+	selectorTitle = ".title_box .name"
 
-	// selectorPlace 타이틀 영역 하단에 위치하며, 공연 장소 정보(span.sub_text)를
+	// selectorPlace 타이틀 영역 하단에 위치하며, 공연 장소 정보(.sub_text)를
 	// 텍스트 형태로 포함하고 있는 요소를 지칭합니다.
-	selectorPlace = "div.item > div.title_box > span.sub_text"
+	selectorPlace = ".title_box .sub_text"
 
-	// selectorThumbnail 공연 정보 카드의 좌측 썸네일 영역(div.thumb) 내에 존재하는
+	// selectorThumbnail 공연 정보 카드의 좌측 썸네일 영역(.thumb) 내에 존재하는
 	// 이미지 태그(img)를 선택하여 src 속성을 추출하기 위해 사용됩니다.
-	selectorThumbnail = "div.item > div.thumb > img"
+	selectorThumbnail = ".thumb img"
 )
 
 type watchNewPerformancesCommandConfig struct {
@@ -107,7 +107,7 @@ func (p *performance) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML {
 		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", template.HTMLEscapeString(p.Title), mark, p.Place))
+	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", p.Title, mark, p.Place))
 }
 
 type watchNewPerformancesSnapshot struct {
@@ -258,6 +258,9 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
 	}
 	title := strings.TrimSpace(pis.Text())
+	if title == "" {
+		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목이 비어있습니다")
+	}
 
 	// 장소
 	pis = s.Find(selectorPlace)
@@ -265,6 +268,9 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
 	}
 	place := strings.TrimSpace(pis.Text())
+	if place == "" {
+		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소가 비어있습니다")
+	}
 
 	// 썸네일 이미지
 	pis = s.Find(selectorThumbnail)

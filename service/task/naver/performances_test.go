@@ -111,6 +111,17 @@ func TestNaverPerformance_String(t *testing.T) {
 				assert.NotContains(t, result, "<b>")
 			},
 		},
+		{
+			name:         "Text 포맷 확인 (특수문자 비노출)",
+			supportsHTML: false,
+			mark:         "",
+			validate: func(t *testing.T, result string) {
+				p := &performance{Title: "Tom & Jerry", Place: "Cinema", Thumbnail: "img"}
+				res := p.String(false, "")
+				assert.Contains(t, res, "Tom & Jerry")
+				assert.NotContains(t, res, "Tom &amp; Jerry")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -232,6 +243,39 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			filters:       &parsedFilters{},
 			expectedCount: 0,
 			expectedRaw:   0,
+		},
+		{
+			name: "성공: 실제 네이버 검색 결과 샘플 (Robust Selector Test)",
+			html: `
+			<ul>
+				<li>
+					<a href="#" class="inner">
+						<div class="item">
+							<div class="thumb">
+								<img src="https://search.pstatic.net/common?type=f&size=224x338" alt="레미제라블 - 부산" onerror="this.src='no_img.png'">
+							</div>
+							<div class="title_box">
+								<strong class="name line_3">레미제라블 - 부산</strong>
+								<span class="sub_text line_1">드림씨어터</span>
+							</div>
+						</div>
+					</a>
+				</li>
+			</ul>`,
+			filters:       &parsedFilters{},
+			expectedCount: 1,
+			expectedRaw:   1,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "레미제라블 - 부산", performances[0].Title)
+				assert.Equal(t, "드림씨어터", performances[0].Place)
+				assert.Contains(t, performances[0].Thumbnail, "https://search.pstatic.net/common?type=f&size=224x338")
+			},
+		},
+		{
+			name:        "실패: HTML 파싱 에러 (내용 비어있음 - 제목)",
+			html:        `<ul><li><div class="item"><div class="title_box"><strong class="name">   </strong><span class="sub_text">Place</span></div><div class="thumb"><img src="t.jpg"></div></div></li></ul>`,
+			filters:     &parsedFilters{},
+			expectError: true,
 		},
 	}
 
