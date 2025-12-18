@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	appconfig "github.com/darkkaiser/notify-server/config"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +46,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		prepare       func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) // Teardown 함수 반환
+		prepare       func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) // restore func() 반환
 		expectedError string
 	}{
 		{
@@ -147,10 +149,10 @@ func TestNewTask_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, cfg, teardown := tt.prepare(t)
-			defer teardown()
+			req, cfg, restore := tt.prepare(t)
+			defer restore()
 
-			// newTask 테스트 (createTask가 아닌 public API 테스트)
+			// newTask 사용 (createTask가 아닌 public API 테스트)
 			handler, err := newTask("test-instance", req, cfg)
 
 			if tt.expectedError != "" {
@@ -169,17 +171,144 @@ func TestNewTask_Comprehensive(t *testing.T) {
 	}
 }
 
-func TestInitRegistration(t *testing.T) {
-	// init() 함수에 의해 ID가 잘 등록되었는지 확인
-	cfgLookup, err := tasksvc.FindConfigForTest(ID, PredictionCommand)
-	assert.NoError(t, err)
-	assert.NotNil(t, cfgLookup)
-	// ConfigLookup.Task (Config) -> NewTask
-	assert.NotNil(t, cfgLookup.Task)
-	assert.NotNil(t, cfgLookup.Task.NewTask)
+func TestTask_Run(t *testing.T) {
+	// 실제 run 메서드가 커버되는 통합 테스트 성격의 유닛 테스트
+	tmpDir := t.TempDir()
 
-	// Snapshot 타입 확인
-	snap := cfgLookup.Command.NewSnapshot()
-	_, ok := snap.(*predictionSnapshot)
-	assert.True(t, ok)
+	// 가짜 분석 결과 파일 내용
+	fakeAnalysisContent := `
+======================
+- 분석결과
+======================
+당첨 확률이 높은 당첨번호 목록(5개)중에서 5개의 당첨번호가 추출되었습니다.
+
+당첨번호1 [ 1, 2, 3, 4, 5, 6 ]
+당첨번호2 [ 7, 8, 9, 10, 11, 12 ]
+당첨번호3 [ 13, 14, 15, 16, 17, 18 ]
+당첨번호4 [ 19, 20, 21, 22, 23, 24 ]
+당첨번호5 [ 25, 26, 27, 28, 29, 30 ]
+`
+	fakeLogFile := filepath.Join(tmpDir, "result_12345.log")
+
+	// Helper to setup fresh environment for each test
+	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *MockNotificationSender, *MockTaskResultStorage) {
+		mockExecutor := new(MockCommandExecutor)
+		mockProcess := new(MockCommandProcess)
+		mockSender := new(MockNotificationSender)
+		mockStorage := new(MockTaskResultStorage)
+
+		task := &task{
+			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test-instance", "telegram", tasksvc.RunByUser),
+			appPath:  tmpDir,
+			executor: mockExecutor,
+		}
+		task.SetStorage(mockStorage)
+		task.SetExecute(func(_ interface{}, _ bool) (string, interface{}, error) {
+			return task.executePrediction()
+		})
+
+		// Common Mock Setup
+		mockSender.On("SupportsHTML", mock.Anything).Return(true)
+		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		mockStorage.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		return task, mockExecutor, mockProcess, mockSender, mockStorage
+	}
+
+	// Test Cases
+	t.Run("Success Path", func(t *testing.T) {
+		task, mockExecutor, mockProcess, mockSender, _ := setup()
+
+		// MockProcess 설정
+		mockProcess.On("Wait").Return(nil)
+		stdout := fmt.Sprintf("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:%s)", fakeLogFile)
+		mockProcess.On("Stdout").Return(stdout)
+		// Stderr is not called in success path
+
+		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
+
+		err := os.WriteFile(fakeLogFile, []byte(fakeAnalysisContent), 0644)
+		require.NoError(t, err)
+
+		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
+			return assert.Contains(t, msg, "당첨 확률이 높은 당첨번호 목록")
+		})).Return(true)
+
+		var wg sync.WaitGroup
+		doneC := make(chan tasksvc.InstanceID, 1)
+		wg.Add(1)
+
+		task.Run(tasksvc.NewTaskContext(), mockSender, &wg, doneC)
+		wg.Wait()
+
+		mockProcess.AssertExpectations(t)
+		mockExecutor.AssertExpectations(t)
+		mockSender.AssertExpectations(t)
+	})
+
+	t.Run("Execution Failed (StartCommand Error)", func(t *testing.T) {
+		task, mockExecutor, _, mockSender, _ := setup()
+
+		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(nil, fmt.Errorf("fail to start java"))
+
+		mockSender.On("Notify", mock.MatchedBy(func(ctx tasksvc.TaskContext) bool {
+			return true
+		}), mock.Anything, mock.MatchedBy(func(msg string) bool {
+			return assert.Contains(t, msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+		})).Return(true)
+
+		var wg sync.WaitGroup
+		doneC := make(chan tasksvc.InstanceID, 1)
+		wg.Add(1)
+
+		task.Run(tasksvc.NewTaskContext(), mockSender, &wg, doneC)
+		wg.Wait()
+
+		mockExecutor.AssertExpectations(t)
+		mockSender.AssertExpectations(t)
+	})
+}
+
+// --- Local Mocks for Test ---
+
+type MockNotificationSender struct {
+	mock.Mock
+}
+
+func (m *MockNotificationSender) NotifyDefault(message string) bool {
+	args := m.Called(message)
+	return args.Bool(0)
+}
+
+func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) bool {
+	args := m.Called(taskCtx, notifierID, message)
+	return args.Bool(0)
+}
+
+func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
+	args := m.Called(notifierID)
+	return args.Bool(0)
+}
+
+type MockTaskResultStorage struct {
+	mock.Mock
+}
+
+func (m *MockTaskResultStorage) Get(taskID tasksvc.ID, commandID tasksvc.CommandID) (string, error) {
+	args := m.Called(taskID, commandID)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTaskResultStorage) Save(taskID tasksvc.ID, commandID tasksvc.CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
+}
+
+func (m *MockTaskResultStorage) SetStorage(storage tasksvc.TaskResultStorage) {
+	m.Called(storage)
+}
+
+func (m *MockTaskResultStorage) Load(taskID tasksvc.ID, commandID tasksvc.CommandID, data interface{}) error {
+	args := m.Called(taskID, commandID, data)
+	return args.Error(0)
 }
