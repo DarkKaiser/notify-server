@@ -40,8 +40,6 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	naverTask := &task{
 		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
-
-		appConfig: appConfig,
 	}
 
 	naverTask.SetFetcher(fetcher)
@@ -49,35 +47,15 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case WatchNewPerformancesCommand:
-		var commandConfig *watchNewPerformancesCommandConfig
-
-		for _, t := range appConfig.Tasks {
-			if req.TaskID == tasksvc.ID(t.ID) {
-				for _, c := range t.Commands {
-					if req.CommandID == tasksvc.CommandID(c.ID) {
-						cfg := &watchNewPerformancesCommandConfig{}
-						if err := tasksvc.DecodeMap(cfg, c.Data); err != nil {
-							return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
-						}
-						if err := cfg.validate(); err != nil {
-							return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
-						}
-						commandConfig = cfg
-						break
-					}
-				}
-				break
-			}
-		}
-
-		if commandConfig == nil {
-			return nil, tasksvc.ErrCommandConfigNotFound
+		commandConfig, err := findCommandConfig(appConfig, req.TaskID, req.CommandID)
+		if err != nil {
+			return nil, err
 		}
 
 		naverTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
 			if ok == false {
-				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchNewPerformancesSnapshot{}, previousSnapshot)
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("prevSnapshot", &watchNewPerformancesSnapshot{}, previousSnapshot)
 			}
 
 			return naverTask.executeWatchNewPerformances(commandConfig, prevSnapshot, supportsHTML)
@@ -89,8 +67,35 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	return naverTask, nil
 }
 
+func findCommandConfig(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchNewPerformancesCommandConfig, error) {
+	var commandConfig *watchNewPerformancesCommandConfig
+
+	for _, t := range appConfig.Tasks {
+		if taskID == tasksvc.ID(t.ID) {
+			for _, c := range t.Commands {
+				if commandID == tasksvc.CommandID(c.ID) {
+					cfg := &watchNewPerformancesCommandConfig{}
+					if err := tasksvc.DecodeMap(cfg, c.Data); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
+					}
+					if err := cfg.validate(); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandData.Error())
+					}
+					commandConfig = cfg
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if commandConfig == nil {
+		return nil, tasksvc.ErrCommandConfigNotFound
+	}
+
+	return commandConfig, nil
+}
+
 type task struct {
 	tasksvc.Task
-
-	appConfig *config.AppConfig
 }
