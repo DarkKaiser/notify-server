@@ -165,6 +165,37 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 				require.Equal(t, "Busan", snapshot.Performances[0].Place)
 			},
 		},
+		{
+			name: "Deduplication_PaginationDrift",
+			// Scenario:
+			// Page 1: [Item A, Item B]
+			// Page 2: [Item B, Item C] (Item B is duplicated due to pagination drift)
+			// Expected: [Item A, Item B, Item C] (Total 3, not 4)
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				// Page 1
+				html1 := fmt.Sprintf("<ul>%s%s</ul>", makeHTMLItem("Item A", "Place A"), makeHTMLItem("Item B", "Place B"))
+				b1, _ := json.Marshal(html1)
+				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b1))))
+
+				// Page 2
+				html2 := fmt.Sprintf("<ul>%s%s</ul>", makeHTMLItem("Item B", "Place B"), makeHTMLItem("Item C", "Place C"))
+				b2, _ := json.Marshal(html2)
+				m.SetResponse(makeMockSearchURL(query, 2), []byte(fmt.Sprintf(`{"html": %s}`, string(b2))))
+
+				// Page 3 (Empty)
+				m.SetResponse(makeMockSearchURL(query, 3), []byte(`{"html": ""}`))
+			},
+			validate: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				snapshot, ok := data.(*watchNewPerformancesSnapshot)
+				require.True(t, ok)
+
+				require.Len(t, snapshot.Performances, 3, "Duplicate Item B should be removed")
+				require.Equal(t, "Item A", snapshot.Performances[0].Title)
+				require.Equal(t, "Item B", snapshot.Performances[1].Title)
+				require.Equal(t, "Item C", snapshot.Performances[2].Title)
+			},
+		},
 	}
 
 	for _, tt := range tests {

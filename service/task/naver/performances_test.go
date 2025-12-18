@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"fmt"
 	"testing"
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
@@ -142,6 +143,112 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tasksvc.Filter(tt.item, tt.included, tt.excluded)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestParsePerformancesFromHTML 파싱 로직을 HTML 입력값 기반으로 직접 테스트합니다. (Unit Test)
+func TestParsePerformancesFromHTML(t *testing.T) {
+	// Helper to make full list item HTML
+	makeItem := func(title, place, thumbSrc string) string {
+		return fmt.Sprintf(`
+			<li>
+				<div class="item">
+					<div class="title_box">
+						<strong class="name">%s</strong>
+						<span class="sub_text">%s</span>
+					</div>
+					<div class="thumb">
+						<img src="%s">
+					</div>
+				</div>
+			</li>`, title, place, thumbSrc)
+	}
+
+	tests := []struct {
+		name          string
+		html          string
+		filters       *parsedFilters
+		expectedCount int                                             // 필터링 후 예상 개수
+		expectedRaw   int                                             // 필터링 전 raw 개수
+		expectError   bool                                            // 에러 발생 여부
+		validateItems func(t *testing.T, performances []*performance) // 세부 항목 검증
+	}{
+		{
+			name:          "성공: 단일 항목 파싱",
+			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "cats.jpg")),
+			filters:       &parsedFilters{}, // 필터 없음
+			expectedCount: 1,
+			expectedRaw:   1,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "Cats", performances[0].Title)
+				assert.Equal(t, "Broadway", performances[0].Place)
+				assert.Contains(t, performances[0].Thumbnail, "cats.jpg")
+			},
+		},
+		{
+			name: "성공: 필터링 (Include)",
+			html: fmt.Sprintf("<ul>%s%s</ul>",
+				makeItem("Cats Musical", "Seoul", "1.jpg"),
+				makeItem("Dog Show", "Seoul", "2.jpg")),
+			filters: &parsedFilters{
+				TitleIncluded: []string{"Musical"},
+			},
+			expectedCount: 1, // Cats only
+			expectedRaw:   2,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "Cats Musical", performances[0].Title)
+			},
+		},
+		{
+			name: "성공: 필터링 (Exclude)",
+			html: fmt.Sprintf("<ul>%s%s</ul>",
+				makeItem("Happy Musical", "Seoul", "1.jpg"),
+				makeItem("Sad Drama", "Seoul", "2.jpg")),
+			filters: &parsedFilters{
+				TitleExcluded: []string{"Drama"},
+			},
+			expectedCount: 1, // Happy only
+			expectedRaw:   2,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "Happy Musical", performances[0].Title)
+			},
+		},
+		{
+			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 제목)",
+			html:        `<ul><li><div class="item"><div class="title_box"></div></div></li></ul>`, // strong.name 없음
+			filters:     &parsedFilters{},
+			expectError: true,
+		},
+		{
+			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 썸네일)",
+			html:        `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
+			filters:     &parsedFilters{},
+			expectError: true,
+		},
+		{
+			name:          "성공: 빈 결과",
+			html:          `<ul></ul>`,
+			filters:       &parsedFilters{},
+			expectedCount: 0,
+			expectedRaw:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			perfs, rawCount, err := parsePerformancesFromHTML(tt.html, tt.filters)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedCount, len(perfs), "필터링 후 개수가 일치해야 합니다")
+				assert.Equal(t, tt.expectedRaw, rawCount, "Raw 개수가 일치해야 합니다")
+				if tt.validateItems != nil {
+					tt.validateItems(t, perfs)
+				}
+			}
 		})
 	}
 }

@@ -138,6 +138,11 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 	searchPerformancePageIndex := 1
 
+	// 중복 제거를 위한 맵 (Key: Title|Place)
+	// 라이브 서비스 특성상 수집 중 데이터가 밀려서(Pagination Drift) 이전 페이지의 내용이
+	// 다음 페이지에 다시 나올 수 있으므로, 세션 내에서 중복을 제거합니다.
+	seen := make(map[string]bool)
+
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
@@ -175,37 +180,26 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 			return nil, err
 		}
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(searchResultData.HTML))
-		if err != nil {
-			return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
-		}
-
-		// 읽어온 페이지에서 공연정보를 추출한다.
-		ps := doc.Find(selectorPerformanceItem)
-		ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
-			p, parseErr := parsePerformance(s)
-			if parseErr != nil {
-				err = parseErr
-				return false
-			}
-
-			if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
-				// 필터링 로깅 (Verbose)
-				// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
-				return true
-			}
-
-			performances = append(performances, p)
-			return true
-		})
+		// HTML 파싱 (별도 함수 위임)
+		pagePerformances, rawCount, err := parsePerformancesFromHTML(searchResultData.HTML, filters)
 		if err != nil {
 			return nil, err
 		}
 
+		// 중복 제거 및 병합
+		for _, p := range pagePerformances {
+			key := fmt.Sprintf("%s|%s", p.Title, p.Place)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			performances = append(performances, p)
+		}
+
 		searchPerformancePageIndex += 1
 
-		// 불러온 데이터가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
-		if ps.Length() == 0 {
+		// 불러온 데이터(Raw Count)가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
+		if rawCount == 0 {
 			logrus.WithField("last_page", searchPerformancePageIndex-1).Debug("더 이상 공연 정보가 없어 수집을 종료합니다")
 			break
 		}
@@ -215,6 +209,45 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 	logrus.WithField("total_count", len(performances)).Info("공연 정보 수집을 완료했습니다")
 	return performances, nil
+}
+
+// parsePerformancesFromHTML HTML 문자열을 파싱하여 공연 정보 목록을 반환합니다.
+// 반환값: (필터링된 공연 목록, 필터링 전 전체 아이템 개수, 에러)
+func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performance, int, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
+	}
+
+	var performances []*performance
+	var parseError error
+
+	// 읽어온 페이지에서 공연정보를 추출한다.
+	ps := doc.Find(selectorPerformanceItem)
+	rawCount := ps.Length()
+
+	ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
+		p, parseErr := parsePerformance(s)
+		if parseErr != nil {
+			parseError = parseErr
+			return false
+		}
+
+		if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+			// 필터링 로깅 (Verbose)
+			// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
+			return true
+		}
+
+		performances = append(performances, p)
+		return true
+	})
+
+	if parseError != nil {
+		return nil, 0, parseError
+	}
+
+	return performances, rawCount, nil
 }
 
 // parsePerformance 단일 공연 정보를 파싱합니다.
