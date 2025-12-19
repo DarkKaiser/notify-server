@@ -9,7 +9,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestKeyedMutex_LockUnlock_Scenarios_TableDriven 테이블 주도 테스트
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+// assertRefCheck는 KeyedMutex의 RefCount를 검증하는 헬퍼 함수입니다.
+func assertRefCheck(t *testing.T, km *KeyedMutex, key string, expected int) {
+	t.Helper()
+	km.mu.Lock()
+	defer km.mu.Unlock()
+	entry, ok := km.locks[key]
+	assert.True(t, ok, "키가 존재해야 합니다")
+	if ok {
+		assert.Equal(t, expected, entry.refCount, "RefCount 불일치")
+	}
+}
+
+// =============================================================================
+// Basic Lock/Unlock Tests
+// =============================================================================
+
+// TestKeyedMutex_LockUnlock_Scenarios_TableDriven은 다양한 Lock/Unlock 시나리오를 검증합니다.
+//
+// 검증 항목:
+//   - 단일 키 Lock/Unlock
+//   - 여러 다른 키 Lock/Unlock
+//   - 동일 키 순차적 Lock/Unlock
 func TestKeyedMutex_LockUnlock_Scenarios_TableDriven(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -31,6 +56,16 @@ func TestKeyedMutex_LockUnlock_Scenarios_TableDriven(t *testing.T) {
 			keys:     []string{"key1", "key1"},
 			parallel: false,
 		},
+		{
+			name:     "Empty String Key",
+			keys:     []string{""},
+			parallel: false,
+		},
+		{
+			name:     "Special Characters in Key",
+			keys:     []string{"key:with:colons", "key/with/slashes", "key-with-dashes"},
+			parallel: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -45,7 +80,16 @@ func TestKeyedMutex_LockUnlock_Scenarios_TableDriven(t *testing.T) {
 	}
 }
 
-// TestKeyedMutex_Concurrency_Scenarios 동시성 시나리오 테스트
+// =============================================================================
+// Concurrency Tests
+// =============================================================================
+
+// TestKeyedMutex_Concurrency_Scenarios는 고동시성 환경에서 KeyedMutex의 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 단일 키에 대한 높은 동시성 (Hot Key)
+//   - 여러 키에 대한 높은 동시성
+//   - 모든 작업이 누락 없이 수행되는지 검증
 func TestKeyedMutex_Concurrency_Scenarios(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -64,6 +108,12 @@ func TestKeyedMutex_Concurrency_Scenarios(t *testing.T) {
 			workers:    100,
 			iterations: 100,
 			keys:       []string{"key1", "key2", "key3", "key4"},
+		},
+		{
+			name:       "Moderate Concurrency on Many Keys",
+			workers:    50,
+			iterations: 50,
+			keys:       []string{"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9", "k10"},
 		},
 	}
 
@@ -113,7 +163,15 @@ func TestKeyedMutex_Concurrency_Scenarios(t *testing.T) {
 	}
 }
 
-// TestKeyedMutex_RefCountCleanup_Deterministic 결정론적 RefCount 테스트
+// =============================================================================
+// RefCount and Cleanup Tests
+// =============================================================================
+
+// TestKeyedMutex_RefCountCleanup_Deterministic는 RefCount 기반 메모리 정리를 검증합니다.
+//
+// 검증 항목:
+//   - RefCount가 올바르게 증가/감소하는지
+//   - 모든 고루틴이 완료된 후 맵이 비워지는지
 func TestKeyedMutex_RefCountCleanup_Deterministic(t *testing.T) {
 	km := NewKeyedMutex()
 	key := "cleanup-key"
@@ -161,14 +219,115 @@ func TestKeyedMutex_RefCountCleanup_Deterministic(t *testing.T) {
 	assert.Equal(t, 0, lenLocks, "맵이 완전히 비워져야 합니다")
 }
 
-// assertRefCheck RefCount 검증 헬퍼
-func assertRefCheck(t *testing.T, km *KeyedMutex, key string, expected int) {
-	t.Helper()
-	km.mu.Lock()
-	defer km.mu.Unlock()
-	entry, ok := km.locks[key]
-	assert.True(t, ok, "키가 존재해야 합니다")
-	if ok {
-		assert.Equal(t, expected, entry.refCount, "RefCount 불일치")
+// =============================================================================
+// Edge Case Tests
+// =============================================================================
+
+// TestKeyedMutex_EdgeCases는 엣지 케이스를 검증합니다.
+//
+// 검증 항목:
+//   - Unlock without Lock (안전하게 처리되는지)
+//   - 매우 긴 키 이름
+//   - Unicode 키 이름
+func TestKeyedMutex_EdgeCases(t *testing.T) {
+	t.Run("Unlock without Lock", func(t *testing.T) {
+		km := NewKeyedMutex()
+		// Unlock을 Lock 없이 호출 (패닉이 발생하지 않아야 함)
+		assert.NotPanics(t, func() {
+			km.Unlock("non-existent-key")
+		}, "Lock 없이 Unlock을 호출해도 패닉이 발생하지 않아야 합니다")
+	})
+
+	t.Run("Very Long Key Name", func(t *testing.T) {
+		km := NewKeyedMutex()
+		longKey := string(make([]byte, 10000))
+		for i := range longKey {
+			longKey = longKey[:i] + "a"
+		}
+
+		km.Lock(longKey)
+		km.Unlock(longKey)
+
+		// 맵이 비워졌는지 확인
+		km.mu.Lock()
+		lenLocks := len(km.locks)
+		km.mu.Unlock()
+		assert.Equal(t, 0, lenLocks, "긴 키도 정상적으로 정리되어야 합니다")
+	})
+
+	t.Run("Unicode Key Name", func(t *testing.T) {
+		km := NewKeyedMutex()
+		unicodeKey := "키-🔒-テスト-测试"
+
+		km.Lock(unicodeKey)
+		km.Unlock(unicodeKey)
+
+		// 맵이 비워졌는지 확인
+		km.mu.Lock()
+		lenLocks := len(km.locks)
+		km.mu.Unlock()
+		assert.Equal(t, 0, lenLocks, "Unicode 키도 정상적으로 정리되어야 합니다")
+	})
+
+	t.Run("Rapid Lock/Unlock Cycles", func(t *testing.T) {
+		km := NewKeyedMutex()
+		key := "rapid-key"
+
+		for i := 0; i < 1000; i++ {
+			km.Lock(key)
+			km.Unlock(key)
+		}
+
+		// 맵이 비워졌는지 확인
+		km.mu.Lock()
+		lenLocks := len(km.locks)
+		km.mu.Unlock()
+		assert.Equal(t, 0, lenLocks, "빠른 Lock/Unlock 사이클 후에도 정리되어야 합니다")
+	})
+}
+
+// =============================================================================
+// Benchmark Tests
+// =============================================================================
+
+// BenchmarkKeyedMutex_SingleKey는 단일 키에 대한 Lock/Unlock 성능을 측정합니다.
+func BenchmarkKeyedMutex_SingleKey(b *testing.B) {
+	km := NewKeyedMutex()
+	key := "bench-key"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		km.Lock(key)
+		km.Unlock(key)
 	}
+}
+
+// BenchmarkKeyedMutex_MultipleKeys는 여러 키에 대한 Lock/Unlock 성능을 측정합니다.
+func BenchmarkKeyedMutex_MultipleKeys(b *testing.B) {
+	km := NewKeyedMutex()
+	keys := []string{"key1", "key2", "key3", "key4", "key5"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := keys[i%len(keys)]
+		km.Lock(key)
+		km.Unlock(key)
+	}
+}
+
+// BenchmarkKeyedMutex_Parallel는 병렬 환경에서의 성능을 측정합니다.
+func BenchmarkKeyedMutex_Parallel(b *testing.B) {
+	km := NewKeyedMutex()
+	keys := []string{"key1", "key2", "key3", "key4"}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := keys[i%len(keys)]
+			km.Lock(key)
+			km.Unlock(key)
+			i++
+		}
+	})
 }

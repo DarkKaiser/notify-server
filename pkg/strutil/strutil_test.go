@@ -6,6 +6,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// =============================================================================
+// Case Conversion Tests
+// =============================================================================
+
+// TestToSnakeCase는 ToSnakeCase 함수의 CamelCase/PascalCase를 snake_case로 변환하는 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 빈 문자열 처리
+//   - 단순 문자열 (소문자 변환)
+//   - 숫자 포함 문자열
+//   - CamelCase 변환
+//   - PascalCase 변환
+//   - 공백 포함 문자열
 func TestToSnakeCase(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -33,6 +46,20 @@ func TestToSnakeCase(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Space Normalization Tests
+// =============================================================================
+
+// TestNormalizeSpaces는 NormalizeSpaces 함수의 공백 정규화 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 한글 문자열 (변경 없음)
+//   - 앞뒤 공백 제거
+//   - 단일 공백 유지
+//   - 연속된 공백을 하나로 축약
+//   - 복잡한 공백 패턴
+//   - 특수 문자 포함
+//   - 여러 줄 문자열 (한 줄로 축약)
 func TestNormalizeSpaces(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -72,6 +99,15 @@ func TestNormalizeSpaces(t *testing.T) {
 	}
 }
 
+// TestNormalizeMultiLineSpaces는 NormalizeMultiLineSpaces 함수의 여러 줄 공백 정규화 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 빈 문자열
+//   - 공백만 있는 문자열
+//   - 앞뒤 공백 제거
+//   - 복잡한 여러 줄 문자열
+//   - 연속된 빈 줄을 하나로 축약
+//   - 앞뒤 빈 줄 제거
 func TestNormalizeMultiLineSpaces(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -90,25 +126,25 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 		
 		
 				라인3
-		
+
 				라인4
-		
-		
-		
+
+
+
 				라인5
-		
-		
+
+
 			`,
 			expected: "라인 1\r\n라인2\r\n\r\n라인3\r\n\r\n라인4\r\n\r\n라인5",
 		},
 		{
 			name: "Complex multiline 2",
 			s: ` 라인    1
-		
-		
+
+
 			라인2
-		
-		
+
+
 			라인3
 			라인4
 			라인5   `,
@@ -139,6 +175,17 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Number Formatting Tests
+// =============================================================================
+
+// TestFormatCommas는 FormatCommas 함수의 숫자 천 단위 구분 기호 포맷팅 동작을 검증합니다.
+//
+// 검증 항목:
+//   - int 타입 (0, 양수, 음수)
+//   - int64 타입 (최대값, 최소값)
+//   - uint 타입
+//   - uint64 타입 (최대값)
 func TestFormatCommas(t *testing.T) {
 	t.Run("int", func(t *testing.T) {
 		tests := []struct {
@@ -194,6 +241,20 @@ func TestFormatCommas(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// String Splitting Tests
+// =============================================================================
+
+// TestSplitAndTrim은 SplitAndTrim 함수의 문자열 분리 및 트림 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 쉼표로 구분된 문자열
+//   - 빈 항목 제거
+//   - 공백 포함 항목 트림
+//   - 빈 구분자
+//   - 여러 문자 구분자
+//   - 구분자가 없는 경우
+//   - 빈 문자열 (nil 반환)
 func TestSplitAndTrim(t *testing.T) {
 	var notAssign []string
 
@@ -219,6 +280,17 @@ func TestSplitAndTrim(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Sensitive Data Masking Tests
+// =============================================================================
+
+// TestMaskSensitiveData는 MaskSensitiveData 함수의 민감 정보 마스킹 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 빈 문자열
+//   - 짧은 문자열 (1-3자) - 전체 마스킹
+//   - 중간 길이 문자열 (4-12자) - 앞 4자 표시
+//   - 긴 문자열 (13자 이상) - 앞 4자 + 마스킹 + 뒤 4자
 func TestMaskSensitiveData(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -94,6 +94,8 @@ func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(responseBody)),
 		}, nil
+	} else {
+		// fmt.Printf("MockHTTPFetcher: URL not found: %v\nBytes: %v\nAvailable: %d\n", url, []byte(url), len(m.Responses))
 	}
 
 	// 설정되지 않은 URL은 404 Not Found 반환

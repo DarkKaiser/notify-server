@@ -6,9 +6,19 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/api/auth"
 	"github.com/darkkaiser/notify-server/service/api/testutil"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Handler Tests
+// =============================================================================
+
+// TestNewHandler_Table은 Handler 생성을 검증합니다.
+//
+// 검증 항목:
+//   - 단일 애플리케이션 설정
+//   - 다중 애플리케이션 설정
+//   - 빈 애플리케이션 목록 처리
 func TestNewHandler_Table(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -60,8 +70,8 @@ func TestNewHandler_Table(t *testing.T) {
 
 			h := NewHandler(appManager, mockService)
 
-			assert.NotNil(t, h)
-			assert.NotNil(t, h.applicationManager)
+			require.NotNil(t, h, "Handler should not be nil")
+			require.NotNil(t, h.applicationManager, "ApplicationManager should not be nil")
 
 			// ApplicationManager stores apps in unexported field, so we rely on NewHandler success
 			// In auth package test we verified ApplicationManager behavior.

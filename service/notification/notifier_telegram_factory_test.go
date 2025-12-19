@@ -6,8 +6,18 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Telegram Bot API Client Tests
+// =============================================================================
+
+// TestTelegramBotAPIClient_GetSelf는 Telegram Bot API Client의 GetSelf 메서드를 검증합니다.
+//
+// 검증 항목:
+//   - Bot 정보 조회
+//   - User ID, UserName, FirstName, LastName 반환
 func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 	t.Run("GetSelf function verification", func(t *testing.T) {
 		mockBotAPI := &tgbotapi.BotAPI{
@@ -29,6 +39,16 @@ func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// Telegram Notifier Factory Tests
+// =============================================================================
+
+// TestNewTelegramNotifierWithBot_Table은 Telegram Notifier 생성을 검증합니다.
+//
+// 검증 항목:
+//   - 기본 설정으로 Notifier 생성
+//   - Task 설정이 있는 경우 명령어 등록
+//   - 비활성화된 Task 명령어 무시
 func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -99,9 +119,10 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 
 			mockExecutor := &MockExecutor{}
 			n := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
+
 			notifier, ok := n.(*telegramNotifier)
-			assert.True(t, ok)
-			assert.NotNil(t, notifier)
+			require.True(t, ok, "Type assertion should succeed")
+			require.NotNil(t, notifier, "Notifier should not be nil")
 
 			assert.Len(t, notifier.botCommands, tt.expectedCommandCount)
 			if tt.expectedCommandCount > 0 {

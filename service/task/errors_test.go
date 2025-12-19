@@ -6,9 +6,17 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/errors"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestErrorTypes verifies the string constants of ErrorType definitions.
+// =============================================================================
+// Error Type Tests
+// =============================================================================
+
+// TestErrorTypes는 ErrorType 정의의 문자열 상수를 검증합니다.
+//
+// 검증 항목:
+//   - ErrorType 문자열 값
 func TestErrorTypes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -23,7 +31,12 @@ func TestErrorTypes(t *testing.T) {
 	}
 }
 
-// TestErrorCreation verifies that specific error types function correctly with pkg/errors.New.
+// TestErrorCreation은 특정 에러 타입이 pkg/errors.New와 올바르게 작동하는지 검증합니다.
+//
+// 검증 항목:
+//   - GetType이 올바른 타입 반환
+//   - errors.Is 헬퍼 동작
+//   - 에러 메시지 포함
 func TestErrorCreation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -46,7 +59,17 @@ func TestErrorCreation(t *testing.T) {
 	}
 }
 
-// TestSentinelErrors verifies the pre-defined error instances.
+// =============================================================================
+// Sentinel Error Tests
+// =============================================================================
+
+// TestSentinelErrors는 미리 정의된 에러 인스턴스를 검증합니다.
+//
+// 검증 항목:
+//   - ErrTaskNotSupported 에러
+//   - ErrCommandNotSupported 에러
+//   - 에러 타입 분류
+//   - 에러 메시지
 func TestSentinelErrors(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -70,7 +93,7 @@ func TestSentinelErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.NotNil(t, tt.actualErr)
+			require.NotNil(t, tt.actualErr, "Error should not be nil")
 
 			// Check underlying type classification
 			assert.Equal(t, tt.expectedType, errors.GetType(tt.actualErr))
@@ -80,7 +103,7 @@ func TestSentinelErrors(t *testing.T) {
 
 			// Verify standard errors.Is identity
 			var appErr *errors.AppError
-			assert.True(t, errors.As(tt.actualErr, &appErr))
+			require.True(t, errors.As(tt.actualErr, &appErr), "Should be AppError")
 		})
 	}
 }

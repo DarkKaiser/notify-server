@@ -7,8 +7,20 @@ import (
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Notifier Factory Tests
+// =============================================================================
+
+// TestDefaultNotifierFactory_CreateNotifiers_Table은 DefaultNotifierFactory의 CreateNotifiers 메서드를 검증합니다.
+//
+// 검증 항목:
+//   - Telegram Notifier 생성 성공
+//   - 빈 설정 처리
+//   - 여러 프로세서 처리
+//   - 프로세서 에러 처리
 func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -79,7 +91,9 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			factory := NewNotifierFactory() // Using real factory
+			factory := NewNotifierFactory()
+			require.NotNil(t, factory, "Factory should not be nil")
+
 			for _, proc := range tt.registerProcs {
 				factory.RegisterProcessor(proc)
 			}
@@ -88,9 +102,9 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			handlers, err := factory.CreateNotifiers(tt.cfg, mockExecutor)
 
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err, "Should return error")
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err, "Should not return error")
 				assert.Len(t, handlers, tt.expectHandlers)
 			}
 		})

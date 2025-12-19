@@ -5,17 +5,25 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/darkkaiser/notify-server/config"
 	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-func TestTelegramNotifier_HandleCommand(t *testing.T) {
-	chatID := int64(12345)
+// =============================================================================
+// Command Handler Tests
+// =============================================================================
 
+// TestTelegramNotifier_HandleCommand는 Telegram 명령어 핸들러를 검증합니다.
+//
+// 검증 항목:
+//   - 알 수 없는 명령어 처리
+//   - /help 명령어 처리
+//   - Task 실행 명령어 처리
+func TestTelegramNotifier_HandleCommand(t *testing.T) {
 	// Create common app config for command tests
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
@@ -88,22 +96,15 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockBot := &MockTelegramBot{
-				updatesChan: make(chan tgbotapi.Update, 1),
-			}
-			mockExecutor := &MockExecutor{}
+			// Setup
+			notifier, mockBot, mockExecutor := setupTelegramTest(t, appConfig)
+			require.NotNil(t, notifier)
+			require.NotNil(t, mockBot)
+			require.NotNil(t, mockExecutor)
 
-			// Setup notifier
-			// Using type assertion to access internal method if needed, but we test public Run loop interaction
-			// Just like the previous file, but focusing on different logic aspects?
-			// Actually this file seems to duplicate the Run loop testing but focuses on logic.
-			// The original file used `createTestNotifier` and ran `Run`.
-			// We will follow the same pattern: Run the bot in a goroutine and send updates.
-
-			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
-
-			// Common Mock Expectations
-			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}).Maybe()
+			// Override GetUpdatesChan to return actual channel
+			mockBot.ExpectedCalls = nil // Clear previous expectations
+			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: testTelegramBotUsername}).Maybe()
 			mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan))
 			mockBot.On("StopReceivingUpdates").Return()
 
@@ -118,35 +119,22 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 
 			// Run
 			ctx, cancel := context.WithCancel(context.Background())
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				notifier.Run(ctx)
-			}()
+			defer cancel()
+
+			var wg sync.WaitGroup
+			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Send update
 			mockBot.updatesChan <- tgbotapi.Update{
 				Message: &tgbotapi.Message{
-					Chat: &tgbotapi.Chat{ID: chatID},
+					Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 					Text: tt.commandText,
 				},
 			}
 
 			// Wait if action expected
 			if tt.expectAction {
-				done := make(chan struct{})
-				go func() {
-					wgAction.Wait()
-					close(done)
-				}()
-
-				select {
-				case <-done:
-					// Success
-				case <-time.After(1 * time.Second):
-					t.Fatal("Timeout waiting for command action")
-				}
+				waitForActionWithTimeout(t, &wgAction, testTelegramTimeout)
 			}
 
 			// Cleanup

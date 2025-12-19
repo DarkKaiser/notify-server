@@ -10,7 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockHandler 테스트용 Handler 구현체
+// =============================================================================
+// Test Mocks
+// =============================================================================
+
+// MockHandler는 테스트용 Handler 구현체입니다.
 type MockHandler struct {
 	id         ID
 	commandID  CommandID
@@ -56,7 +60,14 @@ func init() {
 	defaultRegistry.RegisterForTest("TEST_TASK", config)
 }
 
-// setupTestService 중복되는 테스트 초기화 로직을 캡슐화하는 헬퍼 함수
+// setupTestService는 테스트를 위한 공통 설정을 생성합니다.
+//
+// 반환값:
+//   - Service: 설정된 서비스
+//   - MockNotificationSender: Mock 알림 발송자
+//   - Context: 컨텍스트
+//   - CancelFunc: 취소 함수
+//   - WaitGroup: 동기화용 WaitGroup
 func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
@@ -75,6 +86,16 @@ func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.
 	return service, mockSender, ctx, cancel, serviceStopWG
 }
 
+// =============================================================================
+// Service Creation Tests
+// =============================================================================
+
+// TestNewService는 서비스 생성을 검증합니다.
+//
+// 검증 항목:
+//   - 서비스 생성
+//   - 초기 상태 확인
+//   - 채널 초기화
 func TestNewService(t *testing.T) {
 	// 테스트용 설정
 	appConfig := &config.AppConfig{}
@@ -93,6 +114,11 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service.taskStopWG, "taskStopWG가 초기화되어야 합니다")
 }
 
+// =============================================================================
+// Service Configuration Tests
+// =============================================================================
+
+// TestService_SetNotificationSender는 알림 발송자 설정을 검증합니다.
 func TestService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
@@ -106,6 +132,11 @@ func TestService_SetNotificationSender(t *testing.T) {
 	require.Equal(t, mockSender, service.notificationSender, "알림 발송자가 올바르게 설정되어야 합니다")
 }
 
+// =============================================================================
+// Task Execution Tests
+// =============================================================================
+
+// TestService_TaskRun_Success는 Task 정상 실행을 검증합니다.
 func TestService_TaskRun_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
@@ -126,6 +157,7 @@ func TestService_TaskRun_Success(t *testing.T) {
 	serviceStopWG.Wait()
 }
 
+// TestService_TaskRunWithContext_Success는 Task Context와 함께 Task 실행을 검증합니다.
 func TestService_TaskRunWithContext_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
@@ -150,6 +182,7 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	serviceStopWG.Wait()
 }
 
+// TestService_TaskCancel_Success는 Task 취소를 검증합니다.
 func TestService_TaskCancel_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
@@ -165,6 +198,7 @@ func TestService_TaskCancel_Success(t *testing.T) {
 	serviceStopWG.Wait()
 }
 
+// TestService_TaskRun_UnsupportedTask는 지원하지 않는 Task 처리를 검증합니다.
 func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	service, mockSender, _, cancel, serviceStopWG := setupTestService(t)
 
@@ -191,6 +225,11 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	serviceStopWG.Wait()
 }
 
+// =============================================================================
+// Concurrency Tests
+// =============================================================================
+
+// TestService_Concurrency는 동시성 처리를 검증합니다.
 func TestService_Concurrency(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
@@ -231,6 +270,7 @@ func TestService_Concurrency(t *testing.T) {
 	serviceStopWG.Wait()
 }
 
+// TestService_CancelConcurrency는 동시 취소 처리를 검증합니다.
 func TestService_CancelConcurrency(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 

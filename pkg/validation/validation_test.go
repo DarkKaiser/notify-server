@@ -11,6 +11,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Cron Expression Validation Tests
+// =============================================================================
+
+// TestValidateRobfigCronExpression은 Cron 표현식 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 표준 Cron (5 필드) - 6 필드 설정으로 인해 거부됨
+//   - 확장 Cron (6 필드) - 초 단위 포함
+//   - 특수 표현식 (@daily, @hourly 등)
+//   - 잘못된 형식 (필드 부족, 잘못된 문자)
+//   - 빈 문자열
 func TestValidateRobfigCronExpression(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -62,6 +74,17 @@ func TestValidateRobfigCronExpression(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Duration Validation Tests
+// =============================================================================
+
+// TestValidateDuration은 Duration 문자열 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 유효한 단위 (초, 밀리초, 분, 시간)
+//   - 복합 형식 (1h30m)
+//   - 잘못된 형식
+//   - 빈 문자열
 func TestValidateDuration(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -90,6 +113,19 @@ func TestValidateDuration(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// URL Validation Tests
+// =============================================================================
+
+// TestValidateURL은 URL 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 유효한 HTTP/HTTPS URL
+//   - 포트, 경로, 쿼리 포함 URL
+//   - Localhost 및 IP 주소
+//   - 잘못된 스키마 (ftp)
+//   - 잘못된 형식 (공백, 호스트 누락)
+//   - 빈 문자열 (허용됨)
 func TestValidateURL(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -123,6 +159,19 @@ func TestValidateURL(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// CORS Origin Validation Tests
+// =============================================================================
+
+// TestValidateCORSOrigin은 CORS Origin 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 와일드카드 (*)
+//   - 유효한 HTTP/HTTPS Origin
+//   - 포트 포함 Origin
+//   - 서브도메인
+//   - 잘못된 형식 (슬래시, 경로, 쿼리, 잘못된 스키마)
+//   - 빈 문자열 및 공백
 func TestValidateCORSOrigin(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -156,6 +205,17 @@ func TestValidateCORSOrigin(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Port Validation Tests
+// =============================================================================
+
+// TestValidatePort는 포트 번호 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 유효한 포트 (1-65535)
+//   - 경계값 (최소 1, 최대 65535)
+//   - 시스템 예약 포트 (1-1023) - 경고만 출력
+//   - 잘못된 포트 (0, 음수, 범위 초과)
 func TestValidatePort(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -184,6 +244,18 @@ func TestValidatePort(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// File Existence Validation Tests
+// =============================================================================
+
+// TestValidateFileExists는 파일 존재 여부 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 존재하는 파일
+//   - 존재하는 디렉토리
+//   - 존재하지 않는 파일
+//   - warnOnly 옵션 (경고만 출력)
+//   - 빈 경로 (허용됨)
 func TestValidateFileExists(t *testing.T) {
 	// Create temporary file
 	tmpFile, err := os.CreateTemp("", "testfile")
@@ -225,6 +297,15 @@ func TestValidateFileExists(t *testing.T) {
 	}
 }
 
+// TestValidateFileExistsOrURL은 파일 또는 URL 유효성 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 유효한 URL
+//   - 잘못된 URL
+//   - 존재하는 파일
+//   - 존재하지 않는 파일
+//   - warnOnly 옵션
+//   - 빈 경로 (허용됨)
 func TestValidateFileExistsOrURL(t *testing.T) {
 	// Create temporary file
 	tmpFile, err := os.CreateTemp("", "testfile")
@@ -258,6 +339,16 @@ func TestValidateFileExistsOrURL(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// Duplicate Validation Tests
+// =============================================================================
+
+// TestValidateNoDuplicate는 중복 검사를 검증합니다.
+//
+// 검증 항목:
+//   - 중복 없음
+//   - 중복 있음
+//   - 빈 목록
 func TestValidateNoDuplicate(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -284,9 +375,9 @@ func TestValidateNoDuplicate(t *testing.T) {
 	}
 }
 
-// ----------------------------------------------------------------------------
-// Examples
-// ----------------------------------------------------------------------------
+// =============================================================================
+// Examples (Documentation)
+// =============================================================================
 
 func ExampleValidateDuration() {
 	if err := ValidateDuration("10m"); err == nil {
