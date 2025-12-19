@@ -19,6 +19,9 @@ const (
 	// searchBaseURL 네이버 검색 API의 엔드포인트 URL입니다.
 	searchBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 
+	// naverSearchURL 공연 제목 클릭 시 이동할 네이버 검색 URL입니다.
+	naverSearchURL = "https://search.naver.com/search.naver"
+
 	// CSS Selectors
 	// selectorPerformanceItem 네이버 공연 검색 결과의 리스트 컨테이너(ul) 내에서
 	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
@@ -101,7 +104,16 @@ type performance struct {
 }
 
 func (p *performance) Equals(other *performance) bool {
+	if p == nil || other == nil {
+		return false
+	}
 	return p.Title == other.Title && p.Place == other.Place
+}
+
+// Key 중복 제거를 위한 고유 키를 생성합니다.
+// Equals 메서드와 동일한 기준(Title + Place)을 사용하여 일관성을 보장합니다.
+func (p *performance) Key() string {
+	return fmt.Sprintf("%s|%s", p.Title, p.Place)
 }
 
 func (p *performance) String(messageTypeHTML bool, mark string) string {
@@ -111,7 +123,7 @@ func (p *performance) String(messageTypeHTML bool, mark string) string {
 		if p.Thumbnail != "" {
 			thumbnailLink = fmt.Sprintf(`<a href="%s">&#8205;</a>`, p.Thumbnail)
 		}
-		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s%s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place, thumbnailLink)
+		return fmt.Sprintf("☞ <a href=\"%s?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s%s", naverSearchURL, url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place, thumbnailLink)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", p.Title, mark, p.Place))
 }
@@ -194,7 +206,7 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 		// 중복 제거 및 병합
 		for _, p := range pagePerformances {
-			key := fmt.Sprintf("%s|%s", p.Title, p.Place)
+			key := p.Key()
 			if seen[key] {
 				continue
 			}
@@ -231,27 +243,22 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 
 	// 미리 용량을 할당하여 메모리 재할당 최소화 (Micro-Optimization)
 	performances := make([]*performance, 0, rawCount)
-	var parseError error
 
-	ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
-		p, parseErr := parsePerformance(s)
-		if parseErr != nil {
-			parseError = parseErr
-			return false
+	// 각 공연 아이템을 파싱하고 필터링
+	for i := 0; i < rawCount; i++ {
+		s := ps.Eq(i)
+		p, err := parsePerformance(s)
+		if err != nil {
+			return nil, 0, err
 		}
 
 		if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
 			// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
-			return true
+			continue
 		}
 
 		performances = append(performances, p)
-		return true
-	})
-
-	if parseError != nil {
-		return nil, 0, parseError
 	}
 
 	return performances, rawCount, nil
@@ -288,18 +295,21 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 			thumbnailSrc = src
 		}
 	}
-	thumbnail := thumbnailSrc
 
 	return &performance{
 		Title:     title,
 		Place:     place,
-		Thumbnail: thumbnail,
+		Thumbnail: thumbnailSrc,
 	}, nil
 }
 
 // diffAndNotify 이전 스냅샷과 비교하여 변경 사항을 알림 메시지로 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
 	var sb strings.Builder
+	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 150바이트 추정)
+	if len(currentSnapshot.Performances) > 0 {
+		sb.Grow(len(currentSnapshot.Performances) * 150)
+	}
 	lineSpacing := "\n\n"
 	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevSnapshot.Performances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*performance)
@@ -312,7 +322,12 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		}
 		return false, nil
 	}, nil, func(selem interface{}) {
-		actualityPerformance := selem.(*performance)
+		// 방어적 타입 단언
+		actualityPerformance, ok := selem.(*performance)
+		if !ok {
+			// 이론상 도달할 수 없지만 방어적 코드
+			return
+		}
 
 		if sb.Len() > 0 {
 			sb.WriteString(lineSpacing)

@@ -303,3 +303,153 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		})
 	}
 }
+
+// TestPerformance_Key Key() 메서드의 동작을 검증합니다.
+func TestPerformance_Key(t *testing.T) {
+	tests := []struct {
+		name     string
+		perf     *performance
+		expected string
+	}{
+		{
+			name: "정상적인 키 생성",
+			perf: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "브로드웨이극장",
+			},
+			expected: "뮤지컬 캣츠|브로드웨이극장",
+		},
+		{
+			name: "특수문자 포함",
+			perf: &performance{
+				Title: "공연|제목",
+				Place: "장소|이름",
+			},
+			expected: "공연|제목|장소|이름",
+		},
+		{
+			name: "빈 문자열",
+			perf: &performance{
+				Title: "",
+				Place: "",
+			},
+			expected: "|",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.perf.Key()
+			assert.Equal(t, tt.expected, result, "Key() 결과가 예상과 일치해야 합니다")
+		})
+	}
+}
+
+// TestPerformance_Equals Equals() 메서드의 동작을 검증합니다.
+func TestPerformance_Equals(t *testing.T) {
+	tests := []struct {
+		name     string
+		perf1    *performance
+		perf2    *performance
+		expected bool
+	}{
+		{
+			name: "동일한 공연 (Title, Place 일치)",
+			perf1: &performance{
+				Title:     "뮤지컬 캣츠",
+				Place:     "브로드웨이극장",
+				Thumbnail: "thumb1.jpg",
+			},
+			perf2: &performance{
+				Title:     "뮤지컬 캣츠",
+				Place:     "브로드웨이극장",
+				Thumbnail: "thumb2.jpg",
+			},
+			expected: true,
+		},
+		{
+			name: "다른 공연 (Title 불일치)",
+			perf1: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "브로드웨이극장",
+			},
+			perf2: &performance{
+				Title: "뮤지컬 레미제라블",
+				Place: "브로드웨이극장",
+			},
+			expected: false,
+		},
+		{
+			name: "다른 공연 (Place 불일치)",
+			perf1: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "브로드웨이극장",
+			},
+			perf2: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "샤롯데씨어터",
+			},
+			expected: false,
+		},
+		{
+			name:  "첫 번째가 nil",
+			perf1: nil,
+			perf2: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "브로드웨이극장",
+			},
+			expected: false,
+		},
+		{
+			name: "두 번째가 nil",
+			perf1: &performance{
+				Title: "뮤지컬 캣츠",
+				Place: "브로드웨이극장",
+			},
+			perf2:    nil,
+			expected: false,
+		},
+		{
+			name:     "둘 다 nil",
+			perf1:    nil,
+			perf2:    nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.perf1.Equals(tt.perf2)
+			assert.Equal(t, tt.expected, result, "Equals() 결과가 예상과 일치해야 합니다")
+		})
+	}
+}
+
+// TestPerformance_KeyAndEquals_Consistency Key()와 Equals()의 일관성을 검증합니다.
+func TestPerformance_KeyAndEquals_Consistency(t *testing.T) {
+	perf1 := &performance{
+		Title:     "뮤지컬 캣츠",
+		Place:     "브로드웨이극장",
+		Thumbnail: "thumb1.jpg",
+	}
+	perf2 := &performance{
+		Title:     "뮤지컬 캣츠",
+		Place:     "브로드웨이극장",
+		Thumbnail: "thumb2.jpg",
+	}
+	perf3 := &performance{
+		Title:     "뮤지컬 레미제라블",
+		Place:     "브로드웨이극장",
+		Thumbnail: "thumb3.jpg",
+	}
+
+	t.Run("Equals가 true이면 Key도 동일해야 함", func(t *testing.T) {
+		assert.True(t, perf1.Equals(perf2), "perf1과 perf2는 동일해야 합니다")
+		assert.Equal(t, perf1.Key(), perf2.Key(), "동일한 공연은 같은 키를 가져야 합니다")
+	})
+
+	t.Run("Equals가 false이면 Key도 달라야 함", func(t *testing.T) {
+		assert.False(t, perf1.Equals(perf3), "perf1과 perf3는 다른 공연이어야 합니다")
+		assert.NotEqual(t, perf1.Key(), perf3.Key(), "다른 공연은 다른 키를 가져야 합니다")
+	})
+}
