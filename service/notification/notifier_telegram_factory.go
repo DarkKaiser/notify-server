@@ -35,7 +35,9 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 // newTelegramNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
-		"bot_token": strutil.MaskSensitiveData(botToken),
+		"notifier_id": id,
+		"bot_token":   strutil.MaskSensitiveData(botToken),
+		"chat_id":     chatID,
 	}).Debug("텔레그램 봇 초기화 시도")
 
 	botAPI, err := tgbotapi.NewBotAPI(botToken)

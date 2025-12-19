@@ -174,20 +174,20 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			logrus.Info("작업이 취소되어 공연 정보 수집을 중단합니다")
+			t.LogWithContext("task.naver", logrus.InfoLevel, "작업이 취소되어 공연 정보 수집을 중단합니다", nil, nil)
 			return nil, nil
 		}
 
 		if searchPerformancePageIndex > commandConfig.MaxPages {
-			logrus.Warnf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages)
+			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages), nil, nil)
 			break
 		}
 
 		// 페이지네이션 로깅
-		logrus.WithFields(logrus.Fields{
+		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 페이지를 수집합니다", logrus.Fields{
 			"page":  searchPerformancePageIndex,
 			"query": commandConfig.Query,
-		}).Debug("공연 정보 페이지를 수집합니다")
+		}, nil)
 
 		var searchResultData = &performanceSearchResponse{}
 		params := url.Values{}
@@ -228,14 +228,18 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 		// 불러온 데이터(Raw Count)가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
 		if rawCount == 0 {
-			logrus.WithField("last_page", searchPerformancePageIndex-1).Debug("더 이상 공연 정보가 없어 수집을 종료합니다")
+			t.LogWithContext("task.naver", logrus.DebugLevel, "더 이상 공연 정보가 없어 수집을 종료합니다", logrus.Fields{
+				"last_page": searchPerformancePageIndex - 1,
+			}, nil)
 			break
 		}
 
 		time.Sleep(time.Duration(commandConfig.PageFetchDelay) * time.Millisecond)
 	}
 
-	logrus.WithField("total_count", len(performances)).Info("공연 정보 수집을 완료했습니다")
+	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집을 완료했습니다", logrus.Fields{
+		"total_count": len(performances),
+	}, nil)
 	return performances, nil
 }
 
@@ -264,7 +268,7 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 
 		if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
-			// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
+			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": p.Title}, nil)
 			continue
 		}
 

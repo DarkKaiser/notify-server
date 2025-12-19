@@ -76,6 +76,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"notifier_id":  n.ID(),
 		"bot_username": n.botAPI.GetSelf().UserName,
+		"chat_id":      n.chatID,
 	}).Debug("Telegram Notifier의 작업이 시작됨")
 
 	for {
@@ -108,6 +109,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 
 			applog.WithComponentAndFields("notification.telegram", log.Fields{
 				"notifier_id": n.ID(),
+				"chat_id":     n.chatID,
 			}).Debug("Telegram Notifier의 작업이 중지됨")
 
 			return
