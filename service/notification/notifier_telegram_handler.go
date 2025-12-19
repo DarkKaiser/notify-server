@@ -273,11 +273,13 @@ func (n *telegramNotifier) sendSingleMessage(message string) {
 	if _, err := n.botAPI.Send(messageConfig); err != nil {
 		applog.WithComponentAndFields("notification.telegram", log.Fields{
 			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
 			"error":       err,
 		}).Error("알림메시지 발송 실패")
 	} else {
 		applog.WithComponentAndFields("notification.telegram", log.Fields{
 			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
 		}).Info("알림메시지 발송 성공")
 	}
 }

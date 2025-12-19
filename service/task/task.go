@@ -148,7 +148,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 	defer func() {
 		if r := recover(); r != nil {
 			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
-			t.log(log.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", err)
+			t.LogWithContext("task.executor", log.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
 			t.handleExecutionResult(taskCtx, notificationSender, "", nil, err)
@@ -178,7 +178,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
 	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
-		t.log(log.ErrorLevel, message, nil)
+		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx, notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
 	}
@@ -190,14 +190,14 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	}
 	if snapshot == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
-		t.log(log.ErrorLevel, message, nil)
+		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx, notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
 	}
 
 	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
-		t.log(log.ErrorLevel, message, nil)
+		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx, notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
 	}
@@ -205,7 +205,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
 	if err != nil {
 		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-		t.log(log.WarnLevel, message, err)
+		t.LogWithContext("task.executor", log.WarnLevel, message, nil, err)
 		t.notify(taskCtx, notificationSender, message)
 	}
 
@@ -222,13 +222,13 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 		if newSnapshot != nil {
 			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
 				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
-				t.log(log.WarnLevel, message, err0)
+				t.LogWithContext("task.executor", log.WarnLevel, message, nil, err0)
 				t.notifyError(taskCtx, notificationSender, message)
 			}
 		}
 	} else {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
-		t.log(log.ErrorLevel, message, err)
+		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, err)
 		t.notifyError(taskCtx, notificationSender, message)
 	}
 }
@@ -241,15 +241,22 @@ func (t *Task) notifyError(taskCtx TaskContext, notificationSender NotificationS
 	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), message)
 }
 
-// log 로깅을 수행하는 내부 Helper 함수입니다.
-func (t *Task) log(level log.Level, message string, err error) {
-	fields := log.Fields{
-		"task_id":    t.GetID(),
-		"command_id": t.GetCommandID(),
+// LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
+func (t *Task) LogWithContext(component string, level log.Level, message string, fields log.Fields, err error) {
+	fieldsMap := log.Fields{
+		"task_id":     t.GetID(),
+		"command_id":  t.GetCommandID(),
+		"instance_id": t.GetInstanceID(),
+		"notifier_id": t.GetNotifierID(),
+		"run_by":      t.GetRunBy(),
 	}
-	if err != nil {
-		fields["error"] = err
+	for k, v := range fields {
+		fieldsMap[k] = v
 	}
 
-	applog.WithComponentAndFields("task.executor", fields).Log(level, message)
+	if err != nil {
+		fieldsMap["error"] = err
+	}
+
+	applog.WithComponentAndFields(component, fieldsMap).Log(level, message)
 }

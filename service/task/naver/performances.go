@@ -19,6 +19,9 @@ const (
 	// searchBaseURL 네이버 검색 API의 엔드포인트 URL입니다.
 	searchBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 
+	// naverSearchURL 공연 제목 클릭 시 이동할 네이버 검색 URL입니다.
+	naverSearchURL = "https://search.naver.com/search.naver"
+
 	// CSS Selectors
 	// selectorPerformanceItem 네이버 공연 검색 결과의 리스트 컨테이너(ul) 내에서
 	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
@@ -101,19 +104,38 @@ type performance struct {
 }
 
 func (p *performance) Equals(other *performance) bool {
+	if p == nil || other == nil {
+		return false
+	}
 	return p.Title == other.Title && p.Place == other.Place
+}
+
+// Key 중복 제거를 위한 고유 키를 생성합니다.
+// Equals 메서드와 동일한 기준(Title + Place)을 사용하여 일관성을 보장합니다.
+func (p *performance) Key() string {
+	return fmt.Sprintf("%s|%s", p.Title, p.Place)
 }
 
 func (p *performance) String(messageTypeHTML bool, mark string) string {
 	if messageTypeHTML {
 		// 텔레그램 등에서 링크 미리보기(썸네일)를 표시하기 위해 메시지 가장 앞에 보이지 않는 문자(Zero Width Joiner)로 링크를 삽입합니다.
-		var thumbnailLink string
-		if p.Thumbnail != "" {
-			thumbnailLink = fmt.Sprintf(`<a href="%s">&#8205;</a>`, p.Thumbnail)
-		}
-		return fmt.Sprintf("☞ <a href=\"https://search.naver.com/search.naver?query=%s\"><b>%s</b></a>%s\n      • 장소 : %s%s", url.QueryEscape(p.Title), template.HTMLEscapeString(p.Title), mark, p.Place, thumbnailLink)
+		const htmlFormat = `☞ <a href="%s?query=%s"><b>%s</b></a>%s
+      • 장소 : %s`
+
+		return fmt.Sprintf(
+			htmlFormat,
+			naverSearchURL,
+			url.QueryEscape(p.Title),
+			template.HTMLEscapeString(p.Title),
+			mark,
+			p.Place,
+		)
 	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s%s\n      • 장소 : %s", p.Title, mark, p.Place))
+
+	const textFormat = `☞ %s%s
+      • 장소 : %s`
+
+	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
 type watchNewPerformancesSnapshot struct {
@@ -152,20 +174,20 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			logrus.Info("작업이 취소되어 공연 정보 수집을 중단합니다")
+			t.LogWithContext("task.naver", logrus.InfoLevel, "작업이 취소되어 공연 정보 수집을 중단합니다", nil, nil)
 			return nil, nil
 		}
 
 		if searchPerformancePageIndex > commandConfig.MaxPages {
-			logrus.Warnf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages)
+			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages), nil, nil)
 			break
 		}
 
 		// 페이지네이션 로깅
-		logrus.WithFields(logrus.Fields{
+		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 페이지를 수집합니다", logrus.Fields{
 			"page":  searchPerformancePageIndex,
 			"query": commandConfig.Query,
-		}).Debug("공연 정보 페이지를 수집합니다")
+		}, nil)
 
 		var searchResultData = &performanceSearchResponse{}
 		params := url.Values{}
@@ -194,7 +216,7 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 		// 중복 제거 및 병합
 		for _, p := range pagePerformances {
-			key := fmt.Sprintf("%s|%s", p.Title, p.Place)
+			key := p.Key()
 			if seen[key] {
 				continue
 			}
@@ -206,14 +228,18 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfi
 
 		// 불러온 데이터(Raw Count)가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
 		if rawCount == 0 {
-			logrus.WithField("last_page", searchPerformancePageIndex-1).Debug("더 이상 공연 정보가 없어 수집을 종료합니다")
+			t.LogWithContext("task.naver", logrus.DebugLevel, "더 이상 공연 정보가 없어 수집을 종료합니다", logrus.Fields{
+				"last_page": searchPerformancePageIndex - 1,
+			}, nil)
 			break
 		}
 
 		time.Sleep(time.Duration(commandConfig.PageFetchDelay) * time.Millisecond)
 	}
 
-	logrus.WithField("total_count", len(performances)).Info("공연 정보 수집을 완료했습니다")
+	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집을 완료했습니다", logrus.Fields{
+		"total_count": len(performances),
+	}, nil)
 	return performances, nil
 }
 
@@ -231,27 +257,22 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 
 	// 미리 용량을 할당하여 메모리 재할당 최소화 (Micro-Optimization)
 	performances := make([]*performance, 0, rawCount)
-	var parseError error
 
-	ps.EachWithBreak(func(i int, s *goquery.Selection) bool {
-		p, parseErr := parsePerformance(s)
-		if parseErr != nil {
-			parseError = parseErr
-			return false
+	// 각 공연 아이템을 파싱하고 필터링
+	for i := 0; i < rawCount; i++ {
+		s := ps.Eq(i)
+		p, err := parsePerformance(s)
+		if err != nil {
+			return nil, 0, err
 		}
 
 		if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
-			// logrus.WithField("title", p.Title).Trace("필터 조건에 의해 제외되었습니다")
-			return true
+			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": p.Title}, nil)
+			continue
 		}
 
 		performances = append(performances, p)
-		return true
-	})
-
-	if parseError != nil {
-		return nil, 0, parseError
 	}
 
 	return performances, rawCount, nil
@@ -288,18 +309,21 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 			thumbnailSrc = src
 		}
 	}
-	thumbnail := thumbnailSrc
 
 	return &performance{
 		Title:     title,
 		Place:     place,
-		Thumbnail: thumbnail,
+		Thumbnail: thumbnailSrc,
 	}, nil
 }
 
 // diffAndNotify 이전 스냅샷과 비교하여 변경 사항을 알림 메시지로 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
 	var sb strings.Builder
+	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 150바이트 추정)
+	if len(currentSnapshot.Performances) > 0 {
+		sb.Grow(len(currentSnapshot.Performances) * 150)
+	}
 	lineSpacing := "\n\n"
 	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevSnapshot.Performances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*performance)
@@ -312,7 +336,12 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		}
 		return false, nil
 	}, nil, func(selem interface{}) {
-		actualityPerformance := selem.(*performance)
+		// 방어적 타입 단언
+		actualityPerformance, ok := selem.(*performance)
+		if !ok {
+			// 이론상 도달할 수 없지만 방어적 코드
+			return
+		}
 
 		if sb.Len() > 0 {
 			sb.WriteString(lineSpacing)

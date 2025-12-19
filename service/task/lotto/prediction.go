@@ -9,7 +9,6 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -58,11 +57,9 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		// 에러 발생 시 Stderr 내용을 포함하여 로깅합니다.
 		stderr := process.Stderr()
 		if len(stderr) > 0 {
-			applog.WithComponentAndFields("task.lotto", log.Fields{
-				"task_id":    t.GetID(),
-				"command_id": t.GetCommandID(),
-				"stderr":     stderr,
-			}).Error("외부 프로세스 실행 중 에러 발생")
+			t.LogWithContext("task.lotto", log.ErrorLevel, "외부 프로세스 실행 중 에러 발생", log.Fields{
+				"stderr": stderr,
+			}, err)
 		}
 		return "", nil, err
 	}
@@ -98,12 +95,9 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 	defer func() {
 		// 분석이 끝난 로그 파일은 삭제한다.
 		if err := os.Remove(analysisFilePath); err != nil {
-			applog.WithComponentAndFields("task.lotto", log.Fields{
-				"task_id":    t.GetID(),
-				"command_id": t.GetCommandID(),
-				"path":       analysisFilePath,
-				"error":      err,
-			}).Warn("분석 결과 임시 파일 삭제 실패")
+			t.LogWithContext("task.lotto", log.WarnLevel, "분석 결과 임시 파일 삭제 실패", log.Fields{
+				"path": analysisFilePath,
+			}, err)
 		}
 	}()
 
