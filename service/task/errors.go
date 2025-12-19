@@ -13,17 +13,17 @@ var (
 	// ErrCommandNotSupported 해당 작업(Task)은 존재하지만, 요청된 명령(Command)을 지원하지 않을 때 반환됩니다.
 	ErrCommandNotSupported = apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다")
 
-	// ErrTaskConfigNotFound 작업 실행에 필요한 설정(Config)을 찾을 수 없을 때 반환됩니다.
-	ErrTaskConfigNotFound = apperrors.New(apperrors.NotFound, "해당 작업 생성에 필요한 구성 정보가 존재하지 않습니다")
+	// ErrTaskSettingsNotFound 작업 생성에 필요한 설정 데이터(JSON/Map)를 찾을 수 없을 때 반환됩니다.
+	ErrTaskSettingsNotFound = apperrors.New(apperrors.NotFound, "해당 작업 생성에 필요한 설정 데이터가 존재하지 않습니다")
 
-	// ErrCommandConfigNotFound 작업 실행에 필요한 설정(Config)을 찾을 수 없을 때 반환됩니다.
-	ErrCommandConfigNotFound = apperrors.New(apperrors.NotFound, "해당 명령 생성에 필요한 구성 정보가 존재하지 않습니다")
+	// ErrCommandSettingsNotFound 명령 생성에 필요한 설정 데이터(JSON/Map)를 찾을 수 없을 때 반환됩니다.
+	ErrCommandSettingsNotFound = apperrors.New(apperrors.NotFound, "해당 명령 생성에 필요한 설정 데이터가 존재하지 않습니다")
 
-	// ErrInvalidTaskData 작업 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
-	ErrInvalidTaskData = apperrors.New(apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+	// ErrInvalidTaskSettings 작업 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
+	ErrInvalidTaskSettings = apperrors.New(apperrors.InvalidInput, "작업 설정 데이터가 유효하지 않습니다")
 
-	// ErrInvalidCommandData 명령 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
-	ErrInvalidCommandData = apperrors.New(apperrors.InvalidInput, "명령 데이터가 유효하지 않습니다")
+	// ErrInvalidCommandSettings 명령 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
+	ErrInvalidCommandSettings = apperrors.New(apperrors.InvalidInput, "명령 설정 데이터가 유효하지 않습니다")
 
 	// ErrHTMLStructureChanged HTML 페이지 구조가 변경되어 파싱에 실패했을 때 반환됩니다.
 	ErrHTMLStructureChanged = apperrors.New(apperrors.ExecutionFailed, "불러온 페이지의 문서구조가 변경되었습니다. CSS셀렉터를 확인하세요")

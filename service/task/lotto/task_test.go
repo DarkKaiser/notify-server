@@ -83,7 +83,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				// 빈 설정
 				return req, &appconfig.AppConfig{Tasks: []appconfig.TaskConfig{}}, func() {}
 			},
-			expectedError: tasksvc.ErrTaskConfigNotFound.Error(),
+			expectedError: tasksvc.ErrTaskSettingsNotFound.Error(),
 		},
 		{
 			name: "Empty AppPath",

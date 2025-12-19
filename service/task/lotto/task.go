@@ -25,7 +25,7 @@ const (
 
 var execLookPath = exec.LookPath
 
-type taskConfig struct {
+type taskSettings struct {
 	AppPath string `json:"app_path"`
 }
 
@@ -57,12 +57,12 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	found := false
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
-			cfg := &taskConfig{}
-			if err := tasksvc.DecodeMap(cfg, t.Data); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskData.Error())
+			settings := &taskSettings{}
+			if err := tasksvc.DecodeMap(settings, t.Data); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 
-			appPath = strings.TrimSpace(cfg.AppPath)
+			appPath = strings.TrimSpace(settings.AppPath)
 			if appPath == "" {
 				return nil, apperrors.New(apperrors.InvalidInput, "필수 구성 항목인 'app_path' 값이 설정되지 않았습니다")
 			}
@@ -97,7 +97,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	}
 
 	if !found {
-		return nil, tasksvc.ErrTaskConfigNotFound
+		return nil, tasksvc.ErrTaskSettingsNotFound
 	}
 
 	lottoTask := &task{

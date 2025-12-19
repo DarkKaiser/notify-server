@@ -125,7 +125,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 			}
 
 			// Execution
-			cmdConfig, _ := findCommandConfig(h.appConfig, ID, WatchNewPerformancesCommand)
+			cmdConfig, _ := findCommandSettings(h.appConfig, ID, WatchNewPerformancesCommand)
 			msg, newSnapshot, err := h.task.executeWatchNewPerformances(cmdConfig, tt.prevSnapshot, true)
 
 			// Verification

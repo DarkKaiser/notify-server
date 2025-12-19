@@ -9,19 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
+func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	tests := []struct {
 		name          string
-		config        *watchNewPerformancesCommandConfig
+		config        *watchNewPerformancesSettings
 		expectedError string
-		validate      func(t *testing.T, c *watchNewPerformancesCommandConfig)
+		validate      func(t *testing.T, c *watchNewPerformancesSettings)
 	}{
 		{
 			name: "성공: 정상적인 데이터 (기본값 적용 확인)",
-			config: &watchNewPerformancesCommandConfig{
+			config: &watchNewPerformancesSettings{
 				Query: "뮤지컬",
 			},
-			validate: func(t *testing.T, c *watchNewPerformancesCommandConfig) {
+			validate: func(t *testing.T, c *watchNewPerformancesSettings) {
 				assert.Equal(t, 50, c.MaxPages, "MaxPages 기본값이 적용되어야 합니다")
 				assert.Equal(t, 100, c.PageFetchDelay, "PageFetchDelay 기본값이 적용되어야 합니다")
 				assert.NotNil(t, c.parsedFilters, "필터가 Eager Initialization 되어야 합니다")
@@ -29,19 +29,19 @@ func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "성공: 사용자 정의 설정",
-			config: &watchNewPerformancesCommandConfig{
+			config: &watchNewPerformancesSettings{
 				Query:          "뮤지컬",
 				MaxPages:       10,
 				PageFetchDelay: 200,
 			},
-			validate: func(t *testing.T, c *watchNewPerformancesCommandConfig) {
+			validate: func(t *testing.T, c *watchNewPerformancesSettings) {
 				assert.Equal(t, 10, c.MaxPages)
 				assert.Equal(t, 200, c.PageFetchDelay)
 			},
 		},
 		{
 			name: "실패: Query 누락",
-			config: &watchNewPerformancesCommandConfig{
+			config: &watchNewPerformancesSettings{
 				Query: "",
 			},
 			expectedError: "query가 입력되지 않았습니다",
@@ -64,8 +64,8 @@ func TestNaverWatchNewPerformancesCommandConfig_Validate(t *testing.T) {
 	}
 }
 
-func TestNaverWatchNewPerformancesCommandConfig_FilterParsing(t *testing.T) {
-	config := &watchNewPerformancesCommandConfig{
+func TestNaverWatchNewPerformancesSettings_FilterParsing(t *testing.T) {
+	config := &watchNewPerformancesSettings{
 		Query: "뮤지컬",
 	}
 	config.Filters.Title.IncludedKeywords = "A,B"

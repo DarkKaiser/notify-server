@@ -41,7 +41,7 @@ const (
 	selectorThumbnail = ".thumb img"
 )
 
-type watchNewPerformancesCommandConfig struct {
+type watchNewPerformancesSettings struct {
 	Query   string `json:"query"`
 	Filters struct {
 		Title struct {
@@ -69,7 +69,7 @@ type parsedFilters struct {
 	PlaceExcluded []string
 }
 
-func (c *watchNewPerformancesCommandConfig) validate() error {
+func (c *watchNewPerformancesSettings) validate() error {
 	if c.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
@@ -143,9 +143,9 @@ type watchNewPerformancesSnapshot struct {
 }
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
-func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCommandConfig, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// 1. 최신 공연 정보 수집
-	newPerformances, err := t.fetchPerformances(commandConfig)
+	newPerformances, err := t.fetchPerformances(commandSettings)
 	if err != nil {
 		return "", nil, err
 	}
@@ -159,7 +159,7 @@ func (t *task) executeWatchNewPerformances(commandConfig *watchNewPerformancesCo
 }
 
 // fetchPerformances 네이버 검색 페이지를 순회하며 공연 정보를 수집합니다.
-func (t *task) fetchPerformances(commandConfig *watchNewPerformancesCommandConfig) ([]*performance, error) {
+func (t *task) fetchPerformances(commandConfig *watchNewPerformancesSettings) ([]*performance, error) {
 	var performances []*performance
 	// 이미 validate() 시점에 파싱된 안전한 필터 사용
 	filters := commandConfig.parsedFilters

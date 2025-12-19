@@ -35,7 +35,7 @@ func generateLargeHTML(count int) string {
 }
 
 // setupBenchmarkTask 벤치마크 수행을 위한 Task와 Config를 초기화합니다.
-func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPerformancesCommandConfig) {
+func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPerformancesSettings) {
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	query := "뮤지컬"
 
@@ -71,7 +71,7 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	}
 	tTask.SetFetcher(mockFetcher)
 
-	config := &watchNewPerformancesCommandConfig{
+	config := &watchNewPerformancesSettings{
 		Query: query,
 	}
 	// Eager Initialization (중요: Panic 방지 및 Thread Safety 확보)
