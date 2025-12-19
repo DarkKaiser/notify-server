@@ -81,8 +81,8 @@ type product struct {
 	ProductType string `json:"productType"`
 }
 
-func (p *product) String(messageTypeHTML bool, mark string) string {
-	if messageTypeHTML == true {
+func (p *product) String(supportsHTML bool, mark string) string {
+	if supportsHTML == true {
 		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, strutil.FormatCommas(p.LowPrice), mark)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))

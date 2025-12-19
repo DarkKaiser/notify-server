@@ -6,10 +6,11 @@ import (
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		config        *watchNewPerformancesSettings
@@ -24,7 +25,6 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 			validate: func(t *testing.T, c *watchNewPerformancesSettings) {
 				assert.Equal(t, 50, c.MaxPages, "MaxPages 기본값이 적용되어야 합니다")
 				assert.Equal(t, 100, c.PageFetchDelay, "PageFetchDelay 기본값이 적용되어야 합니다")
-				assert.NotNil(t, c.parsedFilters, "필터가 Eager Initialization 되어야 합니다")
 			},
 		},
 		{
@@ -49,7 +49,9 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture range variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.config.validate()
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -64,21 +66,9 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestNaverWatchNewPerformancesSettings_FilterParsing(t *testing.T) {
-	config := &watchNewPerformancesSettings{
-		Query: "뮤지컬",
-	}
-	config.Filters.Title.IncludedKeywords = "A,B"
-	config.Filters.Title.ExcludedKeywords = "C"
-
-	err := config.validate()
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"A", "B"}, config.parsedFilters.TitleIncluded)
-	assert.Equal(t, []string{"C"}, config.parsedFilters.TitleExcluded)
-}
-
 func TestNaverPerformance_String(t *testing.T) {
+	t.Parallel()
+
 	perf := &performance{
 		Title:     "테스트 공연",
 		Place:     "테스트 극장",
@@ -125,7 +115,9 @@ func TestNaverPerformance_String(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := perf.String(tt.supportsHTML, tt.mark)
 			tt.validate(t, result)
 		})
@@ -134,6 +126,8 @@ func TestNaverPerformance_String(t *testing.T) {
 
 // TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 필터링 규칙 예시를 나열합니다.
 func TestNaverTask_Filtering_Behavior(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		item     string
@@ -151,7 +145,9 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tasksvc.Filter(tt.item, tt.included, tt.excluded)
 			assert.Equal(t, tt.want, got)
 		})
@@ -160,6 +156,8 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 
 // TestParsePerformancesFromHTML 파싱 로직을 HTML 입력값 기반으로 직접 테스트합니다. (Unit Test)
 func TestParsePerformancesFromHTML(t *testing.T) {
+	t.Parallel()
+
 	// Helper to make full list item HTML
 	makeItem := func(title, place, thumbSrc string) string {
 		return fmt.Sprintf(`
@@ -287,7 +285,9 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			perfs, rawCount, err := parsePerformancesFromHTML(tt.html, tt.filters)
 
 			if tt.expectError {
@@ -306,6 +306,8 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 
 // TestPerformance_Key Key() 메서드의 동작을 검증합니다.
 func TestPerformance_Key(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		perf     *performance
@@ -338,7 +340,9 @@ func TestPerformance_Key(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := tt.perf.Key()
 			assert.Equal(t, tt.expected, result, "Key() 결과가 예상과 일치해야 합니다")
 		})
@@ -347,6 +351,8 @@ func TestPerformance_Key(t *testing.T) {
 
 // TestPerformance_Equals Equals() 메서드의 동작을 검증합니다.
 func TestPerformance_Equals(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		perf1    *performance
@@ -418,7 +424,9 @@ func TestPerformance_Equals(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := tt.perf1.Equals(tt.perf2)
 			assert.Equal(t, tt.expected, result, "Equals() 결과가 예상과 일치해야 합니다")
 		})
@@ -427,6 +435,8 @@ func TestPerformance_Equals(t *testing.T) {
 
 // TestPerformance_KeyAndEquals_Consistency Key()와 Equals()의 일관성을 검증합니다.
 func TestPerformance_KeyAndEquals_Consistency(t *testing.T) {
+	t.Parallel()
+
 	perf1 := &performance{
 		Title:     "뮤지컬 캣츠",
 		Place:     "브로드웨이극장",
@@ -452,4 +462,110 @@ func TestPerformance_KeyAndEquals_Consistency(t *testing.T) {
 		assert.False(t, perf1.Equals(perf3), "perf1과 perf3는 다른 공연이어야 합니다")
 		assert.NotEqual(t, perf1.Key(), perf3.Key(), "다른 공연은 다른 키를 가져야 합니다")
 	})
+}
+
+// TestTask_DiffAndNotify 변경 감지 및 알림 생성 로직을 검증합니다. (핵심 로직)
+func TestTask_DiffAndNotify(t *testing.T) {
+	t.Parallel()
+
+	// 테스트용 데이터 셋업
+	perfA := &performance{Title: "A", Place: "Theater1"}
+	perfB := &performance{Title: "B", Place: "Theater2"}
+
+	tests := []struct {
+		name              string
+		current           []*performance
+		prev              []*performance
+		runBy             tasksvc.RunBy // 자동(Scheduler) vs 수동(User)
+		expectMsgContains []string      // 메시지에 포함되어야 할 문자열들
+		expectNilMsg      bool          // 메시지가 비어야 하는지
+		expectSnapshot    bool          // 스냅샷 업데이트가 필요한지
+	}{
+		{
+			name:              "신규 공연 발견 (A 추가)",
+			current:           []*performance{perfA, perfB},
+			prev:              []*performance{perfB},
+			runBy:             tasksvc.RunByScheduler,
+			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", "🆕"},
+			expectSnapshot:    true,
+		},
+		{
+			name:           "변동 없음",
+			current:        []*performance{perfA},
+			prev:           []*performance{perfA},
+			runBy:          tasksvc.RunByScheduler,
+			expectNilMsg:   true,
+			expectSnapshot: false,
+		},
+		{
+			name:              "초기 실행 (Prev가 nil) - Scheduler",
+			current:           []*performance{perfA},
+			prev:              nil,
+			runBy:             tasksvc.RunByScheduler,
+			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A"},
+			expectSnapshot:    true,
+		},
+		{
+			name:              "사용자 수동 실행 - 변동 없어도 전체 목록 반환",
+			current:           []*performance{perfA},
+			prev:              []*performance{perfA},
+			runBy:             tasksvc.RunByUser,
+			expectMsgContains: []string{"현재 등록된 공연정보는 아래와 같습니다", "A"}, // 🆕 마크 없어야 함
+			expectSnapshot:    false,
+		},
+		{
+			name:              "사용자 수동 실행 - 데이터 없음",
+			current:           []*performance{}, // Empty
+			prev:              nil,
+			runBy:             tasksvc.RunByUser,
+			expectMsgContains: []string{"등록된 공연정보가 존재하지 않습니다"},
+			expectSnapshot:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// *task 생성 (naver 패키지 내부이므로 접근 가능)
+			// task 구조체는 tasksvc.Task 인터페이스를 임베딩합니다.
+			// 실제 구현체인 BaseTask를 사용하여 RunBy만 설정하면 됩니다.
+			baseTask := tasksvc.NewBaseTask("TEST_TASK", "TEST_CMD", "TEST_INSTANCE", "TEST_NOTIFIER", tt.runBy)
+
+			testTask := &task{
+				Task: baseTask,
+			}
+
+			currentSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
+			var prevSnap *watchNewPerformancesSnapshot
+			if tt.prev != nil {
+				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
+			}
+
+			msg, newSnapData, err := testTask.diffAndNotify(currentSnap, prevSnap, false) // Text Mode Test
+
+			assert.NoError(t, err)
+
+			if tt.expectNilMsg {
+				assert.Empty(t, msg)
+				assert.Nil(t, newSnapData)
+			} else {
+				assert.NotEmpty(t, msg)
+				for _, s := range tt.expectMsgContains {
+					assert.Contains(t, msg, s)
+				}
+
+				if tt.expectSnapshot {
+					assert.NotNil(t, newSnapData)
+					// 스냅샷 데이터 검증
+					snap, ok := newSnapData.(*watchNewPerformancesSnapshot)
+					assert.True(t, ok)
+					assert.Equal(t, len(tt.current), len(snap.Performances))
+				} else {
+					assert.Nil(t, newSnapData)
+				}
+			}
+		})
+	}
 }

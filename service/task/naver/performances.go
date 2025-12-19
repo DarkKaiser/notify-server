@@ -16,28 +16,37 @@ import (
 )
 
 const (
-	// searchBaseURL 네이버 검색 API의 엔드포인트 URL입니다.
-	searchBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+	// searchAPIBaseURL 네이버 모바일 통합검색의 내부 API 엔드포인트입니다.
+	//
+	// [목적]
+	//  - 공연 정보를 JSON 형태로 비동기 수집(AJAX)하는 데 사용됩니다.
+	//  - "https://m.search.naver.com" 도메인을 사용하여 모바일 환경에 최적화된 데이터를 응답받습니다.
+	searchAPIBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 
-	// naverSearchURL 공연 제목 클릭 시 이동할 네이버 검색 URL입니다.
-	naverSearchURL = "https://search.naver.com/search.naver"
+	// searchResultPageURL 사용자에게 제공할 '검색 결과 페이지'의 기본 URL입니다.
+	//
+	// [목적]
+	//  - 알림 메시지에서 공연명을 클릭했을 때 이동할 하이퍼링크(Target URL)를 생성하는 데 사용됩니다.
+	//  - 쿼리 파라미터(?query=...)를 추가하여 사용자가 해당 공연의 상세 검색 결과를 즉시 확인할 수 있도록 돕습니다.
+	searchResultPageURL = "https://search.naver.com/search.naver"
 
 	// CSS Selectors
-	// selectorPerformanceItem 네이버 공연 검색 결과의 리스트 컨테이너(ul) 내에서
-	// 개별 공연 정보 카드(li)를 식별하여 순회하기 위한 최상위 선택자입니다.
-	// ".title_box" 클래스를 가진 요소가 내부에 존재하는 li만 선택하여, 광고나 네비게이션 등 불필요한 리스트 아이템을 제외합니다.
+	// ------------------------------------------------------------------------------------------------
+	// 네이버 공연 검색 결과 페이지의 DOM 구조 변경에 대응하기 위한 CSS 선택자 상수를 정의합니다.
+	// 각 선택자는 페이지의 특정 요소를 정확히 식별하고, 불필요한 요소(광고, 추천 목록 등)를 배제하도록 설계되었습니다.
+	// ------------------------------------------------------------------------------------------------
+
+	// selectorPerformanceItem 검색 결과 리스트에서 개별 공연 카드를 식별합니다.
+	// 이 선택자로 추출된 각 요소를 순회하며 Title, Place, Thumbnail 정보를 파싱합니다.
 	selectorPerformanceItem = "li:has(.title_box)"
 
-	// selectorTitle 공연 정보 카드 내 타이틀 영역(.title_box)에 위치한
-	// 실제 공연명 텍스트(.name)를 추출하기 위한 선택자입니다.
+	// selectorTitle 공연 카드 내부의 '공연명'을 추출합니다.
 	selectorTitle = ".title_box .name"
 
-	// selectorPlace 타이틀 영역 하단에 위치하며, 공연 장소 정보(.sub_text)를
-	// 텍스트 형태로 포함하고 있는 요소를 지칭합니다.
+	// selectorPlace 공연 카드 내부의 '장소/공연장' 정보를 추출합니다.
 	selectorPlace = ".title_box .sub_text"
 
-	// selectorThumbnail 공연 정보 카드의 좌측 썸네일 영역(.thumb) 내에 존재하는
-	// 이미지 태그(img)를 선택하여 src 속성을 추출하기 위해 사용됩니다.
+	// selectorThumbnail 공연 카드 내부의 공연 포스터 이미지의 URL을 추출합니다.
 	selectorThumbnail = ".thumb img"
 )
 
@@ -54,49 +63,34 @@ type watchNewPerformancesSettings struct {
 		} `json:"place"`
 	} `json:"filters"`
 
-	// Optional Configuration (기본값 제공됨)
+	// 선택적 설정 (Optional Configuration)
+	// 값이 제공되지 않을 경우 validate() 메서드에서 기본값이 자동으로 적용됩니다.
 	MaxPages       int `json:"max_pages"`           // 최대 수집 페이지 수
 	PageFetchDelay int `json:"page_fetch_delay_ms"` // 페이지 수집 간 대기 시간 (ms)
-
-	// parsedFilters 필터링 키워드 파싱 결과 캐시 (Eagerly initialized)
-	parsedFilters *parsedFilters `json:"-"`
 }
 
-type parsedFilters struct {
-	TitleIncluded []string
-	TitleExcluded []string
-	PlaceIncluded []string
-	PlaceExcluded []string
-}
-
-func (c *watchNewPerformancesSettings) validate() error {
-	if c.Query == "" {
+func (s *watchNewPerformancesSettings) validate() error {
+	if s.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
 
 	// 기본 설정값 적용
-	if c.MaxPages <= 0 {
-		c.MaxPages = 50
+	if s.MaxPages <= 0 {
+		s.MaxPages = 50
 	}
-	if c.PageFetchDelay <= 0 {
-		c.PageFetchDelay = 100
-	}
-
-	// 필터 미리 파싱 (Eager Initialization for Thread Safety)
-	c.parsedFilters = &parsedFilters{
-		TitleIncluded: strutil.SplitAndTrim(c.Filters.Title.IncludedKeywords, ","),
-		TitleExcluded: strutil.SplitAndTrim(c.Filters.Title.ExcludedKeywords, ","),
-		PlaceIncluded: strutil.SplitAndTrim(c.Filters.Place.IncludedKeywords, ","),
-		PlaceExcluded: strutil.SplitAndTrim(c.Filters.Place.ExcludedKeywords, ","),
+	if s.PageFetchDelay <= 0 {
+		s.PageFetchDelay = 100
 	}
 
 	return nil
 }
 
-type performanceSearchResponse struct {
-	HTML string `json:"html"`
+// watchNewPerformancesSnapshot 신규 공연을 식별하기 위한 공연 데이터의 스냅샷입니다.
+type watchNewPerformancesSnapshot struct {
+	Performances []*performance `json:"performances"`
 }
 
+// performance 크롤링된 공연 정보를 담는 도메인 모델입니다.
 type performance struct {
 	Title     string `json:"title"`
 	Place     string `json:"place"`
@@ -110,21 +104,26 @@ func (p *performance) Equals(other *performance) bool {
 	return p.Title == other.Title && p.Place == other.Place
 }
 
-// Key 중복 제거를 위한 고유 키를 생성합니다.
-// Equals 메서드와 동일한 기준(Title + Place)을 사용하여 일관성을 보장합니다.
+// Key 공연을 고유하게 식별하기 위한 문자열 키를 생성합니다.
+//
+// 반환값은 "제목|장소" 형식으로, 파이프(|) 문자를 구분자로 사용하여 제목과 장소를 결합합니다.
+// 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
+//
+// 중요: 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
+// 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
 func (p *performance) Key() string {
 	return fmt.Sprintf("%s|%s", p.Title, p.Place)
 }
 
-func (p *performance) String(messageTypeHTML bool, mark string) string {
-	if messageTypeHTML {
-		// 텔레그램 등에서 링크 미리보기(썸네일)를 표시하기 위해 메시지 가장 앞에 보이지 않는 문자(Zero Width Joiner)로 링크를 삽입합니다.
+// String 수집된 공연 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
+func (p *performance) String(supportsHTML bool, mark string) string {
+	if supportsHTML {
 		const htmlFormat = `☞ <a href="%s?query=%s"><b>%s</b></a>%s
       • 장소 : %s`
 
 		return fmt.Sprintf(
 			htmlFormat,
-			naverSearchURL,
+			searchResultPageURL,
 			url.QueryEscape(p.Title),
 			template.HTMLEscapeString(p.Title),
 			mark,
@@ -138,8 +137,12 @@ func (p *performance) String(messageTypeHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
-type watchNewPerformancesSnapshot struct {
-	Performances []*performance `json:"performances"`
+// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 최적화된 필터링 데이터입니다.
+type parsedFilters struct {
+	TitleIncluded []string
+	TitleExcluded []string
+	PlaceIncluded []string
+	PlaceExcluded []string
 }
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
@@ -150,27 +153,38 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 		return "", nil, err
 	}
 
-	actualityTaskResultData := &watchNewPerformancesSnapshot{
+	currentSnapshot := &watchNewPerformancesSnapshot{
 		Performances: newPerformances,
 	}
 
 	// 2. 신규 정보 확인 및 알림 메시지 생성
-	return t.diffAndNotify(actualityTaskResultData, prevSnapshot, supportsHTML)
+	return t.diffAndNotify(currentSnapshot, prevSnapshot, supportsHTML)
 }
 
-// fetchPerformances 네이버 검색 페이지를 순회하며 공연 정보를 수집합니다.
-func (t *task) fetchPerformances(commandConfig *watchNewPerformancesSettings) ([]*performance, error) {
-	var performances []*performance
-	// 이미 validate() 시점에 파싱된 안전한 필터 사용
-	filters := commandConfig.parsedFilters
+// fetchPerformances 네이버 통합검색 API를 페이지네이션하여 순회하며 신규 공연 정보를 수집합니다.
+func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
+	// 매 페이지 순회 시마다 문자열 분할(Split) 연산이 반복되는 것을 방지하기 위해,
+	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 슬라이스 형태로 변환합니다.
+	filters := &parsedFilters{
+		TitleIncluded: strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
+		TitleExcluded: strutil.SplitAndTrim(commandSettings.Filters.Title.ExcludedKeywords, ","),
+		PlaceIncluded: strutil.SplitAndTrim(commandSettings.Filters.Place.IncludedKeywords, ","),
+		PlaceExcluded: strutil.SplitAndTrim(commandSettings.Filters.Place.ExcludedKeywords, ","),
+	}
 
-	searchPerformancePageIndex := 1
+	// searchResponse 네이버 통합검색 API의 응답을 처리하기 위한 JSON 래퍼(Wrapper)입니다.
+	type searchResponse struct {
+		HTML string `json:"html"`
+	}
 
-	// 중복 제거를 위한 맵 (Key: Title|Place)
-	// 라이브 서비스 특성상 수집 중 데이터가 밀려서(Pagination Drift) 이전 페이지의 내용이
-	// 다음 페이지에 다시 나올 수 있으므로, 세션 내에서 중복을 제거합니다.
+	var newPerformances []*performance
+
+	// 중복 제거를 위한 맵
+	// 라이브 서비스 특성상 수집 중 데이터가 밀려서 이전 페이지의 내용이 다음 페이지에 다시 나올 수 있으므로,
+	// 세션 내에서 중복을 제거합니다.
 	seen := make(map[string]bool)
 
+	searchPerformancePageIndex := 1
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
@@ -178,23 +192,22 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesSettings) ([
 			return nil, nil
 		}
 
-		if searchPerformancePageIndex > commandConfig.MaxPages {
-			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 수집을 조기 종료합니다", commandConfig.MaxPages), nil, nil)
+		if searchPerformancePageIndex > commandSettings.MaxPages {
+			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 공연 정보 수집을 조기 종료합니다", commandSettings.MaxPages), nil, nil)
 			break
 		}
 
-		// 페이지네이션 로깅
-		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 페이지를 수집합니다", logrus.Fields{
+		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 수집을 시작합니다", logrus.Fields{
 			"page":  searchPerformancePageIndex,
-			"query": commandConfig.Query,
+			"query": commandSettings.Query,
 		}, nil)
 
-		var searchResultData = &performanceSearchResponse{}
+		// API 요청 파라미터 구성
 		params := url.Values{}
 		params.Set("key", "kbList")                                // 지식베이스(Knowledge Base) 리스트 식별자 (고정값)
 		params.Set("pkid", "269")                                  // 공연/전시 정보 식별자 (269: 공연/전시)
 		params.Set("where", "nexearch")                            // 검색 영역
-		params.Set("u1", commandConfig.Query)                      // 검색어 (지역명 등)
+		params.Set("u1", commandSettings.Query)                    // 검색어 (지역명 등)
 		params.Set("u2", "all")                                    // 장르 (all: 전체)
 		params.Set("u3", "")                                       // 날짜 범위 (빈 문자열: 전체)
 		params.Set("u4", "ingplan")                                // 공연 상태 (ingplan: 진행중/예정)
@@ -203,30 +216,34 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesSettings) ([
 		params.Set("u7", strconv.Itoa(searchPerformancePageIndex)) // 페이지 번호
 		params.Set("u8", "all")                                    // 세부 장르 (all: 전체)
 
-		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", searchBaseURL, params.Encode()), nil, nil, searchResultData)
+		var pageContent = &searchResponse{}
+		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", searchAPIBaseURL, params.Encode()), nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
 
-		// HTML 파싱 (별도 함수 위임)
-		pagePerformances, rawCount, err := parsePerformancesFromHTML(searchResultData.HTML, filters)
+		// API로부터 수신한 비정형 HTML 데이터를 DOM 파싱하여 정형화된 공연 객체 리스트로 변환합니다.
+		pagePerformances, rawCount, err := parsePerformancesFromHTML(pageContent.HTML, filters)
 		if err != nil {
 			return nil, err
 		}
 
-		// 중복 제거 및 병합
+		// 중복 제거 및 결과 집계
 		for _, p := range pagePerformances {
 			key := p.Key()
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			performances = append(performances, p)
+			newPerformances = append(newPerformances, p)
 		}
 
 		searchPerformancePageIndex += 1
 
-		// 불러온 데이터(Raw Count)가 없는 경우, 모든 공연정보를 불러온 것으로 인식한다.
+		// 페이지네이션 종료 감지
+		//
+		// 현재 페이지에서 탐색된 원본 항목(Raw Count)이 0개라면, 더 이상 제공될 데이터가 없는 상태입니다.
+		// 이는 모든 공연 정보를 수집했음을 의미하므로, 불필요한 추가 요청을 방지하기 위해 루프를 정상 종료합니다.
 		if rawCount == 0 {
 			t.LogWithContext("task.naver", logrus.DebugLevel, "더 이상 공연 정보가 없어 수집을 종료합니다", logrus.Fields{
 				"last_page": searchPerformancePageIndex - 1,
@@ -234,17 +251,22 @@ func (t *task) fetchPerformances(commandConfig *watchNewPerformancesSettings) ([
 			break
 		}
 
-		time.Sleep(time.Duration(commandConfig.PageFetchDelay) * time.Millisecond)
+		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
 	}
 
 	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집을 완료했습니다", logrus.Fields{
-		"total_count": len(performances),
+		"total_count": len(newPerformances),
 	}, nil)
-	return performances, nil
+
+	return newPerformances, nil
 }
 
-// parsePerformancesFromHTML HTML 문자열을 파싱하여 공연 정보 목록을 반환합니다.
-// 반환값: (필터링된 공연 목록, 필터링 전 전체 아이템 개수, 에러)
+// parsePerformancesFromHTML 수집된 HTML 문서(DOM)를 파싱하여 구조화된 공연 정보 목록으로 변환합니다.
+//
+// 반환값:
+//   - []*performance: 사용자 정의 필터(Keywords)를 통과하여 최종 선별된 공연 정보 목록
+//   - int (rawCount): 필터링 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
+//   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
 func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performance, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
@@ -252,27 +274,31 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 	}
 
 	// 읽어온 페이지에서 공연정보를 추출한다.
-	ps := doc.Find(selectorPerformanceItem)
-	rawCount := ps.Length()
+	performancesSelection := doc.Find(selectorPerformanceItem)
 
-	// 미리 용량을 할당하여 메모리 재할당 최소화 (Micro-Optimization)
+	// 필터링 전 탐색된 원본 항목의 개수(Raw Count)입니다.
+	// 이 값은 필터링 결과와는 독립적으로, 현재 페이지에 처리할 데이터가
+	// 실제로 존재했는지를 나타내며 페이지네이션 루프의 종료 조건을 결정하는 핵심 지표로 사용됩니다.
+	rawCount := performancesSelection.Length()
+
+	// 미리 용량을 최대로 할당하여 메모리 재할당을 최소화한다.
 	performances := make([]*performance, 0, rawCount)
 
-	// 각 공연 아이템을 파싱하고 필터링
+	// 각 공연 아이템을 파싱하고 필터링한다.
 	for i := 0; i < rawCount; i++ {
-		s := ps.Eq(i)
-		p, err := parsePerformance(s)
+		performanceSelection := performancesSelection.Eq(i)
+		performance, err := parsePerformance(performanceSelection)
 		if err != nil {
 			return nil, 0, err
 		}
 
-		if !tasksvc.Filter(p.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(p.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+		if !tasksvc.Filter(performance.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(performance.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
 			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": p.Title}, nil)
 			continue
 		}
 
-		performances = append(performances, p)
+		performances = append(performances, performance)
 	}
 
 	return performances, rawCount, nil
@@ -281,31 +307,30 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 // parsePerformance 단일 공연 정보를 파싱합니다.
 func parsePerformance(s *goquery.Selection) (*performance, error) {
 	// 제목
-	pis := s.Find(selectorTitle)
-	if pis.Length() != 1 {
+	titleSelection := s.Find(selectorTitle)
+	if titleSelection.Length() != 1 {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
 	}
-	title := strings.TrimSpace(pis.Text())
+	title := strings.TrimSpace(titleSelection.Text())
 	if title == "" {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목이 비어있습니다")
 	}
 
 	// 장소
-	pis = s.Find(selectorPlace)
-	if pis.Length() != 1 {
+	placeSelection := s.Find(selectorPlace)
+	if placeSelection.Length() != 1 {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
 	}
-	place := strings.TrimSpace(pis.Text())
+	place := strings.TrimSpace(placeSelection.Text())
 	if place == "" {
 		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소가 비어있습니다")
 	}
 
-	// 썸네일 이미지 (Optional - Soft Fail)
-	// 썸네일이 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.
+	// 썸네일 이미지가 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.
 	var thumbnailSrc string
-	pis = s.Find(selectorThumbnail)
-	if pis.Length() > 0 {
-		if src, exists := pis.Attr("src"); exists {
+	thumbnailSelection := s.Find(selectorThumbnail)
+	if thumbnailSelection.Length() > 0 {
+		if src, exists := thumbnailSelection.Attr("src"); exists {
 			thumbnailSrc = src
 		}
 	}
@@ -319,13 +344,24 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 
 // diffAndNotify 이전 스냅샷과 비교하여 변경 사항을 알림 메시지로 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
+	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
 	var sb strings.Builder
-	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 150바이트 추정)
 	if len(currentSnapshot.Performances) > 0 {
-		sb.Grow(len(currentSnapshot.Performances) * 150)
+		sb.Grow(len(currentSnapshot.Performances) * 300)
 	}
+
+	// 최초 실행 시에는 이전 스냅샷(`prevSnapshot`)이 존재하지 않아 nil 상태일 수 있습니다.
+	// 이 경우 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
+	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
+	// 2. 현재 수집된 모든 공연 정보를 '신규'로 식별되도록 유도합니다. (Logic)
+	var prevPerformances []*performance
+	if prevSnapshot != nil {
+		prevPerformances = prevSnapshot.Performances
+	}
+
+	// @@@@@
 	lineSpacing := "\n\n"
-	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevSnapshot.Performances, func(selem, telem interface{}) (bool, error) {
+	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevPerformances, func(selem, telem interface{}) (bool, error) {
 		actualityPerformance, ok1 := selem.(*performance)
 		originPerformance, ok2 := telem.(*performance)
 		if !ok1 || !ok2 {

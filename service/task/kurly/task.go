@@ -69,7 +69,7 @@ type product struct {
 	IsUnknownProduct bool      `json:"is_unknown_product"` // 알 수 없는 상품인지에 대한 여부(상품 코드가 존재하지 않거나, 이전에는 판매를 하였지만 현재는 판매하고 있지 않는 상품)
 }
 
-func (p *product) String(messageTypeHTML bool, mark string, previousProduct *product) string {
+func (p *product) String(supportsHTML bool, mark string, previousProduct *product) string {
 	// 가격 및 할인 가격을 문자열로 반환하는 함수
 	formatPrice := func(price, discountedPrice, discountRate int) string {
 		// 할인 가격이 없거나 가격과 동일하면 그냥 가격을 반환한다.
@@ -77,7 +77,7 @@ func (p *product) String(messageTypeHTML bool, mark string, previousProduct *pro
 			return fmt.Sprintf("%s원", strutil.FormatCommas(price))
 		}
 
-		if messageTypeHTML == true {
+		if supportsHTML == true {
 			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 		}
 		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
@@ -85,7 +85,7 @@ func (p *product) String(messageTypeHTML bool, mark string, previousProduct *pro
 
 	// 상품 이름
 	var name string
-	if messageTypeHTML == true {
+	if supportsHTML == true {
 		name = fmt.Sprintf("☞ <a href=\"%sgoods/%d\"><b>%s</b></a>%s", baseURL, p.No, template.HTMLEscapeString(p.Name), mark)
 	} else {
 		name = fmt.Sprintf("☞ %s%s", template.HTMLEscapeString(p.Name), mark)
