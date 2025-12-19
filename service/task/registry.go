@@ -134,6 +134,25 @@ func (r *Registry) Register(taskID ID, config *Config) {
 	}).Info("태스크 정보가 성공적으로 등록되었습니다")
 }
 
+// RegisterForTest 유효성 검증 절차를 우회하여 Task 설정을 강제 등록합니다.
+//
+// 경고: 이 메서드는 프로덕션 환경에서 절대 호출되어서는 안 됩니다.
+func (r *Registry) RegisterForTest(taskID ID, config *Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.configs[taskID] = config
+}
+
+// ClearForTest Registry에 등록된 모든 Task 설정을 제거합니다.
+//
+// 경고: 이 메서드는 프로덕션 환경에서 절대 호출되어서는 안 됩니다.
+// 실행 중인 서버의 모든 Task 설정이 삭제되어 서비스 장애로 이어질 수 있습니다.
+func (r *Registry) ClearForTest() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.configs = make(map[ID]*Config)
+}
+
 // findConfig 주어진 식별자(ID)에 해당하는 Task 및 Command 설정을 검색하는 내부 메서드입니다.
 // CommandID 매칭 시 와일드카드(*) 패턴을 지원하기 위해, Map 조회 후 커맨드 목록에 대한 순차 탐색(Sequential Search)을 수행합니다.
 func (r *Registry) findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
@@ -165,20 +184,16 @@ func Register(taskID ID, config *Config) {
 	defaultRegistry.Register(taskID, config)
 }
 
+// ClearForTest Registry에 등록된 모든 Task 설정을 제거합니다.
+//
+// 경고: 이 메서드는 프로덕션 환경에서 절대 호출되어서는 안 됩니다.
+// 실행 중인 서버의 모든 Task 설정이 삭제되어 서비스 장애로 이어질 수 있습니다.
+func ClearForTest() {
+	defaultRegistry.ClearForTest()
+}
+
 // findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
 // 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
 func findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
-	return defaultRegistry.findConfig(taskID, commandID)
-}
-
-// RegisterForTest 유효성 검증 절차를 우회하여 설정을 강제 등록하는 테스트 전용 헬퍼 메서드입니다 (프로덕션 사용 금지).
-func (r *Registry) RegisterForTest(taskID ID, config *Config) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.configs[taskID] = config
-}
-
-// FindConfigForTest 테스트 목적으로 설정 정보를 조회합니다. (프로덕션 사용 금지).
-func FindConfigForTest(taskID ID, commandID CommandID) (*ConfigLookup, error) {
 	return defaultRegistry.findConfig(taskID, commandID)
 }
