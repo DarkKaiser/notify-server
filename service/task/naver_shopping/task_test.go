@@ -36,33 +36,33 @@ func TestNewTask_InvalidCommand(t *testing.T) {
 
 func TestNaverShoppingConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		taskConfig := &taskConfig{
+		taskSettings := &taskSettings{
 			ClientID:     "test_client_id",
 			ClientSecret: "test_client_secret",
 		}
 
-		err := taskConfig.validate()
+		err := taskSettings.validate()
 		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
 	})
 
 	t.Run("ClientID가 비어있는 경우", func(t *testing.T) {
-		taskConfig := &taskConfig{
+		taskSettings := &taskSettings{
 			ClientID:     "",
 			ClientSecret: "test_client_secret",
 		}
 
-		err := taskConfig.validate()
+		err := taskSettings.validate()
 		assert.Error(t, err, "ClientID가 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "client_id", "적절한 에러 메시지를 반환해야 합니다")
 	})
 
 	t.Run("ClientSecret이 비어있는 경우", func(t *testing.T) {
-		taskConfig := &taskConfig{
+		taskSettings := &taskSettings{
 			ClientID:     "test_client_id",
 			ClientSecret: "",
 		}
 
-		err := taskConfig.validate()
+		err := taskSettings.validate()
 		assert.Error(t, err, "ClientSecret이 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "client_secret", "적절한 에러 메시지를 반환해야 합니다")
 	})

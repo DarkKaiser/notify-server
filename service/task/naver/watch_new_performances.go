@@ -137,7 +137,7 @@ func (p *performance) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
-// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 최적화된 필터링 데이터입니다.
+// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 필터링 데이터입니다.
 type parsedFilters struct {
 	TitleIncluded []string
 	TitleExcluded []string
@@ -148,13 +148,13 @@ type parsedFilters struct {
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
 func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// 1. 최신 공연 정보 수집
-	newPerformances, err := t.fetchPerformances(commandSettings)
+	currentPerformances, err := t.fetchPerformances(commandSettings)
 	if err != nil {
 		return "", nil, err
 	}
 
 	currentSnapshot := &watchNewPerformancesSnapshot{
-		Performances: newPerformances,
+		Performances: currentPerformances,
 	}
 
 	// 2. 신규 정보 확인 및 알림 메시지 생성
@@ -163,7 +163,7 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 
 // fetchPerformances 네이버 통합검색 API를 페이지네이션하여 순회하며 신규 공연 정보를 수집합니다.
 func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
-	// 매 페이지 순회 시마다 문자열 분할(Split) 연산이 반복되는 것을 방지하기 위해,
+	// 매 페이지 순회 시마다 문자열 분할 연산이 반복되는 것을 방지하기 위해,
 	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 슬라이스 형태로 변환합니다.
 	filters := &parsedFilters{
 		TitleIncluded: strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
@@ -177,7 +177,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		HTML string `json:"html"`
 	}
 
-	var newPerformances []*performance
+	var currentPerformances []*performance
 
 	// 중복 제거를 위한 맵
 	// 라이브 서비스 특성상 수집 중 데이터가 밀려서 이전 페이지의 내용이 다음 페이지에 다시 나올 수 있으므로,
@@ -235,7 +235,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 				continue
 			}
 			seen[key] = true
-			newPerformances = append(newPerformances, p)
+			currentPerformances = append(currentPerformances, p)
 		}
 
 		searchPerformancePageIndex += 1
@@ -255,10 +255,10 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	}
 
 	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집을 완료했습니다", logrus.Fields{
-		"total_count": len(newPerformances),
+		"total_count": len(currentPerformances),
 	}, nil)
 
-	return newPerformances, nil
+	return currentPerformances, nil
 }
 
 // parsePerformancesFromHTML 수집된 HTML 문서(DOM)를 파싱하여 구조화된 공연 정보 목록으로 변환합니다.
@@ -350,8 +350,8 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		sb.Grow(len(currentSnapshot.Performances) * 300)
 	}
 
-	// 최초 실행 시에는 이전 스냅샷(`prevSnapshot`)이 존재하지 않아 nil 상태일 수 있습니다.
-	// 이 경우 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
+	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
+	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
 	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
 	// 2. 현재 수집된 모든 공연 정보를 '신규'로 식별되도록 유도합니다. (Logic)
 	var prevPerformances []*performance
@@ -359,49 +359,41 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		prevPerformances = prevSnapshot.Performances
 	}
 
-	// @@@@@
-	lineSpacing := "\n\n"
-	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Performances, prevPerformances, func(selem, telem interface{}) (bool, error) {
-		actualityPerformance, ok1 := selem.(*performance)
-		originPerformance, ok2 := telem.(*performance)
-		if !ok1 || !ok2 {
-			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &performance{}, selem)
-		}
-		if actualityPerformance.Equals(originPerformance) {
-			return true, nil
-		}
-		return false, nil
-	}, nil, func(selem interface{}) {
-		// 방어적 타입 단언
-		actualityPerformance, ok := selem.(*performance)
-		if !ok {
-			// 이론상 도달할 수 없지만 방어적 코드
-			return
-		}
-
-		if sb.Len() > 0 {
-			sb.WriteString(lineSpacing)
-		}
-		sb.WriteString(actualityPerformance.String(supportsHTML, " 🆕"))
-	})
-	if err != nil {
-		return "", nil, err
+	// 빠른 조회를 위해 이전 공연 목록을 Map으로 변환한다.
+	prevSet := make(map[string]bool, len(prevPerformances))
+	for _, p := range prevPerformances {
+		prevSet[p.Key()] = true
 	}
 
+	// 현재 공연 목록을 순회하며 신규 공연을 식별한다.
+	lineSpacing := "\n\n"
+	for _, p := range currentSnapshot.Performances {
+		// 이전에 수집된 목록에 존재하지 않는다면 신규 공연으로 판단한다.
+		if !prevSet[p.Key()] {
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
+			}
+			sb.WriteString(p.String(supportsHTML, " 🆕"))
+		}
+	}
 	if sb.Len() > 0 {
 		return "새로운 공연정보가 등록되었습니다.\n\n" + sb.String(), currentSnapshot, nil
 	}
 
+	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
+	//
+	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
+	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
 	if t.GetRunBy() == tasksvc.RunByUser {
 		if len(currentSnapshot.Performances) == 0 {
 			return "등록된 공연정보가 존재하지 않습니다.", nil, nil
 		}
 
-		for _, actualityPerformance := range currentSnapshot.Performances {
+		for _, p := range currentSnapshot.Performances {
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityPerformance.String(supportsHTML, ""))
+			sb.WriteString(p.String(supportsHTML, ""))
 		}
 		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
 	}
