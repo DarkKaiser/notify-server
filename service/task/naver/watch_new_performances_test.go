@@ -1,11 +1,15 @@
 package naver
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"testing"
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
@@ -84,11 +88,11 @@ func TestNaverPerformance_String(t *testing.T) {
 		{
 			name:         "HTML 포맷 확인",
 			supportsHTML: true,
-			mark:         "🆕",
+			mark:         " 🆕",
 			validate: func(t *testing.T, result string) {
 				assert.Contains(t, result, "<b>테스트 공연</b>")
 				assert.Contains(t, result, "테스트 극장")
-				assert.Contains(t, result, "🆕")
+				assert.Contains(t, result, " 🆕")
 			},
 		},
 		{
@@ -565,6 +569,266 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				} else {
 					assert.Nil(t, newSnapData)
 				}
+			}
+		})
+	}
+}
+
+// TestTask_ExecuteWatchNewPerformances executeWatchNewPerformances 메서드의 통합 흐름을 테스트합니다.
+// (Fetching -> Parsing -> Filtering)
+func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
+	t.Parallel()
+
+	// 테스트 데이터 생성 헬퍼
+	makePerformanceHTML := func(title, place string) string {
+		return fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">%s</span></div><div class="thumb"><img src="thumb.jpg"></div></div></li>`, title, place)
+	}
+
+	makeJSONResponse := func(htmlContent string) string {
+		m := map[string]string{"html": htmlContent}
+		b, _ := json.Marshal(m)
+		return string(b)
+	}
+
+	tests := []struct {
+		name            string
+		settings        *watchNewPerformancesSettings
+		mockResponses   map[string]string // URL Query -> HTML Body
+		mockErrors      map[string]error  // URL Query -> Error
+		expectedMessage []string          // 예상되는 알림 메시지 포함 문자열
+		expectedError   string            // 예상되는 에러 메시지
+		validate        func(t *testing.T, snapshot *watchNewPerformancesSnapshot)
+	}{
+		{
+			name: "성공: 단일 페이지 수집 및 신규 공연 알림",
+			settings: &watchNewPerformancesSettings{
+				Query:    "뮤지컬",
+				MaxPages: 1,
+			},
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("New Musical", "Seoul"))), // Page 1
+			},
+			expectedMessage: []string{"새로운 공연정보가 등록되었습니다", "New Musical", "Seoul"},
+			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				assert.Equal(t, 1, len(snapshot.Performances))
+				assert.Equal(t, "New Musical", snapshot.Performances[0].Title)
+			},
+		},
+		{
+			name: "성공: 페이지네이션 (2페이지까지 수집)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "콘서트",
+				MaxPages: 2,
+			},
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Concert 1", "Stadium"))), // Page 1
+				"u7=2": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Concert 2", "Hall"))),    // Page 2
+			},
+			expectedMessage: []string{"Concert 1", "Concert 2"},
+			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				assert.Equal(t, 2, len(snapshot.Performances))
+			},
+		},
+		{
+			name: "성공: 중복 데이터 제거 (페이지 밀림 현상 대응)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "Overlap",
+				MaxPages: 2,
+			},
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Perf A", "Place A"))), // Page 1
+				"u7=2": makeJSONResponse(fmt.Sprintf("<ul>%s%s</ul>",
+					makePerformanceHTML("Perf A", "Place A"),   // Page 1 내용이 다시 넘어옴 (중복)
+					makePerformanceHTML("Perf B", "Place B"))), // Page 2 신규
+			},
+			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				assert.Equal(t, 2, len(snapshot.Performances), "중복된 Perf A는 하나만 저장되어야 합니다")
+			},
+		},
+		{
+			name: "실패: 네트워크 에러 발생",
+			settings: &watchNewPerformancesSettings{
+				Query: "ErrorCase",
+			},
+			mockErrors: map[string]error{
+				"u7=1": fmt.Errorf("network timeout"),
+			},
+			expectedError: "network timeout",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Mock Fetcher 설정
+			mockFetcher := testutil.NewMockHTTPFetcher()
+			baseParams := url.Values{}
+			// 기본 파라미터 (watch_new_performances.go 참조)
+			baseParams.Set("key", "kbList")
+			baseParams.Set("pkid", "269")
+			baseParams.Set("where", "nexearch")
+			baseParams.Set("u1", tt.settings.Query)
+			baseParams.Set("u2", "all")
+			baseParams.Set("u3", "")
+			baseParams.Set("u4", "ingplan")
+			baseParams.Set("u5", "date")
+			baseParams.Set("u6", "N")
+			baseParams.Set("u8", "all")
+			// u7(Page)만 가변
+
+			// Mock Response 등록
+			for queryPart, body := range tt.mockResponses {
+				// 쿼리 파라미터 조합
+				// 주의: url.Values.Encode()는 키 정렬을 보장하므로 순서 문제 없음
+				// 하지만 테스트 편의를 위해 전체 URL을 구성해야 함
+				// 여기서는 간단히 하기 위해, 실제 코드와 동일한 방식으로 URL 생성 후 매핑
+
+				// 실제 코드의 URL 생성 로직을 흉내내야 매칭 가능
+				// 하지만 u7과 같은 페이지 번호는 동적이므로, 테스트 케이스의 queryPart (예: u7=1)를 파싱하여 병합
+
+				fullParams := url.Values{} // 복사
+				for k, v := range baseParams {
+					fullParams[k] = v
+				}
+
+				// queryPart 파싱 (ex: u7=1)
+				q, _ := url.ParseQuery(queryPart)
+				for k, v := range q {
+					fullParams[k] = v
+				}
+
+				fullURL := fmt.Sprintf("%s?%s", searchAPIBaseURL, fullParams.Encode())
+				mockFetcher.SetResponse(fullURL, []byte(body))
+			}
+
+			// Mock Error 등록
+			for queryPart, err := range tt.mockErrors {
+				fullParams := url.Values{}
+				for k, v := range baseParams {
+					fullParams[k] = v
+				}
+				q, _ := url.ParseQuery(queryPart)
+				for k, v := range q {
+					fullParams[k] = v
+				}
+				fullURL := fmt.Sprintf("%s?%s", searchAPIBaseURL, fullParams.Encode())
+				mockFetcher.SetError(fullURL, err) // 에러 설정
+			}
+
+			// Task 생성 및 설정
+			if tt.settings.MaxPages == 0 {
+				tt.settings.MaxPages = 50 // 기본값
+			}
+			if tt.settings.PageFetchDelay == 0 {
+				tt.settings.PageFetchDelay = 1 // 테스트 속도를 위해 최소화
+			}
+
+			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
+			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByScheduler)
+			naverTask := &task{
+				Task: baseTask,
+			}
+			naverTask.SetFetcher(mockFetcher)
+
+			// 실행
+			// prevSnapshot은 nil로 가정 (수집 테스트이므로)
+			msg, resultData, err := naverTask.executeWatchNewPerformances(tt.settings, nil, false)
+
+			// 검증
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				require.NoError(t, err)
+
+				for _, expMsg := range tt.expectedMessage {
+					assert.Contains(t, msg, expMsg)
+				}
+
+				if tt.validate != nil {
+					snapshot, ok := resultData.(*watchNewPerformancesSnapshot)
+					require.True(t, ok, "결과 데이터는 watchNewPerformancesSnapshot 타입이어야 합니다")
+					tt.validate(t, snapshot)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildSearchAPIURL buildSearchAPIURL 함수가 올바른 URL을 생성하는지 검증합니다.
+func TestBuildSearchAPIURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		query        string
+		page         int
+		expectedVars map[string]string // 가변 파라미터 검증용
+	}{
+		{
+			name:  "기본: 영문 검색어 및 1페이지",
+			query: "musical",
+			page:  1,
+			expectedVars: map[string]string{
+				"u1": "musical",
+				"u7": "1",
+			},
+		},
+		{
+			name:  "인코딩: 한글 검색어 및 중간 페이지",
+			query: "서울 뮤지컬",
+			page:  5,
+			expectedVars: map[string]string{
+				"u1": "서울 뮤지컬", // url.Parse가 디코딩해주므로 평문 비교
+				"u7": "5",
+			},
+		},
+		{
+			name:  "특수문자: URL 인코딩이 필요한 검색어",
+			query: "Cats & Dogs",
+			page:  10,
+			expectedVars: map[string]string{
+				"u1": "Cats & Dogs",
+				"u7": "10",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotURLStr := buildSearchAPIURL(tt.query, tt.page)
+			gotURL, err := url.Parse(gotURLStr)
+			require.NoError(t, err, "생성된 URL은 유효한 형식이어야 합니다")
+
+			// 1. Base URL 검증
+			// searchAPIBaseURL 상수는 쿼리 파라미터를 포함하지 않는 순수 경로라고 가정
+			expectedBaseURL, _ := url.Parse(searchAPIBaseURL)
+			assert.Equal(t, expectedBaseURL.Scheme, gotURL.Scheme, "Scheme이 일치해야 합니다")
+			assert.Equal(t, expectedBaseURL.Host, gotURL.Host, "Host가 일치해야 합니다")
+			assert.Equal(t, expectedBaseURL.Path, gotURL.Path, "Path가 일치해야 합니다")
+
+			// 2. 쿼리 파라미터 검증
+			q := gotURL.Query()
+
+			// 2-1. 고정 파라미터 검증 (Invariant)
+			assert.Equal(t, "kbList", q.Get("key"), "key 파라미터 불일치")
+			assert.Equal(t, "269", q.Get("pkid"), "pkid 파라미터 불일치")
+			assert.Equal(t, "nexearch", q.Get("where"), "where 파라미터 불일치")
+			assert.Equal(t, "all", q.Get("u2"), "u2 (장르) 파라미터 불일치")
+			assert.Equal(t, "", q.Get("u3"), "u3 (날짜) 파라미터 불일치")
+			assert.Equal(t, "ingplan", q.Get("u4"), "u4 (상태) 파라미터 불일치")
+			assert.Equal(t, "date", q.Get("u5"), "u5 (정렬) 파라미터 불일치")
+			assert.Equal(t, "N", q.Get("u6"), "u6 (성인여부) 파라미터 불일치")
+			assert.Equal(t, "all", q.Get("u8"), "u8 (세부장르) 파라미터 불일치")
+
+			// 2-2. 가변 파라미터 검증 (Variant)
+			for k, v := range tt.expectedVars {
+				assert.Equal(t, v, q.Get(k), "가변 파라미터 %s 불일치", k)
 			}
 		})
 	}

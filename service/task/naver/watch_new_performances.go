@@ -48,6 +48,9 @@ const (
 
 	// selectorThumbnail 공연 카드 내부의 공연 포스터 이미지의 URL을 추출합니다.
 	selectorThumbnail = ".thumb img"
+
+	// newPerformanceMark 신규 공연 알림 메시지에 표시될 강조 마크입니다.
+	newPerformanceMark = " 🆕"
 )
 
 type watchNewPerformancesSettings struct {
@@ -109,7 +112,7 @@ func (p *performance) Equals(other *performance) bool {
 // 반환값은 "제목|장소" 형식으로, 파이프(|) 문자를 구분자로 사용하여 제목과 장소를 결합합니다.
 // 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
 //
-// 중요: 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
+// [중요] 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
 // 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
 func (p *performance) Key() string {
 	return fmt.Sprintf("%s|%s", p.Title, p.Place)
@@ -184,40 +187,29 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	// 세션 내에서 중복을 제거합니다.
 	seen := make(map[string]bool)
 
-	searchPerformancePageIndex := 1
+	pageIndex := 1
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.naver", logrus.InfoLevel, "작업이 취소되어 공연 정보 수집을 중단합니다", nil, nil)
+			t.LogWithContext("task.naver", logrus.WarnLevel, "작업이 취소되어 공연 정보 수집을 중단합니다", nil, nil)
 			return nil, nil
 		}
 
-		if searchPerformancePageIndex > commandSettings.MaxPages {
+		if pageIndex > commandSettings.MaxPages {
 			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 공연 정보 수집을 조기 종료합니다", commandSettings.MaxPages), nil, nil)
 			break
 		}
 
 		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 수집을 시작합니다", logrus.Fields{
-			"page":  searchPerformancePageIndex,
+			"page":  pageIndex,
 			"query": commandSettings.Query,
 		}, nil)
 
-		// API 요청 파라미터 구성
-		params := url.Values{}
-		params.Set("key", "kbList")                                // 지식베이스(Knowledge Base) 리스트 식별자 (고정값)
-		params.Set("pkid", "269")                                  // 공연/전시 정보 식별자 (269: 공연/전시)
-		params.Set("where", "nexearch")                            // 검색 영역
-		params.Set("u1", commandSettings.Query)                    // 검색어 (지역명 등)
-		params.Set("u2", "all")                                    // 장르 (all: 전체)
-		params.Set("u3", "")                                       // 날짜 범위 (빈 문자열: 전체)
-		params.Set("u4", "ingplan")                                // 공연 상태 (ingplan: 진행중/예정)
-		params.Set("u5", "date")                                   // 정렬 순서 (date: 최신순)
-		params.Set("u6", "N")                                      // 성인 공연 포함 여부 (N: 제외)
-		params.Set("u7", strconv.Itoa(searchPerformancePageIndex)) // 페이지 번호
-		params.Set("u8", "all")                                    // 세부 장르 (all: 전체)
+		// API 요청 URL 생성
+		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?%s", searchAPIBaseURL, params.Encode()), nil, nil, pageContent)
+		err := tasksvc.FetchJSON(t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +230,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 			currentPerformances = append(currentPerformances, p)
 		}
 
-		searchPerformancePageIndex += 1
+		pageIndex += 1
 
 		// 페이지네이션 종료 감지
 		//
@@ -246,7 +238,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		// 이는 모든 공연 정보를 수집했음을 의미하므로, 불필요한 추가 요청을 방지하기 위해 루프를 정상 종료합니다.
 		if rawCount == 0 {
 			t.LogWithContext("task.naver", logrus.DebugLevel, "더 이상 공연 정보가 없어 수집을 종료합니다", logrus.Fields{
-				"last_page": searchPerformancePageIndex - 1,
+				"last_page": pageIndex - 1,
 			}, nil)
 			break
 		}
@@ -259,6 +251,25 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	}, nil)
 
 	return currentPerformances, nil
+}
+
+// buildSearchAPIURL 네이버 모바일 통합검색 내부 API 호출을 위한 전체 URL을 생성합니다.
+func buildSearchAPIURL(query string, page int) string {
+	params := url.Values{}
+	params.Set("key", "kbList")     // 지식베이스(Knowledge Base) 리스트 식별자 (고정값)
+	params.Set("pkid", "269")       // 공연/전시 정보 식별자 (고정값)
+	params.Set("where", "nexearch") // 검색 영역 (통합검색)
+
+	params.Set("u1", query)              // 검색어 (예: "jl")
+	params.Set("u2", "all")              // 장르 필터 ("all": 전체)
+	params.Set("u3", "")                 // 날짜 범위 ("": 전체 기간)
+	params.Set("u4", "ingplan")          // 공연 상태 ("ingplan": 진행중/예정)
+	params.Set("u5", "date")             // 정렬 순서 ("date": 최신순, "rank": 인기순)
+	params.Set("u6", "N")                // 성인 공연 포함 여부 ("N": 제외)
+	params.Set("u7", strconv.Itoa(page)) // 페이지 번호
+	params.Set("u8", "all")              // 세부 장르 ("all": 전체)
+
+	return fmt.Sprintf("%s?%s", searchAPIBaseURL, params.Encode())
 }
 
 // parsePerformancesFromHTML 수집된 HTML 문서(DOM)를 파싱하여 구조화된 공연 정보 목록으로 변환합니다.
@@ -285,20 +296,26 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 	performances := make([]*performance, 0, rawCount)
 
 	// 각 공연 아이템을 파싱하고 필터링한다.
-	for i := 0; i < rawCount; i++ {
-		performanceSelection := performancesSelection.Eq(i)
-		performance, err := parsePerformance(performanceSelection)
+	var parseErr error
+	performancesSelection.EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		perf, err := parsePerformance(s)
 		if err != nil {
-			return nil, 0, err
+			parseErr = err
+			return false // 순회 중단
 		}
 
-		if !tasksvc.Filter(performance.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(performance.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+		if !tasksvc.Filter(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
-			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": p.Title}, nil)
-			continue
+			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
+			return true // 계속 진행
 		}
 
-		performances = append(performances, performance)
+		performances = append(performances, perf)
+
+		return true // 계속 진행
+	})
+	if parseErr != nil {
+		return nil, 0, parseErr
 	}
 
 	return performances, rawCount, nil
@@ -309,21 +326,21 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	// 제목
 	titleSelection := s.Find(selectorTitle)
 	if titleSelection.Length() != 1 {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목 추출이 실패하였습니다")
+		return nil, tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorTitle, titleSelection.Length()))
 	}
 	title := strings.TrimSpace(titleSelection.Text())
 	if title == "" {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 제목이 비어있습니다")
+		return nil, tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목이 비어있습니다 (선택자: %s)", selectorTitle))
 	}
 
 	// 장소
 	placeSelection := s.Find(selectorPlace)
 	if placeSelection.Length() != 1 {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소 추출이 실패하였습니다")
+		return nil, tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorPlace, placeSelection.Length()))
 	}
 	place := strings.TrimSpace(placeSelection.Text())
 	if place == "" {
-		return nil, tasksvc.NewErrHTMLStructureChanged("", "공연 장소가 비어있습니다")
+		return nil, tasksvc.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소가 비어있습니다 (선택자: %s)", selectorPlace))
 	}
 
 	// 썸네일 이미지가 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.
@@ -373,7 +390,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, " 🆕"))
+			sb.WriteString(p.String(supportsHTML, newPerformanceMark))
 		}
 	}
 	if sb.Len() > 0 {
