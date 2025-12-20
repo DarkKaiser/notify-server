@@ -201,43 +201,34 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		lineSpacing = "\n"
 	}
 
-	// 최초 실행 시 prevSnapshot이 nil일 수 있음
-	var prevProducts []*product
+	// 1. 이전 스냅샷이 있다면 Map으로 변환하여 조회 성능 최적화 (O(N))
+	prevMap := make(map[string]*product)
 	if prevSnapshot != nil {
-		prevProducts = prevSnapshot.Products
+		for _, p := range prevSnapshot.Products {
+			prevMap[p.Key()] = p
+		}
 	}
 
-	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Products, prevProducts, func(selem, telem interface{}) (bool, error) {
-		actualityProduct, ok1 := selem.(*product)
-		originProduct, ok2 := telem.(*product)
-		if !ok1 || !ok2 {
-			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
-		} else {
-			if actualityProduct.Link == originProduct.Link {
-				return true, nil
-			}
-		}
-		return false, nil
-	}, func(selem, telem interface{}) {
-		actualityProduct := selem.(*product)
-		originProduct := telem.(*product)
+	// 2. 현재 상품 목록을 순회하며 변경 내역 확인
+	for _, currentProduct := range currentSnapshot.Products {
+		key := currentProduct.Key()
+		prevProduct, exists := prevMap[key]
 
-		if actualityProduct.LowPrice != originProduct.LowPrice {
+		if !exists {
+			// 신규 상품 (New)
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(originProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice))))
+			sb.WriteString(currentProduct.String(supportsHTML, " 🆕"))
+		} else {
+			// 기존 상품: 가격 변동 확인
+			if currentProduct.LowPrice != prevProduct.LowPrice {
+				if sb.Len() > 0 {
+					sb.WriteString(lineSpacing)
+				}
+				sb.WriteString(prevProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(currentProduct.LowPrice))))
+			}
 		}
-	}, func(selem interface{}) {
-		actualityProduct := selem.(*product)
-
-		if sb.Len() > 0 {
-			sb.WriteString(lineSpacing)
-		}
-		sb.WriteString(actualityProduct.String(supportsHTML, " 🆕"))
-	})
-	if err != nil {
-		return "", nil, err
 	}
 
 	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandSettings.Query, commandSettings.Filters.IncludedKeywords, commandSettings.Filters.ExcludedKeywords, strutil.FormatCommas(commandSettings.Filters.PriceLessThan))
