@@ -61,7 +61,7 @@ type product struct {
 }
 
 func (p *product) String(supportsHTML bool, mark string) string {
-	if supportsHTML == true {
+	if supportsHTML {
 		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, strutil.FormatCommas(p.LowPrice), mark)
 	}
 	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))
@@ -122,7 +122,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
-		if tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) == false {
+		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
 			goto NEXTITEM
 		}
 
@@ -145,13 +145,13 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 	//
 	m := ""
 	lineSpacing := "\n\n"
-	if supportsHTML == true {
+	if supportsHTML {
 		lineSpacing = "\n"
 	}
 	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
-		if ok1 == false || ok2 == false {
+		if !ok1 || !ok2 {
 			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
 		} else {
 			if actualityProduct.Link == originProduct.Link {
