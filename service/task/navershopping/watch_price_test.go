@@ -11,76 +11,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWatchPriceSettings_Validate(t *testing.T) {
+// -----------------------------------------------------------------------------
+// Unit Tests: Settings & Domain Models
+// -----------------------------------------------------------------------------
+
+func TestWatchPriceSettings_Validate_TableDriven(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name        string
-		settings    watchPriceSettings
-		expectedErr string
+		name      string
+		settings  func() watchPriceSettings
+		wantError string
 	}{
 		{
-			name: "정상적인 설정",
-			settings: watchPriceSettings{
-				Query: "test_query",
-				Filters: struct {
-					IncludedKeywords string `json:"included_keywords"`
-					ExcludedKeywords string `json:"excluded_keywords"`
-					PriceLessThan    int    `json:"price_less_than"`
-				}{
-					PriceLessThan: 10000,
-				},
+			name: "성공: 정상적인 설정",
+			settings: func() watchPriceSettings {
+				return NewSettingsBuilder().WithQuery("valid").WithPriceLessThan(10000).Build()
 			},
-			expectedErr: "",
+			wantError: "",
 		},
 		{
-			name: "Query 누락",
-			settings: watchPriceSettings{
-				Query: "",
-				Filters: struct {
-					IncludedKeywords string `json:"included_keywords"`
-					ExcludedKeywords string `json:"excluded_keywords"`
-					PriceLessThan    int    `json:"price_less_than"`
-				}{
-					PriceLessThan: 10000,
-				},
+			name: "실패: Query 누락",
+			settings: func() watchPriceSettings {
+				return NewSettingsBuilder().WithQuery("").WithPriceLessThan(10000).Build()
 			},
-			expectedErr: "query",
+			wantError: "query",
 		},
 		{
-			name: "Query 공백",
-			settings: watchPriceSettings{
-				Query: "   ",
-				Filters: struct {
-					IncludedKeywords string `json:"included_keywords"`
-					ExcludedKeywords string `json:"excluded_keywords"`
-					PriceLessThan    int    `json:"price_less_than"`
-				}{
-					PriceLessThan: 10000,
-				},
+			name: "실패: Query 공백",
+			settings: func() watchPriceSettings {
+				return NewSettingsBuilder().WithQuery("   ").WithPriceLessThan(10000).Build()
 			},
-			expectedErr: "query",
+			wantError: "query",
 		},
 		{
-			name: "PriceLessThan 0 이하",
-			settings: watchPriceSettings{
-				Query: "test_query",
-				Filters: struct {
-					IncludedKeywords string `json:"included_keywords"`
-					ExcludedKeywords string `json:"excluded_keywords"`
-					PriceLessThan    int    `json:"price_less_than"`
-				}{
-					PriceLessThan: 0,
-				},
+			name: "실패: PriceLessThan 0 이하",
+			settings: func() watchPriceSettings {
+				return NewSettingsBuilder().WithQuery("valid").WithPriceLessThan(0).Build()
 			},
-			expectedErr: "price_less_than",
+			wantError: "price_less_than",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.settings.validate()
-			if tt.expectedErr != "" {
+			t.Parallel()
+			s := tt.settings()
+			err := s.validate()
+			if tt.wantError != "" {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErr)
+				assert.Contains(t, err.Error(), tt.wantError)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -88,263 +69,385 @@ func TestWatchPriceSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestProduct_String(t *testing.T) {
-	p := &product{
-		Title:       "Test Product",
-		Link:        "http://example.com",
-		LowPrice:    10000,
-		MallName:    "Test Mall",
-		ProductID:   "123456",
-		ProductType: "1",
-	}
+func TestProduct_String_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	p := NewProductBuilder().
+		WithTitle("Test Product").
+		WithLink("http://example.com").
+		WithPrice(10000).
+		WithMallName("Test Mall").
+		Build()
 
 	tests := []struct {
 		name         string
 		supportsHTML bool
 		mark         string
-		expected     []string
-		notExpected  []string
+		wants        []string
+		unwants      []string
 	}{
 		{
 			name:         "HTML - No Mark",
 			supportsHTML: true,
 			mark:         "",
-			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원"},
-			notExpected:  []string{"Test Product (Test Mall) 10,000원 🆕"},
+			wants:        []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원"},
+			unwants:      []string{"Test Product (Test Mall) 10,000원 🆕"},
 		},
 		{
 			name:         "HTML - With Mark",
 			supportsHTML: true,
 			mark:         " 🆕",
-			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원 🆕"},
+			wants:        []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원 🆕"},
 		},
 		{
 			name:         "Text - No Mark",
 			supportsHTML: false,
 			mark:         "",
-			expected:     []string{"☞ Test Product (Test Mall) 10,000원", "http://example.com"},
-			notExpected:  []string{"<a href"},
-		},
-		{
-			name:         "Text - With Mark",
-			supportsHTML: false,
-			mark:         " 🆕",
-			expected:     []string{"☞ Test Product (Test Mall) 10,000원 🆕"},
+			wants:        []string{"☞ Test Product (Test Mall) 10,000원", "http://example.com"},
+			unwants:      []string{"<a href"},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			result := p.String(tt.supportsHTML, tt.mark)
-			for _, exp := range tt.expected {
-				assert.Contains(t, result, exp)
+			t.Parallel()
+			got := p.String(tt.supportsHTML, tt.mark)
+			for _, want := range tt.wants {
+				assert.Contains(t, got, want)
 			}
-			for _, nexp := range tt.notExpected {
-				assert.NotContains(t, result, nexp)
+			for _, unwant := range tt.unwants {
+				assert.NotContains(t, got, unwant)
 			}
 		})
 	}
 }
 
-func TestTask_FetchProducts(t *testing.T) {
-	// Setup
-	mockFetcher := testutil.NewMockHTTPFetcher()
-	tsk := &task{
-		clientID:     "test_id",
-		clientSecret: "test_secret",
-	}
-	tsk.SetFetcher(mockFetcher)
+// -----------------------------------------------------------------------------
+// Integration Tests: Fetch & Notify Logic
+// -----------------------------------------------------------------------------
 
-	baseSettings := &watchPriceSettings{
-		Query: "test",
-		Filters: struct {
-			IncludedKeywords string `json:"included_keywords"`
-			ExcludedKeywords string `json:"excluded_keywords"`
-			PriceLessThan    int    `json:"price_less_than"`
-		}{
-			PriceLessThan: 20000,
+func TestTask_FetchProducts_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	// 공통 설정
+	defaultSettings := NewSettingsBuilder().
+		WithQuery("test").
+		WithPriceLessThan(20000).
+		Build()
+
+	// 예상되는 호출 URL (Key 정렬: display, query, sort, start)
+	expectedURL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+
+	tests := []struct {
+		name        string
+		settings    watchPriceSettings
+		mockSetup   func(*testutil.MockHTTPFetcher)
+		checkResult func(*testing.T, []*product, error)
+	}{
+		{
+			name:     "성공: 정상적인 데이터 수집 및 필터링",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{
+					Total: 3, Items: []*searchResponseItem{
+						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
+						{Title: "FilterPrice", Link: "L2", LowPrice: "30000", ProductID: "2"},   // 20000 초과
+						{Title: "FilterKeyword", Link: "L3", LowPrice: "10000", ProductID: "3"}, // 제외 키워드 시나리오
+					},
+				}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				// defaultSettings에는 제외 키워드가 없으므로 가격 필터만 적용됨. (3개 중 1개 제외 -> 2개 남음)
+				require.Len(t, p, 2)
+				assert.Equal(t, "Keep", p[0].Title)
+				assert.Equal(t, "FilterKeyword", p[1].Title)
+			},
+		},
+		{
+			name:     "성공: 제외 키워드 적용",
+			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("Exclude").Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{
+					Total: 2, Items: []*searchResponseItem{
+						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
+						{Title: "Exclude Me", Link: "L2", LowPrice: "10000", ProductID: "2"},
+					},
+				}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 1)
+				assert.Equal(t, "Keep", p[0].Title)
+			},
+		},
+		{
+			name:     "성공: 가격 쉼표 파싱",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Comma", LowPrice: "1,500", ProductID: "1"}}}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 1)
+				assert.Equal(t, 1500, p[0].LowPrice)
+			},
+		},
+		{
+			name:     "성공: 빈 결과",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{Total: 0, Items: []*searchResponseItem{}}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				assert.Empty(t, p)
+			},
+		},
+		{
+			name:     "실패: API 호출 에러",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				m.SetError(expectedURL, errors.New("network fail"))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "network fail")
+			},
+		},
+		{
+			name:     "성공: 잘못된 가격 형식 무시",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "BadPrice", LowPrice: "Free", ProductID: "1"}}}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				assert.Empty(t, p, "가격 파싱에 실패한 항목은 제외되어야 함")
+			},
 		},
 	}
 
-	t.Run("성공: 데이터 수집 및 필터링", func(t *testing.T) {
-		// Mock Response
-		response := searchResponse{
-			Total:   2,
-			Start:   1,
-			Display: 2,
-			Items: []*searchResponseItem{
-				{
-					Title:     "Test Product 1",
-					Link:      "http://example.com/1",
-					LowPrice:  "10000",
-					ProductID: "111",
-				},
-				{
-					Title:     "Test Product 2 (Excluded)",
-					Link:      "http://example.com/2",
-					LowPrice:  "15000",
-					ProductID: "222",
-				},
-				{
-					Title:     "Test Product 3 (Expensive)",
-					Link:      "http://example.com/3",
-					LowPrice:  "30000",
-					ProductID: "333",
-				},
-			},
-		}
-		responseJSON, _ := json.Marshal(response)
-		// URL 매칭을 위해 Query와 Encode 로직을 고려해야 함.
-		// 테스트 편의상 mockFetcher가 모든 URL에 대해 동일 응답을 주도록 설정하거나,
-		// 정확한 URL을 예측해야 함. 여기서는 정확한 매칭을 시도.
-		// searchAPIURL + query params.
-		// query params 순서는 map iteration 순서에 따르므로 예측이 어려울 수 있음.
-		// 하지만 FetchJSON 호출 시 u.String()을 사용.
-		// mockFetcher.SetResponse(...)는 URL이 정확해야 함.
-		// 하지만 testutil.MockHTTPFetcher 구현을 보면, URL을 키로 맵에 저장하지 않고,
-		// SetResponse 호출 시 저장해두고 Get 호출 시 반환하거나,
-		// 좀 더 유연하게 동작할 필요가 있음.
-		// testutil.NewMockHTTPFetcher 구현 확인 결과 (추정): 보통 SetResponse(url, body) 형태임.
-		// URL 예측이 힘들다면 MockFetcher를 수정하거나, FetchProducts 내부 URL 생성 로직을 검증하는 별도 방법을 써야 함.
-		// 일단 가장 일반적인 Happy Path URL을 구성.
-		// query=test&display=100&start=1&sort=sim
-		// url.Values Encode는 키 정렬을 보장함.
-		expectedURL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
-		mockFetcher.SetResponse(expectedURL, responseJSON)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		// 제외 키워드 설정
-		settings := *baseSettings
-		settings.Filters.ExcludedKeywords = "Excluded"
+			mockFetcher := testutil.NewMockHTTPFetcher()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mockFetcher)
+			}
 
-		products, err := tsk.fetchProducts(&settings)
-		require.NoError(t, err)
+			tsk := &task{clientID: "id", clientSecret: "secret"}
+			tsk.SetFetcher(mockFetcher)
 
-		// Product 2는 ExcludedKeywords 포함으로 제외
-		// Product 3는 PriceLessThan(20000) 초과로 제외
-		// Product 1만 남아야 함
-		require.Len(t, products, 1)
-		assert.Equal(t, "Test Product 1", products[0].Title)
-	})
-
-	t.Run("성공: 가격 쉼표 파싱", func(t *testing.T) {
-		response := searchResponse{
-			Total: 1,
-			Items: []*searchResponseItem{
-				{
-					Title:    "Comma Price",
-					LowPrice: "1,500", // 쉼표 포함
-				},
-			},
-		}
-		responseJSON, _ := json.Marshal(response)
-		mockFetcher.SetResponse("https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1", responseJSON)
-
-		products, err := tsk.fetchProducts(baseSettings)
-		require.NoError(t, err)
-		require.Len(t, products, 1)
-		assert.Equal(t, 1500, products[0].LowPrice)
-	})
-
-	t.Run("실패: API 호출 에러", func(t *testing.T) {
-		// SetError requires URL
-		mockFetcher.SetError("https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1", errors.New("network error"))
-		_, err := tsk.fetchProducts(baseSettings)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "network error")
-	})
-
-	t.Run("성공: 빈 결과", func(t *testing.T) {
-		mockFetcher.Reset() // Clear previous errors and responses
-		response := searchResponse{Total: 0, Items: []*searchResponseItem{}}
-		responseJSON, _ := json.Marshal(response)
-		mockFetcher.SetResponse("https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1", responseJSON)
-
-		products, err := tsk.fetchProducts(baseSettings)
-		require.NoError(t, err)
-		assert.Empty(t, products)
-	})
+			got, err := tsk.fetchProducts(&tt.settings)
+			tt.checkResult(t, got, err)
+		})
+	}
 }
 
-func TestTask_DiffAndNotify(t *testing.T) {
-	tsk := &task{}
-	// RunBy 설정 (tasksvc.Task 내장 필드 설정 필요)
-	// 하지만 Task 구조체 내장 필드는 private일 수 있음 -> NewBaseTask로 생성된 Task를 임베딩했으므로,
-	// t.RunBy 접근이 가능하거나 Set 메서드가 있는지 확인 필요.
-	// Task 구조체는 tasksvc.BaseTask를 임베딩하고 있음.
-	tsk.Task = tasksvc.NewBaseTask("taskID", "commandID", "instanceID", "notifierID", tasksvc.RunByScheduler)
+func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
+	t.Parallel()
 
-	baseSettings := &watchPriceSettings{
-		Query: "test",
-		Filters: struct {
-			IncludedKeywords string `json:"included_keywords"`
-			ExcludedKeywords string `json:"excluded_keywords"`
-			PriceLessThan    int    `json:"price_less_than"`
-		}{
-			PriceLessThan: 20000,
+	// Base settings
+	settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).Build()
+
+	// Fixtures
+	p1 := NewProductBuilder().WithID("1").WithPrice(10000).WithTitle("P1").Build()
+	p1Same := NewProductBuilder().WithID("1").WithPrice(10000).WithTitle("P1").Build()
+	p1Cheap := NewProductBuilder().WithID("1").WithPrice(9000).WithLink("L_NEW").WithTitle("P1").Build() // Price Drop + Link Change
+	p1Expensive := NewProductBuilder().WithID("1").WithPrice(11000).WithTitle("P1").Build()
+	p2 := NewProductBuilder().WithID("2").WithPrice(5000).WithTitle("P2").Build()
+
+	tests := []struct {
+		name         string
+		runBy        tasksvc.RunBy
+		currentItems []*product
+		prevItems    []*product
+		checkMsg     func(*testing.T, string, interface{}, error)
+	}{
+		{
+			name:         "신규 상품 (New)",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: []*product{p1, p2},
+			prevItems:    []*product{p1},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "상품의 정보가 변경되었습니다")
+				assert.Contains(t, msg, "P2")
+				assert.Contains(t, msg, "🆕")
+				assert.NotNil(t, data)
+			},
+		},
+		{
+			name:         "가격 하락 & Stale Link (Change)",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: []*product{p1Cheap},
+			prevItems:    []*product{p1},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "변경되었습니다")
+				assert.Contains(t, msg, "9,000원")
+				assert.Contains(t, msg, "(전: 10,000원)")
+				assert.Contains(t, msg, "L_NEW") // Stale Link Check: 최신 링크 사용 여부
+				assert.NotNil(t, data)
+			},
+		},
+		{
+			name:         "가격 상승",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: []*product{p1Expensive},
+			prevItems:    []*product{p1},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "11,000원")
+				assert.NotNil(t, data)
+			},
+		},
+		{
+			name:         "변경 없음 (Scheduler)",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: []*product{p1},
+			prevItems:    []*product{p1Same},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Empty(t, msg)
+				assert.Nil(t, data)
+			},
+		},
+		{
+			name:         "변경 없음 (User)",
+			runBy:        tasksvc.RunByUser,
+			currentItems: []*product{p1},
+			prevItems:    []*product{p1Same},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "변경된 정보가 없습니다")
+				assert.Nil(t, data)
+			},
+		},
+		{
+			name:         "결과 없음 (User)",
+			runBy:        tasksvc.RunByUser,
+			currentItems: []*product{},
+			prevItems:    []*product{},
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "상품이 존재하지 않습니다")
+			},
+		},
+		{
+			name:         "최초 실행 (Prev is Nil)",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: []*product{p1},
+			prevItems:    nil,
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.Contains(t, msg, "변경되었습니다")
+			},
 		},
 	}
 
-	p1 := &product{Title: "P1", Link: "L1", LowPrice: 10000, ProductID: "PID_1"}
-	p2 := &product{Title: "P2", Link: "L2", LowPrice: 10000, ProductID: "PID_2"}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("신규 상품 발견 (New)", func(t *testing.T) {
-		current := &watchPriceSnapshot{Products: []*product{p1, p2}}
-		prev := &watchPriceSnapshot{Products: []*product{p1}} // p2가 신규
+			// Task 생성 및 RunBy 설정
+			tsk := &task{}
+			tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tt.runBy)
 
-		msg, _, err := tsk.diffAndNotify(baseSettings, current, prev, false)
-		require.NoError(t, err)
-		assert.Contains(t, msg, "상품의 정보가 변경되었습니다")
-		assert.Contains(t, msg, "P2")
-		assert.Contains(t, msg, "🆕")
-	})
+			current := &watchPriceSnapshot{Products: tt.currentItems}
+			var prev *watchPriceSnapshot
+			if tt.prevItems != nil {
+				prev = &watchPriceSnapshot{Products: tt.prevItems}
+			}
 
-	t.Run("가격 변동 (Change)", func(t *testing.T) {
-		// Stale Link Scenario: 가격이 내리면서 링크도 변경된 경우
-		// 알림은 새로운 링크(L1_New)를 가리켜야 함.
-		p1Old := &product{Title: "P1", Link: "L1_Old", LowPrice: 10000, MallName: "Mall", ProductID: "PID_1"}
-		p1New := &product{Title: "P1", Link: "L1_New", LowPrice: 9000, MallName: "Mall", ProductID: "PID_1"}
+			msg, data, err := tsk.diffAndNotify(&settings, current, prev, false)
+			tt.checkMsg(t, msg, data, err)
+		})
+	}
+}
 
-		current := &watchPriceSnapshot{Products: []*product{p1New}}
-		prev := &watchPriceSnapshot{Products: []*product{p1Old}}
+// -----------------------------------------------------------------------------
+// Test Helpers
+// -----------------------------------------------------------------------------
 
-		msg, _, err := tsk.diffAndNotify(baseSettings, current, prev, false)
-		require.NoError(t, err)
-		assert.Contains(t, msg, "변경되었습니다")
-		assert.Contains(t, msg, "🔁")
-		assert.Contains(t, msg, "9,000원")
-		assert.Contains(t, msg, "(전: 10,000원)") // 이전 가격 표시
-		assert.Contains(t, msg, "L1_New")       // 최신 링크 확인 (Stale Link Protection)
-		assert.NotContains(t, msg, "L1_Old")    // 구 링크 미포함 확인
-	})
+func mustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
-	t.Run("변경 사항 없음 (No Change - Scheduler)", func(t *testing.T) {
-		tsk.Task = tasksvc.NewBaseTask("taskID", "commandID", "instanceID", "notifierID", tasksvc.RunByScheduler)
-		current := &watchPriceSnapshot{Products: []*product{p1}}
-		prev := &watchPriceSnapshot{Products: []*product{p1}}
+type SettingsBuilder struct {
+	settings watchPriceSettings
+}
 
-		msg, _, err := tsk.diffAndNotify(baseSettings, current, prev, false)
-		require.NoError(t, err)
-		assert.Empty(t, msg, "스케줄러 실행 시 변경 없으면 빈 메시지여야 함")
-	})
+func NewSettingsBuilder() *SettingsBuilder {
+	return &SettingsBuilder{}
+}
 
-	t.Run("변경 사항 없음 (No Change - User)", func(t *testing.T) {
-		tsk.Task = tasksvc.NewBaseTask("taskID", "commandID", "instanceID", "notifierID", tasksvc.RunByUser)
-		current := &watchPriceSnapshot{Products: []*product{p1}}
-		prev := &watchPriceSnapshot{Products: []*product{p1}}
+func (b *SettingsBuilder) WithQuery(q string) *SettingsBuilder {
+	b.settings.Query = q
+	return b
+}
+func (b *SettingsBuilder) WithPriceLessThan(p int) *SettingsBuilder {
+	b.settings.Filters.PriceLessThan = p
+	return b
+}
+func (b *SettingsBuilder) WithExcludedKeywords(k string) *SettingsBuilder {
+	b.settings.Filters.ExcludedKeywords = k
+	return b
+}
+func (b *SettingsBuilder) Build() watchPriceSettings {
+	return b.settings
+}
 
-		msg, _, err := tsk.diffAndNotify(baseSettings, current, prev, false)
-		require.NoError(t, err)
-		assert.NotEmpty(t, msg, "사용자 실행 시 변경 없어도 메시지 반환해야 함")
-		assert.Contains(t, msg, "변경된 정보가 없습니다")
-		assert.Contains(t, msg, "조회 조건은 아래와 같습니다")
-	})
+type ProductBuilder struct {
+	product product
+}
 
-	t.Run("최초 실행 (Prev is Nil)", func(t *testing.T) {
-		current := &watchPriceSnapshot{Products: []*product{p1}}
+func NewProductBuilder() *ProductBuilder {
+	return &ProductBuilder{
+		product: product{
+			Title:     "Default Title",
+			Link:      "http://default.com",
+			LowPrice:  1000,
+			MallName:  "Naver",
+			ProductID: "12345",
+		},
+	}
+}
 
-		msg, _, err := tsk.diffAndNotify(baseSettings, current, nil, false)
-		require.NoError(t, err)
-		assert.Contains(t, msg, "변경되었습니다")
-		assert.Contains(t, msg, "🆕")
-	})
+func (b *ProductBuilder) WithID(id string) *ProductBuilder {
+	b.product.ProductID = id
+	return b
+}
+func (b *ProductBuilder) WithTitle(t string) *ProductBuilder {
+	b.product.Title = t
+	return b
+}
+func (b *ProductBuilder) WithPrice(p int) *ProductBuilder {
+	b.product.LowPrice = p
+	return b
+}
+func (b *ProductBuilder) WithLink(l string) *ProductBuilder {
+	b.product.Link = l
+	return b
+}
+func (b *ProductBuilder) WithMallName(m string) *ProductBuilder {
+	b.product.MallName = m
+	return b
+}
+func (b *ProductBuilder) Build() *product {
+	return &b.product
 }
