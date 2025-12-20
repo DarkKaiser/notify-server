@@ -58,6 +58,12 @@ type product struct {
 	ProductType string `json:"productType"`
 }
 
+// Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
+// 현재 로직에서는 Link를 기준으로 상품을 식별합니다.
+func (p *product) Key() string {
+	return p.Link
+}
+
 // String 상품 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
 func (p *product) String(supportsHTML bool, mark string) string {
 	if supportsHTML {
@@ -243,15 +249,16 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, sb.String())
 		changedTaskResultData = currentSnapshot
 	} else {
+		// 사용자가 수동으로 실행한 경우, 변경 사항이 없더라도 현재 상태를 알려줌
 		if t.GetRunBy() == tasksvc.RunByUser {
 			if len(currentSnapshot.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {
-				for _, actualityProduct := range currentSnapshot.Products {
+				for _, p := range currentSnapshot.Products {
 					if sb.Len() > 0 {
 						sb.WriteString(lineSpacing)
 					}
-					sb.WriteString(actualityProduct.String(supportsHTML, ""))
+					sb.WriteString(p.String(supportsHTML, ""))
 				}
 
 				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, sb.String())
