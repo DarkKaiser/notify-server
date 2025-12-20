@@ -10,6 +10,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -173,13 +174,23 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
-	var lowPrice int
 	for _, item := range searchResultData.Items {
 		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
 			continue
 		}
 
-		lowPrice, _ = strconv.Atoi(item.LowPrice)
+		// 가격 정보 파싱 (쉼표 제거 및 에러 처리)
+		cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
+		lowPrice, err := strconv.Atoi(cleanPrice)
+		if err != nil {
+			t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 파싱 실패", logrus.Fields{
+				"title": item.Title,
+				"price": item.LowPrice,
+				"error": err,
+			}, nil)
+			continue
+		}
+
 		if lowPrice > 0 && lowPrice < commandSettings.Filters.PriceLessThan {
 			products = append(products, &product{
 				Title:       item.Title,

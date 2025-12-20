@@ -48,7 +48,7 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 			config: &watchNewPerformancesSettings{
 				Query: "",
 			},
-			expectedError: "query가 입력되지 않았습니다",
+			expectedError: "query가 입력되지 않았거나 공백입니다",
 		},
 	}
 
