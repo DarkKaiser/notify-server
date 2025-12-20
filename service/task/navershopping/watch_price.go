@@ -191,35 +191,46 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
 	for _, item := range searchResultData.Items {
-		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
-			continue
-		}
-
-		// 가격 정보 파싱 (쉼표 제거 및 에러 처리)
-		cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
-		lowPrice, err := strconv.Atoi(cleanPrice)
-		if err != nil {
-			t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 파싱 실패", logrus.Fields{
-				"title": item.Title,
-				"price": item.LowPrice,
-				"error": err,
-			}, nil)
-			continue
-		}
-
-		if lowPrice > 0 && lowPrice < commandSettings.Filters.PriceLessThan {
-			products = append(products, &product{
-				Title:       item.Title,
-				Link:        item.Link,
-				LowPrice:    lowPrice,
-				MallName:    item.MallName,
-				ProductID:   item.ProductID,
-				ProductType: item.ProductType,
-			})
+		if p := t.filterAndMapProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
+			products = append(products, p)
 		}
 	}
 
 	return products, nil
+}
+
+// filterAndMapProduct 검색 결과를 필터링하고 도메인 모델(product)로 변환합니다.
+func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
+	// 1. 키워드 필터링
+	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
+		return nil
+	}
+
+	// 2. 가격 정보 파싱 (쉼표 제거 및 에러 처리)
+	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
+	lowPrice, err := strconv.Atoi(cleanPrice)
+	if err != nil {
+		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 파싱 실패", logrus.Fields{
+			"title": item.Title,
+			"price": item.LowPrice,
+			"error": err,
+		}, nil)
+		return nil
+	}
+
+	// 3. 가격 조건 필터링 및 변환
+	if lowPrice > 0 && lowPrice < priceLessThan {
+		return &product{
+			Title:       item.Title,
+			Link:        item.Link,
+			LowPrice:    lowPrice,
+			MallName:    item.MallName,
+			ProductID:   item.ProductID,
+			ProductType: item.ProductType,
+		}
+	}
+
+	return nil
 }
 
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
@@ -256,7 +267,10 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 				if sb.Len() > 0 {
 					sb.WriteString(lineSpacing)
 				}
-				sb.WriteString(prevProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(currentProduct.LowPrice))))
+				// Stale Link Protection: 링크나 상품명이 변경되었을 수 있으므로,
+				// 알림 메시지는 최신 정보(currentProduct)를 기준으로 생성하고,
+				// 가격 변동 내역만 과거 가격(prevProduct.LowPrice)을 참조하여 표시합니다.
+				sb.WriteString(currentProduct.String(supportsHTML, fmt.Sprintf(" (전: %s원) 🔁", strutil.FormatCommas(prevProduct.LowPrice))))
 			}
 		}
 	}

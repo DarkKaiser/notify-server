@@ -299,15 +299,22 @@ func TestTask_DiffAndNotify(t *testing.T) {
 	})
 
 	t.Run("가격 변동 (Change)", func(t *testing.T) {
-		p1Reduced := &product{Title: "P1", Link: "L1", LowPrice: 9000, ProductID: "PID_1"}
-		current := &watchPriceSnapshot{Products: []*product{p1Reduced}}
-		prev := &watchPriceSnapshot{Products: []*product{p1}} // 10000 -> 9000
+		// Stale Link Scenario: 가격이 내리면서 링크도 변경된 경우
+		// 알림은 새로운 링크(L1_New)를 가리켜야 함.
+		p1Old := &product{Title: "P1", Link: "L1_Old", LowPrice: 10000, MallName: "Mall", ProductID: "PID_1"}
+		p1New := &product{Title: "P1", Link: "L1_New", LowPrice: 9000, MallName: "Mall", ProductID: "PID_1"}
+
+		current := &watchPriceSnapshot{Products: []*product{p1New}}
+		prev := &watchPriceSnapshot{Products: []*product{p1Old}}
 
 		msg, _, err := tsk.diffAndNotify(baseSettings, current, prev, false)
 		require.NoError(t, err)
 		assert.Contains(t, msg, "변경되었습니다")
 		assert.Contains(t, msg, "🔁")
 		assert.Contains(t, msg, "9,000원")
+		assert.Contains(t, msg, "(전: 10,000원)") // 이전 가격 표시
+		assert.Contains(t, msg, "L1_New")       // 최신 링크 확인 (Stale Link Protection)
+		assert.NotContains(t, msg, "L1_Old")    // 구 링크 미포함 확인
 	})
 
 	t.Run("변경 사항 없음 (No Change - Scheduler)", func(t *testing.T) {
