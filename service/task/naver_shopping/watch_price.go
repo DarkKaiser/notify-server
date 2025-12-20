@@ -143,7 +143,10 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 	//
 	// 필터링 된 상품 정보를 확인한다.
 	//
-	m := ""
+	//
+	// 필터링 된 상품 정보를 확인한다.
+	//
+	var sb strings.Builder
 	lineSpacing := "\n\n"
 	if supportsHTML {
 		lineSpacing = "\n"
@@ -164,18 +167,18 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 		originProduct := telem.(*product)
 
 		if actualityProduct.LowPrice != originProduct.LowPrice {
-			if m != "" {
-				m += lineSpacing
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
 			}
-			m += originProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice)))
+			sb.WriteString(originProduct.String(supportsHTML, fmt.Sprintf(" ⇒ %s원 🔁", strutil.FormatCommas(actualityProduct.LowPrice))))
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*product)
 
-		if m != "" {
-			m += lineSpacing
+		if sb.Len() > 0 {
+			sb.WriteString(lineSpacing)
 		}
-		m += actualityProduct.String(supportsHTML, " 🆕")
+		sb.WriteString(actualityProduct.String(supportsHTML, " 🆕"))
 	})
 	if err != nil {
 		return "", nil, err
@@ -183,8 +186,8 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 
 	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandSettings.Query, commandSettings.Filters.IncludedKeywords, commandSettings.Filters.ExcludedKeywords, strutil.FormatCommas(commandSettings.Filters.PriceLessThan))
 
-	if m != "" {
-		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
+	if sb.Len() > 0 {
+		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, sb.String())
 		changedTaskResultData = actualityTaskResultData
 	} else {
 		if t.GetRunBy() == tasksvc.RunByUser {
@@ -192,13 +195,13 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {
 				for _, actualityProduct := range actualityTaskResultData.Products {
-					if m != "" {
-						m += lineSpacing
+					if sb.Len() > 0 {
+						sb.WriteString(lineSpacing)
 					}
-					m += actualityProduct.String(supportsHTML, "")
+					sb.WriteString(actualityProduct.String(supportsHTML, ""))
 				}
 
-				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, m)
+				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, sb.String())
 			}
 		}
 	}
