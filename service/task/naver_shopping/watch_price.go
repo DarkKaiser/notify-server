@@ -38,18 +38,20 @@ func (c *watchPriceCommandSettings) validate() error {
 	return nil
 }
 
+type searchResponseItem struct {
+	Title       string `json:"title"`
+	Link        string `json:"link"`
+	LowPrice    string `json:"lprice"`
+	MallName    string `json:"mallName"`
+	ProductID   string `json:"productId"`
+	ProductType string `json:"productType"`
+}
+
 type searchResponse struct {
-	Total   int `json:"total"`
-	Start   int `json:"start"`
-	Display int `json:"display"`
-	Items   []struct {
-		Title       string `json:"title"`
-		Link        string `json:"link"`
-		LowPrice    string `json:"lprice"`
-		MallName    string `json:"mallName"`
-		ProductID   string `json:"productId"`
-		ProductType string `json:"productType"`
-	} `json:"items"`
+	Total   int                   `json:"total"`
+	Start   int                   `json:"start"`
+	Display int                   `json:"display"`
+	Items   []*searchResponseItem `json:"items"`
 }
 
 type product struct {
