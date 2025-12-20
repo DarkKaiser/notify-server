@@ -94,12 +94,23 @@ type searchResponse struct {
 	Items   []*searchResponseItem `json:"items"`
 }
 
-// noinspection GoUnhandledErrorResult
-func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTaskResultData *watchPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+// executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
+func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+	// 1. 상품 정보 수집 및 필터링
+	currentProducts, err := t.fetchProducts(commandSettings)
+	if err != nil {
+		return "", nil, err
+	}
 
-	//
-	// 상품에 대한 정보를 검색한다.
-	//
+	currentSnapshot := &watchPriceSnapshot{
+		Products: currentProducts,
+	}
+
+	// 2. 변경 내역 비교 및 알림 생성
+	return t.diffAndNotify(commandSettings, currentSnapshot, prevSnapshot, supportsHTML)
+}
+
+func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, error) {
 	const maxSearchableItemCount = 100 // 한번에 검색 가능한 상품의 최대 갯수
 	var (
 		header = map[string]string{
@@ -111,12 +122,14 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 
 		searchResultData = &searchResponse{}
 	)
+
+	// API 호출 및 데이터 수집
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &searchResponse{}
 
 		u, err := url.Parse(searchAPIURL)
 		if err != nil {
-			return "", nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
+			return nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
 		}
 
 		q := u.Query()
@@ -128,7 +141,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 
 		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, _searchResultData_)
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 
 		if searchResultItemTotalCount == math.MaxInt {
@@ -149,10 +162,8 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 		searchResultItemStartNo += maxSearchableItemCount
 	}
 
-	//
-	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
-	//
-	actualityTaskResultData := &watchPriceSnapshot{}
+	// 데이터 필터링
+	var products []*product
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
@@ -164,7 +175,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
 		if lowPrice > 0 && lowPrice < commandSettings.Filters.PriceLessThan {
-			actualityTaskResultData.Products = append(actualityTaskResultData.Products, &product{
+			products = append(products, &product{
 				Title:       item.Title,
 				Link:        item.Link,
 				LowPrice:    lowPrice,
@@ -174,18 +185,23 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 		}
 	}
 
-	//
-	// 필터링 된 상품 정보를 확인한다.
-	//
-	//
-	// 필터링 된 상품 정보를 확인한다.
-	//
+	return products, nil
+}
+
+func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	var sb strings.Builder
 	lineSpacing := "\n\n"
 	if supportsHTML {
 		lineSpacing = "\n"
 	}
-	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
+
+	// 최초 실행 시 prevSnapshot이 nil일 수 있음
+	var prevProducts []*product
+	if prevSnapshot != nil {
+		prevProducts = prevSnapshot.Products
+	}
+
+	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Products, prevProducts, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if !ok1 || !ok2 {
@@ -220,15 +236,18 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 
 	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandSettings.Query, commandSettings.Filters.IncludedKeywords, commandSettings.Filters.ExcludedKeywords, strutil.FormatCommas(commandSettings.Filters.PriceLessThan))
 
+	var message string
+	var changedTaskResultData interface{}
+
 	if sb.Len() > 0 {
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, sb.String())
-		changedTaskResultData = actualityTaskResultData
+		changedTaskResultData = currentSnapshot
 	} else {
 		if t.GetRunBy() == tasksvc.RunByUser {
-			if len(actualityTaskResultData.Products) == 0 {
+			if len(currentSnapshot.Products) == 0 {
 				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
 			} else {
-				for _, actualityProduct := range actualityTaskResultData.Products {
+				for _, actualityProduct := range currentSnapshot.Products {
 					if sb.Len() > 0 {
 						sb.WriteString(lineSpacing)
 					}
