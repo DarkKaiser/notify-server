@@ -136,7 +136,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 	var lowPrice int
 	for _, item := range searchResultData.Items {
 		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
-			goto NEXTITEM
+			continue
 		}
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
@@ -149,8 +149,6 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 				ProductType: item.ProductType,
 			})
 		}
-
-	NEXTITEM:
 	}
 
 	//
