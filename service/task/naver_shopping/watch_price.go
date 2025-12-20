@@ -90,7 +90,20 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, ori
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &searchResponse{}
-		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", searchURL, url.QueryEscape(commandSettings.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+
+		u, err := url.Parse(searchURL)
+		if err != nil {
+			return "", nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
+		}
+
+		q := u.Query()
+		q.Set("query", commandSettings.Query)
+		q.Set("display", "100")
+		q.Set("start", strconv.Itoa(searchResultItemStartNo))
+		q.Set("sort", "sim")
+		u.RawQuery = q.Encode()
+
+		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}

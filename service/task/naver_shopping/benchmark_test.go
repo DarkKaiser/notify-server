@@ -40,7 +40,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	}`, itemsJSON)
 
 	// 첫 번째 페이지 요청에 대한 응답 설정
-	url1 := fmt.Sprintf("%s?query=%s&display=100&start=1&sort=sim", searchURL, encodedQuery)
+	url1 := fmt.Sprintf("%s?display=100&query=%s&sort=sim&start=1", searchURL, encodedQuery)
 	mockFetcher.SetResponse(url1, []byte(searchResultJSON))
 
 	// 2. Task 초기화

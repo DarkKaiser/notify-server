@@ -24,7 +24,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	// We will assume I move it to "service/task/naver_shopping/testdata".
 	jsonContent := testutil.LoadTestDataAsString(t, "shopping_search_result.json")
 
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	// 2. Task 초기화
@@ -83,7 +83,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
@@ -111,7 +111,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(`{invalid json`))
 
 	// 2. Task 초기화
@@ -163,7 +163,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		}]
 	}`, productTitle, productLprice, productLink, productImage, productMallName)
 
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	req := &tasksvc.SubmitRequest{
@@ -247,7 +247,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		}]
 	}`, productTitle, newPrice, productLink, productImage, productMallName)
 
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	req := &tasksvc.SubmitRequest{
@@ -344,7 +344,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		]
 	}`
 
-	url := "https://openapi.naver.com/v1/search/shop.json?query=%ED%85%8C%EC%8A%A4%ED%8A%B8&display=100&start=1&sort=sim"
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
 	req := &tasksvc.SubmitRequest{
