@@ -73,8 +73,8 @@ type watchNewPerformancesSettings struct {
 }
 
 func (s *watchNewPerformancesSettings) validate() error {
-	if s.Query == "" {
-		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
+	if strings.TrimSpace(s.Query) == "" {
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
 	}
 
 	// 기본 설정값 적용

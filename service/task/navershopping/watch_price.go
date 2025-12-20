@@ -13,10 +13,16 @@ import (
 )
 
 const (
-	watchPriceCommandIDPrefix string = "WatchPrice_"
+	// watchPriceAnyCommandPrefix는 동적 커맨드 라우팅을 위한 식별자 접두어입니다.
+	//
+	// 이 접두어로 시작하는 모든 CommandID는 `executeWatchPrice` 핸들러로 라우팅되어 처리됩니다.
+	// 이를 통해 사용자는 "WatchPrice_Apple", "WatchPrice_Samsung" 등과 같이
+	// 하나의 로직으로 처리되는 다수의 커맨드를 유연하게 생성할 수 있습니다.
+	watchPriceAnyCommandPrefix = "WatchPrice_"
 
-	// 네이버쇼핑 검색 URL
-	searchURL = "https://openapi.naver.com/v1/search/shop.json"
+	// searchAPIURL은 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
+	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
+	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
 )
 
 type watchPriceSettings struct {
@@ -28,14 +34,48 @@ type watchPriceSettings struct {
 	} `json:"filters"`
 }
 
-func (c *watchPriceSettings) validate() error {
-	if c.Query == "" {
-		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
+func (s *watchPriceSettings) validate() error {
+	if strings.TrimSpace(s.Query) == "" {
+		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
 	}
-	if c.Filters.PriceLessThan <= 0 {
-		return apperrors.New(apperrors.InvalidInput, "price_less_than에 0 이하의 값이 입력되었습니다")
+	if s.Filters.PriceLessThan <= 0 {
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("price_less_than은 0보다 커야 합니다 (입력값: %d)", s.Filters.PriceLessThan))
 	}
 	return nil
+}
+
+// watchPriceSnapshot 가격 변동을 감지하기 위한 상품 데이터의 스냅샷입니다.
+type watchPriceSnapshot struct {
+	Products []*product `json:"products"`
+}
+
+// product 검색 API를 통해 조회된 개별 상품 정보를 담는 도메인 모델입니다.
+type product struct {
+	Title       string `json:"title"`
+	Link        string `json:"link"`
+	LowPrice    int    `json:"lprice"`
+	ProductID   string `json:"productId"`
+	ProductType string `json:"productType"`
+}
+
+// String 상품 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
+func (p *product) String(supportsHTML bool, mark string) string {
+	if supportsHTML {
+		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> %s원%s`
+
+		return fmt.Sprintf(
+			htmlFormat,
+			p.Link,
+			p.Title,
+			strutil.FormatCommas(p.LowPrice),
+			mark,
+		)
+	}
+
+	const textFormat = `☞ %s %s원%s
+%s`
+
+	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
 type searchResponseItem struct {
@@ -52,25 +92,6 @@ type searchResponse struct {
 	Start   int                   `json:"start"`
 	Display int                   `json:"display"`
 	Items   []*searchResponseItem `json:"items"`
-}
-
-type product struct {
-	Title       string `json:"title"`
-	Link        string `json:"link"`
-	LowPrice    int    `json:"lprice"`
-	ProductID   string `json:"productId"`
-	ProductType string `json:"productType"`
-}
-
-func (p *product) String(supportsHTML bool, mark string) string {
-	if supportsHTML {
-		return fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a> %s원%s", p.Link, p.Title, strutil.FormatCommas(p.LowPrice), mark)
-	}
-	return strings.TrimSpace(fmt.Sprintf("☞ %s %s원%s\n%s", p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))
-}
-
-type watchPriceSnapshot struct {
-	Products []*product `json:"products"`
 }
 
 // noinspection GoUnhandledErrorResult
@@ -93,7 +114,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTask
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &searchResponse{}
 
-		u, err := url.Parse(searchURL)
+		u, err := url.Parse(searchAPIURL)
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
 		}

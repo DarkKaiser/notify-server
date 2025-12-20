@@ -13,7 +13,7 @@ const (
 	ID tasksvc.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
 
 	// CommandID
-	WatchPriceAnyCommand = tasksvc.CommandID(watchPriceCommandIDPrefix + "*") // 네이버쇼핑 가격 확인
+	WatchPriceAnyCommand = tasksvc.CommandID(watchPriceAnyCommandPrefix + "*") // 네이버쇼핑 가격 확인
 )
 
 type taskSettings struct {
@@ -80,7 +80,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	naverShoppingTask.SetFetcher(fetcher)
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
-	if strings.HasPrefix(string(req.CommandID), watchPriceCommandIDPrefix) {
+	if strings.HasPrefix(string(req.CommandID), watchPriceAnyCommandPrefix) {
 		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
 		if err != nil {
 			return nil, err
