@@ -9,34 +9,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNaverShoppingWatchPriceCommandConfig_Validate(t *testing.T) {
+func TestNaverShoppingWatchPriceCommandSettings_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchPriceCommandConfig{
+		commandSettings := &watchPriceCommandSettings{
 			Query: "테스트 상품",
 		}
-		commandConfig.Filters.PriceLessThan = 10000
+		commandSettings.Filters.PriceLessThan = 10000
 
-		err := commandConfig.validate()
+		err := commandSettings.validate()
 		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchPriceCommandConfig{
+		commandSettings := &watchPriceCommandSettings{
 			Query: "",
 		}
 
-		err := commandConfig.validate()
+		err := commandSettings.validate()
 		assert.Error(t, err, "Query가 비어있으면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "query", "적절한 에러 메시지를 반환해야 합니다")
 	})
 
 	t.Run("PriceLessThan이 0 이하인 경우", func(t *testing.T) {
-		commandConfig := &watchPriceCommandConfig{
+		commandSettings := &watchPriceCommandSettings{
 			Query: "테스트 상품",
 		}
-		commandConfig.Filters.PriceLessThan = 0
+		commandSettings.Filters.PriceLessThan = 0
 
-		err := commandConfig.validate()
+		err := commandSettings.validate()
 		assert.Error(t, err, "PriceLessThan이 0 이하면 에러가 발생해야 합니다")
 		assert.Contains(t, err.Error(), "price_less_than", "적절한 에러 메시지를 반환해야 합니다")
 	})

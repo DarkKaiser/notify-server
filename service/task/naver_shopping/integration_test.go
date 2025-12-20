@@ -1,6 +1,7 @@
 package naver_shopping
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -34,8 +35,17 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 	tTask.SetFetcher(mockFetcher)
 
+	// 1. 초기 상태 설정
+	commandSettings := &watchPriceCommandSettings{
+		Query: "맥북 에어",
+	}
+	commandSettings.Filters.PriceLessThan = 1500000
+	commandSettingsMap := make(map[string]interface{})
+	refStruct, _ := json.Marshal(commandSettings)
+	_ = json.Unmarshal(refStruct, &commandSettingsMap)
+
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandConfig{
+	commandConfig := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 	commandConfig.Filters.IncludedKeywords = ""
@@ -85,7 +95,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandConfig{
+	commandConfig := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 	resultData := &watchPriceSnapshot{}
@@ -113,7 +123,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandConfig{
+	commandConfig := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 	resultData := &watchPriceSnapshot{}
@@ -179,7 +189,15 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchPriceCommandConfig{
+	commandSettings := &watchPriceCommandSettings{
+		Query: "맥북 프로",
+	}
+	commandSettings.Filters.PriceLessThan = 2000000
+	commandSettingsMap := make(map[string]interface{})
+	refStruct, _ := json.Marshal(commandSettings)
+	_ = json.Unmarshal(refStruct, &commandSettingsMap)
+
+	commandConfig := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 
@@ -255,7 +273,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchPriceCommandConfig{
+	commandConfig := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 	commandConfig.Filters.PriceLessThan = 100000 // 가격 필터 설정
@@ -352,20 +370,20 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchPriceCommandConfig{
+	commandSettings := &watchPriceCommandSettings{
 		Query: "테스트",
 	}
 	// 가격 필터: 20000원 미만만
-	commandConfig.Filters.PriceLessThan = 20000
+	commandSettings.Filters.PriceLessThan = 20000
 	// 포함 키워드: "테스트"
-	commandConfig.Filters.IncludedKeywords = "테스트"
+	commandSettings.Filters.IncludedKeywords = "테스트"
 
 	resultData := &watchPriceSnapshot{
 		Products: make([]*product, 0),
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(commandSettings, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

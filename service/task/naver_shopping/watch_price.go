@@ -19,7 +19,7 @@ const (
 	searchURL = "https://openapi.naver.com/v1/search/shop.json"
 )
 
-type watchPriceCommandConfig struct {
+type watchPriceCommandSettings struct {
 	Query   string `json:"query"`
 	Filters struct {
 		IncludedKeywords string `json:"included_keywords"`
@@ -28,7 +28,7 @@ type watchPriceCommandConfig struct {
 	} `json:"filters"`
 }
 
-func (c *watchPriceCommandConfig) validate() error {
+func (c *watchPriceCommandSettings) validate() error {
 	if c.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
@@ -72,7 +72,7 @@ type watchPriceSnapshot struct {
 }
 
 // noinspection GoUnhandledErrorResult
-func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originTaskResultData *watchPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, originTaskResultData *watchPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 상품에 대한 정보를 검색한다.
@@ -90,7 +90,7 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 	)
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &searchResponse{}
-		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", searchURL, url.QueryEscape(commandConfig.Query), searchResultItemStartNo), header, nil, _searchResultData_)
+		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", fmt.Sprintf("%s?query=%s&display=100&start=%d&sort=sim", searchURL, url.QueryEscape(commandSettings.Query), searchResultItemStartNo), header, nil, _searchResultData_)
 		if err != nil {
 			return "", nil, err
 		}
@@ -117,8 +117,8 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 	// 검색된 상품 목록을 설정된 조건에 맞게 필터링한다.
 	//
 	actualityTaskResultData := &watchPriceSnapshot{}
-	includedKeywords := strutil.SplitAndTrim(commandConfig.Filters.IncludedKeywords, ",")
-	excludedKeywords := strutil.SplitAndTrim(commandConfig.Filters.ExcludedKeywords, ",")
+	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
+	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
 	var lowPrice int
 	for _, item := range searchResultData.Items {
@@ -127,7 +127,7 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 		}
 
 		lowPrice, _ = strconv.Atoi(item.LowPrice)
-		if lowPrice > 0 && lowPrice < commandConfig.Filters.PriceLessThan {
+		if lowPrice > 0 && lowPrice < commandSettings.Filters.PriceLessThan {
 			actualityTaskResultData.Products = append(actualityTaskResultData.Products, &product{
 				Title:       item.Title,
 				Link:        item.Link,
@@ -181,7 +181,7 @@ func (t *task) executeWatchPrice(commandConfig *watchPriceCommandConfig, originT
 		return "", nil, err
 	}
 
-	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandConfig.Query, commandConfig.Filters.IncludedKeywords, commandConfig.Filters.ExcludedKeywords, strutil.FormatCommas(commandConfig.Filters.PriceLessThan))
+	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandSettings.Query, commandSettings.Filters.IncludedKeywords, commandSettings.Filters.ExcludedKeywords, strutil.FormatCommas(commandSettings.Filters.PriceLessThan))
 
 	if m != "" {
 		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, m)
