@@ -24,6 +24,15 @@ const (
 	// searchAPIURL은 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
+
+	// API 매개변수 상수
+	//
+	// paramSortOrder: 검색 결과 정렬 기준 (sim: 유사도순, date: 날짜순, asc: 가격오름차순, dsc: 가격내림차순)
+	paramSortOrder = "sim"
+	// paramMaxSearchItemCount: 1회 요청 시 반환받을 검색 결과의 최대 개수 (API 제한: 10~100)
+	paramMaxSearchItemCount = 100
+	// paramMaxTotalSearchLimit: 수집할 최대 상품 개수 제한 (과도한 요청 방지)
+	paramMaxTotalSearchLimit = 1000
 )
 
 type watchPriceSettings struct {
@@ -55,34 +64,36 @@ type product struct {
 	Title       string `json:"title"`
 	Link        string `json:"link"`
 	LowPrice    int    `json:"lprice"`
+	MallName    string `json:"mallName"`
 	ProductID   string `json:"productId"`
 	ProductType string `json:"productType"`
 }
 
 // Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
-// 현재 로직에서는 Link를 기준으로 상품을 식별합니다.
+// Link는 추적 파라미터 등으로 인해 변할 수 있으므로, 불변 값인 ProductID를 사용합니다.
 func (p *product) Key() string {
-	return p.Link
+	return p.ProductID
 }
 
 // String 상품 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
 func (p *product) String(supportsHTML bool, mark string) string {
 	if supportsHTML {
-		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> %s원%s`
+		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> (%s) %s원%s`
 
 		return fmt.Sprintf(
 			htmlFormat,
 			p.Link,
 			p.Title,
+			p.MallName,
 			strutil.FormatCommas(p.LowPrice),
 			mark,
 		)
 	}
 
-	const textFormat = `☞ %s %s원%s
+	const textFormat = `☞ %s (%s) %s원%s
 %s`
 
-	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, strutil.FormatCommas(p.LowPrice), mark, p.Link))
+	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, p.MallName, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
 type searchResponseItem struct {
@@ -118,7 +129,6 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 }
 
 func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, error) {
-	const maxSearchableItemCount = 100 // 한번에 검색 가능한 상품의 최대 갯수
 	var (
 		header = map[string]string{
 			"X-Naver-Client-Id":     t.clientID,
@@ -131,19 +141,23 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	)
 
 	// API 호출 및 데이터 수집
+	// Loop Invariant: URL 파싱은 루프 밖에서 한 번만 수행합니다.
+	parsedURL, err := url.Parse(searchAPIURL)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
+	}
+
 	for searchResultItemStartNo < searchResultItemTotalCount {
 		var _searchResultData_ = &searchResponse{}
 
-		u, err := url.Parse(searchAPIURL)
-		if err != nil {
-			return nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
-		}
-
+		// 매 호출마다 쿼리 파라미터를 새로 설정하기 위해 복사본을 사용하거나,
+		// Query() 메서드는 매번 새로운 Values 맵을 반환하므로 안전하게 제어합니다.
+		u := *parsedURL // 구조체 복사 (URL은 포인터 필드가 없으므로 값 복사 안전)
 		q := u.Query()
 		q.Set("query", commandSettings.Query)
-		q.Set("display", "100")
+		q.Set("display", strconv.Itoa(paramMaxSearchItemCount))
 		q.Set("start", strconv.Itoa(searchResultItemStartNo))
-		q.Set("sort", "sim")
+		q.Set("sort", paramSortOrder)
 		u.RawQuery = q.Encode()
 
 		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, _searchResultData_)
@@ -159,18 +173,20 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 			searchResultItemTotalCount = _searchResultData_.Total
 
 			// 최대 1000건의 데이터를 읽어들이도록 한다.
-			if searchResultData.Total > 1000 {
-				searchResultData.Total = 1000
-				searchResultItemTotalCount = 1000
+			if searchResultData.Total > paramMaxTotalSearchLimit {
+				searchResultData.Total = paramMaxTotalSearchLimit
+				searchResultItemTotalCount = paramMaxTotalSearchLimit
 			}
 		}
 		searchResultData.Items = append(searchResultData.Items, _searchResultData_.Items...)
 
-		searchResultItemStartNo += maxSearchableItemCount
+		searchResultItemStartNo += paramMaxSearchItemCount
 	}
 
 	// 데이터 필터링
-	var products []*product
+	// Slice Pre-allocation: 결과 슬라이스의 용량을 미리 할당하여 재할당 오버헤드를 방지합니다.
+	// 정확한 개수는 알 수 없으므로 최대 크기(검색 결과 수)만큼 할당하거나, 0부터 시작하되 capacity만 확보합니다.
+	products := make([]*product, 0, len(searchResultData.Items))
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
@@ -196,6 +212,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 				Title:       item.Title,
 				Link:        item.Link,
 				LowPrice:    lowPrice,
+				MallName:    item.MallName,
 				ProductID:   item.ProductID,
 				ProductType: item.ProductType,
 			})
@@ -213,8 +230,10 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	}
 
 	// 1. 이전 스냅샷이 있다면 Map으로 변환하여 조회 성능 최적화 (O(N))
-	prevMap := make(map[string]*product)
+	// Pre-allocation: 맵의 크기를 미리 할당하여 재할당 오버헤드를 방지합니다.
+	var prevMap map[string]*product
 	if prevSnapshot != nil {
+		prevMap = make(map[string]*product, len(prevSnapshot.Products))
 		for _, p := range prevSnapshot.Products {
 			prevMap[p.Key()] = p
 		}

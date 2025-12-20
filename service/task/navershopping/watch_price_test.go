@@ -93,6 +93,7 @@ func TestProduct_String(t *testing.T) {
 		Title:       "Test Product",
 		Link:        "http://example.com",
 		LowPrice:    10000,
+		MallName:    "Test Mall",
 		ProductID:   "123456",
 		ProductType: "1",
 	}
@@ -108,27 +109,27 @@ func TestProduct_String(t *testing.T) {
 			name:         "HTML - No Mark",
 			supportsHTML: true,
 			mark:         "",
-			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "10,000원"},
-			notExpected:  []string{"Test Product 10,000원 🆕"},
+			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원"},
+			notExpected:  []string{"Test Product (Test Mall) 10,000원 🆕"},
 		},
 		{
 			name:         "HTML - With Mark",
 			supportsHTML: true,
 			mark:         " 🆕",
-			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "10,000원 🆕"},
+			expected:     []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원 🆕"},
 		},
 		{
 			name:         "Text - No Mark",
 			supportsHTML: false,
 			mark:         "",
-			expected:     []string{"☞ Test Product 10,000원", "http://example.com"},
+			expected:     []string{"☞ Test Product (Test Mall) 10,000원", "http://example.com"},
 			notExpected:  []string{"<a href"},
 		},
 		{
 			name:         "Text - With Mark",
 			supportsHTML: false,
 			mark:         " 🆕",
-			expected:     []string{"☞ Test Product 10,000원 🆕"},
+			expected:     []string{"☞ Test Product (Test Mall) 10,000원 🆕"},
 		},
 	}
 
@@ -283,8 +284,8 @@ func TestTask_DiffAndNotify(t *testing.T) {
 		},
 	}
 
-	p1 := &product{Title: "P1", Link: "L1", LowPrice: 10000}
-	p2 := &product{Title: "P2", Link: "L2", LowPrice: 10000}
+	p1 := &product{Title: "P1", Link: "L1", LowPrice: 10000, ProductID: "PID_1"}
+	p2 := &product{Title: "P2", Link: "L2", LowPrice: 10000, ProductID: "PID_2"}
 
 	t.Run("신규 상품 발견 (New)", func(t *testing.T) {
 		current := &watchPriceSnapshot{Products: []*product{p1, p2}}
@@ -298,7 +299,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 	})
 
 	t.Run("가격 변동 (Change)", func(t *testing.T) {
-		p1Reduced := &product{Title: "P1", Link: "L1", LowPrice: 9000}
+		p1Reduced := &product{Title: "P1", Link: "L1", LowPrice: 9000, ProductID: "PID_1"}
 		current := &watchPriceSnapshot{Products: []*product{p1Reduced}}
 		prev := &watchPriceSnapshot{Products: []*product{p1}} // 10000 -> 9000
 
