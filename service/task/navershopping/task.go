@@ -1,4 +1,4 @@
-package naver_shopping
+package navershopping
 
 import (
 	"strings"
@@ -59,22 +59,22 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
 			if err := tasksvc.DecodeMap(settings, t.Data); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 			break
 		}
 	}
 	if err := settings.validate(); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 	}
 
 	naverShoppingTask := &task{
 		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
-		appConfig: appConfig,
-
 		clientID:     settings.ClientID,
 		clientSecret: settings.ClientSecret,
+
+		appConfig: appConfig,
 	}
 
 	naverShoppingTask.SetFetcher(fetcher)
@@ -87,15 +87,15 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		}
 
 		naverShoppingTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-			originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
+			prevSnapshot, ok := previousSnapshot.(*watchPriceSnapshot)
 			if !ok {
-				return "", nil, tasksvc.NewErrTypeAssertionFailed("previousSnapshot", &watchPriceSnapshot{}, previousSnapshot)
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("prevSnapshot", &watchPriceSnapshot{}, previousSnapshot)
 			}
 
-			return naverShoppingTask.executeWatchPrice(commandSettings, originTaskResultData, supportsHTML)
+			return naverShoppingTask.executeWatchPrice(commandSettings, prevSnapshot, supportsHTML)
 		})
 	} else {
-		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
 	return naverShoppingTask, nil
@@ -133,8 +133,8 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 type task struct {
 	tasksvc.Task
 
-	appConfig *config.AppConfig
-
 	clientID     string
 	clientSecret string
+
+	appConfig *config.AppConfig
 }

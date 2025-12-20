@@ -1,4 +1,4 @@
-package naver_shopping
+package navershopping
 
 import (
 	"encoding/json"
@@ -19,9 +19,9 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	productTitle := "테스트 상품"
 	productLink := "https://example.com/product/123"
 
-	// "shopping_search_result.json"은 service/task/naver_shopping/testdata에 있어야 함
+	// "shopping_search_result.json"은 service/task/navershopping/testdata에 있어야 함
 	// 하지만 list_dir 결과 "shopping_search_result.json"은 "naver" 폴더에 있었음.
-	// We will assume I move it to "service/task/naver_shopping/testdata".
+	// We will assume I move it to "service/task/navershopping/testdata".
 	jsonContent := testutil.LoadTestDataAsString(t, "shopping_search_result.json")
 
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"

@@ -19,7 +19,7 @@ import (
 	_ "github.com/darkkaiser/notify-server/service/task/kurly"
 	_ "github.com/darkkaiser/notify-server/service/task/lotto"
 	_ "github.com/darkkaiser/notify-server/service/task/naver"
-	_ "github.com/darkkaiser/notify-server/service/task/naver_shopping"
+	_ "github.com/darkkaiser/notify-server/service/task/navershopping"
 	log "github.com/sirupsen/logrus"
 )
 
