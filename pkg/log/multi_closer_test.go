@@ -7,9 +7,14 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// mockCloser 테스트용 Closer 구현
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+// mockCloser는 테스트용 Closer 구현입니다.
 type mockCloser struct {
 	closed bool
 	err    error
@@ -20,6 +25,15 @@ func (m *mockCloser) Close() error {
 	return m.err
 }
 
+// =============================================================================
+// Multi Closer Basic Tests
+// =============================================================================
+
+// TestMultiCloser_Close는 multiCloser의 기본 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 모든 Closer가 정상적으로 닫힘
+//   - 에러 발생 시에도 모든 Closer가 닫히고 첫 번째 에러 반환
 func TestMultiCloser_Close(t *testing.T) {
 	t.Run("모든 Closer가 정상적으로 닫히는지 확인", func(t *testing.T) {
 		c1 := &mockCloser{}
@@ -32,7 +46,7 @@ func TestMultiCloser_Close(t *testing.T) {
 
 		err := mc.Close()
 
-		assert.NoError(t, err)
+		require.NoError(t, err, "Close should not return error")
 		assert.True(t, c1.closed)
 		assert.True(t, c2.closed)
 		assert.True(t, c3.closed)
@@ -50,7 +64,7 @@ func TestMultiCloser_Close(t *testing.T) {
 
 		err := mc.Close()
 
-		assert.Error(t, err)
+		require.Error(t, err, "Close should return error")
 		assert.Equal(t, expectedErr, err)
 		assert.True(t, c1.closed)
 		assert.True(t, c2.closed)
@@ -58,6 +72,14 @@ func TestMultiCloser_Close(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// Hook Removal Tests
+// =============================================================================
+
+// TestMultiCloser_Close_HookRemoval은 Close 호출 시 Hook 제거를 검증합니다.
+//
+// 검증 항목:
+//   - Close 호출 시 등록된 Hook이 제거됨
 func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 	t.Run("Close 호출 시 Hook이 제거되는지 확인", func(t *testing.T) {
 		// 테스트용 Hook 생성
@@ -84,7 +106,7 @@ func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 			hook: hook,
 		}
 		err := mc.Close()
-		assert.NoError(t, err)
+		require.NoError(t, err, "Close should not return error")
 
 		// Hook이 제거되었는지 확인
 		found = false
@@ -99,6 +121,15 @@ func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// Nil Handling Tests
+// =============================================================================
+
+// TestMultiCloser_Close_WithNil은 nil Closer 처리를 검증합니다.
+//
+// 검증 항목:
+//   - nil Closer가 포함되어 있어도 정상 동작
+//   - nil이 아닌 Closer는 모두 정상적으로 닫힘
 func TestMultiCloser_Close_WithNil(t *testing.T) {
 	t.Run("nil 클로저가 포함되어 있어도 정상 동작", func(t *testing.T) {
 		c1 := &mockCloser{}

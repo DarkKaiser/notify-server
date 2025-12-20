@@ -10,18 +10,27 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/darkkaiser/notify-server/service/api/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// setupServiceHelper encapsulates common setup logic
-// Returns configured service, appConfig, WaitGroup, Context, and CancelFunc
-// setupServiceHelper encapsulates common setup logic
-// Returns configured service, appConfig, WaitGroup, Context, and CancelFunc
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+// setupServiceHelper는 API 서비스 테스트를 위한 공통 설정을 생성합니다.
+//
+// 반환값:
+//   - Service: 설정된 API 서비스
+//   - AppConfig: 애플리케이션 설정
+//   - WaitGroup: 동기화용 WaitGroup
+//   - Context: 컨텍스트
+//   - CancelFunc: 취소 함수
 func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
+	t.Helper()
+
 	// Dynamic port to avoid conflicts
 	port, err := testutil.GetFreePort()
-	if err != nil {
-		t.Fatalf("Failed to get free port: %v", err)
-	}
+	require.NoError(t, err, "Failed to get free port")
 
 	appConfig := &config.AppConfig{}
 	appConfig.NotifyAPI.WS.ListenPort = port
@@ -41,6 +50,16 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 	return service, appConfig, wg, ctx, cancel
 }
 
+// =============================================================================
+// Service Lifecycle Tests
+// =============================================================================
+
+// TestNotifyAPIService_Lifecycle는 API 서비스의 시작 및 종료를 검증합니다.
+//
+// 검증 항목:
+//   - 서비스 정상 시작
+//   - 서버 응답 확인
+//   - 정상 종료
 func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
 	defer cancel() // Safety net
@@ -50,7 +69,7 @@ func TestNotifyAPIService_Lifecycle(t *testing.T) {
 
 	// Verify startup
 	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
-	assert.NoError(t, err, "Server should start within timeout")
+	require.NoError(t, err, "Server should start within timeout")
 
 	// Verify Shutdown
 	shutdownStart := time.Now()
@@ -71,6 +90,12 @@ func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	}
 }
 
+// TestNotifyAPIService_DuplicateStart는 중복 시작 호출을 검증합니다.
+//
+// 검증 항목:
+//   - 첫 번째 시작 성공
+//   - 두 번째 시작 호출 처리
+//   - 정상 종료
 func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
 	defer cancel()
@@ -103,6 +128,10 @@ func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 	}
 }
 
+// TestNotifyAPIService_NilDependencies는 nil 의존성 처리를 검증합니다.
+//
+// 검증 항목:
+//   - NotificationSender가 nil일 때 에러 반환
 func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	// No NotificationService
@@ -115,6 +144,6 @@ func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	// Start() calls defer wg.Done() on error return too
 	wg.Add(1)
 	err := service.Start(ctx, wg)
-	assert.Error(t, err)
+	require.Error(t, err, "Should return error for nil NotificationSender")
 	assert.Contains(t, err.Error(), "NotificationSender")
 }

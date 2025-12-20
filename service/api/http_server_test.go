@@ -7,8 +7,19 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// HTTP Server Tests
+// =============================================================================
+
+// TestNewHTTPServer_Table은 HTTP 서버 생성을 검증합니다.
+//
+// 검증 항목:
+//   - Debug 모드 설정
+//   - Banner 숨김 설정
+//   - Logger 설정
 func TestNewHTTPServer_Table(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -40,14 +51,20 @@ func TestNewHTTPServer_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			e := NewHTTPServer(tt.config)
 
-			assert.NotNil(t, e, "Echo instance should be created")
+			require.NotNil(t, e, "Echo instance should be created")
 			assert.Equal(t, tt.expectDebug, e.Debug, "Debug mode mismatch")
 			assert.Equal(t, tt.expectBanner, e.HideBanner, "HideBanner mismatch")
-			assert.NotNil(t, e.Logger, "Logger should be set")
+			require.NotNil(t, e.Logger, "Logger should be set")
 		})
 	}
 }
 
+// TestServerMiddlewares_Table은 서버 미들웨어 동작을 검증합니다.
+//
+// 검증 항목:
+//   - CORS 미들웨어
+//   - Recover 미들웨어 (panic 처리)
+//   - RequestID 미들웨어
 func TestServerMiddlewares_Table(t *testing.T) {
 	// Common config
 	cfg := HTTPServerConfig{
@@ -109,12 +126,7 @@ func TestServerMiddlewares_Table(t *testing.T) {
 			e := NewHTTPServer(cfg)
 
 			// Register handler
-			if tt.path == "/test" && tt.name == "CORS Middleware" {
-				// For CORS test we usually need a registered route or just let middleware handle OPTIONS
-				e.GET(tt.path, tt.handler)
-			} else {
-				e.GET(tt.path, tt.handler)
-			}
+			e.GET(tt.path, tt.handler)
 
 			req, rec := tt.setupRequest()
 			e.ServeHTTP(rec, req)

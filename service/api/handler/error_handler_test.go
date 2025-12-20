@@ -11,8 +11,21 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Error Handler Tests
+// =============================================================================
+
+// TestCustomHTTPErrorHandler_Table은 커스텀 HTTP 에러 핸들러를 검증합니다.
+//
+// 검증 항목:
+//   - 404 Not Found 처리
+//   - 405 Method Not Allowed 처리
+//   - 500 Internal Server Error 처리
+//   - HEAD 요청 처리
+//   - 에러 로깅
 func TestCustomHTTPErrorHandler_Table(t *testing.T) {
 	// Setup Logger capture
 	var buf bytes.Buffer
@@ -37,7 +50,8 @@ func TestCustomHTTPErrorHandler_Table(t *testing.T) {
 			expectedStatus: http.StatusNotFound,
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
 				var errorResp response.ErrorResponse
-				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				err := json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				require.NoError(t, err, "Should unmarshal error response")
 				assert.Equal(t, "페이지를 찾을 수 없습니다.", errorResp.Message)
 			},
 		},

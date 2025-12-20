@@ -68,7 +68,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		configModifier func(*watchNewPerformancesCommandConfig)
+		configModifier func(*watchNewPerformancesSettings)
 		mockSetup      func(*testutil.MockHTTPFetcher)
 		validate       func(*testing.T, string, interface{}, error)
 	}{
@@ -113,7 +113,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 		},
 		{
 			name: "MaxPages_Limit",
-			configModifier: func(c *watchNewPerformancesCommandConfig) {
+			configModifier: func(c *watchNewPerformancesSettings) {
 				c.MaxPages = 2 // Limit to 2 pages
 			},
 			mockSetup: func(m *testutil.MockHTTPFetcher) {
@@ -140,7 +140,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 		},
 		{
 			name: "Filtering_Combined",
-			configModifier: func(c *watchNewPerformancesCommandConfig) {
+			configModifier: func(c *watchNewPerformancesSettings) {
 				c.Filters.Title.IncludedKeywords = "Cats"
 				c.Filters.Place.ExcludedKeywords = "Seoul"
 			},
@@ -208,7 +208,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 			tTask, _ := setupTestTask(t, mockFetcher)
 
 			// Setup Config
-			cmdConfig := &watchNewPerformancesCommandConfig{
+			cmdConfig := &watchNewPerformancesSettings{
 				Query:          query,
 				PageFetchDelay: 1, // Speed up tests
 			}

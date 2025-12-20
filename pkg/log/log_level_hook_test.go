@@ -9,11 +9,52 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+// errorFormatter는 포맷팅 에러를 시뮬레이션하는 테스트용 Formatter입니다.
+type errorFormatter struct{}
+
+func (f *errorFormatter) Format(entry *log.Entry) ([]byte, error) {
+	return nil, errors.New("format error")
+}
+
+// channelWriter는 동시성 테스트를 위한 안전한 Writer입니다.
+type channelWriter struct {
+	ch chan []byte
+}
+
+func (w *channelWriter) Write(p []byte) (n int, err error) {
+	// Send to channel or just discard for concurrency testing
+	// Sending might block if channel is full, so just discard for this specific test
+	// strictly checking for panic/race
+	return len(p), nil
+}
+
+// =============================================================================
+// Hook Interface Tests
+// =============================================================================
+
+// TestLogLevelFileHook_Levels는 Hook이 처리할 로그 레벨을 검증합니다.
+//
+// 검증 항목:
+//   - 모든 로그 레벨 반환 (AllLevels)
 func TestLogLevelFileHook_Levels(t *testing.T) {
 	hook := &LogLevelHook{}
 	assert.Equal(t, log.AllLevels, hook.Levels())
 }
 
+// =============================================================================
+// Log Level Routing Tests
+// =============================================================================
+
+// TestLogLevelFileHook_Fire는 로그 레벨에 따른 라우팅을 검증합니다.
+//
+// 검증 항목:
+//   - Critical 레벨 (Error, Fatal, Panic)은 criticalWriter에 기록
+//   - Verbose 레벨 (Debug, Trace)은 verboseWriter에 기록
+//   - 기타 레벨 (Info, Warn)은 무시
 func TestLogLevelFileHook_Fire(t *testing.T) {
 	formatter := &log.TextFormatter{DisableTimestamp: true}
 
@@ -86,6 +127,14 @@ func TestLogLevelFileHook_Fire(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// Error Handling Tests
+// =============================================================================
+
+// TestLogLevelFileHook_Fire_NilWriter는 nil Writer 처리를 검증합니다.
+//
+// 검증 항목:
+//   - Writer가 nil일 때 에러 없이 무시
 func TestLogLevelFileHook_Fire_NilWriter(t *testing.T) {
 	formatter := &log.TextFormatter{DisableTimestamp: true}
 
@@ -106,12 +155,10 @@ func TestLogLevelFileHook_Fire_NilWriter(t *testing.T) {
 	})
 }
 
-type errorFormatter struct{}
-
-func (f *errorFormatter) Format(entry *log.Entry) ([]byte, error) {
-	return nil, errors.New("format error")
-}
-
+// TestLogLevelFileHook_Fire_FormatError는 포맷팅 에러 처리를 검증합니다.
+//
+// 검증 항목:
+//   - 포맷팅 에러 발생 시 에러 반환
 func TestLogLevelFileHook_Fire_FormatError(t *testing.T) {
 	t.Run("포맷팅 에러 발생 시 에러 반환", func(t *testing.T) {
 		hook := &LogLevelHook{
@@ -130,18 +177,15 @@ func TestLogLevelFileHook_Fire_FormatError(t *testing.T) {
 	})
 }
 
-// channelWriter is a safe writer for concurrent tests
-type channelWriter struct {
-	ch chan []byte
-}
+// =============================================================================
+// Concurrency Tests
+// =============================================================================
 
-func (w *channelWriter) Write(p []byte) (n int, err error) {
-	// Send to channel or just discard for concurrency testing
-	// Sending might block if channel is full, so just discard for this specific test
-	// strictly checking for panic/race
-	return len(p), nil
-}
-
+// TestLogLevelFileHook_ConcurrentWrite는 동시성 환경에서의 안전성을 검증합니다.
+//
+// 검증 항목:
+//   - 여러 고루틴에서 동시에 Fire 호출 시 Data Race 없음
+//   - Panic 발생하지 않음
 func TestLogLevelFileHook_ConcurrentWrite(t *testing.T) {
 	formatter := &log.TextFormatter{DisableTimestamp: true}
 

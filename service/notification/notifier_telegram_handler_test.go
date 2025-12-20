@@ -12,34 +12,50 @@ import (
 	"github.com/darkkaiser/notify-server/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
-	// Helper to create a long string
-	createLongString := func(chunk string, repeat int) string {
-		var sb strings.Builder
-		for i := 0; i < repeat; i++ {
-			sb.WriteString(chunk)
-		}
-		return sb.String()
-	}
+// =============================================================================
+// Test Helpers
+// =============================================================================
 
+// createLongString은 테스트용 긴 문자열을 생성합니다.
+func createLongString(chunk string, repeat int) string {
+	var sb strings.Builder
+	for i := 0; i < repeat; i++ {
+		sb.WriteString(chunk)
+	}
+	return sb.String()
+}
+
+// =============================================================================
+// Message Sending Tests
+// =============================================================================
+
+// TestTelegramNotifier_Notify_TableDriven은 Telegram 메시지 전송을 검증합니다.
+//
+// 검증 항목:
+//   - 긴 메시지 분할 전송 (개행 포함)
+//   - 긴 메시지 분할 전송 (단일 라인)
+//   - HTML 메시지 전송
+//   - 네트워크 에러 처리
+//   - Task Context 포함 메시지
+//   - Error Context 포함 메시지
+//   - 경과 시간 포함 메시지
+func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 	tests := []struct {
-		name           string
-		message        string
-		taskCtx        task.TaskContext
-		setupMockBot   func(*MockTelegramBot, *sync.WaitGroup)
-		waitForCalls   int
-		expectedCalls  int
-		cleanupTimeout time.Duration
+		name         string
+		message      string
+		taskCtx      task.TaskContext
+		setupMockBot func(*MockTelegramBot, *sync.WaitGroup)
+		waitForCalls int
 	}{
 		{
 			name:    "Long Message with Newlines",
 			message: createLongString("0123456789\n", 400), // ~4400 chars
 			taskCtx: task.NewTaskContext(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
-				// Expect 2 messages
-				wg.Add(2)
+				wg.Add(2) // Expect 2 messages
 				m.On("Send", mock.Anything).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil).Times(2)
@@ -114,9 +130,6 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 				wg.Add(1)
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					_, ok := c.(tgbotapi.MessageConfig)
-					// Verify error emoji/indicator is present if logic adds it,
-					// or just basic send. Implementation details might vary.
-					// Assuming basic send for now, or check for Error Title if logic does that.
 					return ok
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -148,20 +161,12 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			mockBot := &MockTelegramBot{
-				updatesChan: make(chan tgbotapi.Update), // Not used for Notify but needed for Run init
-			}
-			mockExecutor := &MockExecutor{}
-			chatID := int64(12345)
 			appConfig := &config.AppConfig{}
-
-			notifier := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, appConfig, mockExecutor)
+			notifier, mockBot, _ := setupTelegramTest(t, appConfig)
+			require.NotNil(t, notifier)
+			require.NotNil(t, mockBot)
 
 			// Setup expectations
-			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
-			mockBot.On("GetUpdatesChan", mock.Anything).Return(nil) // Run calls this
-			mockBot.On("StopReceivingUpdates").Return()
-
 			var wgSend sync.WaitGroup
 			if tt.setupMockBot != nil {
 				tt.setupMockBot(mockBot, &wgSend)
@@ -169,29 +174,16 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 
 			// Run notifier
 			ctx, cancel := context.WithCancel(context.Background())
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				notifier.Run(ctx)
-			}()
+			defer cancel()
+
+			var wg sync.WaitGroup
+			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Act
 			notifier.Notify(tt.taskCtx, tt.message)
 
 			// Wait
-			done := make(chan struct{})
-			go func() {
-				wgSend.Wait()
-				close(done)
-			}()
-
-			select {
-			case <-done:
-				// Success
-			case <-time.After(2 * time.Second): // Slightly larger timeout for safety
-				t.Fatal("Timeout waiting for message send")
-			}
+			waitForActionWithTimeout(t, &wgSend, 2*time.Second)
 
 			// Cleanup
 			cancel()
@@ -201,7 +193,3 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 		})
 	}
 }
-
-// Keep the original test for very specific large message splitting logic if needed,
-// but the table driven one covers it.
-// We can remove the old repetitive tests now.
