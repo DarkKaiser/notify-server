@@ -19,7 +19,7 @@ const (
 	searchURL = "https://openapi.naver.com/v1/search/shop.json"
 )
 
-type watchPriceCommandSettings struct {
+type watchPriceSettings struct {
 	Query   string `json:"query"`
 	Filters struct {
 		IncludedKeywords string `json:"included_keywords"`
@@ -28,7 +28,7 @@ type watchPriceCommandSettings struct {
 	} `json:"filters"`
 }
 
-func (c *watchPriceCommandSettings) validate() error {
+func (c *watchPriceSettings) validate() error {
 	if c.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았습니다")
 	}
@@ -74,7 +74,7 @@ type watchPriceSnapshot struct {
 }
 
 // noinspection GoUnhandledErrorResult
-func (t *task) executeWatchPrice(commandSettings *watchPriceCommandSettings, originTaskResultData *watchPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, originTaskResultData *watchPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 상품에 대한 정보를 검색한다.

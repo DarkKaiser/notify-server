@@ -11,7 +11,7 @@ import (
 
 func TestNaverShoppingWatchPriceCommandSettings_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandSettings := &watchPriceCommandSettings{
+		commandSettings := &watchPriceSettings{
 			Query: "테스트 상품",
 		}
 		commandSettings.Filters.PriceLessThan = 10000
@@ -21,7 +21,7 @@ func TestNaverShoppingWatchPriceCommandSettings_Validate(t *testing.T) {
 	})
 
 	t.Run("Query가 비어있는 경우", func(t *testing.T) {
-		commandSettings := &watchPriceCommandSettings{
+		commandSettings := &watchPriceSettings{
 			Query: "",
 		}
 
@@ -31,7 +31,7 @@ func TestNaverShoppingWatchPriceCommandSettings_Validate(t *testing.T) {
 	})
 
 	t.Run("PriceLessThan이 0 이하인 경우", func(t *testing.T) {
-		commandSettings := &watchPriceCommandSettings{
+		commandSettings := &watchPriceSettings{
 			Query: "테스트 상품",
 		}
 		commandSettings.Filters.PriceLessThan = 0

@@ -36,7 +36,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 1. 초기 상태 설정
-	commandSettings := &watchPriceCommandSettings{
+	commandSettings := &watchPriceSettings{
 		Query: "맥북 에어",
 	}
 	commandSettings.Filters.PriceLessThan = 1500000
@@ -45,7 +45,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	_ = json.Unmarshal(refStruct, &commandSettingsMap)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandSettings{
+	commandConfig := &watchPriceSettings{
 		Query: "테스트",
 	}
 	commandConfig.Filters.IncludedKeywords = ""
@@ -95,7 +95,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandSettings{
+	commandConfig := &watchPriceSettings{
 		Query: "테스트",
 	}
 	resultData := &watchPriceSnapshot{}
@@ -123,7 +123,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandSettings{
+	commandConfig := &watchPriceSettings{
 		Query: "테스트",
 	}
 	resultData := &watchPriceSnapshot{}
@@ -180,6 +180,17 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",
 				},
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchPriceAnyCommand),
+						Data: map[string]interface{}{
+							"query": "dummy",
+							"filters": map[string]interface{}{
+								"price_less_than": 10000,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -189,7 +200,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandSettings := &watchPriceCommandSettings{
+	commandSettings := &watchPriceSettings{
 		Query: "맥북 프로",
 	}
 	commandSettings.Filters.PriceLessThan = 2000000
@@ -197,7 +208,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	refStruct, _ := json.Marshal(commandSettings)
 	_ = json.Unmarshal(refStruct, &commandSettingsMap)
 
-	commandConfig := &watchPriceCommandSettings{
+	commandConfig := &watchPriceSettings{
 		Query: "테스트",
 	}
 
@@ -264,6 +275,17 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",
 				},
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchPriceAnyCommand),
+						Data: map[string]interface{}{
+							"query": "dummy",
+							"filters": map[string]interface{}{
+								"price_less_than": 10000,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -273,7 +295,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchPriceCommandSettings{
+	commandConfig := &watchPriceSettings{
 		Query: "테스트",
 	}
 	commandConfig.Filters.PriceLessThan = 100000 // 가격 필터 설정
@@ -361,6 +383,17 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",
 				},
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchPriceAnyCommand),
+						Data: map[string]interface{}{
+							"query": "dummy",
+							"filters": map[string]interface{}{
+								"price_less_than": 10000,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -370,7 +403,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandSettings := &watchPriceCommandSettings{
+	commandSettings := &watchPriceSettings{
 		Query: "테스트",
 	}
 	// 가격 필터: 20000원 미만만

@@ -50,8 +50,8 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceCommandSettings{
-		Query: query,
+	commandConfig := &watchPriceSettings{
+		Query: "테스트",
 		Filters: struct {
 			IncludedKeywords string `json:"included_keywords"`
 			ExcludedKeywords string `json:"excluded_keywords"`

@@ -68,7 +68,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 데이터가 유효하지 않습니다")
 	}
 
-	nsTask := &task{
+	naverShoppingTask := &task{
 		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 		appConfig: appConfig,
@@ -77,41 +77,57 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		clientSecret: settings.ClientSecret,
 	}
 
-	nsTask.SetFetcher(fetcher)
+	naverShoppingTask.SetFetcher(fetcher)
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
 	if strings.HasPrefix(string(req.CommandID), watchPriceCommandIDPrefix) {
-		nsTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-			for _, t := range nsTask.appConfig.Tasks {
-				if nsTask.GetID() == tasksvc.ID(t.ID) {
-					for _, c := range t.Commands {
-						if nsTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-							commandSettings := &watchPriceCommandSettings{}
-							if err := tasksvc.DecodeMap(commandSettings, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-							}
-							if err := commandSettings.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
-							}
+		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		if err != nil {
+			return nil, err
+		}
 
-							originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
-							if !ok {
-								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchPriceSnapshot{}, previousSnapshot)
-							}
-
-							return nsTask.executeWatchPrice(commandSettings, originTaskResultData, supportsHTML)
-						}
-					}
-					break
-				}
+		naverShoppingTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			originTaskResultData, ok := previousSnapshot.(*watchPriceSnapshot)
+			if !ok {
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("previousSnapshot", &watchPriceSnapshot{}, previousSnapshot)
 			}
-			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+
+			return naverShoppingTask.executeWatchPrice(commandSettings, originTaskResultData, supportsHTML)
 		})
 	} else {
 		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
 	}
 
-	return nsTask, nil
+	return naverShoppingTask, nil
+}
+
+func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchPriceSettings, error) {
+	var commandSettings *watchPriceSettings
+
+	for _, t := range appConfig.Tasks {
+		if taskID == tasksvc.ID(t.ID) {
+			for _, c := range t.Commands {
+				if commandID == tasksvc.CommandID(c.ID) {
+					settings := &watchPriceSettings{}
+					if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
+					}
+					if err := settings.validate(); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
+					}
+					commandSettings = settings
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if commandSettings == nil {
+		return nil, tasksvc.ErrCommandSettingsNotFound
+	}
+
+	return commandSettings, nil
 }
 
 type task struct {
