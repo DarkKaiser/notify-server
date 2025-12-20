@@ -28,7 +28,15 @@ func TestTaskSettings_Validate_TableDriven(t *testing.T) {
 			wantError: "",
 		},
 		{
-			name: "실패: ClientID 누락",
+			name: "실패: ClientID 누락 (공백)",
+			settings: taskSettings{
+				ClientID:     "   ",
+				ClientSecret: "valid_secret",
+			},
+			wantError: "client_id",
+		},
+		{
+			name: "실패: ClientID 누락 (빈 문자열)",
 			settings: taskSettings{
 				ClientID:     "",
 				ClientSecret: "valid_secret",
@@ -36,7 +44,15 @@ func TestTaskSettings_Validate_TableDriven(t *testing.T) {
 			wantError: "client_id",
 		},
 		{
-			name: "실패: ClientSecret 누락",
+			name: "실패: ClientSecret 누락 (공백)",
+			settings: taskSettings{
+				ClientID:     "valid_id",
+				ClientSecret: "   ",
+			},
+			wantError: "client_secret",
+		},
+		{
+			name: "실패: ClientSecret 누락 (빈 문자열)",
 			settings: taskSettings{
 				ClientID:     "valid_id",
 				ClientSecret: "",

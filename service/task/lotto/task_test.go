@@ -94,7 +94,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "필수 구성 항목인 'app_path' 값이 설정되지 않았습니다",
+			expectedError: "'app_path'가 입력되지 않았거나 공백입니다",
 		},
 		{
 			name: "Non-existent AppPath",

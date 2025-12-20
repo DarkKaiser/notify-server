@@ -10,7 +10,7 @@ import (
 
 const (
 	// TaskID
-	ID tasksvc.ID = "NS" // 네이버쇼핑(https://shopping.naver.com/)
+	ID tasksvc.ID = "NS" // 네이버쇼핑 (https://shopping.naver.com/)
 
 	// CommandID
 	WatchPriceAnyCommand = tasksvc.CommandID(watchPriceAnyCommandPrefix + "*") // 네이버쇼핑 가격 확인
@@ -21,12 +21,14 @@ type taskSettings struct {
 	ClientSecret string `json:"client_secret"`
 }
 
-func (c *taskSettings) validate() error {
-	if c.ClientID == "" {
-		return apperrors.New(apperrors.InvalidInput, "client_id가 입력되지 않았습니다")
+func (s *taskSettings) validate() error {
+	s.ClientID = strings.TrimSpace(s.ClientID)
+	if s.ClientID == "" {
+		return apperrors.New(apperrors.InvalidInput, "client_id가 입력되지 않았거나 공백입니다")
 	}
-	if c.ClientSecret == "" {
-		return apperrors.New(apperrors.InvalidInput, "client_secret이 입력되지 않았습니다")
+	s.ClientSecret = strings.TrimSpace(s.ClientSecret)
+	if s.ClientSecret == "" {
+		return apperrors.New(apperrors.InvalidInput, "client_secret이 입력되지 않았거나 공백입니다")
 	}
 	return nil
 }
@@ -55,17 +57,24 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
+	found := false
 	settings := &taskSettings{}
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
 			if err := tasksvc.DecodeMap(settings, t.Data); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
+			if err := settings.validate(); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
+			}
+
+			found = true
+
 			break
 		}
 	}
-	if err := settings.validate(); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
+	if !found {
+		return nil, tasksvc.ErrTaskSettingsNotFound
 	}
 
 	naverShoppingTask := &task{
@@ -79,7 +88,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	naverShoppingTask.SetFetcher(fetcher)
 
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	if strings.HasPrefix(string(req.CommandID), watchPriceAnyCommandPrefix) {
 		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
 		if err != nil {

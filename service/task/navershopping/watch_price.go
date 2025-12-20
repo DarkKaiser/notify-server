@@ -45,7 +45,8 @@ type watchPriceSettings struct {
 }
 
 func (s *watchPriceSettings) validate() error {
-	if strings.TrimSpace(s.Query) == "" {
+	s.Query = strings.TrimSpace(s.Query)
+	if s.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
 	}
 	if s.Filters.PriceLessThan <= 0 {
