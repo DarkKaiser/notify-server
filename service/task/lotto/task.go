@@ -29,6 +29,26 @@ type taskSettings struct {
 	AppPath string `json:"app_path"`
 }
 
+func (s *taskSettings) validate() error {
+	s.AppPath = strings.TrimSpace(s.AppPath)
+	if s.AppPath == "" {
+		return apperrors.New(apperrors.InvalidInput, "'app_path'가 입력되지 않았거나 공백입니다")
+	}
+
+	// 절대 경로로 변환하여 실행 위치(CWD)에 독립적으로 만듭니다.
+	absPath, err := filepath.Abs(s.AppPath)
+	if err != nil {
+		return apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'에 대한 절대 경로 변환 처리에 실패하였습니다")
+	}
+	s.AppPath = absPath
+
+	if err := validation.ValidateFileExists(s.AppPath, false); err != nil {
+		return apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다")
+	}
+
+	return nil
+}
+
 func init() {
 	tasksvc.Register(ID, &tasksvc.Config{
 		Commands: []*tasksvc.CommandConfig{{
@@ -61,22 +81,11 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			if err := tasksvc.DecodeMap(settings, t.Data); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
-
-			appPath = strings.TrimSpace(settings.AppPath)
-			if appPath == "" {
-				return nil, apperrors.New(apperrors.InvalidInput, "필수 구성 항목인 'app_path' 값이 설정되지 않았습니다")
+			if err := settings.validate(); err != nil {
+				return nil, err
 			}
 
-			// 절대 경로로 변환하여 실행 위치(CWD)에 독립적으로 만듭니다.
-			absPath, err := filepath.Abs(appPath)
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'에 대한 절대 경로 변환 처리에 실패하였습니다")
-			}
-			appPath = absPath
-
-			if err := validation.ValidateFileExists(appPath, false); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다")
-			}
+			appPath = settings.AppPath
 
 			// JAR 파일 존재 여부 검증
 			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
@@ -95,7 +104,6 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			break
 		}
 	}
-
 	if !found {
 		return nil, tasksvc.ErrTaskSettingsNotFound
 	}

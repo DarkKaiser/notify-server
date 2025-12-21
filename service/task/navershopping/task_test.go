@@ -10,44 +10,65 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTaskSettings_Validate(t *testing.T) {
+// TestTaskSettings_Validate_TableDriven 유효성 검사 테스트를 테이블 기반으로 구조화합니다.
+func TestTaskSettings_Validate_TableDriven(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name        string
-		settings    taskSettings
-		expectedErr string
+		name      string
+		settings  taskSettings
+		wantError string
 	}{
 		{
-			name: "정상적인 설정",
+			name: "성공: 필수 필드가 모두 존재함",
 			settings: taskSettings{
-				ClientID:     "test_id",
-				ClientSecret: "test_secret",
+				ClientID:     "valid_id",
+				ClientSecret: "valid_secret",
 			},
-			expectedErr: "",
+			wantError: "",
 		},
 		{
-			name: "ClientID 누락",
+			name: "실패: ClientID 누락 (공백)",
+			settings: taskSettings{
+				ClientID:     "   ",
+				ClientSecret: "valid_secret",
+			},
+			wantError: "client_id",
+		},
+		{
+			name: "실패: ClientID 누락 (빈 문자열)",
 			settings: taskSettings{
 				ClientID:     "",
-				ClientSecret: "test_secret",
+				ClientSecret: "valid_secret",
 			},
-			expectedErr: "client_id",
+			wantError: "client_id",
 		},
 		{
-			name: "ClientSecret 누락",
+			name: "실패: ClientSecret 누락 (공백)",
 			settings: taskSettings{
-				ClientID:     "test_id",
+				ClientID:     "valid_id",
+				ClientSecret: "   ",
+			},
+			wantError: "client_secret",
+		},
+		{
+			name: "실패: ClientSecret 누락 (빈 문자열)",
+			settings: taskSettings{
+				ClientID:     "valid_id",
 				ClientSecret: "",
 			},
-			expectedErr: "client_secret",
+			wantError: "client_secret",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.settings.validate()
-			if tt.expectedErr != "" {
+			if tt.wantError != "" {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErr)
+				assert.Contains(t, err.Error(), tt.wantError)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -55,141 +76,214 @@ func TestTaskSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestCreateTask(t *testing.T) {
-	// 정상적인 AppConfig 설정
-	validAppConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(ID),
-				Data: map[string]interface{}{
-					"client_id":     "test_id",
-					"client_secret": "test_secret",
-				},
-				Commands: []config.CommandConfig{
-					{
-						ID: "WatchPrice_Item1",
-						Data: map[string]interface{}{
-							"query": "test_query",
-							"filters": map[string]interface{}{
-								"price_less_than": 10000,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+// TestCreateTask_TableDriven CreateTask 함수의 다양한 시나리오를 검증합니다.
+func TestCreateTask_TableDriven(t *testing.T) {
+	t.Parallel()
 
 	mockFetcher := testutil.NewMockHTTPFetcher()
 
-	t.Run("정상 생성 (WatchPrice 커맨드)", func(t *testing.T) {
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "WatchPrice_Item1",
-		}
+	// 공통적으로 사용될 Constants
+	const (
+		validTaskID      = ID
+		validCommandID   = tasksvc.CommandID("WatchPrice_Test")
+		invalidTaskID    = tasksvc.ID("INVALID_TASK")
+		invalidCommandID = tasksvc.CommandID("Invalid_Command")
+	)
 
-		handler, err := createTask("instance_1", req, validAppConfig, mockFetcher)
-		require.NoError(t, err)
-		assert.NotNil(t, handler)
-	})
-
-	t.Run("실패: 지원하지 않는 TaskID", func(t *testing.T) {
-		req := &tasksvc.SubmitRequest{
-			TaskID:    "INVALID_TASK",
-			CommandID: "WatchPrice_Item1",
-		}
-
-		_, err := createTask("instance_1", req, validAppConfig, mockFetcher)
-		assert.ErrorIs(t, err, tasksvc.ErrTaskNotSupported)
-	})
-
-	t.Run("실패: Task 설정 누락 (AppConfig에 해당 Task 없음)", func(t *testing.T) {
-		emptyConfig := &config.AppConfig{}
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "WatchPrice_Item1",
-		}
-
-		_, err := createTask("instance_1", req, emptyConfig, mockFetcher)
-		assert.Error(t, err)
-		// settings가 zero value일 때 validate 실패 메시지 확인
-		assert.Contains(t, err.Error(), "client_id")
-	})
-
-	t.Run("실패: Task 설정 유효성 검사 실패 (필수값 누락)", func(t *testing.T) {
-		invalidConfig := &config.AppConfig{
-			Tasks: []config.TaskConfig{
-				{
-					ID: string(ID),
-					Data: map[string]interface{}{
-						// client_id 누락
-						"client_secret": "test_secret",
-					},
-				},
+	tests := []struct {
+		name       string
+		req        *tasksvc.SubmitRequest
+		appConfig  *config.AppConfig
+		wantErr    error  // 특정 에러 타입 확인 (errors.Is)
+		wantErrMsg string // 에러 메시지 내용 확인 (Contains)
+	}{
+		{
+			name: "성공: 정상적인 요청 및 설정",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
 			},
-		}
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "WatchPrice_Item1",
-		}
-
-		_, err := createTask("instance_1", req, invalidConfig, mockFetcher)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "client_id")
-	})
-
-	t.Run("실패: 지원하지 않는 CommandID (prefix 불일치)", func(t *testing.T) {
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "UnknownAndUnprefixed",
-		}
-
-		_, err := createTask("instance_1", req, validAppConfig, mockFetcher)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "지원하지 않는 명령")
-	})
-
-	t.Run("실패: Command 설정 누락", func(t *testing.T) {
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "WatchPrice_Item_Not_In_Config",
-		}
-
-		_, err := createTask("instance_1", req, validAppConfig, mockFetcher)
-		assert.ErrorIs(t, err, tasksvc.ErrCommandSettingsNotFound)
-	})
-
-	t.Run("실패: Command 설정 유효성 검사 실패 (Query 누락)", func(t *testing.T) {
-		invalidCmdConfig := &config.AppConfig{
-			Tasks: []config.TaskConfig{
-				{
-					ID: string(ID),
-					Data: map[string]interface{}{
-						"client_id":     "test_id",
-						"client_secret": "test_secret",
-					},
-					Commands: []config.CommandConfig{
-						{
-							ID: "WatchPrice_Invalid",
-							Data: map[string]interface{}{
-								"query": "", // Query 누락
-								"filters": map[string]interface{}{
-									"price_less_than": 10000,
-								},
-							},
-						},
-					},
-				},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "test_id", "test_secret").
+				WithCommand(string(validCommandID), "test_query").
+				Build(),
+			wantErr: nil,
+		},
+		{
+			name: "실패: 지원하지 않는 TaskID",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    invalidTaskID,
+				CommandID: validCommandID,
 			},
-		}
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				WithCommand(string(validCommandID), "q").
+				Build(),
+			wantErr: tasksvc.ErrTaskNotSupported,
+		},
+		{
+			name: "실패: AppConfig 내 Task 설정 없음 (빈 Config)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: &config.AppConfig{}, // Empty config
+			wantErr:   tasksvc.ErrTaskSettingsNotFound,
+		},
+		{
+			name: "실패: Task 필수 설정(ClientID) 누락",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "", "secret"). // ClientID Missing
+				WithCommand(string(validCommandID), "q").
+				Build(),
+			wantErrMsg: "client_id",
+		},
+		{
+			name: "실패: Task 필수 설정(ClientSecret) 누락",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", ""). // Secret Missing
+				WithCommand(string(validCommandID), "q").
+				Build(),
+			wantErrMsg: "client_secret",
+		},
+		{
+			name: "실패: 지원하지 않는 CommandID (Prefix 불일치)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: invalidCommandID, // "WatchPrice_"로 시작하지 않음
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				// Config에는 있어도 Handler 생성 시 Prefix 체크에서 탈락함
+				WithCommand(string(invalidCommandID), "q").
+				Build(),
+			wantErrMsg: "지원하지 않는 명령입니다", // NewErrCommandNotSupported 메시지
+		},
+		{
+			name: "실패: Config에 Command 설정이 존재하지 않음",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: "WatchPrice_NotInConfig",
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				WithCommand(string(validCommandID), "q"). // 다른 커맨드만 있음
+				Build(),
+			wantErr: tasksvc.ErrCommandSettingsNotFound,
+		},
+		{
+			name: "실패: Command 필수 설정(Query) 누락",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				WithCommand(string(validCommandID), ""). // Query Missing
+				Build(),
+			wantErrMsg: "query", // validate error
+		},
+		{
+			name: "실패: Command 설정 값 오류 (PriceLessThan <= 0)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				WithCommand(string(validCommandID), "q", func(m map[string]interface{}) {
+					filters := m["filters"].(map[string]interface{})
+					filters["price_less_than"] = 0 // Invalid Value
+				}).
+				Build(),
+			wantErrMsg: "price_less_than", // validate error
+		},
+	}
 
-		req := &tasksvc.SubmitRequest{
-			TaskID:    ID,
-			CommandID: "WatchPrice_Invalid",
-		}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		_, err := createTask("instance_1", req, invalidCmdConfig, mockFetcher)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "query")
+			handler, err := createTask("instance_1", tt.req, tt.appConfig, mockFetcher)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, handler)
+			} else if tt.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+				assert.Nil(t, handler)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, handler)
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Test Helper: ConfigBuilder
+// -----------------------------------------------------------------------------
+
+// ConfigBuilder AppConfig 생성을 도와주는 빌더입니다. (Test Helper 패턴)
+type ConfigBuilder struct {
+	tasks []config.TaskConfig
+}
+
+func NewConfigBuilder() *ConfigBuilder {
+	return &ConfigBuilder{}
+}
+
+func (b *ConfigBuilder) WithTask(taskID, clientID, clientSecret string) *ConfigBuilder {
+	b.tasks = append(b.tasks, config.TaskConfig{
+		ID: taskID,
+		Data: map[string]interface{}{
+			"client_id":     clientID,
+			"client_secret": clientSecret,
+		},
+		Commands: []config.CommandConfig{}, // Initialize empty commands
 	})
+	return b
+}
+
+type CommandOption func(map[string]interface{})
+
+func (b *ConfigBuilder) WithCommand(commandID, query string, opts ...CommandOption) *ConfigBuilder {
+	// 마지막으로 추가된 Task에 Command를 추가합니다.
+	if len(b.tasks) == 0 {
+		panic("WithCommand called before WithTask")
+	}
+
+	data := map[string]interface{}{
+		"query": query,
+		"filters": map[string]interface{}{
+			"price_less_than": 10000,
+		},
+	}
+
+	for _, opt := range opts {
+		opt(data)
+	}
+
+	lastIdx := len(b.tasks) - 1
+	b.tasks[lastIdx].Commands = append(b.tasks[lastIdx].Commands, config.CommandConfig{
+		ID:   commandID,
+		Data: data,
+	})
+	return b
+}
+
+func (b *ConfigBuilder) Build() *config.AppConfig {
+	return &config.AppConfig{
+		Tasks: b.tasks,
+	}
 }
