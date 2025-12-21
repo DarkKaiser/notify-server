@@ -60,6 +60,25 @@ type product struct {
 	IsUnknownProduct bool      `json:"is_unknown_product"` // 알 수 없는 상품인지에 대한 여부(상품 코드가 존재하지 않거나, 이전에는 판매를 하였지만 현재는 판매하고 있지 않는 상품)
 }
 
+// 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
+// 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
+func (p *product) updateLowestPrice() {
+	setLowestPrice := func(price int) {
+		if p.LowestPrice == 0 || p.LowestPrice > price {
+			// 최저 가격이 저장되어 있지 않거나, 새로운 가격이 더 낮다면 최저 가격을 업데이트하고 현재 시간을 기록한다.
+			p.LowestPrice = price
+			p.LowestPriceTime = time.Now()
+		}
+	}
+
+	// 할인 가격이 존재하면 최저 가격을 업데이트한다.
+	if p.DiscountedPrice != 0 {
+		setLowestPrice(p.DiscountedPrice)
+	}
+	// 현재 가격으로 최저 가격을 업데이트한다.
+	setLowestPrice(p.Price)
+}
+
 func (p *product) String(supportsHTML bool, mark string, previousProduct *product) string {
 	// 가격 및 할인 가격을 문자열로 반환하는 함수
 	formatPrice := func(price, discountedPrice, discountRate int) string {
@@ -95,25 +114,6 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 	}
 
 	return fmt.Sprintf("%s\n      • 현재 가격 : %s%s%s", name, formatPrice(p.Price, p.DiscountedPrice, p.DiscountRate), previousPriceString, lowestPriceString)
-}
-
-// 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
-// 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
-func (p *product) updateLowestPrice() {
-	setLowestPrice := func(price int) {
-		if p.LowestPrice == 0 || p.LowestPrice > price {
-			// 최저 가격이 저장되어 있지 않거나, 새로운 가격이 더 낮다면 최저 가격을 업데이트하고 현재 시간을 기록한다.
-			p.LowestPrice = price
-			p.LowestPriceTime = time.Now()
-		}
-	}
-
-	// 할인 가격이 존재하면 최저 가격을 업데이트한다.
-	if p.DiscountedPrice != 0 {
-		setLowestPrice(p.DiscountedPrice)
-	}
-	// 현재 가격으로 최저 가격을 업데이트한다.
-	setLowestPrice(p.Price)
 }
 
 type watchProductPriceSnapshot struct {
