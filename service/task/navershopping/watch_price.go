@@ -375,24 +375,31 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			nil
 	}
 
-	// @@@@@
-	var message string
-	var changedTaskResultData interface{}
-	// 사용자가 수동으로 실행한 경우, 변경 사항이 없더라도 현재 상태를 알려줌
+	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
+	//
+	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
+	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
 	if t.GetRunBy() == tasksvc.RunByUser {
 		if len(currentSnapshot.Products) == 0 {
-			message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", searchConditionsSummary)
-		} else {
-			for _, p := range currentSnapshot.Products {
-				if sb.Len() > 0 {
-					sb.WriteString(lineSpacing)
-				}
-				sb.WriteString(p.String(supportsHTML, ""))
-			}
-
-			message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", searchConditionsSummary, sb.String())
+			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s",
+					searchConditionsSummary),
+				nil,
+				nil
 		}
+
+		for _, p := range currentSnapshot.Products {
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
+			}
+			sb.WriteString(p.String(supportsHTML, ""))
+		}
+
+		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
+				searchConditionsSummary,
+				sb.String()),
+			nil,
+			nil
 	}
 
-	return message, changedTaskResultData, nil
+	return "", nil, nil
 }
