@@ -148,8 +148,8 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 			"X-Naver-Client-Secret": t.clientSecret,
 		}
 
-		startIndex        = 1
-		fetchedTotalCount = math.MaxInt
+		startIndex       = 1
+		targetFetchCount = math.MaxInt
 
 		pageContent = &searchResponse{}
 	)
@@ -162,7 +162,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		return nil, apperrors.Wrap(err, apperrors.Internal, "네이버 쇼핑 검색 API 엔드포인트 URL 파싱에 실패하였습니다")
 	}
 
-	for startIndex < fetchedTotalCount {
+	for startIndex <= targetFetchCount {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
 			t.LogWithContext("task.navershopping", logrus.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", logrus.Fields{
@@ -180,11 +180,9 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 			"sort_option":   apiSortOption,
 		}, nil)
 
-		// @@@@@
-		var currentPage = &searchResponse{}
-
-		// 매 호출마다 쿼리 파라미터를 새로 설정하기 위해 복사본을 사용하거나,
-		// Query() 메서드는 매번 새로운 Values 맵을 반환하므로 안전하게 제어합니다.
+		// `baseURL`은 루프 불변 템플릿으로, 파싱 비용을 절감하는 동시에 상태 격리를 보장합니다.
+		// 구조체 역참조(*baseURL)를 통한 값 복사(Value Copy)는 매 반복마다 깨끗한(Clean) 상태를 보장하며,
+		// 이는 이전 루프의 쿼리 파라미터 잔여물(Residue)이 현재 요청에 영향을 주는 Side-Effect를 완벽하게 차단합니다.
 		u := *baseURL // 구조체 복사 (URL은 포인터 필드가 없으므로 값 복사 안전)
 		q := u.Query()
 		q.Set("query", commandSettings.Query)
@@ -193,36 +191,56 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		q.Set("sort", apiSortOption)
 		u.RawQuery = q.Encode()
 
+		var currentPage = &searchResponse{}
 		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}
 
-		if fetchedTotalCount == math.MaxInt {
+		// 첫 번째 페이지 응답을 수신한 시점에 전체 수집 계획을 확정합니다.
+		if targetFetchCount == math.MaxInt {
+			// API가 반환한 원본 메타데이터(Total, Start, Display)를 결과 객체에 보존합니다.
+			// 이는 로직 처리와 무관하게 "실제 검색 결과 현황"을 정확히 기록하기 위함입니다.
 			pageContent.Total = currentPage.Total
 			pageContent.Start = currentPage.Start
 			pageContent.Display = currentPage.Display
 
-			fetchedTotalCount = currentPage.Total
+			// 기본적으로 검색된 모든 상품을 수집 대상으로 설정합니다.
+			targetFetchCount = currentPage.Total
 
-			// 최대 1000건의 데이터를 읽어들이도록 한다.
-			if pageContent.Total > policyFetchLimit {
-				pageContent.Total = policyFetchLimit
-				fetchedTotalCount = policyFetchLimit
+			// 과도한 API 요청을 방지하기 위해 내부 정책(`policyFetchLimit`)에 따라 수집 상한선을 적용합니다.
+			if targetFetchCount > policyFetchLimit {
+				targetFetchCount = policyFetchLimit
 			}
 		}
+
+		// 현재 페이지의 상품 목록을 전체 결과 슬라이스에 병합합니다.
 		pageContent.Items = append(pageContent.Items, currentPage.Items...)
 
 		startIndex += apiDisplayCount
 	}
 
-	// @@@@@
-	// 데이터 필터링
-	// Slice Pre-allocation: 결과 슬라이스의 용량을 미리 할당하여 재할당 오버헤드를 방지합니다.
-	// 정확한 개수는 알 수 없으므로 최대 크기(검색 결과 수)만큼 할당하거나, 0부터 시작하되 capacity만 확보합니다.
-	products := make([]*product, 0, len(pageContent.Items))
+	// 수집된 결과가 없는 경우, 불필요한 슬라이스 할당(`make`)과 후속 필터링 로직을 건너뛰고 즉시 종료합니다.
+	if len(pageContent.Items) == 0 {
+		t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 필터링 프로세스가 완료되었습니다 (검색 결과 없음)", logrus.Fields{
+			"collected_count": 0,
+			"fetched_count":   0,
+			"api_total_count": pageContent.Total,
+			"api_start":       pageContent.Start,
+			"api_display":     pageContent.Display,
+		}, nil)
+
+		return nil, nil
+	}
+
+	// 키워드 필터링 조건을 사전 파싱합니다.
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
+
+	// 결과 슬라이스의 용량(Capacity)을 원본 데이터 크기만큼 미리 확보합니다.
+	// 필터링으로 인해 실제 크기는 이보다 작을 수 있지만, Go 슬라이스의 동적 확장(Dynamic Resizing) 및
+	// 메모리 재할당/복사(Reallocation & Copy) 비용을 완전히 제거하여 성능을 최적화합니다.
+	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
 		if p := t.filterAndMapProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
@@ -234,49 +252,57 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		"collected_count": len(products),
 		"fetched_count":   len(pageContent.Items),
 		"api_total_count": pageContent.Total,
+		"api_start":       pageContent.Start,
+		"api_display":     pageContent.Display,
 	}, nil)
 
 	return products, nil
 }
 
-// @@@@@
+// @@@@@ 함수명 추천받기
 // filterAndMapProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
 func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
-	// 1. 키워드 필터링
 	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
 		return nil
 	}
 
-	// 2. 가격 정보 파싱 (쉼표 제거 및 에러 처리)
+	// 가격 정보 파싱 (쉼표 제거)
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 파싱 실패", logrus.Fields{
-			"title": item.Title,
-			"price": item.LowPrice,
-			"error": err,
+		// @@@@@ 메시지 추천받기..
+		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 데이터 파싱 실패", logrus.Fields{
+			"product_id":      item.ProductID,
+			"product_type":    item.ProductType,
+			"title":           item.Title,
+			"raw_price_value": item.LowPrice,
+			"clean_price":     cleanPrice,
+			"parse_error":     err.Error(),
 		}, nil)
+
 		return nil
 	}
 
-	// 3. 가격 조건 필터링 및 변환
+	// 가격 유효성 검증 및 도메인 모델 변환
+	// 0원 이하 또는 설정된 상한가 이상인 상품은 필터링되어 제외됩니다.
 	if lowPrice > 0 && lowPrice < priceLessThan {
 		return &product{
-			Title:       item.Title,
-			Link:        item.Link,
-			LowPrice:    lowPrice,
-			MallName:    item.MallName,
 			ProductID:   item.ProductID,
 			ProductType: item.ProductType,
+
+			Title:    item.Title,
+			Link:     item.Link,
+			LowPrice: lowPrice,
+			MallName: item.MallName,
 		}
 	}
 
 	return nil
 }
 
-// @@@@@
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+	// @@@@@
 	var sb strings.Builder
 	lineSpacing := "\n\n"
 	if supportsHTML {
