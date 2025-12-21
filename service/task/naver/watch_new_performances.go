@@ -190,21 +190,33 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	seen := make(map[string]bool)
 
 	pageIndex := 1
+	totalFetchedCount := 0
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.naver", logrus.WarnLevel, "작업이 취소되어 공연 정보 수집을 중단합니다", nil, nil)
+			t.LogWithContext("task.naver", logrus.WarnLevel, "작업 취소 요청이 감지되어 공연 정보 수집 프로세스를 중단합니다", logrus.Fields{
+				"page_index":      pageIndex,
+				"collected_count": len(currentPerformances),
+				"fetched_count":   totalFetchedCount,
+			}, nil)
+
 			return nil, nil
 		}
 
 		if pageIndex > commandSettings.MaxPages {
-			t.LogWithContext("task.naver", logrus.WarnLevel, fmt.Sprintf("최대 페이지 수(%d)를 초과하여 공연 정보 수집을 조기 종료합니다", commandSettings.MaxPages), nil, nil)
+			t.LogWithContext("task.naver", logrus.WarnLevel, "설정된 최대 페이지 수집 제한에 도달하여 프로세스를 조기 종료합니다", logrus.Fields{
+				"limit_max_pages": commandSettings.MaxPages,
+				"current_page":    pageIndex,
+				"collected_count": len(currentPerformances),
+				"fetched_count":   totalFetchedCount,
+			}, nil)
+
 			break
 		}
 
-		t.LogWithContext("task.naver", logrus.DebugLevel, "공연 정보 수집을 시작합니다", logrus.Fields{
-			"page":  pageIndex,
-			"query": commandSettings.Query,
+		t.LogWithContext("task.naver", logrus.DebugLevel, "네이버 공연 검색 API 페이지를 요청합니다", logrus.Fields{
+			"query":      commandSettings.Query,
+			"page_index": pageIndex,
 		}, nil)
 
 		// API 요청 URL 생성
@@ -221,6 +233,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		if err != nil {
 			return nil, err
 		}
+		totalFetchedCount += rawCount
 
 		// 중복 제거 및 결과 집계
 		for _, p := range pagePerformances {
@@ -239,17 +252,22 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		// 현재 페이지에서 탐색된 원본 항목(Raw Count)이 0개라면, 더 이상 제공될 데이터가 없는 상태입니다.
 		// 이는 모든 공연 정보를 수집했음을 의미하므로, 불필요한 추가 요청을 방지하기 위해 루프를 정상 종료합니다.
 		if rawCount == 0 {
-			t.LogWithContext("task.naver", logrus.DebugLevel, "더 이상 공연 정보가 없어 수집을 종료합니다", logrus.Fields{
-				"last_page": pageIndex - 1,
+			t.LogWithContext("task.naver", logrus.DebugLevel, "페이지네이션 종료 조건(데이터 없음)에 도달하여 수집 프로세스를 정상 종료합니다", logrus.Fields{
+				"last_visited_page": pageIndex - 1,
+				"collected_count":   len(currentPerformances),
+				"fetched_count":     totalFetchedCount,
 			}, nil)
+
 			break
 		}
 
 		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
 	}
 
-	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집을 완료했습니다", logrus.Fields{
-		"total_count": len(currentPerformances),
+	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집 및 필터링 프로세스가 완료되었습니다", logrus.Fields{
+		"collected_count": len(currentPerformances),
+		"fetched_count":   totalFetchedCount,
+		"request_pages":   pageIndex - 1,
 	}, nil)
 
 	return currentPerformances, nil
@@ -361,7 +379,7 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	}, nil
 }
 
-// diffAndNotify 이전 스냅샷과 비교하여 변경 사항을 알림 메시지로 생성합니다.
+// diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 공연을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
 	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
 	var sb strings.Builder

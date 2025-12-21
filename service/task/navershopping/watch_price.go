@@ -76,7 +76,7 @@ type product struct {
 	Title    string `json:"title"`    // 상품명 (HTML 태그가 포함될 수 있음)
 	Link     string `json:"link"`     // 상품 상세 정보 페이지 URL
 	LowPrice int    `json:"lprice"`   // 판매 최저가 (단위: 원)
-	MallName string `json:"mallName"` // 판매 쇼핑몰 상호
+	MallName string `json:"mallName"` // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
 }
 
 // Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
@@ -105,22 +105,23 @@ func (p *product) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, p.MallName, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
-// @@@@@
-type searchResponseItem struct {
-	Title       string `json:"title"`
-	Link        string `json:"link"`
-	LowPrice    string `json:"lprice"`
-	MallName    string `json:"mallName"`
-	ProductID   string `json:"productId"`
-	ProductType string `json:"productType"`
+// searchResponse 네이버 쇼핑 검색 API의 응답 데이터를 담는 구조체입니다.
+type searchResponse struct {
+	Total   int                   `json:"total"`   // 검색된 전체 상품의 총 개수 (페이징 처리에 사용)
+	Start   int                   `json:"start"`   // 검색 시작 위치 (1부터 시작하는 인덱스)
+	Display int                   `json:"display"` // 현재 응답에 포함된 상품 개수 (요청한 display 값과 같거나 작음)
+	Items   []*searchResponseItem `json:"items"`   // 검색된 개별 상품 리스트
 }
 
-// @@@@@
-type searchResponse struct {
-	Total   int                   `json:"total"`
-	Start   int                   `json:"start"`
-	Display int                   `json:"display"`
-	Items   []*searchResponseItem `json:"items"`
+// searchResponseItem 검색 API 응답에서 개별 상품 정보를 담는 로우(Raw) 데이터 구조체입니다.
+type searchResponseItem struct {
+	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
+	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
+
+	Title    string `json:"title"`    // 상품명 (HTML 태그 <b>가 포함된 원본 문자열)
+	Link     string `json:"link"`     // 상품 상세 정보 페이지 URL
+	LowPrice string `json:"lprice"`   // 판매 최저가 (단위: 원)
+	MallName string `json:"mallName"` // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
 }
 
 // executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
@@ -139,80 +140,107 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 	return t.diffAndNotify(commandSettings, currentSnapshot, prevSnapshot, supportsHTML)
 }
 
-// @@@@@
+// fetchProducts 네이버 쇼핑 검색 API를 호출하여 조건에 맞는 상품 목록을 수집합니다.
 func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, error) {
 	var (
 		header = map[string]string{
 			"X-Naver-Client-Id":     t.clientID,
 			"X-Naver-Client-Secret": t.clientSecret,
 		}
-		searchResultItemStartNo    = 1
-		searchResultItemTotalCount = math.MaxInt
 
-		searchResultData = &searchResponse{}
+		startIndex        = 1
+		fetchedTotalCount = math.MaxInt
+
+		pageContent = &searchResponse{}
 	)
 
-	// API 호출 및 데이터 수집
-	// Loop Invariant: URL 파싱은 루프 밖에서 한 번만 수행합니다.
-	parsedURL, err := url.Parse(searchAPIURL)
+	// API 호출을 위한 기본 URL을 파싱합니다.
+	// 반복문 내에서 불필요한 URL 파싱(`url.Parse`) 오버헤드를 방지하기 위해 루프 진입 전에 수행합니다.
+	// 파싱된 `baseURL` 객체는 루프 내에서 값 복사되어 안전하게 쿼리 파라미터를 조작하는 데 사용됩니다.
+	baseURL, err := url.Parse(searchAPIURL)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.Internal, "검색 URL 파싱 실패")
+		return nil, apperrors.Wrap(err, apperrors.Internal, "네이버 쇼핑 검색 API 엔드포인트 URL 파싱에 실패하였습니다")
 	}
 
-	for searchResultItemStartNo < searchResultItemTotalCount {
-		var _searchResultData_ = &searchResponse{}
+	for startIndex < fetchedTotalCount {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			t.LogWithContext("task.navershopping", logrus.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", logrus.Fields{
+				"start_index":          startIndex,
+				"total_fetched_so_far": len(pageContent.Items),
+			}, nil)
+
+			return nil, nil
+		}
+
+		t.LogWithContext("task.navershopping", logrus.DebugLevel, "네이버 쇼핑 검색 API 페이지를 요청합니다", logrus.Fields{
+			"query":         commandSettings.Query,
+			"start_index":   startIndex,
+			"display_count": apiDisplayCount,
+			"sort_option":   apiSortOption,
+		}, nil)
+
+		// @@@@@
+		var currentPage = &searchResponse{}
 
 		// 매 호출마다 쿼리 파라미터를 새로 설정하기 위해 복사본을 사용하거나,
 		// Query() 메서드는 매번 새로운 Values 맵을 반환하므로 안전하게 제어합니다.
-		u := *parsedURL // 구조체 복사 (URL은 포인터 필드가 없으므로 값 복사 안전)
+		u := *baseURL // 구조체 복사 (URL은 포인터 필드가 없으므로 값 복사 안전)
 		q := u.Query()
 		q.Set("query", commandSettings.Query)
 		q.Set("display", strconv.Itoa(apiDisplayCount))
-		q.Set("start", strconv.Itoa(searchResultItemStartNo))
+		q.Set("start", strconv.Itoa(startIndex))
 		q.Set("sort", apiSortOption)
 		u.RawQuery = q.Encode()
 
-		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, _searchResultData_)
+		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}
 
-		if searchResultItemTotalCount == math.MaxInt {
-			searchResultData.Total = _searchResultData_.Total
-			searchResultData.Start = _searchResultData_.Start
-			searchResultData.Display = _searchResultData_.Display
+		if fetchedTotalCount == math.MaxInt {
+			pageContent.Total = currentPage.Total
+			pageContent.Start = currentPage.Start
+			pageContent.Display = currentPage.Display
 
-			searchResultItemTotalCount = _searchResultData_.Total
+			fetchedTotalCount = currentPage.Total
 
 			// 최대 1000건의 데이터를 읽어들이도록 한다.
-			if searchResultData.Total > policyFetchLimit {
-				searchResultData.Total = policyFetchLimit
-				searchResultItemTotalCount = policyFetchLimit
+			if pageContent.Total > policyFetchLimit {
+				pageContent.Total = policyFetchLimit
+				fetchedTotalCount = policyFetchLimit
 			}
 		}
-		searchResultData.Items = append(searchResultData.Items, _searchResultData_.Items...)
+		pageContent.Items = append(pageContent.Items, currentPage.Items...)
 
-		searchResultItemStartNo += apiDisplayCount
+		startIndex += apiDisplayCount
 	}
 
+	// @@@@@
 	// 데이터 필터링
 	// Slice Pre-allocation: 결과 슬라이스의 용량을 미리 할당하여 재할당 오버헤드를 방지합니다.
 	// 정확한 개수는 알 수 없으므로 최대 크기(검색 결과 수)만큼 할당하거나, 0부터 시작하되 capacity만 확보합니다.
-	products := make([]*product, 0, len(searchResultData.Items))
+	products := make([]*product, 0, len(pageContent.Items))
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
-	for _, item := range searchResultData.Items {
+	for _, item := range pageContent.Items {
 		if p := t.filterAndMapProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
 			products = append(products, p)
 		}
 	}
 
+	t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 필터링 프로세스가 완료되었습니다", logrus.Fields{
+		"collected_count": len(products),
+		"fetched_count":   len(pageContent.Items),
+		"api_total_count": pageContent.Total,
+	}, nil)
+
 	return products, nil
 }
 
 // @@@@@
-// filterAndMapProduct 검색 결과를 필터링하고 도메인 모델(product)로 변환합니다.
+// filterAndMapProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
 func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
 	// 1. 키워드 필터링
 	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
@@ -247,6 +275,7 @@ func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, e
 }
 
 // @@@@@
+// diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	var sb strings.Builder
 	lineSpacing := "\n\n"
