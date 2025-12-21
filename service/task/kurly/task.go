@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// ID TaskID
+	// TaskID
 	ID tasksvc.ID = "KURLY" // 마켓컬리 (https://www.kurly.com/)
 
 	// CommandID
@@ -55,10 +55,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
 							settings := &watchProductPriceSettings{}
 							if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 							}
 							if err := settings.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
+								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 							}
 
 							originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
@@ -72,10 +72,10 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 					break
 				}
 			}
-			return "", nil, apperrors.New(apperrors.Internal, "Command configuration not found")
+			return "", nil, tasksvc.ErrCommandSettingsNotFound
 		})
 	default:
-		return nil, apperrors.New(apperrors.InvalidInput, "지원하지 않는 명령입니다: "+string(req.CommandID))
+		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
 	return tTask, nil
