@@ -243,7 +243,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
-		if p := t.filterAndMapProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
+		if p := t.mapToProductUsingFilter(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
 			products = append(products, p)
 		}
 	}
@@ -259,9 +259,8 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	return products, nil
 }
 
-// @@@@@ 함수명 추천받기
-// filterAndMapProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
-func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
+// mapToProductUsingFilter 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
+func (t *task) mapToProductUsingFilter(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
 	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
 		return nil
 	}
@@ -270,8 +269,7 @@ func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, e
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		// @@@@@ 메시지 추천받기..
-		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 데이터 파싱 실패", logrus.Fields{
+		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", logrus.Fields{
 			"product_id":      item.ProductID,
 			"product_type":    item.ProductType,
 			"title":           item.Title,

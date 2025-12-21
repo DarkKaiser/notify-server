@@ -191,6 +191,21 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				Build(),
 			wantErrMsg: "query", // validate error
 		},
+		{
+			name: "실패: Command 설정 값 오류 (PriceLessThan <= 0)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    validTaskID,
+				CommandID: validCommandID,
+			},
+			appConfig: NewConfigBuilder().
+				WithTask(string(validTaskID), "id", "secret").
+				WithCommand(string(validCommandID), "q", func(m map[string]interface{}) {
+					filters := m["filters"].(map[string]interface{})
+					filters["price_less_than"] = 0 // Invalid Value
+				}).
+				Build(),
+			wantErrMsg: "price_less_than", // validate error
+		},
 	}
 
 	for _, tt := range tests {
@@ -240,20 +255,29 @@ func (b *ConfigBuilder) WithTask(taskID, clientID, clientSecret string) *ConfigB
 	return b
 }
 
-func (b *ConfigBuilder) WithCommand(commandID, query string) *ConfigBuilder {
+type CommandOption func(map[string]interface{})
+
+func (b *ConfigBuilder) WithCommand(commandID, query string, opts ...CommandOption) *ConfigBuilder {
 	// 마지막으로 추가된 Task에 Command를 추가합니다.
 	if len(b.tasks) == 0 {
 		panic("WithCommand called before WithTask")
 	}
+
+	data := map[string]interface{}{
+		"query": query,
+		"filters": map[string]interface{}{
+			"price_less_than": 10000,
+		},
+	}
+
+	for _, opt := range opts {
+		opt(data)
+	}
+
 	lastIdx := len(b.tasks) - 1
 	b.tasks[lastIdx].Commands = append(b.tasks[lastIdx].Commands, config.CommandConfig{
-		ID: commandID,
-		Data: map[string]interface{}{
-			"query": query,
-			"filters": map[string]interface{}{
-				"price_less_than": 10000,
-			},
-		},
+		ID:   commandID,
+		Data: data,
 	})
 	return b
 }

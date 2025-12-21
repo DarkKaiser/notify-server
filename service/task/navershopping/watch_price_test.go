@@ -451,3 +451,165 @@ func (b *ProductBuilder) WithMallName(m string) *ProductBuilder {
 func (b *ProductBuilder) Build() *product {
 	return &b.product
 }
+
+// -----------------------------------------------------------------------------
+// Component Tests: MapToProduct (Granular Logic)
+// -----------------------------------------------------------------------------
+
+func TestTask_MapToProductUsingFilter_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	// Helper for clean tests
+	item := func(title, price string) *searchResponseItem {
+		return &searchResponseItem{
+			Title:     title,
+			LowPrice:  price,
+			ProductID: "1",
+			Link:      "http://link",
+			MallName:  "mall",
+		}
+	}
+
+	tests := []struct {
+		name             string
+		item             *searchResponseItem
+		includedKeywords []string
+		excludedKeywords []string
+		priceLessThan    int
+		wantProduct      bool // true: product expected, false: nil expected
+	}{
+		{
+			name:          "성공: 모든 조건 만족",
+			item:          item("Apple iPad", "50000"),
+			priceLessThan: 100000,
+			wantProduct:   true,
+		},
+		{
+			name:             "성공: 키워드 필터 통과 (Included)",
+			item:             item("Apple iPad Pro", "50000"),
+			includedKeywords: []string{"iPad"},
+			priceLessThan:    100000,
+			wantProduct:      true,
+		},
+		{
+			name:             "실패: 키워드 필터 탈락 (Missing Included)",
+			item:             item("Apple iPhone", "50000"),
+			includedKeywords: []string{"iPad"},
+			priceLessThan:    100000,
+			wantProduct:      false,
+		},
+		{
+			name:             "실패: 제외 키워드 포함 (Excluded)",
+			item:             item("Apple iPad Case", "50000"),
+			excludedKeywords: []string{"Case"},
+			priceLessThan:    100000,
+			wantProduct:      false,
+		},
+		{
+			name:          "실패: 가격 초과 (Price Limit)",
+			item:          item("Apple iPad", "150000"),
+			priceLessThan: 100000,
+			wantProduct:   false,
+		},
+		{
+			name:          "실패: 가격 파싱 오류 (Invalid Number)",
+			item:          item("Apple iPad", "Call for Price"),
+			priceLessThan: 100000,
+			wantProduct:   false,
+		},
+		{
+			name:          "성공: 가격 쉼표 처리",
+			item:          item("Apple iPad", "50,000"),
+			priceLessThan: 100000,
+			wantProduct:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tsk := &task{}
+			got := tsk.mapToProductUsingFilter(tt.item, tt.includedKeywords, tt.excludedKeywords, tt.priceLessThan)
+
+			if tt.wantProduct {
+				require.NotNil(t, got)
+				assert.Equal(t, tt.item.Title, got.Title)
+			} else {
+				assert.Nil(t, got)
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Advanced Scenarios: Pagination & Cancellation
+// -----------------------------------------------------------------------------
+
+func TestTask_FetchProducts_Pagination(t *testing.T) {
+	t.Parallel()
+
+	// 시나리오: 총 150개 상품, 1 페이지당 100개 요청.
+	// 1번 요청: Start=1, Display=100 -> 100개 반환 (Next Start=101)
+	// 2번 요청: Start=101, Display=100 -> 50개 반환 (Total=150 달성)
+
+	settings := NewSettingsBuilder().WithQuery("paging").WithPriceLessThan(999999).Build()
+
+	mockFetcher := testutil.NewMockHTTPFetcher()
+
+	// Page 1 Setup
+	page1URL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=paging&sort=sim&start=1"
+	page1Items := make([]*searchResponseItem, 100)
+	for i := 0; i < 100; i++ {
+		page1Items[i] = &searchResponseItem{Title: "P1", LowPrice: "100", ProductID: "P1"}
+	}
+	mockFetcher.SetResponse(page1URL, mustMarshal(searchResponse{
+		Total: 150, Start: 1, Display: 100, Items: page1Items,
+	}))
+
+	// Page 2 Setup
+	page2URL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=paging&sort=sim&start=101"
+	page2Items := make([]*searchResponseItem, 50)
+	for i := 0; i < 50; i++ {
+		page2Items[i] = &searchResponseItem{Title: "P2", LowPrice: "100", ProductID: "P2"}
+	}
+	mockFetcher.SetResponse(page2URL, mustMarshal(searchResponse{
+		Total: 150, Start: 101, Display: 50, Items: page2Items,
+	}))
+
+	tsk := &task{clientID: "id", clientSecret: "secret"}
+	tsk.SetFetcher(mockFetcher)
+
+	products, err := tsk.fetchProducts(&settings)
+
+	require.NoError(t, err)
+	assert.Len(t, products, 150, "총 150개의 상품이 수집되어야 합니다")
+}
+
+func TestTask_FetchProducts_Cancellation(t *testing.T) {
+	t.Parallel()
+
+	settings := NewSettingsBuilder().WithQuery("cancel").WithPriceLessThan(999999).Build()
+	mockFetcher := testutil.NewMockHTTPFetcher()
+
+	// 1페이지 응답 설정 (Total이 많아서 다음 페이지가 필요하도록 설정)
+	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=cancel&sort=sim&start=1"
+	mockFetcher.SetResponse(url, mustMarshal(searchResponse{
+		Total: 1000, Start: 1, Display: 1, Items: []*searchResponseItem{{Title: "A", LowPrice: "100", ProductID: "1"}},
+	}))
+
+	// Task 생성 및 취소 상태로 설정
+	tsk := &task{clientID: "id", clientSecret: "secret"}
+	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tasksvc.RunByScheduler)
+	tsk.SetFetcher(mockFetcher)
+
+	// 강제로 취소 상태 주입 (Context Cancel)
+	tsk.Cancel()
+
+	products, err := tsk.fetchProducts(&settings)
+
+	// 취소되었으므로 nil 반환 체크
+	require.NoError(t, err)
+	assert.Nil(t, products, "작업 취소 시 nil을 반환해야 합니다")
+}
