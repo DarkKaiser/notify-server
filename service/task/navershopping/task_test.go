@@ -127,8 +127,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
-			appConfig:  &config.AppConfig{}, // Empty config
-			wantErrMsg: "client_id",         // validate에서 걸림 (zero value)
+			appConfig: &config.AppConfig{}, // Empty config
+			wantErr:   tasksvc.ErrTaskSettingsNotFound,
 		},
 		{
 			name: "실패: Task 필수 설정(ClientID) 누락",

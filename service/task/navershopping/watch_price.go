@@ -14,25 +14,33 @@ import (
 )
 
 const (
-	// watchPriceAnyCommandPrefix는 동적 커맨드 라우팅을 위한 식별자 접두어입니다.
+	// watchPriceAnyCommandPrefix 동적 커맨드 라우팅을 위한 식별자 접두어입니다.
 	//
 	// 이 접두어로 시작하는 모든 CommandID는 `executeWatchPrice` 핸들러로 라우팅되어 처리됩니다.
 	// 이를 통해 사용자는 "WatchPrice_Apple", "WatchPrice_Samsung" 등과 같이
 	// 하나의 로직으로 처리되는 다수의 커맨드를 유연하게 생성할 수 있습니다.
 	watchPriceAnyCommandPrefix = "WatchPrice_"
 
-	// searchAPIURL은 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
+	// searchAPIURL 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
 
-	// API 매개변수 상수
-	//
-	// paramSortOrder: 검색 결과 정렬 기준 (sim: 유사도순, date: 날짜순, asc: 가격오름차순, dsc: 가격내림차순)
-	paramSortOrder = "sim"
-	// paramMaxSearchItemCount: 1회 요청 시 반환받을 검색 결과의 최대 개수 (API 제한: 10~100)
-	paramMaxSearchItemCount = 100
-	// paramMaxTotalSearchLimit: 수집할 최대 상품 개수 제한 (과도한 요청 방지)
-	paramMaxTotalSearchLimit = 1000
+	// ------------------------------------------------------------------------------------------------
+	// API 매개변수 설정
+	// ------------------------------------------------------------------------------------------------
+
+	// apiSortOption 검색 결과 정렬 기준 (sim: 유사도순, date: 날짜순, asc: 가격오름차순, dsc: 가격내림차순)
+	apiSortOption = "sim"
+
+	// apiDisplayCount 1회 요청 시 반환받을 검색 결과의 최대 개수 (API 제한: 10~100)
+	apiDisplayCount = 100
+
+	// ------------------------------------------------------------------------------------------------
+	// 정책 설정
+	// ------------------------------------------------------------------------------------------------
+
+	// policyFetchLimit 단일 커맨드당 최대 수집 제한 (과도한 요청 방지)
+	policyFetchLimit = 1000
 )
 
 type watchPriceSettings struct {
@@ -62,16 +70,16 @@ type watchPriceSnapshot struct {
 
 // product 검색 API를 통해 조회된 개별 상품 정보를 담는 도메인 모델입니다.
 type product struct {
-	Title       string `json:"title"`
-	Link        string `json:"link"`
-	LowPrice    int    `json:"lprice"`
-	MallName    string `json:"mallName"`
-	ProductID   string `json:"productId"`
-	ProductType string `json:"productType"`
+	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
+	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
+
+	Title    string `json:"title"`    // 상품명 (HTML 태그가 포함될 수 있음)
+	Link     string `json:"link"`     // 상품 상세 정보 페이지 URL
+	LowPrice int    `json:"lprice"`   // 판매 최저가 (단위: 원)
+	MallName string `json:"mallName"` // 판매 쇼핑몰 상호
 }
 
 // Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
-// Link는 추적 파라미터 등으로 인해 변할 수 있으므로, 불변 값인 ProductID를 사용합니다.
 func (p *product) Key() string {
 	return p.ProductID
 }
@@ -97,6 +105,7 @@ func (p *product) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, p.MallName, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
+// @@@@@
 type searchResponseItem struct {
 	Title       string `json:"title"`
 	Link        string `json:"link"`
@@ -106,6 +115,7 @@ type searchResponseItem struct {
 	ProductType string `json:"productType"`
 }
 
+// @@@@@
 type searchResponse struct {
 	Total   int                   `json:"total"`
 	Start   int                   `json:"start"`
@@ -125,10 +135,11 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 		Products: currentProducts,
 	}
 
-	// 2. 변경 내역 비교 및 알림 생성
+	// 2. 신규 상품 확인 및 알림 메시지 생성
 	return t.diffAndNotify(commandSettings, currentSnapshot, prevSnapshot, supportsHTML)
 }
 
+// @@@@@
 func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, error) {
 	var (
 		header = map[string]string{
@@ -156,9 +167,9 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		u := *parsedURL // 구조체 복사 (URL은 포인터 필드가 없으므로 값 복사 안전)
 		q := u.Query()
 		q.Set("query", commandSettings.Query)
-		q.Set("display", strconv.Itoa(paramMaxSearchItemCount))
+		q.Set("display", strconv.Itoa(apiDisplayCount))
 		q.Set("start", strconv.Itoa(searchResultItemStartNo))
-		q.Set("sort", paramSortOrder)
+		q.Set("sort", apiSortOption)
 		u.RawQuery = q.Encode()
 
 		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, _searchResultData_)
@@ -174,14 +185,14 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 			searchResultItemTotalCount = _searchResultData_.Total
 
 			// 최대 1000건의 데이터를 읽어들이도록 한다.
-			if searchResultData.Total > paramMaxTotalSearchLimit {
-				searchResultData.Total = paramMaxTotalSearchLimit
-				searchResultItemTotalCount = paramMaxTotalSearchLimit
+			if searchResultData.Total > policyFetchLimit {
+				searchResultData.Total = policyFetchLimit
+				searchResultItemTotalCount = policyFetchLimit
 			}
 		}
 		searchResultData.Items = append(searchResultData.Items, _searchResultData_.Items...)
 
-		searchResultItemStartNo += paramMaxSearchItemCount
+		searchResultItemStartNo += apiDisplayCount
 	}
 
 	// 데이터 필터링
@@ -200,6 +211,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	return products, nil
 }
 
+// @@@@@
 // filterAndMapProduct 검색 결과를 필터링하고 도메인 모델(product)로 변환합니다.
 func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
 	// 1. 키워드 필터링
@@ -234,6 +246,7 @@ func (t *task) filterAndMapProduct(item *searchResponseItem, includedKeywords, e
 	return nil
 }
 
+// @@@@@
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	var sb strings.Builder
 	lineSpacing := "\n\n"

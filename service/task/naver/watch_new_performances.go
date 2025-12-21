@@ -30,6 +30,10 @@ const (
 	//  - 쿼리 파라미터(?query=...)를 추가하여 사용자가 해당 공연의 상세 검색 결과를 즉시 확인할 수 있도록 돕습니다.
 	searchResultPageURL = "https://search.naver.com/search.naver"
 
+	// newPerformanceMark 신규 공연 알림 메시지에 표시될 강조 마크입니다.
+	newPerformanceMark = " 🆕"
+
+	// ------------------------------------------------------------------------------------------------
 	// CSS Selectors
 	// ------------------------------------------------------------------------------------------------
 	// 네이버 공연 검색 결과 페이지의 DOM 구조 변경에 대응하기 위한 CSS 선택자 상수를 정의합니다.
@@ -48,9 +52,6 @@ const (
 
 	// selectorThumbnail 공연 카드 내부의 공연 포스터 이미지의 URL을 추출합니다.
 	selectorThumbnail = ".thumb img"
-
-	// newPerformanceMark 신규 공연 알림 메시지에 표시될 강조 마크입니다.
-	newPerformanceMark = " 🆕"
 )
 
 type watchNewPerformancesSettings struct {
@@ -108,7 +109,7 @@ func (p *performance) Equals(other *performance) bool {
 	return p.Title == other.Title && p.Place == other.Place
 }
 
-// Key 공연을 고유하게 식별하기 위한 문자열 키를 생성합니다.
+// Key 공연을 고유하게 식별하기 위한 문자열 키를 반환합니다.
 //
 // 반환값은 "제목|장소" 형식으로, 파이프(|) 문자를 구분자로 사용하여 제목과 장소를 결합합니다.
 // 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
