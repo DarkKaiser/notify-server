@@ -295,7 +295,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "변경되었습니다")
 				assert.Contains(t, msg, "9,000원")
-				assert.Contains(t, msg, "(전: 10,000원)")
+				assert.Contains(t, msg, "(이전: 10,000원)")
 				assert.Contains(t, msg, "L_NEW") // Stale Link Check: 최신 링크 사용 여부
 				assert.NotNil(t, data)
 			},
