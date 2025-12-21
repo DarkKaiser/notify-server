@@ -25,6 +25,12 @@ const (
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
 
+	// newProductMark 신규 상품 알림 메시지에 표시될 강조 마크입니다.
+	newProductMark = " 🆕"
+
+	// changeProductPriceMark 가격 변동 알림 메시지에 표시될 강조 마크입니다.
+	changeProductPriceMark = " 🔁"
+
 	// ------------------------------------------------------------------------------------------------
 	// API 매개변수 설정
 	// ------------------------------------------------------------------------------------------------
@@ -300,73 +306,100 @@ func (t *task) mapToProductUsingFilter(item *searchResponseItem, includedKeyword
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// @@@@@
+	// 예상 메시지 크기로 초기 용량 할당 (상품당 약 400바이트 추정)
 	var sb strings.Builder
-	lineSpacing := "\n\n"
-	if supportsHTML {
-		lineSpacing = "\n"
+	if len(currentSnapshot.Products) > 0 {
+		sb.Grow(len(currentSnapshot.Products) * 400)
 	}
 
-	// 1. 이전 스냅샷이 있다면 Map으로 변환하여 조회 성능 최적화 (O(N))
-	// Pre-allocation: 맵의 크기를 미리 할당하여 재할당 오버헤드를 방지합니다.
-	var prevMap map[string]*product
+	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
+	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
+	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
+	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
+	var prevProducts []*product
 	if prevSnapshot != nil {
-		prevMap = make(map[string]*product, len(prevSnapshot.Products))
-		for _, p := range prevSnapshot.Products {
-			prevMap[p.Key()] = p
-		}
+		prevProducts = prevSnapshot.Products
 	}
 
-	// 2. 현재 상품 목록을 순회하며 변경 내역 확인
-	for _, currentProduct := range currentSnapshot.Products {
-		key := currentProduct.Key()
-		prevProduct, exists := prevMap[key]
+	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
+	prevMap := make(map[string]*product, len(prevProducts))
+	for _, p := range prevProducts {
+		prevMap[p.Key()] = p
+	}
+
+	// 현재 상품 목록을 순회하며 신규 상품을 식별한다.
+	lineSpacing := "\n\n"
+	for _, p := range currentSnapshot.Products {
+		prevProduct, exists := prevMap[p.Key()]
 
 		if !exists {
-			// 신규 상품 (New)
+			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.
+			// 이는 새로운 상품이 등록되었거나, 검색 순위 진입 등으로 수집 범위에 새롭게 포함된 경우입니다.
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(currentProduct.String(supportsHTML, " 🆕"))
+			sb.WriteString(p.String(supportsHTML, newProductMark))
 		} else {
-			// 기존 상품: 가격 변동 확인
-			if currentProduct.LowPrice != prevProduct.LowPrice {
+			// 동일한 상품(Key 일치)이 이전에도 존재했으나, 최저가(LowPrice)가 변경되었습니다.
+			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
+			if p.LowPrice != prevProduct.LowPrice {
 				if sb.Len() > 0 {
 					sb.WriteString(lineSpacing)
 				}
-				// Stale Link Protection: 링크나 상품명이 변경되었을 수 있으므로,
-				// 알림 메시지는 최신 정보(currentProduct)를 기준으로 생성하고,
-				// 가격 변동 내역만 과거 가격(prevProduct.LowPrice)을 참조하여 표시합니다.
-				sb.WriteString(currentProduct.String(supportsHTML, fmt.Sprintf(" (전: %s원) 🔁", strutil.FormatCommas(prevProduct.LowPrice))))
+
+				sb.WriteString(p.String(supportsHTML, fmt.Sprintf(" (이전: %s원)%s", strutil.FormatCommas(prevProduct.LowPrice), changeProductPriceMark)))
 			}
 		}
 	}
 
-	filtersDescription := fmt.Sprintf("조회 조건은 아래와 같습니다:\n• 검색 키워드 : %s\n• 상풍명 포함 키워드 : %s\n• 상품명 제외 키워드 : %s\n• %s원 미만의 상품", commandSettings.Query, commandSettings.Filters.IncludedKeywords, commandSettings.Filters.ExcludedKeywords, strutil.FormatCommas(commandSettings.Filters.PriceLessThan))
+	// [알림 메시지 상단 요약 메시지]
+	// 사용자가 알림을 받았을 때, 이 결과가 '어떤 조건'에 의해 필터링된 것인지 즉시 파악할 수 있도록 돕습니다.
+	searchConditionsSummary := fmt.Sprintf(`조회 조건은 아래와 같습니다:
+• 검색 키워드 : %s
+• 상품명 포함 키워드 : %s
+• 상품명 제외 키워드 : %s
+• %s원 미만의 상품`,
+		commandSettings.Query,
+		commandSettings.Filters.IncludedKeywords,
+		commandSettings.Filters.ExcludedKeywords,
+		strutil.FormatCommas(commandSettings.Filters.PriceLessThan),
+	)
 
-	var message string
-	var changedTaskResultData interface{}
-
+	// [알림 메시지 생성 및 반환]
+	// 변경 내역(New/Price Change)이 집계된 경우(sb.Len() > 0), 즉시 알림 메시지를 구성하여 반환합니다.
 	if sb.Len() > 0 {
-		message = fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s", filtersDescription, sb.String())
-		changedTaskResultData = currentSnapshot
-	} else {
-		// 사용자가 수동으로 실행한 경우, 변경 사항이 없더라도 현재 상태를 알려줌
-		if t.GetRunBy() == tasksvc.RunByUser {
-			if len(currentSnapshot.Products) == 0 {
-				message = fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", filtersDescription)
-			} else {
-				for _, p := range currentSnapshot.Products {
-					if sb.Len() > 0 {
-						sb.WriteString(lineSpacing)
-					}
-					sb.WriteString(p.String(supportsHTML, ""))
-				}
-
-				message = fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s", filtersDescription, sb.String())
-			}
-		}
+		return fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s",
+				searchConditionsSummary,
+				sb.String()),
+			currentSnapshot,
+			nil
 	}
 
-	return message, changedTaskResultData, nil
+	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
+	//
+	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
+	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
+	if t.GetRunBy() == tasksvc.RunByUser {
+		if len(currentSnapshot.Products) == 0 {
+			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s",
+					searchConditionsSummary),
+				nil,
+				nil
+		}
+
+		for _, p := range currentSnapshot.Products {
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
+			}
+			sb.WriteString(p.String(supportsHTML, ""))
+		}
+
+		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
+				searchConditionsSummary,
+				sb.String()),
+			nil,
+			nil
+	}
+
+	return "", nil, nil
 }

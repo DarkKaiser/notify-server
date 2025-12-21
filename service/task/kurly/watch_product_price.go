@@ -35,15 +35,15 @@ const (
 	WatchStatusDisabled = "0"
 )
 
-type watchProductPriceCommandConfig struct {
+type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (c *watchProductPriceCommandConfig) validate() error {
-	if c.WatchProductsFile == "" {
+func (s *watchProductPriceSettings) validate() error {
+	if s.WatchProductsFile == "" {
 		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
 	}
-	if strings.HasSuffix(strings.ToLower(c.WatchProductsFile), ".csv") == false {
+	if strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") == false {
 		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
 	}
 	return nil
@@ -58,6 +58,25 @@ type product struct {
 	LowestPrice      int       `json:"lowest_price"`       // 최저 가격
 	LowestPriceTime  time.Time `json:"lowest_price_time"`  // 최저 가격이 등록된 시간
 	IsUnknownProduct bool      `json:"is_unknown_product"` // 알 수 없는 상품인지에 대한 여부(상품 코드가 존재하지 않거나, 이전에는 판매를 하였지만 현재는 판매하고 있지 않는 상품)
+}
+
+// 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
+// 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
+func (p *product) updateLowestPrice() {
+	setLowestPrice := func(price int) {
+		if p.LowestPrice == 0 || p.LowestPrice > price {
+			// 최저 가격이 저장되어 있지 않거나, 새로운 가격이 더 낮다면 최저 가격을 업데이트하고 현재 시간을 기록한다.
+			p.LowestPrice = price
+			p.LowestPriceTime = time.Now()
+		}
+	}
+
+	// 할인 가격이 존재하면 최저 가격을 업데이트한다.
+	if p.DiscountedPrice != 0 {
+		setLowestPrice(p.DiscountedPrice)
+	}
+	// 현재 가격으로 최저 가격을 업데이트한다.
+	setLowestPrice(p.Price)
 }
 
 func (p *product) String(supportsHTML bool, mark string, previousProduct *product) string {
@@ -97,36 +116,17 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 	return fmt.Sprintf("%s\n      • 현재 가격 : %s%s%s", name, formatPrice(p.Price, p.DiscountedPrice, p.DiscountRate), previousPriceString, lowestPriceString)
 }
 
-// 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
-// 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
-func (p *product) updateLowestPrice() {
-	setLowestPrice := func(price int) {
-		if p.LowestPrice == 0 || p.LowestPrice > price {
-			// 최저 가격이 저장되어 있지 않거나, 새로운 가격이 더 낮다면 최저 가격을 업데이트하고 현재 시간을 기록한다.
-			p.LowestPrice = price
-			p.LowestPriceTime = time.Now()
-		}
-	}
-
-	// 할인 가격이 존재하면 최저 가격을 업데이트한다.
-	if p.DiscountedPrice != 0 {
-		setLowestPrice(p.DiscountedPrice)
-	}
-	// 현재 가격으로 최저 가격을 업데이트한다.
-	setLowestPrice(p.Price)
-}
-
 type watchProductPriceSnapshot struct {
 	Products []*product `json:"products"`
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandConfig, originTaskResultData *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchProductPrice(settings *watchProductPriceSettings, originTaskResultData *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(commandConfig.WatchProductsFile)
+	f, err := os.Open(settings.WatchProductsFile)
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}

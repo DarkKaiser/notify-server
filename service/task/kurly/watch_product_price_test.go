@@ -8,7 +8,7 @@ import (
 
 func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchProductPriceCommandConfig{
+		commandConfig := &watchProductPriceSettings{
 			WatchProductsFile: "test.csv",
 		}
 
@@ -17,7 +17,7 @@ func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("파일 경로가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchProductPriceCommandConfig{
+		commandConfig := &watchProductPriceSettings{
 			WatchProductsFile: "",
 		}
 
@@ -27,7 +27,7 @@ func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 	})
 
 	t.Run("CSV 파일이 아닌 경우", func(t *testing.T) {
-		commandConfig := &watchProductPriceCommandConfig{
+		commandConfig := &watchProductPriceSettings{
 			WatchProductsFile: "test.txt",
 		}
 
@@ -44,7 +44,7 @@ func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			commandConfig := &watchProductPriceCommandConfig{
+			commandConfig := &watchProductPriceSettings{
 				WatchProductsFile: filename,
 			}
 
@@ -278,7 +278,7 @@ func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
 
 func TestKurlyWatchProductPriceConfig_Validate_ErrorCases(t *testing.T) {
 	t.Run("빈 파일 경로", func(t *testing.T) {
-		commandConfig := &watchProductPriceCommandConfig{
+		commandConfig := &watchProductPriceSettings{
 			WatchProductsFile: "",
 		}
 
@@ -296,7 +296,7 @@ func TestKurlyWatchProductPriceConfig_Validate_ErrorCases(t *testing.T) {
 		}
 
 		for _, filename := range testCases {
-			commandConfig := &watchProductPriceCommandConfig{
+			commandConfig := &watchProductPriceSettings{
 				WatchProductsFile: filename,
 			}
 
