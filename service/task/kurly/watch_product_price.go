@@ -35,15 +35,15 @@ const (
 	WatchStatusDisabled = "0"
 )
 
-type watchProductPriceCommandConfig struct {
+type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (c *watchProductPriceCommandConfig) validate() error {
-	if c.WatchProductsFile == "" {
+func (s *watchProductPriceSettings) validate() error {
+	if s.WatchProductsFile == "" {
 		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
 	}
-	if strings.HasSuffix(strings.ToLower(c.WatchProductsFile), ".csv") == false {
+	if strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") == false {
 		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
 	}
 	return nil
@@ -121,12 +121,12 @@ type watchProductPriceSnapshot struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *task) executeWatchProductPrice(commandConfig *watchProductPriceCommandConfig, originTaskResultData *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchProductPrice(settings *watchProductPriceSettings, originTaskResultData *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(commandConfig.WatchProductsFile)
+	f, err := os.Open(settings.WatchProductsFile)
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}

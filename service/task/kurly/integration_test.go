@@ -69,7 +69,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 
@@ -130,7 +130,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
@@ -171,7 +171,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	require.True(t, ok)
 
 	// 3. 테스트 데이터 준비
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
@@ -243,7 +243,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -325,7 +325,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
@@ -391,7 +391,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
 
-	commandConfig := &watchProductPriceCommandConfig{
+	commandConfig := &watchProductPriceSettings{
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)

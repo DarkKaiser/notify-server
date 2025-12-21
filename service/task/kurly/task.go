@@ -53,11 +53,11 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 				if tTask.GetID() == tasksvc.ID(t.ID) {
 					for _, c := range t.Commands {
 						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-							commandConfig := &watchProductPriceCommandConfig{}
-							if err := tasksvc.DecodeMap(commandConfig, c.Data); err != nil {
+							settings := &watchProductPriceSettings{}
+							if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
 								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
-							if err := commandConfig.validate(); err != nil {
+							if err := settings.validate(); err != nil {
 								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "작업 커맨드 데이터가 유효하지 않습니다")
 							}
 
@@ -66,7 +66,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
 							}
 
-							return tTask.executeWatchProductPrice(commandConfig, originTaskResultData, supportsHTML)
+							return tTask.executeWatchProductPrice(settings, originTaskResultData, supportsHTML)
 						}
 					}
 					break
