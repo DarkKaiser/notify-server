@@ -129,7 +129,7 @@ func TestNaverPerformance_String(t *testing.T) {
 	}
 }
 
-// TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 필터링 규칙 예시를 나열합니다.
+// TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 키워드 매칭 규칙 예시를 나열합니다.
 func TestNaverTask_Filtering_Behavior(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +153,7 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := strutil.Filter(tt.item, tt.included, tt.excluded)
+			got := strutil.MatchesKeywords(tt.item, tt.included, tt.excluded)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -183,8 +183,8 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		name          string
 		html          string
 		filters       *parsedFilters
-		expectedCount int                                             // 필터링 후 예상 개수
-		expectedRaw   int                                             // 필터링 전 raw 개수
+		expectedCount int                                             // 키워드 매칭 후 예상 개수
+		expectedRaw   int                                             // 키워드 매칭 전 raw 개수
 		expectError   bool                                            // 에러 발생 여부
 		validateItems func(t *testing.T, performances []*performance) // 세부 항목 검증
 	}{
@@ -201,7 +201,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
-			name: "성공: 필터링 (Include)",
+			name: "성공: 키워드 매칭 (Include)",
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Cats Musical", "Seoul", "1.jpg"),
 				makeItem("Dog Show", "Seoul", "2.jpg")),
@@ -215,7 +215,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
-			name: "성공: 필터링 (Exclude)",
+			name: "성공: 키워드 매칭 (Exclude)",
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Happy Musical", "Seoul", "1.jpg"),
 				makeItem("Sad Drama", "Seoul", "2.jpg")),
@@ -299,7 +299,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedCount, len(perfs), "필터링 후 개수가 일치해야 합니다")
+				assert.Equal(t, tt.expectedCount, len(perfs), "키워드 매칭 후 개수가 일치해야 합니다")
 				assert.Equal(t, tt.expectedRaw, rawCount, "Raw 개수가 일치해야 합니다")
 				if tt.validateItems != nil {
 					tt.validateItems(t, perfs)

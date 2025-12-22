@@ -363,16 +363,16 @@ func TestStripHTMLTags(t *testing.T) {
 }
 
 // =============================================================================
-// Filter Tests
+// MatchesKeywords Tests
 // =============================================================================
 
-func TestFilter(t *testing.T) {
+func TestMatchesKeywords(t *testing.T) {
 	t.Run("포함 키워드만 있는 경우", func(t *testing.T) {
 		s := "이것은 테스트 문자열입니다"
 		includedKeywords := []string{"테스트"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -381,7 +381,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "포함 키워드가 없으면 false를 반환해야 합니다")
 	})
 
@@ -390,7 +390,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트"}
 		excludedKeywords := []string{"문자열"}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "제외 키워드가 있으면 false를 반환해야 합니다")
 	})
 
@@ -399,7 +399,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트", "문자열"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "모든 포함 키워드가 있으면 true를 반환해야 합니다")
 	})
 
@@ -408,7 +408,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"테스트", "샘플"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "포함 키워드 중 하나라도 없으면 false를 반환해야 합니다")
 	})
 
@@ -417,7 +417,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플|테스트|예제"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "OR 조건 중 하나라도 만족하면 true를 반환해야 합니다")
 	})
 
@@ -426,7 +426,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"샘플|예제|데모"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.False(t, result, "OR 조건 모두 불만족하면 false를 반환해야 합니다")
 	})
 
@@ -435,7 +435,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"삼성", "스마트폰"}
 		excludedKeywords := []string{"아이폰"}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "포함 키워드는 만족하고 제외 키워드는 없으면 true를 반환해야 합니다")
 	})
 
@@ -444,7 +444,7 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 		assert.True(t, result, "키워드가 없으면 true를 반환해야 합니다")
 	})
 
@@ -453,9 +453,9 @@ func TestFilter(t *testing.T) {
 		includedKeywords := []string{"samsung"}
 		excludedKeywords := []string{}
 
-		result := Filter(s, includedKeywords, excludedKeywords)
+		result := MatchesKeywords(s, includedKeywords, excludedKeywords)
 
-		// filter 함수가 대소문자를 구분하는지 확인
+		// MatchesKeywords 함수가 대소문자를 구분하는지 확인
 		// 실제 구현에 따라 결과가 달라질 수 있음
 		if result {
 			// 대소문자 구분 안 함

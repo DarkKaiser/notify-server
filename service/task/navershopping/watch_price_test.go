@@ -146,7 +146,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		checkResult func(*testing.T, []*product, error)
 	}{
 		{
-			name:     "성공: 정상적인 데이터 수집 및 필터링",
+			name:     "성공: 정상적인 데이터 수집 및 키워드 매칭",
 			settings: defaultSettings,
 			mockSetup: func(m *testutil.MockHTTPFetcher) {
 				resp := searchResponse{
@@ -233,7 +233,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name:     "성공: HTML 태그가 포함된 로우 데이터 필터링",
+			name:     "성공: HTML 태그가 포함된 로우 데이터 키워드 매칭",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("S25 FE").Build(),
 			mockSetup: func(m *testutil.MockHTTPFetcher) {
 				resp := searchResponse{

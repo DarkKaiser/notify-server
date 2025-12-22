@@ -131,7 +131,7 @@ type searchResponseItem struct {
 
 // executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
 func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 1. 상품 정보 수집 및 필터링
+	// 1. 상품 정보 수집 및 키워드 매칭
 	currentProducts, err := t.fetchProducts(commandSettings)
 	if err != nil {
 		return "", nil, err
@@ -225,9 +225,9 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		startIndex += apiDisplayCount
 	}
 
-	// 수집된 결과가 없는 경우, 불필요한 슬라이스 할당(`make`)과 후속 필터링 로직을 건너뛰고 즉시 종료합니다.
+	// 수집된 결과가 없는 경우, 불필요한 슬라이스 할당(`make`)과 후속 키워드 매칭 로직을 건너뛰고 즉시 종료합니다.
 	if len(pageContent.Items) == 0 {
-		t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 필터링 프로세스가 완료되었습니다 (검색 결과 없음)", logrus.Fields{
+		t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다 (검색 결과 없음)", logrus.Fields{
 			"collected_count": 0,
 			"fetched_count":   0,
 			"api_total_count": pageContent.Total,
@@ -238,22 +238,22 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		return nil, nil
 	}
 
-	// 키워드 필터링 조건을 사전 파싱합니다.
+	// 키워드 매칭 조건을 사전 파싱합니다.
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
 
 	// 결과 슬라이스의 용량(Capacity)을 원본 데이터 크기만큼 미리 확보합니다.
-	// 필터링으로 인해 실제 크기는 이보다 작을 수 있지만, Go 슬라이스의 동적 확장(Dynamic Resizing) 및
+	// 키워드 매칭으로 인해 실제 크기는 이보다 작을 수 있지만, Go 슬라이스의 동적 확장(Dynamic Resizing) 및
 	// 메모리 재할당/복사(Reallocation & Copy) 비용을 완전히 제거하여 성능을 최적화합니다.
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
-		// 필터링 전에 HTML 태그를 제거합니다.
+		// 키워드 매칭 검사 전에 HTML 태그를 제거합니다.
 		// 네이버 검색 API는 매칭된 키워드를 <b> 태그로 감싸서 반환하므로,
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
 		plainTitle := strutil.StripHTMLTags(item.Title)
 
-		if !strutil.Filter(plainTitle, includedKeywords, excludedKeywords) {
+		if !strutil.MatchesKeywords(plainTitle, includedKeywords, excludedKeywords) {
 			continue
 		}
 
@@ -264,7 +264,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		}
 	}
 
-	t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 필터링 프로세스가 완료되었습니다", logrus.Fields{
+	t.LogWithContext("task.navershopping", logrus.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", logrus.Fields{
 		"collected_count": len(products),
 		"fetched_count":   len(pageContent.Items),
 		"api_total_count": pageContent.Total,
@@ -372,7 +372,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	}
 
 	// [알림 메시지 상단 요약 메시지]
-	// 사용자가 알림을 받았을 때, 이 결과가 '어떤 조건'에 의해 필터링된 것인지 즉시 파악할 수 있도록 돕습니다.
+	// 사용자가 알림을 받았을 때, 이 결과가 '어떤 조건'에 의해 선별된 것인지 즉시 파악할 수 있도록 돕습니다.
 	searchConditionsSummary := fmt.Sprintf(`조회 조건은 아래와 같습니다:
 
   • 검색 키워드 : %s

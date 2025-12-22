@@ -142,7 +142,7 @@ func (p *performance) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
-// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 필터링 데이터입니다.
+// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 키워드 매칭 데이터입니다.
 type parsedFilters struct {
 	TitleIncluded []string
 	TitleExcluded []string
@@ -264,7 +264,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
 	}
 
-	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집 및 필터링 프로세스가 완료되었습니다", logrus.Fields{
+	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", logrus.Fields{
 		"collected_count": len(currentPerformances),
 		"fetched_count":   totalFetchedCount,
 		"request_pages":   pageIndex - 1,
@@ -295,8 +295,8 @@ func buildSearchAPIURL(query string, page int) string {
 // parsePerformancesFromHTML 수집된 HTML 문서(DOM)를 파싱하여 구조화된 공연 정보 목록으로 변환합니다.
 //
 // 반환값:
-//   - []*performance: 사용자 정의 필터(Keywords)를 통과하여 최종 선별된 공연 정보 목록
-//   - int (rawCount): 필터링 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
+//   - []*performance: 사용자 정의 키워드 조건(Keywords)을 통과하여 최종 선별된 공연 정보 목록
+//   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
 func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performance, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -307,15 +307,15 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 	// 읽어온 페이지에서 공연정보를 추출한다.
 	performancesSelection := doc.Find(selectorPerformanceItem)
 
-	// 필터링 전 탐색된 원본 항목의 개수(Raw Count)입니다.
-	// 이 값은 필터링 결과와는 독립적으로, 현재 페이지에 처리할 데이터가
+	// 키워드 매칭 검사 전 탐색된 원본 항목의 개수(Raw Count)입니다.
+	// 이 값은 키워드 매칭 결과와는 독립적으로, 현재 페이지에 처리할 데이터가
 	// 실제로 존재했는지를 나타내며 페이지네이션 루프의 종료 조건을 결정하는 핵심 지표로 사용됩니다.
 	rawCount := performancesSelection.Length()
 
 	// 미리 용량을 최대로 할당하여 메모리 재할당을 최소화한다.
 	performances := make([]*performance, 0, rawCount)
 
-	// 각 공연 아이템을 파싱하고 필터링한다.
+	// 각 공연 아이템을 파싱하고 키워드 매칭 여부를 검사한다.
 	var parseErr error
 	performancesSelection.EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		perf, err := parsePerformance(s)
@@ -324,9 +324,9 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 			return false // 순회 중단
 		}
 
-		if !strutil.Filter(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !strutil.Filter(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
-			// 필터링 로깅 (Verbose)
-			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
+		if !strutil.MatchesKeywords(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !strutil.MatchesKeywords(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+			// 키워드 매칭 실패 로깅 (Verbose)
+			// t.LogWithContext("task.naver", logrus.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
 			return true // 계속 진행
 		}
 

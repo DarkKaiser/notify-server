@@ -1,3 +1,4 @@
+// Package strutil은 문자열 처리를 위한 다양한 유틸리티 함수들을 제공합니다.
 package strutil
 
 import (
@@ -167,16 +168,34 @@ func StripHTMLTags(s string) string {
 	return html.UnescapeString(stripped)
 }
 
-// Filter 문자열(s)이 포함 키워드(includedKeywords)를 모두 포함하고,
-// 제외 키워드(excludedKeywords)를 하나라도 포함하지 않는지 검사합니다.
+// MatchesKeywords 주어진 문자열이 키워드 매칭 조건을 만족하는지 검사합니다.
 //
-// [설명]
-//  1. 대소문자를 구분하지 않습니다.
-//  2. includedKeywords 조건은 AND 연산입니다. (모든 키워드가 포함되어야 함)
-//  3. excludedKeywords 조건은 OR 연산입니다. (하나라도 포함되면 false)
-//  4. 포함 키워드 내에서 파이프(|)를 사용하면 OR 연산으로 동작합니다.
-//     예: "A|B" -> A 또는 B가 포함되어야 함
-func Filter(s string, includedKeywords, excludedKeywords []string) bool {
+// 이 함수는 포함 키워드(includedKeywords)와 제외 키워드(excludedKeywords)를 기반으로
+// 문자열 s가 특정 조건을 충족하는지 판별하는 Predicate 함수입니다.
+//
+// 매개변수:
+//   - s: 검사 대상 문자열
+//   - includedKeywords: 반드시 포함되어야 할 키워드 목록 (AND 조건)
+//   - excludedKeywords: 포함되어서는 안 되는 키워드 목록 (OR 조건)
+//
+// 동작 방식:
+//  1. 대소문자 구분 없음 (Case-Insensitive): 모든 비교는 소문자로 변환 후 수행됩니다.
+//  2. 포함 키워드 AND 연산: includedKeywords의 모든 키워드가 s에 포함되어야 합니다.
+//  3. 제외 키워드 OR 연산: excludedKeywords 중 하나라도 s에 포함되면 false를 반환합니다.
+//  4. OR 조건 지원: 포함 키워드 내에서 파이프(|)로 구분하면 OR 연산으로 동작합니다.
+//     예: "Go|Rust" → "Go" 또는 "Rust" 중 하나만 포함되어도 조건 만족
+//
+// 사용 예시:
+//
+//	// 기본 사용
+//	MatchesKeywords("Go Programming", []string{"go"}, []string{"java"}) // true
+//
+//	// OR 조건 사용
+//	MatchesKeywords("Rust Tutorial", []string{"Go|Rust"}, nil) // true
+//
+//	// 복합 조건
+//	MatchesKeywords("Go Web Server", []string{"go", "web"}, []string{"deprecated"}) // true
+func MatchesKeywords(s string, includedKeywords, excludedKeywords []string) bool {
 	// 대소문자 구분 없이 비교하기 위해 소문자로 변환
 	lowerS := strings.ToLower(s)
 
