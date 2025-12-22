@@ -140,38 +140,6 @@ func TestEachSourceElementIsInTargetElementOrNot(t *testing.T) {
 	})
 }
 
-func TestDecodeMap(t *testing.T) {
-	type TestData struct {
-		Name  string `json:"name"`
-		Value int    `json:"value"`
-	}
-
-	t.Run("정상적인 데이터 변환", func(t *testing.T) {
-		inputMap := map[string]interface{}{
-			"name":  "test",
-			"value": 123,
-		}
-
-		var result TestData
-		err := DecodeMap(&result, inputMap)
-
-		assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
-		assert.Equal(t, "test", result.Name, "Name 필드가 올바르게 설정되어야 합니다")
-		assert.Equal(t, 123, result.Value, "Value 필드가 올바르게 설정되어야 합니다")
-	})
-
-	t.Run("빈 맵 변환", func(t *testing.T) {
-		inputMap := map[string]interface{}{}
-
-		var result TestData
-		err := DecodeMap(&result, inputMap)
-
-		assert.NoError(t, err, "빈 맵도 에러 없이 처리되어야 합니다")
-		assert.Equal(t, "", result.Name, "Name 필드가 기본값이어야 합니다")
-		assert.Equal(t, 0, result.Value, "Value 필드가 기본값이어야 합니다")
-	})
-}
-
 func TestFilter(t *testing.T) {
 	t.Run("포함 키워드만 있는 경우", func(t *testing.T) {
 		s := "이것은 테스트 문자열입니다"

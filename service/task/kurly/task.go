@@ -3,6 +3,7 @@ package kurly
 import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/maputil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -77,7 +78,7 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
 					settings := &watchProductPriceSettings{}
-					if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
+					if err := maputil.Decode(settings, c.Data); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {
