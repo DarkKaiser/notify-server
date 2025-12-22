@@ -189,7 +189,7 @@ func (n *telegramNotifier) appendCancelCommand(taskCtx task.TaskContext, message
 		return message
 	}
 
-	return fmt.Sprintf("%s\n%s%s%s%s", message, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, instanceID)
+	return fmt.Sprintf("%s\n\n%s%s%s%s", message, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, instanceID)
 }
 
 // appendElapsedTime 실행 경과 시간을 메시지에 추가합니다.
