@@ -77,8 +77,8 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 		if taskID == tasksvc.ID(t.ID) {
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
-					settings := &watchProductPriceSettings{}
-					if err := maputil.Decode(c.Data, settings); err != nil {
+					settings, err := maputil.Decode[watchProductPriceSettings](c.Data)
+					if err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {

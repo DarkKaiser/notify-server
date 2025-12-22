@@ -5,135 +5,230 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// -------------------------------------------------------------------------
+// Test Structures (테스트용 구조체 정의)
+// -------------------------------------------------------------------------
+
+type BasicStruct struct {
+	Name      string `json:"name"`
+	Age       int    `json:"age"`
+	IsEnabled bool   `json:"is_enabled"`
+}
+
+type NestedStruct struct {
+	Title  string      `json:"title"`
+	Detail BasicStruct `json:"detail"`
+}
+
+type PointerStruct struct {
+	Value *int    `json:"value"`
+	Data  *string `json:"data"`
+}
+
+type SliceMapStruct struct {
+	Tags   []string       `json:"tags"`
+	Config map[string]int `json:"config"`
+}
+
+type EmbeddedStruct struct {
+	BasicStruct `mapstructure:",squash"` // mapstructure 사용 시 squash 태그 필요 (Decode 함수 내부 config 확인 필요)
+	Extra       string                   `json:"extra"`
+}
+
+// Unexported 필드는 mapstructure에서 무시되어야 함
+type PrivateFieldStruct struct {
+	Public  string `json:"public"`
+	private string `json:"private"`
+}
+
+type TimeStruct struct {
+	Duration time.Duration `json:"duration"`
+}
+
+// -------------------------------------------------------------------------
+// Test Functions
+// -------------------------------------------------------------------------
 
 func TestDecode(t *testing.T) {
 	t.Parallel()
 
-	type NestedConfig struct {
-		Host string `json:"host"`
-		Port int    `json:"port"`
+	t.Run("BasicStruct_Mapping", testBasicStructMapping)
+	t.Run("NestedStruct_Mapping", testNestedStructMapping)
+	t.Run("SliceAndMap_Mapping", testSliceAndMapMapping)
+	t.Run("PointerFields_Mapping", testPointerFieldsMapping)
+	t.Run("WeakTypeConversion", testWeakTypeConversion)
+	t.Run("UnexportedFields_Ignored", testUnexportedFieldsIgnored)
+	t.Run("ZeroValues_And_PartialInput", testZeroValuesAndPartialInput)
+	t.Run("ErrorCases", testErrorCases)
+}
+
+func testBasicStructMapping(t *testing.T) {
+	t.Parallel()
+
+	input := map[string]any{
+		"name":       "Alice",
+		"age":        30,
+		"is_enabled": true,
 	}
 
-	type TestConfig struct {
-		Name          string        `json:"name"`
-		Count         int           `json:"count"`
-		IsEnabled     bool          `json:"is_enabled"`
-		Tags          []string      `json:"tags"`
-		Nested        NestedConfig  `json:"nested"`
-		Duration      time.Duration `json:"duration"`
-		OptionalField string        `json:"optional_field"` // 입력 맵에 없을 경우
-	}
+	got, err := Decode[BasicStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, "Alice", got.Name)
+	assert.Equal(t, 30, got.Age)
+	assert.True(t, got.IsEnabled)
+}
 
-	tests := []struct {
-		name      string
-		input     map[string]any
-		target    any
-		want      any
-		expectErr bool
-	}{
-		{
-			name: "성공: 기본 필드 매핑 및 JSON 태그 지원",
-			input: map[string]any{
-				"name":       "test-app",
-				"count":      100,
-				"is_enabled": true,
-				"tags":       []string{"go", "test"},
-				"nested": map[string]any{
-					"host": "localhost",
-					"port": 8080,
-				},
-			},
-			target: &TestConfig{},
-			want: &TestConfig{
-				Name:      "test-app",
-				Count:     100,
-				IsEnabled: true,
-				Tags:      []string{"go", "test"},
-				Nested: NestedConfig{
-					Host: "localhost",
-					Port: 8080,
-				},
-			},
-			expectErr: false,
-		},
-		{
-			name: "성공: Weak Type Conversion (문자열 -> 숫자/불리언)",
-			input: map[string]any{
-				"name":       "weak-type",
-				"count":      "500",   // string -> int 자동 변환
-				"is_enabled": "true",  // string -> bool 자동 변환
-				"tags":       "a,b,c", // string -> []string (mapstructure 기본 동작 아님, 별도 Hook 필요하지만 여기선 검증 제외)
-			},
-			target: &TestConfig{},
-			want: &TestConfig{
-				Name:      "weak-type",
-				Count:     500,
-				IsEnabled: true,
-				// Tags: 기본적으로 string -> slice 변환은 지원하지 않음 (Hook 필요)
-			},
-			expectErr: false,
-		},
-		{
-			name: "성공: 누락된 필드는 기본값 유지",
-			input: map[string]any{
-				"name": "partial",
-			},
-			target: &TestConfig{
-				Count: 999, // 기존 값 유지되는지 확인 (Decode는 덮어쓰기이므로 필드 없으면 유지됨)
-			},
-			want: &TestConfig{
-				Name:  "partial",
-				Count: 999,
-			},
-			expectErr: false,
-		},
-		{
-			name:      "실패: Target이 포인터가 아님",
-			input:     map[string]any{"name": "fail"},
-			target:    TestConfig{}, // 포인터 아님
-			want:      TestConfig{},
-			expectErr: true,
-		},
-		{
-			name:      "실패: Target이 nil",
-			input:     map[string]any{"name": "fail"},
-			target:    nil,
-			want:      nil,
-			expectErr: true,
+func testNestedStructMapping(t *testing.T) {
+	t.Parallel()
+
+	input := map[string]any{
+		"title": "Nested Test",
+		"detail": map[string]any{
+			"name": "Bob",
+			"age":  25,
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := Decode(tt.input, tt.target)
+	got, err := Decode[NestedStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, "Nested Test", got.Title)
+	assert.Equal(t, "Bob", got.Detail.Name)
+	assert.Equal(t, 25, got.Detail.Age)
+	assert.False(t, got.Detail.IsEnabled) // Zero value
+}
 
-			if tt.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
+func testSliceAndMapMapping(t *testing.T) {
+	t.Parallel()
 
-				if tt.want != nil {
-					got := tt.target.(*TestConfig)
-					want := tt.want.(*TestConfig)
-
-					assert.Equal(t, want.Name, got.Name)
-					if want.Count != 0 {
-						assert.Equal(t, want.Count, got.Count)
-					}
-					if want.IsEnabled {
-						assert.Equal(t, want.IsEnabled, got.IsEnabled)
-					}
-					if len(want.Tags) > 0 {
-						assert.Equal(t, want.Tags, got.Tags)
-					}
-					if want.Nested.Port != 0 {
-						assert.Equal(t, want.Nested, got.Nested)
-					}
-				}
-			}
-		})
+	input := map[string]any{
+		"tags": []string{"go", "json", "map"},
+		"config": map[string]any{
+			"timeout": 100,
+			"retry":   3,
+		},
 	}
+
+	got, err := Decode[SliceMapStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"go", "json", "map"}, got.Tags)
+	assert.Equal(t, map[string]int{"timeout": 100, "retry": 3}, got.Config)
+}
+
+func testPointerFieldsMapping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("값이_있는_경우", func(t *testing.T) {
+		input := map[string]any{
+			"value": 123,
+			"data":  "ptr",
+		}
+		got, err := Decode[PointerStruct](input)
+		require.NoError(t, err)
+		assert.NotNil(t, got.Value)
+		assert.Equal(t, 123, *got.Value)
+		assert.NotNil(t, got.Data)
+		assert.Equal(t, "ptr", *got.Data)
+	})
+
+	t.Run("값이_없는_경우", func(t *testing.T) {
+		input := map[string]any{}
+		got, err := Decode[PointerStruct](input)
+		require.NoError(t, err)
+		assert.Nil(t, got.Value)
+		assert.Nil(t, got.Data)
+	})
+}
+
+func testWeakTypeConversion(t *testing.T) {
+	t.Parallel()
+
+	// mapstructure.DecoderConfig.WeaklyTypedInput = true 효과 검증
+	// input := map[string]any{
+	// 	"name":       12345,  // int -> string (주의: mapstructure 기본 동작에서 int->string은 지원되지 않을 수 있음. 확인 필요)
+	// 	"age":        "42",   // string -> int
+	// 	"is_enabled": "true", // string -> bool
+	// }
+	// *주의*: WeaklyTypedInput은 주로 "string -> primitive", "empty -> zero" 등을 지원함.
+	// int -> string 변환은 지원하지 않을 수 있음. 테스트로 검증.
+
+	// 수정: BasicStruct의 Name은 string임. 12345(int)를 넣으면...
+	// mapstructure 문서를 보면 WeaklyTypedInput이 켜져 있어도 int->string 변환은 명시되어 있지 않음.
+	// 하지만 테스트해보는 것이 좋음. 만약 실패하면 input 수정.
+
+	inputSafe := map[string]any{
+		"name":       "12345", // string <- string
+		"age":        "42",    // int <- string
+		"is_enabled": "1",     // bool <- string ("1"은 true)
+	}
+
+	got, err := Decode[BasicStruct](inputSafe)
+	require.NoError(t, err)
+	assert.Equal(t, "12345", got.Name)
+	assert.Equal(t, 42, got.Age)
+	assert.True(t, got.IsEnabled)
+
+	// Single Value to Slice Check
+	sliceInput := map[string]any{
+		"tags": "single-tag", // string -> []string
+	}
+	gotSlice, err := Decode[SliceMapStruct](sliceInput)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"single-tag"}, gotSlice.Tags)
+}
+
+func testUnexportedFieldsIgnored(t *testing.T) {
+	t.Parallel()
+
+	input := map[string]any{
+		"public":  "visible",
+		"private": "hidden", // 소문자 필드는 매핑되지 않아야 함
+	}
+
+	got, err := Decode[PrivateFieldStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, "visible", got.Public)
+	assert.Empty(t, got.private) // private 필드는 변경되지 않음 (zero value)
+}
+
+func testZeroValuesAndPartialInput(t *testing.T) {
+	t.Parallel()
+
+	input := map[string]any{
+		"name": "Partial",
+	}
+
+	got, err := Decode[BasicStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, "Partial", got.Name)
+	assert.Equal(t, 0, got.Age)
+	assert.False(t, got.IsEnabled)
+}
+
+func testErrorCases(t *testing.T) {
+	t.Parallel()
+
+	// 1. T가 구조체가 아닌 경우 (예: map, slice, int 등)
+	// mapstructure는 map -> map 디코딩도 지원하므로 에러가 나지 않을 수 있음.
+	// 하지만 의도치 않은 사용일 수 있음.
+
+	// 2. Decode 내부 로직상 output은 new(T)로 생성됨.
+	// T가 int라면 *int가 됨. map -> int 디코딩 시도는 mapstructure에서 에러 반환 예상.
+	t.Run("Unsupported_Target_Type", func(t *testing.T) {
+		input := map[string]any{"key": "value"}
+		_, err := Decode[int](input) // map -> int
+		assert.Error(t, err)
+		// 에러 메시지에 "unable to decode" 등의 내용이 포함될 것임
+	})
+
+	// 3. input이 nil인 경우 -> empty map처럼 취급되어 에러 없이 Zero Value 구조체 반환될 가능성 높음
+	t.Run("Nil_Input", func(t *testing.T) {
+		var input map[string]any = nil
+		got, err := Decode[BasicStruct](input)
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Equal(t, "", got.Name) // Zero Value
+	})
 }

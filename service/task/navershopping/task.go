@@ -58,23 +58,23 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
-	found := false
-	settings := &taskSettings{}
+	var settings *taskSettings
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
-			if err := maputil.Decode(t.Data, settings); err != nil {
+			s, err := maputil.Decode[taskSettings](t.Data)
+			if err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
-			if err := settings.validate(); err != nil {
+			if err := s.validate(); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 
-			found = true
+			settings = s
 
 			break
 		}
 	}
-	if !found {
+	if settings == nil {
 		return nil, tasksvc.ErrTaskSettingsNotFound
 	}
 
@@ -118,8 +118,8 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 		if taskID == tasksvc.ID(t.ID) {
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
-					settings := &watchPriceSettings{}
-					if err := maputil.Decode(c.Data, settings); err != nil {
+					settings, err := maputil.Decode[watchPriceSettings](c.Data)
+					if err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {
