@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -334,7 +335,12 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		prevMap[p.Key()] = p
 	}
 
-	// 현재 상품 목록을 순회하며 신규 상품을 식별한다.
+	// 상품 목록을 가격 오름차순으로 정렬하여 사용자가 가장 저렴한 상품을 먼저 확인할 수 있도록 합니다.
+	sort.Slice(currentSnapshot.Products, func(i, j int) bool {
+		return currentSnapshot.Products[i].LowPrice < currentSnapshot.Products[j].LowPrice
+	})
+
+	// 정렬된 순서대로 상품 목록을 순회하며 신규 상품 및 가격 변경 상품을 식별합니다.
 	lineSpacing := "\n\n"
 	for _, p := range currentSnapshot.Products {
 		prevProduct, exists := prevMap[p.Key()]
