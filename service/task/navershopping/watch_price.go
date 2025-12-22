@@ -249,7 +249,16 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
-		if p := t.filterMapToProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
+		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
+			continue
+		}
+
+		p := t.mapToProduct(item)
+		if p == nil {
+			continue
+		}
+
+		if t.isPriceEligible(p.LowPrice, commandSettings.Filters.PriceLessThan) {
 			products = append(products, p)
 		}
 	}
@@ -265,17 +274,13 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	return products, nil
 }
 
-// filterMapToProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
-func (t *task) filterMapToProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
-	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
-		return nil
-	}
-
+// mapToProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환합니다.
+func (t *task) mapToProduct(item *searchResponseItem) *product {
 	// 가격 정보 파싱 (쉼표 제거)
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", logrus.Fields{
+		t.LogWithContext("task.navershopping", logrus.DebugLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", logrus.Fields{
 			"product_id":      item.ProductID,
 			"product_type":    item.ProductType,
 			"title":           item.Title,
@@ -287,21 +292,21 @@ func (t *task) filterMapToProduct(item *searchResponseItem, includedKeywords, ex
 		return nil
 	}
 
-	// 가격 유효성 검증 및 도메인 모델 변환
-	// 0원 이하 또는 설정된 상한가 이상인 상품은 필터링되어 제외됩니다.
-	if lowPrice > 0 && lowPrice < priceLessThan {
-		return &product{
-			ProductID:   item.ProductID,
-			ProductType: item.ProductType,
+	return &product{
+		ProductID:   item.ProductID,
+		ProductType: item.ProductType,
 
-			Title:    item.Title,
-			Link:     item.Link,
-			LowPrice: lowPrice,
-			MallName: item.MallName,
-		}
+		Title:    item.Title,
+		Link:     item.Link,
+		LowPrice: lowPrice,
+		MallName: item.MallName,
 	}
+}
 
-	return nil
+// isPriceEligible 상품의 가격이 설정된 조건(상한가)에 부합하는지 검사합니다.
+func (t *task) isPriceEligible(price, priceLessThan int) bool {
+	// 0원 이하(유효하지 않은 가격) 또는 상한가 이상인 경우 제외
+	return price > 0 && price < priceLessThan
 }
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
