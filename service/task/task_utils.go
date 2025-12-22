@@ -1,7 +1,6 @@
 package task
 
 import (
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -61,20 +60,6 @@ func EachSourceElementIsInTargetElementOrNot(source, target interface{}, equalFn
 	NEXTITEM:
 	}
 
-	return nil
-}
-
-// DecodeMap 맵 형태의 데이터를 구조체로 디코딩합니다.
-// json 패키지를 사용하여 마샬링 후 다시 언마샬링하는 방식으로 동작합니다.
-// d는 대상 구조체의 포인터여야 합니다.
-func DecodeMap(d interface{}, m map[string]interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, d); err != nil {
-		return err
-	}
 	return nil
 }
 

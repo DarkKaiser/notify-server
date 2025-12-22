@@ -8,6 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/maputil"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
@@ -77,8 +78,8 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	found := false
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
-			settings := &taskSettings{}
-			if err := tasksvc.DecodeMap(settings, t.Data); err != nil {
+			settings, err := maputil.Decode[taskSettings](t.Data)
+			if err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 			if err := settings.validate(); err != nil {

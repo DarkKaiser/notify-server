@@ -311,7 +311,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	resultData := &watchProductPriceSnapshot{
 		Products: []*product{
 			{
-				No:              12345,
+				ID:              12345,
 				Name:            productName,
 				Price:           10000,
 				DiscountedPrice: 8000,
@@ -407,7 +407,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	resultData := &watchProductPriceSnapshot{
 		Products: []*product{
 			{
-				No:              12345,
+				ID:              12345,
 				Name:            productName,
 				Price:           10000,
 				DiscountedPrice: 8000,
@@ -487,12 +487,12 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	resultData := &watchProductPriceSnapshot{
 		Products: []*product{
 			{
-				No:               12345,
-				Name:             productName,
-				Price:            10000,
-				DiscountedPrice:  8000,
-				DiscountRate:     20,
-				IsUnknownProduct: false,
+				ID:              12345,
+				Name:            productName,
+				Price:           10000,
+				DiscountedPrice: 8000,
+				DiscountRate:    20,
+				IsUnavailable:   false,
 			},
 		},
 	}
@@ -509,5 +509,5 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
 	require.True(t, ok)
 	require.Equal(t, 1, len(typedResultData.Products))
-	require.True(t, typedResultData.Products[0].IsUnknownProduct)
+	require.True(t, typedResultData.Products[0].IsUnavailable)
 }

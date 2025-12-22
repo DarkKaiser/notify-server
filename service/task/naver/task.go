@@ -3,6 +3,7 @@ package naver
 import (
 	"github.com/darkkaiser/notify-server/config"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/maputil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
@@ -74,8 +75,8 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 		if taskID == tasksvc.ID(t.ID) {
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
-					settings := &watchNewPerformancesSettings{}
-					if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
+					settings, err := maputil.Decode[watchNewPerformancesSettings](c.Data)
+					if err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {
