@@ -53,7 +53,7 @@ func (s *watchProductPriceSettings) validate() error {
 	if s.WatchProductsFile == "" {
 		return apperrors.New(apperrors.InvalidInput, "watch_products_file이 입력되지 않았거나 공백입니다")
 	}
-	if strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") == false {
+	if !strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") {
 		return apperrors.New(apperrors.InvalidInput, "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다")
 	}
 	return nil
@@ -66,34 +66,38 @@ type watchProductPriceSnapshot struct {
 
 // product 마켓컬리 상품 상세 페이지에서 조회된 개별 상품 정보를 담는 도메인 모델입니다.
 type product struct {
-	No               int       `json:"no"`                 // 상품 코드
-	Name             string    `json:"name"`               // 상품 이름
-	Price            int       `json:"price"`              // 가격
-	DiscountedPrice  int       `json:"discounted_price"`   // 할인 가격
-	DiscountRate     int       `json:"discount_rate"`      // 할인율
-	LowestPrice      int       `json:"lowest_price"`       // 최저 가격
-	LowestPriceTime  time.Time `json:"lowest_price_time"`  // 최저 가격이 등록된 시간
-	IsUnknownProduct bool      `json:"is_unknown_product"` // 알 수 없는 상품인지에 대한 여부(상품 코드가 존재하지 않거나, 이전에는 판매를 하였지만 현재는 판매하고 있지 않는 상품)
+	ID              int       `json:"no"`                 // 상품 코드
+	Name            string    `json:"name"`               // 상품 이름
+	Price           int       `json:"price"`              // 가격
+	DiscountedPrice int       `json:"discounted_price"`   // 할인 가격
+	DiscountRate    int       `json:"discount_rate"`      // 할인율
+	LowestPrice     int       `json:"lowest_price"`       // 최저 가격
+	LowestPriceTime time.Time `json:"lowest_price_time"`  // 최저 가격이 등록된 시간
+	IsUnavailable   bool      `json:"is_unknown_product"` // 상품 정보를 불러올 수 없는지에 대한 여부(상품 코드가 존재하지 않거나, 판매를 하고 있지 않는 상품)
 }
 
-// @@@@@
-// 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
-// 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
+// updateLowestPrice 현재 상품의 가격(정가 또는 할인가)과 기존 최저가를 비교하여,
+// 더 낮은 가격이 발견되면 최저가 및 갱신 시간을 업데이트합니다.
+//
+// [동작 상세]
+// 1. 현재 상품의 유효 가격(Effective Price)을 결정합니다. (할인가 존재 시 할인가 우선)
+// 2. 유효 가격이 기존 최저가보다 낮거나, 기존 최저가 정보가 없는 경우 갱신합니다.
+// 3. 갱신 시점의 시간을 고정하여 데이터 정합성을 보장합니다.
 func (p *product) updateLowestPrice() {
-	setLowestPrice := func(price int) {
-		if p.LowestPrice == 0 || p.LowestPrice > price {
-			// 최저 가격이 저장되어 있지 않거나, 새로운 가격이 더 낮다면 최저 가격을 업데이트하고 현재 시간을 기록한다.
-			p.LowestPrice = price
-			p.LowestPriceTime = time.Now()
-		}
+	// 1. 현재 시점의 가장 "낮은 가격"을 먼저 결정
+	effectivePrice := p.Price
+	if p.DiscountedPrice > 0 && p.DiscountedPrice < p.Price {
+		effectivePrice = p.DiscountedPrice
 	}
 
-	// 할인 가격이 존재하면 최저 가격을 업데이트한다.
-	if p.DiscountedPrice != 0 {
-		setLowestPrice(p.DiscountedPrice)
+	// 2. 시간 고정
+	now := time.Now()
+
+	// 3. 단 한 번의 비교 및 갱신
+	if p.LowestPrice == 0 || p.LowestPrice > effectivePrice {
+		p.LowestPrice = effectivePrice
+		p.LowestPriceTime = now
 	}
-	// 현재 가격으로 최저 가격을 업데이트한다.
-	setLowestPrice(p.Price)
 }
 
 // @@@@@
@@ -105,7 +109,7 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 			return fmt.Sprintf("%s원", strutil.FormatCommas(price))
 		}
 
-		if supportsHTML == true {
+		if supportsHTML {
 			return fmt.Sprintf("<s>%s원</s> %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
 		}
 		return fmt.Sprintf("%s원 ⇒ %s원 (%d%%)", strutil.FormatCommas(price), strutil.FormatCommas(discountedPrice), discountRate)
@@ -113,8 +117,8 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 
 	// 상품 이름
 	var name string
-	if supportsHTML == true {
-		name = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", fmt.Sprintf(productPageURLFormat, p.No), template.HTMLEscapeString(p.Name), mark)
+	if supportsHTML {
+		name = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", fmt.Sprintf(productPageURLFormat, p.ID), template.HTMLEscapeString(p.Name), mark)
 	} else {
 		name = fmt.Sprintf("☞ %s%s", template.HTMLEscapeString(p.Name), mark)
 	}
@@ -174,13 +178,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		}
 
 		// 상품 코드를 숫자로 변환한다.
-		no, err := strconv.Atoi(record[csvColumnNo])
+		id, err := strconv.Atoi(record[csvColumnNo])
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
 		}
 
 		// 상품 페이지를 읽어들인다.
-		productDetailPageURL := fmt.Sprintf(productPageURLFormat, no)
+		productDetailPageURL := fmt.Sprintf(productPageURLFormat, id)
 		doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productDetailPageURL)
 		if err != nil {
 			return "", nil, err
@@ -198,22 +202,22 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		jsonProductData := match[1]
 
 		var product = &product{
-			No:               no,
-			Name:             "",
-			Price:            0,
-			DiscountedPrice:  0,
-			DiscountRate:     0,
-			LowestPrice:      0,
-			LowestPriceTime:  time.Time{},
-			IsUnknownProduct: false,
+			ID:              id,
+			Name:            "",
+			Price:           0,
+			DiscountedPrice: 0,
+			DiscountRate:    0,
+			LowestPrice:     0,
+			LowestPriceTime: time.Time{},
+			IsUnavailable:   false,
 		}
 
 		// 알 수 없는 상품(현재 판매중이지 않은 상품)인지 확인한다.
-		if re2.MatchString(jsonProductData) == true {
-			product.IsUnknownProduct = true
+		if re2.MatchString(jsonProductData) {
+			product.IsUnavailable = true
 		}
 
-		if product.IsUnknownProduct == false {
+		if !product.IsUnavailable {
 			sel := doc.Find("#product-atf > section.css-1ua1wyk")
 			if sel.Length() != 1 {
 				return "", nil, tasksvc.NewErrHTMLStructureChanged(productDetailPageURL, "상품정보 섹션 추출 실패")
@@ -276,16 +280,16 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	m := ""
 	lineSpacing := "\n\n"
-	if supportsHTML == true {
+	if supportsHTML {
 		lineSpacing = "\n"
 	}
 	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
-		if ok1 == false || ok2 == false {
+		if !ok1 || !ok2 {
 			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
 		} else {
-			if actualityProduct.No == originProduct.No {
+			if actualityProduct.ID == originProduct.ID {
 				return true, nil
 			}
 		}
@@ -295,11 +299,11 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		originProduct := telem.(*product)
 
 		// 상품이 원래는 판매 중이었지만, 이제는 알 수 없는 상품으로 변경된 경우...
-		if originProduct.IsUnknownProduct == false && actualityProduct.IsUnknownProduct == true {
+		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
 			return
 		}
 		// 상품이 원래는 알 수 없는 상품이었지만, 이제는 판매 중인 상품으로 변경된 경우...
-		if originProduct.IsUnknownProduct == true && actualityProduct.IsUnknownProduct == false {
+		if originProduct.IsUnavailable && !actualityProduct.IsUnavailable {
 			// 최저 가격을 업데이트한다.
 			actualityProduct.updateLowestPrice()
 
@@ -328,7 +332,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		actualityProduct := selem.(*product)
 
 		// 알 수 없는 상품인 경우에는 상품에 대한 정보를 사용자에게 알리지 않는다.
-		if actualityProduct.IsUnknownProduct == true {
+		if actualityProduct.IsUnavailable {
 			return
 		}
 
@@ -358,7 +362,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		productNo := strings.TrimSpace(record[csvColumnNo])
 		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
-		if supportsHTML == true {
+		if supportsHTML {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
 		} else {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
@@ -368,9 +372,9 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	// 읽어들인 상품 목록에서 알 수 없는 상품들의 정보를 추출한다.
 	var unknownProductsBuilder strings.Builder
 	for _, product := range actualityTaskResultData.Products {
-		if product.IsUnknownProduct == true {
+		if product.IsUnavailable == true {
 			for _, record := range records {
-				if record[csvColumnNo] == strconv.Itoa(product.No) {
+				if record[csvColumnNo] == strconv.Itoa(product.ID) {
 					if unknownProductsBuilder.Len() != 0 {
 						unknownProductsBuilder.WriteString("\n")
 					}
@@ -378,7 +382,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 					productNo := strings.TrimSpace(record[csvColumnNo])
 					productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
-					if supportsHTML == true {
+					if supportsHTML {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
 					} else {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))

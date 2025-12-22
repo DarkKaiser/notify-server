@@ -170,12 +170,12 @@ func TestProduct_String(t *testing.T) {
 	t.Parallel()
 
 	baseProduct := &product{
-		No:    12345,
+		ID:    12345,
 		Name:  "맛있는 사과",
 		Price: 10000,
 	}
 	discountProduct := &product{
-		No:              12345,
+		ID:              12345,
 		Name:            "할인 사과",
 		Price:           10000,
 		DiscountedPrice: 8000,
@@ -254,7 +254,7 @@ func TestProduct_String(t *testing.T) {
 		},
 		{
 			name:         "XSS 방지: 특수문자 이스케이프 확인",
-			product:      &product{No: 1, Name: "<script>alert(1)</script>", Price: 1000},
+			product:      &product{ID: 1, Name: "<script>alert(1)</script>", Price: 1000},
 			supportsHTML: true,
 			wantContains: []string{"&lt;script&gt;alert(1)&lt;/script&gt;"},
 			wantNot:      []string{"<script>"},
