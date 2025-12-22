@@ -38,34 +38,35 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
-	tTask := &task{
-		Task:      tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+	kurlyTask := &task{
+		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+
 		appConfig: appConfig,
 	}
 
-	tTask.SetFetcher(fetcher)
+	kurlyTask.SetFetcher(fetcher)
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
 	switch req.CommandID {
 	case WatchProductPriceCommand:
-		settings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
 		if err != nil {
 			return nil, err
 		}
 
-		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-			originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
+		kurlyTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+			prevSnapshot, ok := previousSnapshot.(*watchProductPriceSnapshot)
 			if !ok {
-				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("prevSnapshot", &watchProductPriceSnapshot{}, previousSnapshot)
 			}
 
-			return tTask.executeWatchProductPrice(settings, originTaskResultData, supportsHTML)
+			return kurlyTask.executeWatchProductPrice(commandSettings, prevSnapshot, supportsHTML)
 		})
 	default:
 		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
-	return tTask, nil
+	return kurlyTask, nil
 }
 
 func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchProductPriceSettings, error) {

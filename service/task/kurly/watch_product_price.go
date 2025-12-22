@@ -121,12 +121,11 @@ type watchProductPriceSnapshot struct {
 }
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
-func (t *task) executeWatchProductPrice(settings *watchProductPriceSettings, originTaskResultData *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-
+func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(settings.WatchProductsFile)
+	f, err := os.Open(commandSettings.WatchProductsFile)
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
 	}
@@ -266,7 +265,7 @@ func (t *task) executeWatchProductPrice(settings *watchProductPriceSettings, ori
 	if supportsHTML == true {
 		lineSpacing = "\n"
 	}
-	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, originTaskResultData.Products, func(selem, telem interface{}) (bool, error) {
+	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if ok1 == false || ok2 == false {
