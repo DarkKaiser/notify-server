@@ -166,3 +166,47 @@ func StripHTMLTags(s string) string {
 	stripped := htmlTagRegexp.ReplaceAllString(s, "")
 	return html.UnescapeString(stripped)
 }
+
+// Filter 문자열(s)이 포함 키워드(includedKeywords)를 모두 포함하고,
+// 제외 키워드(excludedKeywords)를 하나라도 포함하지 않는지 검사합니다.
+//
+// [설명]
+//  1. 대소문자를 구분하지 않습니다.
+//  2. includedKeywords 조건은 AND 연산입니다. (모든 키워드가 포함되어야 함)
+//  3. excludedKeywords 조건은 OR 연산입니다. (하나라도 포함되면 false)
+//  4. 포함 키워드 내에서 파이프(|)를 사용하면 OR 연산으로 동작합니다.
+//     예: "A|B" -> A 또는 B가 포함되어야 함
+func Filter(s string, includedKeywords, excludedKeywords []string) bool {
+	// 대소문자 구분 없이 비교하기 위해 소문자로 변환
+	lowerS := strings.ToLower(s)
+
+	for _, k := range includedKeywords {
+		// "A|B" -> ["A", "B"]
+		includedOneOfManyKeywords := SplitAndTrim(k, "|")
+		if len(includedOneOfManyKeywords) == 1 {
+			lowerK := strings.ToLower(k)
+			if !strings.Contains(lowerS, lowerK) {
+				return false
+			}
+		} else {
+			var contains = false
+			for _, keyword := range includedOneOfManyKeywords {
+				if strings.Contains(lowerS, strings.ToLower(keyword)) {
+					contains = true
+					break
+				}
+			}
+			if !contains {
+				return false
+			}
+		}
+	}
+
+	for _, k := range excludedKeywords {
+		if strings.Contains(lowerS, strings.ToLower(k)) {
+			return false
+		}
+	}
+
+	return true
+}

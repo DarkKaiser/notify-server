@@ -253,7 +253,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
 		plainTitle := strutil.StripHTMLTags(item.Title)
 
-		if !tasksvc.Filter(plainTitle, includedKeywords, excludedKeywords) {
+		if !strutil.Filter(plainTitle, includedKeywords, excludedKeywords) {
 			continue
 		}
 

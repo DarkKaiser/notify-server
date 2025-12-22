@@ -324,7 +324,7 @@ func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performa
 			return false // 순회 중단
 		}
 
-		if !tasksvc.Filter(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !tasksvc.Filter(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+		if !strutil.Filter(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !strutil.Filter(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
 			// 필터링 로깅 (Verbose)
 			// t.LogWithContext("task.naver", logrus.TraceLevel, "필터 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
 			return true // 계속 진행

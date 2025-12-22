@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -152,7 +153,7 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tasksvc.Filter(tt.item, tt.included, tt.excluded)
+			got := strutil.Filter(tt.item, tt.included, tt.excluded)
 			assert.Equal(t, tt.want, got)
 		})
 	}
