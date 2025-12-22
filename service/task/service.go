@@ -279,7 +279,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		go h.Run(req.TaskContext, s.notificationSender, s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
-			go s.notificationSender.Notify(req.TaskContext.WithInstanceID(instanceID, 0), req.NotifierID, msgTaskRunning)
+			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == RunByUser), req.NotifierID, msgTaskRunning)
 		}
 
 		// 성공적으로 실행했으므로 함수를 종료합니다.

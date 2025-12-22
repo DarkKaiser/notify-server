@@ -456,7 +456,7 @@ func (b *ProductBuilder) Build() *product {
 // Component Tests: MapToProduct (Granular Logic)
 // -----------------------------------------------------------------------------
 
-func TestTask_MapToProductUsingFilter_TableDriven(t *testing.T) {
+func TestTask_FilterMapToProduct_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	// Helper for clean tests
@@ -531,7 +531,7 @@ func TestTask_MapToProductUsingFilter_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			tsk := &task{}
-			got := tsk.mapToProductUsingFilter(tt.item, tt.includedKeywords, tt.excludedKeywords, tt.priceLessThan)
+			got := tsk.filterMapToProduct(tt.item, tt.includedKeywords, tt.excludedKeywords, tt.priceLessThan)
 
 			if tt.wantProduct {
 				require.NotNil(t, got)
