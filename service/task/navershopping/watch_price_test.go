@@ -232,6 +232,24 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 				assert.Empty(t, p, "가격 파싱에 실패한 항목은 제외되어야 함")
 			},
 		},
+		{
+			name:     "성공: HTML 태그가 포함된 로우 데이터 필터링",
+			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("S25 FE").Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				resp := searchResponse{
+					Total: 2, Items: []*searchResponseItem{
+						{Title: "Galaxy <b>S25</b> <b>FE</b>", Link: "L1", LowPrice: "10000", ProductID: "1"}, // 제외 대상
+						{Title: "Galaxy S25 Plus", Link: "L2", LowPrice: "10000", ProductID: "2"},             // 수집 대상
+					},
+				}
+				m.SetResponse(expectedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 1, "제외 키워드 'S25 FE'가 HTML 태그를 무시하고 적용되어야 함")
+				assert.Equal(t, "Galaxy S25 Plus", p[0].Title)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -471,24 +489,34 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		item        *searchResponseItem
-		wantProduct bool // true: product expected, false: nil expected
+		name          string
+		item          *searchResponseItem
+		wantProduct   bool
+		expectedTitle string // 변환 후 기대되는 Title (plain text)
 	}{
 		{
-			name:        "성공: 정상적인 상품 데이터 변환",
-			item:        item("Apple iPad", "50000"),
-			wantProduct: true,
+			name:          "성공: 정상적인 상품 데이터 변환",
+			item:          item("Apple iPad", "50000"),
+			wantProduct:   true,
+			expectedTitle: "Apple iPad",
 		},
 		{
-			name:        "성공: 가격 쉼표 처리",
-			item:        item("Apple iPad", "50,000"),
-			wantProduct: true,
+			name:          "성공: 가격 쉼표 처리",
+			item:          item("Apple iPad", "50,000"),
+			wantProduct:   true,
+			expectedTitle: "Apple iPad",
 		},
 		{
-			name:        "실패: 가격 파싱 오류 (Invalid Number)",
-			item:        item("Apple iPad", "Call for Price"),
-			wantProduct: false,
+			name:          "성공: HTML 태그 제거 (Sanitization)",
+			item:          item("<b>Apple</b> iPad <b>Pro</b>", "100000"),
+			wantProduct:   true,
+			expectedTitle: "Apple iPad Pro",
+		},
+		{
+			name:          "실패: 가격 파싱 오류 (Invalid Number)",
+			item:          item("Apple iPad", "Call for Price"),
+			wantProduct:   false,
+			expectedTitle: "",
 		},
 	}
 
@@ -502,7 +530,10 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 
 			if tt.wantProduct {
 				require.NotNil(t, got)
-				assert.Equal(t, tt.item.Title, got.Title)
+				assert.Equal(t, tt.expectedTitle, got.Title, "HTML 태그가 제거된 Plain Title이어야 합니다")
+				// 추가적인 필드 검증
+				assert.Equal(t, tt.item.Link, got.Link)
+				assert.Equal(t, tt.item.MallName, got.MallName)
 			} else {
 				assert.Nil(t, got)
 			}

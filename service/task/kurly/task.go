@@ -62,7 +62,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 							}
 
 							originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
-							if ok == false {
+							if !ok {
 								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
 							}
 

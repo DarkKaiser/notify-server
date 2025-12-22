@@ -314,3 +314,50 @@ func TestMaskSensitiveData(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// HTML Tag Stripping Tests
+// =============================================================================
+
+// TestStripHTMLTags는 StripHTMLTags 함수의 HTML 태그 제거 동작을 검증합니다.
+//
+// 검증 항목:
+//   - 일반 텍스트 (변경 없음)
+//   - 단순 태그 포함 (<b>, </b>)
+//   - 복합 태그 포함 (<a>, <span> 등)
+//   - 속성이 있는 태그 (<a href="...">)
+//   - 중첩 태그
+//   - 불완전한 태그 (HTML 파서가 아니므로 단순 정규식 동작 확인)
+func TestStripHTMLTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Plain text", "Hello World", "Hello World"},
+		{"Simple bold tag", "<b>Hello</b> World", "Hello World"},
+		{"Tag with attributes", `<a href="http://example.com">Link</a>`, "Link"},
+		{"Complex structure", "<div><span><b>Hello</b></span></div>", "Hello"},
+		{"Nested tags", "<b><i>BoldItalic</i></b>", "BoldItalic"},
+		{"Self-closing tag", "Hello<br/>World", "HelloWorld"}, // 공백 없이 제거됨에 유의
+		{"Multiple tags", "<h1>Title</h1><p>Paragraph</p>", "TitleParagraph"},
+		{"Naver Search API Example", "삼성 갤럭시 <b>S25</b> <b>FE</b> 256GB 자급제", "삼성 갤럭시 S25 FE 256GB 자급제"},
+
+		// Expert Level Cases (HTML 태그 제거 고도화 검증)
+		{"Math operator < (Not a tag)", "3 < 5", "3 < 5"},
+		{"Math operator >", "5 > 3", "5 > 3"},
+		{"Mixed math and tags", "<b>Values:</b> 3 < 5", "Values: 3 < 5"},
+		{"HTML Entities: Ampersand", "Tom &amp; Jerry", "Tom & Jerry"},
+		{"HTML Entities: Less Than", "3 &lt; 5", "3 < 5"},
+		{"HTML Entities: Greater Than", "5 &gt; 3", "5 > 3"},
+		{"HTML Entities: Quote", "&quot;Quote&quot;", "\"Quote\""},
+		{"Case Insensitive Tag", "<B>Bold</B>", "Bold"},
+		{"Complex Mix", "Start <b>&lt;Middle&gt;</b> End", "Start <Middle> End"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, StripHTMLTags(tt.input))
+		})
+	}
+}

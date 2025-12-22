@@ -249,17 +249,19 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
-		if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
+		// 필터링 전에 HTML 태그를 제거합니다.
+		// 네이버 검색 API는 매칭된 키워드를 <b> 태그로 감싸서 반환하므로,
+		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
+		plainTitle := strutil.StripHTMLTags(item.Title)
+
+		if !tasksvc.Filter(plainTitle, includedKeywords, excludedKeywords) {
 			continue
 		}
 
-		p := t.mapToProduct(item)
-		if p == nil {
-			continue
-		}
-
-		if t.isPriceEligible(p.LowPrice, commandSettings.Filters.PriceLessThan) {
-			products = append(products, p)
+		if p := t.mapToProduct(item); p != nil {
+			if t.isPriceEligible(p.LowPrice, commandSettings.Filters.PriceLessThan) {
+				products = append(products, p)
+			}
 		}
 	}
 
@@ -274,7 +276,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	return products, nil
 }
 
-// mapToProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환합니다.
+// mapToProduct 검색 결과 항목을 도메인 모델로 변환합니다.
 func (t *task) mapToProduct(item *searchResponseItem) *product {
 	// 가격 정보 파싱 (쉼표 제거)
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
@@ -296,7 +298,7 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 		ProductID:   item.ProductID,
 		ProductType: item.ProductType,
 
-		Title:    item.Title,
+		Title:    strutil.StripHTMLTags(item.Title), // HTML 태그 제거
 		Link:     item.Link,
 		LowPrice: lowPrice,
 		MallName: item.MallName,
