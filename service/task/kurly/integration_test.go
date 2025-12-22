@@ -50,7 +50,8 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		</html>
 	`, productID, productName, discountRate, discountedPrice, originalPrice)
 
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	// url := fmt.Sprintf("%sgoods/%s", baseURL, productID) -> fmt.Sprintf(productPageURLFormat, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Task 초기화
@@ -125,7 +126,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
 	// 2. Task 초기화
@@ -179,7 +180,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 1. Mock 설정
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	// 필수 요소가 누락된 HTML
 	mockFetcher.SetResponse(url, []byte(`<html><body><h1>No Product Info</h1></body></html>`))
 
@@ -270,7 +271,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		</html>
 	`, productID, productName, discountRate, discountedPrice, price)
 
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	req := &tasksvc.SubmitRequest{
@@ -366,7 +367,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		</html>
 	`, productID, productName, newDiscountRate, newDiscountedPrice, price)
 
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	req := &tasksvc.SubmitRequest{
@@ -446,7 +447,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		</html>
 	`
 
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	req := &tasksvc.SubmitRequest{

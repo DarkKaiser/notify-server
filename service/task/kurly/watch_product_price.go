@@ -16,23 +16,11 @@ import (
 )
 
 const (
-	baseURL = "https://www.kurly.com/"
-)
-
-// watchProductColumn 감시할 상품 목록의 헤더
-type watchProductColumn uint
-
-// 감시할 상품 목록의 헤더 컬럼
-const (
-	WatchProductColumnNo          watchProductColumn = iota // 상품 코드 컬럼
-	WatchProductColumnName                                  // 상품 이름 컬럼
-	WatchProductColumnWatchStatus                           // 감시 대상인지에 대한 활성/비활성 컬럼
-)
-
-// 감시 대상인지에 대한 활성/비활성 컬럼의 값
-const (
-	WatchStatusEnabled  = "1"
-	WatchStatusDisabled = "0"
+	// productPageURLFormat 마켓컬리 상품 상세 페이지의 URL을 생성하기 위한 포맷 문자열입니다.
+	//
+	// 사용 예시:
+	//  url := fmt.Sprintf(productPageURLFormat, 12345) // "https://www.kurly.com/goods/12345"
+	productPageURLFormat = "https://www.kurly.com/goods/%v"
 )
 
 type watchProductPriceSettings struct {
@@ -40,13 +28,18 @@ type watchProductPriceSettings struct {
 }
 
 func (s *watchProductPriceSettings) validate() error {
+	s.WatchProductsFile = strings.TrimSpace(s.WatchProductsFile)
 	if s.WatchProductsFile == "" {
-		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일이 입력되지 않았습니다")
+		return apperrors.New(apperrors.InvalidInput, "watch_products_file이 입력되지 않았거나 공백입니다")
 	}
 	if strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") == false {
-		return apperrors.New(apperrors.InvalidInput, "상품 목록이 저장된 파일은 .CSV 파일만 사용할 수 있습니다")
+		return apperrors.New(apperrors.InvalidInput, "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다")
 	}
 	return nil
+}
+
+type watchProductPriceSnapshot struct {
+	Products []*product `json:"products"`
 }
 
 type product struct {
@@ -96,7 +89,7 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 	// 상품 이름
 	var name string
 	if supportsHTML == true {
-		name = fmt.Sprintf("☞ <a href=\"%sgoods/%d\"><b>%s</b></a>%s", baseURL, p.No, template.HTMLEscapeString(p.Name), mark)
+		name = fmt.Sprintf("☞ <a href=\"%s\"><b>%s</b></a>%s", fmt.Sprintf(productPageURLFormat, p.No), template.HTMLEscapeString(p.Name), mark)
 	} else {
 		name = fmt.Sprintf("☞ %s%s", template.HTMLEscapeString(p.Name), mark)
 	}
@@ -116,9 +109,21 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 	return fmt.Sprintf("%s\n      • 현재 가격 : %s%s%s", name, formatPrice(p.Price, p.DiscountedPrice, p.DiscountRate), previousPriceString, lowestPriceString)
 }
 
-type watchProductPriceSnapshot struct {
-	Products []*product `json:"products"`
-}
+// watchProductColumn 감시할 상품 목록의 헤더
+type watchProductColumn uint
+
+// 감시할 상품 목록의 헤더 컬럼
+const (
+	WatchProductColumnNo          watchProductColumn = iota // 상품 코드 컬럼
+	WatchProductColumnName                                  // 상품 이름 컬럼
+	WatchProductColumnWatchStatus                           // 감시 대상인지에 대한 활성/비활성 컬럼
+)
+
+// 감시 대상인지에 대한 활성/비활성 컬럼의 값
+const (
+	WatchStatusEnabled  = "1"
+	WatchStatusDisabled = "0"
+)
 
 // noinspection GoUnhandledErrorResult,GoErrorStringFormat
 func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
@@ -166,7 +171,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		}
 
 		// 상품 페이지를 읽어들인다.
-		productDetailPageURL := fmt.Sprintf("%sgoods/%d", baseURL, no)
+		productDetailPageURL := fmt.Sprintf(productPageURLFormat, no)
 		doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productDetailPageURL)
 		if err != nil {
 			return "", nil, err
@@ -345,7 +350,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		productName := template.HTMLEscapeString(strings.TrimSpace(product[WatchProductColumnName]))
 
 		if supportsHTML == true {
-			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", baseURL, productNo, productName))
+			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
 		} else {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
 		}
@@ -365,7 +370,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[WatchProductColumnName]))
 
 					if supportsHTML == true {
-						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%sgoods/%s\"><b>%s</b></a>", baseURL, productNo, productName))
+						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
 					} else {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
 					}

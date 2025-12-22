@@ -13,7 +13,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
 	mockFetcher := testutil.NewMockHTTPFetcher()
 	productID := "12345"
-	url := fmt.Sprintf("%sgoods/%s", baseURL, productID)
+	url := fmt.Sprintf(productPageURLFormat, productID)
 
 	// Create a reasonably large HTML content to simulate real parsing load
 	htmlContent := fmt.Sprintf(`
