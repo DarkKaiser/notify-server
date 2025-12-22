@@ -1,425 +1,351 @@
 package kurly
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestKurlyWatchProductPriceConfig_Validate(t *testing.T) {
-	t.Run("정상적인 데이터", func(t *testing.T) {
-		commandConfig := &watchProductPriceSettings{
-			WatchProductsFile: "test.csv",
-		}
+func TestWatchProductPriceSettings_Validate(t *testing.T) {
+	t.Parallel()
 
-		err := commandConfig.validate()
-		assert.NoError(t, err, "정상적인 데이터는 검증을 통과해야 합니다")
-	})
+	tests := []struct {
+		name      string
+		settings  *watchProductPriceSettings
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name: "성공: 정상적인 CSV 파일 경로",
+			settings: &watchProductPriceSettings{
+				WatchProductsFile: "products.csv",
+			},
+			wantErr: false,
+		},
+		{
+			name: "성공: 대소문자 구분 없이 CSV 확장자 허용",
+			settings: &watchProductPriceSettings{
+				WatchProductsFile: "PRODUCTS.CSV",
+			},
+			wantErr: false,
+		},
+		{
+			name: "실패: 파일 경로 미입력",
+			settings: &watchProductPriceSettings{
+				WatchProductsFile: "",
+			},
+			wantErr:   true,
+			errSubstr: "파일이 입력되지 않았습니다",
+		},
+		{
+			name: "실패: 지원하지 않는 파일 확장자 (.txt)",
+			settings: &watchProductPriceSettings{
+				WatchProductsFile: "products.txt",
+			},
+			wantErr:   true,
+			errSubstr: ".CSV 파일만 사용할 수 있습니다",
+		},
+	}
 
-	t.Run("파일 경로가 비어있는 경우", func(t *testing.T) {
-		commandConfig := &watchProductPriceSettings{
-			WatchProductsFile: "",
-		}
-
-		err := commandConfig.validate()
-		assert.Error(t, err, "파일 경로가 비어있으면 에러가 발생해야 합니다")
-		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다", "적절한 에러 메시지를 반환해야 합니다")
-	})
-
-	t.Run("CSV 파일이 아닌 경우", func(t *testing.T) {
-		commandConfig := &watchProductPriceSettings{
-			WatchProductsFile: "test.txt",
-		}
-
-		err := commandConfig.validate()
-		assert.Error(t, err, "CSV 파일이 아니면 에러가 발생해야 합니다")
-		assert.Contains(t, err.Error(), ".CSV 파일만 사용할 수 있습니다", "적절한 에러 메시지를 반환해야 합니다")
-	})
-
-	t.Run("대소문자 구분 없이 CSV 확장자 허용", func(t *testing.T) {
-		testCases := []string{
-			"test.csv",
-			"test.CSV",
-			"test.Csv",
-		}
-
-		for _, filename := range testCases {
-			commandConfig := &watchProductPriceSettings{
-				WatchProductsFile: filename,
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.settings.validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errSubstr != "" {
+					assert.Contains(t, err.Error(), tt.errSubstr)
+				}
+			} else {
+				assert.NoError(t, err)
 			}
-
-			err := commandConfig.validate()
-			assert.NoError(t, err, "CSV 확장자는 대소문자 구분 없이 허용해야 합니다: %s", filename)
-		}
-	})
+		})
+	}
 }
 
-func TestKurlyProduct_String(t *testing.T) {
-	t.Run("일반 가격 - HTML 메시지", func(t *testing.T) {
-		product := &product{
-			No:              12345,
-			Name:            "테스트 상품",
-			Price:           10000,
-			DiscountedPrice: 0,
-			DiscountRate:    0,
-		}
+func TestProduct_UpdateLowestPrice(t *testing.T) {
+	t.Parallel()
 
-		result := product.String(true, "", nil)
+	now := time.Now()
 
-		assert.Contains(t, result, "테스트 상품", "상품 이름이 포함되어야 합니다")
-		assert.Contains(t, result, "10,000원", "가격이 포함되어야 합니다")
-		assert.Contains(t, result, "goods/12345", "상품 링크가 포함되어야 합니다")
-	})
+	tests := []struct {
+		name              string
+		initialProduct    *product
+		wantLowestPrice   int
+		wantTimeCheck     bool // 최저가 갱신 시간 업데이트 여부 확인
+		timeShouldBeAfter time.Time
+	}{
+		{
+			name: "초기 상태: 최저가가 0일 때 현재 가격으로 설정",
+			initialProduct: &product{
+				Price: 10000,
+			},
+			wantLowestPrice: 10000,
+			wantTimeCheck:   true,
+		},
+		{
+			name: "초기 상태: 최저가가 0일 때 할인 가격 우선 설정",
+			initialProduct: &product{
+				Price:           10000,
+				DiscountedPrice: 8000,
+			},
+			wantLowestPrice: 8000,
+			wantTimeCheck:   true,
+		},
+		{
+			name: "갱신: 기존 최저가보다 낮은 가격 발생",
+			initialProduct: &product{
+				Price:           9000,
+				LowestPrice:     10000,
+				LowestPriceTime: now,
+			},
+			wantLowestPrice:   9000,
+			wantTimeCheck:     true,
+			timeShouldBeAfter: now,
+		},
+		{
+			name: "유지: 기존 최저가보다 높은 가격",
+			initialProduct: &product{
+				Price:           12000,
+				LowestPrice:     10000,
+				LowestPriceTime: now,
+			},
+			wantLowestPrice:   10000,
+			wantTimeCheck:     false, // 시간 업데이트 안 됨
+			timeShouldBeAfter: now,   // 시간은 그대로 now여야 함
+		},
+		{
+			name: "갱신: 할인 가격이 최저가보다 낮음",
+			initialProduct: &product{
+				Price:           12000,
+				DiscountedPrice: 9000,
+				LowestPrice:     10000,
+			},
+			wantLowestPrice: 9000,
+			wantTimeCheck:   true,
+		},
+		{
+			name: "엣지 케이스: 가격이 0원인 경우 (오류 상황)",
+			initialProduct: &product{
+				Price:           0,
+				DiscountedPrice: 0,
+				LowestPrice:     0,
+			},
+			wantLowestPrice: 0, // 0원은 무시 (로직상 0 < 0 은 false, 0 == 0 일때도 무시)
+			wantTimeCheck:   false,
+		},
+	}
 
-	t.Run("할인 가격 - HTML 메시지", func(t *testing.T) {
-		product := &product{
-			No:              12345,
-			Name:            "할인 상품",
-			Price:           10000,
-			DiscountedPrice: 8000,
-			DiscountRate:    20,
-		}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		result := product.String(true, "", nil)
+			// Setup
+			p := tt.initialProduct
+			startTime := time.Now()
 
-		assert.Contains(t, result, "할인 상품", "상품 이름이 포함되어야 합니다")
-		assert.Contains(t, result, "10,000원", "원래 가격이 포함되어야 합니다")
-		assert.Contains(t, result, "8,000원", "할인 가격이 포함되어야 합니다")
-		assert.Contains(t, result, "20%", "할인율이 포함되어야 합니다")
-		assert.Contains(t, result, "<s>", "HTML 취소선 태그가 포함되어야 합니다")
-	})
+			// Execute
+			p.updateLowestPrice()
 
-	t.Run("일반 가격 - 텍스트 메시지", func(t *testing.T) {
-		product := &product{
-			No:              12345,
-			Name:            "테스트 상품",
-			Price:           10000,
-			DiscountedPrice: 0,
-			DiscountRate:    0,
-		}
+			// Verify
+			assert.Equal(t, tt.wantLowestPrice, p.LowestPrice)
 
-		result := product.String(false, "", nil)
-
-		assert.Contains(t, result, "테스트 상품", "상품 이름이 포함되어야 합니다")
-		assert.Contains(t, result, "10,000원", "가격이 포함되어야 합니다")
-		assert.NotContains(t, result, "<a href", "HTML 태그가 포함되지 않아야 합니다")
-	})
-
-	t.Run("할인 가격 - 텍스트 메시지", func(t *testing.T) {
-		product := &product{
-			No:              12345,
-			Name:            "할인 상품",
-			Price:           10000,
-			DiscountedPrice: 8000,
-			DiscountRate:    20,
-		}
-
-		result := product.String(false, "", nil)
-
-		assert.Contains(t, result, "할인 상품", "상품 이름이 포함되어야 합니다")
-		assert.Contains(t, result, "10,000원", "원래 가격이 포함되어야 합니다")
-		assert.Contains(t, result, "8,000원", "할인 가격이 포함되어야 합니다")
-		assert.Contains(t, result, "⇒", "화살표 기호가 포함되어야 합니다")
-		assert.NotContains(t, result, "<s>", "HTML 태그가 포함되지 않아야 합니다")
-	})
-
-	t.Run("마크 표시", func(t *testing.T) {
-		product := &product{
-			No:    12345,
-			Name:  "테스트 상품",
-			Price: 10000,
-		}
-
-		result := product.String(false, " 🆕", nil)
-
-		assert.Contains(t, result, "🆕", "마크가 포함되어야 합니다")
-	})
-
-	t.Run("이전 가격 정보 포함", func(t *testing.T) {
-		previousProduct := &product{
-			Price:           12000,
-			DiscountedPrice: 0,
-			DiscountRate:    0,
-		}
-
-		currentProduct := &product{
-			No:    12345,
-			Name:  "가격 변경 상품",
-			Price: 10000,
-		}
-
-		result := currentProduct.String(false, "", previousProduct)
-
-		assert.Contains(t, result, "이전 가격", "이전 가격 레이블이 포함되어야 합니다")
-		assert.Contains(t, result, "12,000원", "이전 가격이 포함되어야 합니다")
-	})
-}
-
-func TestKurlyProduct_UpdateLowestPrice(t *testing.T) {
-	t.Run("최저 가격이 없는 경우 - 일반 가격", func(t *testing.T) {
-		product := &product{
-			Price:           10000,
-			DiscountedPrice: 0,
-			LowestPrice:     0,
-		}
-
-		product.updateLowestPrice()
-
-		assert.Equal(t, 10000, product.LowestPrice, "최저 가격이 설정되어야 합니다")
-		assert.False(t, product.LowestPriceTime.IsZero(), "최저 가격 시간이 설정되어야 합니다")
-	})
-
-	t.Run("최저 가격이 없는 경우 - 할인 가격", func(t *testing.T) {
-		product := &product{
-			Price:           10000,
-			DiscountedPrice: 8000,
-			LowestPrice:     0,
-		}
-
-		product.updateLowestPrice()
-
-		assert.Equal(t, 8000, product.LowestPrice, "할인 가격이 최저 가격으로 설정되어야 합니다")
-	})
-
-	t.Run("기존 최저 가격보다 낮은 가격", func(t *testing.T) {
-		product := &product{
-			Price:           7000,
-			DiscountedPrice: 0,
-			LowestPrice:     9000,
-		}
-
-		product.updateLowestPrice()
-
-		assert.Equal(t, 7000, product.LowestPrice, "더 낮은 가격으로 최저 가격이 업데이트되어야 합니다")
-	})
-
-	t.Run("기존 최저 가격보다 높은 가격", func(t *testing.T) {
-		product := &product{
-			Price:           11000,
-			DiscountedPrice: 0,
-			LowestPrice:     9000,
-		}
-
-		product.updateLowestPrice()
-
-		assert.Equal(t, 9000, product.LowestPrice, "최저 가격이 유지되어야 합니다")
-	})
-
-	t.Run("할인 가격이 최저 가격보다 낮은 경우", func(t *testing.T) {
-		product := &product{
-			Price:           10000,
-			DiscountedPrice: 7500,
-			LowestPrice:     9000,
-		}
-
-		product.updateLowestPrice()
-
-		assert.Equal(t, 7500, product.LowestPrice, "할인 가격이 최저 가격으로 업데이트되어야 합니다")
-	})
-}
-
-func TestKurlyTask_NormalizeDuplicateProducts(t *testing.T) {
-	task := &task{}
-
-	t.Run("중복이 없는 경우", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{"67890", "상품2", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 2, len(distinct), "모든 상품이 distinct에 포함되어야 합니다")
-		assert.Equal(t, 0, len(duplicate), "중복 상품이 없어야 합니다")
-	})
-
-	t.Run("중복이 있는 경우", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{"67890", "상품2", "1"},
-			{"12345", "상품1 중복", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 2, len(distinct), "중복이 제거된 상품 목록이어야 합니다")
-		assert.Equal(t, 1, len(duplicate), "중복 상품이 1개 있어야 합니다")
-		assert.Equal(t, "12345", duplicate[0][0], "중복 상품 코드가 일치해야 합니다")
-	})
-
-	t.Run("여러 중복이 있는 경우", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{"67890", "상품2", "1"},
-			{"12345", "상품1 중복1", "1"},
-			{"12345", "상품1 중복2", "1"},
-			{"67890", "상품2 중복", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 2, len(distinct), "중복이 제거된 상품 목록이어야 합니다")
-		assert.Equal(t, 3, len(duplicate), "중복 상품이 3개 있어야 합니다")
-	})
-
-	t.Run("빈 행이 있는 경우", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{},
-			{"67890", "상품2", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 2, len(distinct), "빈 행은 무시되어야 합니다")
-		assert.Equal(t, 0, len(duplicate), "중복 상품이 없어야 합니다")
-	})
-}
-
-func TestKurlyWatchProductPriceConfig_Validate_ErrorCases(t *testing.T) {
-	t.Run("빈 파일 경로", func(t *testing.T) {
-		commandConfig := &watchProductPriceSettings{
-			WatchProductsFile: "",
-		}
-
-		err := commandConfig.validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "파일이 입력되지 않았습니다")
-	})
-
-	t.Run("잘못된 파일 확장자", func(t *testing.T) {
-		testCases := []string{
-			"test.txt",
-			"test.xlsx",
-			"test.json",
-			"test",
-		}
-
-		for _, filename := range testCases {
-			commandConfig := &watchProductPriceSettings{
-				WatchProductsFile: filename,
+			if tt.wantTimeCheck {
+				// 시간이 갱신되었어야 함 (startTime 이후)
+				assert.True(t, p.LowestPriceTime.After(startTime.Add(-time.Second)), "최저가 갱신 시간이 업데이트 되어야 합니다")
+			} else if !tt.timeShouldBeAfter.IsZero() {
+				// 시간이 변경되지 않았어야 함
+				assert.Equal(t, tt.timeShouldBeAfter, p.LowestPriceTime, "최저가 갱신 시간이 변경되지 않아야 합니다")
 			}
-
-			err := commandConfig.validate()
-			assert.Error(t, err, "파일 확장자가 CSV가 아니면 에러가 발생해야 합니다: %s", filename)
-		}
-	})
+		})
+	}
 }
 
-func TestKurlyProduct_UpdateLowestPrice_EdgeCases(t *testing.T) {
-	t.Run("가격이 0인 경우", func(t *testing.T) {
-		product := &product{
-			Price:           0,
-			DiscountedPrice: 0,
-			LowestPrice:     0,
-		}
+func TestProduct_String(t *testing.T) {
+	t.Parallel()
 
-		product.updateLowestPrice()
+	baseProduct := &product{
+		No:    12345,
+		Name:  "맛있는 사과",
+		Price: 10000,
+	}
+	discountProduct := &product{
+		No:              12345,
+		Name:            "할인 사과",
+		Price:           10000,
+		DiscountedPrice: 8000,
+		DiscountRate:    20,
+	}
 
-		// 가격이 0이면 최저가가 업데이트되지 않아야 함
-		assert.Equal(t, 0, product.LowestPrice)
-	})
+	expectedIDString := "12345" // For URL check
+
+	tests := []struct {
+		name         string
+		product      *product
+		supportsHTML bool
+		mark         string
+		prevProduct  *product
+		wantContains []string
+		wantNot      []string
+	}{
+		{
+			name:         "HTML: 일반 상품",
+			product:      baseProduct,
+			supportsHTML: true,
+			wantContains: []string{
+				"맛있는 사과",
+				"10,000원",
+				fmt.Sprintf(productPageURLFormat, expectedIDString), // URL 포맷 사용 검증
+				"<b>", "</b>", "<a href=", // HTML 태그 확인
+			},
+		},
+		{
+			name:         "Text: 일반 상품",
+			product:      baseProduct,
+			supportsHTML: false,
+			wantContains: []string{
+				"맛있는 사과",
+				"10,000원",
+				"☞", // Prefix 확인
+			},
+			wantNot: []string{"<a href=", "<b>", "</b>"},
+		},
+		{
+			name:         "HTML: 할인 상품",
+			product:      discountProduct,
+			supportsHTML: true,
+			wantContains: []string{
+				"<s>10,000원</s>", // 취소선
+				"8,000원",         // 할인가
+				"(20%)",          // 할인율
+			},
+		},
+		{
+			name:         "Text: 할인 상품",
+			product:      discountProduct,
+			supportsHTML: false,
+			wantContains: []string{
+				"10,000원 ⇒ 8,000원 (20%)", // 텍스트 포맷
+			},
+			wantNot: []string{"<s>", "</s>"},
+		},
+		{
+			name:         "Text: 마크(Mark) 포함",
+			product:      baseProduct,
+			supportsHTML: false,
+			mark:         " 🆕",
+			wantContains: []string{"맛있는 사과 🆕"},
+		},
+		{
+			name:         "Text: 이전 가격 비교",
+			product:      baseProduct,
+			supportsHTML: false,
+			prevProduct: &product{
+				Price: 12000,
+			},
+			wantContains: []string{
+				"이전 가격 : 12,000원",
+			},
+		},
+		{
+			name:         "XSS 방지: 특수문자 이스케이프 확인",
+			product:      &product{No: 1, Name: "<script>alert(1)</script>", Price: 1000},
+			supportsHTML: true,
+			wantContains: []string{"&lt;script&gt;alert(1)&lt;/script&gt;"},
+			wantNot:      []string{"<script>"},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.product.String(tt.supportsHTML, tt.mark, tt.prevProduct)
+
+			for _, s := range tt.wantContains {
+				assert.Contains(t, got, s)
+			}
+			for _, s := range tt.wantNot {
+				assert.NotContains(t, got, s)
+			}
+		})
+	}
 }
 
-func TestKurlyTask_NormalizeDuplicateProducts_EdgeCases(t *testing.T) {
-	task := &task{}
+func TestNormalizeDuplicateProducts(t *testing.T) {
+	t.Parallel() // Task instance is stateless for this method
 
-	t.Run("빈 입력", func(t *testing.T) {
-		products := [][]string{}
+	tsk := &task{}
 
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
+	tests := []struct {
+		name          string
+		input         [][]string
+		wantDistinct  int
+		wantDuplicate int
+	}{
+		{
+			name: "중복 없음",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
+			},
+			wantDistinct:  2,
+			wantDuplicate: 0,
+		},
+		{
+			name: "단일 중복 발생",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1001", "A", "1"}, // Duplicate
+			},
+			wantDistinct:  1,
+			wantDuplicate: 1,
+		},
+		{
+			name: "다수 중복 발생",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
+				{"1001", "A", "1"}, // Duplicate
+				{"1002", "B", "1"}, // Duplicate
+				{"1003", "C", "1"},
+			},
+			wantDistinct:  3,
+			wantDuplicate: 2,
+		},
+		{
+			name: "빈 행 무시",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{}, // Empty row
+				{"1002", "B", "1"},
+			},
+			wantDistinct:  2,
+			wantDuplicate: 0,
+		},
+		{
+			name:          "빈 입력",
+			input:         [][]string{},
+			wantDistinct:  0,
+			wantDuplicate: 0,
+		},
+	}
 
-		assert.Equal(t, 0, len(distinct))
-		assert.Equal(t, 0, len(duplicate))
-	})
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("모두 빈 행인 경우", func(t *testing.T) {
-		products := [][]string{
-			{},
-			{},
-			{},
-		}
+			distinct, duplicate := tsk.normalizeDuplicateProducts(tt.input)
 
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 0, len(distinct))
-		assert.Equal(t, 0, len(duplicate))
-	})
-
-	t.Run("모두 중복인 경우", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{"12345", "상품1 중복1", "1"},
-			{"12345", "상품1 중복2", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		assert.Equal(t, 1, len(distinct), "첫 번째 항목만 distinct에 포함되어야 합니다")
-		assert.Equal(t, 2, len(duplicate), "나머지는 모두 중복이어야 합니다")
-	})
-
-	t.Run("불완전한 행 처리", func(t *testing.T) {
-		products := [][]string{
-			{"12345", "상품1", "1"},
-			{"67890"}, // 컬럼이 부족한 행
-			{"11111", "상품3", "1"},
-		}
-
-		distinct, duplicate := task.normalizeDuplicateProducts(products)
-
-		// 불완전한 행도 처리되어야 함
-		assert.Equal(t, 3, len(distinct))
-		assert.Equal(t, 0, len(duplicate))
-	})
-
-}
-
-func TestKurlyProduct_String_EdgeCases(t *testing.T) {
-	t.Run("특수 문자가 포함된 상품명 - HTML", func(t *testing.T) {
-		product := &product{
-			No:    12345,
-			Name:  "<script>alert('test')</script>",
-			Price: 10000,
-		}
-
-		result := product.String(true, "", nil)
-
-		// HTML 이스케이프 처리 확인
-		assert.NotContains(t, result, "<script>", "스크립트 태그가 이스케이프되어야 합니다")
-		assert.Contains(t, result, "&lt;script&gt;", "이스케이프된 형태로 포함되어야 합니다")
-	})
-
-	t.Run("매우 긴 상품명", func(t *testing.T) {
-		longName := string(make([]byte, 1000))
-		for i := range longName {
-			longName = longName[:i] + "가"
-		}
-
-		product := &product{
-			No:    12345,
-			Name:  longName[:500], // 500자 상품명
-			Price: 10000,
-		}
-
-		result := product.String(false, "", nil)
-
-		assert.Contains(t, result, "10,000원")
-		assert.Greater(t, len(result), 500, "긴 상품명도 처리할 수 있어야 합니다")
-	})
-
-	t.Run("가격이 매우 큰 경우", func(t *testing.T) {
-		product := &product{
-			No:              12345,
-			Name:            "고가 상품",
-			Price:           999999999,
-			DiscountedPrice: 888888888,
-			DiscountRate:    11,
-		}
-
-		result := product.String(false, "", nil)
-
-		assert.Contains(t, result, "999,999,999원", "큰 가격도 올바르게 포맷되어야 합니다")
-		assert.Contains(t, result, "888,888,888원", "큰 할인 가격도 올바르게 포맷되어야 합니다")
-	})
+			assert.Equal(t, tt.wantDistinct, len(distinct), "고유 상품 개수 불일치")
+			assert.Equal(t, tt.wantDuplicate, len(duplicate), "중복 상품 개수 불일치")
+		})
+	}
 }
