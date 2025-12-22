@@ -164,7 +164,9 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	// 읽어들인 상품들의 가격 및 상태를 확인한다.
 	//
-	actualityTaskResultData := &watchProductPriceSnapshot{}
+	actualityTaskResultData := &watchProductPriceSnapshot{
+		Products: make([]*product, 0, len(records)),
+	}
 
 	// 읽어들인 상품 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출하기 위한 정규표현식
 	re1 := regexp.MustCompile(`<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>`)
@@ -275,15 +277,25 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		actualityTaskResultData.Products = append(actualityTaskResultData.Products, product)
 	}
 
+	return t.diffAndNotify(records, duplicateRecords, actualityTaskResultData, prevSnapshot, supportsHTML)
+}
+
+// @@@@@
+// diffAndNotify는 현재 수집된 상품 정보와 이전 스냅샷을 비교하여 변동 사항을 분석합니다.
+// 가격 변동, 품절 상태 변경, 신규 상품 등록 등의 이벤트를 감지하고,
+// 사용자에게 발송할 포맷팅된 알림 메시지와 갱신된 작업 결과 데이터를 생성합니다.
+func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTaskResultData, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	//
 	// 상품들의 변경된 가격 및 상태를 확인한다.
 	//
-	m := ""
+	var sb strings.Builder
+	sb.Grow(1024)
+
 	lineSpacing := "\n\n"
 	if supportsHTML {
 		lineSpacing = "\n"
 	}
-	err = tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
+	err := tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if !ok1 || !ok2 {
@@ -307,10 +319,10 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 			// 최저 가격을 업데이트한다.
 			actualityProduct.updateLowestPrice()
 
-			if m != "" {
-				m += lineSpacing
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
 			}
-			m += actualityProduct.String(supportsHTML, " 🆕", nil)
+			sb.WriteString(actualityProduct.String(supportsHTML, " 🆕", nil))
 
 			return
 		}
@@ -323,10 +335,10 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		actualityProduct.updateLowestPrice()
 
 		if actualityProduct.Price != originProduct.Price || actualityProduct.DiscountedPrice != originProduct.DiscountedPrice || actualityProduct.DiscountRate != originProduct.DiscountRate {
-			if m != "" {
-				m += lineSpacing
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
 			}
-			m += actualityProduct.String(supportsHTML, " 🔁", originProduct)
+			sb.WriteString(actualityProduct.String(supportsHTML, " 🔁", originProduct))
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*product)
@@ -339,10 +351,10 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		// 최저 가격을 업데이트한다.
 		actualityProduct.updateLowestPrice()
 
-		if m != "" {
-			m += lineSpacing
+		if sb.Len() > 0 {
+			sb.WriteString(lineSpacing)
 		}
-		m += actualityProduct.String(supportsHTML, " 🆕", nil)
+		sb.WriteString(actualityProduct.String(supportsHTML, " 🆕", nil))
 	})
 	if err != nil {
 		return "", nil, err
@@ -396,9 +408,12 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	// 조건에 따라 상품 정보 변경 사항을 처리하고 메시지를 생성한다.
 	//
-	if m != "" || duplicateProductsBuilder.Len() > 0 || unknownProductsBuilder.Len() > 0 {
-		if m != "" {
-			message = fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", m)
+	var message string
+	var changedTaskResultData interface{}
+
+	if sb.Len() > 0 || duplicateProductsBuilder.Len() > 0 || unknownProductsBuilder.Len() > 0 {
+		if sb.Len() > 0 {
+			message = fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", sb.String())
 		} else {
 			message = "상품 정보가 변경되었습니다.\n\n"
 		}
@@ -416,13 +431,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {
 				for _, actualityProduct := range actualityTaskResultData.Products {
-					if m != "" {
-						m += lineSpacing
+					if sb.Len() > 0 {
+						sb.WriteString(lineSpacing)
 					}
-					m += actualityProduct.String(supportsHTML, "", nil)
+					sb.WriteString(actualityProduct.String(supportsHTML, "", nil))
 				}
 
-				message = fmt.Sprintf("변경된 상품 정보가 없습니다.\n\n%s현재 등록된 상품 정보는 아래와 같습니다:", m)
+				message = fmt.Sprintf("변경된 상품 정보가 없습니다.\n\n%s현재 등록된 상품 정보는 아래와 같습니다:", sb.String())
 			}
 		}
 	}
