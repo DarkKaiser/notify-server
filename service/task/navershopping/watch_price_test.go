@@ -456,7 +456,7 @@ func (b *ProductBuilder) Build() *product {
 // Component Tests: MapToProduct (Granular Logic)
 // -----------------------------------------------------------------------------
 
-func TestTask_FilterMapToProduct_TableDriven(t *testing.T) {
+func TestTask_MapToProduct_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	// Helper for clean tests
@@ -471,57 +471,24 @@ func TestTask_FilterMapToProduct_TableDriven(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		item             *searchResponseItem
-		includedKeywords []string
-		excludedKeywords []string
-		priceLessThan    int
-		wantProduct      bool // true: product expected, false: nil expected
+		name        string
+		item        *searchResponseItem
+		wantProduct bool // true: product expected, false: nil expected
 	}{
 		{
-			name:          "성공: 모든 조건 만족",
-			item:          item("Apple iPad", "50000"),
-			priceLessThan: 100000,
-			wantProduct:   true,
+			name:        "성공: 정상적인 상품 데이터 변환",
+			item:        item("Apple iPad", "50000"),
+			wantProduct: true,
 		},
 		{
-			name:             "성공: 키워드 필터 통과 (Included)",
-			item:             item("Apple iPad Pro", "50000"),
-			includedKeywords: []string{"iPad"},
-			priceLessThan:    100000,
-			wantProduct:      true,
+			name:        "성공: 가격 쉼표 처리",
+			item:        item("Apple iPad", "50,000"),
+			wantProduct: true,
 		},
 		{
-			name:             "실패: 키워드 필터 탈락 (Missing Included)",
-			item:             item("Apple iPhone", "50000"),
-			includedKeywords: []string{"iPad"},
-			priceLessThan:    100000,
-			wantProduct:      false,
-		},
-		{
-			name:             "실패: 제외 키워드 포함 (Excluded)",
-			item:             item("Apple iPad Case", "50000"),
-			excludedKeywords: []string{"Case"},
-			priceLessThan:    100000,
-			wantProduct:      false,
-		},
-		{
-			name:          "실패: 가격 초과 (Price Limit)",
-			item:          item("Apple iPad", "150000"),
-			priceLessThan: 100000,
-			wantProduct:   false,
-		},
-		{
-			name:          "실패: 가격 파싱 오류 (Invalid Number)",
-			item:          item("Apple iPad", "Call for Price"),
-			priceLessThan: 100000,
-			wantProduct:   false,
-		},
-		{
-			name:          "성공: 가격 쉼표 처리",
-			item:          item("Apple iPad", "50,000"),
-			priceLessThan: 100000,
-			wantProduct:   true,
+			name:        "실패: 가격 파싱 오류 (Invalid Number)",
+			item:        item("Apple iPad", "Call for Price"),
+			wantProduct: false,
 		},
 	}
 
@@ -531,7 +498,7 @@ func TestTask_FilterMapToProduct_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			tsk := &task{}
-			got := tsk.filterMapToProduct(tt.item, tt.includedKeywords, tt.excludedKeywords, tt.priceLessThan)
+			got := tsk.mapToProduct(tt.item)
 
 			if tt.wantProduct {
 				require.NotNil(t, got)
@@ -539,6 +506,60 @@ func TestTask_FilterMapToProduct_TableDriven(t *testing.T) {
 			} else {
 				assert.Nil(t, got)
 			}
+		})
+	}
+}
+
+func TestTask_IsPriceEligible_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		price         int
+		priceLessThan int
+		want          bool
+	}{
+		{
+			name:          "성공: 가격 조건 만족",
+			price:         50000,
+			priceLessThan: 100000,
+			want:          true,
+		},
+		{
+			name:          "실패: 가격 초과 (Price Limit)",
+			price:         150000,
+			priceLessThan: 100000,
+			want:          false,
+		},
+		{
+			name:          "실패: 가격 상한가와 동일 (Boundary)",
+			price:         100000,
+			priceLessThan: 100000,
+			want:          false, // '<' 조건이므로 false
+		},
+		{
+			name:          "실패: 유효하지 않은 가격 (Zero)",
+			price:         0,
+			priceLessThan: 100000,
+			want:          false,
+		},
+		{
+			name:          "실패: 유효하지 않은 가격 (Negative)",
+			price:         -100,
+			priceLessThan: 100000,
+			want:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tsk := &task{}
+			got := tsk.isPriceEligible(tt.price, tt.priceLessThan)
+
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
