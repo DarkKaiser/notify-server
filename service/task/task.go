@@ -157,6 +157,9 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 
 	t.runTime = time.Now()
 
+	// 실행 주체가 사용자인 경우에만 취소 가능 상태로 설정합니다.
+	taskCtx = taskCtx.WithCancelable(t.GetRunBy() == RunByUser)
+
 	// 1. 사전 검증 및 데이터 준비
 	previousSnapshot, err := t.prepareExecution(taskCtx, notificationSender)
 	if err != nil {
@@ -179,7 +182,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
-		t.notifyError(taskCtx, notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
 	}
 
@@ -191,14 +194,14 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	if snapshot == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
 		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
-		t.notifyError(taskCtx, notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
 	}
 
 	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
 		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
-		t.notifyError(taskCtx, notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
 	}
 
@@ -214,22 +217,25 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 
 // handleExecutionResult 작업 실행 결과를 처리합니다.
 func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender NotificationSender, message string, newSnapshot interface{}, err error) {
+	// 작업이 완료되었으므로, 결과 알림 메시지에는 취소 링크가 포함되지 않도록 상태를 변경합니다.
+	nonCancelableCtx := taskCtx.WithCancelable(false)
+
 	if err == nil {
 		if len(message) > 0 {
-			t.notify(taskCtx, notificationSender, message)
+			t.notify(nonCancelableCtx, notificationSender, message)
 		}
 
 		if newSnapshot != nil {
 			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
 				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
 				t.LogWithContext("task.executor", log.WarnLevel, message, nil, err0)
-				t.notifyError(taskCtx, notificationSender, message)
+				t.notifyError(nonCancelableCtx, notificationSender, message)
 			}
 		}
 	} else {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
 		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, err)
-		t.notifyError(taskCtx, notificationSender, message)
+		t.notifyError(nonCancelableCtx, notificationSender, message)
 	}
 }
 

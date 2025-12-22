@@ -61,6 +61,7 @@ type MockNotificationSender struct {
 	// 호출 기록
 	NotifyDefaultCalls      []string
 	NotifyCalls             []NotifyCall
+	CapturedContexts        []TaskContext
 	SupportsHTMLCalls       []string
 	SupportsHTMLReturnValue bool
 }
@@ -77,6 +78,7 @@ func NewMockNotificationSender() *MockNotificationSender {
 	return &MockNotificationSender{
 		NotifyDefaultCalls:      make([]string, 0),
 		NotifyCalls:             make([]NotifyCall, 0),
+		CapturedContexts:        make([]TaskContext, 0),
 		SupportsHTMLCalls:       make([]string, 0),
 		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
 	}
@@ -101,6 +103,7 @@ func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, 
 		Message:     message,
 		TaskContext: taskCtx,
 	})
+	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
 	return true
 }
 
