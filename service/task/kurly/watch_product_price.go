@@ -23,6 +23,27 @@ const (
 	productPageURLFormat = "https://www.kurly.com/goods/%v"
 )
 
+// csvColumnIndex CSV 파일에서 상품 정보를 파싱할 때 사용되는 컬럼 인덱스를 정의하는 타입입니다.
+type csvColumnIndex int
+
+const (
+	// CSV 파일의 헤더 순서에 따른 컬럼 인덱스 상수입니다.
+	//
+	// [주의]
+	// 이 상수의 순서는 실제 CSV 파일의 헤더 순서와 **엄격하게 일치**해야 합니다.
+	// 파일 포맷이 변경될 경우, 이 상수의 정의도 반드시 함께 수정되어야 합니다.
+	csvColumnNo     csvColumnIndex = iota // [0] 상품 코드
+	csvColumnName                         // [1] 상품 이름
+	csvColumnStatus                       // [2] 감시 활성화 여부
+
+	// CSV 파일의 '감시 활성화 여부' 컬럼에 사용되는 상태값 상수입니다.
+	//
+	// [설명]
+	// CSV 파일에서 읽어온 데이터는 문자열(string) 타입이므로, 비교의 정확성을 위해
+	// 정수형(1) 대신 문자열 상수("1")를 정의하여 사용합니다. ('1'이 아닌 모든 값은 비활성 상태로 간주합니다)
+	csvStatusEnabled = "1" // 감시 활성화
+)
+
 type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
@@ -114,33 +135,6 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 }
 
 // @@@@@
-// watchProductColumn CSV 파일에서 감시할 상품 목록의 헤더 컬럼 인덱스를 나타내는 타입입니다.
-//
-// 이 타입은 CSV 파일의 헤더 구조를 코드로 표현하여, 매직 넘버(magic number) 사용을 방지하고
-// 컬럼 접근 시 타입 안전성을 제공합니다.
-type watchProductColumn uint
-
-// @@@@@
-// CSV 파일의 각 컬럼 위치를 나타내는 상수입니다.
-//
-// 사용 예시:
-//
-//	productNo := watchProduct[watchProductColumnNo]
-//	productName := watchProduct[watchProductColumnName]
-const (
-	watchProductColumnNo          watchProductColumn = iota // 상품 코드 컬럼
-	watchProductColumnName                                  // 상품 이름 컬럼
-	watchProductColumnWatchStatus                           // 감시 대상인지에 대한 활성/비활성 컬럼
-)
-
-// @@@@@
-// 감시 대상인지에 대한 활성/비활성 컬럼의 값
-const (
-	watchStatusEnabled  = "1"
-	watchStatusDisabled = "0"
-)
-
-// @@@@@
 func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	//
 	// 감시할 상품 목록을 읽어들인다.
@@ -152,16 +146,16 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	defer f.Close()
 
 	r := csv.NewReader(f)
-	watchProducts, err := r.ReadAll()
+	records, err := r.ReadAll()
 	if err != nil {
 		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
 	}
 
 	// 감시할 상품 목록의 헤더를 제거한다.
-	watchProducts = watchProducts[1:]
+	records = records[1:]
 
 	// 감시할 상품 목록에서 중복된 상품을 정규화한다.
-	watchProducts, duplicateWatchProducts := t.normalizeDuplicateProducts(watchProducts)
+	records, duplicateRecords := t.normalizeDuplicateProducts(records)
 
 	//
 	// 읽어들인 상품들의 가격 및 상태를 확인한다.
@@ -174,13 +168,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	// 읽어들인 상품 페이지의 상품 데이터에서 판매중인 상품이 아닌지 확인하고자 하는 정규표현식
 	re2 := regexp.MustCompile(`"product":\s*null`)
 
-	for _, watchProduct := range watchProducts {
-		if watchProduct[watchProductColumnWatchStatus] != watchStatusEnabled {
+	for _, record := range records {
+		if record[csvColumnStatus] != csvStatusEnabled {
 			continue
 		}
 
 		// 상품 코드를 숫자로 변환한다.
-		no, err := strconv.Atoi(watchProduct[watchProductColumnNo])
+		no, err := strconv.Atoi(record[csvColumnNo])
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
 		}
@@ -356,13 +350,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 
 	// 읽어들인 상품 목록에서 중복으로 등록된 상품들의 정보를 추출한다.
 	var duplicateProductsBuilder strings.Builder
-	for i, product := range duplicateWatchProducts {
+	for i, record := range duplicateRecords {
 		if i > 0 {
 			duplicateProductsBuilder.WriteString("\n")
 		}
 
-		productNo := strings.TrimSpace(product[watchProductColumnNo])
-		productName := template.HTMLEscapeString(strings.TrimSpace(product[watchProductColumnName]))
+		productNo := strings.TrimSpace(record[csvColumnNo])
+		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
 		if supportsHTML == true {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
@@ -375,14 +369,14 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	var unknownProductsBuilder strings.Builder
 	for _, product := range actualityTaskResultData.Products {
 		if product.IsUnknownProduct == true {
-			for _, watchProduct := range watchProducts {
-				if watchProduct[watchProductColumnNo] == strconv.Itoa(product.No) {
+			for _, record := range records {
+				if record[csvColumnNo] == strconv.Itoa(product.No) {
 					if unknownProductsBuilder.Len() != 0 {
 						unknownProductsBuilder.WriteString("\n")
 					}
 
-					productNo := strings.TrimSpace(watchProduct[watchProductColumnNo])
-					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[watchProductColumnName]))
+					productNo := strings.TrimSpace(record[csvColumnNo])
+					productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
 					if supportsHTML == true {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
@@ -435,25 +429,25 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 // @@@@@
 // normalizeDuplicateProducts 함수는 입력된 상품 목록에서 중복된 상품을 제거하고, 중복된 상품을 별도의 목록에 저장한다.
 // 반환 값으로는 중복이 제거된 상품 목록과 중복된 상품 목록을 반환한다.
-func (t *task) normalizeDuplicateProducts(products [][]string) ([][]string, [][]string) {
-	var distinctProducts [][]string
-	var duplicateProducts [][]string
+func (t *task) normalizeDuplicateProducts(records [][]string) ([][]string, [][]string) {
+	var distinctRecords [][]string
+	var duplicateRecords [][]string
 
 	checkedProducts := make(map[string]bool)
 
-	for _, product := range products {
-		if len(product) == 0 {
+	for _, record := range records {
+		if len(record) == 0 {
 			continue
 		}
 
-		productNo := product[watchProductColumnNo]
+		productNo := record[csvColumnNo]
 		if !checkedProducts[productNo] {
 			checkedProducts[productNo] = true
-			distinctProducts = append(distinctProducts, product)
+			distinctRecords = append(distinctRecords, record)
 		} else {
-			duplicateProducts = append(duplicateProducts, product)
+			duplicateRecords = append(duplicateRecords, record)
 		}
 	}
 
-	return distinctProducts, duplicateProducts
+	return distinctRecords, duplicateRecords
 }

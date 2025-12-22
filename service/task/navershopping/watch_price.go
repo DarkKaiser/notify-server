@@ -333,8 +333,17 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	}
 
 	// 상품 목록을 가격 오름차순으로 정렬하여 사용자가 가장 저렴한 상품을 먼저 확인할 수 있도록 합니다.
+	// 가격이 동일한 경우, 일관된 순서를 보장하기 위해 상품명으로 2차 정렬을 수행합니다.
 	sort.Slice(currentSnapshot.Products, func(i, j int) bool {
-		return currentSnapshot.Products[i].LowPrice < currentSnapshot.Products[j].LowPrice
+		p1 := currentSnapshot.Products[i]
+		p2 := currentSnapshot.Products[j]
+
+		if p1.LowPrice != p2.LowPrice {
+			return p1.LowPrice < p2.LowPrice
+		}
+
+		// 가격이 같으면 이름순으로 정렬 (안정성 확보)
+		return p1.Title < p2.Title
 	})
 
 	// 정렬된 순서대로 상품 목록을 순회하며 신규 상품 및 가격 변경 상품을 식별합니다.
