@@ -249,7 +249,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
-		if p := t.mapToProductUsingFilter(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
+		if p := t.filterMapToProduct(item, includedKeywords, excludedKeywords, commandSettings.Filters.PriceLessThan); p != nil {
 			products = append(products, p)
 		}
 	}
@@ -265,8 +265,8 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 	return products, nil
 }
 
-// mapToProductUsingFilter 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
-func (t *task) mapToProductUsingFilter(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
+// filterMapToProduct 검색 API의 원본 결과를 비즈니스 도메인 모델로 변환하고 필터링을 수행합니다.
+func (t *task) filterMapToProduct(item *searchResponseItem, includedKeywords, excludedKeywords []string, priceLessThan int) *product {
 	if !tasksvc.Filter(item.Title, includedKeywords, excludedKeywords) {
 		return nil
 	}
