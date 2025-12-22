@@ -79,11 +79,10 @@ type watchPriceSnapshot struct {
 type product struct {
 	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
 	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
-
-	Title    string `json:"title"`    // 상품명 (HTML 태그가 포함될 수 있음)
-	Link     string `json:"link"`     // 상품 상세 정보 페이지 URL
-	LowPrice int    `json:"lprice"`   // 판매 최저가 (단위: 원)
-	MallName string `json:"mallName"` // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
+	Title       string `json:"title"`       // 상품명 (HTML 태그가 포함될 수 있음)
+	Link        string `json:"link"`        // 상품 상세 정보 페이지 URL
+	LowPrice    int    `json:"lprice"`      // 판매 최저가 (단위: 원)
+	MallName    string `json:"mallName"`    // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
 }
 
 // Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
@@ -124,11 +123,10 @@ type searchResponse struct {
 type searchResponseItem struct {
 	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
 	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
-
-	Title    string `json:"title"`    // 상품명 (HTML 태그 <b>가 포함된 원본 문자열)
-	Link     string `json:"link"`     // 상품 상세 정보 페이지 URL
-	LowPrice string `json:"lprice"`   // 판매 최저가 (단위: 원)
-	MallName string `json:"mallName"` // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
+	Title       string `json:"title"`       // 상품명 (HTML 태그 <b>가 포함된 원본 문자열)
+	Link        string `json:"link"`        // 상품 상세 정보 페이지 URL
+	LowPrice    string `json:"lprice"`      // 판매 최저가 (단위: 원)
+	MallName    string `json:"mallName"`    // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
 }
 
 // executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
@@ -298,11 +296,10 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 	return &product{
 		ProductID:   item.ProductID,
 		ProductType: item.ProductType,
-
-		Title:    strutil.StripHTMLTags(item.Title), // HTML 태그 제거
-		Link:     item.Link,
-		LowPrice: lowPrice,
-		MallName: item.MallName,
+		Title:       strutil.StripHTMLTags(item.Title), // HTML 태그 제거
+		Link:        item.Link,
+		LowPrice:    lowPrice,
+		MallName:    item.MallName,
 	}
 }
 
@@ -368,10 +365,11 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	// [알림 메시지 상단 요약 메시지]
 	// 사용자가 알림을 받았을 때, 이 결과가 '어떤 조건'에 의해 필터링된 것인지 즉시 파악할 수 있도록 돕습니다.
 	searchConditionsSummary := fmt.Sprintf(`조회 조건은 아래와 같습니다:
-• 검색 키워드 : %s
-• 상품명 포함 키워드 : %s
-• 상품명 제외 키워드 : %s
-• %s원 미만의 상품`,
+
+  • 검색 키워드 : %s
+  • 상품명 포함 키워드 : %s
+  • 상품명 제외 키워드 : %s
+  • %s원 미만의 상품`,
 		commandSettings.Query,
 		commandSettings.Filters.IncludedKeywords,
 		commandSettings.Filters.ExcludedKeywords,

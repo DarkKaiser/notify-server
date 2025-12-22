@@ -38,10 +38,12 @@ func (s *watchProductPriceSettings) validate() error {
 	return nil
 }
 
+// watchProductPriceSnapshot 가격 변동을 감지하기 위한 상품 데이터의 스냅샷입니다.
 type watchProductPriceSnapshot struct {
 	Products []*product `json:"products"`
 }
 
+// product 마켓컬리 상품 상세 페이지에서 조회된 개별 상품 정보를 담는 도메인 모델입니다.
 type product struct {
 	No               int       `json:"no"`                 // 상품 코드
 	Name             string    `json:"name"`               // 상품 이름
@@ -53,6 +55,7 @@ type product struct {
 	IsUnknownProduct bool      `json:"is_unknown_product"` // 알 수 없는 상품인지에 대한 여부(상품 코드가 존재하지 않거나, 이전에는 판매를 하였지만 현재는 판매하고 있지 않는 상품)
 }
 
+// @@@@@
 // 만약 이전에 저장된 최저 가격이 없다면, 가격과 할인 가격에서 더 낮은 가격을 최저 가격으로 변경한다.
 // 만약 이전에 저장된 최저 가격이 있다면, 가격 또는 할인 가격과 이전에 저장된 최저 가격을 비교하여 더 낮은 가격을 최저 가격으로 변경한다.
 func (p *product) updateLowestPrice() {
@@ -72,6 +75,7 @@ func (p *product) updateLowestPrice() {
 	setLowestPrice(p.Price)
 }
 
+// @@@@@
 func (p *product) String(supportsHTML bool, mark string, previousProduct *product) string {
 	// 가격 및 할인 가격을 문자열로 반환하는 함수
 	formatPrice := func(price, discountedPrice, discountRate int) string {
@@ -109,23 +113,34 @@ func (p *product) String(supportsHTML bool, mark string, previousProduct *produc
 	return fmt.Sprintf("%s\n      • 현재 가격 : %s%s%s", name, formatPrice(p.Price, p.DiscountedPrice, p.DiscountRate), previousPriceString, lowestPriceString)
 }
 
-// watchProductColumn 감시할 상품 목록의 헤더
+// @@@@@
+// watchProductColumn CSV 파일에서 감시할 상품 목록의 헤더 컬럼 인덱스를 나타내는 타입입니다.
+//
+// 이 타입은 CSV 파일의 헤더 구조를 코드로 표현하여, 매직 넘버(magic number) 사용을 방지하고
+// 컬럼 접근 시 타입 안전성을 제공합니다.
 type watchProductColumn uint
 
-// 감시할 상품 목록의 헤더 컬럼
+// @@@@@
+// CSV 파일의 각 컬럼 위치를 나타내는 상수입니다.
+//
+// 사용 예시:
+//
+//	productNo := watchProduct[watchProductColumnNo]
+//	productName := watchProduct[watchProductColumnName]
 const (
-	WatchProductColumnNo          watchProductColumn = iota // 상품 코드 컬럼
-	WatchProductColumnName                                  // 상품 이름 컬럼
-	WatchProductColumnWatchStatus                           // 감시 대상인지에 대한 활성/비활성 컬럼
+	watchProductColumnNo          watchProductColumn = iota // 상품 코드 컬럼
+	watchProductColumnName                                  // 상품 이름 컬럼
+	watchProductColumnWatchStatus                           // 감시 대상인지에 대한 활성/비활성 컬럼
 )
 
+// @@@@@
 // 감시 대상인지에 대한 활성/비활성 컬럼의 값
 const (
-	WatchStatusEnabled  = "1"
-	WatchStatusDisabled = "0"
+	watchStatusEnabled  = "1"
+	watchStatusDisabled = "0"
 )
 
-// noinspection GoUnhandledErrorResult,GoErrorStringFormat
+// @@@@@
 func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	//
 	// 감시할 상품 목록을 읽어들인다.
@@ -160,12 +175,12 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	re2 := regexp.MustCompile(`"product":\s*null`)
 
 	for _, watchProduct := range watchProducts {
-		if watchProduct[WatchProductColumnWatchStatus] != WatchStatusEnabled {
+		if watchProduct[watchProductColumnWatchStatus] != watchStatusEnabled {
 			continue
 		}
 
 		// 상품 코드를 숫자로 변환한다.
-		no, err := strconv.Atoi(watchProduct[WatchProductColumnNo])
+		no, err := strconv.Atoi(watchProduct[watchProductColumnNo])
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
 		}
@@ -346,8 +361,8 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 			duplicateProductsBuilder.WriteString("\n")
 		}
 
-		productNo := strings.TrimSpace(product[WatchProductColumnNo])
-		productName := template.HTMLEscapeString(strings.TrimSpace(product[WatchProductColumnName]))
+		productNo := strings.TrimSpace(product[watchProductColumnNo])
+		productName := template.HTMLEscapeString(strings.TrimSpace(product[watchProductColumnName]))
 
 		if supportsHTML == true {
 			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
@@ -361,13 +376,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	for _, product := range actualityTaskResultData.Products {
 		if product.IsUnknownProduct == true {
 			for _, watchProduct := range watchProducts {
-				if watchProduct[WatchProductColumnNo] == strconv.Itoa(product.No) {
+				if watchProduct[watchProductColumnNo] == strconv.Itoa(product.No) {
 					if unknownProductsBuilder.Len() != 0 {
 						unknownProductsBuilder.WriteString("\n")
 					}
 
-					productNo := strings.TrimSpace(watchProduct[WatchProductColumnNo])
-					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[WatchProductColumnName]))
+					productNo := strings.TrimSpace(watchProduct[watchProductColumnNo])
+					productName := template.HTMLEscapeString(strings.TrimSpace(watchProduct[watchProductColumnName]))
 
 					if supportsHTML == true {
 						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
@@ -417,6 +432,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	return message, changedTaskResultData, nil
 }
 
+// @@@@@
 // normalizeDuplicateProducts 함수는 입력된 상품 목록에서 중복된 상품을 제거하고, 중복된 상품을 별도의 목록에 저장한다.
 // 반환 값으로는 중복이 제거된 상품 목록과 중복된 상품 목록을 반환한다.
 func (t *task) normalizeDuplicateProducts(products [][]string) ([][]string, [][]string) {
@@ -430,7 +446,7 @@ func (t *task) normalizeDuplicateProducts(products [][]string) ([][]string, [][]
 			continue
 		}
 
-		productNo := product[WatchProductColumnNo]
+		productNo := product[watchProductColumnNo]
 		if !checkedProducts[productNo] {
 			checkedProducts[productNo] = true
 			distinctProducts = append(distinctProducts, product)
