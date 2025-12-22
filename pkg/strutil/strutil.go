@@ -2,6 +2,7 @@ package strutil
 
 import (
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 )
@@ -10,6 +11,11 @@ var (
 	// ToSnakeCase에서 사용하는 정규식
 	matchFirstRegexp = regexp.MustCompile("(.)([A-Z][a-z]+)")
 	matchAllRegexp   = regexp.MustCompile("([a-z0-9])([A-Z])")
+
+	// HTML 태그 제거에 사용하는 정규식
+	// < 다음에 영문자가 오는 경우만 태그로 인식하여 수학 기호(<) 오탐지를 방지합니다.
+	// 예: "3 < 5"는 유지되고, "<br>"이나 "<b>"는 제거됩니다.
+	htmlTagRegexp = regexp.MustCompile(`</?([a-zA-Z]+)[^>]*>`)
 )
 
 // ToSnakeCase CamelCase 문자열을 snake_case로 변환합니다.
@@ -152,4 +158,11 @@ func MaskSensitiveData(data string) string {
 
 	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
 	return data[:4] + "***" + data[len(data)-4:]
+}
+
+// StripHTMLTags 문자열에서 HTML 태그를 제거하고, HTML 엔티티를 디코딩하여 순수한 텍스트를 반환합니다.
+// 예: "<b>Hello</b> &amp; World" -> "Hello & World"
+func StripHTMLTags(s string) string {
+	stripped := htmlTagRegexp.ReplaceAllString(s, "")
+	return html.UnescapeString(stripped)
 }

@@ -61,7 +61,21 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
@@ -122,7 +136,21 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
@@ -163,7 +191,21 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
@@ -237,7 +279,21 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByScheduler,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -319,7 +375,21 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -385,7 +455,21 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		NotifierID: "test-notifier",
 		RunBy:      tasksvc.RunByUnknown,
 	}
-	appConfig := &config.AppConfig{}
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(ID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchProductPriceCommand),
+						Data: map[string]interface{}{
+							"watch_products_file": "test_products.csv",
+						},
+					},
+				},
+			},
+		},
+	}
 	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)

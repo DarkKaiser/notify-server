@@ -48,37 +48,53 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
 	switch req.CommandID {
 	case WatchProductPriceCommand:
+		settings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		if err != nil {
+			return nil, err
+		}
+
 		tTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
-			for _, t := range tTask.appConfig.Tasks {
-				if tTask.GetID() == tasksvc.ID(t.ID) {
-					for _, c := range t.Commands {
-						if tTask.GetCommandID() == tasksvc.CommandID(c.ID) {
-							settings := &watchProductPriceSettings{}
-							if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
-							}
-							if err := settings.validate(); err != nil {
-								return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
-							}
-
-							originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
-							if ok == false {
-								return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
-							}
-
-							return tTask.executeWatchProductPrice(settings, originTaskResultData, supportsHTML)
-						}
-					}
-					break
-				}
+			originTaskResultData, ok := previousSnapshot.(*watchProductPriceSnapshot)
+			if !ok {
+				return "", nil, tasksvc.NewErrTypeAssertionFailed("TaskResultData", &watchProductPriceSnapshot{}, previousSnapshot)
 			}
-			return "", nil, tasksvc.ErrCommandSettingsNotFound
+
+			return tTask.executeWatchProductPrice(settings, originTaskResultData, supportsHTML)
 		})
 	default:
 		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)
 	}
 
 	return tTask, nil
+}
+
+func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchProductPriceSettings, error) {
+	var commandSettings *watchProductPriceSettings
+
+	for _, t := range appConfig.Tasks {
+		if taskID == tasksvc.ID(t.ID) {
+			for _, c := range t.Commands {
+				if commandID == tasksvc.CommandID(c.ID) {
+					settings := &watchProductPriceSettings{}
+					if err := tasksvc.DecodeMap(settings, c.Data); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
+					}
+					if err := settings.validate(); err != nil {
+						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
+					}
+					commandSettings = settings
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if commandSettings == nil {
+		return nil, tasksvc.ErrCommandSettingsNotFound
+	}
+
+	return commandSettings, nil
 }
 
 type task struct {
