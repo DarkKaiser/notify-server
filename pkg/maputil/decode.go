@@ -2,22 +2,20 @@ package maputil
 
 import "github.com/mitchellh/mapstructure"
 
-// Decode `map[string]interface{}` 형태의 데이터를 지정된 구조체(`d`)로 디코딩합니다.
-// 내부적으로 `mapstructure` 패키지를 사용하여 JSON 마샬링/언마샬링 방식보다 더 높은 성능과 유연성을 제공합니다.
+// Decode 맵(`map[string]any`) 데이터를 Go 구조체(`output`)로 디코딩합니다.
 //
-// [주요 특징]
-// 1. JSON 태그 호환: 구조체 필드에 `json` 태그가 정의되어 있다면 이를 우선적으로 사용합니다.
-// 2. 유연한 타입 변환 (Weak Type Conversion):
-//   - 문자열로 된 숫자를 정수형으로 변환 (예: "100" -> 100)
-//   - 문자열 "true"/"false"를 불리언으로 변환
-//   - 단일 값을 슬라이스로 자동 변환하는 등 유연한 입력을 허용합니다.
+// 내부적으로 `mapstructure` 라이브러리를 사용하여 리플렉션 기반의 디코딩을 수행합니다.
+// 이 함수는 JSON 마샬링/언마샬링 방식(map -> json bytes -> struct)보다 오버헤드가 적고,
+// 타입 변환에 있어 훨씬 더 유연한 처리를 지원합니다.
 //
-// [주의]
-// 매개변수 `d`는 반드시 구조체의 '포인터'여야 합니다. (그렇지 않을 경우 에러가 반환되거나 변경 사항이 반영되지 않습니다.)
-func Decode(d interface{}, m map[string]interface{}) error {
+// [주의사항]
+//  1. 매개변수 `output`은 반드시 구조체의 포인터(Pointer to Struct)여야 합니다.
+//     값 타입(Value Type)이나 nil을 전달할 경우 에러가 반환되거나 디코딩 결과가 반영되지 않습니다.
+//  2. `mapstructure`의 특성상 구조체의 비공개 필드(Unexported Fields)는 디코딩 대상에서 제외됩니다.
+func Decode(input map[string]any, output any) error {
 	config := &mapstructure.DecoderConfig{
 		Metadata:         nil,
-		Result:           d,
+		Result:           output,
 		TagName:          "json", // 기존 json 태그 호환
 		WeaklyTypedInput: true,   // 유연한 타입 변환 지원 (예: string "123" -> int 123)
 	}
@@ -27,5 +25,5 @@ func Decode(d interface{}, m map[string]interface{}) error {
 		return err
 	}
 
-	return decoder.Decode(m)
+	return decoder.Decode(input)
 }

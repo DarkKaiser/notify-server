@@ -76,7 +76,7 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
 					settings := &watchNewPerformancesSettings{}
-					if err := maputil.Decode(settings, c.Data); err != nil {
+					if err := maputil.Decode(c.Data, settings); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {

@@ -79,7 +79,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
 			settings := &taskSettings{}
-			if err := maputil.Decode(settings, t.Data); err != nil {
+			if err := maputil.Decode(t.Data, settings); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 			if err := settings.validate(); err != nil {

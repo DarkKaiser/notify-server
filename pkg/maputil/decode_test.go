@@ -27,19 +27,19 @@ func TestDecode(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		input     map[string]interface{}
-		target    interface{}
-		want      interface{}
+		input     map[string]any
+		target    any
+		want      any
 		expectErr bool
 	}{
 		{
 			name: "성공: 기본 필드 매핑 및 JSON 태그 지원",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":       "test-app",
 				"count":      100,
 				"is_enabled": true,
 				"tags":       []string{"go", "test"},
-				"nested": map[string]interface{}{
+				"nested": map[string]any{
 					"host": "localhost",
 					"port": 8080,
 				},
@@ -59,7 +59,7 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "성공: Weak Type Conversion (문자열 -> 숫자/불리언)",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":       "weak-type",
 				"count":      "500",   // string -> int 자동 변환
 				"is_enabled": "true",  // string -> bool 자동 변환
@@ -76,7 +76,7 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name: "성공: 누락된 필드는 기본값 유지",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name": "partial",
 			},
 			target: &TestConfig{
@@ -90,14 +90,14 @@ func TestDecode(t *testing.T) {
 		},
 		{
 			name:      "실패: Target이 포인터가 아님",
-			input:     map[string]interface{}{"name": "fail"},
+			input:     map[string]any{"name": "fail"},
 			target:    TestConfig{}, // 포인터 아님
 			want:      TestConfig{},
 			expectErr: true,
 		},
 		{
 			name:      "실패: Target이 nil",
-			input:     map[string]interface{}{"name": "fail"},
+			input:     map[string]any{"name": "fail"},
 			target:    nil,
 			want:      nil,
 			expectErr: true,
@@ -108,7 +108,7 @@ func TestDecode(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := Decode(tt.target, tt.input)
+			err := Decode(tt.input, tt.target)
 
 			if tt.expectErr {
 				assert.Error(t, err)

@@ -62,7 +62,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	settings := &taskSettings{}
 	for _, t := range appConfig.Tasks {
 		if req.TaskID == tasksvc.ID(t.ID) {
-			if err := maputil.Decode(settings, t.Data); err != nil {
+			if err := maputil.Decode(t.Data, settings); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
 			}
 			if err := settings.validate(); err != nil {
@@ -119,7 +119,7 @@ func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, command
 			for _, c := range t.Commands {
 				if commandID == tasksvc.CommandID(c.ID) {
 					settings := &watchPriceSettings{}
-					if err := maputil.Decode(settings, c.Data); err != nil {
+					if err := maputil.Decode(c.Data, settings); err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())
 					}
 					if err := settings.validate(); err != nil {
