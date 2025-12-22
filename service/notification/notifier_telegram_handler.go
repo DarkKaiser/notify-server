@@ -140,7 +140,8 @@ func (n *telegramNotifier) enrichMessageWithContext(taskCtx task.TaskContext, me
 	message = n.appendTitle(taskCtx, message)
 
 	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 및 경과 시간 추가
-	message = n.appendCancelCommandAndElapsedTime(taskCtx, message)
+	message = n.appendCancelCommand(taskCtx, message)
+	message = n.appendElapsedTime(taskCtx, message)
 
 	// 3. 오류 발생 시 강조 표시 추가
 	if taskCtx.IsErrorOccurred() {
@@ -171,20 +172,31 @@ func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string)
 	return message
 }
 
-// appendCancelCommandAndElapsedTime TaskContext에서 작업 인스턴스 ID를 기반으로 취소 명령어를 메시지에 추가하고, 실행 경과 시간을 추가합니다.
-func (n *telegramNotifier) appendCancelCommandAndElapsedTime(taskCtx task.TaskContext, message string) string {
+// appendCancelCommand 메시지 하단에 해당 작업을 즉시 취소할 수 있는 명령어 링크를 추가합니다.
+//
+// 이 기능은 TaskContext의 IsCancelable() 상태가 true일 때만 활성화됩니다.
+// 주로 사용자가 직접 실행한 장기 실행 작업에 대해, 알림 메시지 자체를 통해 손쉽게 작업을
+// 취소할 수 있는 UX를 제공하기 위함입니다.
+//
+// 생성되는 명령어 형식: /cancel_{InstanceID} (예: /cancel_inst_12345)
+func (n *telegramNotifier) appendCancelCommand(taskCtx task.TaskContext, message string) string {
+	if !taskCtx.IsCancelable() {
+		return message
+	}
+
 	instanceID := taskCtx.GetInstanceID()
 	if instanceID.IsEmpty() {
 		return message
 	}
 
-	message += fmt.Sprintf("\n%s%s%s%s", telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, instanceID)
+	return fmt.Sprintf("%s\n%s%s%s%s", message, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator, instanceID)
+}
 
-	// 작업 실행 경과 시간 추가 (실행 완료된 경우)
+// appendElapsedTime 실행 경과 시간을 메시지에 추가합니다.
+func (n *telegramNotifier) appendElapsedTime(taskCtx task.TaskContext, message string) string {
 	if elapsedTimeAfterRun := taskCtx.GetElapsedTimeAfterRun(); elapsedTimeAfterRun > 0 {
-		message += formatElapsedTime(elapsedTimeAfterRun)
+		return message + formatElapsedTime(elapsedTimeAfterRun)
 	}
-
 	return message
 }
 

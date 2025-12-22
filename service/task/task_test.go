@@ -59,14 +59,17 @@ func TestTask_Run(t *testing.T) {
 
 	tests := []struct {
 		name                 string
+		runBy                RunBy                                                             // 실행 주체 (User vs Scheduler)
 		setup                func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) // 테스트 환경 설정
 		preRunAction         func(task *Task)                                                  // Run 실행 전 동작 (예: 취소)
+		verifyContext        func(t *testing.T, ctxs []TaskContext)                            // Context 상태 검증 콜백
 		expectedNotifyCount  int                                                               // 알림 발송 횟수 (에러 알림 포함)
 		expectedMessageParts []string                                                          // 알림 메시지에 포함되어야 할 문자열
 		expectPanic          bool                                                              // Panic 발생 여부 (Recover 되었는지)
 	}{
 		{
-			name: "성공: 정상적인 실행 및 저장",
+			name:  "성공: 정상적인 실행 및 저장 (Scheduler)",
+			runBy: RunByScheduler,
 			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
@@ -78,8 +81,39 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 스케줄러 실행 -> 취소 불가
+				assert.NotEmpty(t, ctxs)
+				for _, ctx := range ctxs {
+					assert.False(t, ctx.IsCancelable(), "스케줄러 실행 작업은 취소 불가능해야 합니다")
+				}
+			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"성공 메시지"},
+		},
+		{
+			name:  "성공: 정상적인 실행 및 저장 (User) - 취소 가능성 검증",
+			runBy: RunByUser,
+			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+				store := &MockTaskResultStorage{}
+				store.On("Load", tID, cID, mock.Anything).Return(nil)
+				store.On("Save", tID, cID, mock.Anything).Return(nil)
+
+				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+					return "사용자 요청 완료", map[string]string{"foo": "bar"}, nil
+				}
+				registerTestConfig(tID, cID)
+				return store, exec
+			},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 사용자 실행 -> 실행 중에는 취소 가능했지만, 최종 결과 알림 시점에는 취소 불가능으로 변경됨
+				// MockSender에 전달된 컨텍스트는 이미 WithCancelable(false) 처리된 상태임
+				assert.NotEmpty(t, ctxs)
+				lastCtx := ctxs[len(ctxs)-1]
+				assert.False(t, lastCtx.IsCancelable(), "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
+			},
+			expectedNotifyCount:  1,
+			expectedMessageParts: []string{"사용자 요청 완료"},
 		},
 		{
 			name: "성공: 메시지가 없으면 알림을 보내지 않음",
@@ -107,6 +141,12 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{msgExecuteFuncNotInitialized},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 에러 알림 시에도 취소 불가능해야 함
+				for _, ctx := range ctxs {
+					assert.False(t, ctx.IsCancelable())
+				}
+			},
 		},
 		{
 			name: "실패: Storage 미설정 (방어 코드)",
@@ -151,6 +191,12 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"API 호출 실패", msgTaskExecutionFailed},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 실패 알림 시 취소 불가능 (작업 종료됨)
+				for _, ctx := range ctxs {
+					assert.False(t, ctx.IsCancelable())
+				}
+			},
 		},
 		{
 			name: "에러: 결과 저장 실패 (Save Error)",
@@ -167,6 +213,12 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  2, // 1. 정상 메시지, 2. 저장 실패 에러 메시지
 			expectedMessageParts: []string{"성공했으나 저장실패", "DB Disk Full"},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 두 번의 알림 모두 완료 후 시점이므로 취소 불가능해야 함
+				for _, ctx := range ctxs {
+					assert.False(t, ctx.IsCancelable())
+				}
+			},
 		},
 		{
 			name: "Panic: 실행 중 런타임 패닉 발생 (Recovery)",
@@ -185,7 +237,8 @@ func TestTask_Run(t *testing.T) {
 			expectedMessageParts: []string{msgTaskExecutionFailed, "Task 실행 도중 Panic 발생", "예기치 못한 닐 포인터 참조"},
 		},
 		{
-			name: "경고: 이전 데이터 로드 실패 (Load Error) - 실행은 계속됨",
+			name:  "경고: 이전 데이터 로드 실패 (Load Error) - 실행은 계속됨 (User Run)",
+			runBy: RunByUser,
 			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(errors.New("Corrupted Data"))
@@ -197,6 +250,13 @@ func TestTask_Run(t *testing.T) {
 				}
 				registerTestConfig(tID, cID)
 				return store, exec
+			},
+			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+				// 첫 번째 알림(Load Error Warn)은 작업 진행 중이므로 취소 가능해야 함 (User Run)
+				require.Len(t, ctxs, 2)
+				assert.True(t, ctxs[0].IsCancelable(), "진행 중 발생한 경고 알림은 취소 가능해야 합니다 (User Run)")
+				// 두 번째 알림(완료)은 취소 불가능
+				assert.False(t, ctxs[1].IsCancelable(), "완료 알림은 취소 불가능해야 합니다")
 			},
 			expectedNotifyCount:  2, // 1. Load 에러 알림(Warn), 2. 실행 결과 알림
 			expectedMessageParts: []string{"이전 작업결과데이터 로딩이 실패", "복구 후 실행"},
@@ -215,7 +275,12 @@ func TestTask_Run(t *testing.T) {
 			store, exec := tt.setup(tID, cID)
 
 			// Task 초기화
-			task := NewBaseTask(tID, cID, "test_inst", "test_notifier", RunByScheduler)
+			// 테스트 케이스별 runBy 설정 적용 (기본값: RunByScheduler)
+			runBy := tt.runBy
+			if runBy == RunByUnknown {
+				runBy = RunByScheduler
+			}
+			task := NewBaseTask(tID, cID, "test_inst", "test_notifier", runBy)
 			if store != nil {
 				task.SetStorage(store)
 			}
@@ -244,6 +309,10 @@ func TestTask_Run(t *testing.T) {
 				for _, part := range tt.expectedMessageParts {
 					assert.Contains(t, allMsg, part, "메시지에 예상된 문구가 포함되어야 합니다")
 				}
+			}
+
+			if tt.verifyContext != nil {
+				tt.verifyContext(t, mockSender.CapturedContexts)
 			}
 
 			if store != nil {

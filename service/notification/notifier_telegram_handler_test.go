@@ -156,6 +156,43 @@ func TestTelegramNotifier_Notify_TableDriven(t *testing.T) {
 			},
 			waitForCalls: 1,
 		},
+		{
+			name:    "Cancelable Task (Running)",
+			message: "Task Running",
+			taskCtx: task.NewTaskContext().
+				WithInstanceID(task.InstanceID("INST_RUN"), 0).
+				WithCancelable(true),
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(1)
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.Contains(msg.Text, "/cancel_INST_RUN")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil)
+			},
+			waitForCalls: 1,
+		},
+		{
+			name:    "Finished Task (Not Cancelable)",
+			message: "Task Finished",
+			taskCtx: task.NewTaskContext().
+				WithInstanceID(task.InstanceID("INST_FIN"), 100).
+				WithCancelable(false),
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(1)
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					// Should contain elapsed time but NOT contain cancel command
+					return ok &&
+						strings.Contains(msg.Text, "1분") &&
+						!strings.Contains(msg.Text, "/cancel_INST_FIN")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil)
+			},
+			waitForCalls: 1,
+		},
 	}
 
 	for _, tt := range tests {

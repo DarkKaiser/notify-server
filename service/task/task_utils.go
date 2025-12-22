@@ -79,16 +79,20 @@ func DecodeMap(d interface{}, m map[string]interface{}) error {
 }
 
 func Filter(s string, includedKeywords, excludedKeywords []string) bool {
+	// 대소문자 구분 없이 비교하기 위해 소문자로 변환
+	lowerS := strings.ToLower(s)
+
 	for _, k := range includedKeywords {
 		includedOneOfManyKeywords := strutil.SplitAndTrim(k, "|")
 		if len(includedOneOfManyKeywords) == 1 {
-			if !strings.Contains(s, k) {
+			lowerK := strings.ToLower(k)
+			if !strings.Contains(lowerS, lowerK) {
 				return false
 			}
 		} else {
 			var contains = false
 			for _, keyword := range includedOneOfManyKeywords {
-				if strings.Contains(s, keyword) {
+				if strings.Contains(lowerS, strings.ToLower(keyword)) {
 					contains = true
 					break
 				}
@@ -100,7 +104,7 @@ func Filter(s string, includedKeywords, excludedKeywords []string) bool {
 	}
 
 	for _, k := range excludedKeywords {
-		if strings.Contains(s, k) {
+		if strings.Contains(lowerS, strings.ToLower(k)) {
 			return false
 		}
 	}

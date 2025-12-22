@@ -114,15 +114,25 @@ func TestTaskContext_Accessors(t *testing.T) {
 			},
 		},
 		{
+			name: "WithCancelable",
+			setup: func(ctx TaskContext) TaskContext {
+				return ctx.WithCancelable(true)
+			},
+			verification: func(t *testing.T, ctx TaskContext) {
+				assert.True(t, ctx.IsCancelable())
+			},
+		},
+		{
 			name: "Chained Calls",
 			setup: func(ctx TaskContext) TaskContext {
-				return ctx.WithTask("T1", "C1").WithInstanceID("I1", 100).WithTitle("Chained").WithError()
+				return ctx.WithTask("T1", "C1").WithInstanceID("I1", 100).WithTitle("Chained").WithError().WithCancelable(true)
 			},
 			verification: func(t *testing.T, ctx TaskContext) {
 				assert.Equal(t, ID("T1"), ctx.GetID())
 				assert.Equal(t, InstanceID("I1"), ctx.GetInstanceID())
 				assert.Equal(t, "Chained", ctx.GetTitle())
 				assert.True(t, ctx.IsErrorOccurred())
+				assert.True(t, ctx.IsCancelable())
 			},
 		},
 		{
@@ -155,6 +165,7 @@ func TestTaskContext_Defaults(t *testing.T) {
 	assert.Equal(t, int64(0), ctx.GetElapsedTimeAfterRun())
 	assert.Empty(t, ctx.GetTitle())
 	assert.False(t, ctx.IsErrorOccurred())
+	assert.False(t, ctx.IsCancelable())
 }
 
 // TestTaskContext_Concurrency verifies thread safety of the immutable design.

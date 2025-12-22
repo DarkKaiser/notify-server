@@ -16,6 +16,8 @@ const (
 	ctxKeyInstanceID ctxKey = "Task.InstanceID"
 	// ctxKeyTitle 알림 메시지의 제목을 지정하는 키입니다.
 	ctxKeyTitle ctxKey = "Title"
+	// ctxKeyCancelable 작업의 취소 가능 여부를 제어하는 컨텍스트 키입니다.
+	ctxKeyCancelable ctxKey = "Cancelable"
 	// ctxKeyElapsedTimeAfterRun 작업 실행 후 경과 시간을 저장하는 키입니다.
 	ctxKeyElapsedTimeAfterRun ctxKey = "Task.ElapsedTimeAfterRun"
 	// ctxKeyErrorOccurred 작업 실행 중 에러 발생 여부를 나타내는 키입니다.
@@ -30,6 +32,7 @@ type TaskContext interface {
 	WithTask(taskID ID, commandID CommandID) TaskContext
 	WithInstanceID(instanceID InstanceID, elapsedTimeAfterRun int64) TaskContext
 	WithTitle(title string) TaskContext
+	WithCancelable(cancelable bool) TaskContext
 	WithError() TaskContext
 
 	GetID() ID
@@ -37,6 +40,7 @@ type TaskContext interface {
 	GetInstanceID() InstanceID
 	GetTitle() string
 	GetElapsedTimeAfterRun() int64
+	IsCancelable() bool
 	IsErrorOccurred() bool
 }
 
@@ -78,6 +82,13 @@ func (c *taskContext) WithInstanceID(instanceID InstanceID, elapsedTimeAfterRun 
 func (c *taskContext) WithTitle(title string) TaskContext {
 	return &taskContext{
 		Context: context.WithValue(c.Context, ctxKeyTitle, title),
+	}
+}
+
+// WithCancelable 취소 가능 여부를 컨텍스트에 추가합니다.
+func (c *taskContext) WithCancelable(cancelable bool) TaskContext {
+	return &taskContext{
+		Context: context.WithValue(c.Context, ctxKeyCancelable, cancelable),
 	}
 }
 
@@ -126,6 +137,14 @@ func (c *taskContext) GetElapsedTimeAfterRun() int64 {
 		return v
 	}
 	return 0
+}
+
+// IsCancelable 취소 가능 여부를 확인합니다. (기본값: false)
+func (c *taskContext) IsCancelable() bool {
+	if v, ok := c.Context.Value(ctxKeyCancelable).(bool); ok {
+		return v
+	}
+	return false
 }
 
 // IsErrorOccurred 에러 발생 여부를 확인합니다. (기본값: false)
