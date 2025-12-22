@@ -19,6 +19,10 @@ func Decode[T any](input map[string]any) (*T, error) {
 		Result:           output,
 		TagName:          "json", // 기존 json 태그 호환
 		WeaklyTypedInput: true,   // 유연한 타입 변환 지원 (예: string "123" -> int 123)
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(), // "10s" -> time.Duration
+			mapstructure.StringToSliceHookFunc(","),     // "a,b,c" -> []string
+		),
 	}
 
 	decoder, err := mapstructure.NewDecoder(config)

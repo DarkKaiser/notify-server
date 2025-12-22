@@ -63,6 +63,7 @@ func TestDecode(t *testing.T) {
 	t.Run("UnexportedFields_Ignored", testUnexportedFieldsIgnored)
 	t.Run("ZeroValues_And_PartialInput", testZeroValuesAndPartialInput)
 	t.Run("ErrorCases", testErrorCases)
+	t.Run("TimeDuration_Parsing", testTimeDurationParsing)
 }
 
 func testBasicStructMapping(t *testing.T) {
@@ -103,6 +104,7 @@ func testNestedStructMapping(t *testing.T) {
 func testSliceAndMapMapping(t *testing.T) {
 	t.Parallel()
 
+	// 1. Basic Slice & Map
 	input := map[string]any{
 		"tags": []string{"go", "json", "map"},
 		"config": map[string]any{
@@ -110,11 +112,32 @@ func testSliceAndMapMapping(t *testing.T) {
 			"retry":   3,
 		},
 	}
-
 	got, err := Decode[SliceMapStruct](input)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"go", "json", "map"}, got.Tags)
 	assert.Equal(t, map[string]int{"timeout": 100, "retry": 3}, got.Config)
+
+	// 2. Slice Hook Test (Comma Separated String -> Slice)
+	t.Run("StringToSliceHook", func(t *testing.T) {
+		hookInput := map[string]any{
+			"tags": "dev,qa,prod",
+		}
+		gotHook, err := Decode[SliceMapStruct](hookInput)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"dev", "qa", "prod"}, gotHook.Tags)
+	})
+
+	// 3. Empty String Case
+	t.Run("EmptyStringSlice", func(t *testing.T) {
+		emptyInput := map[string]any{
+			"tags": "",
+		}
+		gotEmpty, err := Decode[SliceMapStruct](emptyInput)
+		require.NoError(t, err)
+		// mapstructure의 StringToSliceHookFunc는 빈 문자열을 분리할 때 빈 슬라이스를 반환합니다.
+		// strings.Split("", ",") -> [""] (길이 1)과는 다른 동작입니다.
+		assert.Empty(t, gotEmpty.Tags)
+	})
 }
 
 func testPointerFieldsMapping(t *testing.T) {
@@ -146,25 +169,13 @@ func testWeakTypeConversion(t *testing.T) {
 	t.Parallel()
 
 	// mapstructure.DecoderConfig.WeaklyTypedInput = true 효과 검증
-	// input := map[string]any{
-	// 	"name":       12345,  // int -> string (주의: mapstructure 기본 동작에서 int->string은 지원되지 않을 수 있음. 확인 필요)
-	// 	"age":        "42",   // string -> int
-	// 	"is_enabled": "true", // string -> bool
-	// }
-	// *주의*: WeaklyTypedInput은 주로 "string -> primitive", "empty -> zero" 등을 지원함.
-	// int -> string 변환은 지원하지 않을 수 있음. 테스트로 검증.
-
-	// 수정: BasicStruct의 Name은 string임. 12345(int)를 넣으면...
-	// mapstructure 문서를 보면 WeaklyTypedInput이 켜져 있어도 int->string 변환은 명시되어 있지 않음.
-	// 하지만 테스트해보는 것이 좋음. 만약 실패하면 input 수정.
-
-	inputSafe := map[string]any{
-		"name":       "12345", // string <- string
-		"age":        "42",    // int <- string
-		"is_enabled": "1",     // bool <- string ("1"은 true)
+	input := map[string]any{
+		"name":       12345,  // int -> string (주의: mapstructure 기본 동작에서 int->string은 지원되지 않을 수 있음. 확인 필요)
+		"age":        "42",   // string -> int
+		"is_enabled": "true", // string -> bool
 	}
 
-	got, err := Decode[BasicStruct](inputSafe)
+	got, err := Decode[BasicStruct](input)
 	require.NoError(t, err)
 	assert.Equal(t, "12345", got.Name)
 	assert.Equal(t, 42, got.Age)
@@ -210,20 +221,12 @@ func testZeroValuesAndPartialInput(t *testing.T) {
 func testErrorCases(t *testing.T) {
 	t.Parallel()
 
-	// 1. T가 구조체가 아닌 경우 (예: map, slice, int 등)
-	// mapstructure는 map -> map 디코딩도 지원하므로 에러가 나지 않을 수 있음.
-	// 하지만 의도치 않은 사용일 수 있음.
-
-	// 2. Decode 내부 로직상 output은 new(T)로 생성됨.
-	// T가 int라면 *int가 됨. map -> int 디코딩 시도는 mapstructure에서 에러 반환 예상.
 	t.Run("Unsupported_Target_Type", func(t *testing.T) {
 		input := map[string]any{"key": "value"}
 		_, err := Decode[int](input) // map -> int
 		assert.Error(t, err)
-		// 에러 메시지에 "unable to decode" 등의 내용이 포함될 것임
 	})
 
-	// 3. input이 nil인 경우 -> empty map처럼 취급되어 에러 없이 Zero Value 구조체 반환될 가능성 높음
 	t.Run("Nil_Input", func(t *testing.T) {
 		var input map[string]any = nil
 		got, err := Decode[BasicStruct](input)
@@ -231,4 +234,39 @@ func testErrorCases(t *testing.T) {
 		assert.NotNil(t, got)
 		assert.Equal(t, "", got.Name) // Zero Value
 	})
+}
+
+func testTimeDurationParsing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		input     string
+		want      time.Duration
+		expectErr bool
+	}{
+		{name: "Seconds", input: "10s", want: 10 * time.Second, expectErr: false},
+		{name: "Minutes", input: "5m", want: 5 * time.Minute, expectErr: false},
+		{name: "Combined", input: "1h30m", want: 90 * time.Minute, expectErr: false},
+		{name: "Microseconds", input: "500us", want: 500 * time.Microsecond, expectErr: false},
+		{name: "Zero", input: "0s", want: 0, expectErr: false},
+		{name: "Invalid", input: "invalid", want: 0, expectErr: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			input := map[string]any{"duration": tt.input}
+			got, err := Decode[TimeStruct](input)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got.Duration)
+			}
+		})
+	}
 }
