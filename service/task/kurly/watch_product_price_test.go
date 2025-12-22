@@ -38,7 +38,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 				WatchProductsFile: "",
 			},
 			wantErr:   true,
-			errSubstr: "파일이 입력되지 않았습니다",
+			errSubstr: "watch_products_file이 입력되지 않았거나 공백입니다",
 		},
 		{
 			name: "실패: 지원하지 않는 파일 확장자 (.txt)",
@@ -46,7 +46,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 				WatchProductsFile: "products.txt",
 			},
 			wantErr:   true,
-			errSubstr: ".CSV 파일만 사용할 수 있습니다",
+			errSubstr: ".csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
 		},
 	}
 
