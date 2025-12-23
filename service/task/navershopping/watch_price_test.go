@@ -274,7 +274,68 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
 				require.NoError(t, err)
-				assert.Len(t, p, 1)
+				require.Len(t, p, 1)
+			},
+		},
+		{
+			name:     "성공: 키워드 매칭 (OR 조건 - A 또는 B 포함)",
+			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Galaxy|iPhone").WithPriceLessThan(999999).Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
+				resp := searchResponse{
+					Total: 3, Items: []*searchResponseItem{
+						{Title: "Galaxy S25", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (Galaxy)
+						{Title: "iPhone 16", Link: "L2", LowPrice: "1000", ProductID: "2"},  // 매칭 (iPhone)
+						{Title: "Pixel 9", Link: "L3", LowPrice: "1000", ProductID: "3"},    // 미매칭
+					},
+				}
+				m.SetResponse(url, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 2)
+				assert.Equal(t, "Galaxy S25", p[0].Title)
+				assert.Equal(t, "iPhone 16", p[1].Title)
+			},
+		},
+		{
+			name:     "성공: 키워드 매칭 (복합 조건 - 포함 AND 제외)",
+			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Case").WithExcludedKeywords("Silicon,Hard").WithPriceLessThan(999999).Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
+				resp := searchResponse{
+					Total: 4, Items: []*searchResponseItem{
+						{Title: "Leather Case", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (Case 포함, 제외어 없음)
+						{Title: "Silicon Case", Link: "L2", LowPrice: "1000", ProductID: "2"}, // 제외 (Silicon)
+						{Title: "Hard Case", Link: "L3", LowPrice: "1000", ProductID: "3"},    // 제외 (Hard)
+						{Title: "Metal Bumper", Link: "L4", LowPrice: "1000", ProductID: "4"}, // 미매칭 (Case 미포함)
+					},
+				}
+				m.SetResponse(url, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 1)
+				assert.Equal(t, "Leather Case", p[0].Title)
+			},
+		},
+		{
+			name:     "성공: 키워드 매칭 (대소문자 혼합 및 공백 처리)",
+			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords(" apple watch | galaxy TAB ").WithPriceLessThan(999999).Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
+				resp := searchResponse{
+					Total: 3, Items: []*searchResponseItem{
+						{Title: "Apple Watch Series 9", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (apple watch)
+						{Title: "Galaxy Tab S9", Link: "L2", LowPrice: "1000", ProductID: "2"},        // 매칭 (galaxy TAB)
+						{Title: "Galaxy Watch 6", Link: "L3", LowPrice: "1000", ProductID: "3"},       // 미매칭
+					},
+				}
+				m.SetResponse(url, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				require.Len(t, p, 2)
 			},
 		},
 	}
@@ -488,6 +549,10 @@ func (b *SettingsBuilder) WithQuery(q string) *SettingsBuilder {
 }
 func (b *SettingsBuilder) WithPriceLessThan(p int) *SettingsBuilder {
 	b.settings.Filters.PriceLessThan = p
+	return b
+}
+func (b *SettingsBuilder) WithIncludedKeywords(k string) *SettingsBuilder {
+	b.settings.Filters.IncludedKeywords = k
 	return b
 }
 func (b *SettingsBuilder) WithExcludedKeywords(k string) *SettingsBuilder {

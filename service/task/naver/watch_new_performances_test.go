@@ -155,7 +155,8 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := strutil.MatchesKeywords(tt.item, tt.included, tt.excluded)
+			matcher := strutil.NewKeywordMatcher(tt.included, tt.excluded)
+			got := matcher.Match(tt.item)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -184,7 +185,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	tests := []struct {
 		name          string
 		html          string
-		filters       *keywordFilters
+		filters       *keywordMatchers
 		expectedCount int                                             // 키워드 매칭 후 예상 개수
 		expectedRaw   int                                             // 키워드 매칭 전 raw 개수
 		expectError   bool                                            // 에러 발생 여부
@@ -193,7 +194,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:          "성공: 단일 항목 파싱",
 			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "cats.jpg")),
-			filters:       &keywordFilters{}, // 필터 없음
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)}, // 필터 없음
 			expectedCount: 1,
 			expectedRaw:   1,
 			validateItems: func(t *testing.T, performances []*performance) {
@@ -207,8 +208,9 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Cats Musical", "Seoul", "1.jpg"),
 				makeItem("Dog Show", "Seoul", "2.jpg")),
-			filters: &keywordFilters{
-				TitleIncluded: []string{"Musical"},
+			filters: &keywordMatchers{
+				TitleMatcher: strutil.NewKeywordMatcher([]string{"Musical"}, nil),
+				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
 			expectedCount: 1, // Cats only
 			expectedRaw:   2,
@@ -221,8 +223,9 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Happy Musical", "Seoul", "1.jpg"),
 				makeItem("Sad Drama", "Seoul", "2.jpg")),
-			filters: &keywordFilters{
-				TitleExcluded: []string{"Drama"},
+			filters: &keywordMatchers{
+				TitleMatcher: strutil.NewKeywordMatcher(nil, []string{"Drama"}),
+				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
 			expectedCount: 1, // Happy only
 			expectedRaw:   2,
@@ -231,15 +234,61 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
+			name: "성공: 키워드 매칭 (OR 조건 - A 또는 B)",
+			html: fmt.Sprintf("<ul>%s%s%s</ul>",
+				makeItem("Musical Cats", "Seoul", ""),
+				makeItem("Musical Dogs", "Seoul", ""),
+				makeItem("Musical Birds", "Seoul", "")),
+			filters: &keywordMatchers{
+				TitleMatcher: strutil.NewKeywordMatcher([]string{"Cats|Dogs"}, nil), // "Cats" OR "Dogs"
+				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
+			},
+			expectedCount: 2, // Cats, Dogs
+			expectedRaw:   3,
+			validateItems: func(t *testing.T, performances []*performance) {
+				require.Len(t, performances, 2)
+				assert.Equal(t, "Musical Cats", performances[0].Title)
+				assert.Equal(t, "Musical Dogs", performances[1].Title)
+			},
+		},
+		{
+			name: "성공: 키워드 매칭 (복합 조건 - 포함 AND 제외)",
+			html: fmt.Sprintf("<ul>%s%s</ul>",
+				makeItem("Perfect Musical", "Seoul", ""),
+				makeItem("Boring Musical", "Seoul", "")),
+			filters: &keywordMatchers{
+				TitleMatcher: strutil.NewKeywordMatcher([]string{"Musical"}, []string{"Boring"}), // Musical 포함 AND Boring 제외
+				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
+			},
+			expectedCount: 1, // Perfect Musical only
+			expectedRaw:   2,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "Perfect Musical", performances[0].Title)
+			},
+		},
+		{
+			name: "성공: 키워드 매칭 (대소문자 및 공백 처리)",
+			html: fmt.Sprintf("<ul>%s</ul>", makeItem("musical CATS", "Seoul", "")),
+			filters: &keywordMatchers{
+				TitleMatcher: strutil.NewKeywordMatcher([]string{"  cats  "}, nil), // 공백이 있어도 Trim 후 매칭, 대소문자 무시
+				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
+			},
+			expectedCount: 1,
+			expectedRaw:   1,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "musical CATS", performances[0].Title)
+			},
+		},
+		{
 			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 제목)",
 			html:        `<ul><li><div class="item"><div class="title_box"></div></div></li></ul>`, // strong.name 없음
-			filters:     &keywordFilters{},
+			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
 			expectError: true,
 		},
 		{
 			name:          "성공: 썸네일 누락 (Soft Fail)",
 			html:          `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
-			filters:       &keywordFilters{},
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
 			expectedCount: 1,
 			expectedRaw:   1,
 			expectError:   false,
@@ -252,7 +301,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:          "성공: 빈 결과",
 			html:          `<ul></ul>`,
-			filters:       &keywordFilters{},
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
 			expectedCount: 0,
 			expectedRaw:   0,
 			expectError:   false,
@@ -563,6 +612,14 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 		return string(b)
 	}
 
+	// Filter Test Settings
+	settingsWithFilters := &watchNewPerformancesSettings{
+		Query:    "FilterTest",
+		MaxPages: 1,
+	}
+	settingsWithFilters.Filters.Title.IncludedKeywords = "Keep"
+	settingsWithFilters.Filters.Title.ExcludedKeywords = "Drop"
+
 	tests := []struct {
 		name            string
 		settings        *watchNewPerformancesSettings
@@ -641,6 +698,22 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			},
 			// fetchPerformances에서 parse error를 그대로 반환하거나 wrapping함
 			expectedError: "불러온 페이지의 문서구조가 변경되었습니다",
+		},
+		{
+			name:     "성공: 통합 필터링 (키워드 매칭으로 일부 항목 제외)",
+			settings: settingsWithFilters,
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s%s%s</ul>",
+					makePerformanceHTML("Keep Item", "Seoul"),      // Match
+					makePerformanceHTML("Keep Drop Item", "Seoul"), // Exclude (Contains 'Drop')
+					makePerformanceHTML("Other Item", "Seoul"),     // Exclude (No 'Keep')
+				)),
+			},
+			expectedMessage: []string{"Keep Item"},
+			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				require.Equal(t, 1, len(snapshot.Performances))
+				assert.Equal(t, "Keep Item", snapshot.Performances[0].Title)
+			},
 		},
 	}
 

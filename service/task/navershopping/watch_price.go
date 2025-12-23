@@ -238,9 +238,11 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		return nil, nil
 	}
 
-	// 키워드 매칭 조건을 사전 파싱합니다.
+	// 키워드 매칭을 위한 Matcher를 생성합니다.
+	// 반복문 내부에서 파싱 비용을 절감하기 위해 루프 진입 전에 미리 생성합니다.
 	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
 	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
+	matcher := strutil.NewKeywordMatcher(includedKeywords, excludedKeywords)
 
 	// 결과 슬라이스의 용량(Capacity)을 원본 데이터 크기만큼 미리 확보합니다.
 	// 키워드 매칭으로 인해 실제 크기는 이보다 작을 수 있지만, Go 슬라이스의 동적 확장(Dynamic Resizing) 및
@@ -253,7 +255,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
 		plainTitle := strutil.StripHTMLTags(item.Title)
 
-		if !strutil.MatchesKeywords(plainTitle, includedKeywords, excludedKeywords) {
+		if !matcher.Match(plainTitle) {
 			continue
 		}
 
