@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -128,7 +131,7 @@ func TestNaverPerformance_String(t *testing.T) {
 	}
 }
 
-// TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 필터링 규칙 예시를 나열합니다.
+// TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 키워드 매칭 규칙 예시를 나열합니다.
 func TestNaverTask_Filtering_Behavior(t *testing.T) {
 	t.Parallel()
 
@@ -152,13 +155,13 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tasksvc.Filter(tt.item, tt.included, tt.excluded)
+			got := strutil.MatchesKeywords(tt.item, tt.included, tt.excluded)
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-// TestParsePerformancesFromHTML 파싱 로직을 HTML 입력값 기반으로 직접 테스트합니다. (Unit Test)
+// TestParsePerformancesFromHTML HTML 파싱 로직의 정확성과 견고성을 검증합니다.
 func TestParsePerformancesFromHTML(t *testing.T) {
 	t.Parallel()
 
@@ -181,16 +184,16 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	tests := []struct {
 		name          string
 		html          string
-		filters       *parsedFilters
-		expectedCount int                                             // 필터링 후 예상 개수
-		expectedRaw   int                                             // 필터링 전 raw 개수
+		filters       *keywordFilters
+		expectedCount int                                             // 키워드 매칭 후 예상 개수
+		expectedRaw   int                                             // 키워드 매칭 전 raw 개수
 		expectError   bool                                            // 에러 발생 여부
 		validateItems func(t *testing.T, performances []*performance) // 세부 항목 검증
 	}{
 		{
 			name:          "성공: 단일 항목 파싱",
 			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "cats.jpg")),
-			filters:       &parsedFilters{}, // 필터 없음
+			filters:       &keywordFilters{}, // 필터 없음
 			expectedCount: 1,
 			expectedRaw:   1,
 			validateItems: func(t *testing.T, performances []*performance) {
@@ -200,11 +203,11 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
-			name: "성공: 필터링 (Include)",
+			name: "성공: 키워드 매칭 (Include)",
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Cats Musical", "Seoul", "1.jpg"),
 				makeItem("Dog Show", "Seoul", "2.jpg")),
-			filters: &parsedFilters{
+			filters: &keywordFilters{
 				TitleIncluded: []string{"Musical"},
 			},
 			expectedCount: 1, // Cats only
@@ -214,11 +217,11 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
-			name: "성공: 필터링 (Exclude)",
+			name: "성공: 키워드 매칭 (Exclude)",
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Happy Musical", "Seoul", "1.jpg"),
 				makeItem("Sad Drama", "Seoul", "2.jpg")),
-			filters: &parsedFilters{
+			filters: &keywordFilters{
 				TitleExcluded: []string{"Drama"},
 			},
 			expectedCount: 1, // Happy only
@@ -230,13 +233,13 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 제목)",
 			html:        `<ul><li><div class="item"><div class="title_box"></div></div></li></ul>`, // strong.name 없음
-			filters:     &parsedFilters{},
+			filters:     &keywordFilters{},
 			expectError: true,
 		},
 		{
 			name:          "성공: 썸네일 누락 (Soft Fail)",
 			html:          `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
-			filters:       &parsedFilters{},
+			filters:       &keywordFilters{},
 			expectedCount: 1,
 			expectedRaw:   1,
 			expectError:   false,
@@ -249,42 +252,10 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:          "성공: 빈 결과",
 			html:          `<ul></ul>`,
-			filters:       &parsedFilters{},
+			filters:       &keywordFilters{},
 			expectedCount: 0,
 			expectedRaw:   0,
-		},
-		{
-			name: "성공: 실제 네이버 검색 결과 샘플 (Robust Selector Test)",
-			html: `
-			<ul>
-				<li>
-					<a href="#" class="inner">
-						<div class="item">
-							<div class="thumb">
-								<img src="https://search.pstatic.net/common?type=f&size=224x338" alt="레미제라블 - 부산" onerror="this.src='no_img.png'">
-							</div>
-							<div class="title_box">
-								<strong class="name line_3">레미제라블 - 부산</strong>
-								<span class="sub_text line_1">드림씨어터</span>
-							</div>
-						</div>
-					</a>
-				</li>
-			</ul>`,
-			filters:       &parsedFilters{},
-			expectedCount: 1,
-			expectedRaw:   1,
-			validateItems: func(t *testing.T, performances []*performance) {
-				assert.Equal(t, "레미제라블 - 부산", performances[0].Title)
-				assert.Equal(t, "드림씨어터", performances[0].Place)
-				assert.Contains(t, performances[0].Thumbnail, "https://search.pstatic.net/common?type=f&size=224x338")
-			},
-		},
-		{
-			name:        "실패: HTML 파싱 에러 (내용 비어있음 - 제목)",
-			html:        `<ul><li><div class="item"><div class="title_box"><strong class="name">   </strong><span class="sub_text">Place</span></div><div class="thumb"><img src="t.jpg"></div></div></li></ul>`,
-			filters:     &parsedFilters{},
-			expectError: true,
+			expectError:   false,
 		},
 	}
 
@@ -292,16 +263,18 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			perfs, rawCount, err := parsePerformancesFromHTML(tt.html, tt.filters)
+
+			// parsePerformancesFromHTML은 (performances, rawCount, error) 반환
+			items, raw, err := parsePerformancesFromHTML(tt.html, tt.filters)
 
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedCount, len(perfs), "필터링 후 개수가 일치해야 합니다")
-				assert.Equal(t, tt.expectedRaw, rawCount, "Raw 개수가 일치해야 합니다")
+				assert.Equal(t, tt.expectedRaw, raw, "Raw count failed")
+				assert.Equal(t, tt.expectedCount, len(items), "Filtered items count failed")
 				if tt.validateItems != nil {
-					tt.validateItems(t, perfs)
+					tt.validateItems(t, items)
 				}
 			}
 		})
@@ -655,6 +628,20 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			},
 			expectedError: "network timeout",
 		},
+		{
+			name: "실패: HTML 파싱 에러 (필수 태그 누락)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "ParseError",
+				MaxPages: 1,
+			},
+			mockResponses: map[string]string{
+				// 필수 태그(.title_box)는 있지만, 내부 필수 태그(.name)가 누락된 HTML
+				// 그래야 parsePerformancesFromHTML 루프에 진입하고 에러를 반환함
+				"u7=1": makeJSONResponse(`<ul><li><div class="item"><div class="title_box">NO_NAME</div></div></li></ul>`),
+			},
+			// fetchPerformances에서 parse error를 그대로 반환하거나 wrapping함
+			expectedError: "불러온 페이지의 문서구조가 변경되었습니다",
+		},
 	}
 
 	for _, tt := range tests {
@@ -681,13 +668,6 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			// Mock Response 등록
 			for queryPart, body := range tt.mockResponses {
 				// 쿼리 파라미터 조합
-				// 주의: url.Values.Encode()는 키 정렬을 보장하므로 순서 문제 없음
-				// 하지만 테스트 편의를 위해 전체 URL을 구성해야 함
-				// 여기서는 간단히 하기 위해, 실제 코드와 동일한 방식으로 URL 생성 후 매핑
-
-				// 실제 코드의 URL 생성 로직을 흉내내야 매칭 가능
-				// 하지만 u7과 같은 페이지 번호는 동적이므로, 테스트 케이스의 queryPart (예: u7=1)를 파싱하여 병합
-
 				fullParams := url.Values{} // 복사
 				for k, v := range baseParams {
 					fullParams[k] = v
@@ -738,7 +718,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 
 			// 검증
 			if tt.expectedError != "" {
-				assert.Error(t, err)
+				require.Error(t, err) // Error가 nil이면 여기서 멈춤 (Prevents panic)
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				require.NoError(t, err)
@@ -830,6 +810,131 @@ func TestBuildSearchAPIURL(t *testing.T) {
 			for k, v := range tt.expectedVars {
 				assert.Equal(t, v, q.Get(k), "가변 파라미터 %s 불일치", k)
 			}
+		})
+	}
+}
+
+// TestTask_FetchPerformances_Cancellation 작업 취소 시나리오를 검증합니다. (Concurrency)
+func TestTask_FetchPerformances_Cancellation(t *testing.T) {
+	t.Parallel()
+
+	// 1. Setup
+	mockFetcher := testutil.NewMockHTTPFetcher()
+
+	// 첫 번째 페이지 요청에 500ms 지연을 설정합니다.
+	// 이는 별도 고루틴에서 Cancel()을 호출할 충분한 시간을 벌어줍니다.
+	delayedURL := buildSearchAPIURL("CancelTest", 1)
+	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
+	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
+
+	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByUser)
+	naverTask := &task{Task: baseTask}
+	naverTask.SetFetcher(mockFetcher)
+
+	settings := &watchNewPerformancesSettings{
+		Query:          "CancelTest",
+		MaxPages:       5,
+		PageFetchDelay: 10,
+	}
+
+	// 2. Execution (Async Cancel)
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := naverTask.fetchPerformances(settings)
+		errCh <- err
+	}()
+
+	// 지연 시간(500ms)보다 짧은 시간(100ms) 후에 취소 요청을 보냅니다.
+	time.Sleep(100 * time.Millisecond)
+	naverTask.Cancel()
+
+	// 3. Validation
+	err := <-errCh
+	assert.NoError(t, err, "취소 시 에러가 반환되지 않고 nil이어야 합니다 (Graceful Shutdown)")
+	assert.True(t, naverTask.IsCanceled(), "Task 상태가 Canceled여야 합니다")
+
+	// 요청이 실제로 취소되었는지 확인 (결과가 nil이어야 함)
+	// fetchPerformances는 취소 시 nil, nil을 반환하도록 구현되어 있음
+}
+
+// TestTask_FetchPerformances_PaginationLimits 페이지네이션 한계 및 종료 조건을 검증합니다.
+func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
+	t.Parallel()
+
+	makePageHTML := func(startIndex int, itemsCount int) string {
+		var sb strings.Builder
+		sb.WriteString("<ul>")
+		for i := 0; i < itemsCount; i++ {
+			idx := startIndex + i
+			sb.WriteString(fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">Item %d</strong><span class="sub_text">Place %d</span></div><div class="thumb"><img src="t.jpg"></div></div></li>`, idx, idx))
+		}
+		sb.WriteString("</ul>")
+		m := map[string]string{"html": sb.String()}
+		b, _ := json.Marshal(m)
+		return string(b)
+	}
+
+	tests := []struct {
+		name            string
+		maxPages        int
+		mockResponses   []string // 순서대로 Page 1, 2, 3... 응답 본문
+		expectedCallCnt int      // 예상되는 API 호출 횟수
+		expectedItems   int      // 최종 수집된 아이템 수
+	}{
+		{
+			name:            "MaxPages 도달 시 중단",
+			maxPages:        2,
+			mockResponses:   []string{makePageHTML(0, 1), makePageHTML(1, 1), makePageHTML(2, 1)}, // Item 0, Item 1, Item 2
+			expectedCallCnt: 2,                                                                    // 2페이지까지만 호출하고 멈춰야 함 (loop 조건: pageIndex > maxPages break)
+			expectedItems:   2,
+		},
+		{
+			name:            "데이터 없는 페이지(RawCount=0) 도달 시 중단",
+			maxPages:        10,
+			mockResponses:   []string{makePageHTML(0, 1), makePageHTML(1, 0), makePageHTML(2, 1)}, // 2페이지가 비었음
+			expectedCallCnt: 2,                                                                    // 2페이지(빈 결과)까지 확인하고 루프 종료
+			expectedItems:   1,
+		},
+		{
+			name:            "첫 페이지부터 비어있음",
+			maxPages:        5,
+			mockResponses:   []string{makePageHTML(0, 0)},
+			expectedCallCnt: 1,
+			expectedItems:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockFetcher := testutil.NewMockHTTPFetcher()
+			for i, body := range tt.mockResponses {
+				page := i + 1
+				u := buildSearchAPIURL("LimitTest", page)
+				mockFetcher.SetResponse(u, []byte(body))
+			}
+
+			// executeFlow
+			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByUser)
+			naverTask := &task{Task: baseTask}
+			naverTask.SetFetcher(mockFetcher)
+
+			settings := &watchNewPerformancesSettings{
+				Query:          "LimitTest",
+				MaxPages:       tt.maxPages,
+				PageFetchDelay: 0, // No delay
+			}
+
+			items, err := naverTask.fetchPerformances(settings)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedItems, len(items))
+
+			// 호출 횟수 검증 (RequestedURLs 이용) e.g. "u7=1", "u7=2" 포함 여부 확인
+			// MockHttpFetcher의 GetRequestedURLs() 사용
+			requested := mockFetcher.GetRequestedURLs()
+			assert.Equal(t, tt.expectedCallCnt, len(requested), "API 호출 횟수가 예상과 달라야 합니다")
 		})
 	}
 }

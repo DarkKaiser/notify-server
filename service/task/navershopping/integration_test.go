@@ -328,7 +328,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 }
 
 func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
-	// 필터링 적용 시나리오
+	// 키워드 매칭 적용 시나리오
 	mockFetcher := testutil.NewMockHTTPFetcher()
 
 	jsonContent := `{
@@ -424,7 +424,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 
 	typedResultData, ok := newResultData.(*watchPriceSnapshot)
 	require.True(t, ok)
-	// 필터링 결과: "일반 테스트 상품"만 포함 (가격 15000원, "테스트" 포함)
+	// 키워드 매칭 결과: "일반 테스트 상품"만 포함 (가격 15000원, "테스트" 포함)
 	require.Equal(t, 1, len(typedResultData.Products))
 	require.Equal(t, "일반 테스트 상품", typedResultData.Products[0].Title)
 	require.Equal(t, 15000, typedResultData.Products[0].LowPrice)

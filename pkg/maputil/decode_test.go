@@ -62,8 +62,15 @@ func TestDecode(t *testing.T) {
 	t.Run("WeakTypeConversion", testWeakTypeConversion)
 	t.Run("UnexportedFields_Ignored", testUnexportedFieldsIgnored)
 	t.Run("ZeroValues_And_PartialInput", testZeroValuesAndPartialInput)
+	t.Run("StructToStruct_Decoding", testStructToStructDecoding) // [New] Struct -> Struct 변환 테스트
 	t.Run("ErrorCases", testErrorCases)
 	t.Run("TimeDuration_Parsing", testTimeDurationParsing)
+
+	// Expert Level Tests
+	t.Run("StrictErrorChecking", testStrictErrorChecking)
+	t.Run("SquashBehavior", testSquashBehavior)
+	t.Run("TextUnmarshalerHook", testTextUnmarshalerHook)
+	t.Run("AnyInputSupport", testAnyInputSupport)
 }
 
 func testBasicStructMapping(t *testing.T) {
@@ -195,13 +202,13 @@ func testUnexportedFieldsIgnored(t *testing.T) {
 
 	input := map[string]any{
 		"public":  "visible",
-		"private": "hidden", // 소문자 필드는 매핑되지 않아야 함
+		"private": "hidden", // 소문자 필드는 매핑되지 않아야 하며, ErrorUnused가 true이면 에러가 반환되어야 함
 	}
 
-	got, err := Decode[PrivateFieldStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "visible", got.Public)
-	assert.Empty(t, got.private) // private 필드는 변경되지 않음 (zero value)
+	_, err := Decode[PrivateFieldStruct](input)
+	// ErrorUnused: true 설정으로 인해 매핑되지 않는 키("private")가 있으면 에러가 발생해야 합니다.
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "private") // 에러 메시지에 필드명이 포함되는지 확인
 }
 
 func testZeroValuesAndPartialInput(t *testing.T) {
@@ -218,6 +225,29 @@ func testZeroValuesAndPartialInput(t *testing.T) {
 	assert.False(t, got.IsEnabled)
 }
 
+func testStructToStructDecoding(t *testing.T) {
+	t.Parallel()
+
+	// Source struct (different type but same fields/tags)
+	type SourceStruct struct {
+		Name      string `json:"name"`
+		Age       int    `json:"age"`
+		IsEnabled bool   `json:"is_enabled"`
+	}
+
+	source := SourceStruct{
+		Name:      "StructSource",
+		Age:       99,
+		IsEnabled: true,
+	}
+
+	got, err := Decode[BasicStruct](source)
+	require.NoError(t, err)
+	assert.Equal(t, "StructSource", got.Name)
+	assert.Equal(t, 99, got.Age)
+	assert.True(t, got.IsEnabled)
+}
+
 func testErrorCases(t *testing.T) {
 	t.Parallel()
 
@@ -228,7 +258,7 @@ func testErrorCases(t *testing.T) {
 	})
 
 	t.Run("Nil_Input", func(t *testing.T) {
-		var input map[string]any = nil
+		var input any = nil // any 타입으로 변경
 		got, err := Decode[BasicStruct](input)
 		require.NoError(t, err)
 		assert.NotNil(t, got)
@@ -269,4 +299,123 @@ func testTimeDurationParsing(t *testing.T) {
 			}
 		})
 	}
+}
+
+// -------------------------------------------------------------------------
+// Expert Level Tests
+// -------------------------------------------------------------------------
+
+func testStrictErrorChecking(t *testing.T) {
+	t.Parallel()
+
+	// 1. 단일 미사용 필드
+	t.Run("Single_Unused_Field", func(t *testing.T) {
+		input := map[string]any{
+			"name":   "Valid",
+			"unused": "This should cause error",
+		}
+		_, err := Decode[BasicStruct](input)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unused")
+	})
+
+	// 2. 중첩 구조체 내 미사용 필드
+	t.Run("Nested_Unused_Field", func(t *testing.T) {
+		input := map[string]any{
+			"title": "Nested Root",
+			"detail": map[string]any{
+				"name":        "Bob",
+				"age":         30,
+				"unknown_key": "fail",
+			},
+		}
+		_, err := Decode[NestedStruct](input)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown_key")
+	})
+}
+
+func testSquashBehavior(t *testing.T) {
+	t.Parallel()
+
+	// Squash: true 동작 검증
+	// 상위 레벨의 키가 임베디드 구조체(BasicStruct)의 필드(Name)로 직접 매핑되어야 함
+	input := map[string]any{
+		"name":  "Embedded Name",
+		"age":   100,
+		"extra": "Extra Data",
+	}
+
+	got, err := Decode[EmbeddedStruct](input)
+	require.NoError(t, err)
+	assert.Equal(t, "Embedded Name", got.Name) // BasicStruct.Name
+	assert.Equal(t, 100, got.Age)              // BasicStruct.Age
+	assert.Equal(t, "Extra Data", got.Extra)
+}
+
+func testTextUnmarshalerHook(t *testing.T) {
+	t.Parallel()
+
+	type CustomTextType struct {
+		Value string
+	}
+
+	// encoding.TextUnmarshaler 인터페이스 구현
+	// (참고: 포인터 리시버여야 함)
+
+	type HookStruct struct {
+		TimePtr  *time.Time `json:"time"`
+		MyCustom *Custom    `json:"custom"`
+	}
+
+	input := map[string]any{
+		"time":   "2023-12-25T00:00:00Z",
+		"custom": "custom-value",
+	}
+
+	got, err := Decode[HookStruct](input)
+	require.NoError(t, err)
+
+	// 1. *time.Time 검증
+	assert.NotNil(t, got.TimePtr)
+	expectedTime, _ := time.Parse(time.RFC3339, "2023-12-25T00:00:00Z")
+	assert.Equal(t, expectedTime.UTC(), got.TimePtr.UTC())
+
+	// 2. Custom Type 검증
+	assert.NotNil(t, got.MyCustom)
+	assert.Equal(t, "parsed:custom-value", got.MyCustom.Data)
+}
+
+// Custom 타입 정의 (encoding.TextUnmarshaler 구현)
+type Custom struct {
+	Data string
+}
+
+func (c *Custom) UnmarshalText(text []byte) error {
+	c.Data = "parsed:" + string(text)
+	return nil
+}
+
+func testAnyInputSupport(t *testing.T) {
+	t.Parallel()
+
+	// 1. map[interface{}]interface{} (YAML 파싱 시 흔한 형태)
+	t.Run("MapInterfaceInterface", func(t *testing.T) {
+		input := map[interface{}]interface{}{
+			"name": "Generic Map",
+			"age":  88,
+		}
+		got, err := Decode[BasicStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, "Generic Map", got.Name)
+		assert.Equal(t, 88, got.Age)
+	})
+
+	// 2. Scalar Value to Struct (Error Expected)
+	// 구조체로 디코딩을 요청했으나 입력이 스칼라 값인 경우 에러가 발생해야 정상
+	t.Run("ScalarInput_Error", func(t *testing.T) {
+		input := "just string"
+		_, err := Decode[BasicStruct](input)
+		require.Error(t, err)
+	})
 }

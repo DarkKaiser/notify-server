@@ -1,7 +1,9 @@
 package strutil
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -359,5 +361,374 @@ func TestStripHTMLTags(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, StripHTMLTags(tt.input))
 		})
+	}
+}
+
+// MatchesKeywords Tests
+// =============================================================================
+
+func TestMatchesKeywords(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		input            string
+		includedKeywords []string
+		excludedKeywords []string
+		want             bool
+	}{
+		// ===== 기본 시나리오 =====
+		{
+			name:             "빈 문자열, 빈 키워드",
+			input:            "",
+			includedKeywords: []string{},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "빈 문자열, 포함 키워드 있음",
+			input:            "",
+			includedKeywords: []string{"test"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+		{
+			name:             "일반 문자열, 빈 키워드",
+			input:            "Hello World",
+			includedKeywords: []string{},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+
+		// ===== 포함 키워드 (AND 조건) =====
+		{
+			name:             "단일 포함 키워드 - 매칭 성공",
+			input:            "Go Programming Language",
+			includedKeywords: []string{"programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "단일 포함 키워드 - 매칭 실패",
+			input:            "Go Programming Language",
+			includedKeywords: []string{"python"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+		{
+			name:             "다중 포함 키워드 - 모두 매칭",
+			input:            "Go Programming Language Tutorial",
+			includedKeywords: []string{"go", "programming", "tutorial"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "다중 포함 키워드 - 일부만 매칭",
+			input:            "Go Programming Language",
+			includedKeywords: []string{"go", "programming", "tutorial"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+		{
+			name:             "부분 문자열 매칭",
+			input:            "Golang is great",
+			includedKeywords: []string{"lang"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+
+		// ===== 제외 키워드 (OR 조건) =====
+		{
+			name:             "단일 제외 키워드 - 포함됨 (실패)",
+			input:            "Deprecated API",
+			includedKeywords: []string{},
+			excludedKeywords: []string{"deprecated"},
+			want:             false,
+		},
+		{
+			name:             "단일 제외 키워드 - 포함 안됨 (성공)",
+			input:            "Modern API",
+			includedKeywords: []string{},
+			excludedKeywords: []string{"deprecated"},
+			want:             true,
+		},
+		{
+			name:             "다중 제외 키워드 - 하나라도 포함 (실패)",
+			input:            "Legacy System",
+			includedKeywords: []string{},
+			excludedKeywords: []string{"deprecated", "legacy", "old"},
+			want:             false,
+		},
+		{
+			name:             "다중 제외 키워드 - 모두 불포함 (성공)",
+			input:            "Modern System",
+			includedKeywords: []string{},
+			excludedKeywords: []string{"deprecated", "legacy", "old"},
+			want:             true,
+		},
+
+		// ===== OR 조건 (파이프 구분자) =====
+		{
+			name:             "OR 조건 - 첫 번째 키워드 매칭",
+			input:            "Go Tutorial",
+			includedKeywords: []string{"Go|Rust|Python"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "OR 조건 - 중간 키워드 매칭",
+			input:            "Rust Tutorial",
+			includedKeywords: []string{"Go|Rust|Python"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "OR 조건 - 마지막 키워드 매칭",
+			input:            "Python Tutorial",
+			includedKeywords: []string{"Go|Rust|Python"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "OR 조건 - 모두 불매칭",
+			input:            "Java Tutorial",
+			includedKeywords: []string{"Go|Rust|Python"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+		{
+			name:             "OR 조건 - 공백 포함",
+			input:            "Web Development",
+			includedKeywords: []string{"Web Dev|Mobile Dev|Backend"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "다중 OR 조건 - 모두 만족",
+			input:            "Go Web Server",
+			includedKeywords: []string{"Go|Rust", "Web|Mobile"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "다중 OR 조건 - 하나만 만족",
+			input:            "Go Desktop App",
+			includedKeywords: []string{"Go|Rust", "Web|Mobile"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+
+		// ===== 대소문자 구분 없음 =====
+		{
+			name:             "대소문자 - 모두 대문자",
+			input:            "GO PROGRAMMING",
+			includedKeywords: []string{"go", "programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "대소문자 - 모두 소문자",
+			input:            "go programming",
+			includedKeywords: []string{"GO", "PROGRAMMING"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "대소문자 - 혼합",
+			input:            "Go PrOgRaMmInG",
+			includedKeywords: []string{"gO", "ProGramming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "대소문자 - 제외 키워드",
+			input:            "DEPRECATED API",
+			includedKeywords: []string{},
+			excludedKeywords: []string{"deprecated"},
+			want:             false,
+		},
+
+		// ===== 복합 조건 =====
+		{
+			name:             "복합 - 포함 AND + 제외 OR (성공)",
+			input:            "Modern Go Web Server",
+			includedKeywords: []string{"go", "web"},
+			excludedKeywords: []string{"deprecated", "legacy"},
+			want:             true,
+		},
+		{
+			name:             "복합 - 포함 AND + 제외 OR (제외 키워드 포함)",
+			input:            "Legacy Go Web Server",
+			includedKeywords: []string{"go", "web"},
+			excludedKeywords: []string{"deprecated", "legacy"},
+			want:             false,
+		},
+		{
+			name:             "복합 - 포함 AND + 제외 OR (포함 키워드 불만족)",
+			input:            "Modern Python Web Server",
+			includedKeywords: []string{"go", "web"},
+			excludedKeywords: []string{"deprecated", "legacy"},
+			want:             false,
+		},
+		{
+			name:             "복합 - OR 조건 + 제외",
+			input:            "Go Tutorial for Beginners",
+			includedKeywords: []string{"Go|Rust|Python", "tutorial"},
+			excludedKeywords: []string{"advanced"},
+			want:             true,
+		},
+
+		// ===== 특수 문자 및 유니코드 =====
+		{
+			name:             "한글 키워드",
+			input:            "이것은 테스트 문자열입니다",
+			includedKeywords: []string{"테스트", "문자열"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "한글 제외 키워드",
+			input:            "이것은 샘플 문자열입니다",
+			includedKeywords: []string{"문자열"},
+			excludedKeywords: []string{"테스트"},
+			want:             true,
+		},
+		{
+			name:             "이모지 포함",
+			input:            "🚀 Go Programming 🎉",
+			includedKeywords: []string{"go", "programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "특수 문자 포함",
+			input:            "C++ Programming & Development",
+			includedKeywords: []string{"c++", "development"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+
+		// ===== 경계 조건 (Edge Cases) =====
+		{
+			name:             "매우 긴 문자열",
+			input:            strings.Repeat("Go Programming ", 1000),
+			includedKeywords: []string{"go", "programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "매우 많은 포함 키워드",
+			input:            "a b c d e f g h i j k l m n o p q r s t u v w x y z",
+			includedKeywords: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "단일 문자 키워드",
+			input:            "a",
+			includedKeywords: []string{"a"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "공백만 있는 문자열",
+			input:            "     ",
+			includedKeywords: []string{"test"},
+			excludedKeywords: []string{},
+			want:             false,
+		},
+		{
+			name:             "개행 문자 포함",
+			input:            "Go\nProgramming\nLanguage",
+			includedKeywords: []string{"go", "programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "탭 문자 포함",
+			input:            "Go\tProgramming\tLanguage",
+			includedKeywords: []string{"go", "programming"},
+			excludedKeywords: []string{},
+			want:             true,
+		},
+
+		// ===== nil 슬라이스 처리 =====
+		{
+			name:             "nil 포함 키워드",
+			input:            "Go Programming",
+			includedKeywords: nil,
+			excludedKeywords: []string{},
+			want:             true,
+		},
+		{
+			name:             "nil 제외 키워드",
+			input:            "Go Programming",
+			includedKeywords: []string{"go"},
+			excludedKeywords: nil,
+			want:             true,
+		},
+		{
+			name:             "모두 nil",
+			input:            "Go Programming",
+			includedKeywords: nil,
+			excludedKeywords: nil,
+			want:             true,
+		},
+
+		// ===== 실제 사용 사례 =====
+		{
+			name:             "상품명 필터링 - 성공",
+			input:            "삼성 갤럭시 S24 스마트폰",
+			includedKeywords: []string{"삼성", "스마트폰"},
+			excludedKeywords: []string{"아이폰", "중고"},
+			want:             true,
+		},
+		{
+			name:             "상품명 필터링 - 제외 키워드 포함",
+			input:            "삼성 갤럭시 S24 중고 스마트폰",
+			includedKeywords: []string{"삼성", "스마트폰"},
+			excludedKeywords: []string{"아이폰", "중고"},
+			want:             false,
+		},
+		{
+			name:             "공연 제목 필터링 - OR 조건",
+			input:            "뮤지컬 캣츠 - 서울 공연",
+			includedKeywords: []string{"뮤지컬|연극|콘서트", "서울"},
+			excludedKeywords: []string{"취소", "연기"},
+			want:             true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := MatchesKeywords(tt.input, tt.includedKeywords, tt.excludedKeywords)
+			assert.Equal(t, tt.want, got, "MatchesKeywords() = %v, want %v", got, tt.want)
+		})
+	}
+}
+
+// TestMatchesKeywords_Performance 성능 테스트
+func TestMatchesKeywords_Performance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("성능 테스트는 -short 플래그 사용 시 건너뜁니다")
+	}
+
+	largeInput := strings.Repeat("Go Programming Language Tutorial for Beginners ", 10000)
+	includedKeywords := []string{"go", "programming", "tutorial"}
+	excludedKeywords := []string{"advanced", "expert"}
+
+	start := time.Now()
+	for i := 0; i < 1000; i++ {
+		MatchesKeywords(largeInput, includedKeywords, excludedKeywords)
+	}
+	duration := time.Since(start)
+
+	t.Logf("1000회 실행 시간: %v (평균: %v/op)", duration, duration/1000)
+
+	// 성능 기준: 1000회 실행이 2초 이내여야 함 (평균 2ms/op)
+	if duration > 2*time.Second {
+		t.Errorf("성능 기준 미달: %v > 2s", duration)
 	}
 }

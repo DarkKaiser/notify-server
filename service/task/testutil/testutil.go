@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/mock"
@@ -49,6 +50,7 @@ type MockHTTPFetcher struct {
 	mu            sync.Mutex
 	Responses     map[string][]byte
 	Errors        map[string]error
+	Delays        map[string]time.Duration
 	RequestedURLs []string
 }
 
@@ -57,8 +59,16 @@ func NewMockHTTPFetcher() *MockHTTPFetcher {
 	return &MockHTTPFetcher{
 		Responses:     make(map[string][]byte),
 		Errors:        make(map[string]error),
+		Delays:        make(map[string]time.Duration),
 		RequestedURLs: make([]string, 0),
 	}
+}
+
+// SetDelay 특정 URL 요청 시 응답 지연 시간을 설정합니다.
+func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Delays[url] = d
 }
 
 // SetResponse 특정 URL에 대한 응답 바이트를 설정합니다.
@@ -78,24 +88,34 @@ func (m *MockHTTPFetcher) SetError(url string, err error) {
 // Get 설정된 Mock 응답을 반환합니다. 요청된 URL은 기록됩니다.
 func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// 호출 기록 저장
 	m.RequestedURLs = append(m.RequestedURLs, url)
 
 	// 에러 설정 확인
-	if err, ok := m.Errors[url]; ok {
+	err := m.Errors[url]
+
+	// 응답 설정 확인
+	responseBody, hasResponse := m.Responses[url]
+
+	// 지연 설정 확인
+	delay, hasDelay := m.Delays[url]
+
+	m.mu.Unlock()
+
+	if hasDelay {
+		time.Sleep(delay)
+	}
+
+	if err != nil {
 		return nil, err
 	}
 
-	// 응답 설정 확인
-	if responseBody, ok := m.Responses[url]; ok {
+	if hasResponse {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(responseBody)),
 		}, nil
-	} else {
-		// fmt.Printf("MockHTTPFetcher: URL not found: %v\nBytes: %v\nAvailable: %d\n", url, []byte(url), len(m.Responses))
 	}
 
 	// 설정되지 않은 URL은 404 Not Found 반환
@@ -127,6 +147,7 @@ func (m *MockHTTPFetcher) Reset() {
 
 	m.Responses = make(map[string][]byte)
 	m.Errors = make(map[string]error)
+	m.Delays = make(map[string]time.Duration)
 	m.RequestedURLs = make([]string, 0)
 }
 

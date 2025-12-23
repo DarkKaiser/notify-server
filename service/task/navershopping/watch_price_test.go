@@ -3,6 +3,8 @@ package navershopping
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
@@ -146,7 +148,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		checkResult func(*testing.T, []*product, error)
 	}{
 		{
-			name:     "성공: 정상적인 데이터 수집 및 필터링",
+			name:     "성공: 정상적인 데이터 수집 및 키워드 매칭",
 			settings: defaultSettings,
 			mockSetup: func(m *testutil.MockHTTPFetcher) {
 				resp := searchResponse{
@@ -233,7 +235,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name:     "성공: HTML 태그가 포함된 로우 데이터 필터링",
+			name:     "성공: HTML 태그가 포함된 로우 데이터 키워드 매칭",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("S25 FE").Build(),
 			mockSetup: func(m *testutil.MockHTTPFetcher) {
 				resp := searchResponse{
@@ -248,6 +250,31 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, p, 1, "제외 키워드 'S25 FE'가 HTML 태그를 무시하고 적용되어야 함")
 				assert.Equal(t, "Galaxy S25 Plus", p[0].Title)
+			},
+		},
+		{
+			name:     "실패: 잘못된 JSON 응답 (Malformed)",
+			settings: defaultSettings,
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				m.SetResponse(expectedURL, []byte(`{invalid_json`))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "JSON")
+			},
+		},
+		{
+			name:     "성공: URL 인코딩 검증 (특수문자 쿼리)",
+			settings: NewSettingsBuilder().WithQuery("아이폰 & 케이스").WithPriceLessThan(20000).Build(),
+			mockSetup: func(m *testutil.MockHTTPFetcher) {
+				// 예상되는 인코딩된 URL
+				encodedURL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%EC%95%84%EC%9D%B4%ED%8F%B0+%26+%EC%BC%80%EC%9D%B4%EC%8A%A4&sort=sim&start=1"
+				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Case", LowPrice: "5000", ProductID: "1"}}}
+				m.SetResponse(encodedURL, mustMarshal(resp))
+			},
+			checkResult: func(t *testing.T, p []*product, err error) {
+				require.NoError(t, err)
+				assert.Len(t, p, 1)
 			},
 		},
 	}
@@ -369,6 +396,47 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "변경되었습니다")
+			},
+		},
+		{
+			name:  "정렬 검증 (가격 오름차순 -> 이름 오름차순)",
+			runBy: tasksvc.RunByUser, // 결과 목록을 보기 위해 User 실행 모드 사용
+			currentItems: []*product{
+				NewProductBuilder().WithPrice(20000).WithTitle("B").Build(),
+				NewProductBuilder().WithPrice(10000).WithTitle("A").Build(),
+				NewProductBuilder().WithPrice(10000).WithTitle("C").Build(),
+			},
+			prevItems: nil,
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				// 메시지에 순서대로 나타나는지 확인 (10000원 A -> 10000원 C -> 20000원 B)
+				// strings.Index로 위치 비교
+				idxA := strings.Index(msg, "A")
+				idxB := strings.Index(msg, "B")
+				idxC := strings.Index(msg, "C")
+
+				assert.Greater(t, idxA, -1)
+				assert.Greater(t, idxB, -1)
+				assert.Greater(t, idxC, -1)
+
+				assert.Less(t, idxA, idxC, "같은 가격일 때 이름순(A->C)이어야 함")
+				assert.Less(t, idxC, idxB, "가격 낮은 순(10000->20000)이어야 함")
+			},
+		},
+		{
+			name:  "대량 데이터 처리 (Benchmarks Memory Safety)",
+			runBy: tasksvc.RunByScheduler,
+			currentItems: func() []*product {
+				items := make([]*product, 1000)
+				for i := 0; i < 1000; i++ {
+					items[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(1000 + i).WithTitle("Item").Build()
+				}
+				return items
+			}(),
+			prevItems: nil,
+			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+				require.NoError(t, err)
+				assert.NotEmpty(t, msg) // Panic 없이 메시지 생성 여부만 확인
 			},
 		},
 	}
@@ -517,6 +585,24 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			item:          item("Apple iPad", "Call for Price"),
 			wantProduct:   false,
 			expectedTitle: "",
+		},
+		{
+			name:          "실패: 가격 파싱 오류 (Empty String)",
+			item:          item("Free Item", ""),
+			wantProduct:   false,
+			expectedTitle: "",
+		},
+		{
+			name:          "성공: 유니코드 및 특수문자 처리",
+			item:          item("특가! ★Galaxy★ S25 Ultra", "1500000"),
+			wantProduct:   true,
+			expectedTitle: "특가! ★Galaxy★ S25 Ultra",
+		},
+		{
+			name:          "성공: 공백만 있는 필드 처리 (Trimmed result check needed if validation existed, but parser allows currently)",
+			item:          item("   ", "100"),
+			wantProduct:   true,
+			expectedTitle: "   ", // 현재 로직상 Trim은 수행하지 않음 (strutil.StripHTMLTags에 의존)
 		},
 	}
 
