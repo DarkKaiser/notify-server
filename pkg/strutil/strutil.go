@@ -199,28 +199,32 @@ func MatchesKeywords(s string, includedKeywords, excludedKeywords []string) bool
 	// 대소문자 구분 없이 비교하기 위해 소문자로 변환
 	lowerS := strings.ToLower(s)
 
+	// 포함 키워드 검사 (AND 조건)
 	for _, k := range includedKeywords {
-		// "A|B" -> ["A", "B"]
-		includedOneOfManyKeywords := SplitAndTrim(k, "|")
-		if len(includedOneOfManyKeywords) == 1 {
-			lowerK := strings.ToLower(k)
-			if !strings.Contains(lowerS, lowerK) {
+		// 파이프(|)가 있는지 먼저 확인 (최적화)
+		if !strings.Contains(k, "|") {
+			// 단일 키워드: 간단한 검사
+			if !strings.Contains(lowerS, strings.ToLower(k)) {
 				return false
 			}
 		} else {
-			var contains = false
-			for _, keyword := range includedOneOfManyKeywords {
+			// OR 조건: "A|B|C" → 하나라도 매칭되면 OK
+			orKeywords := SplitAndTrim(k, "|")
+
+			matched := false
+			for _, keyword := range orKeywords {
 				if strings.Contains(lowerS, strings.ToLower(keyword)) {
-					contains = true
+					matched = true
 					break
 				}
 			}
-			if !contains {
+			if !matched {
 				return false
 			}
 		}
 	}
 
+	// 제외 키워드 검사 (OR 조건): 하나라도 포함되면 false
 	for _, k := range excludedKeywords {
 		if strings.Contains(lowerS, strings.ToLower(k)) {
 			return false
