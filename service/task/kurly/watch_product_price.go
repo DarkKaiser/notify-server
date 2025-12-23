@@ -11,6 +11,7 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
@@ -322,7 +323,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityProduct.String(supportsHTML, " 🆕", nil))
+			sb.WriteString(actualityProduct.String(supportsHTML, mark.New, nil))
 
 			return
 		}
@@ -338,7 +339,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityProduct.String(supportsHTML, " 🔁", originProduct))
+			sb.WriteString(actualityProduct.String(supportsHTML, mark.Change, originProduct))
 		}
 	}, func(selem interface{}) {
 		actualityProduct := selem.(*product)
@@ -354,7 +355,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 		if sb.Len() > 0 {
 			sb.WriteString(lineSpacing)
 		}
-		sb.WriteString(actualityProduct.String(supportsHTML, " 🆕", nil))
+		sb.WriteString(actualityProduct.String(supportsHTML, mark.New, nil))
 	})
 	if err != nil {
 		return "", nil, err

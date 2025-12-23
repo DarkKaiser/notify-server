@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/sirupsen/logrus"
@@ -25,12 +26,6 @@ const (
 	// searchAPIURL 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
-
-	// newProductMark 신규 상품 알림 메시지에 표시될 강조 마크입니다.
-	newProductMark = " 🆕"
-
-	// changeProductPriceMark 가격 변동 알림 메시지에 표시될 강조 마크입니다.
-	changeProductPriceMark = " 🔁"
 
 	// ------------------------------------------------------------------------------------------------
 	// API 매개변수 설정
@@ -359,7 +354,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, newProductMark))
+			sb.WriteString(p.String(supportsHTML, mark.New))
 		} else {
 			// 동일한 상품(Key 일치)이 이전에도 존재했으나, 최저가(LowPrice)가 변경되었습니다.
 			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
@@ -368,7 +363,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 					sb.WriteString(lineSpacing)
 				}
 
-				sb.WriteString(p.String(supportsHTML, fmt.Sprintf(" (이전: %s원)%s", strutil.FormatCommas(prevProduct.LowPrice), changeProductPriceMark)))
+				sb.WriteString(p.String(supportsHTML, fmt.Sprintf(" (이전: %s원)%s", strutil.FormatCommas(prevProduct.LowPrice), mark.Change)))
 			}
 		}
 	}

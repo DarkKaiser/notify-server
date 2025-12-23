@@ -10,6 +10,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/sirupsen/logrus"
@@ -29,9 +30,6 @@ const (
 	//  - 알림 메시지에서 공연명을 클릭했을 때 이동할 하이퍼링크(Target URL)를 생성하는 데 사용됩니다.
 	//  - 쿼리 파라미터(?query=...)를 추가하여 사용자가 해당 공연의 상세 검색 결과를 즉시 확인할 수 있도록 돕습니다.
 	searchResultPageURL = "https://search.naver.com/search.naver"
-
-	// newPerformanceMark 신규 공연 알림 메시지에 표시될 강조 마크입니다.
-	newPerformanceMark = " 🆕"
 
 	// ------------------------------------------------------------------------------------------------
 	// CSS Selectors
@@ -412,7 +410,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, newPerformanceMark))
+			sb.WriteString(p.String(supportsHTML, mark.New))
 		}
 	}
 	if sb.Len() > 0 {
