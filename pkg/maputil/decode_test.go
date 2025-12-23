@@ -41,7 +41,7 @@ type EmbeddedStruct struct {
 // Unexported 필드는 mapstructure에서 무시되어야 함
 type PrivateFieldStruct struct {
 	Public  string `json:"public"`
-	private string `json:"private"`
+	private string
 }
 
 type TimeStruct struct {
