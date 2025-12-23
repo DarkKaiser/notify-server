@@ -142,12 +142,10 @@ func (p *performance) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
-// keywordFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 키워드 필터 데이터입니다.
-type keywordFilters struct {
-	TitleIncluded []string
-	TitleExcluded []string
-	PlaceIncluded []string
-	PlaceExcluded []string
+// keywordMatchers 문자열 기반의 필터 설정을 최적화된 Matcher로 변환한 필터 데이터입니다.
+type keywordMatchers struct {
+	TitleMatcher *strutil.KeywordMatcher
+	PlaceMatcher *strutil.KeywordMatcher
 }
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
@@ -169,12 +167,16 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 // fetchPerformances 네이버 통합검색 API를 페이지네이션하여 순회하며 신규 공연 정보를 수집합니다.
 func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
 	// 매 페이지 순회 시마다 문자열 분할 연산이 반복되는 것을 방지하기 위해,
-	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 슬라이스 형태로 변환합니다.
-	filters := &keywordFilters{
-		TitleIncluded: strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
-		TitleExcluded: strutil.SplitAndTrim(commandSettings.Filters.Title.ExcludedKeywords, ","),
-		PlaceIncluded: strutil.SplitAndTrim(commandSettings.Filters.Place.IncludedKeywords, ","),
-		PlaceExcluded: strutil.SplitAndTrim(commandSettings.Filters.Place.ExcludedKeywords, ","),
+	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 Matcher 형태로 변환합니다.
+	matchers := &keywordMatchers{
+		TitleMatcher: strutil.NewKeywordMatcher(
+			strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
+			strutil.SplitAndTrim(commandSettings.Filters.Title.ExcludedKeywords, ","),
+		),
+		PlaceMatcher: strutil.NewKeywordMatcher(
+			strutil.SplitAndTrim(commandSettings.Filters.Place.IncludedKeywords, ","),
+			strutil.SplitAndTrim(commandSettings.Filters.Place.ExcludedKeywords, ","),
+		),
 	}
 
 	// searchResponse 네이버 통합검색 API의 응답을 처리하기 위한 JSON 래퍼(Wrapper)입니다.
@@ -229,7 +231,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		}
 
 		// API로부터 수신한 비정형 HTML 데이터를 DOM 파싱하여 정형화된 공연 객체 리스트로 변환합니다.
-		pagePerformances, rawCount, err := parsePerformancesFromHTML(pageContent.HTML, filters)
+		pagePerformances, rawCount, err := parsePerformancesFromHTML(pageContent.HTML, matchers)
 		if err != nil {
 			return nil, err
 		}
@@ -298,7 +300,7 @@ func buildSearchAPIURL(query string, page int) string {
 //   - []*performance: 사용자 정의 키워드 조건(Keywords)을 통과하여 최종 선별된 공연 정보 목록
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
-func parsePerformancesFromHTML(html string, filters *keywordFilters) ([]*performance, int, error) {
+func parsePerformancesFromHTML(html string, matchers *keywordMatchers) ([]*performance, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
@@ -324,7 +326,7 @@ func parsePerformancesFromHTML(html string, filters *keywordFilters) ([]*perform
 			return false // 순회 중단
 		}
 
-		if !strutil.MatchesKeywords(perf.Title, filters.TitleIncluded, filters.TitleExcluded) || !strutil.MatchesKeywords(perf.Place, filters.PlaceIncluded, filters.PlaceExcluded) {
+		if !matchers.TitleMatcher.Match(perf.Title) || !matchers.PlaceMatcher.Match(perf.Place) {
 			// 키워드 매칭 실패 로깅 (Verbose)
 			// t.LogWithContext("task.naver", logrus.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
 			return true // 계속 진행
