@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
@@ -51,8 +52,8 @@ type Task struct {
 	// 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
 	notifierID string
 
-	// 작업 취소 여부 플래그
-	canceled bool
+	// 작업 취소 여부 플래그 (0: false, 1: true) - 원자적 접근 필요
+	canceled int32
 
 	// 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
 	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
@@ -78,6 +79,7 @@ func NewBaseTask(id ID, commandID CommandID, instanceID InstanceID, notifierID s
 		commandID:  commandID,
 		instanceID: instanceID,
 		notifierID: notifierID,
+		canceled:   0,
 		runBy:      runBy,
 	}
 }
@@ -99,11 +101,11 @@ func (t *Task) GetNotifierID() string {
 }
 
 func (t *Task) Cancel() {
-	t.canceled = true
+	atomic.StoreInt32(&t.canceled, 1)
 }
 
 func (t *Task) IsCanceled() bool {
-	return t.canceled
+	return atomic.LoadInt32(&t.canceled) == 1
 }
 
 func (t *Task) SetRunBy(runBy RunBy) {
