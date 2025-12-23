@@ -218,69 +218,56 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapsh
 	if supportsHTML {
 		lineSpacing = "\n"
 	}
-	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
-		actualityProduct, ok1 := selem.(*product)
-		originProduct, ok2 := telem.(*product)
-		if !ok1 || !ok2 {
-			return false, tasksvc.NewErrTypeAssertionFailed("selm/telm", &product{}, selem)
-		} else {
-			if actualityProduct.ID == originProduct.ID {
-				return true, nil
-			}
-		}
-		return false, nil
-	}, func(selem, telem interface{}) {
-		actualityProduct := selem.(*product)
-		originProduct := telem.(*product)
+	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
+	// O(N) 조회를 통해 성능을 최적화합니다.
+	prevProductMap := make(map[int]*product, len(prevSnapshot.Products))
+	for _, p := range prevSnapshot.Products {
+		prevProductMap[p.ID] = p
+	}
 
-		// 상품이 원래는 판매 중이었지만, 이제는 알 수 없는 상품으로 변경된 경우...
-		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
-			return
-		}
-		// 상품이 원래는 알 수 없는 상품이었지만, 이제는 판매 중인 상품으로 변경된 경우...
-		if originProduct.IsUnavailable && !actualityProduct.IsUnavailable {
-			// 최저 가격을 업데이트한다.
+	for _, actualityProduct := range currentSnapshot.Products {
+		originProduct, exists := prevProductMap[actualityProduct.ID]
+
+		// 1. 이전 정보가 없거나(신규), 이전에는 알 수 없는 상품이었던 경우
+		if !exists || (originProduct.IsUnavailable && !actualityProduct.IsUnavailable) {
+			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
+			if actualityProduct.IsUnavailable {
+				continue
+			}
+
+			// 최저 가격 갱신 (신규 상품 취급)
 			actualityProduct.updateLowestPrice()
 
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
 			sb.WriteString(actualityProduct.Render(supportsHTML, mark.New, nil))
-
-			return
+			continue
 		}
 
-		// 상품의 이전 최저 가격과 해당 시간 정보를 현재 상품 정보에 반영합니다.
+		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
+		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
+			continue // 변경 내역 렌더링 생략
+		}
+
+		// 3. 기존 상품 가격/정보 변경 비교
+		// 이전 최저가 정보를 승계
 		actualityProduct.LowestPrice = originProduct.LowestPrice
 		actualityProduct.LowestPriceTimeUTC = originProduct.LowestPriceTimeUTC
 
-		// 최저 가격을 업데이트한다.
+		// 현재 가격 기준으로 최저가 갱신 시도
 		actualityProduct.updateLowestPrice()
 
-		if actualityProduct.Price != originProduct.Price || actualityProduct.DiscountedPrice != originProduct.DiscountedPrice || actualityProduct.DiscountRate != originProduct.DiscountRate {
+		// 가격이나 할인율 등이 변경되었는지 확인
+		if actualityProduct.Price != originProduct.Price ||
+			actualityProduct.DiscountedPrice != originProduct.DiscountedPrice ||
+			actualityProduct.DiscountRate != originProduct.DiscountRate {
+
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
 			sb.WriteString(actualityProduct.Render(supportsHTML, mark.Change, originProduct))
 		}
-	}, func(selem interface{}) {
-		actualityProduct := selem.(*product)
-
-		// 알 수 없는 상품인 경우에는 상품에 대한 정보를 사용자에게 알리지 않는다.
-		if actualityProduct.IsUnavailable {
-			return
-		}
-
-		// 최저 가격을 업데이트한다.
-		actualityProduct.updateLowestPrice()
-
-		if sb.Len() > 0 {
-			sb.WriteString(lineSpacing)
-		}
-		sb.WriteString(actualityProduct.Render(supportsHTML, mark.New, nil))
-	})
-	if err != nil {
-		return "", nil, err
 	}
 
 	//
