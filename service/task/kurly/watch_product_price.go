@@ -123,14 +123,14 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		jsonProductData := match[1]
 
 		var product = &product{
-			ID:              id,
-			Name:            "",
-			Price:           0,
-			DiscountedPrice: 0,
-			DiscountRate:    0,
-			LowestPrice:     0,
-			LowestPriceTime: time.Time{},
-			IsUnavailable:   false,
+			ID:                 id,
+			Name:               "",
+			Price:              0,
+			DiscountedPrice:    0,
+			DiscountRate:       0,
+			LowestPrice:        0,
+			LowestPriceTimeUTC: time.Time{},
+			IsUnavailable:      false,
 		}
 
 		// 알 수 없는 상품(현재 판매중이지 않은 상품)인지 확인한다.
@@ -248,7 +248,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 
 		// 상품의 이전 최저 가격과 해당 시간 정보를 현재 상품 정보에 반영합니다.
 		actualityProduct.LowestPrice = originProduct.LowestPrice
-		actualityProduct.LowestPriceTime = originProduct.LowestPriceTime
+		actualityProduct.LowestPriceTimeUTC = originProduct.LowestPriceTimeUTC
 
 		// 최저 가격을 업데이트한다.
 		actualityProduct.updateLowestPrice()

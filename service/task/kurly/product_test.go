@@ -107,18 +107,19 @@ func TestProduct_IsOnSale_TableDriven(t *testing.T) {
 }
 
 // TestProduct_UpdateLowestPrice_TableDriven 최저가 갱신 로직을 검증합니다.
-// Cold Start 및 Price Drop 시나리오, 시간 갱신 여부를 정밀하게 테스트합니다.
+// Cold Start 및 Price Drop 시나리오, 시간 갱신 여부, 반환값, UTC 저장 여부를 정밀하게 테스트합니다.
 func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
+	// 테스트 실행 시점 (UTC)
+	// 주의: 실제 코드 실행 시점과 미세한 차이가 있을 수 있으므로 WithinDuration으로 검증합니다.
+	now := time.Now().UTC()
 
 	tests := []struct {
-		name              string
-		initialProduct    *product
-		wantLowestPrice   int
-		wantTimeCheck     bool // true: 시간 갱신 확인, false: 시간 유지 확인
-		timeShouldBeAfter time.Time
+		name            string
+		initialProduct  *product
+		wantLowestPrice int
+		wantUpdated     bool // 갱신 발생 여부 (반환값)
 	}{
 		{
 			name: "Cold Start - Normal Price",
@@ -126,7 +127,7 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 				Price: 10000,
 			},
 			wantLowestPrice: 10000,
-			wantTimeCheck:   true,
+			wantUpdated:     true,
 		},
 		{
 			name: "Cold Start - Discounted Price (Use Discounted)",
@@ -135,50 +136,48 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 				DiscountedPrice: 8000,
 			},
 			wantLowestPrice: 8000,
-			wantTimeCheck:   true,
+			wantUpdated:     true,
 		},
 		{
 			name: "Price Drop - New Lowest Found",
 			initialProduct: &product{
-				Price:           9000,
-				LowestPrice:     10000,
-				LowestPriceTime: now,
+				Price:              9000,
+				LowestPrice:        10000,
+				LowestPriceTimeUTC: now.Add(-1 * time.Hour), // 1시간 전
 			},
-			wantLowestPrice:   9000,
-			wantTimeCheck:     true,
-			timeShouldBeAfter: now,
+			wantLowestPrice: 9000,
+			wantUpdated:     true,
 		},
 		{
 			name: "No Change - Higher Price",
 			initialProduct: &product{
-				Price:           12000,
-				LowestPrice:     10000,
-				LowestPriceTime: now,
+				Price:              12000,
+				LowestPrice:        10000,
+				LowestPriceTimeUTC: now.Add(-1 * time.Hour),
 			},
-			wantLowestPrice:   10000,
-			wantTimeCheck:     false,
-			timeShouldBeAfter: now,
+			wantLowestPrice: 10000,
+			wantUpdated:     false,
 		},
 		{
 			name: "No Change - Same Price",
 			initialProduct: &product{
-				Price:           10000,
-				LowestPrice:     10000,
-				LowestPriceTime: now,
+				Price:              10000,
+				LowestPrice:        10000,
+				LowestPriceTimeUTC: now.Add(-1 * time.Hour),
 			},
-			wantLowestPrice:   10000,
-			wantTimeCheck:     false,
-			timeShouldBeAfter: now,
+			wantLowestPrice: 10000,
+			wantUpdated:     false,
 		},
 		{
 			name: "Price Drop - Discounted is Lower than Prev Lowest",
 			initialProduct: &product{
-				Price:           12000,
-				DiscountedPrice: 9000,
-				LowestPrice:     10000,
+				Price:              12000,
+				DiscountedPrice:    9000,
+				LowestPrice:        10000,
+				LowestPriceTimeUTC: now.Add(-1 * time.Hour),
 			},
 			wantLowestPrice: 9000,
-			wantTimeCheck:   true,
+			wantUpdated:     true,
 		},
 		{
 			name: "Edge Case - Zero Price (Ignored)",
@@ -188,7 +187,7 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 				LowestPrice:     0,
 			},
 			wantLowestPrice: 0,
-			wantTimeCheck:   false,
+			wantUpdated:     false,
 		},
 	}
 
@@ -198,20 +197,27 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			p := tt.initialProduct
-			startTime := time.Now()
+			// 기존 시간 백업 (갱신 안 된 경우 비교용)
+			originalTime := p.LowestPriceTimeUTC
 
 			// Execute
-			p.updateLowestPrice()
+			gotUpdated := p.updateLowestPrice()
 
 			// Verify
 			assert.Equal(t, tt.wantLowestPrice, p.LowestPrice, "LowestPrice mismatch")
+			assert.Equal(t, tt.wantUpdated, gotUpdated, "Updated return value mismatch")
 
-			if tt.wantTimeCheck {
-				// 갱신된 경우: startTime 이후여야 함
-				assert.True(t, p.LowestPriceTime.After(startTime.Add(-time.Second)), "LowestPriceTime should be updated")
-			} else if !tt.timeShouldBeAfter.IsZero() {
+			if tt.wantUpdated {
+				// 갱신된 경우:
+				// 1. 시간은 "현재" 시점으로 갱신되어야 함 (1초 오차 허용)
+				//    (단순히 After 비교보다 WithinDuration이 훨씬 정밀하고 안전합니다)
+				assert.WithinDuration(t, time.Now().UTC(), p.LowestPriceTimeUTC, 1*time.Second, "LowestPriceTimeUTC should be updated to now")
+
+				// 2. 시간은 반드시 UTC여야 함
+				assert.Equal(t, time.UTC, p.LowestPriceTimeUTC.Location(), "LowestPriceTimeUTC should be in UTC")
+			} else {
 				// 갱신 안 된 경우: 기존 시간 유지 확인
-				assert.Equal(t, tt.timeShouldBeAfter, p.LowestPriceTime, "LowestPriceTime should NOT be updated")
+				assert.Equal(t, originalTime, p.LowestPriceTimeUTC, "LowestPriceTimeUTC should NOT be updated")
 			}
 		})
 	}
@@ -288,10 +294,10 @@ func TestProduct_Render_Comprehensive(t *testing.T) {
 		},
 		{
 			name:         "Text Mode - With Lowest Price",
-			product:      &product{Name: "Item", Price: 5000, LowestPrice: 4000, LowestPriceTime: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)},
+			product:      &product{Name: "Item", Price: 5000, LowestPrice: 4000, LowestPriceTimeUTC: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)},
 			supportsHTML: false,
 			wants: []string{
-				"• 최저 가격 : 4,000원 (2023/01/01 12:00)",
+				"• 최저 가격 : 4,000원 (2023/01/01 21:00)",
 			},
 		},
 
@@ -369,6 +375,29 @@ func TestProduct_Render_Comprehensive(t *testing.T) {
 			},
 			unwants: []string{"⇒ 0원", "⇒"}, // "0원"은 "10,000원"에 포함되므로 오탐지 발생 가능. 구체화함.
 		},
+		{
+			name:         "Text Mode - No Escape Special Chars",
+			product:      &product{Name: "특수문자 & 이름 > 테스트"},
+			supportsHTML: false,
+			wants: []string{
+				"☞ 특수문자 & 이름 > 테스트", // Text 모드에서는 이스케이프 없이 그대로 출력, 하지만 KST변환 시간로직등은 영향받으므로 Render 로직 잘타는지 확인
+			},
+			unwants: []string{"&amp;", "&gt;"},
+		},
+		{
+			name: "UTC to KST Conversion",
+			product: &product{
+				Name:        "Time Test",
+				Price:       10000,
+				LowestPrice: 9000,
+				// UTC 00:00 -> KST 09:00
+				LowestPriceTimeUTC: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+			},
+			supportsHTML: false,
+			wants: []string{
+				"(2023/01/01 09:00)", // 00:00 UTC + 9h = 09:00 KST
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -392,13 +421,13 @@ func TestProduct_Render_Comprehensive(t *testing.T) {
 // Grow(512) 적용 후 할당 수(Allocs/op)가 최소화되었는지 확인합니다.
 func BenchmarkProduct_Render_Memory(b *testing.B) {
 	p := &product{
-		ID:              123456,
-		Name:            "[브랜드] 아주 긴 상품 이름을 가진 테스트용 상품입니다 (1kg)",
-		Price:           125000,
-		DiscountedPrice: 110000,
-		DiscountRate:    15,
-		LowestPrice:     105000,
-		LowestPriceTime: time.Now(),
+		ID:                 123456,
+		Name:               "[브랜드] 아주 긴 상품 이름을 가진 테스트용 상품입니다 (1kg)",
+		Price:              125000,
+		DiscountedPrice:    110000,
+		DiscountRate:       15,
+		LowestPrice:        105000,
+		LowestPriceTimeUTC: time.Now(),
 	}
 	prev := &product{
 		Price: 130000, // 이전 가격

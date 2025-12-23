@@ -23,14 +23,18 @@ const (
 
 // product 마켓컬리 상품 상세 페이지에서 조회된 개별 상품 정보를 담는 도메인 모델입니다.
 type product struct {
-	ID              int       `json:"no"`                 // 상품 코드
-	Name            string    `json:"name"`               // 상품 이름
-	Price           int       `json:"price"`              // 가격
-	DiscountedPrice int       `json:"discounted_price"`   // 할인 가격
-	DiscountRate    int       `json:"discount_rate"`      // 할인율
-	LowestPrice     int       `json:"lowest_price"`       // 최저 가격
-	LowestPriceTime time.Time `json:"lowest_price_time"`  // 최저 가격이 등록된 시간
-	IsUnavailable   bool      `json:"is_unknown_product"` // 상품 정보를 불러올 수 없는지에 대한 여부(상품 코드가 존재하지 않거나, 판매를 하고 있지 않는 상품)
+	ID                 int       `json:"no"`                // 상품 코드
+	Name               string    `json:"name"`              // 상품 이름
+	Price              int       `json:"price"`             // 가격
+	DiscountedPrice    int       `json:"discounted_price"`  // 할인 가격
+	DiscountRate       int       `json:"discount_rate"`     // 할인율
+	LowestPrice        int       `json:"lowest_price"`      // 최저 가격
+	LowestPriceTimeUTC time.Time `json:"lowest_price_time"` // 최저 가격이 등록된 시간 (UTC)
+	// IsUnavailable 상품 정보를 불러올 수 없는지에 대한 여부(상품 코드가 존재하지 않거나, 판매를 하고 있지 않는 상품)
+	//
+	// [참고] JSON 태그는 'is_unknown_product'이지만, Go 구조체 필드명은 의미의 명확성을 위해
+	// 부정형 'IsUnknownProduct' 대신 'IsUnavailable'을 사용합니다.
+	IsUnavailable bool `json:"is_unknown_product"`
 }
 
 // URL 상품 상세 페이지의 전체 URL을 반환합니다.
@@ -50,22 +54,30 @@ func (p *product) IsOnSale() bool {
 // [동작 상세]
 // 1. 현재 상품의 유효 가격(Effective Price)을 결정합니다. (할인가 존재 시 할인가 우선)
 // 2. 유효 가격이 기존 최저가보다 낮거나, 기존 최저가 정보가 없는 경우 갱신합니다.
-// 3. 갱신 시점의 시간을 고정하여 데이터 정합성을 보장합니다.
-func (p *product) updateLowestPrice() {
+// 3. 갱신 시점의 시간을 UTC 기준으로 고정하여 데이터 정합성을 보장합니다.
+func (p *product) updateLowestPrice() bool {
 	// 현재 시점의 가장 "낮은 가격"을 먼저 결정
 	effectivePrice := p.Price
 	if p.IsOnSale() {
 		effectivePrice = p.DiscountedPrice
 	}
 
-	now := time.Now()
+	// 유효하지 않은 가격(0원 이하)은 최저가로 갱신하지 않습니다.
+	if effectivePrice <= 0 {
+		return false
+	}
+
+	// 서버 환경(TimeZone)에 의존하지 않기 위해 UTC를 명시적으로 사용합니다.
+	now := time.Now().UTC()
 
 	// 기존 최저가가 설정되어 있지 않거나(0), 현재 유효 가격이 기존 최저가보다 낮은 경우
 	// 최저가 정보를 갱신합니다.
 	if p.LowestPrice == 0 || p.LowestPrice > effectivePrice {
 		p.LowestPrice = effectivePrice
-		p.LowestPriceTime = now
+		p.LowestPriceTimeUTC = now
+		return true
 	}
+	return false
 }
 
 // Render 상품 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
@@ -76,12 +88,16 @@ func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 	sb.Grow(512)
 
 	// 상품 이름 및 링크
-	safeName := template.HTMLEscapeString(p.Name)
+	// HTML 모드일 때만 이스케이프를 적용하여 Text 모드의 가독성을 높입니다.
+	var displayName string
 	if supportsHTML {
-		fmt.Fprintf(&sb, "☞ <a href=\"%s\"><b>%s</b></a>%s", p.URL(), safeName, mark)
+		safeName := template.HTMLEscapeString(p.Name)
+		displayName = fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", p.URL(), safeName)
 	} else {
-		fmt.Fprintf(&sb, "☞ %s%s", safeName, mark)
+		displayName = p.Name
 	}
+
+	fmt.Fprintf(&sb, "☞ %s%s", displayName, mark)
 
 	// 현재 가격
 	sb.WriteString("\n      • 현재 가격 : ")
@@ -98,8 +114,9 @@ func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 		sb.WriteString("\n      • 최저 가격 : ")
 		writeFormattedPrice(&sb, p.LowestPrice, 0, 0, supportsHTML)
 
-		timeStr := p.LowestPriceTime.Format(timeLayout)
-		fmt.Fprintf(&sb, " (%s)", timeStr)
+		// UTC 시간을 한국 시간(KST, UTC+9)으로 변환하여 표시
+		kst := p.LowestPriceTimeUTC.In(time.FixedZone("KST", 9*60*60))
+		fmt.Fprintf(&sb, " (%s)", kst.Format(timeLayout))
 	}
 
 	return sb.String()
