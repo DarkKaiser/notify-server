@@ -21,6 +21,11 @@ const (
 	timeLayout = "2006/01/02 15:04"
 )
 
+var (
+	// kstZone 한국 표준시(KST, UTC+9) 타임존 객체입니다.
+	kstZone = time.FixedZone("KST", 9*60*60)
+)
+
 // product 마켓컬리 상품 상세 페이지에서 조회된 개별 상품 정보를 담는 도메인 모델입니다.
 type product struct {
 	ID                 int       `json:"no"`                // 상품 코드
@@ -115,7 +120,7 @@ func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 		writeFormattedPrice(&sb, p.LowestPrice, 0, 0, supportsHTML)
 
 		// UTC 시간을 한국 시간(KST, UTC+9)으로 변환하여 표시
-		kst := p.LowestPriceTimeUTC.In(time.FixedZone("KST", 9*60*60))
+		kst := p.LowestPriceTimeUTC.In(kstZone)
 		fmt.Fprintf(&sb, " (%s)", kst.Format(timeLayout))
 	}
 
