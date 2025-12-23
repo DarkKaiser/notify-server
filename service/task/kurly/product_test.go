@@ -8,6 +8,95 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestProduct_URL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		id   int
+		want string
+	}{
+		{
+			name: "Normal ID",
+			id:   12345,
+			want: "https://www.kurly.com/goods/12345",
+		},
+		{
+			name: "Zero ID",
+			id:   0,
+			want: "https://www.kurly.com/goods/0",
+		},
+		{
+			name: "Negative ID (Edge Case)",
+			id:   -1,
+			want: "https://www.kurly.com/goods/-1",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := &product{ID: tt.id}
+			assert.Equal(t, tt.want, p.URL())
+		})
+	}
+}
+
+func TestProduct_IsOnSale(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		price           int
+		discountedPrice int
+		want            bool
+	}{
+		{
+			name:            "Not on sale: No discount price",
+			price:           10000,
+			discountedPrice: 0,
+			want:            false,
+		},
+		{
+			name:            "On sale: Discounted price lower than price",
+			price:           10000,
+			discountedPrice: 9000,
+			want:            true,
+		},
+		{
+			name:            "Not on sale: Discounted price equals price",
+			price:           10000,
+			discountedPrice: 10000,
+			want:            false,
+		},
+		{
+			name:            "Not on sale: Discounted price higher than price (Error case)",
+			price:           10000,
+			discountedPrice: 11000,
+			want:            false,
+		},
+		{
+			name:            "Not on sale: Negative discounted price (Error case)",
+			price:           10000,
+			discountedPrice: -100,
+			want:            false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := &product{
+				Price:           tt.price,
+				DiscountedPrice: tt.discountedPrice,
+			}
+			assert.Equal(t, tt.want, p.IsOnSale())
+		})
+	}
+}
+
 func TestProduct_UpdateLowestPrice(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +219,7 @@ func TestProduct_Render(t *testing.T) {
 		product      *product
 		supportsHTML bool
 		mark         string
-		prevProduct  *product
+		old          *product // Renamed from prevProduct to match Render signature
 		wantContains []string
 		wantNot      []string
 	}{
@@ -157,13 +246,17 @@ func TestProduct_Render(t *testing.T) {
 			wantNot: []string{"<a href=", "<b>", "</b>"},
 		},
 		{
-			name:         "HTML: 할인 상품",
+			name:         "HTML: 할인 상품 (with Old Price comparison)",
 			product:      discountProduct,
 			supportsHTML: true,
+			old: &product{
+				Price: 10000, // 이전 가격은 정가 동일
+			},
 			wantContains: []string{
 				"<s>10,000원</s>", // 취소선
 				"8,000원",         // 할인가
 				"(20%)",          // 할인율
+				"이전 가격 : 10,000원",
 			},
 		},
 		{
@@ -176,6 +269,51 @@ func TestProduct_Render(t *testing.T) {
 			wantNot: []string{"<s>", "</s>"},
 		},
 		{
+			name: "Text: 할인율 0% (숨김 처리 확인)",
+			product: &product{
+				ID:              12345,
+				Name:            "0퍼 할인 사과",
+				Price:           10000,
+				DiscountedPrice: 9900, // 100원 할인되었으나
+				DiscountRate:    0,    // 비율이 0인 경우
+			},
+			supportsHTML: false,
+			wantContains: []string{
+				"10,000원 ⇒ 9,900원", // 비율 표기 없음
+			},
+			wantNot: []string{"(0%)", "(%)"},
+		},
+		{
+			name: "HTML: 할인율 0% (숨김 처리 확인)",
+			product: &product{
+				ID:              12345,
+				Name:            "0퍼 할인 사과",
+				Price:           10000,
+				DiscountedPrice: 9900,
+				DiscountRate:    0,
+			},
+			supportsHTML: true,
+			wantContains: []string{
+				"<s>10,000원</s> 9,900원", // 비율 표기 없음
+			},
+			wantNot: []string{"(0%)", "(%)"},
+		},
+		{
+			name: "방어적 로직: 할인가가 정가보다 비쌈 (할인 무시)",
+			product: &product{
+				ID:              111,
+				Name:            "이상한 사과",
+				Price:           10000,
+				DiscountedPrice: 20000, // Error Data
+				DiscountRate:    50,
+			},
+			supportsHTML: false,
+			wantContains: []string{
+				"10,000원", // 정가만 표시
+			},
+			wantNot: []string{"20,000원", "50%", "=>", "⇒"},
+		},
+		{
 			name:         "Text: 마크(Mark) 포함",
 			product:      baseProduct,
 			supportsHTML: false,
@@ -183,10 +321,10 @@ func TestProduct_Render(t *testing.T) {
 			wantContains: []string{"맛있는 사과 🆕"},
 		},
 		{
-			name:         "Text: 이전 가격 비교",
+			name:         "Text: 이전 가격 비교 (old product exists)",
 			product:      baseProduct,
 			supportsHTML: false,
-			prevProduct: &product{
+			old: &product{
 				Price: 12000,
 			},
 			wantContains: []string{
@@ -207,7 +345,8 @@ func TestProduct_Render(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.prevProduct)
+			// Updated to use 'old' field name from struct
+			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.old)
 
 			for _, s := range tt.wantContains {
 				assert.Contains(t, got, s)
@@ -217,4 +356,25 @@ func TestProduct_Render(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Example_render renders the product status message.
+// This example demonstrates how to generate a notification message for a product.
+func Example_render() {
+	p := &product{
+		ID:              12345,
+		Name:            "Fresh Apple",
+		Price:           10000,
+		DiscountedPrice: 9000,
+		DiscountRate:    10,
+	}
+
+	// Render for Text-based clients (e.g., Log, Simple Terminal)
+	// Using 'old' as nil implies no previous price comparison.
+	msg := p.Render(false, " [Sale]", nil)
+	fmt.Println(msg)
+
+	// Output:
+	// ☞ Fresh Apple [Sale]
+	//       • 현재 가격 : 10,000원 ⇒ 9,000원 (10%)
 }
