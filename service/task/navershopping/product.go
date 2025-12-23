@@ -23,22 +23,45 @@ func (p *product) Key() string {
 }
 
 // Render 상품 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
-func (p *product) Render(supportsHTML bool, mark string) string {
-	if supportsHTML {
-		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> (%s) %s원%s`
+func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
+	var sb strings.Builder
 
-		return fmt.Sprintf(
+	// 예상 버퍼 크기 할당
+	sb.Grow(512)
+
+	if supportsHTML {
+		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> (%s) %s원`
+
+		fmt.Fprintf(&sb,
 			htmlFormat,
 			p.Link,
 			p.Title,
 			p.MallName,
 			strutil.FormatCommas(p.LowPrice),
-			mark,
+		)
+	} else {
+		const textFormat = `☞ %s (%s) %s원`
+
+		fmt.Fprintf(&sb,
+			textFormat,
+			p.Title,
+			p.MallName,
+			strutil.FormatCommas(p.LowPrice),
 		)
 	}
 
-	const textFormat = `☞ %s (%s) %s원%s
-%s`
+	// 이전 가격 정보 추가 (HTML/Text 공통)
+	if prev != nil && p.LowPrice != prev.LowPrice {
+		fmt.Fprintf(&sb, " (이전: %s원)", strutil.FormatCommas(prev.LowPrice))
+	}
 
-	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, p.MallName, strutil.FormatCommas(p.LowPrice), mark, p.Link))
+	// Mark 추가
+	sb.WriteString(mark)
+
+	// Text 모드일 경우 줄바꿈 후 링크 추가
+	if !supportsHTML {
+		fmt.Fprintf(&sb, "\n%s", p.Link)
+	}
+
+	return sb.String()
 }

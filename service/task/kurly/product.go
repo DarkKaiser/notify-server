@@ -69,7 +69,7 @@ func (p *product) updateLowestPrice() {
 }
 
 // Render 상품 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
-func (p *product) Render(supportsHTML bool, mark string, old *product) string {
+func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 	var sb strings.Builder
 	sb.Grow(256) // 예상되는 문자열 크기만큼 미리 할당 (최적화)
 
@@ -87,9 +87,9 @@ func (p *product) Render(supportsHTML bool, mark string, old *product) string {
 	writePrice(&sb, p.Price, p.DiscountedPrice, p.DiscountRate, supportsHTML)
 
 	// 3. 이전 가격
-	if old != nil {
+	if prev != nil {
 		sb.WriteString("\n      • 이전 가격 : ")
-		writePrice(&sb, old.Price, old.DiscountedPrice, old.DiscountRate, supportsHTML)
+		writePrice(&sb, prev.Price, prev.DiscountedPrice, prev.DiscountRate, supportsHTML)
 	}
 
 	// 4. 최저 가격

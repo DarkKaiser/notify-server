@@ -219,7 +219,7 @@ func TestProduct_Render(t *testing.T) {
 		product      *product
 		supportsHTML bool
 		mark         string
-		old          *product // Renamed from prevProduct to match Render signature
+		prev         *product // Renamed from old
 		wantContains []string
 		wantNot      []string
 	}{
@@ -249,7 +249,7 @@ func TestProduct_Render(t *testing.T) {
 			name:         "HTML: 할인 상품 (with Old Price comparison)",
 			product:      discountProduct,
 			supportsHTML: true,
-			old: &product{
+			prev: &product{
 				Price: 10000, // 이전 가격은 정가 동일
 			},
 			wantContains: []string{
@@ -324,7 +324,7 @@ func TestProduct_Render(t *testing.T) {
 			name:         "Text: 이전 가격 비교 (old product exists)",
 			product:      baseProduct,
 			supportsHTML: false,
-			old: &product{
+			prev: &product{
 				Price: 12000,
 			},
 			wantContains: []string{
@@ -345,8 +345,8 @@ func TestProduct_Render(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Updated to use 'old' field name from struct
-			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.old)
+			// Updated to use 'prev' field name from struct
+			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.prev)
 
 			for _, s := range tt.wantContains {
 				assert.Contains(t, got, s)
@@ -370,7 +370,7 @@ func Example_render() {
 	}
 
 	// Render for Text-based clients (e.g., Log, Simple Terminal)
-	// Using 'old' as nil implies no previous price comparison.
+	// Using 'prev' as nil implies no previous price comparison.
 	msg := p.Render(false, " [Sale]", nil)
 	fmt.Println(msg)
 

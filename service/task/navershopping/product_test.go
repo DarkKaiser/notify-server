@@ -48,6 +48,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		product      *product
 		supportsHTML bool
 		mark         string
+		prev         *product // Previous product for comparison (Renamed from old)
 		wants        []string // 결과 문자열에 반드시 포함되어야 할 부분 문자열들
 		unwants      []string // 결과 문자열에 포함되지 말아야 할 부분 문자열들
 	}{
@@ -90,6 +91,30 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 			mark:         " 🔻",
 			wants: []string{
 				"850,000원 🔻",
+			},
+		},
+		{
+			name:         "Text Format - With Previous Price",
+			product:      baseProduct, // 850,000
+			supportsHTML: false,
+			mark:         " 🔻",
+			prev: &product{
+				LowPrice: 900000,
+			},
+			wants: []string{
+				"850,000원 (이전: 900,000원) 🔻",
+			},
+		},
+		{
+			name:         "HTML Format - With Previous Price",
+			product:      baseProduct, // 850,000
+			supportsHTML: true,
+			mark:         " 🔻",
+			prev: &product{
+				LowPrice: 900000,
+			},
+			wants: []string{
+				"850,000원 (이전: 900,000원) 🔻",
 			},
 		},
 		{
@@ -136,7 +161,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.Render(tt.supportsHTML, tt.mark)
+			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.prev)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want, "Result should contain expected substring")
 			}
@@ -159,21 +184,21 @@ func TestProduct_Scenario_Example(t *testing.T) {
 	}
 
 	t.Run("Text Mode", func(t *testing.T) {
-		got := p.Render(false, "")
+		got := p.Render(false, "", nil)
 		want := `☞ Example Product (MyStore) 50,000원
 http://example.com/prod/1`
 		assert.Equal(t, want, got)
 	})
 
 	t.Run("Text Mode With Mark", func(t *testing.T) {
-		got := p.Render(false, " NEW")
+		got := p.Render(false, " NEW", nil)
 		want := `☞ Example Product (MyStore) 50,000원 NEW
 http://example.com/prod/1`
 		assert.Equal(t, want, got)
 	})
 
 	t.Run("HTML Mode", func(t *testing.T) {
-		got := p.Render(true, "")
+		got := p.Render(true, "", nil)
 		want := `☞ <a href="http://example.com/prod/1"><b>Example Product</b></a> (MyStore) 50,000원`
 		assert.Equal(t, want, got)
 	})
@@ -189,7 +214,7 @@ func BenchmarkProduct_Render_Text(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(false, " MARK")
+		_ = p.Render(false, " MARK", nil)
 	}
 }
 
@@ -203,6 +228,6 @@ func BenchmarkProduct_Render_HTML(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(true, " MARK")
+		_ = p.Render(true, " MARK", nil)
 	}
 }

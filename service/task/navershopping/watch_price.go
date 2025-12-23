@@ -310,7 +310,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	// 정렬된 순서대로 상품 목록을 순회하며 신규 상품 및 가격 변경 상품을 식별합니다.
 	lineSpacing := "\n\n"
 	for _, p := range currentSnapshot.Products {
-		prevProduct, exists := prevMap[p.Key()]
+		prev, exists := prevMap[p.Key()]
 
 		if !exists {
 			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.
@@ -318,16 +318,15 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.Render(supportsHTML, mark.New))
+			sb.WriteString(p.Render(supportsHTML, mark.New, nil))
 		} else {
 			// 동일한 상품(Key 일치)이 이전에도 존재했으나, 최저가(LowPrice)가 변경되었습니다.
 			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
-			if p.LowPrice != prevProduct.LowPrice {
+			if p.LowPrice != prev.LowPrice {
 				if sb.Len() > 0 {
 					sb.WriteString(lineSpacing)
 				}
-
-				sb.WriteString(p.Render(supportsHTML, fmt.Sprintf(" (이전: %s원)%s", strutil.FormatCommas(prevProduct.LowPrice), mark.Change)))
+				sb.WriteString(p.Render(supportsHTML, mark.Change, prev))
 			}
 		}
 	}
@@ -372,7 +371,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.Render(supportsHTML, ""))
+			sb.WriteString(p.Render(supportsHTML, "", nil))
 		}
 
 		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",

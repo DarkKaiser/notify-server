@@ -43,11 +43,16 @@ func (p *performance) Key() string {
 
 // Render 공연 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
 func (p *performance) Render(supportsHTML bool, mark string) string {
+	var sb strings.Builder
+
+	// 예상 버퍼 크기 할당
+	sb.Grow(512)
+
 	if supportsHTML {
 		const htmlFormat = `☞ <a href="%s?query=%s"><b>%s</b></a>%s
       • 장소 : %s`
 
-		return fmt.Sprintf(
+		fmt.Fprintf(&sb,
 			htmlFormat,
 			searchResultPageURL,
 			url.QueryEscape(p.Title),
@@ -55,10 +60,12 @@ func (p *performance) Render(supportsHTML bool, mark string) string {
 			mark,
 			p.Place,
 		)
-	}
-
-	const textFormat = `☞ %s%s
+	} else {
+		const textFormat = `☞ %s%s
       • 장소 : %s`
 
-	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
+		fmt.Fprintf(&sb, textFormat, p.Title, mark, p.Place)
+	}
+
+	return sb.String()
 }
