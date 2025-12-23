@@ -284,67 +284,25 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapsh
 	}
 
 	//
-	// 읽어들인 상품 목록에서 중복된 상품 및 현재 판매중이지 않은 상품을 확인하고, 각각에 대해 상품들의 정보를 추출한다.
-	//
-
-	// 읽어들인 상품 목록에서 중복으로 등록된 상품들의 정보를 추출한다.
-	var duplicateProductsBuilder strings.Builder
-	for i, record := range duplicateRecords {
-		if i > 0 {
-			duplicateProductsBuilder.WriteString("\n")
-		}
-
-		productNo := strings.TrimSpace(record[csvColumnNo])
-		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
-
-		if supportsHTML {
-			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
-		} else {
-			duplicateProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
-		}
-	}
-
-	// 읽어들인 상품 목록에서 알 수 없는 상품들의 정보를 추출한다.
-	var unknownProductsBuilder strings.Builder
-	for _, product := range currentSnapshot.Products {
-		if product.IsUnavailable == true {
-			for _, record := range records {
-				if record[csvColumnNo] == strconv.Itoa(product.ID) {
-					if unknownProductsBuilder.Len() != 0 {
-						unknownProductsBuilder.WriteString("\n")
-					}
-
-					productNo := strings.TrimSpace(record[csvColumnNo])
-					productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
-
-					if supportsHTML {
-						unknownProductsBuilder.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
-					} else {
-						unknownProductsBuilder.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
-					}
-					break
-				}
-			}
-		}
-	}
-
-	//
 	// 조건에 따라 상품 정보 변경 사항을 처리하고 메시지를 생성한다.
 	//
+	duplicateProductsMessage := t.buildDuplicateProductsMessage(duplicateRecords, supportsHTML)
+	unknownProductsMessage := t.buildUnknownProductsMessage(currentSnapshot.Products, records, supportsHTML)
+
 	var message string
 	var changedTaskResultData interface{}
 
-	if sb.Len() > 0 || duplicateProductsBuilder.Len() > 0 || unknownProductsBuilder.Len() > 0 {
+	if sb.Len() > 0 || len(duplicateProductsMessage) > 0 || len(unknownProductsMessage) > 0 {
 		if sb.Len() > 0 {
 			message = fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", sb.String())
 		} else {
 			message = "상품 정보가 변경되었습니다.\n\n"
 		}
-		if duplicateProductsBuilder.Len() > 0 {
-			message += fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateProductsBuilder.String())
+		if len(duplicateProductsMessage) > 0 {
+			message += fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateProductsMessage)
 		}
-		if unknownProductsBuilder.Len() > 0 {
-			message += fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unknownProductsBuilder.String())
+		if len(unknownProductsMessage) > 0 {
+			message += fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unknownProductsMessage)
 		}
 
 		changedTaskResultData = currentSnapshot
@@ -392,4 +350,61 @@ func (t *task) normalizeDuplicateProducts(records [][]string) ([][]string, [][]s
 	}
 
 	return distinctRecords, duplicateRecords
+}
+
+// @@@@@
+// buildDuplicateProductsMessage 중복으로 등록된 상품 목록에 대한 알림 메시지를 생성합니다.
+func (t *task) buildDuplicateProductsMessage(duplicateRecords [][]string, supportsHTML bool) string {
+	if len(duplicateRecords) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for i, record := range duplicateRecords {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		productNo := strings.TrimSpace(record[csvColumnNo])
+		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
+
+		if supportsHTML {
+			sb.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
+		} else {
+			sb.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
+		}
+	}
+	return sb.String()
+}
+
+// @@@@@
+// buildUnknownProductsMessage 알 수 없는 상품(판매 중지 등) 목록에 대한 알림 메시지를 생성합니다.
+func (t *task) buildUnknownProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
+	var sb strings.Builder
+
+	for _, product := range products {
+		if !product.IsUnavailable {
+			continue
+		}
+
+		// CSV 레코드에서 해당 상품의 정보를 찾습니다.
+		for _, record := range records {
+			if record[csvColumnNo] == strconv.Itoa(product.ID) {
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+
+				productNo := strings.TrimSpace(record[csvColumnNo])
+				productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
+
+				if supportsHTML {
+					sb.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
+				} else {
+					sb.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
+				}
+				break
+			}
+		}
+	}
+	return sb.String()
 }
