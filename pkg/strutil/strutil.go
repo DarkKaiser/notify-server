@@ -199,16 +199,32 @@ func MatchesKeywords(s string, includedKeywords, excludedKeywords []string) bool
 	// 대소문자 구분 없이 비교하기 위해 소문자로 변환
 	lowerS := strings.ToLower(s)
 
-	// 포함 키워드 검사 (AND 조건)
+	// [Phase 1] 제외 키워드 우선 검사
+	//
+	// 대부분의 검색 결과는 쿼리와 연관성이 있어 포함 조건을 만족할 확률이 높습니다.
+	// 반면, 제외 조건은 명시적인 거부 의사를 나타내므로, 이를 먼저 검사하여
+	// 불필요한 포함 조건 연산(문자열 분할, 루프 등)을 사전에 차단합니다.
+	// 이를 통해 '가망 없는' 항목에 대한 CPU 사이클 낭비를 최소화합니다.
+	for _, k := range excludedKeywords {
+		if strings.Contains(lowerS, strings.ToLower(k)) {
+			return false
+		}
+	}
+
+	// [Phase 2] 포함 키워드 검사
+	//
+	// 모든 포함 키워드 조건이 만족되어야 최종적으로 true를 반환합니다.
+	// 단, 개별 키워드 내에 파이프(|)가 포함된 경우 해당 키워드는 OR 조건으로 처리됩니다.
 	for _, k := range includedKeywords {
-		// 파이프(|)가 있는지 먼저 확인 (최적화)
+		// 파이프(|)가 없는 경우: 단일 키워드 매칭
+		// 문자열 분할 오버헤드 없이 `strings.Contains`로 빠르게 검사합니다.
 		if !strings.Contains(k, "|") {
-			// 단일 키워드: 간단한 검사
 			if !strings.Contains(lowerS, strings.ToLower(k)) {
 				return false
 			}
 		} else {
-			// OR 조건: "A|B|C" → 하나라도 매칭되면 OK
+			// 파이프(|)가 있는 경우: 복합 키워드 OR 매칭
+			// "A|B|C" -> A, B, C 중 하나라도 포함되면 해당 조건은 만족한 것으로 처리합니다.
 			orKeywords := SplitAndTrim(k, "|")
 
 			matched := false
@@ -221,13 +237,6 @@ func MatchesKeywords(s string, includedKeywords, excludedKeywords []string) bool
 			if !matched {
 				return false
 			}
-		}
-	}
-
-	// 제외 키워드 검사 (OR 조건): 하나라도 포함되면 false
-	for _, k := range excludedKeywords {
-		if strings.Contains(lowerS, strings.ToLower(k)) {
-			return false
 		}
 	}
 
