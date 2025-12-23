@@ -52,16 +52,16 @@ func (p *product) IsOnSale() bool {
 // 2. 유효 가격이 기존 최저가보다 낮거나, 기존 최저가 정보가 없는 경우 갱신합니다.
 // 3. 갱신 시점의 시간을 고정하여 데이터 정합성을 보장합니다.
 func (p *product) updateLowestPrice() {
-	// 1. 현재 시점의 가장 "낮은 가격"을 먼저 결정
+	// 현재 시점의 가장 "낮은 가격"을 먼저 결정
 	effectivePrice := p.Price
 	if p.IsOnSale() {
 		effectivePrice = p.DiscountedPrice
 	}
 
-	// 2. 시간 고정
 	now := time.Now()
 
-	// 3. 단 한 번의 비교 및 갱신
+	// 기존 최저가가 설정되어 있지 않거나(0), 현재 유효 가격이 기존 최저가보다 낮은 경우
+	// 최저가 정보를 갱신합니다.
 	if p.LowestPrice == 0 || p.LowestPrice > effectivePrice {
 		p.LowestPrice = effectivePrice
 		p.LowestPriceTime = now
@@ -71,31 +71,32 @@ func (p *product) updateLowestPrice() {
 // Render 상품 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
 func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 	var sb strings.Builder
-	sb.Grow(256) // 예상되는 문자열 크기만큼 미리 할당 (최적화)
 
-	// 1. 상품 이름 및 링크
+	// 예상되는 문자열 크기만큼 미리 할당
+	sb.Grow(512)
+
+	// 상품 이름 및 링크
 	safeName := template.HTMLEscapeString(p.Name)
 	if supportsHTML {
 		fmt.Fprintf(&sb, "☞ <a href=\"%s\"><b>%s</b></a>%s", p.URL(), safeName, mark)
 	} else {
-		// 기존 로직 유지: Text 모드에서도 HTMLEscapeString 적용
 		fmt.Fprintf(&sb, "☞ %s%s", safeName, mark)
 	}
 
-	// 2. 현재 가격
+	// 현재 가격
 	sb.WriteString("\n      • 현재 가격 : ")
-	writePrice(&sb, p.Price, p.DiscountedPrice, p.DiscountRate, supportsHTML)
+	writeFormattedPrice(&sb, p.Price, p.DiscountedPrice, p.DiscountRate, supportsHTML)
 
-	// 3. 이전 가격
+	// 이전 가격
 	if prev != nil {
 		sb.WriteString("\n      • 이전 가격 : ")
-		writePrice(&sb, prev.Price, prev.DiscountedPrice, prev.DiscountRate, supportsHTML)
+		writeFormattedPrice(&sb, prev.Price, prev.DiscountedPrice, prev.DiscountRate, supportsHTML)
 	}
 
-	// 4. 최저 가격
+	// 최저 가격
 	if p.LowestPrice != 0 {
 		sb.WriteString("\n      • 최저 가격 : ")
-		writePrice(&sb, p.LowestPrice, 0, 0, supportsHTML)
+		writeFormattedPrice(&sb, p.LowestPrice, 0, 0, supportsHTML)
 
 		timeStr := p.LowestPriceTime.Format(timeLayout)
 		fmt.Fprintf(&sb, " (%s)", timeStr)
@@ -104,7 +105,7 @@ func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 	return sb.String()
 }
 
-// writePrice 정가, 할인가, 할인율 정보를 조합하여 사용자 친화적인 가격 문자열을 생성하고 빌더에 기록합니다.
+// writeFormattedPrice 정가, 할인가, 할인율 정보를 조합하여 사용자 친화적인 가격 문자열을 생성하고 빌더에 기록합니다.
 //
 // [기능 상세]
 // 1. 할인이 적용되지 않은 경우: 정가만 표시 (예: "10,000원")
@@ -118,7 +119,7 @@ func (p *product) Render(supportsHTML bool, mark string, prev *product) string {
 //   - discountedPrice: 할인 후 가격 (0 또는 price와 같으면 할인 없음으로 간주)
 //   - discountRate: 할인율 (정수 퍼센트)
 //   - supportsHTML: HTML 태그 포함 여부 (Telegram 등 리치 텍스트 지원 클라이언트용)
-func writePrice(sb *strings.Builder, price, discountedPrice, discountRate int, supportsHTML bool) {
+func writeFormattedPrice(sb *strings.Builder, price, discountedPrice, discountRate int, supportsHTML bool) {
 	// [방어적 코드]
 	// 1. discountedPrice <= 0: 할인가 정보 없음
 	// 2. discountedPrice >= price: 할인가가 정가보다 비싸거나 같음 (데이터 오류 또는 할인 없음)
@@ -132,17 +133,17 @@ func writePrice(sb *strings.Builder, price, discountedPrice, discountRate int, s
 	formattedDiscountedPrice := strutil.FormatCommas(discountedPrice)
 
 	// 할인율이 유효한 경우에만 문자열 생성 (0% 표시 방지)
-	var rateStr string
+	var discountRateStr string
 	if discountRate > 0 {
-		rateStr = fmt.Sprintf(" (%d%%)", discountRate)
+		discountRateStr = fmt.Sprintf(" (%d%%)", discountRate)
 	}
 
 	if supportsHTML {
 		// 예: <s>10,000원</s> 9,000원 (10%)
-		fmt.Fprintf(sb, "<s>%s원</s> %s원%s", formattedPrice, formattedDiscountedPrice, rateStr)
+		fmt.Fprintf(sb, "<s>%s원</s> %s원%s", formattedPrice, formattedDiscountedPrice, discountRateStr)
 		return
 	}
 
 	// 예: 10,000원 ⇒ 9,000원 (10%)
-	fmt.Fprintf(sb, "%s원 ⇒ %s원%s", formattedPrice, formattedDiscountedPrice, rateStr)
+	fmt.Fprintf(sb, "%s원 ⇒ %s원%s", formattedPrice, formattedDiscountedPrice, discountRateStr)
 }
