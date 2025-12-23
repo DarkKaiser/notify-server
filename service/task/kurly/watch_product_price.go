@@ -83,7 +83,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	// 읽어들인 상품들의 가격 및 상태를 확인한다.
 	//
-	actualityTaskResultData := &watchProductPriceSnapshot{
+	currentSnapshot := &watchProductPriceSnapshot{
 		Products: make([]*product, 0, len(records)),
 	}
 
@@ -193,17 +193,17 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 			}
 		}
 
-		actualityTaskResultData.Products = append(actualityTaskResultData.Products, product)
+		currentSnapshot.Products = append(currentSnapshot.Products, product)
 	}
 
-	return t.diffAndNotify(records, duplicateRecords, actualityTaskResultData, prevSnapshot, supportsHTML)
+	return t.diffAndNotify(records, duplicateRecords, currentSnapshot, prevSnapshot, supportsHTML)
 }
 
 // @@@@@
 // diffAndNotify는 현재 수집된 상품 정보와 이전 스냅샷을 비교하여 변동 사항을 분석합니다.
 // 가격 변동, 품절 상태 변경, 신규 상품 등록 등의 이벤트를 감지하고,
 // 사용자에게 발송할 포맷팅된 알림 메시지와 갱신된 작업 결과 데이터를 생성합니다.
-func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTaskResultData, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	//
 	// 상품들의 변경된 가격 및 상태를 확인한다.
 	//
@@ -214,7 +214,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 	if supportsHTML {
 		lineSpacing = "\n"
 	}
-	err := tasksvc.EachSourceElementIsInTargetElementOrNot(actualityTaskResultData.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
+	err := tasksvc.EachSourceElementIsInTargetElementOrNot(currentSnapshot.Products, prevSnapshot.Products, func(selem, telem interface{}) (bool, error) {
 		actualityProduct, ok1 := selem.(*product)
 		originProduct, ok2 := telem.(*product)
 		if !ok1 || !ok2 {
@@ -302,7 +302,7 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 
 	// 읽어들인 상품 목록에서 알 수 없는 상품들의 정보를 추출한다.
 	var unknownProductsBuilder strings.Builder
-	for _, product := range actualityTaskResultData.Products {
+	for _, product := range currentSnapshot.Products {
 		if product.IsUnavailable == true {
 			for _, record := range records {
 				if record[csvColumnNo] == strconv.Itoa(product.ID) {
@@ -343,13 +343,13 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, actualityTask
 			message += fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unknownProductsBuilder.String())
 		}
 
-		changedTaskResultData = actualityTaskResultData
+		changedTaskResultData = currentSnapshot
 	} else {
 		if t.GetRunBy() == tasksvc.RunByUser {
-			if len(actualityTaskResultData.Products) == 0 {
+			if len(currentSnapshot.Products) == 0 {
 				message = "등록된 상품 정보가 존재하지 않습니다."
 			} else {
-				for _, actualityProduct := range actualityTaskResultData.Products {
+				for _, actualityProduct := range currentSnapshot.Products {
 					if sb.Len() > 0 {
 						sb.WriteString(lineSpacing)
 					}
