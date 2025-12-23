@@ -72,20 +72,10 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	f, err := os.Open(commandSettings.WatchProductsFile)
+	records, err := t.loadWatchList(commandSettings.WatchProductsFile)
 	if err != nil {
-		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
+		return "", nil, err
 	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
-		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
-	}
-
-	// 감시할 상품 목록의 헤더를 제거한다.
-	records = records[1:]
 
 	// 감시할 상품 목록에서 중복된 상품을 정규화한다.
 	records, duplicateRecords := t.normalizeDuplicateProducts(records)
@@ -434,4 +424,27 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	}
 
 	return product, nil
+}
+
+// @@@@@
+// loadWatchList CSV 파일로부터 감시할 상품 목록을 읽어옵니다.
+func (t *task) loadWatchList(filePath string) ([][]string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
+	}
+
+	// 감시할 상품 목록의 헤더를 제거한다.
+	if len(records) > 0 {
+		records = records[1:]
+	}
+
+	return records, nil
 }
