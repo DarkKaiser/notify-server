@@ -16,6 +16,16 @@ import (
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
+var (
+	// reExtractNextData 마켓컬리 상품 페이지의 핵심 데이터가 담긴 <script> 태그 내용을 추출합니다.
+	// (페이지 소스에 포함된 초기 데이터를 직접 긁어와서, 별도의 API 호출 없이도 상품 정보를 얻을 수 있게 해줍니다)
+	reExtractNextData = regexp.MustCompile(`<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>`)
+
+	// reDetectUnavailable 추출한 데이터에서 "상품 정보 없음(null)" 패턴이 있는지 검사합니다.
+	// 이 패턴이 발견되면 '판매 중지'되거나 '삭제된 상품'으로 판단하여 불필요한 알림을 보내지 않도록 합니다.
+	reDetectUnavailable = regexp.MustCompile(`"product":\s*null`)
+)
+
 // csvColumnIndex CSV 파일에서 상품 정보를 파싱할 때 사용되는 컬럼 인덱스를 정의하는 타입입니다.
 type csvColumnIndex int
 
@@ -87,12 +97,6 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		Products: make([]*product, 0, len(records)),
 	}
 
-	// 읽어들인 상품 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출하기 위한 정규표현식
-	re1 := regexp.MustCompile(`<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>`)
-
-	// 읽어들인 상품 페이지의 상품 데이터에서 판매중인 상품이 아닌지 확인하고자 하는 정규표현식
-	re2 := regexp.MustCompile(`"product":\s*null`)
-
 	for _, record := range records {
 		if record[csvColumnStatus] != csvStatusEnabled {
 			continue
@@ -116,7 +120,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
 		}
-		match := re1.FindStringSubmatch(html)
+		match := reExtractNextData.FindStringSubmatch(html)
 		if len(match) < 2 {
 			return "", nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
 		}
@@ -134,7 +138,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		}
 
 		// 알 수 없는 상품(현재 판매중이지 않은 상품)인지 확인한다.
-		if re2.MatchString(jsonProductData) {
+		if reDetectUnavailable.MatchString(jsonProductData) {
 			product.IsUnavailable = true
 		}
 
@@ -368,8 +372,8 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapsh
 // normalizeDuplicateProducts 함수는 입력된 상품 목록에서 중복된 상품을 제거하고, 중복된 상품을 별도의 목록에 저장한다.
 // 반환 값으로는 중복이 제거된 상품 목록과 중복된 상품 목록을 반환한다.
 func (t *task) normalizeDuplicateProducts(records [][]string) ([][]string, [][]string) {
-	var distinctRecords [][]string
-	var duplicateRecords [][]string
+	distinctRecords := make([][]string, 0, len(records))
+	duplicateRecords := make([][]string, 0, len(records))
 
 	checkedProducts := make(map[string]bool)
 
