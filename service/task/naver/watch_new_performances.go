@@ -2,7 +2,6 @@ package naver
 
 import (
 	"fmt"
-	"html/template"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,13 +22,6 @@ const (
 	//  - 공연 정보를 JSON 형태로 비동기 수집(AJAX)하는 데 사용됩니다.
 	//  - "https://m.search.naver.com" 도메인을 사용하여 모바일 환경에 최적화된 데이터를 응답받습니다.
 	searchAPIBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
-
-	// searchResultPageURL 사용자에게 제공할 '검색 결과 페이지'의 기본 URL입니다.
-	//
-	// [목적]
-	//  - 알림 메시지에서 공연명을 클릭했을 때 이동할 하이퍼링크(Target URL)를 생성하는 데 사용됩니다.
-	//  - 쿼리 파라미터(?query=...)를 추가하여 사용자가 해당 공연의 상세 검색 결과를 즉시 확인할 수 있도록 돕습니다.
-	searchResultPageURL = "https://search.naver.com/search.naver"
 
 	// ------------------------------------------------------------------------------------------------
 	// CSS Selectors
@@ -91,53 +83,6 @@ func (s *watchNewPerformancesSettings) validate() error {
 // watchNewPerformancesSnapshot 신규 공연을 식별하기 위한 공연 데이터의 스냅샷입니다.
 type watchNewPerformancesSnapshot struct {
 	Performances []*performance `json:"performances"`
-}
-
-// performance 크롤링된 공연 정보를 담는 도메인 모델입니다.
-type performance struct {
-	Title     string `json:"title"`
-	Place     string `json:"place"`
-	Thumbnail string `json:"thumbnail"`
-}
-
-func (p *performance) Equals(other *performance) bool {
-	if p == nil || other == nil {
-		return false
-	}
-	return p.Title == other.Title && p.Place == other.Place
-}
-
-// Key 공연을 고유하게 식별하기 위한 문자열 키를 반환합니다.
-//
-// 반환값은 "제목|장소" 형식으로, 파이프(|) 문자를 구분자로 사용하여 제목과 장소를 결합합니다.
-// 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
-//
-// [중요] 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
-// 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
-func (p *performance) Key() string {
-	return fmt.Sprintf("%s|%s", p.Title, p.Place)
-}
-
-// String 수집된 공연 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
-func (p *performance) String(supportsHTML bool, mark string) string {
-	if supportsHTML {
-		const htmlFormat = `☞ <a href="%s?query=%s"><b>%s</b></a>%s
-      • 장소 : %s`
-
-		return fmt.Sprintf(
-			htmlFormat,
-			searchResultPageURL,
-			url.QueryEscape(p.Title),
-			template.HTMLEscapeString(p.Title),
-			mark,
-			p.Place,
-		)
-	}
-
-	const textFormat = `☞ %s%s
-      • 장소 : %s`
-
-	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
 // keywordMatchers 문자열 기반의 필터 설정을 최적화된 Matcher로 변환한 필터 데이터입니다.
@@ -410,7 +355,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, mark.New))
+			sb.WriteString(p.Render(supportsHTML, mark.New))
 		}
 	}
 	if sb.Len() > 0 {
@@ -430,7 +375,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, ""))
+			sb.WriteString(p.Render(supportsHTML, ""))
 		}
 		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
 	}

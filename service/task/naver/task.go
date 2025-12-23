@@ -1,3 +1,5 @@
+// Package naver 네이버 검색 API를 통해 공연 정보 등의 새로운 컨텐츠를
+// 모니터링하고 알림을 발송하는 작업을 수행하는 패키지입니다.
 package naver
 
 import (

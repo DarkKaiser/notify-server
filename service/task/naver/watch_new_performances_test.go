@@ -8,12 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// -----------------------------------------------------------------------------
+// Unit Tests: Configuration & Filtering
+// -----------------------------------------------------------------------------
 
 func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	t.Parallel()
@@ -73,64 +78,6 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestNaverPerformance_String(t *testing.T) {
-	t.Parallel()
-
-	perf := &performance{
-		Title:     "테스트 공연",
-		Place:     "테스트 극장",
-		Thumbnail: "<img src=\"https://example.com/thumb.jpg\">",
-	}
-
-	tests := []struct {
-		name         string
-		supportsHTML bool
-		mark         string
-		validate     func(t *testing.T, result string)
-	}{
-		{
-			name:         "HTML 포맷 확인",
-			supportsHTML: true,
-			mark:         " 🆕",
-			validate: func(t *testing.T, result string) {
-				assert.Contains(t, result, "<b>테스트 공연</b>")
-				assert.Contains(t, result, "테스트 극장")
-				assert.Contains(t, result, " 🆕")
-			},
-		},
-		{
-			name:         "Text 포맷 확인",
-			supportsHTML: false,
-			mark:         "",
-			validate: func(t *testing.T, result string) {
-				assert.Contains(t, result, "테스트 공연")
-				assert.Contains(t, result, "테스트 극장")
-				assert.NotContains(t, result, "<b>")
-			},
-		},
-		{
-			name:         "Text 포맷 확인 (특수문자 비노출)",
-			supportsHTML: false,
-			mark:         "",
-			validate: func(t *testing.T, result string) {
-				p := &performance{Title: "Tom & Jerry", Place: "Cinema", Thumbnail: "img"}
-				res := p.String(false, "")
-				assert.Contains(t, res, "Tom & Jerry")
-				assert.NotContains(t, res, "Tom &amp; Jerry")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := perf.String(tt.supportsHTML, tt.mark)
-			tt.validate(t, result)
-		})
-	}
-}
-
 // TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 키워드 매칭 규칙 예시를 나열합니다.
 func TestNaverTask_Filtering_Behavior(t *testing.T) {
 	t.Parallel()
@@ -161,6 +108,10 @@ func TestNaverTask_Filtering_Behavior(t *testing.T) {
 		})
 	}
 }
+
+// -----------------------------------------------------------------------------
+// Component Tests: Parsing & Diff Logic
+// -----------------------------------------------------------------------------
 
 // TestParsePerformancesFromHTML HTML 파싱 로직의 정확성과 견고성을 검증합니다.
 func TestParsePerformancesFromHTML(t *testing.T) {
@@ -330,166 +281,6 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	}
 }
 
-// TestPerformance_Key Key() 메서드의 동작을 검증합니다.
-func TestPerformance_Key(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		perf     *performance
-		expected string
-	}{
-		{
-			name: "정상적인 키 생성",
-			perf: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "브로드웨이극장",
-			},
-			expected: "뮤지컬 캣츠|브로드웨이극장",
-		},
-		{
-			name: "특수문자 포함",
-			perf: &performance{
-				Title: "공연|제목",
-				Place: "장소|이름",
-			},
-			expected: "공연|제목|장소|이름",
-		},
-		{
-			name: "빈 문자열",
-			perf: &performance{
-				Title: "",
-				Place: "",
-			},
-			expected: "|",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := tt.perf.Key()
-			assert.Equal(t, tt.expected, result, "Key() 결과가 예상과 일치해야 합니다")
-		})
-	}
-}
-
-// TestPerformance_Equals Equals() 메서드의 동작을 검증합니다.
-func TestPerformance_Equals(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		perf1    *performance
-		perf2    *performance
-		expected bool
-	}{
-		{
-			name: "동일한 공연 (Title, Place 일치)",
-			perf1: &performance{
-				Title:     "뮤지컬 캣츠",
-				Place:     "브로드웨이극장",
-				Thumbnail: "thumb1.jpg",
-			},
-			perf2: &performance{
-				Title:     "뮤지컬 캣츠",
-				Place:     "브로드웨이극장",
-				Thumbnail: "thumb2.jpg",
-			},
-			expected: true,
-		},
-		{
-			name: "다른 공연 (Title 불일치)",
-			perf1: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "브로드웨이극장",
-			},
-			perf2: &performance{
-				Title: "뮤지컬 레미제라블",
-				Place: "브로드웨이극장",
-			},
-			expected: false,
-		},
-		{
-			name: "다른 공연 (Place 불일치)",
-			perf1: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "브로드웨이극장",
-			},
-			perf2: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "샤롯데씨어터",
-			},
-			expected: false,
-		},
-		{
-			name:  "첫 번째가 nil",
-			perf1: nil,
-			perf2: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "브로드웨이극장",
-			},
-			expected: false,
-		},
-		{
-			name: "두 번째가 nil",
-			perf1: &performance{
-				Title: "뮤지컬 캣츠",
-				Place: "브로드웨이극장",
-			},
-			perf2:    nil,
-			expected: false,
-		},
-		{
-			name:     "둘 다 nil",
-			perf1:    nil,
-			perf2:    nil,
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := tt.perf1.Equals(tt.perf2)
-			assert.Equal(t, tt.expected, result, "Equals() 결과가 예상과 일치해야 합니다")
-		})
-	}
-}
-
-// TestPerformance_KeyAndEquals_Consistency Key()와 Equals()의 일관성을 검증합니다.
-func TestPerformance_KeyAndEquals_Consistency(t *testing.T) {
-	t.Parallel()
-
-	perf1 := &performance{
-		Title:     "뮤지컬 캣츠",
-		Place:     "브로드웨이극장",
-		Thumbnail: "thumb1.jpg",
-	}
-	perf2 := &performance{
-		Title:     "뮤지컬 캣츠",
-		Place:     "브로드웨이극장",
-		Thumbnail: "thumb2.jpg",
-	}
-	perf3 := &performance{
-		Title:     "뮤지컬 레미제라블",
-		Place:     "브로드웨이극장",
-		Thumbnail: "thumb3.jpg",
-	}
-
-	t.Run("Equals가 true이면 Key도 동일해야 함", func(t *testing.T) {
-		assert.True(t, perf1.Equals(perf2), "perf1과 perf2는 동일해야 합니다")
-		assert.Equal(t, perf1.Key(), perf2.Key(), "동일한 공연은 같은 키를 가져야 합니다")
-	})
-
-	t.Run("Equals가 false이면 Key도 달라야 함", func(t *testing.T) {
-		assert.False(t, perf1.Equals(perf3), "perf1과 perf3는 다른 공연이어야 합니다")
-		assert.NotEqual(t, perf1.Key(), perf3.Key(), "다른 공연은 다른 키를 가져야 합니다")
-	})
-}
-
 // TestTask_DiffAndNotify 변경 감지 및 알림 생성 로직을 검증합니다. (핵심 로직)
 func TestTask_DiffAndNotify(t *testing.T) {
 	t.Parallel()
@@ -512,7 +303,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			current:           []*performance{perfA, perfB},
 			prev:              []*performance{perfB},
 			runBy:             tasksvc.RunByScheduler,
-			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", "🆕"},
+			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", mark.New},
 			expectSnapshot:    true,
 		},
 		{
@@ -528,7 +319,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			current:           []*performance{perfA},
 			prev:              nil,
 			runBy:             tasksvc.RunByScheduler,
-			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A"},
+			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", mark.New},
 			expectSnapshot:    true,
 		},
 		{
@@ -536,7 +327,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			current:           []*performance{perfA},
 			prev:              []*performance{perfA},
 			runBy:             tasksvc.RunByUser,
-			expectMsgContains: []string{"현재 등록된 공연정보는 아래와 같습니다", "A"}, // 🆕 마크 없어야 함
+			expectMsgContains: []string{"현재 등록된 공연정보는 아래와 같습니다", "A"}, // New 마크 없어야 함
 			expectSnapshot:    false,
 		},
 		{
@@ -555,8 +346,6 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			t.Parallel()
 
 			// *task 생성 (naver 패키지 내부이므로 접근 가능)
-			// task 구조체는 tasksvc.Task 인터페이스를 임베딩합니다.
-			// 실제 구현체인 BaseTask를 사용하여 RunBy만 설정하면 됩니다.
 			baseTask := tasksvc.NewBaseTask("TEST_TASK", "TEST_CMD", "TEST_INSTANCE", "TEST_NOTIFIER", tt.runBy)
 
 			testTask := &task{
@@ -596,8 +385,11 @@ func TestTask_DiffAndNotify(t *testing.T) {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Integration Tests: Full Flow (Fetching -> Parsing -> Processing)
+// -----------------------------------------------------------------------------
+
 // TestTask_ExecuteWatchNewPerformances executeWatchNewPerformances 메서드의 통합 흐름을 테스트합니다.
-// (Fetching -> Parsing -> Filtering)
 func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 	t.Parallel()
 
@@ -1009,5 +801,60 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 			requested := mockFetcher.GetRequestedURLs()
 			assert.Equal(t, tt.expectedCallCnt, len(requested), "API 호출 횟수가 예상과 달라야 합니다")
 		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Benchmarks
+// -----------------------------------------------------------------------------
+
+// BenchmarkTask_ParsePerformances 대량의 HTML 데이터에 대한 파싱 성능을 측정합니다.
+func BenchmarkTask_ParsePerformances(b *testing.B) {
+	// 50개의 아이템이 있는 HTML 생성
+	var sb strings.Builder
+	sb.WriteString("<ul>")
+	for i := 0; i < 50; i++ {
+		sb.WriteString(fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">Performance %d</strong><span class="sub_text">Place %d</span></div><div class="thumb"><img src="thumb.jpg"></div></div></li>`, i, i))
+	}
+	sb.WriteString("</ul>")
+	html := sb.String()
+
+	filters := &keywordMatchers{
+		TitleMatcher: strutil.NewKeywordMatcher(nil, nil),
+		PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = parsePerformancesFromHTML(html, filters)
+	}
+}
+
+// BenchmarkTask_DiffAndNotify_Large 대량의 공연 데이터 비교 성능을 측정합니다.
+func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
+	count := 500
+	prevItems := make([]*performance, count)
+	currItems := make([]*performance, count)
+
+	for i := 0; i < count; i++ {
+		prevItems[i] = &performance{Title: fmt.Sprintf("Title%d", i), Place: "Place"}
+
+		// 50%는 신규 아이템으로 교체
+		if i >= count/2 {
+			currItems[i] = &performance{Title: fmt.Sprintf("NewTitle%d", i), Place: "Place"}
+		} else {
+			currItems[i] = prevItems[i]
+		}
+	}
+
+	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByScheduler)
+	testTask := &task{Task: baseTask}
+
+	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
+	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = testTask.diffAndNotify(currSnap, prevSnap, false)
 	}
 }

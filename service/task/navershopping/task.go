@@ -1,3 +1,5 @@
+// Package navershopping 네이버 쇼핑(Naver Shopping) 플랫폼과 연동하여
+// 상품 정보를 수집하고 가격 변동을 모니터링하는 작업을 수행하는 패키지입니다.
 package navershopping
 
 import (

@@ -1,3 +1,5 @@
+// Package lotto 로또 당첨 번호 예측 프로그램과 연동하여
+// 예측된 당첨 예상 번호를 알림으로 발송하는 작업을 수행하는 패키지입니다.
 package lotto
 
 import (
