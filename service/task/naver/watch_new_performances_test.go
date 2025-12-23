@@ -184,7 +184,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	tests := []struct {
 		name          string
 		html          string
-		filters       *parsedFilters
+		filters       *keywordFilters
 		expectedCount int                                             // 키워드 매칭 후 예상 개수
 		expectedRaw   int                                             // 키워드 매칭 전 raw 개수
 		expectError   bool                                            // 에러 발생 여부
@@ -193,7 +193,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:          "성공: 단일 항목 파싱",
 			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "cats.jpg")),
-			filters:       &parsedFilters{}, // 필터 없음
+			filters:       &keywordFilters{}, // 필터 없음
 			expectedCount: 1,
 			expectedRaw:   1,
 			validateItems: func(t *testing.T, performances []*performance) {
@@ -207,7 +207,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Cats Musical", "Seoul", "1.jpg"),
 				makeItem("Dog Show", "Seoul", "2.jpg")),
-			filters: &parsedFilters{
+			filters: &keywordFilters{
 				TitleIncluded: []string{"Musical"},
 			},
 			expectedCount: 1, // Cats only
@@ -221,7 +221,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			html: fmt.Sprintf("<ul>%s%s</ul>",
 				makeItem("Happy Musical", "Seoul", "1.jpg"),
 				makeItem("Sad Drama", "Seoul", "2.jpg")),
-			filters: &parsedFilters{
+			filters: &keywordFilters{
 				TitleExcluded: []string{"Drama"},
 			},
 			expectedCount: 1, // Happy only
@@ -233,13 +233,13 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:        "실패: HTML 파싱 에러 (필수 요소 누락 - 제목)",
 			html:        `<ul><li><div class="item"><div class="title_box"></div></div></li></ul>`, // strong.name 없음
-			filters:     &parsedFilters{},
+			filters:     &keywordFilters{},
 			expectError: true,
 		},
 		{
 			name:          "성공: 썸네일 누락 (Soft Fail)",
 			html:          `<ul><li><div class="item"><div class="title_box"><strong class="name">T</strong><span class="sub_text">P</span></div></div></li></ul>`, // thumb 없음
-			filters:       &parsedFilters{},
+			filters:       &keywordFilters{},
 			expectedCount: 1,
 			expectedRaw:   1,
 			expectError:   false,
@@ -252,7 +252,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		{
 			name:          "성공: 빈 결과",
 			html:          `<ul></ul>`,
-			filters:       &parsedFilters{},
+			filters:       &keywordFilters{},
 			expectedCount: 0,
 			expectedRaw:   0,
 			expectError:   false,

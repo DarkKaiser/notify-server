@@ -142,8 +142,8 @@ func (p *performance) String(supportsHTML bool, mark string) string {
 	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, mark, p.Place))
 }
 
-// parsedFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 키워드 매칭 데이터입니다.
-type parsedFilters struct {
+// keywordFilters 문자열 기반의 필터 설정을 슬라이스 형태로 변환한 키워드 필터 데이터입니다.
+type keywordFilters struct {
 	TitleIncluded []string
 	TitleExcluded []string
 	PlaceIncluded []string
@@ -170,7 +170,7 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
 	// 매 페이지 순회 시마다 문자열 분할 연산이 반복되는 것을 방지하기 위해,
 	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 슬라이스 형태로 변환합니다.
-	filters := &parsedFilters{
+	filters := &keywordFilters{
 		TitleIncluded: strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
 		TitleExcluded: strutil.SplitAndTrim(commandSettings.Filters.Title.ExcludedKeywords, ","),
 		PlaceIncluded: strutil.SplitAndTrim(commandSettings.Filters.Place.IncludedKeywords, ","),
@@ -298,7 +298,7 @@ func buildSearchAPIURL(query string, page int) string {
 //   - []*performance: 사용자 정의 키워드 조건(Keywords)을 통과하여 최종 선별된 공연 정보 목록
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
-func parsePerformancesFromHTML(html string, filters *parsedFilters) ([]*performance, int, error) {
+func parsePerformancesFromHTML(html string, filters *keywordFilters) ([]*performance, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
