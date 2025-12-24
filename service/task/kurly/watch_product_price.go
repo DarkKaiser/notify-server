@@ -309,8 +309,13 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
 	// @@@@@
 	var sb strings.Builder
-
-	sb.Grow(1024)
+	// 변경 사항이 발생할 수 있는 최대치(모든 상품 변경 가정)를 고려하여 버퍼를 넉넉히 할당합니다.
+	// 상품당 평균 256바이트를 가정합니다. (재할당 오버헤드 최소화)
+	estimatedSize := len(currentSnapshot.Products) * 256
+	if estimatedSize < 1024 {
+		estimatedSize = 1024
+	}
+	sb.Grow(estimatedSize)
 
 	lineSpacing := "\n\n"
 	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
@@ -328,7 +333,11 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 		prevProduct, exists := prevProductMap[currentProduct.ID]
 
 		// 1. 신규 상품이거나, 이전에 알 수 없는 상품이었던 경우
-		if !exists || (prevProduct.IsUnavailable && !currentProduct.IsUnavailable) {
+		// 1. 신규 상품(isNewProduct)이거나, 품절 후 재입고(isRestocked)된 경우
+		isNewProduct := !exists
+		isRestocked := exists && prevProduct.IsUnavailable && !currentProduct.IsUnavailable
+
+		if isNewProduct || isRestocked {
 			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
 			if currentProduct.IsUnavailable {
 				continue
@@ -345,7 +354,8 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 		}
 
 		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
-		if !prevProduct.IsUnavailable && currentProduct.IsUnavailable {
+		isDiscontinued := !prevProduct.IsUnavailable && currentProduct.IsUnavailable
+		if isDiscontinued {
 			continue // 변경 내역 렌더링 생략
 		}
 
@@ -358,21 +368,28 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 		isLowestPriceUpdated := currentProduct.updateLowestPrice()
 
 		// 가격이나 할인율 등이 변경되었는지 확인
-		if currentProduct.Price != prevProduct.Price ||
+
+		// 가격이나 할인율 등이 변경되었는지 확인
+		hasPriceChanged := currentProduct.Price != prevProduct.Price ||
 			currentProduct.DiscountedPrice != prevProduct.DiscountedPrice ||
-			currentProduct.DiscountRate != prevProduct.DiscountRate {
+			currentProduct.DiscountRate != prevProduct.DiscountRate
 
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-
-			// 최저가가 갱신된 경우 '역대 최저가' 마크를, 단순 변동인 경우 '변경' 마크를 표시
-			marker := mark.Change
-			if isLowestPriceUpdated {
-				marker = mark.BestPrice
-			}
-			sb.WriteString(currentProduct.RenderDiff(supportsHTML, marker, prevProduct))
+		// [Guard Clause] 변경 사항이 없다면 즉시 다음 상품으로 넘어갑니다.
+		if !hasPriceChanged {
+			continue
 		}
+
+		// [Happy Path] 여기서부터는 "무조건 변경사항이 있는 상태"입니다. 들여쓰기 없이 로직이 진행됩니다.
+		if sb.Len() > 0 {
+			sb.WriteString(lineSpacing)
+		}
+
+		// 최저가가 갱신된 경우 '역대 최저가' 마크를, 단순 변동인 경우 '변경' 마크를 표시
+		marker := mark.Change
+		if isLowestPriceUpdated {
+			marker = mark.BestPrice
+		}
+		sb.WriteString(currentProduct.RenderDiff(supportsHTML, marker, prevProduct))
 	}
 	return sb.String()
 }
