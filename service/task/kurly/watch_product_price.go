@@ -340,7 +340,7 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(currentProduct.Render(supportsHTML, mark.New, nil))
+			sb.WriteString(currentProduct.Render(supportsHTML, mark.New))
 			continue
 		}
 
@@ -371,7 +371,7 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 			if isLowestPriceUpdated {
 				marker = mark.BestPrice
 			}
-			sb.WriteString(currentProduct.Render(supportsHTML, marker, prevProduct))
+			sb.WriteString(currentProduct.RenderDiff(supportsHTML, marker, prevProduct))
 		}
 	}
 	return sb.String()
@@ -537,7 +537,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 			if i > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityProduct.Render(supportsHTML, "", nil))
+			sb.WriteString(actualityProduct.Render(supportsHTML, ""))
 		}
 
 		return sb.String()
