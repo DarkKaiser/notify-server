@@ -78,7 +78,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	}
 
 	// 감시할 상품 목록에서 중복된 상품을 정규화한다.
-	records, duplicateRecords := t.normalizeDuplicateProducts(records)
+	records, duplicateRecords := t.extractDuplicateRecords(records)
 
 	//
 	// 읽어들인 상품들의 가격 및 상태를 확인한다.
@@ -111,36 +111,43 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 }
 
 // @@@@@
-// diffAndNotify는 현재 수집된 상품 정보와 이전 스냅샷을 비교하여 변동 사항을 분석합니다.
-// 가격 변동, 품절 상태 변경, 신규 상품 등록 등의 이벤트를 감지하고,
-// 사용자에게 발송할 포맷팅된 알림 메시지와 갱신된 작업 결과 데이터를 생성합니다.
-func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 1. 상품 변경 사항 확인 및 렌더링
-	productsDiffString := t.diffProducts(currentSnapshot, prevSnapshot, supportsHTML)
+// loadWatchList CSV 파일로부터 감시할 상품 목록을 읽어옵니다.
+func (t *task) loadWatchList(filePath string) ([][]string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
+	}
+	defer f.Close()
 
-	// 2. 부가 정보 생성 (중복 상품, 알 수 없는 상품)
-	duplicateProductsMessage := t.buildDuplicateProductsMessage(duplicateRecords, supportsHTML)
-	unknownProductsMessage := t.buildUnknownProductsMessage(currentSnapshot.Products, records, supportsHTML)
-
-	// 3. 최종 알림 메시지 조합
-	message := t.buildNotificationMessage(productsDiffString, duplicateProductsMessage, unknownProductsMessage, currentSnapshot, supportsHTML)
-
-	// 4. 결과 데이터 결정
-	// 메시지는 RunByUser일 때 변경사항이 없어도 생성될 수 있지만,
-	// 데이터 갱신(changedTaskResultData)은 실제 변경사항이 있을 때만 수행해야 합니다.
-	var changedTaskResultData interface{}
-	hasChanges := len(productsDiffString) > 0 || len(duplicateProductsMessage) > 0 || len(unknownProductsMessage) > 0
-	if hasChanges {
-		changedTaskResultData = currentSnapshot
+	r := csv.NewReader(f)
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
 	}
 
-	return message, changedTaskResultData, nil
+	// 감시할 상품 목록의 헤더를 제거한다.
+	if len(records) > 0 {
+		records = records[1:]
+	}
+
+	return records, nil
 }
 
 // @@@@@
-// normalizeDuplicateProducts 함수는 입력된 상품 목록에서 중복된 상품을 제거하고, 중복된 상품을 별도의 목록에 저장한다.
-// 반환 값으로는 중복이 제거된 상품 목록과 중복된 상품 목록을 반환한다.
-func (t *task) normalizeDuplicateProducts(records [][]string) ([][]string, [][]string) {
+// extractDuplicateRecords 입력된 레코드 목록에서 중복된 항목을 추출하여 분리합니다.
+//
+// [설명]
+// 원본 레코드를 순회하며 상품 번호를 기준으로 중복 여부를 검사합니다.
+// 처음 등장하는 상품은 `distinctRecords`에 담고, 이미 등장한 상품은 `duplicateRecords`로 추출합니다.
+// 이를 통해 핵심 로직에서는 중복 없는 깨끗한 데이터만 처리할 수 있게 됩니다.
+//
+// [매개변수]
+//   - records: CSV 파일에서 읽어온 원본 레코드 목록입니다.
+//
+// [반환값]
+//   - distinctRecords: 중복이 제거된 유일한 상품 레코드 목록입니다.
+//   - duplicateRecords: 중복으로 판명되어 추출된 레코드 목록입니다.
+func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]string) {
 	distinctRecords := make([][]string, 0, len(records))
 	duplicateRecords := make([][]string, 0, len(records))
 
@@ -164,8 +171,39 @@ func (t *task) normalizeDuplicateProducts(records [][]string) ([][]string, [][]s
 }
 
 // @@@@@
-// buildDuplicateProductsMessage 중복으로 등록된 상품 목록에 대한 알림 메시지를 생성합니다.
-func (t *task) buildDuplicateProductsMessage(duplicateRecords [][]string, supportsHTML bool) string {
+// diffAndNotify는 현재 수집된 상품 정보와 이전 스냅샷을 비교하여 변동 사항을 분석합니다.
+// 가격 변동, 품절 상태 변경, 신규 상품 등록 등의 이벤트를 감지하고,
+// 사용자에게 발송할 포맷팅된 알림 메시지와 갱신된 작업 결과 데이터를 생성합니다.
+func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+	// 1. 상품 변경 사항 확인 및 렌더링
+	productsDiffString := t.diffProducts(currentSnapshot, prevSnapshot, supportsHTML)
+
+	// 2. 부가 정보 생성 (중복 상품, 알 수 없는 상품)
+	duplicateRecordsMessage := t.buildDuplicateRecordsMessage(duplicateRecords, supportsHTML)
+	unavailableProductsMessage := t.buildUnavailableProductsMessage(currentSnapshot.Products, records, supportsHTML)
+
+	// 3. 최종 알림 메시지 조합
+	message := t.buildNotificationMessage(productsDiffString, duplicateRecordsMessage, unavailableProductsMessage, currentSnapshot, supportsHTML)
+
+	// 4. 결과 데이터 결정
+	// 메시지는 RunByUser일 때 변경사항이 없어도 생성될 수 있지만,
+	// 데이터 갱신(changedTaskResultData)은 실제 변경사항이 있을 때만 수행해야 합니다.
+	var changedTaskResultData interface{}
+	hasChanges := len(productsDiffString) > 0 || len(duplicateRecordsMessage) > 0 || len(unavailableProductsMessage) > 0
+	if hasChanges {
+		changedTaskResultData = currentSnapshot
+	}
+
+	return message, changedTaskResultData, nil
+}
+
+// buildDuplicateRecordsMessage 감시 대상 파일(CSV)에 중복 기입된 상품(레코드) 목록을 사용자 알림용 메시지로 포맷팅합니다.
+//
+// [설명]
+// 사용자가 실수로 동일한 상품 상품 번호를 여러 번 입력한 경우, 이를 파싱 단계에서 별도의 목록으로 분리합니다.
+// 이 함수는 분리된 중복 레코드들을 순회하며, 알림 메시지 하단에 경고성 정보로 표시할 문자열을 생성합니다.
+func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, supportsHTML bool) string {
+	// @@@@@
 	if len(duplicateRecords) == 0 {
 		return ""
 	}
@@ -188,9 +226,13 @@ func (t *task) buildDuplicateProductsMessage(duplicateRecords [][]string, suppor
 	return sb.String()
 }
 
-// @@@@@
-// buildUnknownProductsMessage 알 수 없는 상품(판매 중지 등) 목록에 대한 알림 메시지를 생성합니다.
-func (t *task) buildUnknownProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
+// buildUnavailableProductsMessage 판매 중지 또는 상품 정보 삭제 등으로 인해 정보를 수집할 수 없는 상품 목록을 포맷팅합니다.
+//
+// [설명]
+// 크롤링 과정에서 `IsUnavailable` 상태로 플래그가 설정된 상품들을 필터링하여 사용자에게 보고합니다.
+// 이는 품절이나 상품 정보 삭제와 같은 비즈니스적으로 중요한 상태 변화를 사용자가 즉시 인지할 수 있도록 돕습니다.
+func (t *task) buildUnavailableProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
+	// @@@@@
 	var sb strings.Builder
 
 	for _, product := range products {
@@ -286,8 +328,8 @@ func (t *task) diffProducts(currentSnapshot, prevSnapshot *watchProductPriceSnap
 
 // @@@@@
 // buildNotificationMessage 수집된 변경 내역과 부가 정보를 조합하여 최종 사용자 알림 메시지를 생성합니다.
-func (t *task) buildNotificationMessage(productsDiff, duplicateMsg, unknownMsg string, currentSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
-	hasChanges := len(productsDiff) > 0 || len(duplicateMsg) > 0 || len(unknownMsg) > 0
+func (t *task) buildNotificationMessage(productsDiff, duplicateRecordsMsg, unavailableMsg string, currentSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
+	hasChanges := len(productsDiff) > 0 || len(duplicateRecordsMsg) > 0 || len(unavailableMsg) > 0
 
 	if hasChanges {
 		var sb strings.Builder
@@ -297,11 +339,11 @@ func (t *task) buildNotificationMessage(productsDiff, duplicateMsg, unknownMsg s
 			sb.WriteString("상품 정보가 변경되었습니다.\n\n")
 		}
 
-		if len(duplicateMsg) > 0 {
-			sb.WriteString(fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateMsg))
+		if len(duplicateRecordsMsg) > 0 {
+			sb.WriteString(fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateRecordsMsg))
 		}
-		if len(unknownMsg) > 0 {
-			sb.WriteString(fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unknownMsg))
+		if len(unavailableMsg) > 0 {
+			sb.WriteString(fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unavailableMsg))
 		}
 		return sb.String()
 	}
@@ -424,27 +466,4 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	}
 
 	return product, nil
-}
-
-// @@@@@
-// loadWatchList CSV 파일로부터 감시할 상품 목록을 읽어옵니다.
-func (t *task) loadWatchList(filePath string) ([][]string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
-	}
-
-	// 감시할 상품 목록의 헤더를 제거한다.
-	if len(records) > 0 {
-		records = records[1:]
-	}
-
-	return records, nil
 }

@@ -113,7 +113,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestNormalizeDuplicateProducts(t *testing.T) {
+func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
 	tsk := &task{}
 
@@ -175,7 +175,7 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			distinct, duplicate := tsk.normalizeDuplicateProducts(tt.input)
+			distinct, duplicate := tsk.extractDuplicateRecords(tt.input)
 			assert.Equal(t, tt.wantDistinct, len(distinct))
 			assert.Equal(t, tt.wantDuplicate, len(duplicate))
 		})
