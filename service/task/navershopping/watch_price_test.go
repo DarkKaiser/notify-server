@@ -71,60 +71,6 @@ func TestWatchPriceSettings_Validate_TableDriven(t *testing.T) {
 	}
 }
 
-func TestProduct_String_TableDriven(t *testing.T) {
-	t.Parallel()
-
-	p := NewProductBuilder().
-		WithTitle("Test Product").
-		WithLink("http://example.com").
-		WithPrice(10000).
-		WithMallName("Test Mall").
-		Build()
-
-	tests := []struct {
-		name         string
-		supportsHTML bool
-		mark         string
-		wants        []string
-		unwants      []string
-	}{
-		{
-			name:         "HTML - No Mark",
-			supportsHTML: true,
-			mark:         "",
-			wants:        []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원"},
-			unwants:      []string{"Test Product (Test Mall) 10,000원 🆕"},
-		},
-		{
-			name:         "HTML - With Mark",
-			supportsHTML: true,
-			mark:         " 🆕",
-			wants:        []string{"<a href=\"http://example.com\"><b>Test Product</b></a>", "(Test Mall)", "10,000원 🆕"},
-		},
-		{
-			name:         "Text - No Mark",
-			supportsHTML: false,
-			mark:         "",
-			wants:        []string{"☞ Test Product (Test Mall) 10,000원", "http://example.com"},
-			unwants:      []string{"<a href"},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := p.String(tt.supportsHTML, tt.mark)
-			for _, want := range tt.wants {
-				assert.Contains(t, got, want)
-			}
-			for _, unwant := range tt.unwants {
-				assert.NotContains(t, got, unwant)
-			}
-		})
-	}
-}
-
 // -----------------------------------------------------------------------------
 // Integration Tests: Fetch & Notify Logic
 // -----------------------------------------------------------------------------
@@ -815,4 +761,60 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 	// 취소되었으므로 nil 반환 체크
 	require.NoError(t, err)
 	assert.Nil(t, products, "작업 취소 시 nil을 반환해야 합니다")
+}
+
+// -----------------------------------------------------------------------------
+// Benchmarks
+// -----------------------------------------------------------------------------
+
+// BenchmarkTask_DiffAndNotify 대량의 상품 데이터에 대한 Diff 및 정렬 로직 성능을 측정합니다.
+// 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
+func BenchmarkTask_DiffAndNotify(b *testing.B) {
+	tsk := &task{}
+	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tasksvc.RunByScheduler)
+	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
+
+	// Setup Large Data
+	count := 1000
+	prevItems := make([]*product, count)
+	currItems := make([]*product, count)
+
+	for i := 0; i < count; i++ {
+		// Prev: Base Price
+		prevItems[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(10000).WithTitle(fmt.Sprintf("Item %d", i)).Build()
+
+		// Curr:
+		// - 0~499: No Change
+		// - 500~999: Price Change
+		price := 10000
+		if i >= count/2 {
+			price = 9000 // Price Drop
+		}
+		currItems[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(price).WithTitle(fmt.Sprintf("Item %d", i)).Build()
+	}
+
+	prevSnapshot := &watchPriceSnapshot{Products: prevItems}
+	currSnapshot := &watchPriceSnapshot{Products: currItems}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = tsk.diffAndNotify(&settings, currSnapshot, prevSnapshot, false)
+	}
+}
+
+// BenchmarkTask_MapToProduct 핫 패스(Hot Path)인 상품 매핑 로직의 성능을 측정합니다.
+func BenchmarkTask_MapToProduct(b *testing.B) {
+	tsk := &task{}
+	item := &searchResponseItem{
+		Title:     "<b>Benchmark</b> Product",
+		LowPrice:  "50,000",
+		ProductID: "123456",
+		Link:      "http://example.com",
+		MallName:  "Benchmark Mall",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tsk.mapToProduct(item)
+	}
 }

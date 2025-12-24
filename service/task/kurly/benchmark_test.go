@@ -12,7 +12,7 @@ import (
 func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
 	mockFetcher := testutil.NewMockHTTPFetcher()
-	productID := "12345"
+	productID := 12345 // Change productID to int
 	url := fmt.Sprintf(productPageURLFormat, productID)
 
 	// Create a reasonably large HTML content to simulate real parsing load
@@ -20,7 +20,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 		<html>
 		<body>
 			<script id="__NEXT_DATA__">
-				{"props":{"pageProps":{"product":{"no":%s}}}}
+				{"props":{"pageProps":{"product":{"no":%d}}}}
 			</script>
 			<div id="product-atf">
 				<section class="css-1ua1wyk">
@@ -61,7 +61,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 
 	// 3. Setup Command Data
 	// We use a temporary file for the CSV, created once
-	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
+	csvContent := fmt.Sprintf("No,Name,Status\n%d,Test Product,1\n", productID)
 	// Note: In a real benchmark, file I/O might be a bottleneck, but here we want to measure the whole flow including CSV reading as it's part of the task.
 	// However, creating a file in every loop is bad. We should create it once.
 	// But `runWatchProductPrice` opens the file every time.

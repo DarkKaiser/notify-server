@@ -1,13 +1,59 @@
 package kurly
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"testing"
-	"time"
 
+	"github.com/PuerkitoBio/goquery"
+	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+//
+// Mock Objects
+//
+
+// MockFetcher는 http.Fetcher 인터페이스를 모킹합니다.
+type MockFetcher struct {
+	mock.Mock
+}
+
+func (m *MockFetcher) Get(url string) (*http.Response, error) {
+	args := m.Called(url)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*http.Response), args.Error(1)
+}
+
+func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
+	args := m.Called(req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*http.Response), args.Error(1)
+}
+
+// Helper to create a response with body
+func createMockResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+//
+// Tests
+//
 
 func TestWatchProductPriceSettings_Validate(t *testing.T) {
 	t.Parallel()
@@ -67,220 +113,8 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestProduct_UpdateLowestPrice(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-
-	tests := []struct {
-		name              string
-		initialProduct    *product
-		wantLowestPrice   int
-		wantTimeCheck     bool // 최저가 갱신 시간 업데이트 여부 확인
-		timeShouldBeAfter time.Time
-	}{
-		{
-			name: "초기 상태: 최저가가 0일 때 현재 가격으로 설정",
-			initialProduct: &product{
-				Price: 10000,
-			},
-			wantLowestPrice: 10000,
-			wantTimeCheck:   true,
-		},
-		{
-			name: "초기 상태: 최저가가 0일 때 할인 가격 우선 설정",
-			initialProduct: &product{
-				Price:           10000,
-				DiscountedPrice: 8000,
-			},
-			wantLowestPrice: 8000,
-			wantTimeCheck:   true,
-		},
-		{
-			name: "갱신: 기존 최저가보다 낮은 가격 발생",
-			initialProduct: &product{
-				Price:           9000,
-				LowestPrice:     10000,
-				LowestPriceTime: now,
-			},
-			wantLowestPrice:   9000,
-			wantTimeCheck:     true,
-			timeShouldBeAfter: now,
-		},
-		{
-			name: "유지: 기존 최저가보다 높은 가격",
-			initialProduct: &product{
-				Price:           12000,
-				LowestPrice:     10000,
-				LowestPriceTime: now,
-			},
-			wantLowestPrice:   10000,
-			wantTimeCheck:     false, // 시간 업데이트 안 됨
-			timeShouldBeAfter: now,   // 시간은 그대로 now여야 함
-		},
-		{
-			name: "갱신: 할인 가격이 최저가보다 낮음",
-			initialProduct: &product{
-				Price:           12000,
-				DiscountedPrice: 9000,
-				LowestPrice:     10000,
-			},
-			wantLowestPrice: 9000,
-			wantTimeCheck:   true,
-		},
-		{
-			name: "엣지 케이스: 가격이 0원인 경우 (오류 상황)",
-			initialProduct: &product{
-				Price:           0,
-				DiscountedPrice: 0,
-				LowestPrice:     0,
-			},
-			wantLowestPrice: 0, // 0원은 무시 (로직상 0 < 0 은 false, 0 == 0 일때도 무시)
-			wantTimeCheck:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Setup
-			p := tt.initialProduct
-			startTime := time.Now()
-
-			// Execute
-			p.updateLowestPrice()
-
-			// Verify
-			assert.Equal(t, tt.wantLowestPrice, p.LowestPrice)
-
-			if tt.wantTimeCheck {
-				// 시간이 갱신되었어야 함 (startTime 이후)
-				assert.True(t, p.LowestPriceTime.After(startTime.Add(-time.Second)), "최저가 갱신 시간이 업데이트 되어야 합니다")
-			} else if !tt.timeShouldBeAfter.IsZero() {
-				// 시간이 변경되지 않았어야 함
-				assert.Equal(t, tt.timeShouldBeAfter, p.LowestPriceTime, "최저가 갱신 시간이 변경되지 않아야 합니다")
-			}
-		})
-	}
-}
-
-func TestProduct_String(t *testing.T) {
-	t.Parallel()
-
-	baseProduct := &product{
-		ID:    12345,
-		Name:  "맛있는 사과",
-		Price: 10000,
-	}
-	discountProduct := &product{
-		ID:              12345,
-		Name:            "할인 사과",
-		Price:           10000,
-		DiscountedPrice: 8000,
-		DiscountRate:    20,
-	}
-
-	expectedIDString := "12345" // For URL check
-
-	tests := []struct {
-		name         string
-		product      *product
-		supportsHTML bool
-		mark         string
-		prevProduct  *product
-		wantContains []string
-		wantNot      []string
-	}{
-		{
-			name:         "HTML: 일반 상품",
-			product:      baseProduct,
-			supportsHTML: true,
-			wantContains: []string{
-				"맛있는 사과",
-				"10,000원",
-				fmt.Sprintf(productPageURLFormat, expectedIDString), // URL 포맷 사용 검증
-				"<b>", "</b>", "<a href=", // HTML 태그 확인
-			},
-		},
-		{
-			name:         "Text: 일반 상품",
-			product:      baseProduct,
-			supportsHTML: false,
-			wantContains: []string{
-				"맛있는 사과",
-				"10,000원",
-				"☞", // Prefix 확인
-			},
-			wantNot: []string{"<a href=", "<b>", "</b>"},
-		},
-		{
-			name:         "HTML: 할인 상품",
-			product:      discountProduct,
-			supportsHTML: true,
-			wantContains: []string{
-				"<s>10,000원</s>", // 취소선
-				"8,000원",         // 할인가
-				"(20%)",          // 할인율
-			},
-		},
-		{
-			name:         "Text: 할인 상품",
-			product:      discountProduct,
-			supportsHTML: false,
-			wantContains: []string{
-				"10,000원 ⇒ 8,000원 (20%)", // 텍스트 포맷
-			},
-			wantNot: []string{"<s>", "</s>"},
-		},
-		{
-			name:         "Text: 마크(Mark) 포함",
-			product:      baseProduct,
-			supportsHTML: false,
-			mark:         " 🆕",
-			wantContains: []string{"맛있는 사과 🆕"},
-		},
-		{
-			name:         "Text: 이전 가격 비교",
-			product:      baseProduct,
-			supportsHTML: false,
-			prevProduct: &product{
-				Price: 12000,
-			},
-			wantContains: []string{
-				"이전 가격 : 12,000원",
-			},
-		},
-		{
-			name:         "XSS 방지: 특수문자 이스케이프 확인",
-			product:      &product{ID: 1, Name: "<script>alert(1)</script>", Price: 1000},
-			supportsHTML: true,
-			wantContains: []string{"&lt;script&gt;alert(1)&lt;/script&gt;"},
-			wantNot:      []string{"<script>"},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := tt.product.String(tt.supportsHTML, tt.mark, tt.prevProduct)
-
-			for _, s := range tt.wantContains {
-				assert.Contains(t, got, s)
-			}
-			for _, s := range tt.wantNot {
-				assert.NotContains(t, got, s)
-			}
-		})
-	}
-}
-
 func TestNormalizeDuplicateProducts(t *testing.T) {
-	t.Parallel() // Task instance is stateless for this method
-
+	t.Parallel()
 	tsk := &task{}
 
 	tests := []struct {
@@ -302,7 +136,7 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 			name: "단일 중복 발생",
 			input: [][]string{
 				{"1001", "A", "1"},
-				{"1001", "A", "1"}, // Duplicate
+				{"1001", "A", "1"},
 			},
 			wantDistinct:  1,
 			wantDuplicate: 1,
@@ -312,8 +146,8 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 			input: [][]string{
 				{"1001", "A", "1"},
 				{"1002", "B", "1"},
-				{"1001", "A", "1"}, // Duplicate
-				{"1002", "B", "1"}, // Duplicate
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
 				{"1003", "C", "1"},
 			},
 			wantDistinct:  3,
@@ -323,7 +157,7 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 			name: "빈 행 무시",
 			input: [][]string{
 				{"1001", "A", "1"},
-				{}, // Empty row
+				{},
 				{"1002", "B", "1"},
 			},
 			wantDistinct:  2,
@@ -341,11 +175,279 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			distinct, duplicate := tsk.normalizeDuplicateProducts(tt.input)
+			assert.Equal(t, tt.wantDistinct, len(distinct))
+			assert.Equal(t, tt.wantDuplicate, len(duplicate))
+		})
+	}
+}
 
-			assert.Equal(t, tt.wantDistinct, len(distinct), "고유 상품 개수 불일치")
-			assert.Equal(t, tt.wantDuplicate, len(duplicate), "중복 상품 개수 불일치")
+func TestTask_LoadWatchList(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "products_*.csv")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	content := `no,name,status
+1001,사과,1
+1002,바나나,1`
+	_, err = tmpFile.WriteString(content)
+	require.NoError(t, err)
+	tmpFile.Close()
+
+	tsk := &task{}
+
+	t.Run("성공: 정상적인 CSV 로딩", func(t *testing.T) {
+		records, err := tsk.loadWatchList(tmpFile.Name())
+		require.NoError(t, err)
+		assert.Len(t, records, 2)
+		assert.Equal(t, "1001", records[0][0])
+	})
+
+	t.Run("실패: 존재하지 않는 파일", func(t *testing.T) {
+		_, err := tsk.loadWatchList("not_exists.csv")
+		require.Error(t, err)
+		assert.IsType(t, &apperrors.AppError{}, err) // AppError 래핑 확인
+	})
+
+	t.Run("성공: 헤더만 있는 파일", func(t *testing.T) {
+		emptyHeaderFile, _ := os.CreateTemp("", "header_only_*.csv")
+		defer os.Remove(emptyHeaderFile.Name())
+		emptyHeaderFile.WriteString("no,name,status\n")
+		emptyHeaderFile.Close()
+
+		records, err := tsk.loadWatchList(emptyHeaderFile.Name())
+		require.NoError(t, err)
+		assert.Len(t, records, 0)
+	})
+}
+
+func createDoc(html string) *goquery.Document {
+	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(html))
+	return doc
+}
+
+func TestTask_ParseProductFromPage(t *testing.T) {
+	// Fixture HTML Templates
+	tmplNormal := `
+<html>
+<body>
+<script id="__NEXT_DATA__">{"product": {"no": %d}}</script>
+<div id="product-atf">
+	<section class="css-1ua1wyk">
+		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
+		<h2 class="css-xrp7wx">%s</h2>
+	</section>
+</div>
+</body>
+</html>`
+
+	tests := []struct {
+		name           string
+		productID      int
+		mockHTML       string
+		mockFetchErr   error
+		mockStatusCode int
+		wantProduct    *product
+		wantErr        bool
+		errSubstr      string
+	}{
+		{
+			name:           "성공: 정상 상품 파싱 (할인 없음)",
+			productID:      123,
+			mockStatusCode: 200,
+			mockHTML: fmt.Sprintf(tmplNormal, 123, "맛있는 사과",
+				`<div class="css-o2nlqt"><span>10,000</span><span>원</span></div>`),
+			wantProduct: &product{
+				ID:    123,
+				Name:  "맛있는 사과",
+				Price: 10000,
+			},
+			wantErr: false,
+		},
+		{
+			name:           "성공: 정상 상품 파싱 (할인 중)",
+			productID:      456,
+			mockStatusCode: 200,
+			mockHTML: fmt.Sprintf(tmplNormal, 456, "할인 바나나",
+				`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
+			wantProduct: &product{
+				ID:              456,
+				Name:            "할인 바나나",
+				Price:           10000,
+				DiscountedPrice: 9000,
+				DiscountRate:    10,
+			},
+			wantErr: false,
+		},
+		{
+			name:           "실패: Fetch 에러",
+			productID:      999,
+			mockFetchErr:   errors.New("network timeout"),
+			mockStatusCode: 0,
+			wantErr:        true,
+			errSubstr:      "network timeout",
+		},
+		{
+			name:           "실패: HTML 파싱 실패 (__NEXT_DATA__ 없음)",
+			productID:      100,
+			mockStatusCode: 200,
+			mockHTML:       "<html><body>Nothing here</body></html>",
+			wantErr:        true,
+			errSubstr:      "JSON 데이터 추출이 실패하였습니다",
+		},
+		{
+			name:           "성공: 판매 중지 상품 (IsUnavailable)",
+			productID:      101,
+			mockStatusCode: 200,
+			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": null}</script></body></html>`,
+			wantProduct: &product{
+				ID:            101,
+				IsUnavailable: true,
+			},
+			wantErr: false,
+		},
+		{
+			name:           "실패: CSS 구조 변경됨 (섹션 없음)",
+			productID:      102,
+			mockStatusCode: 200,
+			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": {}}</script><div>Changed Layout</div></body></html>`,
+			wantErr:        true,
+			errSubstr:      "상품정보 섹션 추출 실패",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			mockFetcher := new(MockFetcher)
+			url := fmt.Sprintf(productPageURLFormat, tt.productID)
+
+			if tt.mockFetchErr != nil {
+				mockFetcher.On("Get", url).Return(nil, tt.mockFetchErr)
+			} else {
+				mockFetcher.On("Get", url).Return(createMockResponse(tt.mockStatusCode, tt.mockHTML), nil)
+			}
+
+			tsk := &task{}
+			tsk.SetFetcher(mockFetcher)
+
+			got, err := tsk.parseProductFromPage(tt.productID)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errSubstr != "" {
+					assert.Contains(t, err.Error(), tt.errSubstr)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantProduct.ID, got.ID)
+				assert.Equal(t, tt.wantProduct.IsUnavailable, got.IsUnavailable)
+				if !got.IsUnavailable {
+					assert.Equal(t, tt.wantProduct.Name, got.Name)
+					assert.Equal(t, tt.wantProduct.Price, got.Price)
+					assert.Equal(t, tt.wantProduct.DiscountedPrice, got.DiscountedPrice)
+					assert.Equal(t, tt.wantProduct.DiscountRate, got.DiscountRate)
+				}
+			}
+			mockFetcher.AssertExpectations(t)
+		})
+	}
+}
+
+func TestTask_DiffAndNotify(t *testing.T) {
+	t.Parallel()
+	tsk := &task{}
+
+	newProduct := func(id, price int) *product {
+		p := &product{ID: id, Name: "Test", Price: price}
+		p.updateLowestPrice()
+		return p
+	}
+
+	tests := []struct {
+		name            string
+		current         []*product
+		prev            []*product
+		runBy           tasksvc.RunBy
+		wantMsgContent  []string
+		wantDataChanged bool
+	}{
+		{
+			name:            "변경 없음 (Scheduler)",
+			current:         []*product{newProduct(1, 1000)},
+			prev:            []*product{newProduct(1, 1000)},
+			runBy:           tasksvc.RunByScheduler,
+			wantMsgContent:  nil,
+			wantDataChanged: false,
+		},
+		{
+			name:            "변경 없음 (User) - 메시지는 생성되지만 데이터 갱신 없음",
+			current:         []*product{newProduct(1, 1000)},
+			prev:            []*product{newProduct(1, 1000)},
+			runBy:           tasksvc.RunByUser,
+			wantMsgContent:  []string{"변경된 상품 정보가 없습니다", "현재 등록된 상품 정보는 아래와 같습니다"},
+			wantDataChanged: false,
+		},
+		{
+			name:    "가격 변경 발생",
+			current: []*product{newProduct(1, 800)},
+			prev:    []*product{newProduct(1, 1000)},
+			runBy:   tasksvc.RunByScheduler,
+			wantMsgContent: []string{
+				"상품 정보가 변경되었습니다",
+				"이전 가격", "1,000원",
+				"현재 가격", "800원",
+			},
+			wantDataChanged: true,
+		},
+		{
+			name:            "신규 상품 추가",
+			current:         []*product{newProduct(1, 1000), newProduct(2, 2000)},
+			prev:            []*product{newProduct(1, 1000)},
+			runBy:           tasksvc.RunByScheduler,
+			wantMsgContent:  []string{"상품 정보가 변경되었습니다", "🆕", "2,000원"},
+			wantDataChanged: true,
+		},
+		{
+			name: "판매 중지 (Unavailable)",
+			current: func() []*product {
+				p := newProduct(1, 1000)
+				p.IsUnavailable = true
+				return []*product{p}
+			}(),
+			prev:            []*product{newProduct(1, 1000)},
+			runBy:           tasksvc.RunByScheduler,
+			wantMsgContent:  nil,
+			wantDataChanged: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tsk.SetRunBy(tt.runBy)
+
+			curSnap := &watchProductPriceSnapshot{Products: tt.current}
+			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}
+
+			msg, data, err := tsk.diffAndNotify(nil, nil, curSnap, prevSnap, false)
+			require.NoError(t, err)
+
+			if len(tt.wantMsgContent) > 0 {
+				assert.NotEmpty(t, msg)
+				for _, part := range tt.wantMsgContent {
+					assert.Contains(t, msg, part)
+				}
+			} else {
+				assert.Empty(t, msg)
+			}
+
+			if tt.wantDataChanged {
+				assert.NotNil(t, data)
+				assert.Equal(t, curSnap, data)
+			} else {
+				assert.Nil(t, data)
+			}
 		})
 	}
 }

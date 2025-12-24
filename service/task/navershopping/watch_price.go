@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/sirupsen/logrus"
@@ -25,12 +26,6 @@ const (
 	// searchAPIURL 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
-
-	// newProductMark 신규 상품 알림 메시지에 표시될 강조 마크입니다.
-	newProductMark = " 🆕"
-
-	// changeProductPriceMark 가격 변동 알림 메시지에 표시될 강조 마크입니다.
-	changeProductPriceMark = " 🔁"
 
 	// ------------------------------------------------------------------------------------------------
 	// API 매개변수 설정
@@ -73,42 +68,6 @@ func (s *watchPriceSettings) validate() error {
 // watchPriceSnapshot 가격 변동을 감지하기 위한 상품 데이터의 스냅샷입니다.
 type watchPriceSnapshot struct {
 	Products []*product `json:"products"`
-}
-
-// product 검색 API를 통해 조회된 개별 상품 정보를 담는 도메인 모델입니다.
-type product struct {
-	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
-	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
-	Title       string `json:"title"`       // 상품명 (HTML 태그가 포함될 수 있음)
-	Link        string `json:"link"`        // 상품 상세 정보 페이지 URL
-	LowPrice    int    `json:"lprice"`      // 판매 최저가 (단위: 원)
-	MallName    string `json:"mallName"`    // 판매 쇼핑몰 상호 (예: "네이버", "쿠팡" 등)
-}
-
-// Key 상품을 고유하게 식별하기 위한 키를 반환합니다.
-func (p *product) Key() string {
-	return p.ProductID
-}
-
-// String 상품 정보를 사용자에게 발송하기 위한 알림 메시지 포맷으로 변환합니다.
-func (p *product) String(supportsHTML bool, mark string) string {
-	if supportsHTML {
-		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> (%s) %s원%s`
-
-		return fmt.Sprintf(
-			htmlFormat,
-			p.Link,
-			p.Title,
-			p.MallName,
-			strutil.FormatCommas(p.LowPrice),
-			mark,
-		)
-	}
-
-	const textFormat = `☞ %s (%s) %s원%s
-%s`
-
-	return strings.TrimSpace(fmt.Sprintf(textFormat, p.Title, p.MallName, strutil.FormatCommas(p.LowPrice), mark, p.Link))
 }
 
 // searchResponse 네이버 쇼핑 검색 API의 응답 데이터를 담는 구조체입니다.
@@ -351,7 +310,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	// 정렬된 순서대로 상품 목록을 순회하며 신규 상품 및 가격 변경 상품을 식별합니다.
 	lineSpacing := "\n\n"
 	for _, p := range currentSnapshot.Products {
-		prevProduct, exists := prevMap[p.Key()]
+		prev, exists := prevMap[p.Key()]
 
 		if !exists {
 			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.
@@ -359,16 +318,15 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, newProductMark))
+			sb.WriteString(p.Render(supportsHTML, mark.New, nil))
 		} else {
 			// 동일한 상품(Key 일치)이 이전에도 존재했으나, 최저가(LowPrice)가 변경되었습니다.
 			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
-			if p.LowPrice != prevProduct.LowPrice {
+			if p.LowPrice != prev.LowPrice {
 				if sb.Len() > 0 {
 					sb.WriteString(lineSpacing)
 				}
-
-				sb.WriteString(p.String(supportsHTML, fmt.Sprintf(" (이전: %s원)%s", strutil.FormatCommas(prevProduct.LowPrice), changeProductPriceMark)))
+				sb.WriteString(p.Render(supportsHTML, mark.Change, prev))
 			}
 		}
 	}
@@ -413,7 +371,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(p.String(supportsHTML, ""))
+			sb.WriteString(p.Render(supportsHTML, "", nil))
 		}
 
 		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",

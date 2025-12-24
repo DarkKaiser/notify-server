@@ -1,3 +1,5 @@
+// Package kurly 마켓컬리(Kurly) 플랫폼과 연동하여 상품 정보를 수집하고
+// 가격 변동을 모니터링하는 작업을 수행하는 패키지입니다.
 package kurly
 
 import (
