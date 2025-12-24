@@ -193,11 +193,12 @@ func TestTask_LoadWatchList(t *testing.T) {
 		assert.Equal(t, "1001", records[0][0])
 	})
 
-	t.Run("성공: 헤더만 있는 파일", func(t *testing.T) {
+	t.Run("실패: 헤더만 있는 파일 (유효한 데이터 없음)", func(t *testing.T) {
 		content := "no,name,status\n"
 		records, err := tsk.loadWatchListRecords(strings.NewReader(content))
-		require.NoError(t, err)
-		assert.Len(t, records, 0)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "처리할 수 있는 유효한 상품 레코드가 없습니다")
+		assert.Nil(t, records)
 	})
 }
 

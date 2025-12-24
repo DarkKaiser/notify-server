@@ -44,7 +44,7 @@ type product struct {
 
 // URL 상품 상세 페이지의 전체 URL을 반환합니다.
 func (p *product) URL() string {
-	return fmt.Sprintf(productPageURLFormat, p.ID)
+	return formatProductURL(p.ID)
 }
 
 // IsOnSale 상품이 현재 할인 중인지 여부를 반환합니다.
@@ -168,4 +168,9 @@ func writeFormattedPrice(sb *strings.Builder, price, discountedPrice, discountRa
 
 	// 예: 10,000원 ⇒ 9,000원 (10%)
 	fmt.Fprintf(sb, "%s원 ⇒ %s원%s", formattedPrice, formattedDiscountedPrice, discountRateStr)
+}
+
+// formatProductURL 상품 ID를 받아 상품 상세 페이지의 전체 URL을 반환합니다.
+func formatProductURL(id any) string {
+	return fmt.Sprintf(productPageURLFormat, id)
 }

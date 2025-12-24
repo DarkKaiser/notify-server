@@ -19,6 +19,11 @@ import (
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 )
 
+const (
+	// fallbackProductName CSV 데이터에서 상품명이 없거나 공백일 경우 사용자에게 표시할 대체 텍스트입니다.
+	fallbackProductName = "알 수 없는 상품"
+)
+
 var (
 	// reExtractNextData 마켓컬리 상품 페이지의 핵심 데이터가 담긴 <script> 태그 내용을 추출합니다.
 	// (페이지 소스에 포함된 초기 데이터를 직접 긁어와서, 별도의 API 호출 없이도 상품 정보를 얻을 수 있게 해줍니다)
@@ -159,7 +164,25 @@ func (t *task) loadWatchListRecords(r io.Reader) ([][]string, error) {
 		return nil, apperrors.New(apperrors.InvalidInput, "CSV 헤더 형식이 올바르지 않습니다. 필수 컬럼(no, name, status)이 포함되어 있는지 확인해 주세요")
 	}
 
-	return records[1:], nil
+	// 파싱 단계에서 불완전한 데이터(필수 컬럼 누락)를 미리 필터링하여 데이터 정합성 확보
+	var sanitizedRecords [][]string
+	for _, record := range records[1:] {
+		// 최소한 ID와 Name 컬럼이 존재해야 유효한 데이터로 취급한다.
+		if len(record) <= int(csvColumnName) {
+			continue
+		}
+		// ID나 Name이 공백인 경우도 무시한다.
+		if strings.TrimSpace(record[csvColumnID]) == "" || strings.TrimSpace(record[csvColumnName]) == "" {
+			continue
+		}
+		sanitizedRecords = append(sanitizedRecords, record)
+	}
+
+	if len(sanitizedRecords) == 0 {
+		return nil, apperrors.New(apperrors.InvalidInput, "처리할 수 있는 유효한 상품 레코드가 없습니다. 모든 행이 필수 데이터(상품번호, 상품명) 누락으로 인해 필터링되었습니다")
+	}
+
+	return sanitizedRecords, nil
 }
 
 // extractDuplicateRecords 입력된 감시 대상 상품(레코드) 목록에서 중복 기입된 항목을 추출하여 분리합니다.
@@ -246,19 +269,29 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 	}
 
 	var sb strings.Builder
+
+	// [최적화] 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
+	sb.Grow(len(duplicateRecords) * 150)
+
 	for i, record := range duplicateRecords {
 		if i > 0 {
 			sb.WriteString("\n")
 		}
 
-		productNo := strings.TrimSpace(record[csvColumnID])
-		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
+		// [안정성] 인덱스 범위를 확인하여 런타임 패닉(Panic) 방지
+		productID := strings.TrimSpace(record[csvColumnID])
+		productName := strings.TrimSpace(record[csvColumnName])
 
-		if supportsHTML {
-			sb.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
+		// [UX] 상품명이 비어있는 경우 대체 텍스트 제공
+		if productName == "" {
+			productName = fallbackProductName
 		} else {
-			sb.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
+			productName = template.HTMLEscapeString(productName)
 		}
+
+		// [리팩토링] 렌더링 로직 분리 (가독성 향상)
+		sb.WriteString("      • ")
+		sb.WriteString(renderProductLink(productID, productName, supportsHTML))
 	}
 	return sb.String()
 }
@@ -279,6 +312,8 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 func (t *task) buildUnavailableProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
 	// @@@@@
 	var sb strings.Builder
+	// [최적화] 예상되는 문자열 크기만큼 미리 할당 (약간의 여유를 둠)
+	sb.Grow(len(products) * 150)
 
 	for _, product := range products {
 		if !product.IsUnavailable {
@@ -292,14 +327,19 @@ func (t *task) buildUnavailableProductsMessage(products []*product, records [][]
 					sb.WriteString("\n")
 				}
 
-				productNo := strings.TrimSpace(record[csvColumnID])
-				productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
+				productID := strings.TrimSpace(record[csvColumnID])
+				productName := strings.TrimSpace(record[csvColumnName])
 
-				if supportsHTML {
-					sb.WriteString(fmt.Sprintf("      • <a href=\"%s\"><b>%s</b></a>", fmt.Sprintf(productPageURLFormat, productNo), productName))
+				// [UX] 상품명이 비어있는 경우 대체 텍스트 제공
+				if productName == "" {
+					productName = fallbackProductName
 				} else {
-					sb.WriteString(fmt.Sprintf("      • %s(%s)", productName, productNo))
+					productName = template.HTMLEscapeString(productName)
 				}
+
+				// [리팩토링] 렌더링 로직 통일
+				sb.WriteString("      • ")
+				sb.WriteString(renderProductLink(productID, productName, supportsHTML))
 				break
 			}
 		}
@@ -511,4 +551,20 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	}
 
 	return product, nil
+}
+
+// renderProductLink 상품 ID와 이름을 조합하여 알림 메시지에 사용할 포맷팅된 링크 문자열을 생성합니다.
+//
+// [매개변수]
+//   - productID: 상품 고유 식별자 (URL 생성에 사용)
+//   - productName: 화면에 표시될 상품 이름
+//   - supportsHTML: HTML 태그 포함 여부
+//
+// [반환값]
+//   - string: 포맷팅된 링크 문자열
+func renderProductLink(productID, productName string, supportsHTML bool) string {
+	if supportsHTML {
+		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", formatProductURL(productID), productName)
+	}
+	return fmt.Sprintf("%s(%s)", productName, productID)
 }
