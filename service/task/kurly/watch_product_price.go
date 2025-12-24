@@ -76,8 +76,9 @@ type watchProductPriceSnapshot struct {
 	Products []*product `json:"products"`
 }
 
-// @@@@@
+// executeWatchProductPrice 감시 대상 상품들의 최신 가격을 조회하고, 이전 상태와 비교하여 변동이 있으면 알림을 생성합니다.
 func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+	// @@@@@
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
@@ -228,7 +229,7 @@ func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]stri
 // parseProductFromPage 주어진 상품 ID에 해당하는 페이지를 페치하고 파싱하여 상품 정보를 반환합니다.
 func (t *task) parseProductFromPage(id int) (*product, error) {
 	// 상품 페이지를 읽어들인다.
-	productDetailPageURL := fmt.Sprintf(productPageURLFormat, id)
+	productDetailPageURL := formatProductURL(id)
 	doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productDetailPageURL)
 	if err != nil {
 		return nil, err
@@ -274,8 +275,8 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 		}
 		product.Name = strutil.NormalizeSpaces(ps.Text())
 
-		// 상품 가격을 추출한다.
-		if err := t.extractPriceInfo(sel, product, productDetailPageURL); err != nil {
+		// 상품 가격 정보를 추출한다.
+		if err := t.parsePricing(sel, product, productDetailPageURL); err != nil {
 			return nil, err
 		}
 	}
@@ -284,8 +285,8 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 }
 
 // @@@@@
-// extractPriceInfo HTML 요소에서 가격 및 할인 정보를 추출합니다.
-func (t *task) extractPriceInfo(sel *goquery.Selection, product *product, productDetailPageURL string) error {
+// parsePricing HTML 요소에서 가격 및 할인 정책(Pricing)을 해석하고 구조체에 매핑합니다.
+func (t *task) parsePricing(sel *goquery.Selection, product *product, productDetailPageURL string) error {
 	var err error
 	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
 	if ps.Length() == 0 /* 가격, 단위(원) */ {
@@ -377,61 +378,58 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
 	// @@@@@
 	var sb strings.Builder
+
 	sb.Grow(1024)
 
 	lineSpacing := "\n\n"
-	if supportsHTML {
-		lineSpacing = "\n"
-	}
-
 	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
 	prevProductMap := make(map[int]*product, len(prevSnapshot.Products))
 	for _, p := range prevSnapshot.Products {
 		prevProductMap[p.ID] = p
 	}
 
-	for _, actualityProduct := range currentSnapshot.Products {
-		originProduct, exists := prevProductMap[actualityProduct.ID]
+	for _, currentProduct := range currentSnapshot.Products {
+		prevProduct, exists := prevProductMap[currentProduct.ID]
 
 		// 1. 신규 상품이거나, 이전에 알 수 없는 상품이었던 경우
-		if !exists || (originProduct.IsUnavailable && !actualityProduct.IsUnavailable) {
+		if !exists || (prevProduct.IsUnavailable && !currentProduct.IsUnavailable) {
 			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
-			if actualityProduct.IsUnavailable {
+			if currentProduct.IsUnavailable {
 				continue
 			}
 
 			// 최저 가격 갱신 (신규 상품 취급)
-			actualityProduct.updateLowestPrice()
+			currentProduct.updateLowestPrice()
 
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityProduct.Render(supportsHTML, mark.New, nil))
+			sb.WriteString(currentProduct.Render(supportsHTML, mark.New, nil))
 			continue
 		}
 
 		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
-		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
+		if !prevProduct.IsUnavailable && currentProduct.IsUnavailable {
 			continue // 변경 내역 렌더링 생략
 		}
 
 		// 3. 기존 상품 변경 내역 비교
 		// 이전 최저가 정보를 승계
-		actualityProduct.LowestPrice = originProduct.LowestPrice
-		actualityProduct.LowestPriceTimeUTC = originProduct.LowestPriceTimeUTC
+		currentProduct.LowestPrice = prevProduct.LowestPrice
+		currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
 
 		// 현재 가격 기준으로 최저가 갱신 시도
-		actualityProduct.updateLowestPrice()
+		currentProduct.updateLowestPrice()
 
 		// 가격이나 할인율 등이 변경되었는지 확인
-		if actualityProduct.Price != originProduct.Price ||
-			actualityProduct.DiscountedPrice != originProduct.DiscountedPrice ||
-			actualityProduct.DiscountRate != originProduct.DiscountRate {
+		if currentProduct.Price != prevProduct.Price ||
+			currentProduct.DiscountedPrice != prevProduct.DiscountedPrice ||
+			currentProduct.DiscountRate != prevProduct.DiscountRate {
 
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(actualityProduct.Render(supportsHTML, mark.Change, originProduct))
+			sb.WriteString(currentProduct.Render(supportsHTML, mark.Change, prevProduct))
 		}
 	}
 	return sb.String()
