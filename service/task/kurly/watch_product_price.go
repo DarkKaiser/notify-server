@@ -285,7 +285,19 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 }
 
 // @@@@@
-// parsePricing HTML 요소에서 가격 및 할인 정책(Pricing)을 해석하고 구조체에 매핑합니다.
+// parsePricing HTML DOM(Selection) 내에서 가격 및 할인 정책 정보를 추출하여 상품 구조체에 매핑합니다.
+//
+// [설명]
+// 마켓컬리 상품 상세 페이지의 가격 표시 영역은 할인 여부에 따라 두 가지 상이한 DOM 구조를 가집니다.
+// 이 함수는 해당 구조를 동적으로 식별하여 정확한 가격 정보를 파싱합니다.
+//
+// 1. **할인 미적용 시**: 가격 정보(단일 `span`)만 존재합니다.
+// 2. **할인 적용 시**: 할인율, 할인가, 정상가(취소선 포함)가 모두 표시됩니다.
+//
+// [매개변수]
+//   - sel: 가격 정보가 포함된 부모 HTML 요소(`goquery.Selection`)입니다.
+//   - product: 추출된 가격 정보를 저장할 대상 상품 구조체 포인터입니다.
+//   - productDetailPageURL: 에러 로깅 시 컨텍스트를 제공하기 위한 상품 상세 페이지 URL입니다.
 func (t *task) parsePricing(sel *goquery.Selection, product *product, productDetailPageURL string) error {
 	var err error
 	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
