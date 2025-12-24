@@ -433,40 +433,55 @@ func (t *task) buildUnavailableProductsMessage(products []*product, records [][]
 //
 // [설계 의도]
 // 변경 사항이 존재할 경우, 해당 내역을 상세히 브리핑하는 메시지를 우선하여 생성합니다.
-// 만약 변경 사항이 없더라도 사용자가 직접 실행(RunByUser)한 경우에는, 시스템이 정상 동작 중임을
+// 만약 변경 사항이 없더라도 사용자가 명시적 의도로 작업을(RunByUser) 실행한 경우에는, 시스템이 정상 동작 중임을
 // 안심시키기 위해 현재 스냅샷을 기반으로 한 요약 리포트(Fallback Mode)를 제공합니다.
 func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage string, supportsHTML bool) string {
-	// @@@@@
+	// [메시지 조합 여부 판단 (Change Detection)]
+	// 개별 메시지들(가격 변동, 중복, 식별 불가) 중에서 유효한 내용이 단 하나라도 존재하는지 검사합니다.
+	// 이는 알림의 성격을 단순 '현황 보고'에서 유의미한 '이벤트 알림'으로 전환하는 기준이 됩니다.
 	hasChanges := strutil.HasAnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
-
 	if hasChanges {
 		var sb strings.Builder
+
+		// 예상되는 최소 용량을 미리 할당하여 메모리 재할당 비용 최적화
+		expectedSize := len(productsDiffMessage) + len(duplicateRecordsMessage) + len(unavailableProductsMessage) + 100
+		sb.Grow(expectedSize)
+
 		if len(productsDiffMessage) > 0 {
-			sb.WriteString(fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", productsDiffMessage))
-		} else {
 			sb.WriteString("상품 정보가 변경되었습니다.\n\n")
+			sb.WriteString(productsDiffMessage)
+			sb.WriteString("\n\n")
 		}
 		if len(duplicateRecordsMessage) > 0 {
-			sb.WriteString(fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateRecordsMessage))
+			sb.WriteString("중복으로 등록된 상품 목록:\n\n")
+			sb.WriteString(duplicateRecordsMessage)
+			sb.WriteString("\n\n")
 		}
 		if len(unavailableProductsMessage) > 0 {
-			sb.WriteString(fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unavailableProductsMessage))
+			sb.WriteString("알 수 없는 상품 목록:\n\n")
+			sb.WriteString(unavailableProductsMessage)
+			sb.WriteString("\n\n")
 		}
+
 		return sb.String()
 	}
 
-	// 변경 사항이 없더라도, 사용자가 직접 실행한 경우(RunByUser)에는 현재 상태를 요약해서 보내줍니다.
+	// 변경 사항이 없더라도, 사용자가 명시적 의도로 작업(RunByUser)을 실행한 경우에는 침묵하지 않고 현재 상태를 보고합니다.
+	// 이는 시스템이 정상 동작 중임을 사용자에게 확신시켜 주기 위한 중요한 UX 장치입니다.
 	if t.GetRunBy() == tasksvc.RunByUser {
 		if len(currentSnapshot.Products) == 0 {
 			return "등록된 상품 정보가 존재하지 않습니다."
 		}
 
 		var sb strings.Builder
-		lineSpacing := "\n\n"
-		if supportsHTML {
-			lineSpacing = "\n"
-		}
 
+		// 예상되는 최소 용량을 미리 할당하여 메모리 재할당 비용 최적화
+		sb.Grow(len(currentSnapshot.Products)*400 + 100)
+
+		sb.WriteString("변경된 상품 정보가 없습니다.\n\n")
+		sb.WriteString("현재 등록된 상품 정보는 아래와 같습니다:\n\n")
+
+		lineSpacing := "\n\n"
 		for i, actualityProduct := range currentSnapshot.Products {
 			if i > 0 {
 				sb.WriteString(lineSpacing)
@@ -474,7 +489,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 			sb.WriteString(actualityProduct.Render(supportsHTML, "", nil))
 		}
 
-		return fmt.Sprintf("변경된 상품 정보가 없습니다.\n\n%s현재 등록된 상품 정보는 아래와 같습니다:", sb.String())
+		return sb.String()
 	}
 
 	return ""
