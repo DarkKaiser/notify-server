@@ -355,7 +355,7 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 		currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
 
 		// 현재 가격 기준으로 최저가 갱신 시도
-		currentProduct.updateLowestPrice()
+		isLowestPriceUpdated := currentProduct.updateLowestPrice()
 
 		// 가격이나 할인율 등이 변경되었는지 확인
 		if currentProduct.Price != prevProduct.Price ||
@@ -365,7 +365,13 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 			if sb.Len() > 0 {
 				sb.WriteString(lineSpacing)
 			}
-			sb.WriteString(currentProduct.Render(supportsHTML, mark.Change, prevProduct))
+
+			// 최저가가 갱신된 경우 '역대 최저가' 마크를, 단순 변동인 경우 '변경' 마크를 표시
+			marker := mark.Change
+			if isLowestPriceUpdated {
+				marker = mark.BestPrice
+			}
+			sb.WriteString(currentProduct.Render(supportsHTML, marker, prevProduct))
 		}
 	}
 	return sb.String()

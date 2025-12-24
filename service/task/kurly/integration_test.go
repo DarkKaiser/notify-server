@@ -447,7 +447,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, message)
 	require.Contains(t, message, "상품 정보가 변경되었습니다")
-	require.Contains(t, message, "🔁")      // 변경 마크
+	require.Contains(t, message, "🔥")      // 최저가 갱신 마크
 	require.Contains(t, message, "5,000원") // 새로운 가격
 
 	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
