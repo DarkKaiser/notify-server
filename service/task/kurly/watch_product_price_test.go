@@ -180,28 +180,6 @@ func TestExtractDuplicateRecords(t *testing.T) {
 	}
 }
 
-func TestTask_LoadWatchList(t *testing.T) {
-	tsk := &task{}
-
-	t.Run("성공: 정상적인 CSV 로딩", func(t *testing.T) {
-		content := `no,name,status
-1001,사과,1
-1002,바나나,1`
-		records, err := tsk.loadWatchListRecords(strings.NewReader(content))
-		require.NoError(t, err)
-		assert.Len(t, records, 2)
-		assert.Equal(t, "1001", records[0][0])
-	})
-
-	t.Run("실패: 헤더만 있는 파일 (유효한 데이터 없음)", func(t *testing.T) {
-		content := "no,name,status\n"
-		records, err := tsk.loadWatchListRecords(strings.NewReader(content))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "처리할 수 있는 유효한 상품 레코드가 없습니다")
-		assert.Nil(t, records)
-	})
-}
-
 func createDoc(html string) *goquery.Document {
 	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(html))
 	return doc

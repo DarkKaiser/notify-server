@@ -1,13 +1,8 @@
 package kurly
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/csv"
 	"fmt"
 	"html/template"
-	"io"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,27 +30,6 @@ var (
 	reDetectUnavailable = regexp.MustCompile(`"product":\s*null`)
 )
 
-// csvColumnIndex CSV 파일에서 상품 정보를 파싱할 때 사용되는 컬럼 인덱스를 정의하는 타입입니다.
-type csvColumnIndex int
-
-const (
-	// CSV 파일의 헤더 순서에 따른 컬럼 인덱스 상수입니다.
-	//
-	// [주의]
-	// 이 상수의 순서는 실제 CSV 파일의 헤더 순서와 **엄격하게 일치**해야 합니다.
-	// 파일 포맷이 변경될 경우, 이 상수의 정의도 반드시 함께 수정되어야 합니다.
-	csvColumnID     csvColumnIndex = iota // [0] 상품 코드
-	csvColumnName                         // [1] 상품 이름
-	csvColumnStatus                       // [2] 감시 활성화 여부
-
-	// CSV 파일의 '감시 활성화 여부' 컬럼에 사용되는 상태값 상수입니다.
-	//
-	// [설명]
-	// CSV 파일에서 읽어온 데이터는 문자열(string) 타입이므로, 비교의 정확성을 위해
-	// 정수형(1) 대신 문자열 상수("1")를 정의하여 사용합니다. ('1'이 아닌 모든 값은 비활성 상태로 간주합니다)
-	csvStatusEnabled = "1" // 감시 활성화
-)
-
 type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
@@ -77,18 +51,12 @@ type watchProductPriceSnapshot struct {
 }
 
 // executeWatchProductPrice 감시 대상 상품들의 최신 가격을 조회하고, 이전 상태와 비교하여 변동이 있으면 알림을 생성합니다.
-func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettings, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// @@@@@
 	//
-	// 감시할 상품 목록을 읽어들인다.
+	// 감시할 상품 목록을 읽어들인다. (추상화된 Loader 사용)
 	//
-	f, err := os.Open(commandSettings.WatchProductsFile)
-	if err != nil {
-		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
-	}
-	defer f.Close()
-
-	records, err := t.loadWatchListRecords(f)
+	records, err := loader.Load()
 	if err != nil {
 		return "", nil, err
 	}
@@ -124,67 +92,6 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	}
 
 	return t.diffAndNotify(currentSnapshot, prevSnapshot, records, duplicateRecords, supportsHTML)
-}
-
-// loadWatchListRecords Reader 스트림을 통해 CSV 데이터를 파싱하여 감시 대상 상품(레코드) 목록을 로드합니다.
-//
-// [설명]
-// 입력된 Reader 스트림을 통해 CSV 데이터를 파싱합니다.
-// 첫 번째 행은 헤더로 간주하여 유효성을 검사한 후 결과에서 제외합니다.
-//
-// [매개변수]
-//   - r: CSV 데이터를 읽을 수 있는 io.Reader 인터페이스입니다.
-//
-// [반환값]
-//   - records: 헤더가 제거되고 정제된 감시 대상 상품(레코드) 목록입니다.
-//   - error: 데이터 읽기 또는 파싱 실패 시 에러를 반환합니다.
-func (t *task) loadWatchListRecords(r io.Reader) ([][]string, error) {
-	// Windows 메모장 등으로 저장 시 발생하는 UTF-8 BOM 제거
-	buf := bufio.NewReader(r)
-	bom, err := buf.Peek(3)
-	if err == nil && bytes.Equal(bom, []byte{0xEF, 0xBB, 0xBF}) {
-		buf.Discard(3)
-	}
-
-	csvReader := csv.NewReader(buf)
-	csvReader.TrimLeadingSpace = true // 쉼표 뒤 공백 자동 제거
-	csvReader.FieldsPerRecord = -1    // 행마다 컬럼 개수가 달라도 에러 없이 읽음 (유연성)
-	csvReader.LazyQuotes = true       // 따옴표 규칙 완화 (손상된 CSV 처리)
-	csvReader.Comment = '#'           // '#'으로 시작하는 행은 주석으로 처리하여 무시 (설정 파일 주석 지원)
-
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "CSV 데이터 파싱 중 치명적인 오류가 발생했습니다. 파일 인코딩이나 형식을 확인해 주세요")
-	}
-
-	if len(records) == 0 {
-		return nil, apperrors.New(apperrors.InvalidInput, "CSV 데이터가 비어있습니다. 파일 내용을 확인해 주세요")
-	}
-
-	header := records[0]
-	if len(header) < 3 { // 최소 3개 컬럼(no, name, status) 필요
-		return nil, apperrors.New(apperrors.InvalidInput, "CSV 헤더 형식이 올바르지 않습니다. 필수 컬럼(no, name, status)이 포함되어 있는지 확인해 주세요")
-	}
-
-	// 파싱 단계에서 불완전한 데이터(필수 컬럼 누락)를 미리 필터링하여 데이터 정합성 확보
-	var sanitizedRecords [][]string
-	for _, record := range records[1:] {
-		// 최소한 ID와 Name 컬럼이 존재해야 유효한 데이터로 취급한다.
-		if len(record) <= int(csvColumnName) {
-			continue
-		}
-		// ID나 Name이 공백인 경우도 무시한다.
-		if strings.TrimSpace(record[csvColumnID]) == "" || strings.TrimSpace(record[csvColumnName]) == "" {
-			continue
-		}
-		sanitizedRecords = append(sanitizedRecords, record)
-	}
-
-	if len(sanitizedRecords) == 0 {
-		return nil, apperrors.New(apperrors.InvalidInput, "처리할 수 있는 유효한 상품 레코드가 없습니다. 모든 행이 필수 데이터(상품번호, 상품명) 누락으로 인해 필터링되었습니다")
-	}
-
-	return sanitizedRecords, nil
 }
 
 // extractDuplicateRecords 입력된 감시 대상 상품(레코드) 목록에서 중복 기입된 항목을 추출하여 분리합니다.

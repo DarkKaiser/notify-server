@@ -48,6 +48,39 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 	}
 
+	invalidConfig_EmptyFile := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: "KURLY",
+				Commands: []config.CommandConfig{
+					{
+						ID: "WatchProductPrice",
+						Data: map[string]interface{}{
+							"watch_products_file": "   ", // 공백 문자열
+						},
+					},
+				},
+			},
+		},
+	}
+
+	invalidConfig_MissingField := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: "KURLY",
+				Commands: []config.CommandConfig{
+					{
+						ID: "WatchProductPrice",
+						Data: map[string]interface{}{
+							// "watch_products_file" key missing
+							"other_field": "value",
+						},
+					},
+				},
+			},
+		},
+	}
+
 	invalidConfig_MissingCommand := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
@@ -79,11 +112,12 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			checkTask: func(t *testing.T, h tasksvc.Handler) {
 				assert.NotNil(t, h)
 				// 올바른 타입으로 캐스팅되는지 확인
-				_, ok := h.(*task)
+				taskImpl, ok := h.(*task)
 				assert.True(t, ok, "handler should be of type *task")
 
-				// 실행 함수가 설정되었는지 확인
-				// (Integration Test가 아니므로 실제 실행 로직까지는 검증하지 않음)
+				// 기본 속성 검증
+				assert.Equal(t, ID, taskImpl.GetID())
+				assert.Equal(t, WatchProductPriceCommand, taskImpl.GetCommandID())
 			},
 		},
 		{
@@ -117,14 +151,34 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			errMsg:    "해당 명령 생성에 필요한 설정 데이터가 존재하지 않습니다",
 		},
 		{
-			name: "실패: 설정 유효성 검사 실패 (파일 확장자)",
+			name: "실패: 설정 유효성 검사 실패 (파일 확장자 오류)",
 			req: &tasksvc.SubmitRequest{
 				TaskID:    ID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: invalidConfig_NoCSV,
 			wantErr:   true,
-			errMsg:    "명령 설정 데이터가 유효하지 않습니다",
+			errMsg:    "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
+		},
+		{
+			name: "실패: 설정 유효성 검사 실패 (파일명 공백)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    ID,
+				CommandID: WatchProductPriceCommand,
+			},
+			appConfig: invalidConfig_EmptyFile,
+			wantErr:   true,
+			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다",
+		},
+		{
+			name: "실패: 설정 유효성 검사 실패 (필수 필드 누락)",
+			req: &tasksvc.SubmitRequest{
+				TaskID:    ID,
+				CommandID: WatchProductPriceCommand,
+			},
+			appConfig: invalidConfig_MissingField,
+			wantErr:   true,
+			errMsg:    "invalid keys", // 정의되지 않은 키가 포함되어 디코딩 실패
 		},
 	}
 
