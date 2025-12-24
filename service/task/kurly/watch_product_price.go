@@ -263,14 +263,13 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapsh
 // [반환값]
 //   - string: 포맷팅된 중복 상품 메시지입니다.
 func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, supportsHTML bool) string {
-	// @@@@@
 	if len(duplicateRecords) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
 
-	// [최적화] 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
+	// 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
 	sb.Grow(len(duplicateRecords) * 150)
 
 	for i, record := range duplicateRecords {
@@ -278,21 +277,18 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 			sb.WriteString("\n")
 		}
 
-		// [안정성] 인덱스 범위를 확인하여 런타임 패닉(Panic) 방지
 		productID := strings.TrimSpace(record[csvColumnID])
 		productName := strings.TrimSpace(record[csvColumnName])
 
-		// [UX] 상품명이 비어있는 경우 대체 텍스트 제공
+		// 상품명이 비어있는 경우 대체 텍스트 제공
 		if productName == "" {
 			productName = fallbackProductName
-		} else {
-			productName = template.HTMLEscapeString(productName)
 		}
 
-		// [리팩토링] 렌더링 로직 분리 (가독성 향상)
 		sb.WriteString("      • ")
 		sb.WriteString(renderProductLink(productID, productName, supportsHTML))
 	}
+
 	return sb.String()
 }
 
@@ -310,40 +306,50 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 // [반환값]
 //   - string: 포맷팅된 정보를 수집할 수 없는 상품 메시지입니다.
 func (t *task) buildUnavailableProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
-	// @@@@@
+	if len(products) == 0 {
+		return ""
+	}
+
+	// CSV 레코드를 Map으로 인덱싱하여 검색 속도 향상
+	recordMap := make(map[string]string, len(records))
+	for _, record := range records {
+		if len(record) > int(csvColumnName) {
+			id := strings.TrimSpace(record[csvColumnID])
+			name := strings.TrimSpace(record[csvColumnName])
+			recordMap[id] = name
+		}
+	}
+
 	var sb strings.Builder
-	// [최적화] 예상되는 문자열 크기만큼 미리 할당 (약간의 여유를 둠)
+
+	// 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
 	sb.Grow(len(products) * 150)
 
-	for _, product := range products {
-		if !product.IsUnavailable {
+	for _, p := range products {
+		if !p.IsUnavailable {
 			continue
 		}
 
-		// CSV 레코드에서 해당 상품의 정보를 찾습니다.
-		for _, record := range records {
-			if record[csvColumnID] == strconv.Itoa(product.ID) {
-				if sb.Len() > 0 {
-					sb.WriteString("\n")
-				}
-
-				productID := strings.TrimSpace(record[csvColumnID])
-				productName := strings.TrimSpace(record[csvColumnName])
-
-				// [UX] 상품명이 비어있는 경우 대체 텍스트 제공
-				if productName == "" {
-					productName = fallbackProductName
-				} else {
-					productName = template.HTMLEscapeString(productName)
-				}
-
-				// [리팩토링] 렌더링 로직 통일
-				sb.WriteString("      • ")
-				sb.WriteString(renderProductLink(productID, productName, supportsHTML))
-				break
-			}
+		productID := strconv.Itoa(p.ID)
+		productName, found := recordMap[productID]
+		if !found {
+			// 감시 대상 상품(레코드) 목록에 없는 상품은 보고 대상에서 제외합니다
+			continue
 		}
+
+		// 상품명이 비어있는 경우 대체 텍스트 제공
+		if productName == "" {
+			productName = fallbackProductName
+		}
+
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("      • ")
+		sb.WriteString(renderProductLink(productID, productName, supportsHTML))
 	}
+
 	return sb.String()
 }
 
@@ -564,7 +570,8 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 //   - string: 포맷팅된 링크 문자열
 func renderProductLink(productID, productName string, supportsHTML bool) string {
 	if supportsHTML {
-		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", formatProductURL(productID), productName)
+		escapedName := template.HTMLEscapeString(productName)
+		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", formatProductURL(productID), escapedName)
 	}
 	return fmt.Sprintf("%s(%s)", productName, productID)
 }
