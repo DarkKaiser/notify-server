@@ -121,7 +121,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		currentSnapshot.Products = append(currentSnapshot.Products, product)
 	}
 
-	return t.diffAndNotify(records, duplicateRecords, currentSnapshot, prevSnapshot, supportsHTML)
+	return t.diffAndNotify(currentSnapshot, prevSnapshot, records, duplicateRecords, supportsHTML)
 }
 
 // loadWatchListRecords Reader 스트림을 통해 CSV 데이터를 파싱하여 감시 대상 상품(레코드) 목록을 로드합니다.
@@ -223,31 +223,107 @@ func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]stri
 	return distinctRecords, duplicateRecords
 }
 
-// @@@@@
-// diffAndNotify는 현재 수집된 상품 정보와 이전 스냅샷을 비교하여 변동 사항을 분석합니다.
-// 가격 변동, 품절 상태 변경, 신규 상품 등록 등의 이벤트를 감지하고,
-// 사용자에게 발송할 포맷팅된 알림 메시지와 갱신된 작업 결과 데이터를 생성합니다.
-func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 1. 상품 변경 사항 확인 및 렌더링
-	productsDiffString := t.diffProducts(currentSnapshot, prevSnapshot, supportsHTML)
+// diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
+//
+// [주요 기능]
+//  1. 상품 변경 감지: 가격 변동, 품절 상태 변경, 신규 상품 등록 등을 분석합니다.
+//  2. 데이터 정합성 검증: CSV 파일 내 중복 레코드 및 정보 수집 불가 상품을 식별합니다.
+//  3. 알림 메시지 조합: 감지된 모든 이벤트(변경, 중복, 불가)를 종합하여 사용자에게 발송할 최종 메시지를 생성합니다.
+//  4. 작업 결과 갱신: 유의미한 데이터 변경이 발생한 경우에만 스냅샷을 갱신하여 불필요한 DB 쓰기를 최소화합니다.
+//
+// [반환값]
+//   - string: 사용자에게 발송할 포맷팅된 알림 메시지 (변경 사항이 없으면 문맥에 따라 빈 문자열일 수 있음)
+//   - interface{}: DB에 저장할 갱신된 작업 결과 데이터 (변경 사항이 없을 경우 nil)
+//   - error: 처리 중 발생한 에러
+func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, records, duplicateRecords [][]string, supportsHTML bool) (string, interface{}, error) {
+	// 상품 상태 변화 감지 및 차분(Diff) 렌더링
+	// 이전 스냅샷과 현재 상태를 정밀하게 비교하여 유의미한 비즈니스 이벤트(가격 변동, 품절 해제 등)를 포착하고,
+	// 이를 사용자가 직관적으로 인지할 수 있는 메시지 포맷으로 변환(Rendering)합니다.
+	productsDiffMessage := t.diffProducts(currentSnapshot, prevSnapshot, supportsHTML)
 
-	// 2. 부가 정보 생성 (중복 상품, 알 수 없는 상품)
+	// 단순한 가격 변동 알림을 넘어, 사용자의 설정 오류(중복 등록)나 외부 요인에 의한 상품 상태 변화(판매 중지)를 식별하여 보고합니다.
 	duplicateRecordsMessage := t.buildDuplicateRecordsMessage(duplicateRecords, supportsHTML)
 	unavailableProductsMessage := t.buildUnavailableProductsMessage(currentSnapshot.Products, records, supportsHTML)
 
-	// 3. 최종 알림 메시지 조합
-	message := t.buildNotificationMessage(productsDiffString, duplicateRecordsMessage, unavailableProductsMessage, currentSnapshot, supportsHTML)
+	// 최종 알림 메시지 조합
+	// 앞서 생성된 핵심 변경 내역과 부가 정보들을 하나의 완결된 사용자 메시지로 통합합니다.
+	// 이 단계에서는 각 메시지 조각의 유무에 따라 조건부로 포맷팅을 수행하며, 최종적으로 사용자가 받아볼 깔끔하고 가독성 높은 리포트를 완성합니다.
+	message := t.buildNotificationMessage(currentSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage, supportsHTML)
 
-	// 4. 결과 데이터 결정
-	// 메시지는 RunByUser일 때 변경사항이 없어도 생성될 수 있지만,
-	// 데이터 갱신(changedTaskResultData)은 실제 변경사항이 있을 때만 수행해야 합니다.
-	var changedTaskResultData interface{}
-	hasChanges := len(productsDiffString) > 0 || len(duplicateRecordsMessage) > 0 || len(unavailableProductsMessage) > 0
+	// 결과 처리 (알림 vs 저장)
+	// 알림을 보내는 기준과 데이터를 저장하는 기준을 다르게 적용하여 효율성을 높입니다.
+	// - 알림: 사용자가 직접 확인하고 싶어 할 때(RunByUser)는 변경 사항이 없더라도 현재 상태를 리포트하여 안심시켜 줍니다.
+	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격이나 상태가 변했을 때만 저장하여 시스템 성능을 아낍니다.
+	hasChanges := strutil.HasAnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
 	if hasChanges {
-		changedTaskResultData = currentSnapshot
+		return message, currentSnapshot, nil
 	}
 
-	return message, changedTaskResultData, nil
+	return message, nil, nil
+}
+
+// @@@@@
+// diffProducts 현재와 이전 스냅샷을 비교하여 변경된 상품 정보를 렌더링된 문자열로 반환합니다.
+func (t *task) diffProducts(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
+	var sb strings.Builder
+	sb.Grow(1024)
+
+	lineSpacing := "\n\n"
+	if supportsHTML {
+		lineSpacing = "\n"
+	}
+
+	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
+	prevProductMap := make(map[int]*product, len(prevSnapshot.Products))
+	for _, p := range prevSnapshot.Products {
+		prevProductMap[p.ID] = p
+	}
+
+	for _, actualityProduct := range currentSnapshot.Products {
+		originProduct, exists := prevProductMap[actualityProduct.ID]
+
+		// 1. 신규 상품이거나, 이전에 알 수 없는 상품이었던 경우
+		if !exists || (originProduct.IsUnavailable && !actualityProduct.IsUnavailable) {
+			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
+			if actualityProduct.IsUnavailable {
+				continue
+			}
+
+			// 최저 가격 갱신 (신규 상품 취급)
+			actualityProduct.updateLowestPrice()
+
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
+			}
+			sb.WriteString(actualityProduct.Render(supportsHTML, mark.New, nil))
+			continue
+		}
+
+		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
+		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
+			continue // 변경 내역 렌더링 생략
+		}
+
+		// 3. 기존 상품 변경 내역 비교
+		// 이전 최저가 정보를 승계
+		actualityProduct.LowestPrice = originProduct.LowestPrice
+		actualityProduct.LowestPriceTimeUTC = originProduct.LowestPriceTimeUTC
+
+		// 현재 가격 기준으로 최저가 갱신 시도
+		actualityProduct.updateLowestPrice()
+
+		// 가격이나 할인율 등이 변경되었는지 확인
+		if actualityProduct.Price != originProduct.Price ||
+			actualityProduct.DiscountedPrice != originProduct.DiscountedPrice ||
+			actualityProduct.DiscountRate != originProduct.DiscountRate {
+
+			if sb.Len() > 0 {
+				sb.WriteString(lineSpacing)
+			}
+			sb.WriteString(actualityProduct.Render(supportsHTML, mark.Change, originProduct))
+		}
+	}
+	return sb.String()
 }
 
 // buildDuplicateRecordsMessage 감시 대상 파일(CSV)에 중복 기입된 상품(레코드) 목록을 사용자 알림용 메시지로 포맷팅합니다.
@@ -353,88 +429,28 @@ func (t *task) buildUnavailableProductsMessage(products []*product, records [][]
 	return sb.String()
 }
 
-// @@@@@
-// diffProducts 현재와 이전 스냅샷을 비교하여 변경된 상품 정보를 렌더링된 문자열로 반환합니다.
-func (t *task) diffProducts(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
-	var sb strings.Builder
-	sb.Grow(1024)
-
-	lineSpacing := "\n\n"
-	if supportsHTML {
-		lineSpacing = "\n"
-	}
-
-	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
-	prevProductMap := make(map[int]*product, len(prevSnapshot.Products))
-	for _, p := range prevSnapshot.Products {
-		prevProductMap[p.ID] = p
-	}
-
-	for _, actualityProduct := range currentSnapshot.Products {
-		originProduct, exists := prevProductMap[actualityProduct.ID]
-
-		// 1. 신규 상품이거나, 이전에 알 수 없는 상품이었던 경우
-		if !exists || (originProduct.IsUnavailable && !actualityProduct.IsUnavailable) {
-			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
-			if actualityProduct.IsUnavailable {
-				continue
-			}
-
-			// 최저 가격 갱신 (신규 상품 취급)
-			actualityProduct.updateLowestPrice()
-
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(actualityProduct.Render(supportsHTML, mark.New, nil))
-			continue
-		}
-
-		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
-		if !originProduct.IsUnavailable && actualityProduct.IsUnavailable {
-			continue // 변경 내역 렌더링 생략
-		}
-
-		// 3. 기존 상품 변경 내역 비교
-		// 이전 최저가 정보를 승계
-		actualityProduct.LowestPrice = originProduct.LowestPrice
-		actualityProduct.LowestPriceTimeUTC = originProduct.LowestPriceTimeUTC
-
-		// 현재 가격 기준으로 최저가 갱신 시도
-		actualityProduct.updateLowestPrice()
-
-		// 가격이나 할인율 등이 변경되었는지 확인
-		if actualityProduct.Price != originProduct.Price ||
-			actualityProduct.DiscountedPrice != originProduct.DiscountedPrice ||
-			actualityProduct.DiscountRate != originProduct.DiscountRate {
-
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(actualityProduct.Render(supportsHTML, mark.Change, originProduct))
-		}
-	}
-	return sb.String()
-}
-
-// @@@@@
 // buildNotificationMessage 수집된 변경 내역과 부가 정보를 조합하여 최종 사용자 알림 메시지를 생성합니다.
-func (t *task) buildNotificationMessage(productsDiff, duplicateRecordsMsg, unavailableMsg string, currentSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
-	hasChanges := len(productsDiff) > 0 || len(duplicateRecordsMsg) > 0 || len(unavailableMsg) > 0
+//
+// [설계 의도]
+// 변경 사항이 존재할 경우, 해당 내역을 상세히 브리핑하는 메시지를 우선하여 생성합니다.
+// 만약 변경 사항이 없더라도 사용자가 직접 실행(RunByUser)한 경우에는, 시스템이 정상 동작 중임을
+// 안심시키기 위해 현재 스냅샷을 기반으로 한 요약 리포트(Fallback Mode)를 제공합니다.
+func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage string, supportsHTML bool) string {
+	// @@@@@
+	hasChanges := strutil.HasAnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
 
 	if hasChanges {
 		var sb strings.Builder
-		if len(productsDiff) > 0 {
-			sb.WriteString(fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", productsDiff))
+		if len(productsDiffMessage) > 0 {
+			sb.WriteString(fmt.Sprintf("상품 정보가 변경되었습니다.\n\n%s\n\n", productsDiffMessage))
 		} else {
 			sb.WriteString("상품 정보가 변경되었습니다.\n\n")
 		}
-
-		if len(duplicateRecordsMsg) > 0 {
-			sb.WriteString(fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateRecordsMsg))
+		if len(duplicateRecordsMessage) > 0 {
+			sb.WriteString(fmt.Sprintf("중복으로 등록된 상품 목록:\n%s\n\n", duplicateRecordsMessage))
 		}
-		if len(unavailableMsg) > 0 {
-			sb.WriteString(fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unavailableMsg))
+		if len(unavailableProductsMessage) > 0 {
+			sb.WriteString(fmt.Sprintf("알 수 없는 상품 목록:\n%s\n\n", unavailableProductsMessage))
 		}
 		return sb.String()
 	}

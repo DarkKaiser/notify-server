@@ -411,7 +411,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			curSnap := &watchProductPriceSnapshot{Products: tt.current}
 			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}
 
-			msg, data, err := tsk.diffAndNotify(nil, nil, curSnap, prevSnap, false)
+			msg, data, err := tsk.diffAndNotify(curSnap, prevSnap, nil, nil, false)
 			require.NoError(t, err)
 
 			if len(tt.wantMsgContent) > 0 {

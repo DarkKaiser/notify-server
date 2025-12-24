@@ -167,3 +167,17 @@ func StripHTMLTags(s string) string {
 	stripped := htmlTagRegexp.ReplaceAllString(s, "")
 	return html.UnescapeString(stripped)
 }
+
+// HasAnyContent 가변 인자로 전달된 문자열들 중, 유효한 내용을 가진 항목이 하나라도 존재하는지 검사합니다.
+//
+// [동작 방식]
+// - 순차적으로 인자를 순회하며 길이가 0보다 큰(`len > 0`) 문자열을 발견하면 즉시 `true`를 반환합니다.
+// - 모든 인자가 빈 문자열(`""`)이거나 인자가 없는 경우 `false`를 반환합니다.
+func HasAnyContent(strs ...string) bool {
+	for _, s := range strs {
+		if len(s) > 0 {
+			return true
+		}
+	}
+	return false
+}
