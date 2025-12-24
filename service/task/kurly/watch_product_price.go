@@ -1,9 +1,12 @@
 package kurly
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"html/template"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -35,7 +38,7 @@ const (
 	// [주의]
 	// 이 상수의 순서는 실제 CSV 파일의 헤더 순서와 **엄격하게 일치**해야 합니다.
 	// 파일 포맷이 변경될 경우, 이 상수의 정의도 반드시 함께 수정되어야 합니다.
-	csvColumnNo     csvColumnIndex = iota // [0] 상품 코드
+	csvColumnID     csvColumnIndex = iota // [0] 상품 코드
 	csvColumnName                         // [1] 상품 이름
 	csvColumnStatus                       // [2] 감시 활성화 여부
 
@@ -72,7 +75,13 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	//
 	// 감시할 상품 목록을 읽어들인다.
 	//
-	records, err := t.loadWatchList(commandSettings.WatchProductsFile)
+	f, err := os.Open(commandSettings.WatchProductsFile)
+	if err != nil {
+		return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
+	}
+	defer f.Close()
+
+	records, err := t.loadWatchListRecords(f)
 	if err != nil {
 		return "", nil, err
 	}
@@ -93,7 +102,7 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 		}
 
 		// 상품 코드를 숫자로 변환한다.
-		id, err := strconv.Atoi(record[csvColumnNo])
+		id, err := strconv.Atoi(record[csvColumnID])
 		if err != nil {
 			return "", nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 코드의 숫자 변환이 실패하였습니다")
 		}
@@ -110,57 +119,78 @@ func (t *task) executeWatchProductPrice(commandSettings *watchProductPriceSettin
 	return t.diffAndNotify(records, duplicateRecords, currentSnapshot, prevSnapshot, supportsHTML)
 }
 
-// @@@@@
-// loadWatchList CSV 파일로부터 감시할 상품 목록을 읽어옵니다.
-func (t *task) loadWatchList(filePath string) ([][]string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록이 저장된 파일을 불러올 수 없습니다. 파일이 존재하는지와 경로가 올바른지 확인해 주세요")
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	records, err := r.ReadAll()
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "상품 목록을 불러올 수 없습니다")
-	}
-
-	// 감시할 상품 목록의 헤더를 제거한다.
-	if len(records) > 0 {
-		records = records[1:]
-	}
-
-	return records, nil
-}
-
-// @@@@@
-// extractDuplicateRecords 입력된 레코드 목록에서 중복된 항목을 추출하여 분리합니다.
+// loadWatchListRecords Reader 스트림을 통해 CSV 데이터를 파싱하여 감시 대상 상품(레코드) 목록을 로드합니다.
 //
 // [설명]
-// 원본 레코드를 순회하며 상품 번호를 기준으로 중복 여부를 검사합니다.
+// 입력된 Reader 스트림을 통해 CSV 데이터를 파싱합니다.
+// 첫 번째 행은 헤더로 간주하여 유효성을 검사한 후 결과에서 제외합니다.
+//
+// [매개변수]
+//   - r: CSV 데이터를 읽을 수 있는 io.Reader 인터페이스입니다.
+//
+// [반환값]
+//   - records: 헤더가 제거되고 정제된 감시 대상 상품(레코드) 목록입니다.
+//   - error: 데이터 읽기 또는 파싱 실패 시 에러를 반환합니다.
+func (t *task) loadWatchListRecords(r io.Reader) ([][]string, error) {
+	// Windows 메모장 등으로 저장 시 발생하는 UTF-8 BOM 제거
+	buf := bufio.NewReader(r)
+	bom, err := buf.Peek(3)
+	if err == nil && bytes.Equal(bom, []byte{0xEF, 0xBB, 0xBF}) {
+		buf.Discard(3)
+	}
+
+	csvReader := csv.NewReader(buf)
+	csvReader.TrimLeadingSpace = true // 쉼표 뒤 공백 자동 제거
+	csvReader.FieldsPerRecord = -1    // 행마다 컬럼 개수가 달라도 에러 없이 읽음 (유연성)
+	csvReader.LazyQuotes = true       // 따옴표 규칙 완화 (손상된 CSV 처리)
+	csvReader.Comment = '#'           // '#'으로 시작하는 행은 주석으로 처리하여 무시 (설정 파일 주석 지원)
+
+	records, err := csvReader.ReadAll()
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "CSV 데이터 파싱 중 치명적인 오류가 발생했습니다. 파일 인코딩이나 형식을 확인해 주세요")
+	}
+
+	if len(records) == 0 {
+		return nil, apperrors.New(apperrors.InvalidInput, "CSV 데이터가 비어있습니다. 파일 내용을 확인해 주세요")
+	}
+
+	header := records[0]
+	if len(header) < 3 { // 최소 3개 컬럼(no, name, status) 필요
+		return nil, apperrors.New(apperrors.InvalidInput, "CSV 헤더 형식이 올바르지 않습니다. 필수 컬럼(no, name, status)이 포함되어 있는지 확인해 주세요")
+	}
+
+	return records[1:], nil
+}
+
+// extractDuplicateRecords 입력된 감시 대상 상품(레코드) 목록에서 중복 기입된 항목을 추출하여 분리합니다.
+//
+// [설명]
+// 감시 대상 상품(레코드) 목록을 순회하며 상품 ID를 기준으로 중복 여부를 검사합니다.
 // 처음 등장하는 상품은 `distinctRecords`에 담고, 이미 등장한 상품은 `duplicateRecords`로 추출합니다.
 // 이를 통해 핵심 로직에서는 중복 없는 깨끗한 데이터만 처리할 수 있게 됩니다.
 //
 // [매개변수]
-//   - records: CSV 파일에서 읽어온 원본 레코드 목록입니다.
+//   - records: CSV 파일에서 읽어온 원본 감시 대상 상품(레코드) 목록입니다.
 //
 // [반환값]
-//   - distinctRecords: 중복이 제거된 유일한 상품 레코드 목록입니다.
-//   - duplicateRecords: 중복으로 판명되어 추출된 레코드 목록입니다.
+//   - distinctRecords: 중복이 제거된 유일한 상품(레코드) 목록입니다.
+//   - duplicateRecords: 중복으로 판명되어 추출된 상품(레코드) 목록입니다.
 func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]string) {
 	distinctRecords := make([][]string, 0, len(records))
-	duplicateRecords := make([][]string, 0, len(records))
+	duplicateRecords := make([][]string, 0, len(records)/2) // 중복 빈도를 고려하여 초기 용량 절반 할당
 
-	checkedProducts := make(map[string]bool)
+	// 메모리 효율성을 위해 빈 구조체 사용
+	seenProductIDs := make(map[string]struct{}, len(records))
 
 	for _, record := range records {
-		if len(record) == 0 {
+		// 필수 컬럼(상품 번호) 존재 여부 확인
+		if len(record) <= int(csvColumnID) {
 			continue
 		}
 
-		productNo := record[csvColumnNo]
-		if !checkedProducts[productNo] {
-			checkedProducts[productNo] = true
+		productID := record[csvColumnID]
+		if _, exists := seenProductIDs[productID]; !exists {
+			seenProductIDs[productID] = struct{}{}
 			distinctRecords = append(distinctRecords, record)
 		} else {
 			duplicateRecords = append(duplicateRecords, record)
@@ -200,8 +230,15 @@ func (t *task) diffAndNotify(records, duplicateRecords [][]string, currentSnapsh
 // buildDuplicateRecordsMessage 감시 대상 파일(CSV)에 중복 기입된 상품(레코드) 목록을 사용자 알림용 메시지로 포맷팅합니다.
 //
 // [설명]
-// 사용자가 실수로 동일한 상품 상품 번호를 여러 번 입력한 경우, 이를 파싱 단계에서 별도의 목록으로 분리합니다.
-// 이 함수는 분리된 중복 레코드들을 순회하며, 알림 메시지 하단에 경고성 정보로 표시할 문자열을 생성합니다.
+// 사용자가 실수로 동일한 상품을 여러 번 입력한 경우, 이를 파싱 단계에서 별도의 목록으로 분리합니다.
+// 이 함수는 중복 기입된 상품(레코드) 목록을 순회하며, 알림 메시지 하단에 경고성 정보로 표시할 문자열을 생성합니다.
+//
+// [매개변수]
+//   - duplicateRecords: CSV 파일에서 읽어온 중복 기입된 상품(레코드) 목록입니다.
+//   - supportsHTML: HTML 형식의 메시지 지원 여부입니다.
+//
+// [반환값]
+//   - string: 포맷팅된 중복 상품 메시지입니다.
 func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, supportsHTML bool) string {
 	// @@@@@
 	if len(duplicateRecords) == 0 {
@@ -214,7 +251,7 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 			sb.WriteString("\n")
 		}
 
-		productNo := strings.TrimSpace(record[csvColumnNo])
+		productNo := strings.TrimSpace(record[csvColumnID])
 		productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
 		if supportsHTML {
@@ -231,6 +268,14 @@ func (t *task) buildDuplicateRecordsMessage(duplicateRecords [][]string, support
 // [설명]
 // 크롤링 과정에서 `IsUnavailable` 상태로 플래그가 설정된 상품들을 필터링하여 사용자에게 보고합니다.
 // 이는 품절이나 상품 정보 삭제와 같은 비즈니스적으로 중요한 상태 변화를 사용자가 즉시 인지할 수 있도록 돕습니다.
+//
+// [매개변수]
+//   - products: 크롤링 과정에서 수집된 상품 목록입니다.
+//   - records: CSV 파일에서 읽어온 감시 대상 상품(레코드) 목록입니다.
+//   - supportsHTML: HTML 형식의 메시지 지원 여부입니다.
+//
+// [반환값]
+//   - string: 포맷팅된 정보를 수집할 수 없는 상품 메시지입니다.
 func (t *task) buildUnavailableProductsMessage(products []*product, records [][]string, supportsHTML bool) string {
 	// @@@@@
 	var sb strings.Builder
@@ -242,12 +287,12 @@ func (t *task) buildUnavailableProductsMessage(products []*product, records [][]
 
 		// CSV 레코드에서 해당 상품의 정보를 찾습니다.
 		for _, record := range records {
-			if record[csvColumnNo] == strconv.Itoa(product.ID) {
+			if record[csvColumnID] == strconv.Itoa(product.ID) {
 				if sb.Len() > 0 {
 					sb.WriteString("\n")
 				}
 
-				productNo := strings.TrimSpace(record[csvColumnNo])
+				productNo := strings.TrimSpace(record[csvColumnID])
 				productName := template.HTMLEscapeString(strings.TrimSpace(record[csvColumnName]))
 
 				if supportsHTML {

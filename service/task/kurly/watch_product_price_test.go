@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -183,39 +181,21 @@ func TestExtractDuplicateRecords(t *testing.T) {
 }
 
 func TestTask_LoadWatchList(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "products_*.csv")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	content := `no,name,status
-1001,사과,1
-1002,바나나,1`
-	_, err = tmpFile.WriteString(content)
-	require.NoError(t, err)
-	tmpFile.Close()
-
 	tsk := &task{}
 
 	t.Run("성공: 정상적인 CSV 로딩", func(t *testing.T) {
-		records, err := tsk.loadWatchList(tmpFile.Name())
+		content := `no,name,status
+1001,사과,1
+1002,바나나,1`
+		records, err := tsk.loadWatchListRecords(strings.NewReader(content))
 		require.NoError(t, err)
 		assert.Len(t, records, 2)
 		assert.Equal(t, "1001", records[0][0])
 	})
 
-	t.Run("실패: 존재하지 않는 파일", func(t *testing.T) {
-		_, err := tsk.loadWatchList("not_exists.csv")
-		require.Error(t, err)
-		assert.IsType(t, &apperrors.AppError{}, err) // AppError 래핑 확인
-	})
-
 	t.Run("성공: 헤더만 있는 파일", func(t *testing.T) {
-		emptyHeaderFile, _ := os.CreateTemp("", "header_only_*.csv")
-		defer os.Remove(emptyHeaderFile.Name())
-		emptyHeaderFile.WriteString("no,name,status\n")
-		emptyHeaderFile.Close()
-
-		records, err := tsk.loadWatchList(emptyHeaderFile.Name())
+		content := "no,name,status\n"
+		records, err := tsk.loadWatchListRecords(strings.NewReader(content))
 		require.NoError(t, err)
 		assert.Len(t, records, 0)
 	})
