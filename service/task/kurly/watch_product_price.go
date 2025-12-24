@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -274,48 +275,58 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 		product.Name = strutil.NormalizeSpaces(ps.Text())
 
 		// 상품 가격을 추출한다.
-		ps = sel.Find("h2.css-xrp7wx > span.css-8h3us8")
-		if ps.Length() == 0 /* 가격, 단위(원) */ {
-			ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
-			if ps.Length() != 2 /* 가격 + 단위(원) */ {
-				return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
-			}
-
-			// 가격
-			product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
-			}
-		} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
-			// 할인율
-			product.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
-			}
-
-			// 할인 가격
-			ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
-			if ps.Length() != 2 /* 가격 + 단위(원) */ {
-				return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
-			}
-
-			product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
-			}
-
-			// 가격
-			ps = sel.Find("span.css-1s96j0s > span")
-			if ps.Length() != 1 /* 가격 + 단위(원) */ {
-				return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
-			}
-			product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
-		} else {
-			return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+		if err := t.extractPriceInfo(sel, product, productDetailPageURL); err != nil {
+			return nil, err
 		}
 	}
 
 	return product, nil
+}
+
+// @@@@@
+// extractPriceInfo HTML 요소에서 가격 및 할인 정보를 추출합니다.
+func (t *task) extractPriceInfo(sel *goquery.Selection, product *product, productDetailPageURL string) error {
+	var err error
+	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
+	if ps.Length() == 0 /* 가격, 단위(원) */ {
+		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		if ps.Length() != 2 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+		}
+
+		// 가격
+		product.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
+		}
+	} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
+		// 할인율
+		product.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
+		}
+
+		// 할인 가격
+		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		if ps.Length() != 2 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+		}
+
+		product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
+		}
+
+		// 가격
+		ps = sel.Find("span.css-1s96j0s > span")
+		if ps.Length() != 1 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+		}
+		product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
+	} else {
+		return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+	}
+	return nil
 }
 
 // diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
