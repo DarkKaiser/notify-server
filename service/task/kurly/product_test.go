@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestFormatProductURL_TableDriven formatProductURL 함수의 다양한 입력 타입 처리를 검증합니다.
+// TestFormatProductPageURL_TableDriven formatProductPageURL 함수의 다양한 입력 타입 처리를 검증합니다.
 // int, string 등 다양한 타입의 ID가 올바른 URL로 변환되는지 테스트합니다.
-func TestFormatProductURL_TableDriven(t *testing.T) {
+func TestFormatProductPageURL_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -49,21 +49,21 @@ func TestFormatProductURL_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := formatProductURL(tt.id)
+			got := formatProductPageURL(tt.id)
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-// TestProduct_URL_Integration product.URL 메서드가 formatProductURL을 올바르게 사용하는지 검증합니다.
+// TestProduct_URL_Integration product.URL 메서드가 formatProductPageURL을 올바르게 사용하는지 검증합니다.
 func TestProduct_URL_Integration(t *testing.T) {
 	t.Parallel()
 
 	p := &product{ID: 99999}
 	want := "https://www.kurly.com/goods/99999"
 
-	// product.URL()은 내부적으로 formatProductURL을 호출해야 함
-	assert.Equal(t, want, p.URL(), "product.URL() should delegate to formatProductURL correctly")
+	// product.URL()은 내부적으로 formatProductPageURL을 호출해야 함
+	assert.Equal(t, want, p.URL(), "product.URL() should delegate to formatProductPageURL correctly")
 }
 
 // TestProduct_IsOnSale_TableDriven 할인 여부 판단 로직을 검증합니다.

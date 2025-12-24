@@ -290,7 +290,7 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			tsk := &task{}
 			tsk.SetFetcher(mockFetcher)
 
-			got, err := tsk.parseProductFromPage(tt.productID)
+			got, err := tsk.fetchProductInfo(tt.productID)
 
 			if tt.wantErr {
 				require.Error(t, err)

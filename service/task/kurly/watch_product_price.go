@@ -83,7 +83,8 @@ func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *wa
 		}
 
 		// 상품 페이지를 읽어들이고 파싱하여 정보를 추출한다.
-		product, err := t.parseProductFromPage(id)
+		// 상세 페이지에서 상품 정보를 조회 (Fetch + Parse)
+		product, err := t.fetchProductInfo(id)
 		if err != nil {
 			return "", nil, err
 		}
@@ -132,12 +133,23 @@ func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]stri
 	return distinctRecords, duplicateRecords
 }
 
-// @@@@@
-// parseProductFromPage 주어진 상품 ID에 해당하는 페이지를 페치하고 파싱하여 상품 정보를 반환합니다.
-func (t *task) parseProductFromPage(id int) (*product, error) {
+// fetchProductInfo 상품 상세 페이지(HTML)를 Fetch하여 상품의 최신 상태 및 가격 정보를 조회합니다.
+//
+// [구현 상세]
+// 본 함수는 데이터의 정확성을 위해 '이중 추출(Dual Extraction)' 기법을 사용합니다.
+//
+//  1. Metadata Parsing (JSON):
+//     Next.js가 주입한 `<script id="__NEXT_DATA__">`에서 상품의 판매 상태(Unavailable 여부)를 1차적으로 검증합니다.
+//     이는 DOM 렌더링 이전에 원본 데이터의 상태를 확인하여 불필요한 파싱을 방지합니다.
+//
+//  2. Price Parsing (DOM):
+//     HTML DOM 구조를 직접 탐색하여 실제 사용자에게 노출되는 '최종 가격(Pricing)'을 추출합니다.
+//     할인 정책(Rate, Discounted)에 따른 동적 구조 변화를 처리합니다.
+func (t *task) fetchProductInfo(id int) (*product, error) {
+	// @@@@@
 	// 상품 페이지를 읽어들인다.
-	productDetailPageURL := formatProductURL(id)
-	doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productDetailPageURL)
+	productPageURL := formatProductPageURL(id)
+	doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -145,11 +157,11 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	// 읽어들인 페이지에서 상품 데이터가 JSON 포맷으로 저장된 자바스크립트 구문을 추출한다.
 	html, err := doc.Html()
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productDetailPageURL))
+		return nil, apperrors.Wrap(err, apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 HTML 추출이 실패하였습니다", productPageURL))
 	}
 	match := reExtractNextData.FindStringSubmatch(html)
 	if len(match) < 2 {
-		return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productDetailPageURL, err))
+		return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("불러온 페이지(%s)에서 상품에 대한 JSON 데이터 추출이 실패하였습니다.(error:%s)", productPageURL, err))
 	}
 	jsonProductData := match[1]
 
@@ -172,18 +184,18 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	if !product.IsUnavailable {
 		sel := doc.Find("#product-atf > section.css-1ua1wyk")
 		if sel.Length() != 1 {
-			return nil, tasksvc.NewErrHTMLStructureChanged(productDetailPageURL, "상품정보 섹션 추출 실패")
+			return nil, tasksvc.NewErrHTMLStructureChanged(productPageURL, "상품정보 섹션 추출 실패")
 		}
 
 		// 상품 이름을 확인한다.
 		ps := sel.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
 		if ps.Length() != 1 {
-			return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+			return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 		}
 		product.Name = strutil.NormalizeSpaces(ps.Text())
 
 		// 상품 가격 정보를 추출한다.
-		if err := t.parsePricing(sel, product, productDetailPageURL); err != nil {
+		if err := t.extractPriceDetails(sel, product, productPageURL); err != nil {
 			return nil, err
 		}
 	}
@@ -191,27 +203,27 @@ func (t *task) parseProductFromPage(id int) (*product, error) {
 	return product, nil
 }
 
-// @@@@@
-// parsePricing HTML DOM(Selection) 내에서 가격 및 할인 정책 정보를 추출하여 상품 구조체에 매핑합니다.
+// extractPriceDetails HTML DOM에서 가격 상세 정보(정상가, 할인가, 할인율)를 추출하여 Product 구조체에 매핑합니다.
 //
-// [설명]
-// 마켓컬리 상품 상세 페이지의 가격 표시 영역은 할인 여부에 따라 두 가지 상이한 DOM 구조를 가집니다.
-// 이 함수는 해당 구조를 동적으로 식별하여 정확한 가격 정보를 파싱합니다.
+// [동작 방식]
+// 마켓컬리 상세 페이지의 가격 표시 DOM 구조는 할인 적용 여부에 따라 상이합니다.
+// 본 함수는 이 구조적 차이를 식별하여 적절한 필드에 값을 바인딩합니다.
 //
-// 1. **할인 미적용 시**: 가격 정보(단일 `span`)만 존재합니다.
-// 2. **할인 적용 시**: 할인율, 할인가, 정상가(취소선 포함)가 모두 표시됩니다.
+//  1. 할인 미적용: 단일 가격 요소(Price)만 존재
+//  2. 할인 적용중: 할인율(Rate) + 할인가(Discounted) + 정상가(Price, 취소선) 모두 존재
 //
 // [매개변수]
-//   - sel: 가격 정보가 포함된 부모 HTML 요소(`goquery.Selection`)입니다.
-//   - product: 추출된 가격 정보를 저장할 대상 상품 구조체 포인터입니다.
-//   - productDetailPageURL: 에러 로깅 시 컨텍스트를 제공하기 위한 상품 상세 페이지 URL입니다.
-func (t *task) parsePricing(sel *goquery.Selection, product *product, productDetailPageURL string) error {
+//   - sel: 가격 정보가 포함된 DOM Selection
+//   - product: 추출된 데이터를 바인딩할 대상 구조체
+//   - productPageURL: 에러 발생 시 디버깅을 돕기 위해 로그에 포함할 상품 페이지 URL
+func (t *task) extractPriceDetails(sel *goquery.Selection, product *product, productPageURL string) error {
+	// @@@@@
 	var err error
 	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
 	if ps.Length() == 0 /* 가격, 단위(원) */ {
 		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 		if ps.Length() != 2 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 		}
 
 		// 가격
@@ -229,7 +241,7 @@ func (t *task) parsePricing(sel *goquery.Selection, product *product, productDet
 		// 할인 가격
 		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
 		if ps.Length() != 2 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 		}
 
 		product.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
@@ -240,11 +252,11 @@ func (t *task) parsePricing(sel *goquery.Selection, product *product, productDet
 		// 가격
 		ps = sel.Find("span.css-1s96j0s > span")
 		if ps.Length() != 1 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 		}
 		product.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
 	} else {
-		return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productDetailPageURL))
+		return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 	}
 	return nil
 }
@@ -302,9 +314,14 @@ func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProd
 
 	lineSpacing := "\n\n"
 	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
-	prevProductMap := make(map[int]*product, len(prevSnapshot.Products))
-	for _, p := range prevSnapshot.Products {
-		prevProductMap[p.ID] = p
+	var prevProductMap map[int]*product
+	if prevSnapshot != nil {
+		prevProductMap = make(map[int]*product, len(prevSnapshot.Products))
+		for _, p := range prevSnapshot.Products {
+			prevProductMap[p.ID] = p
+		}
+	} else {
+		prevProductMap = make(map[int]*product)
 	}
 
 	for _, currentProduct := range currentSnapshot.Products {
@@ -535,7 +552,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 func renderProductLink(productID, productName string, supportsHTML bool) string {
 	if supportsHTML {
 		escapedName := template.HTMLEscapeString(productName)
-		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", formatProductURL(productID), escapedName)
+		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", formatProductPageURL(productID), escapedName)
 	}
 	return fmt.Sprintf("%s(%s)", productName, productID)
 }
