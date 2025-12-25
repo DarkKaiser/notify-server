@@ -85,7 +85,22 @@ type watchNewPerformancesSnapshot struct {
 	Performances []*performance `json:"performances"`
 }
 
-// keywordMatchers 문자열 기반의 필터 설정을 최적화된 Matcher로 변환한 필터 데이터입니다.
+// performanceEventType 공연 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
+type performanceEventType int
+
+const (
+	eventNone           performanceEventType = iota
+	eventNewPerformance                      // 신규 공연 등록
+)
+
+// performanceDiff 공연 데이터의 변경 사항(신규 등록 등)을 표현하는 중간 객체입니다.
+type performanceDiff struct {
+	Type        performanceEventType
+	Performance *performance
+}
+
+// keywordMatchers 문자열 기반의 필터 설정을 반복 사용에 최적화된 Matcher 객체로 변환하여 캡슐화한 구조체입니다.
+// (매우 빈번하게 호출되는 필터링 로직에서 문자열 분할 비용을 제거하기 위함)
 type keywordMatchers struct {
 	TitleMatcher *strutil.KeywordMatcher
 	PlaceMatcher *strutil.KeywordMatcher
@@ -326,12 +341,45 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 공연을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
-	var sb strings.Builder
-	if len(currentSnapshot.Performances) > 0 {
-		sb.Grow(len(currentSnapshot.Performances) * 300)
+	// 신규 공연을 식별합니다.
+	diffs := t.calculatePerformanceDiffs(currentSnapshot, prevSnapshot)
+
+	// 식별된 신규 공연 데이터를 알림 메시지로 변환합니다.
+	diffMessage := t.renderPerformanceDiffs(diffs, supportsHTML)
+
+	if len(diffs) > 0 {
+		return "새로운 공연정보가 등록되었습니다.\n\n" + diffMessage, currentSnapshot, nil
 	}
 
+	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
+	//
+	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
+	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
+	if t.GetRunBy() == tasksvc.RunByUser {
+		if len(currentSnapshot.Performances) == 0 {
+			return "등록된 공연정보가 존재하지 않습니다.", nil, nil
+		}
+
+		var sb strings.Builder
+
+		// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
+		sb.Grow(len(currentSnapshot.Performances) * 300)
+
+		for i, p := range currentSnapshot.Performances {
+			if i > 0 {
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString(p.Render(supportsHTML, ""))
+		}
+		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
+	}
+
+	return "", nil, nil
+}
+
+// calculatePerformanceDiffs 현재 스냅샷과 이전 스냅샷을 비교하여 신규 공연을 찾아냅니다.
+// 즉, 이전에 없던 새로운 공연이 발견되면 이를 결과 목록에 담아 반환합니다.
+func (t *task) calculatePerformanceDiffs(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot) []performanceDiff {
 	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
 	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
 	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
@@ -347,38 +395,41 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 		prevSet[p.Key()] = true
 	}
 
-	// 현재 공연 목록을 순회하며 신규 공연을 식별한다.
-	lineSpacing := "\n\n"
+	var diffs []performanceDiff
+
 	for _, p := range currentSnapshot.Performances {
 		// 이전에 수집된 목록에 존재하지 않는다면 신규 공연으로 판단한다.
 		if !prevSet[p.Key()] {
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(p.Render(supportsHTML, mark.New))
+			diffs = append(diffs, performanceDiff{
+				Type:        eventNewPerformance,
+				Performance: p,
+			})
 		}
 	}
-	if sb.Len() > 0 {
-		return "새로운 공연정보가 등록되었습니다.\n\n" + sb.String(), currentSnapshot, nil
+
+	return diffs
+}
+
+// renderPerformanceDiffs 찾아낸 신규 공연 목록을 사용자가 보기 편한 알림 메시지로 변환합니다.
+func (t *task) renderPerformanceDiffs(diffs []performanceDiff, supportsHTML bool) string {
+	if len(diffs) == 0 {
+		return ""
 	}
 
-	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
-	//
-	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
-	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == tasksvc.RunByUser {
-		if len(currentSnapshot.Performances) == 0 {
-			return "등록된 공연정보가 존재하지 않습니다.", nil, nil
+	var sb strings.Builder
+
+	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
+	sb.Grow(len(diffs) * 300)
+
+	for i, diff := range diffs {
+		if i > 0 {
+			sb.WriteString("\n\n")
 		}
 
-		for _, p := range currentSnapshot.Performances {
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(p.Render(supportsHTML, ""))
+		if diff.Type == eventNewPerformance {
+			sb.WriteString(diff.Performance.Render(supportsHTML, mark.New))
 		}
-		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
 	}
 
-	return "", nil, nil
+	return sb.String()
 }
