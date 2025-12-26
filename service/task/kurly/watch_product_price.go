@@ -20,10 +20,7 @@ const (
 	// fallbackProductName CSV 데이터에서 상품명이 없거나 공백일 경우 사용자에게 표시할 대체 텍스트입니다.
 	fallbackProductName = "알 수 없는 상품"
 
-	// allocSizePerProductDiff 알림 메시지 생성 시, 단일 상품 변경 내역을 렌더링하는 데 필요한 예상 버퍼 크기(Byte)입니다.
-	//
-	// 이 상수는 `strings.Builder.Grow()`를 통해 내부 버퍼를 선제적으로 확보(Pre-allocation)하는 데 사용됩니다.
-	// 적절한 초기 용량을 설정함으로써, 불필요한 슬라이스 재할당(Reallocation) 비용을 줄여 성능을 최적화합니다.
+	// allocSizePerProductDiff 단일 상품의 변경 내역(Diff)을 문자열로 렌더링할 때 필요한 예상 메모리 크기(Byte)입니다.
 	allocSizePerProductDiff = 300
 )
 
@@ -400,91 +397,75 @@ func (t *task) diffAndNotify(currentSnapshot *watchProductPriceSnapshot, prevPro
 	return message, hasChanges, nil
 }
 
-// @@@@@ 개선사항 존재유무 확인
-// calculateProductDiffs 두 스냅샷을 비교하여 유의미한 상태 변화(신규, 재입고, 가격 변동 등)를 식별합니다.
+// calculateProductDiffs 현재 상품 정보와 과거 상품 정보를 비교하여 사용자에게 알릴 만한 변화(Diff)를 찾아냅니다.
+//
+// [동작 흐름]
+// 상품의 상태 변화를 세 단계로 나누어 순차적으로 분석합니다.
+//
+// 1. 신규 여부: "처음 보는 상품인가?" (New Product)
+// 2. 판매 상태: "품절되었다가 다시 들어왔는가?" (Restock)
+// 3. 가격 변동: "가격이 오르거나 내렸는가? 역대 최저가인가?" (Price Change)
 func (t *task) calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product) []productDiff {
 	var diffs []productDiff
 
 	for _, currentProduct := range currentSnapshot.Products {
 		prevProduct, exists := prevProductsMap[currentProduct.ID]
 
-		// 신규 상품: 이전 스냅샷에 존재하지 않는 상품
-		isNewProduct := !exists
-
-		// 재입고 상품: 이전에는 상품 정보가 '유효하지 않은(Unavailable)' 상태였으나, 현재 '구매 가능' 상태로 전환된 경우
-		isRestocked := exists && prevProduct.IsUnavailable && !currentProduct.IsUnavailable
-
-		// [Case 1: 신규 상품 및 재입고 상품]
-		// 상품이 처음 감시 대상이 되었거나(신규), '유효하지 않은(Unavailable)' 상태에서 '구매 가능' 상태로 전환된 경우입니다.
-		//
-		// 이 상황에서는 상품이 '새롭게 등장했다'는 사실 자체가 중요하므로,
-		// 이전 가격과의 비교 절차를 생략하고 즉시 알림 이벤트를 생성합니다.
-		if isNewProduct || isRestocked {
-			// 현재 상품 정보가 유효하지 않은(Unavailable) 상태라면, 신규 상품으로 취급하지 않습니다.
-			if currentProduct.IsUnavailable {
-				continue
+		// 1. 신규 상품 처리
+		// 이전 기록이 없는 경우, 현재 상태가 유효하다면 '신규 상품'으로 처리합니다.
+		if !exists {
+			if !currentProduct.IsUnavailable {
+				diffs = append(diffs, productDiff{
+					Type:    eventNewProduct,
+					Product: currentProduct,
+					Prev:    nil,
+				})
 			}
+			continue
+		}
 
-			eventType := eventNewProduct
-			if isRestocked {
-				eventType = eventRestocked
-			}
+		// 2. 상태 전이 처리 (Unavailable <-> Available)
+		// 이전 기록이 존재하는 경우, 상품의 판매 가능 여부(IsUnavailable) 변화를 감지합니다.
 
+		// 2-1. 재입고 (Unavailable -> Available)
+		// 이전에는 품절/판매중지 상태였으나, 현재 구매 가능해진 경우입니다.
+		if prevProduct.IsUnavailable && !currentProduct.IsUnavailable {
 			diffs = append(diffs, productDiff{
-				Type:    eventType,
+				Type:    eventRestocked,
 				Product: currentProduct,
-				Prev:    nil, // 신규/재입고 상품은 비교 대상(Prev) 정보가 굳이 필요치 않음
+				Prev:    nil, // 재입고는 가격 비교보다는 '등장' 자체가 중요하므로 Prev 없이 신규처럼 취급
 			})
-
 			continue
 		}
 
-		// [Case 2: 판매 중지 상품]
-		// 기존에 판매 중이던 상품이 품절, 페이지 삭제 등의 사유로 정보를 확인할 수 없게 된 경우입니다.
-		//
-		// 이 경우 상품 상태가 명확하지 않으므로(단순 오류인지, 영구 판매 중단인지 불분명),
-		// 사용자에게 혼란을 주지 않기 위해 별도의 알림을 보내지 않고 무시합니다.
-		isDiscontinued := !prevProduct.IsUnavailable && currentProduct.IsUnavailable
-		if isDiscontinued {
+		// 2-2. 판매 중지 (Available -> Unavailable)
+		// 기존에 판매 중이던 상품이 품절, 판매중지 등의 사유로 정보를 확인할 수 없게 된 경우입니다.
+		if !prevProduct.IsUnavailable && currentProduct.IsUnavailable {
 			continue
 		}
 
-		// [Case 3: 기존 상품의 가격 변동]
-		// 기존에 감시하던 상품의 가격이나 할인 정보가 변경된 경우입니다.
-		//
-		// 최저가 갱신 등의 데이터 업데이트는 위에서 이미 완료되었으므로,
-		// 여기서는 순수하게 '가격이 얼마나 변했는지', '역대 최저가인지'만을 판단합니다.
+		// 2-3. 계속 판매 불가 (Unavailable -> Unavailable)
+		// 이전에도 상품 정보를 확인할 수 없었고(품절/판매중지), 현재도 여전히 확인이 불가능한 상태입니다.
+		// 상태의 변화가 없으므로 별도의 알림이나 처리를 수행하지 않고 무시합니다.
+		if prevProduct.IsUnavailable && currentProduct.IsUnavailable {
+			continue
+		}
 
-		// [Case 3-1: 가격 변동 여부 확인]
-		// 정가(Price), 할인가(DiscountedPrice), 할인율(DiscountRate) 중 하나라도 이전과 달라졌는지 검사합니다.
+		// 3. 가격 변동 확인
 		//
-		// 아주 사소한 차이라도 사용자에게는 중요한 정보가 될 수 있으므로,
-		// 세 가지 요소 중 단 하나라도 변경되었다면 즉시 '가격 변동'으로 간주합니다.
-		hasPriceChanged := currentProduct.Price != prevProduct.Price ||
-			currentProduct.DiscountedPrice != prevProduct.DiscountedPrice ||
-			currentProduct.DiscountRate != prevProduct.DiscountRate
+		// 위 단계에서 상품의 존재 여부와 판매 상태(Availability)에 대한 검증을 모두 마쳤습니다.
+		// 즉, 이 시점의 상품은 '과거에도 존재했고 판매 중이었으며', '현재도 여전히 판매 중인' 정상적인 상태임이 보장됩니다.
+		//
+		// 따라서 이후는 복잡한 상태 판별 로직 없이, 오직 '가격 데이터'의 수치적 변동만을 순수하게 비교합니다.
 
 		// 가격 변동 사항이 없다면 즉시 다음 상품으로 넘어갑니다.
-		if !hasPriceChanged {
+		if !currentProduct.PriceChanged(prevProduct) {
 			continue
 		}
 
-		// [Case 3-2: 실제 구매가 산출]
-		// 할인 진행 여부에 따라 사용자가 실제로 지불하게 될 최종 가격을 결정합니다.
-		// - 할인 중: 할인가(Discounted Price)를 적용
-		// - 정가 판매: 정상가(Price)를 적용
-		//
-		// 이 값을 기준으로 가격 변동 여부와 최저가 갱신 여부를 일관되게 판단합니다.
-		currentEffectivePrice := currentProduct.Price
-		if currentProduct.IsOnSale() {
-			currentEffectivePrice = currentProduct.DiscountedPrice
-		}
+		// 실구매가를 기준으로 최저가 갱신 여부를 최종 판단합니다.
+		currentEffectivePrice := currentProduct.EffectivePrice()
 
-		// [Case 3-3: 최저가 갱신 확인]
-		// 변동된 가격이 '역대 최저가'와 동일하다면, 이는 단순 변동보다 더 중요한
-		// '최저가 갱신' 이벤트로 분류합니다.
-		//
-		// (앞서 최저가 정보를 이미 최신화했으므로, 현재 가격이 최저가 기록과 일치하는지만 확인하면 됩니다.)
 		if currentEffectivePrice == currentProduct.LowestPrice {
 			diffs = append(diffs, productDiff{
 				Type:    eventLowestPriceRenewed,

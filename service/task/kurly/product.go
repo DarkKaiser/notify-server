@@ -53,6 +53,29 @@ func (p *product) IsOnSale() bool {
 	return p.DiscountedPrice > 0 && p.DiscountedPrice < p.Price
 }
 
+// EffectivePrice 상품의 실제 구매 가(유효 가격)를 반환합니다.
+// 할인 중일 경우 할인가를, 그렇지 않을 경우 정가를 반환합니다.
+func (p *product) EffectivePrice() int {
+	if p.IsOnSale() {
+		return p.DiscountedPrice
+	}
+	return p.Price
+}
+
+// PriceChanged 현재 상품의 가격 정보가 이전 상품(prev)의 가격 정보와 다른지 확인합니다.
+//
+// [검사 범위]
+// 단순히 최종 가격뿐만 아니라 정가(Price), 할인가(DiscountedPrice), 할인율(DiscountRate) 중
+// 어느 하나라도 변경되었다면, 사용자에게 알릴 가치가 있는 '변동 사항'으로 간주합니다.
+func (p *product) PriceChanged(prev *product) bool {
+	if prev == nil {
+		return true // 비교 대상이 없으면 변경된 것으로 간주 (혹은 false, 정책에 따름)
+	}
+	return p.Price != prev.Price ||
+		p.DiscountedPrice != prev.DiscountedPrice ||
+		p.DiscountRate != prev.DiscountRate
+}
+
 // updateLowestPrice 현재 상품의 가격(정가 또는 할인가)과 기존 최저가를 비교하여,
 // 더 낮은 가격이 발견되면 최저가 및 갱신 시간을 업데이트합니다.
 //
@@ -62,10 +85,7 @@ func (p *product) IsOnSale() bool {
 // 3. 갱신 시점의 시간을 UTC 기준으로 고정하여 데이터 정합성을 보장합니다.
 func (p *product) updateLowestPrice() bool {
 	// 현재 시점의 가장 "낮은 가격"을 먼저 결정
-	effectivePrice := p.Price
-	if p.IsOnSale() {
-		effectivePrice = p.DiscountedPrice
-	}
+	effectivePrice := p.EffectivePrice()
 
 	// 유효하지 않은 가격(0원 이하)은 최저가로 갱신하지 않습니다.
 	if effectivePrice <= 0 {
