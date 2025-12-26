@@ -333,7 +333,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			prevItems:    []*product{p1},
 			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
 				require.NoError(t, err)
-				assert.Contains(t, msg, "상품의 정보가 변경되었습니다")
+				assert.Contains(t, msg, "상품 정보가 변경되었습니다")
 				assert.Contains(t, msg, "P2")
 				assert.Contains(t, msg, "🆕")
 				assert.NotNil(t, data)
