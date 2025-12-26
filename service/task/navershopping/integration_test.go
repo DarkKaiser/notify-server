@@ -75,7 +75,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	require.Equal(t, productLink, product.Link)
 
 	// 메시지 검증 (신규 상품 알림)
-	require.Contains(t, message, "조회 조건에 해당되는 상품의 정보가 변경되었습니다")
+	require.Contains(t, message, "조회 조건에 해당되는 상품 정보가 변경되었습니다")
 	require.Contains(t, message, productTitle)
 	require.Contains(t, message, "🆕")
 }
