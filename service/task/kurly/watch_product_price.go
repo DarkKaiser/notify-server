@@ -50,6 +50,25 @@ type watchProductPriceSnapshot struct {
 	Products []*product `json:"products"`
 }
 
+// productEventType 상품 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
+type productEventType int
+
+const (
+	eventNone               productEventType = iota
+	eventNewProduct                          // 신규 상품 등록
+	eventRestocked                           // 재입고
+	eventPriceChanged                        // 가격 변동
+	eventLowestPriceRenewed                  // 역대 최저가 갱신
+	eventDiscontinued                        // 판매 중지 (현재 로직에서는 Diff에 포함되지 않으나 확장성을 위해 정의)
+)
+
+// productDiff 상품 데이터의 변동 사항(신규, 가격 변화 등)을 캡슐화한 중간 객체입니다.
+type productDiff struct {
+	Type    productEventType
+	Product *product
+	Prev    *product
+}
+
 // executeWatchProductPrice 감시 대상 상품들의 최신 가격을 조회하고, 이전 상태와 비교하여 변동이 있으면 알림을 생성합니다.
 func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// @@@@@
@@ -261,6 +280,7 @@ func (t *task) extractPriceDetails(sel *goquery.Selection, product *product, pro
 	return nil
 }
 
+// @@@@@ 개선사항 존재유무 확인
 // diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
 //
 // [주요 기능]
@@ -274,10 +294,39 @@ func (t *task) extractPriceDetails(sel *goquery.Selection, product *product, pro
 //   - interface{}: DB에 저장할 갱신된 작업 결과 데이터 (변경 사항이 없을 경우 nil)
 //   - error: 처리 중 발생한 에러
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, records, duplicateRecords [][]string, supportsHTML bool) (string, interface{}, error) {
-	// 상품 상태 변화 감지 및 차분(Diff) 렌더링
-	// 이전 스냅샷과 현재 상태를 정밀하게 비교하여 유의미한 비즈니스 이벤트(가격 변동, 품절 해제 등)를 포착하고,
-	// 이를 사용자가 직관적으로 인지할 수 있는 메시지 포맷으로 변환(Rendering)합니다.
-	productsDiffMessage := t.buildProductsDiffMessage(currentSnapshot, prevSnapshot, supportsHTML)
+	// 모든 상품의 최저가 정보를 최신으로 갱신합니다.
+	// 이로써 이후의 비교 로직은 순수한 '조회' 작업만 수행하게 됩니다.
+	for _, currentProduct := range currentSnapshot.Products {
+		// 크롤링으로 수집된 '현재 상태(Stateless)'에는 과거의 기록인 '역대 최저가' 정보가 부재합니다.
+		// 따라서 이전 실행 결과(Snapshot)로부터 누적된 최저가 데이터를 조회하여
+		// 현재 객체로 이월(Carry-over)하는 상태 복원(State Restoration) 과정을 수행합니다.
+		if prevSnapshot != nil {
+			for _, prevProduct := range prevSnapshot.Products {
+				if prevProduct.ID == currentProduct.ID {
+					currentProduct.LowestPrice = prevProduct.LowestPrice
+					currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
+					break
+				}
+			}
+		}
+
+		// [최저가 갱신 로직 실행]
+		// 현재 시점의 실구매가(Effective Price)와 기존 역대 최저가를 비교하여 상태를 동기화합니다.
+		//
+		// 이 메서드는 단순 비교를 넘어 다음과 같은 중요한 상태 변경(State Mutation)을 수행합니다:
+		// 1. 최저가 갱신 (Atomicity): 현재 가격이 더 낮을 경우 즉시 새로운 최저가로 덮어씁니다.
+		// 2. 시계열 기록 (Timestamping): 갱신 시점의 시간(UTC)을 기록하여 데이터의 이력을 보존합니다.
+		//
+		// 중요: 반드시 Diff 계산(calculateProductDiffs) 이전에 수행되어야 합니다.
+		// 이를 통해 '이번 크롤링 사이클에서 최저가가 갱신되었는지'를 정확히 판별할 수 있습니다.
+		currentProduct.updateLowestPrice()
+	}
+
+	// 신규 상품 및 가격 변동을 식별합니다.
+	diffs := t.calculateProductDiffs(currentSnapshot, prevSnapshot)
+
+	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
+	productsDiffMessage := t.renderProductDiffs(diffs, supportsHTML)
 
 	// 단순한 가격 변동 알림을 넘어, 사용자의 설정 오류(중복 등록)나 외부 요인에 의한 상품 상태 변화(판매 중지)를 식별하여 보고합니다.
 	duplicateRecordsMessage := t.buildDuplicateRecordsMessage(duplicateRecords, supportsHTML)
@@ -292,7 +341,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 	// 알림을 보내는 기준과 데이터를 저장하는 기준을 다르게 적용하여 효율성을 높입니다.
 	// - 알림: 사용자가 직접 확인하고 싶어 할 때(RunByUser)는 변경 사항이 없더라도 현재 상태를 리포트하여 안심시켜 줍니다.
 	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격이나 상태가 변했을 때만 저장하여 시스템 성능을 아낍니다.
-	hasChanges := strutil.HasAnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
+	hasChanges := len(diffs) > 0 || strutil.HasAnyContent(duplicateRecordsMessage, unavailableProductsMessage)
 	if hasChanges {
 		return message, currentSnapshot, nil
 	}
@@ -300,97 +349,160 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 	return message, nil, nil
 }
 
-// buildProductsDiffMessage 과거의 가격 정보(Snapshot)와 현재 정보를 꼼꼼히 대조하여, 사용자가 꼭 알아야 할 '진짜 변화'만 추출하여 알림 메시지를 생성합니다.
-//
-// [핵심 기능]
-// 1. 변화 감지: 가격 변동, 할인율 변경, 품절 해제 등 사용자가 반길만한 소식을 찾아냅니다.
-// 2. 노이즈 필터링: 이미 알고 있는 정보나 판매 중지된 상품은 굳이 알리지 않아, 알림이 스팸처럼 느껴지지 않게 합니다.
-// 3. 메시지 작성: 감지된 변화를 보기 편한 텍스트로 예쁘게 다듬어서(Formatting) 반환합니다.
-func (t *task) buildProductsDiffMessage(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) string {
-	// @@@@@
+// @@@@@ 개선사항 존재유무 확인
+// calculateProductDiffs 두 스냅샷을 비교하여 유의미한 상태 변화(신규, 재입고, 가격 변동 등)를 식별합니다.
+func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchProductPriceSnapshot) []productDiff {
+	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
+	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
+	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
+	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
+	var prevProducts []*product
+	if prevSnapshot != nil {
+		prevProducts = prevSnapshot.Products
+	}
+
+	// @@@@@ 함수 호출전에 만들면 바깥에서도 쓸수 있음
+	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
+	prevProductMap := make(map[int]*product, len(prevProducts))
+	for _, p := range prevProducts {
+		prevProductMap[p.ID] = p
+	}
+
+	var diffs []productDiff
+
+	for _, currentProduct := range currentSnapshot.Products {
+		prevProduct, exists := prevProductMap[currentProduct.ID]
+
+		// 신규 상품: 이전 스냅샷에 존재하지 않는 상품
+		isNewProduct := !exists
+
+		// 재입고 상품: 이전에는 상품 정보가 '유효하지 않은(Unavailable)' 상태였으나, 현재 '구매 가능' 상태로 전환된 경우
+		isRestocked := exists && prevProduct.IsUnavailable && !currentProduct.IsUnavailable
+
+		// [Case 1: 신규 상품 및 재입고 상품]
+		// 상품이 처음 감시 대상이 되었거나(신규), '유효하지 않은(Unavailable)' 상태에서 '구매 가능' 상태로 전환된 경우입니다.
+		//
+		// 이 상황에서는 상품이 '새롭게 등장했다'는 사실 자체가 중요하므로,
+		// 이전 가격과의 비교 절차를 생략하고 즉시 알림 이벤트를 생성합니다.
+		if isNewProduct || isRestocked {
+			// 현재 상품 정보가 유효하지 않은(Unavailable) 상태라면, 신규 상품으로 취급하지 않습니다.
+			if currentProduct.IsUnavailable {
+				continue
+			}
+
+			eventType := eventNewProduct
+			if isRestocked {
+				eventType = eventRestocked
+			}
+
+			diffs = append(diffs, productDiff{
+				Type:    eventType,
+				Product: currentProduct,
+				Prev:    nil, // 신규/재입고 상품은 비교 대상(Prev) 정보가 굳이 필요치 않음
+			})
+
+			continue
+		}
+
+		// [Case 2: 판매 중지 상품]
+		// 기존에 판매 중이던 상품이 품절, 페이지 삭제 등의 사유로 정보를 확인할 수 없게 된 경우입니다.
+		//
+		// 이 경우 상품 상태가 명확하지 않으므로(단순 오류인지, 영구 판매 중단인지 불분명),
+		// 사용자에게 혼란을 주지 않기 위해 별도의 알림을 보내지 않고 무시합니다.
+		isDiscontinued := !prevProduct.IsUnavailable && currentProduct.IsUnavailable
+		if isDiscontinued {
+			continue
+		}
+
+		// [Case 3: 기존 상품의 가격 변동]
+		// 기존에 감시하던 상품의 가격이나 할인 정보가 변경된 경우입니다.
+		//
+		// 최저가 갱신 등의 데이터 업데이트는 위에서 이미 완료되었으므로,
+		// 여기서는 순수하게 '가격이 얼마나 변했는지', '역대 최저가인지'만을 판단합니다.
+
+		// [Case 3-1: 가격 변동 여부 확인]
+		// 정가(Price), 할인가(DiscountedPrice), 할인율(DiscountRate) 중 하나라도 이전과 달라졌는지 검사합니다.
+		//
+		// 아주 사소한 차이라도 사용자에게는 중요한 정보가 될 수 있으므로,
+		// 세 가지 요소 중 단 하나라도 변경되었다면 즉시 '가격 변동'으로 간주합니다.
+		hasPriceChanged := currentProduct.Price != prevProduct.Price ||
+			currentProduct.DiscountedPrice != prevProduct.DiscountedPrice ||
+			currentProduct.DiscountRate != prevProduct.DiscountRate
+
+		// 가격 변동 사항이 없다면 즉시 다음 상품으로 넘어갑니다.
+		if !hasPriceChanged {
+			continue
+		}
+
+		// [Case 3-2: 실제 구매가 산출]
+		// 할인 진행 여부에 따라 사용자가 실제로 지불하게 될 최종 가격을 결정합니다.
+		// - 할인 중: 할인가(Discounted Price)를 적용
+		// - 정가 판매: 정상가(Price)를 적용
+		//
+		// 이 값을 기준으로 가격 변동 여부와 최저가 갱신 여부를 일관되게 판단합니다.
+		currentEffectivePrice := currentProduct.Price
+		if currentProduct.IsOnSale() {
+			currentEffectivePrice = currentProduct.DiscountedPrice
+		}
+
+		// [Case 3-3: 최저가 갱신 확인]
+		// 변동된 가격이 '역대 최저가'와 동일하다면, 이는 단순 변동보다 더 중요한
+		// '최저가 갱신' 이벤트로 분류합니다.
+		//
+		// (앞서 최저가 정보를 이미 최신화했으므로, 현재 가격이 최저가 기록과 일치하는지만 확인하면 됩니다.)
+		if currentEffectivePrice == currentProduct.LowestPrice {
+			diffs = append(diffs, productDiff{
+				Type:    eventLowestPriceRenewed,
+				Product: currentProduct,
+				Prev:    prevProduct,
+			})
+		} else {
+			diffs = append(diffs, productDiff{
+				Type:    eventPriceChanged,
+				Product: currentProduct,
+				Prev:    prevProduct,
+			})
+		}
+	}
+
+	return diffs
+}
+
+// @@@@@ 개선사항 존재유무 확인
+// renderProductDiffs 찾아낸 변동 사항(신규 진입, 재입고, 가격 변동 등)을 분석하여,
+// 최종 사용자가 직관적으로 이해할 수 있는 알림 메시지 포맷으로 변환합니다.
+func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
+	if len(diffs) == 0 {
+		return ""
+	}
+
 	var sb strings.Builder
+
 	// 변경 사항이 발생할 수 있는 최대치(모든 상품 변경 가정)를 고려하여 버퍼를 넉넉히 할당합니다.
 	// 상품당 평균 256바이트를 가정합니다. (재할당 오버헤드 최소화)
-	estimatedSize := len(currentSnapshot.Products) * 256
+	estimatedSize := len(diffs) * 256
 	if estimatedSize < 1024 {
 		estimatedSize = 1024
 	}
 	sb.Grow(estimatedSize)
 
 	lineSpacing := "\n\n"
-	// 비교를 위해 이전 스냅샷의 상품들을 Map으로 변환합니다 (ID -> Product).
-	var prevProductMap map[int]*product
-	if prevSnapshot != nil {
-		prevProductMap = make(map[int]*product, len(prevSnapshot.Products))
-		for _, p := range prevSnapshot.Products {
-			prevProductMap[p.ID] = p
-		}
-	} else {
-		prevProductMap = make(map[int]*product)
-	}
-
-	for _, currentProduct := range currentSnapshot.Products {
-		prevProduct, exists := prevProductMap[currentProduct.ID]
-
-		// 1. 신규 상품이거나, 이전에 알 수 없는 상품이었던 경우
-		// 1. 신규 상품(isNewProduct)이거나, 품절 후 재입고(isRestocked)된 경우
-		isNewProduct := !exists
-		isRestocked := exists && prevProduct.IsUnavailable && !currentProduct.IsUnavailable
-
-		if isNewProduct || isRestocked {
-			// 알 수 없는 상품인 경우 상품에 대한 정보를 사용자에게 알리지 않는다.
-			if currentProduct.IsUnavailable {
-				continue
-			}
-
-			// 최저 가격 갱신 (신규 상품 취급)
-			currentProduct.updateLowestPrice()
-
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(currentProduct.Render(supportsHTML, mark.New))
-			continue
-		}
-
-		// 2. 상품이 판매 중이었다가 알 수 없는 상품(판매 중지)으로 변경된 경우
-		isDiscontinued := !prevProduct.IsUnavailable && currentProduct.IsUnavailable
-		if isDiscontinued {
-			continue // 변경 내역 렌더링 생략
-		}
-
-		// 3. 기존 상품 변경 내역 비교
-		// 이전 최저가 정보를 승계
-		currentProduct.LowestPrice = prevProduct.LowestPrice
-		currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
-
-		// 현재 가격 기준으로 최저가 갱신 시도
-		isLowestPriceUpdated := currentProduct.updateLowestPrice()
-
-		// 가격이나 할인율 등이 변경되었는지 확인
-
-		// 가격이나 할인율 등이 변경되었는지 확인
-		hasPriceChanged := currentProduct.Price != prevProduct.Price ||
-			currentProduct.DiscountedPrice != prevProduct.DiscountedPrice ||
-			currentProduct.DiscountRate != prevProduct.DiscountRate
-
-		// [Guard Clause] 변경 사항이 없다면 즉시 다음 상품으로 넘어갑니다.
-		if !hasPriceChanged {
-			continue
-		}
-
-		// [Happy Path] 여기서부터는 "무조건 변경사항이 있는 상태"입니다. 들여쓰기 없이 로직이 진행됩니다.
-		if sb.Len() > 0 {
+	for i, diff := range diffs {
+		if i > 0 {
 			sb.WriteString(lineSpacing)
 		}
 
-		// 최저가가 갱신된 경우 '역대 최저가' 마크를, 단순 변동인 경우 '변경' 마크를 표시
-		marker := mark.Change
-		if isLowestPriceUpdated {
-			marker = mark.BestPrice
+		switch diff.Type {
+		case eventNewProduct, eventRestocked:
+			// 재입고의 경우도 현재는 New와 동일한 마크 사용
+			sb.WriteString(diff.Product.Render(supportsHTML, mark.New))
+		case eventLowestPriceRenewed:
+			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.BestPrice, diff.Prev))
+		case eventPriceChanged:
+			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Change, diff.Prev))
 		}
-		sb.WriteString(currentProduct.RenderDiff(supportsHTML, marker, prevProduct))
 	}
+
 	return sb.String()
 }
 

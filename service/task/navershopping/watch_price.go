@@ -292,7 +292,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	// (단순 비교뿐만 아니라, 사용자 편의를 위한 정렬 로직이 포함됩니다)
 	diffs := t.calculateProductDiffs(currentSnapshot, prevSnapshot)
 
-	// 식별된 변동 사항을 알림 메시지로 변환합니다.
+	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
 	diffMessage := t.renderProductDiffs(diffs, supportsHTML)
 
 	// [알림 메시지 생성 및 반환]
@@ -300,7 +300,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	if len(diffs) > 0 {
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
 
-		return fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s",
+		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s",
 				searchConditionsSummary,
 				diffMessage),
 			currentSnapshot,
@@ -370,32 +370,32 @@ func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchPriceSn
 	}
 
 	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	prevMap := make(map[string]*product, len(prevProducts))
+	prevProductMap := make(map[string]*product, len(prevProducts))
 	for _, p := range prevProducts {
-		prevMap[p.Key()] = p
+		prevProductMap[p.Key()] = p
 	}
 
 	var diffs []productDiff
 
-	for _, p := range currentSnapshot.Products {
-		prev, exists := prevMap[p.Key()]
+	for _, currrentProduct := range currentSnapshot.Products {
+		prevProduct, exists := prevProductMap[currrentProduct.Key()]
 
 		if !exists {
 			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.
 			// 이는 새로운 상품이 등록되었거나, 검색 순위 진입 등으로 수집 범위에 새롭게 포함된 경우입니다.
 			diffs = append(diffs, productDiff{
 				Type:    eventNewProduct,
-				Product: p,
+				Product: currrentProduct,
 				Prev:    nil,
 			})
 		} else {
 			// 동일한 상품이 이전에도 존재했으나, 최저가가 변경되었습니다.
 			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
-			if p.LowPrice != prev.LowPrice {
+			if currrentProduct.LowPrice != prevProduct.LowPrice {
 				diffs = append(diffs, productDiff{
 					Type:    eventPriceChanged,
-					Product: p,
-					Prev:    prev,
+					Product: currrentProduct,
+					Prev:    prevProduct,
 				})
 			}
 		}
