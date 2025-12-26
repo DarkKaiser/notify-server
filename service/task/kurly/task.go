@@ -63,7 +63,12 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 				return "", nil, tasksvc.NewErrTypeAssertionFailed("prevSnapshot", &watchProductPriceSnapshot{}, previousSnapshot)
 			}
 
-			return kurlyTask.executeWatchProductPrice(commandSettings, prevSnapshot, supportsHTML)
+			// 설정된 CSV 파일에서 감시 대상 상품 목록을 읽어오는 Loader를 생성합니다.
+			loader := &CSVWatchListLoader{
+				FilePath: commandSettings.WatchProductsFile,
+			}
+
+			return kurlyTask.executeWatchProductPrice(loader, prevSnapshot, supportsHTML)
 		})
 	default:
 		return nil, tasksvc.NewErrCommandNotSupported(req.CommandID)

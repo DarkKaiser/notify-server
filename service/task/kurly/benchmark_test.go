@@ -88,13 +88,17 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	resultData := &watchProductPriceSnapshot{
 		Products: make([]*product, 0),
 	}
+	// [Benchmarking Target]
+	// 실제 파일 I/O와 파싱 부하를 포함하여 성능을 측정합니다.
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
-	b.ResetTimer() // Reset timer to ignore setup time
-
+	b.ResetTimer() // 준비 시간 제외
 	for i := 0; i < b.N; i++ {
-		_, _, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+		// 실행: executeWatchProductPrice
+		// (내부적으로 HTML 파싱, 가격 추출, Diff 연산 등을 수행)
+		_, _, err := tTask.executeWatchProductPrice(loader, resultData, false)
 		if err != nil {
-			b.Fatalf("Task run failed: %v", err)
+			b.Fatalf("Task execution failed: %v", err)
 		}
 	}
 }

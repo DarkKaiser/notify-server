@@ -70,6 +70,22 @@ type watchPriceSnapshot struct {
 	Products []*product `json:"products"`
 }
 
+// productEventType 상품 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
+type productEventType int
+
+const (
+	eventNone         productEventType = iota
+	eventNewProduct                    // 신규 상품 (이전 검색 결과에 없던 상품)
+	eventPriceChanged                  // 가격 변동 (이전과 동일 상품이나 최저가 변동)
+)
+
+// productDiff 상품 데이터의 변동 사항(신규, 가격 변화 등)을 캡슐화한 중간 객체입니다.
+type productDiff struct {
+	Type    productEventType
+	Product *product
+	Prev    *product
+}
+
 // searchResponse 네이버 쇼핑 검색 API의 응답 데이터를 담는 구조체입니다.
 type searchResponse struct {
 	Total   int                   `json:"total"`   // 검색된 전체 상품의 총 개수 (페이징 처리에 사용)
@@ -78,7 +94,7 @@ type searchResponse struct {
 	Items   []*searchResponseItem `json:"items"`   // 검색된 개별 상품 리스트
 }
 
-// searchResponseItem 검색 API 응답에서 개별 상품 정보를 담는 로우(Raw) 데이터 구조체입니다.
+// searchResponseItem 네이버 쇼핑 검색 API 응답에서 개별 상품 정보를 담는 로우(Raw) 데이터 구조체입니다.
 type searchResponseItem struct {
 	ProductID   string `json:"productId"`   // 네이버 쇼핑 상품 ID (상품 고유 식별자)
 	ProductType string `json:"productType"` // 상품 유형 (1: 일반, 2: 중고, 3: 단종, 4: 판매예정 등)
@@ -272,27 +288,64 @@ func (t *task) isPriceEligible(price, priceLessThan int) bool {
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
 func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 예상 메시지 크기로 초기 용량 할당 (상품당 약 400바이트 추정)
-	var sb strings.Builder
-	if len(currentSnapshot.Products) > 0 {
-		sb.Grow(len(currentSnapshot.Products) * 400)
+	// 신규 상품 및 가격 변동을 식별합니다.
+	// (단순 비교뿐만 아니라, 사용자 편의를 위한 정렬 로직이 포함됩니다)
+	diffs := t.calculateProductDiffs(currentSnapshot, prevSnapshot)
+
+	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
+	diffMessage := t.renderProductDiffs(diffs, supportsHTML)
+
+	// [알림 메시지 생성 및 반환]
+	// 변경 내역(New/Price Change)이 집계된 경우, 즉시 알림 메시지를 구성하여 반환합니다.
+	if len(diffs) > 0 {
+		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
+
+		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s",
+				searchConditionsSummary,
+				diffMessage),
+			currentSnapshot,
+			nil
 	}
 
-	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
-	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
-	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
-	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
-	var prevProducts []*product
-	if prevSnapshot != nil {
-		prevProducts = prevSnapshot.Products
+	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
+	//
+	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
+	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
+	if t.GetRunBy() == tasksvc.RunByUser {
+		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
+
+		if len(currentSnapshot.Products) == 0 {
+			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s",
+					searchConditionsSummary),
+				nil,
+				nil
+		}
+
+		var sb strings.Builder
+
+		// 예상 메시지 크기로 초기 용량 할당 (상품당 약 300바이트 추정)
+		sb.Grow(len(currentSnapshot.Products) * 300)
+
+		for i, p := range currentSnapshot.Products {
+			if i > 0 {
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString(p.Render(supportsHTML, "", nil))
+		}
+
+		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
+				searchConditionsSummary,
+				sb.String()),
+			nil,
+			nil
 	}
 
-	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	prevMap := make(map[string]*product, len(prevProducts))
-	for _, p := range prevProducts {
-		prevMap[p.Key()] = p
-	}
+	return "", nil, nil
+}
 
+// calculateProductDiffs 현재 스냅샷과 이전 스냅샷을 비교하여 신규 상품이나 가격 변동을 찾아냅니다.
+// 즉, 이전에 없던 새로운 상품이 발견되거나 가격이 바뀐 경우 이를 결과 목록에 담아 반환합니다.
+func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchPriceSnapshot) []productDiff {
 	// 상품 목록을 가격 오름차순으로 정렬하여 사용자가 가장 저렴한 상품을 먼저 확인할 수 있도록 합니다.
 	// 가격이 동일한 경우, 일관된 순서를 보장하기 위해 상품명으로 2차 정렬을 수행합니다.
 	sort.Slice(currentSnapshot.Products, func(i, j int) bool {
@@ -307,33 +360,80 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		return p1.Title < p2.Title
 	})
 
-	// 정렬된 순서대로 상품 목록을 순회하며 신규 상품 및 가격 변경 상품을 식별합니다.
-	lineSpacing := "\n\n"
-	for _, p := range currentSnapshot.Products {
-		prev, exists := prevMap[p.Key()]
+	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
+	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
+	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
+	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
+	var prevProducts []*product
+	if prevSnapshot != nil {
+		prevProducts = prevSnapshot.Products
+	}
+
+	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
+	prevProductMap := make(map[string]*product, len(prevProducts))
+	for _, p := range prevProducts {
+		prevProductMap[p.Key()] = p
+	}
+
+	var diffs []productDiff
+
+	for _, currrentProduct := range currentSnapshot.Products {
+		prevProduct, exists := prevProductMap[currrentProduct.Key()]
 
 		if !exists {
 			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.
 			// 이는 새로운 상품이 등록되었거나, 검색 순위 진입 등으로 수집 범위에 새롭게 포함된 경우입니다.
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(p.Render(supportsHTML, mark.New, nil))
+			diffs = append(diffs, productDiff{
+				Type:    eventNewProduct,
+				Product: currrentProduct,
+				Prev:    nil,
+			})
 		} else {
-			// 동일한 상품(Key 일치)이 이전에도 존재했으나, 최저가(LowPrice)가 변경되었습니다.
+			// 동일한 상품이 이전에도 존재했으나, 최저가가 변경되었습니다.
 			// 단순 재수집된 경우는 무시하고, 실제 가격 변화가 발생한 경우에만 알림을 생성합니다.
-			if p.LowPrice != prev.LowPrice {
-				if sb.Len() > 0 {
-					sb.WriteString(lineSpacing)
-				}
-				sb.WriteString(p.Render(supportsHTML, mark.Change, prev))
+			if currrentProduct.LowPrice != prevProduct.LowPrice {
+				diffs = append(diffs, productDiff{
+					Type:    eventPriceChanged,
+					Product: currrentProduct,
+					Prev:    prevProduct,
+				})
 			}
 		}
 	}
 
-	// [알림 메시지 상단 요약 메시지]
-	// 사용자가 알림을 받았을 때, 이 결과가 '어떤 조건'에 의해 선별된 것인지 즉시 파악할 수 있도록 돕습니다.
-	searchConditionsSummary := fmt.Sprintf(`조회 조건은 아래와 같습니다:
+	return diffs
+}
+
+// renderProductDiffs 찾아낸 변동 사항(신규, 가격대)을 사용자가 보기 편한 알림 메시지로 변환합니다.
+func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
+	if len(diffs) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// 예상 메시지 크기로 초기 용량 할당 (상품당 약 300바이트 추정)
+	sb.Grow(len(diffs) * 300)
+
+	for i, diff := range diffs {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+
+		switch diff.Type {
+		case eventNewProduct:
+			sb.WriteString(diff.Product.Render(supportsHTML, mark.New, nil))
+		case eventPriceChanged:
+			sb.WriteString(diff.Product.Render(supportsHTML, mark.Change, diff.Prev))
+		}
+	}
+
+	return sb.String()
+}
+
+// buildSearchConditionsSummary 사용자가 설정한 조회 조건(검색어, 필터 등)을 요약하여 문자열로 반환합니다.
+func (t *task) buildSearchConditionsSummary(commandSettings *watchPriceSettings) string {
+	return fmt.Sprintf(`조회 조건은 아래와 같습니다:
 
   • 검색 키워드 : %s
   • 상품명 포함 키워드 : %s
@@ -344,42 +444,4 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		commandSettings.Filters.ExcludedKeywords,
 		strutil.FormatCommas(commandSettings.Filters.PriceLessThan),
 	)
-
-	// [알림 메시지 생성 및 반환]
-	// 변경 내역(New/Price Change)이 집계된 경우(sb.Len() > 0), 즉시 알림 메시지를 구성하여 반환합니다.
-	if sb.Len() > 0 {
-		return fmt.Sprintf("조회 조건에 해당되는 상품의 정보가 변경되었습니다.\n\n%s\n\n%s",
-				searchConditionsSummary,
-				sb.String()),
-			currentSnapshot,
-			nil
-	}
-
-	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
-	//
-	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
-	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == tasksvc.RunByUser {
-		if len(currentSnapshot.Products) == 0 {
-			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s",
-					searchConditionsSummary),
-				nil,
-				nil
-		}
-
-		for _, p := range currentSnapshot.Products {
-			if sb.Len() > 0 {
-				sb.WriteString(lineSpacing)
-			}
-			sb.WriteString(p.Render(supportsHTML, "", nil))
-		}
-
-		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
-				searchConditionsSummary,
-				sb.String()),
-			nil,
-			nil
-	}
-
-	return "", nil, nil
 }

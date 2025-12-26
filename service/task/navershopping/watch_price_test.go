@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/pkg/mark"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/darkkaiser/notify-server/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -693,7 +694,164 @@ func TestTask_IsPriceEligible_TableDriven(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// Unit Tests: Core Logic (Diff, Render, Summary)
+// -----------------------------------------------------------------------------
+
+func TestCalculateProductDiffs(t *testing.T) {
+	t.Parallel()
+
+	// Helper to make products
+	makeProd := func(id, title string, price int) *product {
+		return &product{ProductID: id, Title: title, LowPrice: price}
+	}
+
+	tests := []struct {
+		name          string
+		current       []*product
+		prev          []*product
+		expectedDiffs []productDiff
+		checkSorting  func(*testing.T, []*product) // Side-effect(정렬) 검증
+	}{
+		{
+			name: "신규 상품 감지 및 정렬 (가격 오름차순)",
+			current: []*product{
+				makeProd("2", "Expensive", 20000),
+				makeProd("1", "Cheap", 10000),
+			},
+			prev: nil, // Initial run
+			expectedDiffs: []productDiff{
+				{Type: eventNewProduct, Product: makeProd("1", "Cheap", 10000)},
+				{Type: eventNewProduct, Product: makeProd("2", "Expensive", 20000)},
+			},
+			checkSorting: func(t *testing.T, sorted []*product) {
+				assert.Equal(t, "Cheap", sorted[0].Title)
+				assert.Equal(t, "Expensive", sorted[1].Title)
+			},
+		},
+		{
+			name:    "가격 변동 감지",
+			current: []*product{makeProd("1", "Item", 9000)},
+			prev:    []*product{makeProd("1", "Item", 10000)},
+			expectedDiffs: []productDiff{
+				{Type: eventPriceChanged, Product: makeProd("1", "Item", 9000), Prev: makeProd("1", "Item", 10000)},
+			},
+		},
+		{
+			name:          "변동 없음",
+			current:       []*product{makeProd("1", "Item", 10000)},
+			prev:          []*product{makeProd("1", "Item", 10000)},
+			expectedDiffs: nil,
+		},
+		{
+			name: "정렬: 가격 동일 시 상품명 오름차순",
+			current: []*product{
+				makeProd("2", "B", 10000),
+				makeProd("1", "A", 10000),
+			},
+			prev: nil,
+			expectedDiffs: []productDiff{
+				{Type: eventNewProduct, Product: makeProd("1", "A", 10000)},
+				{Type: eventNewProduct, Product: makeProd("2", "B", 10000)},
+			},
+			checkSorting: func(t *testing.T, sorted []*product) {
+				assert.Equal(t, "A", sorted[0].Title)
+				assert.Equal(t, "B", sorted[1].Title)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			taskInstance := &task{}
+			currSnap := &watchPriceSnapshot{Products: tt.current}
+			var prevSnap *watchPriceSnapshot
+			if tt.prev != nil {
+				prevSnap = &watchPriceSnapshot{Products: tt.prev}
+			}
+
+			// Execute
+			diffs := taskInstance.calculateProductDiffs(currSnap, prevSnap)
+
+			// Verify Diffs
+			assert.Len(t, diffs, len(tt.expectedDiffs))
+			for i, expect := range tt.expectedDiffs {
+				got := diffs[i]
+				assert.Equal(t, expect.Type, got.Type)
+				assert.Equal(t, expect.Product.ProductID, got.Product.ProductID)
+				if expect.Prev != nil {
+					assert.Equal(t, expect.Prev.LowPrice, got.Prev.LowPrice)
+				}
+			}
+
+			// Verify Side-Effect (Sorting)
+			if tt.checkSorting != nil {
+				tt.checkSorting(t, currSnap.Products)
+			}
+		})
+	}
+}
+
+func TestRenderProductDiffs(t *testing.T) {
+	t.Parallel()
+
+	p1 := &product{Title: "Item1", LowPrice: 10000, Link: "http://link1"}
+	p2 := &product{Title: "Item2", LowPrice: 20000, Link: "http://link2"}
+	p1Prev := &product{Title: "Item1", LowPrice: 15000} // Price dropped
+
+	diffs := []productDiff{
+		{Type: eventNewProduct, Product: p2},
+		{Type: eventPriceChanged, Product: p1, Prev: p1Prev},
+	}
+
+	taskInstance := &task{}
+
+	t.Run("HTML Mode", func(t *testing.T) {
+		msg := taskInstance.renderProductDiffs(diffs, true)
+		assert.Contains(t, msg, mark.New)
+		assert.Contains(t, msg, mark.Change)
+		assert.Contains(t, msg, "<a href=")
+		assert.Contains(t, msg, "(이전: 15,000원)") // 15000 -> 10000 Drop
+	})
+
+	t.Run("Text Mode", func(t *testing.T) {
+		msg := taskInstance.renderProductDiffs(diffs, false)
+		assert.Contains(t, msg, mark.New)
+		assert.Contains(t, msg, mark.Change)
+		assert.NotContains(t, msg, "<a href=")
+		assert.Contains(t, msg, "http://link1") // Link explicitly shown
+	})
+
+	t.Run("Empty Diffs", func(t *testing.T) {
+		msg := taskInstance.renderProductDiffs(nil, false)
+		assert.Empty(t, msg)
+	})
+}
+
+func TestBuildSearchConditionsSummary(t *testing.T) {
+	t.Parallel()
+
+	settings := NewSettingsBuilder().
+		WithQuery("MyQuery").
+		WithIncludedKeywords("In Key").
+		WithExcludedKeywords("Ex Key").
+		WithPriceLessThan(50000).
+		Build()
+
+	taskInstance := &task{}
+	summary := taskInstance.buildSearchConditionsSummary(&settings)
+
+	assert.Contains(t, summary, "MyQuery")
+	assert.Contains(t, summary, "In Key")
+	assert.Contains(t, summary, "Ex Key")
+	assert.Contains(t, summary, "50,000")
+}
+
+// -----------------------------------------------------------------------------
 // Advanced Scenarios: Pagination & Cancellation
+
 // -----------------------------------------------------------------------------
 
 func TestTask_FetchProducts_Pagination(t *testing.T) {

@@ -281,6 +281,163 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	}
 }
 
+// TestCalculatePerformanceDiffs 신규 공연 식별 로직(Set Difference: Current - Previous)을 단위 테스트합니다.
+func TestCalculatePerformanceDiffs(t *testing.T) {
+	t.Parallel()
+
+	// Helper: 간단한 Performance 객체 생성
+	makePerf := func(title, place string) *performance {
+		return &performance{Title: title, Place: place}
+	}
+
+	tests := []struct {
+		name          string
+		current       []*performance
+		prev          []*performance
+		expectedDiffs []performanceDiff // 예상되는 Diff 목록
+	}{
+		{
+			name:    "신규 공연 발견 (순수 추가)",
+			current: []*performance{makePerf("P1", "L1"), makePerf("P2", "L2")},
+			prev:    []*performance{makePerf("P1", "L1")},
+			expectedDiffs: []performanceDiff{
+				{Type: eventNewPerformance, Performance: makePerf("P2", "L2")},
+			},
+		},
+		{
+			name:          "변동 없음",
+			current:       []*performance{makePerf("P1", "L1")},
+			prev:          []*performance{makePerf("P1", "L1")},
+			expectedDiffs: nil, // 또는 Empty
+		},
+		{
+			name:    "초기 실행 (Prev is nil) -> 모두 신규로 간주",
+			current: []*performance{makePerf("P1", "L1")},
+			prev:    nil,
+			expectedDiffs: []performanceDiff{
+				{Type: eventNewPerformance, Performance: makePerf("P1", "L1")},
+			},
+		},
+		{
+			name:          "공연 삭제 (Current에 없음) -> 현재 로직상 Diff 제외",
+			current:       []*performance{},
+			prev:          []*performance{makePerf("P1", "L1")},
+			expectedDiffs: nil, // 삭제된 건은 알림 대상이 아님
+		},
+		{
+			name:    "장소가 다른 동명의 공연 -> 다른 공연으로 취급 (Key = Title + Place)",
+			current: []*performance{makePerf("Cats", "Seoul"), makePerf("Cats", "Busan")},
+			prev:    []*performance{makePerf("Cats", "Seoul")},
+			expectedDiffs: []performanceDiff{
+				{Type: eventNewPerformance, Performance: makePerf("Cats", "Busan")},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			taskInstance := &task{} // 순수 함수 테스트이므로 빈 task 객체 사용 가능
+
+			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
+			var prevSnap *watchNewPerformancesSnapshot
+			if tt.prev != nil {
+				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
+			}
+
+			gotDiffs := taskInstance.calculatePerformanceDiffs(currSnap, prevSnap)
+
+			assert.Equal(t, len(tt.expectedDiffs), len(gotDiffs), "Diff 개수가 일치해야 합니다")
+
+			// 순서 무관하게 내용 검증 (Set 비교)
+			// 실제 구현은 순서를 보장하지 않을 수 있으나 현재 append 순서대로임.
+			// 정확성을 위해 각 요소 비교
+			for i, want := range tt.expectedDiffs {
+				got := gotDiffs[i]
+				assert.Equal(t, want.Type, got.Type)
+				assert.Equal(t, want.Performance.Title, got.Performance.Title)
+				assert.Equal(t, want.Performance.Place, got.Performance.Place)
+			}
+		})
+	}
+}
+
+// TestRenderPerformanceDiffs 알림 메시지 생성 로직을 검증합니다. (Text vs HTML)
+func TestRenderPerformanceDiffs(t *testing.T) {
+	t.Parallel()
+
+	// Link 필드 없이 초기화
+	p1 := &performance{Title: "Cats", Place: "Seoul"}
+	diffNew := performanceDiff{Type: eventNewPerformance, Performance: p1}
+
+	// 예상되는 링크 URL (Title 기반 생성)
+	expectedLink := "https://search.naver.com/search.naver?query=Cats"
+
+	tests := []struct {
+		name         string
+		diffs        []performanceDiff
+		supportsHTML bool
+		wantContains []string
+		wantMissing  []string
+	}{
+		{
+			name:         "Diff 없음 -> 빈 문자열",
+			diffs:        nil,
+			supportsHTML: false,
+			wantContains: nil,              // Empty
+			wantMissing:  []string{"Cats"}, // 내용이 없어야 함
+		},
+		{
+			name:         "HTML 모드: 링크 태그 포함",
+			diffs:        []performanceDiff{diffNew},
+			supportsHTML: true,
+			wantContains: []string{
+				mark.New, // [NEW] 마크
+				fmt.Sprintf(`<a href="%s?query=Cats"><b>Cats</b></a>`, "https://search.naver.com/search.naver"), // HTML 링크 포맷
+				"Seoul",
+			},
+		},
+		{
+			name:         "Text 모드: 링크 태그 미포함",
+			diffs:        []performanceDiff{diffNew},
+			supportsHTML: false,
+			wantContains: []string{
+				mark.New,
+				"Cats",
+				"Seoul",
+			},
+			wantMissing: []string{
+				`<a href=`,   // 태그는 없어야 함
+				expectedLink, // 텍스트 모드에서는 URL이 직접 노출되지 않음 (Render 내부 로직 확인됨)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			taskInstance := &task{}
+			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
+
+			if len(tt.diffs) == 0 {
+				assert.Empty(t, gotMsg)
+			} else {
+				assert.NotEmpty(t, gotMsg)
+				for _, s := range tt.wantContains {
+					assert.Contains(t, gotMsg, s)
+				}
+				for _, s := range tt.wantMissing {
+					assert.NotContains(t, gotMsg, s)
+				}
+			}
+		})
+	}
+}
+
 // TestTask_DiffAndNotify 변경 감지 및 알림 생성 로직을 검증합니다. (핵심 로직)
 func TestTask_DiffAndNotify(t *testing.T) {
 	t.Parallel()

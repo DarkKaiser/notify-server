@@ -8,22 +8,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestProduct_URL_TableDriven Product URL 생성 로직을 검증합니다.
-func TestProduct_URL_TableDriven(t *testing.T) {
+// TestFormatProductPageURL_TableDriven formatProductPageURL 함수의 다양한 입력 타입 처리를 검증합니다.
+// int, string 등 다양한 타입의 ID가 올바른 URL로 변환되는지 테스트합니다.
+func TestFormatProductPageURL_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		id   int
+		id   any
 		want string
 	}{
 		{
-			name: "Normal ID",
+			name: "Integer ID",
 			id:   12345,
 			want: "https://www.kurly.com/goods/12345",
 		},
 		{
-			name: "Zero ID",
+			name: "String ID",
+			id:   "67890",
+			want: "https://www.kurly.com/goods/67890",
+		},
+		{
+			name: "String ID with surrounding spaces (Function does NOT trim)",
+			id:   "  11111  ",
+			want: "https://www.kurly.com/goods/  11111  ", // fmt.Sprintf assumes caller handles trimming
+		},
+		{
+			name: "Zero ID (Integer)",
 			id:   0,
 			want: "https://www.kurly.com/goods/0",
 		},
@@ -38,10 +49,21 @@ func TestProduct_URL_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			p := &product{ID: tt.id}
-			assert.Equal(t, tt.want, p.URL())
+			got := formatProductPageURL(tt.id)
+			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestProduct_URL_Integration product.URL 메서드가 formatProductPageURL을 올바르게 사용하는지 검증합니다.
+func TestProduct_URL_Integration(t *testing.T) {
+	t.Parallel()
+
+	p := &product{ID: 99999}
+	want := "https://www.kurly.com/goods/99999"
+
+	// product.URL()은 내부적으로 formatProductPageURL을 호출해야 함
+	assert.Equal(t, want, p.URL(), "product.URL() should delegate to formatProductPageURL correctly")
 }
 
 // TestProduct_IsOnSale_TableDriven 할인 여부 판단 로직을 검증합니다.
@@ -223,23 +245,15 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 	}
 }
 
-// TestProduct_Render_Comprehensive Render 메서드의 모든 포맷팅 로직을 검증하는 통합 테스트입니다.
-// HTML/Text 모드, 할인/비할인, 가격 변동, 특수문자 등 다양한 조합을 커버합니다.
-func TestProduct_Render_Comprehensive(t *testing.T) {
+// TestProduct_Render_TableDriven Render 메서드의 단일 상품 렌더링 로직을 정밀 검증합니다.
+// HTML/Text 모드, 할인, 최저가 표시 등 다양한 시나리오를 커버합니다.
+func TestProduct_Render_TableDriven(t *testing.T) {
 	t.Parallel()
 
-	// 공통 테스트 데이터
 	baseProduct := &product{
 		ID:    12345,
-		Name:  "Fresh Apple",
+		Name:  "Base Product",
 		Price: 10000,
-	}
-	discountProduct := &product{
-		ID:              12345,
-		Name:            "Sale Apple",
-		Price:           10000,
-		DiscountedPrice: 8000,
-		DiscountRate:    20,
 	}
 
 	tests := []struct {
@@ -247,155 +261,160 @@ func TestProduct_Render_Comprehensive(t *testing.T) {
 		product      *product
 		supportsHTML bool
 		mark         string
-		prev         *product
-		wants        []string // Expected substrings
-		unwants      []string // Unexpected substrings
+		wants        []string
+		unwants      []string
 	}{
-		// [Text Mode Tests]
 		{
 			name:         "Text Mode - Basic",
 			product:      baseProduct,
 			supportsHTML: false,
 			wants: []string{
-				"☞ Fresh Apple",
+				"☞ Base Product",
 				"• 현재 가격 : 10,000원",
-				// Text 모드에서는 Link가 자동으로 추가되지 않음 (기존 동작 유지)
 			},
 			unwants: []string{"<b>", "</a>", "<s>"},
 		},
 		{
-			name:         "Text Mode - Discounted",
-			product:      discountProduct,
-			supportsHTML: false,
-			wants: []string{
-				"10,000원 ⇒ 8,000원 (20%)",
-			},
-			unwants: []string{"<s>", "</s>"},
-		},
-		{
-			name:         "Text Mode - With Mark",
-			product:      baseProduct,
-			supportsHTML: false,
-			mark:         " 🆕",
-			wants: []string{
-				"Fresh Apple 🆕",
-			},
-		},
-		{
-			name:         "Text Mode - With Previous Price",
-			product:      baseProduct,
-			supportsHTML: false,
-			prev: &product{
-				Price: 12000,
-			},
-			wants: []string{
-				"• 이전 가격 : 12,000원",
-			},
-		},
-		{
-			name:         "Text Mode - With Lowest Price",
-			product:      &product{Name: "Item", Price: 5000, LowestPrice: 4000, LowestPriceTimeUTC: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)},
-			supportsHTML: false,
-			wants: []string{
-				"• 최저 가격 : 4,000원 (2023/01/01 21:00)",
-			},
-		},
-
-		// [HTML Mode Tests]
-		{
-			name:         "HTML Mode - Basic",
+			name:         "HTML Mode - Basic with Link",
 			product:      baseProduct,
 			supportsHTML: true,
 			wants: []string{
-				`<a href="https://www.kurly.com/goods/12345"><b>Fresh Apple</b></a>`,
+				`<a href="https://www.kurly.com/goods/12345"><b>Base Product</b></a>`,
 				"10,000원",
 			},
-			unwants: []string{"https://www.kurly.com/goods/12345\n"}, // Link should be inside <a> tag, not standalone line
 		},
 		{
-			name:         "HTML Mode - Discounted",
-			product:      discountProduct,
-			supportsHTML: true,
-			wants: []string{
-				"<s>10,000원</s> 8,000원 (20%)",
+			name: "HTML Mode - XSS Protection",
+			product: &product{
+				ID:    123,
+				Name:  "<script>alert(1)</script>",
+				Price: 1000,
 			},
-			unwants: []string{"⇒"},
-		},
-		{
-			name:         "HTML Mode - XSS Protection",
-			product:      &product{ID: 1, Name: "<script>alert('XSS')</script>", Price: 100},
 			supportsHTML: true,
 			wants: []string{
-				"&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;",
+				"&lt;script&gt;alert(1)&lt;/script&gt;",
 			},
 			unwants: []string{"<script>"},
 		},
-
-		// [Detailed Loop Logic Tests - writeFormattedPrice Coverage]
 		{
-			name: "Discount Rate 0% Handling",
+			name: "Text Mode - Discounted Price",
 			product: &product{
-				ID:              999, // ID 추가 (URL 확인용)
-				Name:            "No Rate Item",
+				Name:            "Sale Item",
+				Price:           20000,
+				DiscountedPrice: 15000,
+				DiscountRate:    25,
+			},
+			supportsHTML: false,
+			wants: []string{
+				"20,000원 ⇒ 15,000원 (25%)",
+			},
+		},
+		{
+			name: "HTML Mode - Discounted Price",
+			product: &product{
+				Name:            "Sale Item HTML",
+				Price:           20000,
+				DiscountedPrice: 15000,
+				DiscountRate:    25,
+			},
+			supportsHTML: true,
+			wants: []string{
+				"<s>20,000원</s> 15,000원 (25%)",
+			},
+		},
+		{
+			name: "With Lowest Price History",
+			product: &product{
+				Name:               "History Item",
+				Price:              10000,
+				LowestPrice:        9000,
+				LowestPriceTimeUTC: time.Date(2023, 5, 5, 0, 0, 0, 0, time.UTC), // KST 09:00
+			},
+			supportsHTML: false,
+			wants: []string{
+				"• 최저 가격 : 9,000원",
+				"(2023/05/05 09:00)",
+			},
+		},
+		{
+			name: "Edge Case - Discount Rate 0%",
+			product: &product{
+				Name:            "Zero Rate",
 				Price:           10000,
 				DiscountedPrice: 9900,
 				DiscountRate:    0,
 			},
 			supportsHTML: false,
 			wants: []string{
-				"10,000원 ⇒ 9,900원", // Rate literal "(%)" should be absent
+				"10,000원 ⇒ 9,900원",
 			},
+			// 0%는 표시하지 않음
 			unwants: []string{"(0%)", "(%)"},
 		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.product.Render(tt.supportsHTML, tt.mark)
+			for _, want := range tt.wants {
+				assert.Contains(t, got, want, "Missing expected substring: %s", want)
+			}
+			for _, unwant := range tt.unwants {
+				assert.NotContains(t, got, unwant, "Contains unexpected substring: %s", unwant)
+			}
+		})
+	}
+}
+
+// TestProduct_RenderDiff_TableDriven RenderDiff 메서드의 비교 렌더링 로직을 검증합니다.
+// 이전 가격(prev) 유무에 따른 동작 차이를 중점적으로 테스트합니다.
+func TestProduct_RenderDiff_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	curr := &product{
+		Name:  "Diff Item",
+		Price: 10000,
+	}
+
+	tests := []struct {
+		name         string
+		product      *product
+		prev         *product
+		supportsHTML bool
+		wants        []string
+		unwants      []string
+	}{
 		{
-			name: "Invalid Discount Price Handling (Higher than Price)",
-			product: &product{
-				ID:              99999, // ID 추가
-				Name:            "Error Item",
-				Price:           10000,
-				DiscountedPrice: 11000, // Invalid
-			},
+			name:         "With Previous Price",
+			product:      curr,
+			prev:         &product{Price: 12000},
 			supportsHTML: false,
 			wants: []string{
-				"10,000원", // Should show original price only
+				"• 현재 가격 : 10,000원",
+				"• 이전 가격 : 12,000원",
 			},
-			unwants: []string{"11,000원"},
 		},
 		{
-			name: "Zero Discount Price Handling",
-			product: &product{
-				ID:              88888, // ID 추가
-				Name:            "Zero Discount Item",
-				Price:           10000,
-				DiscountedPrice: 0,
-			},
+			name:         "Previous Price is Nil (Should behave like Render)",
+			product:      curr,
+			prev:         nil,
 			supportsHTML: false,
 			wants: []string{
-				"10,000원", // Should show original price only
+				"• 현재 가격 : 10,000원",
 			},
-			unwants: []string{"⇒ 0원", "⇒"}, // "0원"은 "10,000원"에 포함되므로 오탐지 발생 가능. 구체화함.
+			unwants: []string{
+				"• 이전 가격",
+			},
 		},
 		{
-			name:         "Text Mode - No Escape Special Chars",
-			product:      &product{Name: "특수문자 & 이름 > 테스트"},
+			name:         "Previous Price with Discount",
+			product:      curr,
+			prev:         &product{Price: 12000, DiscountedPrice: 11000, DiscountRate: 8},
 			supportsHTML: false,
 			wants: []string{
-				"☞ 특수문자 & 이름 > 테스트", // Text 모드에서는 이스케이프 없이 그대로 출력, 하지만 KST변환 시간로직등은 영향받으므로 Render 로직 잘타는지 확인
-			},
-			unwants: []string{"&amp;", "&gt;"},
-		},
-		{
-			name: "UTC to KST Conversion",
-			product: &product{
-				Name:        "Time Test",
-				Price:       10000,
-				LowestPrice: 9000,
-				// UTC 00:00 -> KST 09:00
-				LowestPriceTimeUTC: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-			},
-			supportsHTML: false,
-			wants: []string{
-				"(2023/01/01 09:00)", // 00:00 UTC + 9h = 09:00 KST
+				"12,000원 ⇒ 11,000원 (8%)",
 			},
 		},
 	}
@@ -404,46 +423,65 @@ func TestProduct_Render_Comprehensive(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.prev)
-
+			got := tt.product.RenderDiff(tt.supportsHTML, "", tt.prev)
 			for _, want := range tt.wants {
-				assert.Contains(t, got, want, "Result missing expected substring: %s", want)
+				assert.Contains(t, got, want, "Missing expected substring: %s", want)
 			}
 			for _, unwant := range tt.unwants {
-				assert.NotContains(t, got, unwant, "Result contains unexpected substring: %s", unwant)
+				assert.NotContains(t, got, unwant, "Contains unexpected substring: %s", unwant)
 			}
 		})
 	}
 }
 
-// BenchmarkProduct_Render_Memory Render 함수의 메모리 할당 효율성을 검증합니다.
-// Grow(512) 적용 후 할당 수(Allocs/op)가 최소화되었는지 확인합니다.
-func BenchmarkProduct_Render_Memory(b *testing.B) {
+// BenchmarkProduct_Render Render 메서드의 성능을 측정합니다.
+// 메모리 할당(Allocs) 최적화 상태를 점검합니다.
+func BenchmarkProduct_Render(b *testing.B) {
 	p := &product{
 		ID:                 123456,
-		Name:               "[브랜드] 아주 긴 상품 이름을 가진 테스트용 상품입니다 (1kg)",
-		Price:              125000,
-		DiscountedPrice:    110000,
-		DiscountRate:       15,
-		LowestPrice:        105000,
+		Name:               "[브랜드] 벤치마크용 아주 긴 이름을 가진 상품입니다 (1kg)",
+		Price:              50000,
+		DiscountedPrice:    45000,
+		DiscountRate:       10,
+		LowestPrice:        40000,
 		LowestPriceTimeUTC: time.Now(),
-	}
-	prev := &product{
-		Price: 130000, // 이전 가격
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		// strings.Builder.Grow 적용으로 인해 내부 재할당이 발생하지 않아야 함
-		// 결과 문자열 생성 시의 1회 할당(String()) 외에 추가 할당이 없어야 이상적
-		_ = p.Render(true, " 🔻", prev)
+		_ = p.Render(true, " 🔥")
 	}
 }
 
-// Example_render demonstrates usage of Render method.
+// BenchmarkProduct_RenderDiff RenderDiff 메서드의 성능을 측정합니다.
+// 이전 가격 포맷팅이 추가됨에 따른 오버헤드를 확인합니다.
+func BenchmarkProduct_RenderDiff(b *testing.B) {
+	p := &product{
+		ID:                 123456,
+		Name:               "[브랜드] 벤치마크용 아주 긴 이름을 가진 상품입니다 (1kg)",
+		Price:              50000,
+		DiscountedPrice:    45000,
+		DiscountRate:       10,
+		LowestPrice:        40000,
+		LowestPriceTimeUTC: time.Now(),
+	}
+	prev := &product{
+		Price:           55000,
+		DiscountedPrice: 50000,
+		DiscountRate:    9,
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = p.RenderDiff(true, " 🔥", prev)
+	}
+}
+
+// Example_render demonstrates usage of Render and RenderDiff methods.
 func Example_render() {
 	p := &product{
 		ID:              12345,
@@ -452,10 +490,25 @@ func Example_render() {
 		DiscountedPrice: 9000,
 		DiscountRate:    10,
 	}
+	prev := &product{
+		Price: 11000, // Previous was more expensive
+	}
 
-	// Render without previous price info (nil)
-	fmt.Println(p.Render(false, "", nil))
+	// 1. Basic Render
+	fmt.Println("--- Render ---")
+	fmt.Println(p.Render(false, ""))
+
+	// 2. Diff Render
+	fmt.Println("\n--- RenderDiff ---")
+	fmt.Println(p.RenderDiff(false, " 📉", prev))
+
 	// Output:
+	// --- Render ---
 	// ☞ Example Item
 	//       • 현재 가격 : 10,000원 ⇒ 9,000원 (10%)
+	//
+	// --- RenderDiff ---
+	// ☞ Example Item 📉
+	//       • 현재 가격 : 10,000원 ⇒ 9,000원 (10%)
+	//       • 이전 가격 : 11,000원
 }

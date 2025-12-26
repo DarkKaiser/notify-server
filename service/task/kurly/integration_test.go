@@ -98,8 +98,11 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		Products: make([]*product, 0),
 	}
 
+	// CSV Provider 생성
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -168,8 +171,11 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 	resultData := &watchProductPriceSnapshot{}
 
+	// CSV Loader 생성
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
 	// 4. 실행
-	_, _, err = tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	_, _, err = tTask.executeWatchProductPrice(loader, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -223,8 +229,20 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 	resultData := &watchProductPriceSnapshot{}
 
-	// 4. 실행
-	_, _, err = tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	// [Dependency Injection]
+	// 테스트 환경에서도 실제 CSVLoader를 사용하여 E2E	// [Dependency Injection]
+	// 테스트 환경에서도 실제 CSVLoader를 사용하여 E2E 시나리오를 검증합니다.
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
+	// -------------------------------------------------------------------------
+	// 5. Execute Task Logic
+	// -------------------------------------------------------------------------
+	// 상품 코드가 숫자가 아니므로, 파싱 전 단계에서 에러가 반환되어야 합니다.
+	_, _, err = tTask.executeWatchProductPrice(loader, nil, false)
+
+	// resultData는 본 테스트 케이스에서 사용되지 않으므로 선언 제거가 필요하지만,
+	// 코드 구조상 상단에 선언되어 있어 여기서는 err 검증에 집중합니다.
+	_ = resultData
 
 	// 5. 검증
 	require.Error(t, err)
@@ -320,8 +338,11 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		},
 	}
 
+	// CSV Loader 생성
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -416,14 +437,17 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		},
 	}
 
+	// CSV Loader 생성
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
 	require.NotEmpty(t, message)
 	require.Contains(t, message, "상품 정보가 변경되었습니다")
-	require.Contains(t, message, "🔁")      // 변경 마크
+	require.Contains(t, message, "🔥")      // 최저가 갱신 마크
 	require.Contains(t, message, "5,000원") // 새로운 가격
 
 	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
@@ -497,8 +521,11 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		},
 	}
 
+	// CSV Loader 생성
+	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

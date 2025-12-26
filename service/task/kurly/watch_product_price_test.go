@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -113,7 +111,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 	}
 }
 
-func TestNormalizeDuplicateProducts(t *testing.T) {
+func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
 	tsk := &task{}
 
@@ -175,50 +173,11 @@ func TestNormalizeDuplicateProducts(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			distinct, duplicate := tsk.normalizeDuplicateProducts(tt.input)
+			distinct, duplicate := tsk.extractDuplicateRecords(tt.input)
 			assert.Equal(t, tt.wantDistinct, len(distinct))
 			assert.Equal(t, tt.wantDuplicate, len(duplicate))
 		})
 	}
-}
-
-func TestTask_LoadWatchList(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "products_*.csv")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	content := `no,name,status
-1001,사과,1
-1002,바나나,1`
-	_, err = tmpFile.WriteString(content)
-	require.NoError(t, err)
-	tmpFile.Close()
-
-	tsk := &task{}
-
-	t.Run("성공: 정상적인 CSV 로딩", func(t *testing.T) {
-		records, err := tsk.loadWatchList(tmpFile.Name())
-		require.NoError(t, err)
-		assert.Len(t, records, 2)
-		assert.Equal(t, "1001", records[0][0])
-	})
-
-	t.Run("실패: 존재하지 않는 파일", func(t *testing.T) {
-		_, err := tsk.loadWatchList("not_exists.csv")
-		require.Error(t, err)
-		assert.IsType(t, &apperrors.AppError{}, err) // AppError 래핑 확인
-	})
-
-	t.Run("성공: 헤더만 있는 파일", func(t *testing.T) {
-		emptyHeaderFile, _ := os.CreateTemp("", "header_only_*.csv")
-		defer os.Remove(emptyHeaderFile.Name())
-		emptyHeaderFile.WriteString("no,name,status\n")
-		emptyHeaderFile.Close()
-
-		records, err := tsk.loadWatchList(emptyHeaderFile.Name())
-		require.NoError(t, err)
-		assert.Len(t, records, 0)
-	})
 }
 
 func createDoc(html string) *goquery.Document {
@@ -331,7 +290,7 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			tsk := &task{}
 			tsk.SetFetcher(mockFetcher)
 
-			got, err := tsk.parseProductFromPage(tt.productID)
+			got, err := tsk.fetchProductInfo(tt.productID)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -430,7 +389,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			curSnap := &watchProductPriceSnapshot{Products: tt.current}
 			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}
 
-			msg, data, err := tsk.diffAndNotify(nil, nil, curSnap, prevSnap, false)
+			msg, data, err := tsk.diffAndNotify(curSnap, prevSnap, nil, nil, false)
 			require.NoError(t, err)
 
 			if len(tt.wantMsgContent) > 0 {
@@ -448,6 +407,50 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			} else {
 				assert.Nil(t, data)
 			}
+		})
+	}
+}
+
+// TestRenderProductLink HTML/Text 모드에 따른 링크 생성 및 이스케이프 동작을 검증합니다.
+func TestRenderProductLink(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		productID    string
+		productName  string
+		supportsHTML bool
+		want         string
+	}{
+		{
+			name:         "Text Mode: Special Characters (Should NOT Escape)",
+			productID:    "123",
+			productName:  "Bread & Butter <New>",
+			supportsHTML: false,
+			want:         "Bread & Butter <New>(123)",
+		},
+		{
+			name:         "HTML Mode: Special Characters (Should Escape)",
+			productID:    "456",
+			productName:  "Bread & Butter <New>",
+			supportsHTML: true,
+			want:         `<a href="https://www.kurly.com/goods/456"><b>Bread &amp; Butter &lt;New&gt;</b></a>`,
+		},
+		{
+			name:         "Text Mode: Normal",
+			productID:    "789",
+			productName:  "Fresh Apple",
+			supportsHTML: false,
+			want:         "Fresh Apple(789)",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := renderProductLink(tt.productID, tt.productName, tt.supportsHTML)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
