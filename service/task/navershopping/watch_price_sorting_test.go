@@ -91,10 +91,7 @@ func TestDiffAndNotify_PriceSorting(t *testing.T) {
 					prevProductsMap[p.Key()] = p
 				}
 			}
-			message, _, err := tsk.diffAndNotify(settings, currentSnapshot, prevProductsMap, false)
-
-			// Verify
-			require.NoError(t, err)
+			message, _ := tsk.analyzeAndReport(settings, currentSnapshot, prevProductsMap, false)
 
 			if len(tt.wantOrder) == 0 {
 				assert.Empty(t, message, "변경 사항이 없으면 메시지가 비어야 합니다")

@@ -257,6 +257,18 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			expectedRaw:   0,
 			expectError:   false,
 		},
+		{
+			name:        "실패: 필수 속성 누락 (class=name 없음)",
+			html:        `<ul><li><div class="item"><div class="title_box"><strong>NoClass</strong></div></div></li></ul>`,
+			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectError: true, // selectorTitle = ".title_box .name" 이므로 매칭 실패 -> 에러
+		},
+		{
+			name:        "실패: 필수 속성 누락 (class=sub_text 없음)",
+			html:        `<ul><li><div class="item"><div class="title_box"><strong class="name">Title</strong></div></div></li></ul>`,
+			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectError: true, // selectorPlace = ".title_box .sub_text" 이므로 매칭 실패 -> 에러
+		},
 	}
 
 	for _, tt := range tests {
@@ -454,62 +466,93 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 	}
 }
 
-// TestTask_DiffAndNotify 변경 감지 및 알림 생성 로직을 검증합니다. (핵심 로직)
-func TestTask_DiffAndNotify(t *testing.T) {
+// TestTask_AnalyzeAndReport_TableDriven 네이버 공연 알림 로직의 핵심인 analyzeAndReport 메서드를
+// 다양한 시나리오(Table-Driven)를 통해 철저하게 검증합니다.
+//
+// [검증 범위]
+// 1. 신규 공연 감지 (New Performance)
+// 2. 실행 주체(User vs Scheduler)에 따른 알림 정책 차이
+// 3. 데이터가 없을 때의 피드백
+// 4. 불변식(Invariant) 검증: 변경 사항 존재 시 메시지 필히 생성
+func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 	t.Parallel()
 
-	// 테스트용 데이터 셋업
-	perfA := &performance{Title: "A", Place: "Theater1"}
-	perfB := &performance{Title: "B", Place: "Theater2"}
+	// 테스트용 더미 데이터 생성 헬퍼
+	createPerf := func(id, title string) *performance {
+		return &performance{
+			Title: title,
+			Place: "예술의전당",
+		}
+	}
 
 	tests := []struct {
-		name              string
-		current           []*performance
-		prev              []*performance
-		runBy             tasksvc.RunBy // 자동(Scheduler) vs 수동(User)
-		expectMsgContains []string      // 메시지에 포함되어야 할 문자열들
-		expectNilMsg      bool          // 메시지가 비어야 하는지
-		expectSnapshot    bool          // 스냅샷 업데이트가 필요한지
+		name string
+		// Input
+		runBy               tasksvc.RunBy
+		currentPerformances []*performance
+		prevPerformances    []*performance
+		supportsHTML        bool
+
+		// Expected Output
+		wantShouldSave    bool
+		wantMsgContent    []string // 메시지에 반드시 포함되어야 할 텍스트 조각들
+		wantMsgNotContent []string // 메시지에 절대 포함되어서는 안 될 텍스트 조각들
+		wantEmptyMsg      bool     // 메시지가 아예 비어있어야 하는지
 	}{
 		{
-			name:              "신규 공연 발견 (A 추가)",
-			current:           []*performance{perfA, perfB},
-			prev:              []*performance{perfB},
-			runBy:             tasksvc.RunByScheduler,
-			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", mark.New},
-			expectSnapshot:    true,
+			name:                "신규 공연 감지 (Scheduler) - 알림 발송 및 저장",
+			runBy:               tasksvc.RunByScheduler,
+			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
+			prevPerformances:    []*performance{}, // 이전 기록 없음 (완전 신규)
+			supportsHTML:        false,
+			wantShouldSave:      true,
+			wantMsgContent:      []string{"새로운 공연정보가 등록되었습니다", "뮤지컬 영웅"},
+			wantMsgNotContent:   []string{},
+			wantEmptyMsg:        false,
 		},
 		{
-			name:           "변동 없음",
-			current:        []*performance{perfA},
-			prev:           []*performance{perfA},
-			runBy:          tasksvc.RunByScheduler,
-			expectNilMsg:   true,
-			expectSnapshot: false,
+			name:                "변경 없음 (Scheduler) - 침묵 (알림 X, 저장 X)",
+			runBy:               tasksvc.RunByScheduler,
+			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
+			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")}, // 동일 데이터
+			supportsHTML:        false,
+			wantShouldSave:      false,
+			wantMsgContent:      []string{},
+			wantMsgNotContent:   []string{},
+			wantEmptyMsg:        true,
 		},
 		{
-			name:              "초기 실행 (Prev가 nil) - Scheduler",
-			current:           []*performance{perfA},
-			prev:              nil,
-			runBy:             tasksvc.RunByScheduler,
-			expectMsgContains: []string{"새로운 공연정보가 등록되었습니다", "A", mark.New},
-			expectSnapshot:    true,
+			name:                "변경 없음 (User) - 현황 보고 (알림 O, 저장 X)",
+			runBy:               tasksvc.RunByUser,
+			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
+			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")},
+			supportsHTML:        false,
+			wantShouldSave:      false, // 변경 사항 자체는 없으므로 저장할 필요 없음
+			wantMsgContent:      []string{"신규로 등록된 공연정보가 없습니다", "현재 등록된 공연정보는 아래와 같습니다", "뮤지컬 영웅"},
+			wantMsgNotContent:   []string{"새로운 공연정보가 등록되었습니다"},
+			wantEmptyMsg:        false,
 		},
 		{
-			name:              "사용자 수동 실행 - 변동 없어도 전체 목록 반환",
-			current:           []*performance{perfA},
-			prev:              []*performance{perfA},
-			runBy:             tasksvc.RunByUser,
-			expectMsgContains: []string{"현재 등록된 공연정보는 아래와 같습니다", "A"}, // New 마크 없어야 함
-			expectSnapshot:    false,
+			name:                "데이터 없음 (User) - 안내 메시지 (알림 O, 저장 X)",
+			runBy:               tasksvc.RunByUser,
+			currentPerformances: []*performance{}, // 수집된 공연 0개
+			prevPerformances:    []*performance{},
+			supportsHTML:        false,
+			wantShouldSave:      false,
+			wantMsgContent:      []string{"등록된 공연정보가 존재하지 않습니다"},
+			wantMsgNotContent:   []string{},
+			wantEmptyMsg:        false,
 		},
 		{
-			name:              "사용자 수동 실행 - 데이터 없음",
-			current:           []*performance{}, // Empty
-			prev:              nil,
-			runBy:             tasksvc.RunByUser,
-			expectMsgContains: []string{"등록된 공연정보가 존재하지 않습니다"},
-			expectSnapshot:    false,
+			name:                "부분 신규 감지 (Scheduler) - 신규 건만 알림",
+			runBy:               tasksvc.RunByScheduler,
+			currentPerformances: []*performance{createPerf("1", "기존 공연"), createPerf("2", "신규 공연")},
+			prevPerformances:    []*performance{createPerf("1", "기존 공연")},
+			supportsHTML:        false,
+			wantShouldSave:      true,
+			wantMsgContent:      []string{"새로운 공연정보가 등록되었습니다", "신규 공연"},
+			wantMsgNotContent:   []string{"기존 공연"}, // 변경 알림 메시지에는 신규 건만 나와야 함
+			wantEmptyMsg:        false,
 		},
 	}
 
@@ -518,46 +561,40 @@ func TestTask_DiffAndNotify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// *task 생성 (naver 패키지 내부이므로 접근 가능)
-			baseTask := tasksvc.NewBaseTask("TEST_TASK", "TEST_CMD", "TEST_INSTANCE", "TEST_NOTIFIER", tt.runBy)
+			// Setup Task
+			tsk := &task{}
+			tsk.SetRunBy(tt.runBy)
 
-			testTask := &task{
-				Task: baseTask,
+			// Prepare Snapshots
+			currentSnap := &watchNewPerformancesSnapshot{Performances: tt.currentPerformances}
+
+			// Map 변환
+			prevMap := make(map[string]bool)
+			for _, p := range tt.prevPerformances {
+				prevMap[p.Key()] = true
 			}
 
-			currentSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
-			var prevSnap *watchNewPerformancesSnapshot
-			if tt.prev != nil {
-				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
-			}
+			// Execute Logic
+			msg, shouldSave := tsk.analyzeAndReport(currentSnap, prevMap, tt.supportsHTML)
 
-			prevPerformancesSet := make(map[string]bool)
-			if prevSnap != nil {
-				for _, p := range prevSnap.Performances {
-					prevPerformancesSet[p.Key()] = true
-				}
-			}
+			// Verification
+			assert.Equal(t, tt.wantShouldSave, shouldSave, "ShouldSave 상태 불일치")
 
-			msg, shouldSave, err := testTask.diffAndNotify(currentSnap, prevPerformancesSet, false) // Text Mode Test
-
-			assert.NoError(t, err)
-
-			if tt.expectNilMsg {
-				assert.Empty(t, msg)
-				assert.False(t, shouldSave)
+			if tt.wantEmptyMsg {
+				assert.Empty(t, msg, "메시지가 비어있어야 합니다")
 			} else {
-				assert.NotEmpty(t, msg)
-				for _, s := range tt.expectMsgContains {
-					assert.Contains(t, msg, s)
+				assert.NotEmpty(t, msg, "메시지가 생성되어야 합니다")
+				for _, content := range tt.wantMsgContent {
+					assert.Contains(t, msg, content, "메시지에 필수 내용 누락")
 				}
+				for _, notContent := range tt.wantMsgNotContent {
+					assert.NotContains(t, msg, notContent, "메시지에 포함되지 말아야 할 내용 존재")
+				}
+			}
 
-				if tt.expectSnapshot {
-					assert.True(t, shouldSave)
-					// [Invariant Check] 저장하려는 경우 메시지는 반드시 존재해야 합니다.
-					assert.NotEmpty(t, msg, "Invariant Violation: 변경 사항이 있어 저장을 시도하지만 알림 메시지가 비어있습니다.")
-				} else {
-					assert.False(t, shouldSave)
-				}
+			// [Invariant Check]
+			if shouldSave {
+				assert.NotEmpty(t, msg, "[Invariant Failure] 변경 사항이 있어 저장(shouldSave=true)하려는데 알림 메시지가 없습니다.")
 			}
 		})
 	}
@@ -1032,14 +1069,12 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}
 
 	prevPerformancesSet := make(map[string]bool)
-	if prevSnap != nil {
-		for _, p := range prevSnap.Performances {
-			prevPerformancesSet[p.Key()] = true
-		}
+	for _, p := range prevSnap.Performances {
+		prevPerformancesSet[p.Key()] = true
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = testTask.diffAndNotify(currSnap, prevPerformancesSet, false)
+		_, _ = testTask.analyzeAndReport(currSnap, prevPerformancesSet, false)
 	}
 }

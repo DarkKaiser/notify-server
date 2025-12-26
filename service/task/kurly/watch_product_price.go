@@ -121,10 +121,7 @@ func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *wa
 
 	// 동기화된 데이터를 바탕으로 변경 사항을 감지하고 알림 메시지를 생성합니다.
 	// 이 메서드는 더 이상 데이터를 변경하지 않는 순수 함수(Pure Function)에 가깝게 동작합니다.
-	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prevProductsMap, records, duplicateRecords, supportsHTML)
-	if err != nil {
-		return "", nil, err
-	}
+	message, shouldSave := t.analyzeAndReport(currentSnapshot, prevProductsMap, records, duplicateRecords, supportsHTML)
 
 	if shouldSave {
 		// "변경 사항이 있다면(shouldSave=true), 반드시 알림 메시지도 존재해야 한다"는 규칙을 확인합니다.
@@ -355,24 +352,15 @@ func (t *task) syncLowestPrices(currentSnapshot, prevSnapshot *watchProductPrice
 }
 
 // @@@@@ 개선사항 존재유무 확인
-// diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
+// analyzeAndReport 수집된 데이터를 분석하여 사용자에게 보낼 알림 메시지를 생성합니다.
 //
-// [역할: Query (Side-effect Free)]
-// CQS(Command-Query Separation) 원칙에 따라, 본 메서드는 상태 변경 없이 오직 조회만 수행합니다.
-//
-// 앞서 동기화된 데이터(syncLowestPrices)를 바탕으로 변경 사항을 감지하고 알림을 생성하는
-// '순수 함수(Pure Function)'로서, 어떠한 데이터 변형도 일으키지 않습니다.
-//
-// [주요 기능]
-//  1. 상품 변경 감지: 가격 변동, 품절 상태 변경, 신규 상품 등록 등을 분석합니다.
-//  2. 데이터 정합성 검증: CSV 파일 내 중복 레코드 및 정보 수집 불가 상품을 식별합니다.
-//  3. 알림 메시지 조합: 감지된 모든 이벤트(변경, 중복, 불가)를 종합하여 사용자에게 발송할 최종 메시지를 생성합니다.
-//
-// [반환값]
-//   - message (string): 사용자에게 발송할 포맷팅된 알림 메시지
-//   - shouldSave (bool): 변경 사항 발생 여부 (true일 경우 스냅샷 저장 필요)
-//   - err (error): 처리 중 발생한 에러
-func (t *task) diffAndNotify(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product, records, duplicateRecords [][]string, supportsHTML bool) (message string, shouldSave bool, err error) {
+// [주요 동작]
+// 1. 변화 확인: 이전 데이터와 비교해 새로운 상품이나 가격 변동이 있는지 확인합니다.
+// 2. 메시지 작성: 발견된 변화를 보기 좋게 포맷팅합니다.
+// 3. 알림 결정:
+//   - 스케줄러 실행: 변화가 있을 때만 알림을 보냅니다. (조용히 모니터링)
+//   - 사용자 실행: 변화가 없어도 "변경 없음"이라고 알려줍니다. (확실한 피드백)
+func (t *task) analyzeAndReport(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product, records, duplicateRecords [][]string, supportsHTML bool) (message string, shouldSave bool) {
 	// 신규 상품 및 가격 변동을 식별합니다.
 	diffs := t.calculateProductDiffs(currentSnapshot, prevProductsMap)
 
@@ -394,7 +382,7 @@ func (t *task) diffAndNotify(currentSnapshot *watchProductPriceSnapshot, prevPro
 	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격이나 상태가 변했을 때만 저장하여 시스템 성능을 아낍니다.
 	hasChanges := len(diffs) > 0 || strutil.HasAnyContent(duplicateRecordsMessage, unavailableProductsMessage)
 
-	return message, hasChanges, nil
+	return message, hasChanges
 }
 
 // calculateProductDiffs 현재 상품 정보와 과거 상품 정보를 비교하여 사용자에게 알릴 만한 변화(Diff)를 찾아냅니다.

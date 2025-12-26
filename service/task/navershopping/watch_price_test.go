@@ -306,7 +306,59 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 	}
 }
 
-func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
+// TestTask_FetchProducts_URLVerification fetchProducts 메서드 호출 시
+// 내부적으로 생성되는 URL이 파라미터(쿼리, 페이징 등)에 따라 올바른지 집중적으로 검증합니다.
+func TestTask_FetchProducts_URLVerification(t *testing.T) {
+	t.Parallel()
+
+	defaultResponse := mustMarshal(searchResponse{Total: 0, Items: []*searchResponseItem{}})
+
+	tests := []struct {
+		name        string
+		settings    watchPriceSettings
+		expectedURL string
+	}{
+		{
+			name:        "기본 URL 생성 확인",
+			settings:    NewSettingsBuilder().WithQuery("macbook").Build(),
+			expectedURL: "https://openapi.naver.com/v1/search/shop.json?display=100&query=macbook&sort=sim&start=1",
+		},
+		{
+			name:        "특수문자 쿼리 인코딩 확인",
+			settings:    NewSettingsBuilder().WithQuery("A&B").Build(),
+			expectedURL: "https://openapi.naver.com/v1/search/shop.json?display=100&query=A%26B&sort=sim&start=1",
+		},
+		{
+			name:        "공백 쿼리 인코딩 확인",
+			settings:    NewSettingsBuilder().WithQuery("macbook air").Build(),
+			expectedURL: "https://openapi.naver.com/v1/search/shop.json?display=100&query=macbook+air&sort=sim&start=1",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockFetcher := testutil.NewMockHTTPFetcher()
+			// 어떤 URL이든 성공 응답을 주도록 설정 (URL 검증이 목적이므로 내용은 무관)
+			mockFetcher.SetResponse(tt.expectedURL, defaultResponse)
+
+			tsk := &task{clientID: "id", clientSecret: "secret"}
+			tsk.SetFetcher(mockFetcher)
+
+			_, err := tsk.fetchProducts(&tt.settings)
+
+			// URL 불일치 시 SetResponse에 없는 URL을 요청하게 되므로 에러 발생 ("no mock response found")
+			// 따라서 에러가 없으면 URL이 정확하다는 뜻입니다.
+			assert.NoError(t, err, "요청된 URL이 기대값과 다릅니다")
+		})
+	}
+}
+
+// TestTask_AnalyzeAndReport_TableDriven 네이버 쇼핑 알림 로직의 핵심인 analyzeAndReport 메서드를
+// 다양한 시나리오(Table-Driven)를 통해 철저하게 검증합니다.
+func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	// Base settings
@@ -324,15 +376,14 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 		runBy        tasksvc.RunBy
 		currentItems []*product
 		prevItems    []*product
-		checkMsg     func(*testing.T, string, bool, error)
+		checkMsg     func(*testing.T, string, bool)
 	}{
 		{
 			name:         "신규 상품 (New)",
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1, p2},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "상품 정보가 변경되었습니다")
 				assert.Contains(t, msg, "P2")
 				assert.Contains(t, msg, "🆕")
@@ -344,8 +395,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1Cheap},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "변경되었습니다")
 				assert.Contains(t, msg, "9,000원")
 				assert.Contains(t, msg, "(이전: 10,000원)")
@@ -358,8 +408,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1Expensive},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "11,000원")
 				assert.True(t, shouldSave)
 			},
@@ -369,8 +418,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Empty(t, msg)
 				assert.False(t, shouldSave)
 			},
@@ -380,8 +428,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByUser,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "변경된 정보가 없습니다")
 				assert.False(t, shouldSave)
 			},
@@ -391,8 +438,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByUser,
 			currentItems: []*product{},
 			prevItems:    []*product{},
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "상품이 존재하지 않습니다")
 			},
 		},
@@ -401,8 +447,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    nil,
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "변경되었습니다")
 			},
 		},
@@ -415,8 +460,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				NewProductBuilder().WithPrice(10000).WithTitle("C").Build(),
 			},
 			prevItems: nil,
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				// 메시지에 순서대로 나타나는지 확인 (10000원 A -> 10000원 C -> 20000원 B)
 				// strings.Index로 위치 비교
 				idxA := strings.Index(msg, "A")
@@ -428,23 +472,18 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				assert.Greater(t, idxC, -1)
 
 				assert.Less(t, idxA, idxC, "같은 가격일 때 이름순(A->C)이어야 함")
-				assert.Less(t, idxC, idxB, "가격 낮은 순(10000->20000)이어야 함")
+				assert.Less(t, idxC, idxB, "가격 오름차순(10000->20000)이어야 함")
 			},
 		},
 		{
-			name:  "대량 데이터 처리 (Benchmarks Memory Safety)",
-			runBy: tasksvc.RunByScheduler,
-			currentItems: func() []*product {
-				items := make([]*product, 1000)
-				for i := 0; i < 1000; i++ {
-					items[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(1000 + i).WithTitle("Item").Build()
-				}
-				return items
-			}(),
-			prevItems: nil,
-			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
-				require.NoError(t, err)
-				assert.NotEmpty(t, msg) // Panic 없이 메시지 생성 여부만 확인
+			name:         "대량 데이터 처리 (Benchmarks Memory Safety)",
+			runBy:        tasksvc.RunByScheduler,
+			currentItems: makeMockProducts(100), // 100개 동시 변경
+			prevItems:    []*product{},
+			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
+				assert.True(t, shouldSave)
+				assert.Contains(t, msg, "Product 99")
+				// 너무 긴 메시지 생성을 제한하는 로직이 있다면 여기서 검증 가능
 			},
 		},
 	}
@@ -455,8 +494,9 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			// Task 생성 및 RunBy 설정
-			tsk := &task{}
-			tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tt.runBy)
+			tsk := &task{
+				Task: tasksvc.NewBaseTask("T", "C", "I", "N", tt.runBy),
+			}
 
 			current := &watchPriceSnapshot{Products: tt.currentItems}
 			var prev *watchPriceSnapshot
@@ -471,14 +511,14 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				}
 			}
 
-			msg, shouldSave, err := tsk.diffAndNotify(&settings, current, prevMap, false)
-			tt.checkMsg(t, msg, shouldSave, err)
+			msg, shouldSave := tsk.analyzeAndReport(&settings, current, prevMap, false)
+			tt.checkMsg(t, msg, shouldSave)
 
 			// [Invariant Check] 전문가 수준의 방어적 테스트
 			// "변경 사항을 저장해야 한다면(shouldSave=true), 반드시 알림 메시지가 존재해야 한다(msg != "")"
 			// 이는 시스템의 데이터 무결성을 보장하는 핵심 불변식입니다.
 			if shouldSave {
-				assert.NotEmpty(t, msg, "Invariant Violation: shouldSave가 true이면 메시지는 비어있을 수 없습니다.")
+				assert.NotEmpty(t, msg, "Invariant Violation: shouldSave is true but message is empty")
 			}
 		})
 	}
@@ -629,6 +669,12 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			item:          item("   ", "100"),
 			wantProduct:   true,
 			expectedTitle: "   ", // 현재 로직상 Trim은 수행하지 않음 (strutil.StripHTMLTags에 의존)
+		},
+		{
+			name:          "성공: HTML 엔티티 디코딩 (ex: &amp; -> &)",
+			item:          item("MacBook Pro &amp; Air", "20000"),
+			wantProduct:   true,
+			expectedTitle: "MacBook Pro & Air",
 		},
 	}
 
@@ -983,7 +1029,7 @@ func BenchmarkTask_DiffAndNotify(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = tsk.diffAndNotify(&settings, currSnapshot, prevProductsMap, false)
+		_, _ = tsk.analyzeAndReport(&settings, currSnapshot, prevProductsMap, false)
 	}
 }
 
@@ -1002,4 +1048,18 @@ func BenchmarkTask_MapToProduct(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = tsk.mapToProduct(item)
 	}
+}
+
+// makeMockProducts 테스트용 상품 목록을 대량으로 생성하는 헬퍼 함수
+func makeMockProducts(count int) []*product {
+	products := make([]*product, count)
+	for i := 0; i < count; i++ {
+		id := fmt.Sprintf("%d", i)
+		products[i] = NewProductBuilder().
+			WithID(id).
+			WithTitle(fmt.Sprintf("Product %d", i)).
+			WithPrice(1000 + i).
+			Build()
+	}
+	return products
 }

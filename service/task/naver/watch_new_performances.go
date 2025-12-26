@@ -134,10 +134,7 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 	}
 
 	// 3. 신규 정보 확인 및 알림 메시지 생성
-	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prevPerformancesSet, supportsHTML)
-	if err != nil {
-		return "", nil, err
-	}
+	message, shouldSave := t.analyzeAndReport(currentSnapshot, prevPerformancesSet, supportsHTML)
 
 	if shouldSave {
 		// "변경 사항이 있다면(shouldSave=true), 반드시 알림 메시지도 존재해야 한다"는 규칙을 확인합니다.
@@ -371,8 +368,15 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	}, nil
 }
 
-// diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 공연을 확인하고 알림 메시지를 생성합니다.
-func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prevPerformancesSet map[string]bool, supportsHTML bool) (message string, shouldSave bool, err error) {
+// analyzeAndReport 수집된 데이터를 분석하여 사용자에게 보낼 알림 메시지를 생성합니다.
+//
+// [주요 동작]
+// 1. 변화 확인: 이전 데이터와 비교해 새로운 공연 정보가 등록되었는지 확인합니다.
+// 2. 메시지 작성: 발견된 신규 공연을 보기 좋게 포맷팅합니다.
+// 3. 알림 결정:
+//   - 스케줄러 실행: 신규 정보가 있을 때만 알림을 보냅니다. (조용히 모니터링)
+//   - 사용자 실행: 신규 정보가 없어도 "변경 없음"이라고 알려줍니다. (확실한 피드백)
+func (t *task) analyzeAndReport(currentSnapshot *watchNewPerformancesSnapshot, prevPerformancesSet map[string]bool, supportsHTML bool) (message string, shouldSave bool) {
 	// 신규 공연을 식별합니다.
 	diffs := t.calculatePerformanceDiffs(currentSnapshot, prevPerformancesSet)
 
@@ -380,7 +384,7 @@ func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prev
 	diffMessage := t.renderPerformanceDiffs(diffs, supportsHTML)
 
 	if len(diffs) > 0 {
-		return "새로운 공연정보가 등록되었습니다.\n\n" + diffMessage, true, nil
+		return "새로운 공연정보가 등록되었습니다.\n\n" + diffMessage, true
 	}
 
 	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
@@ -389,7 +393,7 @@ func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prev
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
 	if t.GetRunBy() == tasksvc.RunByUser {
 		if len(currentSnapshot.Performances) == 0 {
-			return "등록된 공연정보가 존재하지 않습니다.", false, nil
+			return "등록된 공연정보가 존재하지 않습니다.", false
 		}
 
 		var sb strings.Builder
@@ -403,10 +407,10 @@ func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prev
 			}
 			sb.WriteString(p.Render(supportsHTML, ""))
 		}
-		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), false, nil
+		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), false
 	}
 
-	return "", false, nil
+	return "", false
 }
 
 // calculatePerformanceDiffs 현재 스냅샷과 이전 스냅샷을 비교하여 신규 공연을 찾아냅니다.

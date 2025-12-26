@@ -397,8 +397,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				}
 			}
 
-			msg, shouldSave, err := tsk.diffAndNotify(curSnap, prevProductsMap, nil, nil, false)
-			require.NoError(t, err)
+			msg, shouldSave := tsk.analyzeAndReport(curSnap, prevProductsMap, nil, nil, false)
 
 			if len(tt.wantMsgContent) > 0 {
 				assert.NotEmpty(t, msg)
