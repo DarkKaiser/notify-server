@@ -294,19 +294,25 @@ func (t *task) extractPriceDetails(sel *goquery.Selection, product *product, pro
 //   - interface{}: DB에 저장할 갱신된 작업 결과 데이터 (변경 사항이 없을 경우 nil)
 //   - error: 처리 중 발생한 에러
 func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, records, duplicateRecords [][]string, supportsHTML bool) (string, interface{}, error) {
+	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
+	var prevProductMap map[int]*product
+	if prevSnapshot != nil {
+		prevProductMap = make(map[int]*product, len(prevSnapshot.Products))
+		for _, p := range prevSnapshot.Products {
+			prevProductMap[p.ID] = p
+		}
+	}
+
 	// 모든 상품의 최저가 정보를 최신으로 갱신합니다.
 	// 이로써 이후의 비교 로직은 순수한 '조회' 작업만 수행하게 됩니다.
 	for _, currentProduct := range currentSnapshot.Products {
 		// 크롤링으로 수집된 '현재 상태(Stateless)'에는 과거의 기록인 '역대 최저가' 정보가 부재합니다.
 		// 따라서 이전 실행 결과(Snapshot)로부터 누적된 최저가 데이터를 조회하여
 		// 현재 객체로 이월(Carry-over)하는 상태 복원(State Restoration) 과정을 수행합니다.
-		if prevSnapshot != nil {
-			for _, prevProduct := range prevSnapshot.Products {
-				if prevProduct.ID == currentProduct.ID {
-					currentProduct.LowestPrice = prevProduct.LowestPrice
-					currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
-					break
-				}
+		if prevProductMap != nil {
+			if prevProduct, exists := prevProductMap[currentProduct.ID]; exists {
+				currentProduct.LowestPrice = prevProduct.LowestPrice
+				currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
 			}
 		}
 
@@ -323,7 +329,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 	}
 
 	// 신규 상품 및 가격 변동을 식별합니다.
-	diffs := t.calculateProductDiffs(currentSnapshot, prevSnapshot)
+	diffs := t.calculateProductDiffs(currentSnapshot, prevProductMap)
 
 	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
 	productsDiffMessage := t.renderProductDiffs(diffs, supportsHTML)
@@ -351,23 +357,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 
 // @@@@@ 개선사항 존재유무 확인
 // calculateProductDiffs 두 스냅샷을 비교하여 유의미한 상태 변화(신규, 재입고, 가격 변동 등)를 식별합니다.
-func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchProductPriceSnapshot) []productDiff {
-	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
-	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
-	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
-	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
-	var prevProducts []*product
-	if prevSnapshot != nil {
-		prevProducts = prevSnapshot.Products
-	}
-
-	// @@@@@ 함수 호출전에 만들면 바깥에서도 쓸수 있음
-	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	prevProductMap := make(map[int]*product, len(prevProducts))
-	for _, p := range prevProducts {
-		prevProductMap[p.ID] = p
-	}
-
+func (t *task) calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductMap map[int]*product) []productDiff {
 	var diffs []productDiff
 
 	for _, currentProduct := range currentSnapshot.Products {
