@@ -23,6 +23,13 @@ const (
 	//  - "https://m.search.naver.com" 도메인을 사용하여 모바일 환경에 최적화된 데이터를 응답받습니다.
 	searchAPIBaseURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
 
+	// allocSizePerPerformance 알림 메시지 생성 시, 단일 공연 정보를 렌더링하는 데 필요한 예상 버퍼 크기(Byte)입니다.
+	//
+	// 이 상수는 `strings.Builder.Grow()`를 통해 내부 버퍼를 선제적으로 확보(Pre-allocation)하는 데 사용됩니다.
+	// 적절한 초기 용량을 설정함으로써, 메시지 조합 과정에서 발생하는 불필요한 슬라이스 재할당(Reallocation)과
+	// 데이터 복사(Memory Copy) 비용을 최소화하여 렌더링 성능을 최적화합니다.
+	allocSizePerPerformance = 300
+
 	// ------------------------------------------------------------------------------------------------
 	// CSS Selectors
 	// ------------------------------------------------------------------------------------------------
@@ -108,7 +115,7 @@ type keywordMatchers struct {
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
 func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
-	// 1. 최신 공연 정보 수집
+	// 1. 최신 공연 정보를 수집한다.
 	currentPerformances, err := t.fetchPerformances(commandSettings)
 	if err != nil {
 		return "", nil, err
@@ -119,20 +126,28 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 	}
 
 	// 2, 빠른 조회를 위해 이전 공연 목록을 Map(Set)으로 변환한다.
-	prePerformancesSet := make(map[string]bool)
+	prevPerformancesSet := make(map[string]bool)
 	if prevSnapshot != nil {
 		for _, p := range prevSnapshot.Performances {
-			prePerformancesSet[p.Key()] = true
+			prevPerformancesSet[p.Key()] = true
 		}
 	}
 
 	// 3. 신규 정보 확인 및 알림 메시지 생성
-	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prePerformancesSet, supportsHTML)
+	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prevPerformancesSet, supportsHTML)
 	if err != nil {
 		return "", nil, err
 	}
 
 	if shouldSave {
+		// "변경 사항이 있다면(shouldSave=true), 반드시 알림 메시지도 존재해야 한다"는 규칙을 확인합니다.
+		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
+		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
+		if message == "" {
+			t.LogWithContext("task.naver", logrus.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			return "", nil, nil
+		}
+
 		return message, currentSnapshot, nil
 	}
 
@@ -380,7 +395,7 @@ func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prev
 		var sb strings.Builder
 
 		// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
-		sb.Grow(len(currentSnapshot.Performances) * 300)
+		sb.Grow(len(currentSnapshot.Performances) * allocSizePerPerformance)
 
 		for i, p := range currentSnapshot.Performances {
 			if i > 0 {
@@ -421,7 +436,7 @@ func (t *task) renderPerformanceDiffs(diffs []performanceDiff, supportsHTML bool
 	var sb strings.Builder
 
 	// 예상 메시지 크기로 초기 용량 할당 (공연당 약 300바이트 추정)
-	sb.Grow(len(diffs) * 300)
+	sb.Grow(len(diffs) * allocSizePerPerformance)
 
 	for i, diff := range diffs {
 		if i > 0 {

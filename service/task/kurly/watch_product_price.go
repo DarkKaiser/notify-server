@@ -13,6 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tasksvc "github.com/darkkaiser/notify-server/service/task"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -123,6 +124,14 @@ func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *wa
 	}
 
 	if shouldSave {
+		// "변경 사항이 있다면(shouldSave=true), 반드시 알림 메시지도 존재해야 한다"는 규칙을 확인합니다.
+		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
+		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
+		if message == "" {
+			t.LogWithContext("task.kurly", logrus.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			return "", nil, nil
+		}
+
 		return message, currentSnapshot, nil
 	}
 

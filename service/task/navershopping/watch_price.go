@@ -27,6 +27,13 @@ const (
 	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
 	searchAPIURL = "https://openapi.naver.com/v1/search/shop.json"
 
+	// allocSizePerProduct 알림 메시지 생성 시, 단일 상품 정보를 렌더링하는 데 필요한 예상 버퍼 크기(Byte)입니다.
+	//
+	// 이 상수는 `strings.Builder.Grow()`를 통해 내부 버퍼를 선제적으로 확보(Pre-allocation)하는 데 사용됩니다.
+	// 적절한 초기 용량을 설정함으로써, 메시지 조합 과정에서 발생하는 불필요한 슬라이스 재할당(Reallocation)과
+	// 데이터 복사(Memory Copy) 비용을 최소화하여 렌더링 성능을 최적화합니다.
+	allocSizePerProduct = 300
+
 	// ------------------------------------------------------------------------------------------------
 	// API 매개변수 설정
 	// ------------------------------------------------------------------------------------------------
@@ -106,7 +113,7 @@ type searchResponseItem struct {
 
 // executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
 func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
-	// 1. 상품 정보 수집 및 키워드 매칭
+	// 1. 상품 정보를 수집한다.
 	currentProducts, err := t.fetchProducts(commandSettings)
 	if err != nil {
 		return "", nil, err
@@ -131,6 +138,14 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 	}
 
 	if shouldSave {
+		// "변경 사항이 있다면(shouldSave=true), 반드시 알림 메시지도 존재해야 한다"는 규칙을 확인합니다.
+		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
+		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
+		if message == "" {
+			t.LogWithContext("task.navershopping", logrus.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			return "", nil, nil
+		}
+
 		return message, currentSnapshot, nil
 	}
 
@@ -275,7 +290,7 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		t.LogWithContext("task.navershopping", logrus.DebugLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", logrus.Fields{
+		t.LogWithContext("task.navershopping", logrus.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", logrus.Fields{
 			"product_id":      item.ProductID,
 			"product_type":    item.ProductType,
 			"title":           item.Title,
@@ -312,7 +327,6 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
 	diffMessage := t.renderProductDiffs(diffs, supportsHTML)
 
-	// [알림 메시지 생성 및 반환]
 	// 변경 내역(New/Price Change)이 집계된 경우, 즉시 알림 메시지를 구성하여 반환합니다.
 	if len(diffs) > 0 {
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
@@ -333,14 +347,14 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 
 		var sb strings.Builder
 
-		// 예상 메시지 크기로 초기 용량 할당 (상품당 약 300바이트 추정)
-		sb.Grow(len(currentSnapshot.Products) * 300)
+		// 예상 메시지 크기로 초기 용량 할당 (상수 기반 최적화)
+		sb.Grow(len(currentSnapshot.Products) * allocSizePerProduct)
 
 		for i, p := range currentSnapshot.Products {
 			if i > 0 {
 				sb.WriteString("\n\n")
 			}
-			sb.WriteString(p.Render(supportsHTML, "", nil))
+			sb.WriteString(p.Render(supportsHTML, ""))
 		}
 
 		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
@@ -406,8 +420,8 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 
 	var sb strings.Builder
 
-	// 예상 메시지 크기로 초기 용량 할당 (상품당 약 300바이트 추정)
-	sb.Grow(len(diffs) * 300)
+	// 예상 메시지 크기로 초기 용량 할당 (상수 기반 최적화)
+	sb.Grow(len(diffs) * allocSizePerProduct)
 
 	for i, diff := range diffs {
 		if i > 0 {
@@ -416,9 +430,9 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 
 		switch diff.Type {
 		case eventNewProduct:
-			sb.WriteString(diff.Product.Render(supportsHTML, mark.New, nil))
+			sb.WriteString(diff.Product.Render(supportsHTML, mark.New))
 		case eventPriceChanged:
-			sb.WriteString(diff.Product.Render(supportsHTML, mark.Change, diff.Prev))
+			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Change, diff.Prev))
 		}
 	}
 

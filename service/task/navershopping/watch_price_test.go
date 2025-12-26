@@ -473,6 +473,13 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 
 			msg, shouldSave, err := tsk.diffAndNotify(&settings, current, prevMap, false)
 			tt.checkMsg(t, msg, shouldSave, err)
+
+			// [Invariant Check] 전문가 수준의 방어적 테스트
+			// "변경 사항을 저장해야 한다면(shouldSave=true), 반드시 알림 메시지가 존재해야 한다(msg != "")"
+			// 이는 시스템의 데이터 무결성을 보장하는 핵심 불변식입니다.
+			if shouldSave {
+				assert.NotEmpty(t, msg, "Invariant Violation: shouldSave가 true이면 메시지는 비어있을 수 없습니다.")
+			}
 		})
 	}
 }

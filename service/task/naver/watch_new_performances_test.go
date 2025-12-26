@@ -370,11 +370,13 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 	}
 }
 
-// TestRenderPerformanceDiffs 알림 메시지 생성 로직을 검증합니다. (Text vs HTML)
-func TestRenderPerformanceDiffs(t *testing.T) {
+// TestTask_RenderPerformanceDiffs 알림 메시지 생성 로직을 검증합니다. (Text vs HTML)
+// 이 테스트는 renderPerformanceDiffs 메서드가 각 포맷(HTML, Text)에 맞춰 올바르게 렌더링하는지,
+// 특히 신규 공연(eventNewPerformance)에 대해 Render 메서드를 사용하여 일관된 출력을 보장하는지 확인합니다.
+func TestTask_RenderPerformanceDiffs(t *testing.T) {
 	t.Parallel()
 
-	// Link 필드 없이 초기화
+	// 테스트 데이터 준비
 	p1 := &performance{Title: "Cats", Place: "Seoul"}
 	diffNew := performanceDiff{Type: eventNewPerformance, Performance: p1}
 
@@ -385,38 +387,54 @@ func TestRenderPerformanceDiffs(t *testing.T) {
 		name         string
 		diffs        []performanceDiff
 		supportsHTML bool
-		wantContains []string
-		wantMissing  []string
+		validate     func(t *testing.T, msg string)
 	}{
 		{
-			name:         "Diff 없음 -> 빈 문자열",
+			name:         "Diff 없음 -> 빈 문자열 반환",
 			diffs:        nil,
 			supportsHTML: false,
-			wantContains: nil,              // Empty
-			wantMissing:  []string{"Cats"}, // 내용이 없어야 함
+			validate: func(t *testing.T, msg string) {
+				assert.Empty(t, msg)
+			},
 		},
 		{
-			name:         "HTML 모드: 링크 태그 포함",
+			name:         "HTML 모드: 링크 태그 및 스타일 포함 확인",
 			diffs:        []performanceDiff{diffNew},
 			supportsHTML: true,
-			wantContains: []string{
-				mark.New, // [NEW] 마크
-				fmt.Sprintf(`<a href="%s?query=Cats"><b>Cats</b></a>`, "https://search.naver.com/search.naver"), // HTML 링크 포맷
-				"Seoul",
+			validate: func(t *testing.T, msg string) {
+				assert.Contains(t, msg, mark.New, "신규 마크가 포함되어야 합니다")
+				assert.Contains(t, msg, fmt.Sprintf(`<a href="%s?query=Cats"><b>Cats</b></a>`, searchResultPageURL), "HTML 링크 포맷이 올바라야 합니다")
+				assert.Contains(t, msg, "Seoul")
 			},
 		},
 		{
-			name:         "Text 모드: 링크 태그 미포함",
+			name:         "Text 모드: HTML 태그 제거 및 텍스트 포맷 확인",
 			diffs:        []performanceDiff{diffNew},
 			supportsHTML: false,
-			wantContains: []string{
-				mark.New,
-				"Cats",
-				"Seoul",
+			validate: func(t *testing.T, msg string) {
+				assert.Contains(t, msg, mark.New)
+				assert.Contains(t, msg, "Cats")
+				assert.Contains(t, msg, "Seoul")
+
+				// Negative Assertion (Text 모드에서는 HTML 태그가 없어야 함)
+				assert.NotContains(t, msg, "<a href=", "Text 모드에서는 앵커 태그가 없어야 합니다")
+				assert.NotContains(t, msg, "<b>", "Text 모드에서는 볼드 태그가 없어야 합니다")
+				assert.NotContains(t, msg, expectedLink, "Render 메서드는 Text 모드에서 URL을 직접 노출하지 않아야 합니다") // performance.go의 Render 구현 의도 확인
 			},
-			wantMissing: []string{
-				`<a href=`,   // 태그는 없어야 함
-				expectedLink, // 텍스트 모드에서는 URL이 직접 노출되지 않음 (Render 내부 로직 확인됨)
+		},
+		{
+			name: "복수 항목 렌더링 (구분자 확인)",
+			diffs: []performanceDiff{
+				{Type: eventNewPerformance, Performance: &performance{Title: "A", Place: "P1"}},
+				{Type: eventNewPerformance, Performance: &performance{Title: "B", Place: "P2"}},
+			},
+			supportsHTML: false,
+			validate: func(t *testing.T, msg string) {
+				// 두 항목 사이에 줄바꿈 구분자가 있는지 확인
+				assert.Contains(t, msg, "A")
+				assert.Contains(t, msg, "B")
+				// strings.Join이나 루프 내 구분자 처리가 올바른지 확인 (Code: sb.WriteString("\n\n"))
+				assert.Contains(t, msg, "\n\n", "항목 간에는 개행 문자로 구분되어야 합니다")
 			},
 		},
 	}
@@ -429,16 +447,8 @@ func TestRenderPerformanceDiffs(t *testing.T) {
 			taskInstance := &task{}
 			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
-			if len(tt.diffs) == 0 {
-				assert.Empty(t, gotMsg)
-			} else {
-				assert.NotEmpty(t, gotMsg)
-				for _, s := range tt.wantContains {
-					assert.Contains(t, gotMsg, s)
-				}
-				for _, s := range tt.wantMissing {
-					assert.NotContains(t, gotMsg, s)
-				}
+			if tt.validate != nil {
+				tt.validate(t, gotMsg)
 			}
 		})
 	}
@@ -543,6 +553,8 @@ func TestTask_DiffAndNotify(t *testing.T) {
 
 				if tt.expectSnapshot {
 					assert.True(t, shouldSave)
+					// [Invariant Check] 저장하려는 경우 메시지는 반드시 존재해야 합니다.
+					assert.NotEmpty(t, msg, "Invariant Violation: 변경 사항이 있어 저장을 시도하지만 알림 메시지가 비어있습니다.")
 				} else {
 					assert.False(t, shouldSave)
 				}

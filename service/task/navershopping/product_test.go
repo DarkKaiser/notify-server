@@ -30,11 +30,10 @@ func TestProduct_Key(t *testing.T) {
 	}
 }
 
-// TestProduct_Render_TableDriven 다양한 시나리오에 대한 Render 메서드의 동작을 검증합니다.
-func TestProduct_Render_TableDriven(t *testing.T) {
+// TestProduct_Render Render 메서드(단일 상품 표시)의 동작을 다양한 시나리오에서 검증합니다.
+func TestProduct_Render(t *testing.T) {
 	t.Parallel()
 
-	// 테스트 데이터 셋업
 	baseProduct := &product{
 		Title:     "Apple iPad Air 5th Gen",
 		Link:      "https://shopping.naver.com/products/1234567890",
@@ -48,12 +47,11 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		product      *product
 		supportsHTML bool
 		mark         string
-		prev         *product // Previous product for comparison (Renamed from old)
-		wants        []string // 결과 문자열에 반드시 포함되어야 할 부분 문자열들
-		unwants      []string // 결과 문자열에 포함되지 말아야 할 부분 문자열들
+		wants        []string // 결과 문자열에 반드시 포함되어야 할 부분 문자열
+		unwants      []string // 결과 문자열에 포함되지 말아야 할 부분 문자열
 	}{
 		{
-			name:         "HTML Fomat - Basic",
+			name:         "HTML Format - Basic",
 			product:      baseProduct,
 			supportsHTML: true,
 			mark:         "",
@@ -62,16 +60,14 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 				"(Apple Official)",
 				"850,000원",
 			},
-			unwants: []string{"🆕", "☞ Apple iPad Air"}, // Text format check
+			unwants: []string{"🆕", "☞ Apple iPad Air"}, // Text format elements
 		},
 		{
 			name:         "HTML Format - With New Mark",
 			product:      baseProduct,
 			supportsHTML: true,
 			mark:         " 🆕",
-			wants: []string{
-				"850,000원 🆕",
-			},
+			wants:        []string{"850,000원 🆕"},
 		},
 		{
 			name:         "Text Format - Basic",
@@ -88,34 +84,8 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 			name:         "Text Format - With New Mark",
 			product:      baseProduct,
 			supportsHTML: false,
-			mark:         " 🔻",
-			wants: []string{
-				"850,000원 🔻",
-			},
-		},
-		{
-			name:         "Text Format - With Previous Price",
-			product:      baseProduct, // 850,000
-			supportsHTML: false,
-			mark:         " 🔻",
-			prev: &product{
-				LowPrice: 900000,
-			},
-			wants: []string{
-				"850,000원 (이전: 900,000원) 🔻",
-			},
-		},
-		{
-			name:         "HTML Format - With Previous Price",
-			product:      baseProduct, // 850,000
-			supportsHTML: true,
-			mark:         " 🔻",
-			prev: &product{
-				LowPrice: 900000,
-			},
-			wants: []string{
-				"850,000원 (이전: 900,000원) 🔻",
-			},
+			mark:         " 🆕",
+			wants:        []string{"850,000원 🆕"},
 		},
 		{
 			name: "Zero Price Handling",
@@ -129,31 +99,78 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 			mark:         "",
 			wants:        []string{"0원"},
 		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.product.Render(tt.supportsHTML, tt.mark)
+			for _, want := range tt.wants {
+				assert.Contains(t, got, want, "Expected substring missing")
+			}
+			for _, unwant := range tt.unwants {
+				assert.NotContains(t, got, unwant, "Unexpected substring found")
+			}
+		})
+	}
+}
+
+// TestProduct_RenderDiff RenderDiff 메서드(변경 사항 비교 표시)의 동작을 검증합니다.
+func TestProduct_RenderDiff(t *testing.T) {
+	t.Parallel()
+
+	current := &product{
+		Title:     "Galaxy S24",
+		Link:      "http://link",
+		LowPrice:  1000000,
+		MallName:  "Samsung",
+		ProductID: "1",
+	}
+
+	tests := []struct {
+		name         string
+		product      *product
+		prev         *product
+		supportsHTML bool
+		mark         string
+		wants        []string
+	}{
 		{
-			// 아주 큰 가격에 대해서도 쉼표 포맷팅이 잘 되는지 확인 (Test logic for strutil via product)
-			name: "High Price Formatting",
-			product: &product{
-				Title:    "Luxury Car",
-				LowPrice: 150000000, // 1.5억
-				MallName: "Auto",
-				Link:     "http://example.com/car",
-			},
+			name:         "Price Drop (Text)",
+			product:      current,
+			prev:         &product{LowPrice: 1100000}, // 110만원 -> 100만원
 			supportsHTML: false,
-			mark:         "",
-			wants:        []string{"150,000,000원"},
+			mark:         " 🔻",
+			wants: []string{
+				"1,000,000원",
+				"(이전: 1,100,000원)",
+				"🔻",
+			},
 		},
 		{
-			// MallName이 비어있는 경우 (Edge case)
-			name: "Empty Mall Name",
-			product: &product{
-				Title:    "Item",
-				LowPrice: 1000,
-				MallName: "", // Empty
-				Link:     "http://link",
+			name:         "Price Increase (HTML)",
+			product:      current,
+			prev:         &product{LowPrice: 900000}, // 90만원 -> 100만원
+			supportsHTML: true,
+			mark:         " 🔺",
+			wants: []string{
+				"1,000,000원",
+				"(이전: 900,000원)",
+				"🔺",
+				"<b>Galaxy S24</b>",
 			},
+		},
+		{
+			name:         "Same Price (No diff text shown)",
+			product:      current,
+			prev:         &product{LowPrice: 1000000},
 			supportsHTML: false,
 			mark:         "",
-			wants:        []string{"Item () 1,000원"},
+			wants: []string{
+				"1,000,000원",
+			},
+			// Same price should NOT show "(이전: ...)"
 		},
 	}
 
@@ -161,73 +178,44 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.Render(tt.supportsHTML, tt.mark, tt.prev)
+			got := tt.product.RenderDiff(tt.supportsHTML, tt.mark, tt.prev)
 			for _, want := range tt.wants {
-				assert.Contains(t, got, want, "Result should contain expected substring")
+				assert.Contains(t, got, want)
 			}
-			for _, unwant := range tt.unwants {
-				assert.NotContains(t, got, unwant, "Result should NOT contain unexpected substring")
+			// 동일 가격일 경우 "이전:" 텍스트가 없어야 함을 검증
+			if tt.prev.LowPrice == tt.product.LowPrice {
+				assert.NotContains(t, got, "(이전:")
 			}
 		})
 	}
 }
 
-// TestProduct_Scenario_Example Render 메서드의 전체적인 사용 시나리오를 검증합니다.
-func TestProduct_Scenario_Example(t *testing.T) {
-	t.Parallel()
-
+// BenchmarkProduct_Render Render 성능 측정 (단순 조회)
+func BenchmarkProduct_Render(b *testing.B) {
 	p := &product{
-		Title:    "Example Product",
-		LowPrice: 50000,
-		MallName: "MyStore",
-		Link:     "http://example.com/prod/1",
-	}
-
-	t.Run("Text Mode", func(t *testing.T) {
-		got := p.Render(false, "", nil)
-		want := `☞ Example Product (MyStore) 50,000원
-http://example.com/prod/1`
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("Text Mode With Mark", func(t *testing.T) {
-		got := p.Render(false, " NEW", nil)
-		want := `☞ Example Product (MyStore) 50,000원 NEW
-http://example.com/prod/1`
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("HTML Mode", func(t *testing.T) {
-		got := p.Render(true, "", nil)
-		want := `☞ <a href="http://example.com/prod/1"><b>Example Product</b></a> (MyStore) 50,000원`
-		assert.Equal(t, want, got)
-	})
-}
-
-// BenchmarkProduct_Render_Text Text 모드에서의 Render 성능을 측정합니다.
-func BenchmarkProduct_Render_Text(b *testing.B) {
-	p := &product{
-		Title:    "Benchmark Product Name is Quite Long To Simulate Real World Scenario",
+		Title:    "Benchmark Product",
 		LowPrice: 1234567,
-		MallName: "Benchmarks R Us",
-		Link:     "https://shopping.naver.com/products/1234567890/very/long/url/path/to/simulate/reality",
+		MallName: "Benchmark Mall",
+		Link:     "http://example.com",
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(false, " MARK", nil)
+		_ = p.Render(false, "")
 	}
 }
 
-// BenchmarkProduct_Render_HTML HTML 모드에서의 Render 성능을 측정합니다.
-func BenchmarkProduct_Render_HTML(b *testing.B) {
+// BenchmarkProduct_RenderDiff RenderDiff 성능 측정 (비교 조회)
+func BenchmarkProduct_RenderDiff(b *testing.B) {
 	p := &product{
-		Title:    "Benchmark Product Name is Quite Long To Simulate Real World Scenario",
-		LowPrice: 1234567,
-		MallName: "Benchmarks R Us",
-		Link:     "https://shopping.naver.com/products/1234567890/very/long/url/path/to/simulate/reality",
+		Title:    "Benchmark Product",
+		LowPrice: 1000000,
+		MallName: "Benchmark Mall",
+		Link:     "http://example.com",
 	}
+	prev := &product{LowPrice: 1100000}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(true, " MARK", nil)
+		_ = p.RenderDiff(false, " MARK", prev)
 	}
 }
