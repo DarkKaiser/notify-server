@@ -116,8 +116,25 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 		Products: currentProducts,
 	}
 
-	// 2. 신규 상품 확인 및 알림 메시지 생성
-	return t.diffAndNotify(commandSettings, currentSnapshot, prevSnapshot, supportsHTML)
+	// 2. 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
+	prevProductsMap := make(map[string]*product)
+	if prevSnapshot != nil {
+		for _, p := range prevSnapshot.Products {
+			prevProductsMap[p.Key()] = p
+		}
+	}
+
+	// 3. 신규 상품 확인 및 알림 메시지 생성
+	message, shouldSave, err := t.diffAndNotify(commandSettings, currentSnapshot, prevProductsMap, supportsHTML)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if shouldSave {
+		return message, currentSnapshot, nil
+	}
+
+	return message, nil, nil
 }
 
 // fetchProducts 네이버 쇼핑 검색 API를 호출하여 조건에 맞는 상품 목록을 수집합니다.
@@ -287,10 +304,10 @@ func (t *task) isPriceEligible(price, priceLessThan int) bool {
 }
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 상품을 확인하고 알림 메시지를 생성합니다.
-func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapshot *watchPriceSnapshot, prevProductsMap map[string]*product, supportsHTML bool) (message string, shouldSave bool, err error) {
 	// 신규 상품 및 가격 변동을 식별합니다.
 	// (단순 비교뿐만 아니라, 사용자 편의를 위한 정렬 로직이 포함됩니다)
-	diffs := t.calculateProductDiffs(currentSnapshot, prevSnapshot)
+	diffs := t.calculateProductDiffs(currentSnapshot, prevProductsMap)
 
 	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
 	diffMessage := t.renderProductDiffs(diffs, supportsHTML)
@@ -300,11 +317,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 	if len(diffs) > 0 {
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
 
-		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s",
-				searchConditionsSummary,
-				diffMessage),
-			currentSnapshot,
-			nil
+		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s", searchConditionsSummary, diffMessage), true, nil
 	}
 
 	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
@@ -315,10 +328,7 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
 
 		if len(currentSnapshot.Products) == 0 {
-			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s",
-					searchConditionsSummary),
-				nil,
-				nil
+			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", searchConditionsSummary), false, nil
 		}
 
 		var sb strings.Builder
@@ -334,18 +344,17 @@ func (t *task) diffAndNotify(commandSettings *watchPriceSettings, currentSnapsho
 		}
 
 		return fmt.Sprintf("조회 조건에 해당되는 상품의 변경된 정보가 없습니다.\n\n%s\n\n조회 조건에 해당되는 상품은 아래와 같습니다:\n\n%s",
-				searchConditionsSummary,
-				sb.String()),
-			nil,
+				searchConditionsSummary, sb.String()),
+			false,
 			nil
 	}
 
-	return "", nil, nil
+	return "", false, nil
 }
 
 // calculateProductDiffs 현재 스냅샷과 이전 스냅샷을 비교하여 신규 상품이나 가격 변동을 찾아냅니다.
 // 즉, 이전에 없던 새로운 상품이 발견되거나 가격이 바뀐 경우 이를 결과 목록에 담아 반환합니다.
-func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchPriceSnapshot) []productDiff {
+func (t *task) calculateProductDiffs(currentSnapshot *watchPriceSnapshot, prevProductsMap map[string]*product) []productDiff {
 	// 상품 목록을 가격 오름차순으로 정렬하여 사용자가 가장 저렴한 상품을 먼저 확인할 수 있도록 합니다.
 	// 가격이 동일한 경우, 일관된 순서를 보장하기 위해 상품명으로 2차 정렬을 수행합니다.
 	sort.Slice(currentSnapshot.Products, func(i, j int) bool {
@@ -360,25 +369,10 @@ func (t *task) calculateProductDiffs(currentSnapshot, prevSnapshot *watchPriceSn
 		return p1.Title < p2.Title
 	})
 
-	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
-	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
-	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
-	// 2. 현재 수집된 모든 상품 정보를 '신규'로 식별되도록 유도합니다. (Logic)
-	var prevProducts []*product
-	if prevSnapshot != nil {
-		prevProducts = prevSnapshot.Products
-	}
-
-	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	prevProductMap := make(map[string]*product, len(prevProducts))
-	for _, p := range prevProducts {
-		prevProductMap[p.Key()] = p
-	}
-
 	var diffs []productDiff
 
 	for _, currrentProduct := range currentSnapshot.Products {
-		prevProduct, exists := prevProductMap[currrentProduct.Key()]
+		prevProduct, exists := prevProductsMap[currrentProduct.Key()]
 
 		if !exists {
 			// 이전 스냅샷에 존재하지 않는 상품 키(ProductID)가 감지되었습니다.

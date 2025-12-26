@@ -324,19 +324,19 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 		runBy        tasksvc.RunBy
 		currentItems []*product
 		prevItems    []*product
-		checkMsg     func(*testing.T, string, interface{}, error)
+		checkMsg     func(*testing.T, string, bool, error)
 	}{
 		{
 			name:         "신규 상품 (New)",
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1, p2},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "상품 정보가 변경되었습니다")
 				assert.Contains(t, msg, "P2")
 				assert.Contains(t, msg, "🆕")
-				assert.NotNil(t, data)
+				assert.True(t, shouldSave)
 			},
 		},
 		{
@@ -344,13 +344,13 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1Cheap},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "변경되었습니다")
 				assert.Contains(t, msg, "9,000원")
 				assert.Contains(t, msg, "(이전: 10,000원)")
 				assert.Contains(t, msg, "L_NEW") // Stale Link Check: 최신 링크 사용 여부
-				assert.NotNil(t, data)
+				assert.True(t, shouldSave)
 			},
 		},
 		{
@@ -358,10 +358,10 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1Expensive},
 			prevItems:    []*product{p1},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "11,000원")
-				assert.NotNil(t, data)
+				assert.True(t, shouldSave)
 			},
 		},
 		{
@@ -369,10 +369,10 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Empty(t, msg)
-				assert.Nil(t, data)
+				assert.False(t, shouldSave)
 			},
 		},
 		{
@@ -380,10 +380,10 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByUser,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "변경된 정보가 없습니다")
-				assert.Nil(t, data)
+				assert.False(t, shouldSave)
 			},
 		},
 		{
@@ -391,7 +391,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByUser,
 			currentItems: []*product{},
 			prevItems:    []*product{},
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "상품이 존재하지 않습니다")
 			},
@@ -401,7 +401,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 			runBy:        tasksvc.RunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    nil,
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, msg, "변경되었습니다")
 			},
@@ -415,7 +415,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				NewProductBuilder().WithPrice(10000).WithTitle("C").Build(),
 			},
 			prevItems: nil,
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				// 메시지에 순서대로 나타나는지 확인 (10000원 A -> 10000원 C -> 20000원 B)
 				// strings.Index로 위치 비교
@@ -442,7 +442,7 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				return items
 			}(),
 			prevItems: nil,
-			checkMsg: func(t *testing.T, msg string, data interface{}, err error) {
+			checkMsg: func(t *testing.T, msg string, shouldSave bool, err error) {
 				require.NoError(t, err)
 				assert.NotEmpty(t, msg) // Panic 없이 메시지 생성 여부만 확인
 			},
@@ -464,8 +464,15 @@ func TestTask_DiffAndNotify_TableDriven(t *testing.T) {
 				prev = &watchPriceSnapshot{Products: tt.prevItems}
 			}
 
-			msg, data, err := tsk.diffAndNotify(&settings, current, prev, false)
-			tt.checkMsg(t, msg, data, err)
+			prevMap := make(map[string]*product)
+			if prev != nil {
+				for _, p := range prev.Products {
+					prevMap[p.Key()] = p
+				}
+			}
+
+			msg, shouldSave, err := tsk.diffAndNotify(&settings, current, prevMap, false)
+			tt.checkMsg(t, msg, shouldSave, err)
 		})
 	}
 }
@@ -773,7 +780,13 @@ func TestCalculateProductDiffs(t *testing.T) {
 			}
 
 			// Execute
-			diffs := taskInstance.calculateProductDiffs(currSnap, prevSnap)
+			prevProductsMap := make(map[string]*product)
+			if prevSnap != nil {
+				for _, p := range prevSnap.Products {
+					prevProductsMap[p.Key()] = p
+				}
+			}
+			diffs := taskInstance.calculateProductDiffs(currSnap, prevProductsMap)
 
 			// Verify Diffs
 			assert.Len(t, diffs, len(tt.expectedDiffs))
@@ -954,9 +967,16 @@ func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	prevSnapshot := &watchPriceSnapshot{Products: prevItems}
 	currSnapshot := &watchPriceSnapshot{Products: currItems}
 
+	prevProductsMap := make(map[string]*product)
+	if prevSnapshot != nil {
+		for _, p := range prevSnapshot.Products {
+			prevProductsMap[p.Key()] = p
+		}
+	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = tsk.diffAndNotify(&settings, currSnapshot, prevSnapshot, false)
+		_, _, _ = tsk.diffAndNotify(&settings, currSnapshot, prevProductsMap, false)
 	}
 }
 

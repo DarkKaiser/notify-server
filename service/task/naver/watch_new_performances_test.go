@@ -347,7 +347,13 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
 			}
 
-			gotDiffs := taskInstance.calculatePerformanceDiffs(currSnap, prevSnap)
+			prevPerformancesSet := make(map[string]bool)
+			if prevSnap != nil {
+				for _, p := range prevSnap.Performances {
+					prevPerformancesSet[p.Key()] = true
+				}
+			}
+			gotDiffs := taskInstance.calculatePerformanceDiffs(currSnap, prevPerformancesSet)
 
 			assert.Equal(t, len(tt.expectedDiffs), len(gotDiffs), "Diff 개수가 일치해야 합니다")
 
@@ -515,13 +521,20 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
 			}
 
-			msg, newSnapData, err := testTask.diffAndNotify(currentSnap, prevSnap, false) // Text Mode Test
+			prevPerformancesSet := make(map[string]bool)
+			if prevSnap != nil {
+				for _, p := range prevSnap.Performances {
+					prevPerformancesSet[p.Key()] = true
+				}
+			}
+
+			msg, shouldSave, err := testTask.diffAndNotify(currentSnap, prevPerformancesSet, false) // Text Mode Test
 
 			assert.NoError(t, err)
 
 			if tt.expectNilMsg {
 				assert.Empty(t, msg)
-				assert.Nil(t, newSnapData)
+				assert.False(t, shouldSave)
 			} else {
 				assert.NotEmpty(t, msg)
 				for _, s := range tt.expectMsgContains {
@@ -529,13 +542,9 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				}
 
 				if tt.expectSnapshot {
-					assert.NotNil(t, newSnapData)
-					// 스냅샷 데이터 검증
-					snap, ok := newSnapData.(*watchNewPerformancesSnapshot)
-					assert.True(t, ok)
-					assert.Equal(t, len(tt.current), len(snap.Performances))
+					assert.True(t, shouldSave)
 				} else {
-					assert.Nil(t, newSnapData)
+					assert.False(t, shouldSave)
 				}
 			}
 		})
@@ -1010,8 +1019,15 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}
 
+	prevPerformancesSet := make(map[string]bool)
+	if prevSnap != nil {
+		for _, p := range prevSnap.Performances {
+			prevPerformancesSet[p.Key()] = true
+		}
+	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = testTask.diffAndNotify(currSnap, prevSnap, false)
+		_, _, _ = testTask.diffAndNotify(currSnap, prevPerformancesSet, false)
 	}
 }

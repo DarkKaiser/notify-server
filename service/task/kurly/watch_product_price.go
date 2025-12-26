@@ -111,7 +111,22 @@ func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *wa
 		currentSnapshot.Products = append(currentSnapshot.Products, product)
 	}
 
-	return t.diffAndNotify(currentSnapshot, prevSnapshot, records, duplicateRecords, supportsHTML)
+	// 이전 스냅샷의 정보를 바탕으로 현재 수집된 상품들의 최저가 정보를 최신화합니다.
+	// 이 과정에서 데이터의 승계(Carry-over)와 갱신(Update)이 이루어집니다.
+	prevProductsMap := t.syncLowestPrices(currentSnapshot, prevSnapshot)
+
+	// 동기화된 데이터를 바탕으로 변경 사항을 감지하고 알림 메시지를 생성합니다.
+	// 이 메서드는 더 이상 데이터를 변경하지 않는 순수 함수(Pure Function)에 가깝게 동작합니다.
+	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prevProductsMap, records, duplicateRecords, supportsHTML)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if shouldSave {
+		return message, currentSnapshot, nil
+	}
+
+	return message, nil, nil
 }
 
 // extractDuplicateRecords 입력된 감시 대상 상품(레코드) 목록에서 중복 기입된 항목을 추출하여 분리합니다.
@@ -280,26 +295,22 @@ func (t *task) extractPriceDetails(sel *goquery.Selection, product *product, pro
 	return nil
 }
 
-// @@@@@ 개선사항 존재유무 확인
-// diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
+// @@@@@ 개선 문의
+// syncLowestPrices 현재 수집된 상품 정보와 이전 스냅샷을 동기화하여 데이터의 연속성을 보장합니다.
 //
-// [주요 기능]
-//  1. 상품 변경 감지: 가격 변동, 품절 상태 변경, 신규 상품 등록 등을 분석합니다.
-//  2. 데이터 정합성 검증: CSV 파일 내 중복 레코드 및 정보 수집 불가 상품을 식별합니다.
-//  3. 알림 메시지 조합: 감지된 모든 이벤트(변경, 중복, 불가)를 종합하여 사용자에게 발송할 최종 메시지를 생성합니다.
-//  4. 작업 결과 갱신: 유의미한 데이터 변경이 발생한 경우에만 스냅샷을 갱신하여 불필요한 DB 쓰기를 최소화합니다.
+// [역할: 상태 동기화]
+// 데이터를 변경하고 최신화하는 작업은 오직 여기서만 수행합니다. (Side Effect 전담)
 //
-// [반환값]
-//   - string: 사용자에게 발송할 포맷팅된 알림 메시지 (변경 사항이 없으면 문맥에 따라 빈 문자열일 수 있음)
-//   - interface{}: DB에 저장할 갱신된 작업 결과 데이터 (변경 사항이 없을 경우 nil)
-//   - error: 처리 중 발생한 에러
-func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, records, duplicateRecords [][]string, supportsHTML bool) (string, interface{}, error) {
+// 1. 빠른 조회 준비 (Indexing): 이전 상품 목록을 Map으로 만들어 승계 속도를 높입니다. (O(N))
+// 2. 과거 데이터 계승 (Restoration): 지난번 실행 때까지의 '역대 최저가' 기록을 현재 객체로 가져옵니다.
+// 3. 최신 상태 반영 (Update): 현재 가격과 비교하여 최저가를 최종 갱신합니다.
+func (t *task) syncLowestPrices(currentSnapshot, prevSnapshot *watchProductPriceSnapshot) map[int]*product {
 	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	var prevProductMap map[int]*product
+	var prevProductsMap map[int]*product
 	if prevSnapshot != nil {
-		prevProductMap = make(map[int]*product, len(prevSnapshot.Products))
+		prevProductsMap = make(map[int]*product, len(prevSnapshot.Products))
 		for _, p := range prevSnapshot.Products {
-			prevProductMap[p.ID] = p
+			prevProductsMap[p.ID] = p
 		}
 	}
 
@@ -309,8 +320,8 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 		// 크롤링으로 수집된 '현재 상태(Stateless)'에는 과거의 기록인 '역대 최저가' 정보가 부재합니다.
 		// 따라서 이전 실행 결과(Snapshot)로부터 누적된 최저가 데이터를 조회하여
 		// 현재 객체로 이월(Carry-over)하는 상태 복원(State Restoration) 과정을 수행합니다.
-		if prevProductMap != nil {
-			if prevProduct, exists := prevProductMap[currentProduct.ID]; exists {
+		if prevProductsMap != nil {
+			if prevProduct, exists := prevProductsMap[currentProduct.ID]; exists {
 				currentProduct.LowestPrice = prevProduct.LowestPrice
 				currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
 			}
@@ -328,8 +339,30 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 		currentProduct.updateLowestPrice()
 	}
 
+	return prevProductsMap
+}
+
+// @@@@@ 개선사항 존재유무 확인
+// diffAndNotify 수집된 최신 상품 정보와 이전 상태(Snapshot)를 비교 분석하여 변동 사항을 감지하고 알림 메시지를 생성합니다.
+//
+// [역할: Query (Side-effect Free)]
+// CQS(Command-Query Separation) 원칙에 따라, 본 메서드는 상태 변경 없이 오직 조회만 수행합니다.
+//
+// 앞서 동기화된 데이터(syncLowestPrices)를 바탕으로 변경 사항을 감지하고 알림을 생성하는
+// '순수 함수(Pure Function)'로서, 어떠한 데이터 변형도 일으키지 않습니다.
+//
+// [주요 기능]
+//  1. 상품 변경 감지: 가격 변동, 품절 상태 변경, 신규 상품 등록 등을 분석합니다.
+//  2. 데이터 정합성 검증: CSV 파일 내 중복 레코드 및 정보 수집 불가 상품을 식별합니다.
+//  3. 알림 메시지 조합: 감지된 모든 이벤트(변경, 중복, 불가)를 종합하여 사용자에게 발송할 최종 메시지를 생성합니다.
+//
+// [반환값]
+//   - message (string): 사용자에게 발송할 포맷팅된 알림 메시지
+//   - shouldSave (bool): 변경 사항 발생 여부 (true일 경우 스냅샷 저장 필요)
+//   - err (error): 처리 중 발생한 에러
+func (t *task) diffAndNotify(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product, records, duplicateRecords [][]string, supportsHTML bool) (message string, shouldSave bool, err error) {
 	// 신규 상품 및 가격 변동을 식별합니다.
-	diffs := t.calculateProductDiffs(currentSnapshot, prevProductMap)
+	diffs := t.calculateProductDiffs(currentSnapshot, prevProductsMap)
 
 	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
 	productsDiffMessage := t.renderProductDiffs(diffs, supportsHTML)
@@ -341,27 +374,24 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchProductPriceSna
 	// 최종 알림 메시지 조합
 	// 앞서 생성된 핵심 변경 내역과 부가 정보들을 하나의 완결된 사용자 메시지로 통합합니다.
 	// 이 단계에서는 각 메시지 조각의 유무에 따라 조건부로 포맷팅을 수행하며, 최종적으로 사용자가 받아볼 깔끔하고 가독성 높은 리포트를 완성합니다.
-	message := t.buildNotificationMessage(currentSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage, supportsHTML)
+	message = t.buildNotificationMessage(currentSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage, supportsHTML)
 
 	// 결과 처리 (알림 vs 저장)
 	// 알림을 보내는 기준과 데이터를 저장하는 기준을 다르게 적용하여 효율성을 높입니다.
 	// - 알림: 사용자가 직접 확인하고 싶어 할 때(RunByUser)는 변경 사항이 없더라도 현재 상태를 리포트하여 안심시켜 줍니다.
 	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격이나 상태가 변했을 때만 저장하여 시스템 성능을 아낍니다.
 	hasChanges := len(diffs) > 0 || strutil.HasAnyContent(duplicateRecordsMessage, unavailableProductsMessage)
-	if hasChanges {
-		return message, currentSnapshot, nil
-	}
 
-	return message, nil, nil
+	return message, hasChanges, nil
 }
 
 // @@@@@ 개선사항 존재유무 확인
 // calculateProductDiffs 두 스냅샷을 비교하여 유의미한 상태 변화(신규, 재입고, 가격 변동 등)를 식별합니다.
-func (t *task) calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductMap map[int]*product) []productDiff {
+func (t *task) calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product) []productDiff {
 	var diffs []productDiff
 
 	for _, currentProduct := range currentSnapshot.Products {
-		prevProduct, exists := prevProductMap[currentProduct.ID]
+		prevProduct, exists := prevProductsMap[currentProduct.ID]
 
 		// 신규 상품: 이전 스냅샷에 존재하지 않는 상품
 		isNewProduct := !exists

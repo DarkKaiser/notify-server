@@ -118,8 +118,25 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 		Performances: currentPerformances,
 	}
 
-	// 2. 신규 정보 확인 및 알림 메시지 생성
-	return t.diffAndNotify(currentSnapshot, prevSnapshot, supportsHTML)
+	// 2, 빠른 조회를 위해 이전 공연 목록을 Map(Set)으로 변환한다.
+	prePerformancesSet := make(map[string]bool)
+	if prevSnapshot != nil {
+		for _, p := range prevSnapshot.Performances {
+			prePerformancesSet[p.Key()] = true
+		}
+	}
+
+	// 3. 신규 정보 확인 및 알림 메시지 생성
+	message, shouldSave, err := t.diffAndNotify(currentSnapshot, prePerformancesSet, supportsHTML)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if shouldSave {
+		return message, currentSnapshot, nil
+	}
+
+	return message, nil, nil
 }
 
 // fetchPerformances 네이버 통합검색 API를 페이지네이션하여 순회하며 신규 공연 정보를 수집합니다.
@@ -340,15 +357,15 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 }
 
 // diffAndNotify 현재 스냅샷과 이전 스냅샷을 비교하여 변경된 공연을 확인하고 알림 메시지를 생성합니다.
-func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (string, interface{}, error) {
+func (t *task) diffAndNotify(currentSnapshot *watchNewPerformancesSnapshot, prevPerformancesSet map[string]bool, supportsHTML bool) (message string, shouldSave bool, err error) {
 	// 신규 공연을 식별합니다.
-	diffs := t.calculatePerformanceDiffs(currentSnapshot, prevSnapshot)
+	diffs := t.calculatePerformanceDiffs(currentSnapshot, prevPerformancesSet)
 
 	// 식별된 신규 공연 데이터를 알림 메시지로 변환합니다.
 	diffMessage := t.renderPerformanceDiffs(diffs, supportsHTML)
 
 	if len(diffs) > 0 {
-		return "새로운 공연정보가 등록되었습니다.\n\n" + diffMessage, currentSnapshot, nil
+		return "새로운 공연정보가 등록되었습니다.\n\n" + diffMessage, true, nil
 	}
 
 	// 스케줄러(Scheduler)에 의한 자동 실행이 아닌, 사용자 요청에 의한 수동 실행인 경우입니다.
@@ -357,7 +374,7 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
 	if t.GetRunBy() == tasksvc.RunByUser {
 		if len(currentSnapshot.Performances) == 0 {
-			return "등록된 공연정보가 존재하지 않습니다.", nil, nil
+			return "등록된 공연정보가 존재하지 않습니다.", false, nil
 		}
 
 		var sb strings.Builder
@@ -371,35 +388,20 @@ func (t *task) diffAndNotify(currentSnapshot, prevSnapshot *watchNewPerformances
 			}
 			sb.WriteString(p.Render(supportsHTML, ""))
 		}
-		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), nil, nil
+		return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String(), false, nil
 	}
 
-	return "", nil, nil
+	return "", false, nil
 }
 
 // calculatePerformanceDiffs 현재 스냅샷과 이전 스냅샷을 비교하여 신규 공연을 찾아냅니다.
 // 즉, 이전에 없던 새로운 공연이 발견되면 이를 결과 목록에 담아 반환합니다.
-func (t *task) calculatePerformanceDiffs(currentSnapshot, prevSnapshot *watchNewPerformancesSnapshot) []performanceDiff {
-	// 최초 실행 시에는 이전 스냅샷이 존재하지 않아 nil 상태일 수 있습니다.
-	// 따라서 비교 대상을 명시적으로 nil(또는 빈 슬라이스)로 처리하여,
-	// 1. nil 포인터 역참조(Nil Pointer Dereference)로 인한 런타임 패닉을 방지하고 (Safety)
-	// 2. 현재 수집된 모든 공연 정보를 '신규'로 식별되도록 유도합니다. (Logic)
-	var prevPerformances []*performance
-	if prevSnapshot != nil {
-		prevPerformances = prevSnapshot.Performances
-	}
-
-	// 빠른 조회를 위해 이전 공연 목록을 Map으로 변환한다.
-	prevSet := make(map[string]bool, len(prevPerformances))
-	for _, p := range prevPerformances {
-		prevSet[p.Key()] = true
-	}
-
+func (t *task) calculatePerformanceDiffs(currentSnapshot *watchNewPerformancesSnapshot, prevPerformancesSet map[string]bool) []performanceDiff {
 	var diffs []performanceDiff
 
 	for _, p := range currentSnapshot.Performances {
 		// 이전에 수집된 목록에 존재하지 않는다면 신규 공연으로 판단한다.
-		if !prevSet[p.Key()] {
+		if !prevPerformancesSet[p.Key()] {
 			diffs = append(diffs, performanceDiff{
 				Type:        eventNewPerformance,
 				Performance: p,

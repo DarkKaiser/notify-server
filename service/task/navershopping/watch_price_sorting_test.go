@@ -85,7 +85,13 @@ func TestDiffAndNotify_PriceSorting(t *testing.T) {
 			settings.Filters.PriceLessThan = 100000
 
 			// Execute
-			message, _, err := tsk.diffAndNotify(settings, currentSnapshot, prevSnapshot, false)
+			prevProductsMap := make(map[string]*product)
+			if prevSnapshot != nil {
+				for _, p := range prevSnapshot.Products {
+					prevProductsMap[p.Key()] = p
+				}
+			}
+			message, _, err := tsk.diffAndNotify(settings, currentSnapshot, prevProductsMap, false)
 
 			// Verify
 			require.NoError(t, err)
