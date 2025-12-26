@@ -19,6 +19,12 @@ import (
 const (
 	// fallbackProductName CSV 데이터에서 상품명이 없거나 공백일 경우 사용자에게 표시할 대체 텍스트입니다.
 	fallbackProductName = "알 수 없는 상품"
+
+	// allocSizePerProductDiff 알림 메시지 생성 시, 단일 상품 변경 내역을 렌더링하는 데 필요한 예상 버퍼 크기(Byte)입니다.
+	//
+	// 이 상수는 `strings.Builder.Grow()`를 통해 내부 버퍼를 선제적으로 확보(Pre-allocation)하는 데 사용됩니다.
+	// 적절한 초기 용량을 설정함으로써, 불필요한 슬라이스 재할당(Reallocation) 비용을 줄여 성능을 최적화합니다.
+	allocSizePerProductDiff = 300
 )
 
 var (
@@ -497,9 +503,7 @@ func (t *task) calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot,
 	return diffs
 }
 
-// @@@@@ 개선사항 존재유무 확인
-// renderProductDiffs 찾아낸 변동 사항(신규 진입, 재입고, 가격 변동 등)을 분석하여,
-// 최종 사용자가 직관적으로 이해할 수 있는 알림 메시지 포맷으로 변환합니다.
+// renderProductDiffs 감지된 상품 변동 내역(Diffs)을 최종 사용자가 읽기 편한 알림 메시지로 변환합니다.
 func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
 	if len(diffs) == 0 {
 		return ""
@@ -507,13 +511,9 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 
 	var sb strings.Builder
 
-	// 변경 사항이 발생할 수 있는 최대치(모든 상품 변경 가정)를 고려하여 버퍼를 넉넉히 할당합니다.
-	// 상품당 평균 256바이트를 가정합니다. (재할당 오버헤드 최소화)
-	estimatedSize := len(diffs) * 256
-	if estimatedSize < 1024 {
-		estimatedSize = 1024
-	}
-	sb.Grow(estimatedSize)
+	// 변경된 상품 내역을 렌더링하기 위해 필요한 메모리 크기를 사전에 예측하여 할당합니다.
+	// 예측 공식: (변동 사항 수) × (항목당 예상 크기)
+	sb.Grow(len(diffs) * allocSizePerProductDiff)
 
 	lineSpacing := "\n\n"
 	for i, diff := range diffs {
@@ -522,8 +522,9 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 		}
 
 		switch diff.Type {
-		case eventNewProduct, eventRestocked:
-			// 재입고의 경우도 현재는 New와 동일한 마크 사용
+		case eventNewProduct:
+			sb.WriteString(diff.Product.Render(supportsHTML, mark.New))
+		case eventRestocked:
 			sb.WriteString(diff.Product.Render(supportsHTML, mark.New))
 		case eventLowestPriceRenewed:
 			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.BestPrice, diff.Prev))
