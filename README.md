@@ -118,13 +118,13 @@ go mod download
 #### 2. Swagger 문서 생성
 
 ```bash
-swag init
+swag init -g cmd/notify-server/main.go
 ```
 
 #### 3. 서버 실행
 
 ```bash
-go run main.go
+go run cmd/notify-server/main.go
 ```
 
 > 로컬 실행 시 `notify-server.json` 설정 파일이 필요합니다.
@@ -299,7 +299,9 @@ notify-server/
 │   │   └── v1/        # API v1 엔드포인트
 │   ├── notification/  # 알림 발송 (Telegram 등)
 │   └── task/          # 스케줄링 및 스크래핑 작업
-├── main.go            # 애플리케이션 진입점
+├── cmd/               # 애플리케이션 진입점
+│   └── notify-server/
+│       └── main.go
 ├── notify-server.json # 기본 설정 파일
 └── Dockerfile         # Docker 빌드 설정
 ```
@@ -373,7 +375,7 @@ go test ./... -bench=. -benchmem
 
 ```bash
 # 로컬 빌드
-go build -o notify-server .
+go build -o notify-server ./cmd/notify-server
 
 # Docker 빌드 (테스트 포함)
 docker build -t darkkaiser/notify-server .
