@@ -128,6 +128,130 @@ func TestProduct_IsOnSale_TableDriven(t *testing.T) {
 	}
 }
 
+// TestProduct_EffectivePrice_TableDriven EffectivePrice 메서드가 실제 구매가(유효 가격)를
+// 정확히 산출하는지 다양한 시나리오(할인, 정가, 예외)를 통해 검증합니다.
+func TestProduct_EffectivePrice_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		price           int
+		discountedPrice int
+		want            int
+	}{
+		{
+			name:            "Normal Price (No Discount)",
+			price:           10000,
+			discountedPrice: 0,
+			want:            10000,
+		},
+		{
+			name:            "Sale Price (Effective)",
+			price:           10000,
+			discountedPrice: 9000,
+			want:            9000,
+		},
+		{
+			name:            "Discounted Price is Zero (Use Normal Price)",
+			price:           10000,
+			discountedPrice: 0,
+			want:            10000,
+		},
+		{
+			name:            "Discounted Price equal to Price (Not on Sale, Use Normal Price)",
+			price:           10000,
+			discountedPrice: 10000,
+			want:            10000,
+		},
+		{
+			name:            "Discounted Price higher than Price (Data Error, Use Normal Price)",
+			price:           10000,
+			discountedPrice: 11000,
+			want:            10000,
+		},
+		{
+			name:            "Zero Price (Zero Result)",
+			price:           0,
+			discountedPrice: 0,
+			want:            0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := &product{
+				Price:           tt.price,
+				DiscountedPrice: tt.discountedPrice,
+			}
+			assert.Equal(t, tt.want, p.EffectivePrice())
+		})
+	}
+}
+
+// TestProduct_PriceChanged_TableDriven PriceChanged 메서드가
+// 가격 변동 여부를 정확히 감지하는지 다양한 비교 시나리오를 통해 검증합니다.
+func TestProduct_PriceChanged_TableDriven(t *testing.T) {
+	t.Parallel()
+
+	baseProduct := &product{
+		Price:           10000,
+		DiscountedPrice: 9000,
+		DiscountRate:    10,
+	}
+
+	tests := []struct {
+		name string
+		curr *product
+		prev *product
+		want bool
+	}{
+		{
+			name: "No Change",
+			curr: baseProduct,
+			prev: &product{
+				Price:           10000,
+				DiscountedPrice: 9000,
+				DiscountRate:    10,
+			},
+			want: false,
+		},
+		{
+			name: "Price Changed",
+			curr: &product{Price: 11000},
+			prev: &product{Price: 10000},
+			want: true,
+		},
+		{
+			name: "DiscountedPrice Changed",
+			curr: &product{DiscountedPrice: 8000},
+			prev: &product{DiscountedPrice: 9000},
+			want: true,
+		},
+		{
+			name: "DiscountRate Changed",
+			curr: &product{DiscountRate: 20},
+			prev: &product{DiscountRate: 10},
+			want: true,
+		},
+		{
+			name: "Prev is Nil (Considering as Changed)",
+			curr: baseProduct,
+			prev: nil,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.curr.PriceChanged(tt.prev))
+		})
+	}
+}
+
 // TestProduct_UpdateLowestPrice_TableDriven 최저가 갱신 로직을 검증합니다.
 // Cold Start 및 Price Drop 시나리오, 시간 갱신 여부, 반환값, UTC 저장 여부를 정밀하게 테스트합니다.
 func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {

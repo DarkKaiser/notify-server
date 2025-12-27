@@ -38,11 +38,24 @@ func (p *performance) Equals(other *performance) bool {
 // [중요] 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
 // 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
 func (p *performance) Key() string {
-	return fmt.Sprintf("%s|%s", p.Title, p.Place)
+	return p.Title + "|" + p.Place
 }
 
 // Render 공연 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
+// 주로 단일 공연 정보 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
 func (p *performance) Render(supportsHTML bool, mark string) string {
+	return p.renderInternal(supportsHTML, mark)
+}
+
+// RenderDiff 현재 공연 정보와 과거 정보를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
+// 현재 Naver 패키지는 '신규' 위주이므로 Render와 큰 차이가 없을 수 있으나,
+// 향후 확장성 및 타 패키지(NaverShopping)와의 일관성을 위해 인터페이스를 분리합니다.
+func (p *performance) RenderDiff(supportsHTML bool, mark string, prev *performance) string {
+	return p.renderInternal(supportsHTML, mark)
+}
+
+// renderInternal 공연 알림 메시지를 생성하는 핵심 내부 구현체입니다.
+func (p *performance) renderInternal(supportsHTML bool, mark string) string {
 	var sb strings.Builder
 
 	// 예상 버퍼 크기 할당

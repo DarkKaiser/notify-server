@@ -152,12 +152,17 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
 	}
 
+	prevPerformancesSet := make(map[string]bool)
+	for _, p := range prevSnapshot.Performances {
+		prevPerformancesSet[p.Key()] = true
+	}
+
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// executeWatchNewPerformances 대신 내부 로직인 diffAndNotify를 직접 호출할 수도 있지만,
 		// task 구조체에 메서드로 있으므로 export되지 않았다면 호출 불가.
 		// diffAndNotify는 unexported이므로 동일 패키지 테스트에서는 호출 가능.
-		_, _, _ = tTask.diffAndNotify(currentSnapshot, prevSnapshot, true)
+		_, _ = tTask.analyzeAndReport(currentSnapshot, prevPerformancesSet, true)
 	}
 }

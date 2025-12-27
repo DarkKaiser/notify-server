@@ -389,8 +389,15 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			curSnap := &watchProductPriceSnapshot{Products: tt.current}
 			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}
 
-			msg, data, err := tsk.diffAndNotify(curSnap, prevSnap, nil, nil, false)
-			require.NoError(t, err)
+			var prevProductsMap map[int]*product
+			if prevSnap != nil {
+				prevProductsMap = make(map[int]*product, len(prevSnap.Products))
+				for _, p := range prevSnap.Products {
+					prevProductsMap[p.ID] = p
+				}
+			}
+
+			msg, shouldSave := tsk.analyzeAndReport(curSnap, prevProductsMap, nil, nil, false)
 
 			if len(tt.wantMsgContent) > 0 {
 				assert.NotEmpty(t, msg)
@@ -401,12 +408,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				assert.Empty(t, msg)
 			}
 
-			if tt.wantDataChanged {
-				assert.NotNil(t, data)
-				assert.Equal(t, curSnap, data)
-			} else {
-				assert.Nil(t, data)
-			}
+			assert.Equal(t, tt.wantDataChanged, shouldSave, "데이터 저장 필요 여부(shouldSave)가 기대값과 다릅니다")
 		})
 	}
 }
