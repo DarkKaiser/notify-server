@@ -23,7 +23,7 @@ COPY . .
 # 빌드 도구 설치 및 Swagger 문서 생성 (레이어 최적화)
 RUN apk add --no-cache git && \
     go install github.com/swaggo/swag/cmd/swag@latest && \
-    swag init
+    swag init -g cmd/notify-server/main.go
 
 # 테스트 실행 (빌드 전 품질 검증)
 RUN go test ./... -v -coverprofile=coverage.out
@@ -42,7 +42,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a \
     -X 'main.Version=${GIT_VERSION}' \
     -X 'main.BuildDate=${BUILD_DATE}' \
     -X 'main.BuildNumber=${BUILD_NUMBER}'" \
-    -o ${APP_NAME} .
+    -o ${APP_NAME} ./cmd/notify-server
 
 # ------------------------------------------
 # 2. Production Image
