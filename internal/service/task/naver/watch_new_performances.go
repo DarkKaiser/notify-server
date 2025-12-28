@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/mark"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/sirupsen/logrus"
 )
 

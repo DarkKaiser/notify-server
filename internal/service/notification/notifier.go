@@ -1,7 +1,7 @@
 package notification
 
 import (
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	log "github.com/sirupsen/logrus"
 )

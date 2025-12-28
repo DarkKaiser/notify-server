@@ -8,11 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+
 	_ "github.com/darkkaiser/notify-server/docs"
-	"github.com/darkkaiser/notify-server/pkg/common"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/internal/config"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
@@ -43,7 +44,7 @@ type Service struct {
 
 	notificationSender notification.Sender
 
-	buildInfo common.BuildInfo
+	buildInfo buildinfo.BuildInfo
 
 	running   bool
 	runningMu sync.Mutex
@@ -53,7 +54,7 @@ type Service struct {
 //
 // Returns:
 //   - 초기화된 Service 인스턴스
-func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo common.BuildInfo) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo buildinfo.BuildInfo) *Service {
 	return &Service{
 		appConfig: appConfig,
 

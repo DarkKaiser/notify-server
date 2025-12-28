@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/pkg/mark"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

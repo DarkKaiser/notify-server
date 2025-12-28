@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 )
 
 // csvColumnIndex CSV 파일에서 상품 정보를 파싱할 때 사용되는 컬럼 인덱스를 정의하는 타입입니다.

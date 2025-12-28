@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/text/encoding/korean"

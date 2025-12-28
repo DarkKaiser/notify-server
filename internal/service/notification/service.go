@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	log "github.com/sirupsen/logrus"
 )

@@ -6,7 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -60,9 +61,9 @@ func TestHealthCheckHandler_Table(t *testing.T) {
 
 			var h *SystemHandler
 			if tt.useNilService {
-				h = NewSystemHandler(nil, common.BuildInfo{})
+				h = NewSystemHandler(nil, buildinfo.BuildInfo{})
 			} else {
-				h = NewSystemHandler(tt.mockService, common.BuildInfo{})
+				h = NewSystemHandler(tt.mockService, buildinfo.BuildInfo{})
 			}
 
 			if assert.NoError(t, h.HealthCheckHandler(c)) {
@@ -83,7 +84,7 @@ func TestHealthCheckHandler_Table(t *testing.T) {
 }
 
 func TestVersionHandler_Table(t *testing.T) {
-	buildInfo := common.BuildInfo{
+	buildInfo := buildinfo.BuildInfo{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -91,7 +92,7 @@ func TestVersionHandler_Table(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		buildInfo common.BuildInfo
+		buildInfo buildinfo.BuildInfo
 	}{
 		{
 			name:      "Version Info Present",

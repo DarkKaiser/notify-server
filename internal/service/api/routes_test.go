@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/pkg/common"
+	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/labstack/echo/v4"
@@ -16,7 +16,7 @@ import (
 
 func TestGlobalRoutes_TableDriven(t *testing.T) {
 	e := echo.New()
-	buildInfo := common.BuildInfo{
+	buildInfo := buildinfo.BuildInfo{
 		Version:     "test-version",
 		BuildDate:   "2025-12-05",
 		BuildNumber: "1",
@@ -114,7 +114,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 
 func TestSetupRoutes_VerifyRegistration(t *testing.T) {
 	e := echo.New()
-	handler := handler.NewSystemHandler(nil, common.BuildInfo{})
+	handler := handler.NewSystemHandler(nil, buildinfo.BuildInfo{})
 	SetupRoutes(e, handler)
 
 	expected := map[string]string{

@@ -30,7 +30,7 @@
 // 빌드 시 버전 정보 주입:
 //
 //	go build -ldflags "-X main.Version=v1.2.3 -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.BuildNumber=456"
-package common
+package buildinfo
 
 // BuildInfo 애플리케이션의 빌드 정보를 담고 있습니다.
 //

@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+
+	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,8 +13,7 @@ import (
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/pkg/common"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
@@ -135,7 +137,7 @@ func main() {
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	apiService := api.NewService(appConfig, notificationService, common.BuildInfo{
+	apiService := api.NewService(appConfig, notificationService, buildinfo.BuildInfo{
 		Version:     Version,
 		BuildDate:   BuildDate,
 		BuildNumber: BuildNumber,

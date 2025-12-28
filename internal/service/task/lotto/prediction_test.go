@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

@@ -4,9 +4,9 @@ package naver
 
 import (
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (

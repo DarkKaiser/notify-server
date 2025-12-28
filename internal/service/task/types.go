@@ -3,7 +3,7 @@ package task
 import (
 	"strings"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 )
 
 // ID 작업의 고유 식별자입니다.

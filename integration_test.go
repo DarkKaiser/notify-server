@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/pkg/common"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -54,7 +55,7 @@ func TestServicesIntegration(t *testing.T) {
 		}
 		notificationService.SetNotifierFactory(mockFactory)
 
-		notifyAPIService := api.NewService(appConfig, notificationService, common.BuildInfo{
+		notifyAPIService := api.NewService(appConfig, notificationService, buildinfo.BuildInfo{
 			Version:     "test-version",
 			BuildDate:   "test-date",
 			BuildNumber: "test-build",
