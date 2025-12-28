@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
 )

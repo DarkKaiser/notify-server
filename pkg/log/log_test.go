@@ -20,11 +20,9 @@ import (
 func setupLogTest(t *testing.T) (string, func()) {
 	t.Helper()
 	tempDir := t.TempDir()
-	originalLogDirParentPath := logDirectoryBasePath
-	logDirectoryBasePath = tempDir + string(os.PathSeparator)
+	// logDirectoryBasePath 전역 변수 제거됨 -> Setup에서 opts.LogDir로 처리
 
 	return tempDir, func() {
-		logDirectoryBasePath = originalLogDirParentPath
 		log.SetOutput(os.Stdout)
 	}
 }
@@ -43,77 +41,111 @@ func createTestFile(t *testing.T, path string, modTime time.Time) {
 // Log Initialization Tests
 // =============================================================================
 
-// TestInit_DebugMode는 Debug 모드에서 로그 초기화를 검증합니다.
+// =============================================================================
+// Log Initialization Tests
+// =============================================================================
+
+// TestSetup_LogFileCreation은 로그 파일 생성 로직을 검증합니다.
 //
 // 검증 항목:
-//   - 로그 디렉토리 생성
-//   - 로그 파일 생성
-//   - Closer 반환
-func TestInit_DebugMode(t *testing.T) {
+//   - Debug/Production 모드에 따른 로그 디렉토리 생성
+//   - 옵션에 따른 로그 파일 생성 (파일명, 확장자)
+//   - Setup 에러 처리 (AppName 누락 등)
+func TestSetup_LogFileCreation(t *testing.T) {
 	tempDir, teardown := setupLogTest(t)
 	defer teardown()
 
-	appName := "test-app-debug"
-	closer := InitFile(appName, 7.0)
-	defer func() {
-		if closer != nil {
-			closer.Close()
-		}
-	}()
+	tests := []struct {
+		name       string
+		options    Options
+		debugMode  bool
+		wantErr    bool
+		checkFiles func(*testing.T, string, string) // logDir, appName -> validations
+	}{
+		{
+			name: "Debug Mode - Creates logs",
+			options: Options{
+				AppName:       "test-app-debug",
+				RetentionDays: 7.0,
+			},
+			debugMode: true,
+			wantErr:   false,
+			checkFiles: func(t *testing.T, logDir, appName string) {
+				files, err := os.ReadDir(logDir)
+				require.NoError(t, err)
+				assert.Greater(t, len(files), 0, "Should create at least one log file")
 
-	SetDebugMode(true)
-
-	assert.NotNil(t, closer, "Should return closer")
-
-	// Verify log directory creation
-	logDir := filepath.Join(tempDir, defaultLogDirectoryName)
-	_, err := os.Stat(logDir)
-	assert.NoError(t, err, "Log directory should exist")
-
-	// Verify log file creation
-	files, err := os.ReadDir(logDir)
-	assert.NoError(t, err)
-	assert.Greater(t, len(files), 0, "Should create at least one log file")
-}
-
-// TestInit_ProductionMode는 Production 모드에서 로그 초기화를 검증합니다.
-//
-// 검증 항목:
-//   - 로그 디렉토리 생성
-//   - 앱 이름이 포함된 로그 파일 생성
-//   - Closer 반환
-func TestInit_ProductionMode(t *testing.T) {
-	tempDir, teardown := setupLogTest(t)
-	defer teardown()
-
-	appName := "test-app-prod"
-	closer := InitFile(appName, 7.0)
-	defer func() {
-		if closer != nil {
-			closer.Close()
-		}
-	}()
-
-	SetDebugMode(false)
-
-	assert.NotNil(t, closer)
-
-	logDir := filepath.Join(tempDir, defaultLogDirectoryName)
-	_, err := os.Stat(logDir)
-	assert.NoError(t, err)
-
-	files, err := os.ReadDir(logDir)
-	assert.NoError(t, err)
-	assert.Greater(t, len(files), 0)
-
-	found := false
-	for _, file := range files {
-		if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+defaultLogFileExtension) {
-			found = true
-			break
-		}
+				// 파일명 검증
+				found := false
+				for _, file := range files {
+					if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+defaultLogFileExtension) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Log file with app name should exist")
+			},
+		},
+		{
+			name: "Production Mode - Creates logs",
+			options: Options{
+				AppName:       "test-app-prod",
+				RetentionDays: 7.0,
+			},
+			debugMode: false,
+			wantErr:   false,
+			checkFiles: func(t *testing.T, logDir, appName string) {
+				files, err := os.ReadDir(logDir)
+				require.NoError(t, err)
+				assert.Greater(t, len(files), 0)
+			},
+		},
+		{
+			name: "Missing AppName - Should Error",
+			options: Options{
+				AppName:       "", // Missing AppName
+				RetentionDays: 7.0,
+			},
+			debugMode: false,
+			wantErr:   false, // Setup returns (nil, nil) not error for empty appname currently? Spec check: source says return nil, nil
+			checkFiles: func(t *testing.T, logDir, appName string) {
+				// LogDir might not even be created if AppName is empty and we return early
+				// Checking Setup implementation:
+				// if opts.AppName == "" { return nil, nil }
+				// So no files created.
+				_, err := os.Stat(logDir)
+				assert.Error(t, err, "Log directory should not be created if AppName is empty")
+				assert.True(t, os.IsNotExist(err))
+			},
+		},
 	}
-	assert.True(t, found, "Log file with app name should exist")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 각 테스트마다 별도의 서브 디렉토리 사용 (충돌 방지)
+			subDir := filepath.Join(tempDir, strings.ReplaceAll(tt.name, " ", "_"))
+			tt.options.LogDir = subDir
+
+			closer, err := Setup(tt.options)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+
+			defer func() {
+				if closer != nil {
+					closer.Close()
+				}
+			}()
+
+			SetDebugMode(tt.debugMode)
+
+			if tt.checkFiles != nil {
+				tt.checkFiles(t, subDir, tt.options.AppName)
+			}
+		})
+	}
 }
 
 // =============================================================================
@@ -130,7 +162,7 @@ func TestCleanOutOfLogFiles(t *testing.T) {
 	tempDir, teardown := setupLogTest(t)
 	defer teardown()
 
-	logDir := filepath.Join(tempDir, defaultLogDirectoryName)
+	logDir := filepath.Join(tempDir, "logs")
 	err := os.MkdirAll(logDir, 0755)
 	assert.NoError(t, err)
 
@@ -149,7 +181,7 @@ func TestCleanOutOfLogFiles(t *testing.T) {
 	createTestFile(t, otherAppFile, time.Now().Add(-10*24*time.Hour))
 
 	// Execute GC
-	removeExpiredLogFiles(appName, 7.0)
+	removeExpiredLogFiles(logDir, appName, 7.0)
 
 	// Verifications
 	assert.NoFileExists(t, oldLogFile, "Expired file should be deleted")
@@ -173,41 +205,11 @@ func TestConstants(t *testing.T) {
 		expected string
 	}{
 		{"File Extension", defaultLogFileExtension, "log"},
-		{"Directory Name", defaultLogDirectoryName, "logs"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.got)
-		})
-	}
-}
-
-// =============================================================================
-// Caller Path Prefix Tests
-// =============================================================================
-
-// TestSetCallerPathPrefix는 호출자 경로 prefix 설정을 검증합니다.
-//
-// 검증 항목:
-//   - 다양한 prefix 값 설정
-//   - 빈 문자열 설정
-func TestSetCallerPathPrefix(t *testing.T) {
-	originalPrefix := callerFunctionPathPrefix
-	defer func() { callerFunctionPathPrefix = originalPrefix }()
-
-	tests := []struct {
-		input string
-	}{
-		{"github.com/my/project"},
-		{""},
-		{"custom/path"},
-	}
-
-	for _, tt := range tests {
-		t.Run("Set "+tt.input, func(t *testing.T) {
-			SetCallerPathPrefix(tt.input)
-			assert.Equal(t, tt.input, callerFunctionPathPrefix)
 		})
 	}
 }

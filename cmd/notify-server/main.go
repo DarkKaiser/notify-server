@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
@@ -22,6 +21,7 @@ import (
 	_ "github.com/darkkaiser/notify-server/internal/service/task/lotto"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/naver"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/navershopping"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -99,15 +99,19 @@ const (
 )
 
 func main() {
-	// Caller Path Prefix 설정
-	applog.SetCallerPathPrefix("github.com/darkkaiser")
-
-	// 로그 파일 출력을 먼저 초기화한다. (환경설정 로드 전)
-	// 이렇게 하면 환경설정 로드 실패 시에도 에러가 로그 파일에 기록된다.
-	appLogCloser := applog.InitFileWithOptions(config.AppName, LogRetentionDays, applog.InitFileOptions{
-		EnableCriticalLog: true,
-		EnableVerboseLog:  true,
+	// 로그 시스템 초기화
+	appLogCloser, err := applog.Setup(applog.Options{
+		AppName:           config.AppName,
+		RetentionDays:     LogRetentionDays,        // 오래된 로그 자동 정리 (디스크 효율화)
+		EnableCriticalLog: true,                    // 장애 대응 위한 Error 로그 분리
+		EnableVerboseLog:  true,                    // 정밀 분석 위한 Debug 로그 분리
+		ReportCaller:      true,                    // 문제 추적성 확보 (File:Line)
+		CallerPathPrefix:  "github.com/darkkaiser", // 로그 가독성 최적화 (경로 축약)
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[FATAL] 로그 시스템 초기화 실패. 서버 구동을 중단합니다. (Cause: %v)\n", err)
+		os.Exit(1)
+	}
 	defer appLogCloser.Close()
 
 	// 환경설정 정보를 읽어들인다.

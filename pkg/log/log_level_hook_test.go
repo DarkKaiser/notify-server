@@ -50,81 +50,92 @@ func TestLogLevelFileHook_Levels(t *testing.T) {
 // =============================================================================
 
 // TestLogLevelFileHook_Fire는 로그 레벨에 따른 라우팅을 검증합니다.
-//
-// 검증 항목:
-//   - Critical 레벨 (Error, Fatal, Panic)은 criticalWriter에 기록
-//   - Verbose 레벨 (Debug, Trace)은 verboseWriter에 기록
-//   - 기타 레벨 (Info, Warn)은 무시
 func TestLogLevelFileHook_Fire(t *testing.T) {
 	formatter := &log.TextFormatter{DisableTimestamp: true}
 
-	t.Run("Critical 레벨 로그는 criticalWriter에 기록", func(t *testing.T) {
-		criticalBuf := &bytes.Buffer{}
-		verboseBuf := &bytes.Buffer{}
+	tests := []struct {
+		name              string
+		level             log.Level
+		message           string
+		wantCriticalEntry bool
+		wantVerboseEntry  bool
+	}{
+		{
+			name:              "Critical Log (Error)",
+			level:             log.ErrorLevel,
+			message:           "error msg",
+			wantCriticalEntry: true,
+			wantVerboseEntry:  false,
+		},
+		{
+			name:              "Critical Log (Fatal)",
+			level:             log.FatalLevel,
+			message:           "fatal msg",
+			wantCriticalEntry: true,
+			wantVerboseEntry:  false,
+		},
+		{
+			name:              "Verbose Log (Debug)",
+			level:             log.DebugLevel,
+			message:           "debug msg",
+			wantCriticalEntry: false,
+			wantVerboseEntry:  true,
+		},
+		{
+			name:              "Verbose Log (Trace)",
+			level:             log.TraceLevel,
+			message:           "trace msg",
+			wantCriticalEntry: false,
+			wantVerboseEntry:  true,
+		},
+		{
+			name:              "Ignored Log (Info)",
+			level:             log.InfoLevel,
+			message:           "info msg",
+			wantCriticalEntry: false,
+			wantVerboseEntry:  false,
+		},
+		{
+			name:              "Ignored Log (Warn)",
+			level:             log.WarnLevel,
+			message:           "warn msg",
+			wantCriticalEntry: false,
+			wantVerboseEntry:  false,
+		},
+	}
 
-		hook := &LogLevelHook{
-			criticalWriter: criticalBuf,
-			verboseWriter:  verboseBuf,
-			formatter:      formatter,
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			criticalBuf := &bytes.Buffer{}
+			verboseBuf := &bytes.Buffer{}
 
-		entry := &log.Entry{
-			Level:   log.ErrorLevel,
-			Message: "error message",
-		}
+			hook := &LogLevelHook{
+				criticalWriter: criticalBuf,
+				verboseWriter:  verboseBuf,
+				formatter:      formatter,
+			}
 
-		err := hook.Fire(entry)
-		assert.NoError(t, err)
+			entry := &log.Entry{
+				Level:   tt.level,
+				Message: tt.message,
+			}
 
-		assert.Contains(t, criticalBuf.String(), "level=error")
-		assert.Contains(t, criticalBuf.String(), "msg=\"error message\"")
-		assert.Empty(t, verboseBuf.String())
-	})
+			err := hook.Fire(entry)
+			assert.NoError(t, err)
 
-	t.Run("Verbose 레벨 로그는 verboseWriter에 기록", func(t *testing.T) {
-		criticalBuf := &bytes.Buffer{}
-		verboseBuf := &bytes.Buffer{}
+			if tt.wantCriticalEntry {
+				assert.Contains(t, criticalBuf.String(), tt.message, "Should contain message in critical writer")
+			} else {
+				assert.NotContains(t, criticalBuf.String(), tt.message, "Should NOT contain message in critical writer")
+			}
 
-		hook := &LogLevelHook{
-			criticalWriter: criticalBuf,
-			verboseWriter:  verboseBuf,
-			formatter:      formatter,
-		}
-
-		entry := &log.Entry{
-			Level:   log.DebugLevel,
-			Message: "debug message",
-		}
-
-		err := hook.Fire(entry)
-		assert.NoError(t, err)
-
-		assert.Contains(t, verboseBuf.String(), "level=debug")
-		assert.Contains(t, verboseBuf.String(), "msg=\"debug message\"")
-		assert.Empty(t, criticalBuf.String())
-	})
-
-	t.Run("Info 레벨 로그는 무시 (Writer에 기록하지 않음)", func(t *testing.T) {
-		criticalBuf := &bytes.Buffer{}
-		verboseBuf := &bytes.Buffer{}
-
-		hook := &LogLevelHook{
-			criticalWriter: criticalBuf,
-			verboseWriter:  verboseBuf,
-			formatter:      formatter,
-		}
-
-		entry := &log.Entry{
-			Level:   log.InfoLevel,
-			Message: "info message",
-		}
-
-		err := hook.Fire(entry)
-		assert.NoError(t, err)
-
-		assert.Empty(t, criticalBuf.String())
-		assert.Empty(t, verboseBuf.String())
-	})
+			if tt.wantVerboseEntry {
+				assert.Contains(t, verboseBuf.String(), tt.message, "Should contain message in verbose writer")
+			} else {
+				assert.NotContains(t, verboseBuf.String(), tt.message, "Should NOT contain message in verbose writer")
+			}
+		})
+	}
 }
 
 // =============================================================================

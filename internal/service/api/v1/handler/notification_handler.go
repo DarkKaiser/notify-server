@@ -1,9 +1,9 @@
 package handler
 
 import (
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	commonhandler "github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )

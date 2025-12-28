@@ -29,47 +29,70 @@ func (m *mockCloser) Close() error {
 // Multi Closer Basic Tests
 // =============================================================================
 
-// TestMultiCloser_Close는 multiCloser의 기본 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 모든 Closer가 정상적으로 닫힘
-//   - 에러 발생 시에도 모든 Closer가 닫히고 첫 번째 에러 반환
+// TestMultiCloser_Close는 multiCloser의 동작을 검증합니다.
 func TestMultiCloser_Close(t *testing.T) {
-	t.Run("모든 Closer가 정상적으로 닫히는지 확인", func(t *testing.T) {
-		c1 := &mockCloser{}
-		c2 := &mockCloser{}
-		c3 := &mockCloser{}
+	errMock := errors.New("close error")
 
-		mc := &multiCloser{
-			closers: []io.Closer{c1, c2, c3},
-		}
+	tests := []struct {
+		name          string
+		closers       []io.Closer
+		expectError   error
+		expectedState []bool // 각 closer의 closed 상태 (순서대로)
+	}{
+		{
+			name: "All closers close successfully",
+			closers: []io.Closer{
+				&mockCloser{},
+				&mockCloser{},
+				&mockCloser{},
+			},
+			expectError:   nil,
+			expectedState: []bool{true, true, true},
+		},
+		{
+			name: "Error in middle closer - Continues to close others, returns first error",
+			closers: []io.Closer{
+				&mockCloser{},
+				&mockCloser{err: errMock},
+				&mockCloser{},
+			},
+			expectError:   errMock,
+			expectedState: []bool{true, true, true},
+		},
+		{
+			name: "Nil closer in list - Should skip safely",
+			closers: []io.Closer{
+				&mockCloser{},
+				nil,
+				&mockCloser{},
+			},
+			expectError:   nil,
+			expectedState: []bool{true, false, true}, // nil doesn't have state
+		},
+	}
 
-		err := mc.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mc := &multiCloser{
+				closers: tt.closers,
+			}
 
-		require.NoError(t, err, "Close should not return error")
-		assert.True(t, c1.closed)
-		assert.True(t, c2.closed)
-		assert.True(t, c3.closed)
-	})
+			err := mc.Close()
 
-	t.Run("에러 발생 시에도 모든 Closer가 닫히고 첫 번째 에러 반환", func(t *testing.T) {
-		expectedErr := errors.New("close error")
-		c1 := &mockCloser{}
-		c2 := &mockCloser{err: expectedErr}
-		c3 := &mockCloser{}
+			if tt.expectError != nil {
+				assert.ErrorIs(t, err, tt.expectError)
+			} else {
+				assert.NoError(t, err)
+			}
 
-		mc := &multiCloser{
-			closers: []io.Closer{c1, c2, c3},
-		}
-
-		err := mc.Close()
-
-		require.Error(t, err, "Close should return error")
-		assert.Equal(t, expectedErr, err)
-		assert.True(t, c1.closed)
-		assert.True(t, c2.closed)
-		assert.True(t, c3.closed)
-	})
+			// Verify states
+			for i, closer := range tt.closers {
+				if mc, ok := closer.(*mockCloser); ok {
+					assert.Equal(t, tt.expectedState[i], mc.closed, "Closer %d closed state mismatch", i)
+				}
+			}
+		})
+	}
 }
 
 // =============================================================================
@@ -124,26 +147,3 @@ func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 // =============================================================================
 // Nil Handling Tests
 // =============================================================================
-
-// TestMultiCloser_Close_WithNil은 nil Closer 처리를 검증합니다.
-//
-// 검증 항목:
-//   - nil Closer가 포함되어 있어도 정상 동작
-//   - nil이 아닌 Closer는 모두 정상적으로 닫힘
-func TestMultiCloser_Close_WithNil(t *testing.T) {
-	t.Run("nil 클로저가 포함되어 있어도 정상 동작", func(t *testing.T) {
-		c1 := &mockCloser{}
-		var c2 io.Closer = nil // Explicit nil interface
-		c3 := &mockCloser{}
-
-		mc := &multiCloser{
-			closers: []io.Closer{c1, c2, c3},
-		}
-
-		err := mc.Close()
-
-		assert.NoError(t, err)
-		assert.True(t, c1.closed)
-		assert.True(t, c3.closed)
-	})
-}

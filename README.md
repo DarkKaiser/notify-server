@@ -289,7 +289,6 @@ notify-server/
 │   ├── pkg/           # 내부 공통 패키지
 │   │   ├── buildinfo/ # 빌드 정보
 │   │   ├── errors/    # 에러 처리
-│   │   ├── log/       # 로깅
 │   │   ├── mark/      # 마크다운 유틸리티
 │   │   └── validation/# 검증 함수
 │   └── service/       # 비즈니스 로직
@@ -304,6 +303,7 @@ notify-server/
 ├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── pkg/               # 재사용 가능한 패키지
 │   ├── concurrency/   # 동시성 유틸리티
+│   ├── log/           # 로깅 유틸리티 (구조화, 로테이션 지원)
 │   ├── maputil/       # 맵 유틸리티
 │   └── strutil/       # 문자열 유틸리티 함수
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
