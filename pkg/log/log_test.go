@@ -57,15 +57,15 @@ func TestSetup_LogFileCreation(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		options    Options
+		opts       Options
 		debugMode  bool
 		wantErr    bool
 		checkFiles func(*testing.T, string, string) // logDir, appName -> validations
 	}{
 		{
 			name: "Debug Mode - Creates logs",
-			options: Options{
-				AppName:       "test-app-debug",
+			opts: Options{
+				Name:          "test-app-debug",
 				RetentionDays: 7.0,
 			},
 			debugMode: true,
@@ -78,7 +78,7 @@ func TestSetup_LogFileCreation(t *testing.T) {
 				// 파일명 검증
 				found := false
 				for _, file := range files {
-					if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+defaultLogFileExtension) {
+					if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+fileExt) {
 						found = true
 						break
 					}
@@ -88,8 +88,8 @@ func TestSetup_LogFileCreation(t *testing.T) {
 		},
 		{
 			name: "Production Mode - Creates logs",
-			options: Options{
-				AppName:       "test-app-prod",
+			opts: Options{
+				Name:          "test-app-prod",
 				RetentionDays: 7.0,
 			},
 			debugMode: false,
@@ -102,8 +102,8 @@ func TestSetup_LogFileCreation(t *testing.T) {
 		},
 		{
 			name: "Missing AppName - Should Error",
-			options: Options{
-				AppName:       "", // Missing AppName
+			opts: Options{
+				Name:          "", // Missing AppName
 				RetentionDays: 7.0,
 			},
 			debugMode: false,
@@ -120,14 +120,14 @@ func TestSetup_LogFileCreation(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			// 각 테스트마다 별도의 서브 디렉토리 사용 (충돌 방지)
-			subDir := filepath.Join(tempDir, strings.ReplaceAll(tt.name, " ", "_"))
-			tt.options.LogDir = subDir
+			subDir := filepath.Join(tempDir, strings.ReplaceAll(tc.name, " ", "_"))
+			tc.opts.Dir = subDir
 
-			closer, err := Setup(tt.options)
-			if tt.wantErr {
+			closer, err := Setup(tc.opts)
+			if tc.wantErr {
 				assert.Error(t, err)
 				return
 			}
@@ -139,10 +139,10 @@ func TestSetup_LogFileCreation(t *testing.T) {
 				}
 			}()
 
-			SetDebugMode(tt.debugMode)
+			SetDebugMode(tc.debugMode)
 
-			if tt.checkFiles != nil {
-				tt.checkFiles(t, subDir, tt.options.AppName)
+			if tc.checkFiles != nil {
+				tc.checkFiles(t, subDir, tc.opts.Name)
 			}
 		})
 	}
@@ -169,15 +169,15 @@ func TestCleanOutOfLogFiles(t *testing.T) {
 	appName := "test-app-gc"
 
 	// Old file (10 days ago)
-	oldLogFile := filepath.Join(logDir, appName+"-old."+defaultLogFileExtension)
+	oldLogFile := filepath.Join(logDir, appName+"-old."+fileExt)
 	createTestFile(t, oldLogFile, time.Now().Add(-10*24*time.Hour))
 
 	// Recent file
-	recentLogFile := filepath.Join(logDir, appName+"-recent."+defaultLogFileExtension)
+	recentLogFile := filepath.Join(logDir, appName+"-recent."+fileExt)
 	createTestFile(t, recentLogFile, time.Now())
 
 	// Other app old file
-	otherAppFile := filepath.Join(logDir, "other-app-old."+defaultLogFileExtension)
+	otherAppFile := filepath.Join(logDir, "other-app-old."+fileExt)
 	createTestFile(t, otherAppFile, time.Now().Add(-10*24*time.Hour))
 
 	// Execute GC
@@ -204,7 +204,7 @@ func TestConstants(t *testing.T) {
 		got      string
 		expected string
 	}{
-		{"File Extension", defaultLogFileExtension, "log"},
+		{"File Extension", fileExt, "log"},
 	}
 
 	for _, tt := range tests {

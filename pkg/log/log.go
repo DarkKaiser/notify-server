@@ -15,7 +15,7 @@ import (
 
 const (
 	// 로그 파일 확장자
-	defaultLogFileExtension = "log"
+	fileExt = "log"
 
 	// 로그 파일명에 사용되는 타임스탬프 포맷
 	timestampFormat = "20060102150405"
@@ -23,9 +23,9 @@ const (
 
 // Options 로그 초기화 옵션입니다.
 type Options struct {
-	LogDir        string  // 로그 파일이 저장될 디렉토리 경로 (기본값: "logs")
-	AppName       string  // 로그 파일명 생성에 사용될 애플리케이션 식별자 (필수)
-	RetentionDays float64 // 오래된 로그 삭제 기준일 (일 단위, 0: 삭제 안 함)
+	Dir           string // 로그 파일이 저장될 디렉토리 경로 (기본값: "logs")
+	Name          string // 로그 파일명 생성에 사용될 애플리케이션 식별자 (필수)
+	RetentionDays int    // 오래된 로그 삭제 기준일 (일 단위, 0: 삭제 안 함)
 
 	EnableCriticalLog bool // Error 이상(Error, Fatal, Panic)의 치명적 로그를 별도 파일로 분리 저장할지 여부
 	EnableVerboseLog  bool // Debug 이하(Trace, Debug)의 상세 로그를 별도 파일로 분리 저장할지 여부
@@ -62,15 +62,15 @@ func Setup(opts Options) (io.Closer, error) {
 		},
 	})
 
-	// 파일 로깅을 위해서는 애플리케이션 식별자(AppName)가 필수입니다.
-	// AppName이 비어있는 경우, 전역 설정(Formatter 등)만 적용하고 파일 출력 설정은 생략합니다.
+	// 파일 로깅을 위해서는 애플리케이션 식별자(Name)가 필수입니다.
+	// Name이 비어있는 경우, 전역 설정(Formatter 등)만 적용하고 파일 출력 설정은 생략합니다.
 	// 이는 에러가 아니므로 nil error를 반환합니다.
-	if opts.AppName == "" {
+	if opts.Name == "" {
 		return nil, nil
 	}
 
 	// 로그 저장 경로가 명시되지 않은 경우, 실행 위치의 'logs' 디렉토리를 기본값으로 사용합니다.
-	logDir := opts.LogDir
+	logDir := opts.Dir
 	if logDir == "" {
 		logDir = "logs"
 	}
@@ -83,7 +83,7 @@ func Setup(opts Options) (io.Closer, error) {
 	timestamp := time.Now().Format(timestampFormat)
 
 	// 메인 로그 파일 생성
-	mainLogFile, err := createLogFile(logDir, opts.AppName, timestamp, "")
+	mainLogFile, err := createLogFile(logDir, opts.Name, timestamp, "")
 	if err != nil {
 		return nil, fmt.Errorf("메인 로그 파일 생성 실패: %w", err)
 	}
@@ -95,7 +95,7 @@ func Setup(opts Options) (io.Closer, error) {
 
 	if opts.EnableCriticalLog {
 		// Error, Fatal, Panic 레벨을 저장할 파일
-		criticalLogFile, err = createLogFile(logDir, opts.AppName, timestamp, "critical")
+		criticalLogFile, err = createLogFile(logDir, opts.Name, timestamp, "critical")
 		if err != nil {
 			return nil, fmt.Errorf("에러 로그 파일 생성 실패: %w", err)
 		}
@@ -103,7 +103,7 @@ func Setup(opts Options) (io.Closer, error) {
 
 	if opts.EnableVerboseLog {
 		// Debug, Trace 레벨을 저장할 파일
-		verboseLogFile, err = createLogFile(logDir, opts.AppName, timestamp, "verbose")
+		verboseLogFile, err = createLogFile(logDir, opts.Name, timestamp, "verbose")
 		if err != nil {
 			return nil, fmt.Errorf("디버그 로그 파일 생성 실패: %w", err)
 		}
@@ -120,7 +120,7 @@ func Setup(opts Options) (io.Closer, error) {
 
 	// 만료된 로그 파일 삭제
 	if opts.RetentionDays > 0 {
-		removeExpiredLogFiles(logDir, opts.AppName, opts.RetentionDays)
+		go removeExpiredLogFiles(logDir, opts.Name, opts.RetentionDays)
 	}
 
 	return &multiCloser{
@@ -133,9 +133,9 @@ func Setup(opts Options) (io.Closer, error) {
 func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error) {
 	var fileName string
 	if suffix == "" {
-		fileName = fmt.Sprintf("%s-%s.%s", appName, timestamp, defaultLogFileExtension)
+		fileName = fmt.Sprintf("%s-%s.%s", appName, timestamp, fileExt)
 	} else {
-		fileName = fmt.Sprintf("%s-%s.%s.%s", appName, timestamp, suffix, defaultLogFileExtension)
+		fileName = fmt.Sprintf("%s-%s.%s.%s", appName, timestamp, suffix, fileExt)
 	}
 
 	filePath := filepath.Join(dirPath, fileName)
@@ -147,15 +147,7 @@ func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error)
 	return file, nil
 }
 
-func SetDebugMode(debug bool) {
-	if debug {
-		log.SetLevel(log.TraceLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-}
-
-func removeExpiredLogFiles(logDir, appName string, retentionDays float64) {
+func removeExpiredLogFiles(logDir, appName string, retentionDays int) {
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -179,7 +171,7 @@ func removeExpiredLogFiles(logDir, appName string, retentionDays float64) {
 		fileName := entry.Name()
 
 		// 앱 이름으로 시작하지 않거나 로그 파일 확장자가 아니면 건너뛴다
-		if !strings.HasPrefix(fileName, appName) || filepath.Ext(fileName) != "."+defaultLogFileExtension {
+		if !strings.HasPrefix(fileName, appName) || filepath.Ext(fileName) != "."+fileExt {
 			continue
 		}
 
@@ -197,7 +189,7 @@ func removeExpiredLogFiles(logDir, appName string, retentionDays float64) {
 
 		// 파일이 만료되었는지 확인
 		daysAgo := math.Abs(now.Sub(fileInfo.ModTime()).Hours()) / hoursPerDay
-		if daysAgo < retentionDays {
+		if daysAgo < float64(retentionDays) {
 			continue
 		}
 
@@ -215,6 +207,14 @@ func removeExpiredLogFiles(logDir, appName string, retentionDays float64) {
 				"file_path": filePath,
 			}).Info("오래된 로그파일 삭제 성공")
 		}
+	}
+}
+
+func SetDebugMode(debug bool) {
+	if debug {
+		log.SetLevel(log.TraceLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
 	}
 }
 
