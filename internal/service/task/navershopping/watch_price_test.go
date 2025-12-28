@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/pkg/mark"
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/assert"

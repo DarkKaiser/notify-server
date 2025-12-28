@@ -286,6 +286,12 @@ notify-server/
 ├── docs/              # 문서 (TASKS.md, Swagger 등)
 ├── internal/          # 내부 패키지 (외부 노출 X)
 │   ├── config/        # 환경설정 관리
+│   ├── pkg/           # 내부 공통 패키지
+│   │   ├── buildinfo/ # 빌드 정보
+│   │   ├── errors/    # 에러 처리
+│   │   ├── log/       # 로깅
+│   │   ├── mark/      # 마크다운 유틸리티
+│   │   └── validation/# 검증 함수
 │   └── service/       # 비즈니스 로직
 │       ├── api/       # REST API 서버
 │       │   ├── auth/      # 인증 관리 (ApplicationManager)
@@ -297,11 +303,9 @@ notify-server/
 │       └── task/      # 스케줄링 및 스크래핑 작업
 ├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── pkg/               # 재사용 가능한 패키지
-│   ├── common/        # 공통 타입 및 구조체 (BuildInfo 등)
-│   ├── errors/        # 커스텀 에러 타입
-│   ├── log/           # 로깅 유틸리티
-│   ├── strutils/      # 문자열 유틸리티 함수
-│   └── validations/   # 검증 함수 (Cron, Port, Duration 등)
+│   ├── concurrency/   # 동시성 유틸리티
+│   ├── maputil/       # 맵 유틸리티
+│   └── strutil/       # 문자열 유틸리티 함수
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
 ├── notify-server.json # 기본 설정 파일
 └── Dockerfile         # Docker 빌드 설정
@@ -322,7 +326,7 @@ notify-server/
 
 ### 에러 처리
 
-`notify-server`는 `pkg/errors` 패키지를 사용하여 일관된 에러 처리를 지원합니다.
+`notify-server`는 `internal/pkg/errors` 패키지를 사용하여 일관된 에러 처리를 지원합니다.
 
 - **커스텀 에러 타입**: `ErrInvalidInput`, `ErrNotFound`, `ErrInternal`, `ErrSystem` 등 명확한 에러 타입을 정의하여 사용합니다.
 - **에러 래핑**: `apperrors.Wrap`을 사용하여 원인 에러와 컨텍스트 정보를 함께 전달합니다.
@@ -331,7 +335,7 @@ notify-server/
 
 ### 검증 시스템
 
-`pkg/validations` 패키지는 설정 값 검증을 위한 재사용 가능한 함수들을 제공합니다.
+`internal/pkg/validation` 패키지는 설정 값 검증을 위한 재사용 가능한 함수들을 제공합니다.
 
 - **Cron 표현식 검증**: `ValidateRobfigCronExpression` - robfig/cron 패키지 기반, 초 단위 포함 7필드 형식 지원
 - **포트 번호 검증**: `ValidatePort` - TCP/UDP 포트 범위(1-65535) 검증, 시스템 예약 포트 경고

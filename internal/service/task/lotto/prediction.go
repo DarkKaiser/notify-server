@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 

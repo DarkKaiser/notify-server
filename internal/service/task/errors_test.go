@@ -3,8 +3,8 @@ package task
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/pkg/errors"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

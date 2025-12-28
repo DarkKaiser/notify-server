@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/pkg/mark"
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/stretchr/testify/assert"
 )
 

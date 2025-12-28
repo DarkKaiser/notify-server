@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

@@ -3,7 +3,7 @@ package notification
 import (
 	"context"
 
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	log "github.com/sirupsen/logrus"

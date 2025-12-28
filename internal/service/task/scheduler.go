@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
+	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )

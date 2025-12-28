@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	apperrors "github.com/darkkaiser/notify-server/pkg/errors"
-	"github.com/darkkaiser/notify-server/pkg/validation"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/pkg/validation"
 )
 
 // 애플리케이션 기본 정보
