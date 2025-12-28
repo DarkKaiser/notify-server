@@ -29,12 +29,16 @@ type Options struct {
 
 	EnableCriticalLog bool // Error 이상(Error, Fatal, Panic)의 치명적 로그를 별도 파일로 분리 저장할지 여부
 	EnableVerboseLog  bool // Debug 이하(Trace, Debug)의 상세 로그를 별도 파일로 분리 저장할지 여부
+	EnableConsoleLog  bool // 표준 출력(Stdout)에도 로그를 출력할지 여부 (개발 환경 권장)
 
-	// ReportCaller: 로그를 호출한 소스 코드의 위치(파일명:라인번호)를 함께 기록할지 여부
+	// 로그 파일 생성 시의 권한 (기본값: 0644 - 소유자 쓰기/읽기, 그룹/기타 읽기)
+	FileMode os.FileMode
+
+	// 로그를 호출한 소스 코드의 위치(파일명:라인번호)를 함께 기록할지 여부
 	// 예: true로 설정 시 "main.go:55" 처럼 로그가 발생한 위치를 알 수 있어 디버깅에 유용합니다.
 	ReportCaller bool
 
-	// CallerPathPrefix: 로그에 출력되는 파일 경로가 너무 길 때, 앞부분을 잘라내어 보기 좋게 만듭니다.
+	// 로그에 출력되는 파일 경로가 너무 길 때, 앞부분을 잘라내어 보기 좋게 만듭니다.
 	// 예: "github.com/my/project/pkg/server.go" -> prefix가 "github.com/my/project"라면 "pkg/server.go"만 출력됨
 	CallerPathPrefix string
 }
@@ -53,6 +57,8 @@ func Setup(opts Options) (io.Closer, error) {
 	log.SetLevel(log.TraceLevel)
 	log.SetReportCaller(opts.ReportCaller)
 	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp:   true,         // TTY가 아니어도 타임스탬프를 항상 출력
+		TimestampFormat: time.RFC3339, // "2006-01-02T15:04:05Z07:00" (ISO8601 표준)
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
 			function = fmt.Sprintf("%s(line:%d)", frame.Function, frame.Line)
 			if opts.CallerPathPrefix != "" && strings.HasPrefix(function, opts.CallerPathPrefix) {
@@ -75,6 +81,11 @@ func Setup(opts Options) (io.Closer, error) {
 		logDir = "logs"
 	}
 
+	// 기본 권한 설정
+	if opts.FileMode == 0 {
+		opts.FileMode = 0644
+	}
+
 	// 로그 디렉토리 생성
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, fmt.Errorf("로그 디렉토리 생성 실패: %w", err)
@@ -83,11 +94,18 @@ func Setup(opts Options) (io.Closer, error) {
 	timestamp := time.Now().Format(timestampFormat)
 
 	// 메인 로그 파일 생성
-	mainLogFile, err := createLogFile(logDir, opts.Name, timestamp, "")
+	mainLogFile, err := createLogFile(logDir, opts.Name, timestamp, "", opts.FileMode)
 	if err != nil {
 		return nil, fmt.Errorf("메인 로그 파일 생성 실패: %w", err)
 	}
-	log.SetOutput(mainLogFile)
+	// 단일 로그 스트림을 '파일'과 '콘솔' 두 곳으로 동시에 내보냅니다.
+	// - mainLogFile: 로그를 영구적으로 디스크에 기록합니다. (보관 및 로테이션)
+	// - os.Stdout (옵션): 로그를 즉시 터미널에 출력합니다. (실시간 디버깅 및 컨테이너 수집기 연동)
+	writers := []io.Writer{mainLogFile}
+	if opts.EnableConsoleLog {
+		writers = append(writers, os.Stdout)
+	}
+	log.SetOutput(io.MultiWriter(writers...))
 
 	// 레벨별 로그 파일 생성 및 Hook 등록
 	var hook *LogLevelHook
@@ -95,7 +113,7 @@ func Setup(opts Options) (io.Closer, error) {
 
 	if opts.EnableCriticalLog {
 		// Error, Fatal, Panic 레벨을 저장할 파일
-		criticalLogFile, err = createLogFile(logDir, opts.Name, timestamp, "critical")
+		criticalLogFile, err = createLogFile(logDir, opts.Name, timestamp, "critical", opts.FileMode)
 		if err != nil {
 			return nil, fmt.Errorf("에러 로그 파일 생성 실패: %w", err)
 		}
@@ -103,7 +121,7 @@ func Setup(opts Options) (io.Closer, error) {
 
 	if opts.EnableVerboseLog {
 		// Debug, Trace 레벨을 저장할 파일
-		verboseLogFile, err = createLogFile(logDir, opts.Name, timestamp, "verbose")
+		verboseLogFile, err = createLogFile(logDir, opts.Name, timestamp, "verbose", opts.FileMode)
 		if err != nil {
 			return nil, fmt.Errorf("디버그 로그 파일 생성 실패: %w", err)
 		}
@@ -130,7 +148,7 @@ func Setup(opts Options) (io.Closer, error) {
 }
 
 // createLogFile 로그 파일을 생성합니다.
-func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error) {
+func createLogFile(dirPath, appName, timestamp, suffix string, perm os.FileMode) (*os.File, error) {
 	var fileName string
 	if suffix == "" {
 		fileName = fmt.Sprintf("%s-%s.%s", appName, timestamp, fileExt)
@@ -139,7 +157,7 @@ func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error)
 	}
 
 	filePath := filepath.Join(dirPath, fileName)
-	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, perm)
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +166,16 @@ func createLogFile(dirPath, appName, timestamp, suffix string) (*os.File, error)
 }
 
 func removeExpiredLogFiles(logDir, appName string, retentionDays int) {
+	// 백그라운드 고루틴이므로 패닉 발생 시 앱 전체가 죽지 않도록 방어
+	defer func() {
+		if r := recover(); r != nil {
+			log.WithFields(log.Fields{
+				"component": "log",
+				"recover":   r,
+			}).Error("로그 정리 중 패닉 발생 (복구됨)")
+		}
+	}()
+
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -178,11 +206,13 @@ func removeExpiredLogFiles(logDir, appName string, retentionDays int) {
 		// 파일 정보 가져오기
 		fileInfo, err := entry.Info()
 		if err != nil {
+			// 파일이 이미 삭제되었거나 접근 불가능한 경우 (Race Condition 등)
+			// 삭제 프로세스이므로 치명적이지 않음. Debug 레벨로 낮춰서 노이즈 감소.
 			log.WithFields(log.Fields{
 				"component": "log",
 				"file_name": fileName,
 				"error":     err,
-			}).Warn("로그 파일 정보 읽기 실패")
+			}).Debug("로그 파일 정보 읽기 실패 (건너뜀)")
 
 			continue
 		}
@@ -228,10 +258,12 @@ func WithComponent(component string) *log.Entry {
 
 // WithComponentAndFields component 필드와 추가 필드를 포함한 로그 Entry를 반환합니다.
 func WithComponentAndFields(component string, fields log.Fields) *log.Entry {
-	newFields := make(log.Fields, len(fields)+1)
+	l := len(fields)
+	newFields := make(log.Fields, l+1)
+	newFields["component"] = component
+
 	for k, v := range fields {
 		newFields[k] = v
 	}
-	newFields["component"] = component
 	return log.WithFields(newFields)
 }

@@ -3,6 +3,7 @@ package log
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -60,13 +61,14 @@ func TestSetup_LogFileCreation(t *testing.T) {
 		opts       Options
 		debugMode  bool
 		wantErr    bool
-		checkFiles func(*testing.T, string, string) // logDir, appName -> validations
+		checkFiles func(*testing.T, string, string)
+		checkLogs  func(*testing.T, string)
 	}{
 		{
 			name: "Debug Mode - Creates logs",
 			opts: Options{
 				Name:          "test-app-debug",
-				RetentionDays: 7.0,
+				RetentionDays: 7,
 			},
 			debugMode: true,
 			wantErr:   false,
@@ -75,7 +77,6 @@ func TestSetup_LogFileCreation(t *testing.T) {
 				require.NoError(t, err)
 				assert.Greater(t, len(files), 0, "Should create at least one log file")
 
-				// 파일명 검증
 				found := false
 				for _, file := range files {
 					if strings.HasPrefix(file.Name(), appName) && strings.HasSuffix(file.Name(), "."+fileExt) {
@@ -90,7 +91,7 @@ func TestSetup_LogFileCreation(t *testing.T) {
 			name: "Production Mode - Creates logs",
 			opts: Options{
 				Name:          "test-app-prod",
-				RetentionDays: 7.0,
+				RetentionDays: 7,
 			},
 			debugMode: false,
 			wantErr:   false,
@@ -104,25 +105,60 @@ func TestSetup_LogFileCreation(t *testing.T) {
 			name: "Missing AppName - Should Error",
 			opts: Options{
 				Name:          "", // Missing AppName
-				RetentionDays: 7.0,
+				RetentionDays: 7,
 			},
 			debugMode: false,
-			wantErr:   false, // Setup returns (nil, nil) not error for empty appname currently? Spec check: source says return nil, nil
+			wantErr:   false,
 			checkFiles: func(t *testing.T, logDir, appName string) {
-				// LogDir might not even be created if AppName is empty and we return early
-				// Checking Setup implementation:
-				// if opts.AppName == "" { return nil, nil }
-				// So no files created.
 				_, err := os.Stat(logDir)
 				assert.Error(t, err, "Log directory should not be created if AppName is empty")
 				assert.True(t, os.IsNotExist(err))
+			},
+		},
+		{
+			name: "Custom File Permission - 0644",
+			opts: Options{
+				Name:          "test-app-perm",
+				RetentionDays: 7,
+				FileMode:      0644,
+			},
+			debugMode: false,
+			wantErr:   false,
+			checkFiles: func(t *testing.T, logDir, appName string) {
+				files, err := os.ReadDir(logDir)
+				require.NoError(t, err)
+
+				for _, file := range files {
+					if strings.HasPrefix(file.Name(), appName) {
+						info, err := file.Info()
+						require.NoError(t, err)
+						// Windows에서는 권한 체크가 제한적이므로 모드 일부만 확인하거나 생략
+						if runtime.GOOS != "windows" {
+							assert.Equal(t, os.FileMode(0644), info.Mode().Perm())
+						}
+					}
+				}
+			},
+		},
+		{
+			name: "Console Log Enabled",
+			opts: Options{
+				Name:             "test-app-console",
+				RetentionDays:    7,
+				EnableConsoleLog: true,
+			},
+			debugMode: false,
+			wantErr:   false,
+			checkLogs: func(t *testing.T, output string) {
+				// Capture output validation logic would go here if we could capture stdout easily in parallel tests
+				// Since we use log.SetOutput, capturing global stdout is tricky without synchronization.
+				// For this unit test, we ensure it doesn't panic.
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// 각 테스트마다 별도의 서브 디렉토리 사용 (충돌 방지)
 			subDir := filepath.Join(tempDir, strings.ReplaceAll(tc.name, " ", "_"))
 			tc.opts.Dir = subDir
 
