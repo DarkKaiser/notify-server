@@ -280,28 +280,29 @@ curl -X POST "http://localhost:2443/api/v1/notifications?app_key=your-secret-key
 
 ```
 notify-server/
-├── config/            # 환경설정 관리
+├── cmd/               # 애플리케이션 진입점
+│   └── notify-server/
+│       └── main.go
 ├── docs/              # 문서 (TASKS.md, Swagger 등)
+├── internal/          # 내부 패키지 (외부 노출 X)
+│   ├── config/        # 환경설정 관리
+│   └── service/       # 비즈니스 로직
+│       ├── api/       # REST API 서버
+│       │   ├── auth/      # 인증 관리 (ApplicationManager)
+│       │   ├── handler/   # 공통 핸들러 (SystemHandler)
+│       │   ├── middleware/# 미들웨어 (HTTP 로깅, CORS 등)
+│       │   ├── model/     # 공통 모델 (response, domain)
+│       │   └── v1/        # API v1 엔드포인트
+│       ├── notification/ # 알림 발송
+│       └── task/      # 스케줄링 및 스크래핑 작업
+├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── pkg/               # 재사용 가능한 패키지
 │   ├── common/        # 공통 타입 및 구조체 (BuildInfo 등)
 │   ├── errors/        # 커스텀 에러 타입
 │   ├── log/           # 로깅 유틸리티
 │   ├── strutils/      # 문자열 유틸리티 함수
 │   └── validations/   # 검증 함수 (Cron, Port, Duration 등)
-├── logs/              # 로그 파일 저장소 (Git 제외)
 ├── secrets/           # 민감 정보 및 설정 파일 (Git 제외)
-├── service/           # 비즈니스 로직
-│   ├── api/           # REST API 서버
-│   │   ├── auth/      # 인증 관리 (ApplicationManager)
-│   │   ├── handler/   # 공통 핸들러 (SystemHandler)
-│   │   ├── middleware/# 미들웨어 (HTTP 로깅, CORS 등)
-│   │   ├── model/     # 공통 모델 (response, domain)
-│   │   └── v1/        # API v1 엔드포인트
-│   ├── notification/  # 알림 발송 (Telegram 등)
-│   └── task/          # 스케줄링 및 스크래핑 작업
-├── cmd/               # 애플리케이션 진입점
-│   └── notify-server/
-│       └── main.go
 ├── notify-server.json # 기본 설정 파일
 └── Dockerfile         # Docker 빌드 설정
 ```

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/config"
+	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/pkg/common"
-	"github.com/darkkaiser/notify-server/service/api"
-	"github.com/darkkaiser/notify-server/service/notification"
-	"github.com/darkkaiser/notify-server/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/api"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 )
 
