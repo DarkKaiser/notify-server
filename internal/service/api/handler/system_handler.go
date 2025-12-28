@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -26,17 +26,17 @@ const (
 type SystemHandler struct {
 	notificationSender notification.Sender
 
-	buildInfo buildinfo.BuildInfo
+	versionInfo version.Info
 
 	serverStartTime time.Time
 }
 
 // NewSystemHandler SystemHandler 인스턴스를 생성합니다.
-func NewSystemHandler(notificationSender notification.Sender, buildInfo buildinfo.BuildInfo) *SystemHandler {
+func NewSystemHandler(notificationSender notification.Sender, versionInfo version.Info) *SystemHandler {
 	return &SystemHandler{
 		notificationSender: notificationSender,
 
-		buildInfo: buildInfo,
+		versionInfo: versionInfo,
 
 		serverStartTime: time.Now(),
 	}
@@ -113,9 +113,9 @@ func (h *SystemHandler) VersionHandler(c echo.Context) error {
 	}).Debug("버전 정보 요청")
 
 	return c.JSON(http.StatusOK, response.VersionResponse{
-		Version:     h.buildInfo.Version,
-		BuildDate:   h.buildInfo.BuildDate,
-		BuildNumber: h.buildInfo.BuildNumber,
+		Version:     h.versionInfo.Version,
+		BuildDate:   h.versionInfo.BuildDate,
+		BuildNumber: h.versionInfo.BuildNumber,
 		GoVersion:   runtime.Version(),
 	})
 }

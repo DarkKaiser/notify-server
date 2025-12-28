@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
-
-	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
+	"runtime"
 
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
@@ -128,24 +127,26 @@ func main() {
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
 	fmt.Printf(banner, Version)
 
+	// 빌드 정보 설정 (전역 싱글톤 등록)
+	info := version.Info{
+		Version:     Version,
+		BuildDate:   BuildDate,
+		BuildNumber: BuildNumber,
+		GoVersion:   runtime.Version(),
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
+	}
+	version.Set(info)
+
 	// 빌드 정보 출력
 	applog.WithComponentAndFields("main", log.Fields{
-		"version":      Version,
-		"build_date":   BuildDate,
-		"build_number": BuildNumber,
-		"go_version":   runtime.Version(),
-		"os":           runtime.GOOS,
-		"arch":         runtime.GOARCH,
+		"version": info.String(),
 	}).Info("빌드 정보")
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	apiService := api.NewService(appConfig, notificationService, buildinfo.BuildInfo{
-		Version:     Version,
-		BuildDate:   BuildDate,
-		BuildNumber: BuildNumber,
-	})
+	apiService := api.NewService(appConfig, notificationService, info)
 
 	taskService.SetNotificationSender(notificationService)
 
