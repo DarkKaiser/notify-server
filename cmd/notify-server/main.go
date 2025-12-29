@@ -81,7 +81,7 @@ var (
 
 const (
 	// 로그 파일 보관 기간(일)
-	LogRetentionDays = 30.0
+	LogMaxAge = 30
 )
 
 const (
@@ -101,7 +101,7 @@ func main() {
 	// 로그 시스템 초기화
 	appLogCloser, err := applog.Setup(applog.Options{
 		Name:              config.AppName,
-		RetentionDays:     LogRetentionDays,        // 오래된 로그 자동 정리 (디스크 효율화)
+		MaxAge:            LogMaxAge,               // 오래된 로그 자동 정리 (디스크 효율화)
 		EnableCriticalLog: true,                    // 장애 대응 위한 Error 로그 분리
 		EnableVerboseLog:  true,                    // 정밀 분석 위한 Debug 로그 분리
 		ReportCaller:      true,                    // 문제 추적성 확보 (File:Line)
