@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
@@ -92,16 +93,30 @@ const (
 `
 )
 
+const (
+	// shutdownTimeout 종료 시그널 수신 후 최대 대기 시간
+	shutdownTimeout = 30 * time.Second
+)
+
 func main() {
-	// 1. 환경설정 로드 (로그 설정에 필요하므로 가장 먼저 수행한다)
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	// 1. 환경설정 로드
+	// 애플리케이션 구동에 필요한 모든 설정(로깅, 타임아웃, 포트 등)을 파일로부터 읽어 메모리에 적재합니다.
+	// 이 단계가 실패하면 서버는 정상 동작할 수 없으므로 즉시 종료됩니다.
 	appConfig, err := config.InitAppConfig()
 	if err != nil {
-		// 로거 초기화 전이므로 표준 에러에 출력
-		fmt.Fprintf(os.Stderr, "[FATAL] 환경설정 로드 실패: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("환경설정 파일을 로드하는 중 치명적인 오류가 발생했습니다: %w", err)
 	}
 
 	// 2. 로그 시스템 초기화
+	// 환경설정(Debug 모드 여부)에 따라 개발용 또는 운영용 로거를 구성합니다.
+	// 초기화된 클로저(appLogCloser)는 함수 종료 시 반드시 호출하여 버퍼에 남은 로그를 플러시해야 합니다.
 	var logOpts applog.Options
 	if appConfig.Debug {
 		logOpts = applog.NewDevelopmentConfig(config.AppName)
@@ -111,18 +126,23 @@ func main() {
 
 	appLogCloser, err := applog.Setup(logOpts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[FATAL] 로그 시스템 초기화 실패. 서버 구동을 중단합니다. (Cause: %v)\n", err)
-		os.Exit(1)
+		return fmt.Errorf("로그 시스템을 초기화하는 중 치명적인 오류가 발생했습니다: %w", err)
 	}
 	defer appLogCloser.Close()
 
-	// 3. 로그 레벨 최종 확정
+	// 3. 로그 레벨 동적 조정
+	// 초기 설정 이후, 런타임 환경설정(Debug Flag)에 맞춰 로그 필터링 레벨을 최종 확정합니다.
+	// 이를 통해 불필요한 로그 출력을 줄이거나 상세한 디버깅 정보를 확보합니다.
 	applog.SetDebugMode(appConfig.Debug)
 
-	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
+	// 4. 서버 아이덴티티 출력
+	// 서버 시작 시 시각적으로 식별 가능한 배너(Ascii Art)와 버전 정보를 출력하여,
+	// 운영자가 현재 구동되는 서버의 종류와 버전을 직관적으로 확인할 수 있게 합니다.
 	fmt.Printf(banner, Version)
 
-	// 빌드 정보 설정 (전역 싱글톤 등록)
+	// 5. 빌드 메타데이터 등록
+	// 컴파일 시 주입된 빌드 정보(Version, BuildDate, GitCommit 등)를 전역 싱글톤으로 등록합니다.
+	// 이는 추후 API 응답 헤더나 모니터링 지표 등에서 활용될 수 있습니다.
 	buildInfo := version.Info{
 		Version:     Version,
 		BuildDate:   BuildDate,
@@ -133,49 +153,84 @@ func main() {
 	}
 	version.Set(buildInfo)
 
-	// 빌드 정보 출력
+	// 6. 초기화 시작 로그 기록
 	applog.WithComponentAndFields("main", log.Fields{
 		"version": buildInfo.String(),
 		"env":     map[bool]string{true: "development", false: "production"}[appConfig.Debug],
-	}).Info("서버 초기화 시작")
+	}).Info("Notify Server 초기화 프로세스를 시작합니다")
 
-	// 서비스를 생성하고 초기화한다.
+	// 7. 서비스 객체 생성 및 연결
+	// 각 서비스가 작동하는 데 필요한 의존성(다른 서비스)을 주입하여 전체 시스템을 조립합니다.
+	//
+	// [참고: 순환 의존성 해결]
+	// Task와 Notification은 서로를 필요로 하는 관계입니다. (Task -> Notification, Notification -> Task)
+	// 이를 해결하기 위해 생성자 주입(Constructor Injection)과 세터 주입(Setter Injection)을 혼용하여 연결을 완성합니다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
 	apiService := api.NewService(appConfig, notificationService, buildInfo)
 
 	taskService.SetNotificationSender(notificationService)
 
-	// Set up cancellation context and waitgroup
-	serviceStopCtx, cancel := context.WithCancel(context.Background())
+	// 8. 서비스 생명주기 관리 컨텍스트 설정
+	// 전체 서비스의 종료 신호를 전파하는 Context(serviceStopCtx)와
+	// 모든 서비스가 안전하게 종료될 때까지 대기하는 WaitGroup(serviceStopWG)을 초기화합니다.
+	serviceStopCtx, serviceStopCancel := context.WithCancel(context.Background())
 	serviceStopWG := &sync.WaitGroup{}
 
-	// 서비스를 시작한다.
+	// 9. 서비스 병렬 기동
+	// 준비된 모든 서비스를 별도의 고루틴 또는 비동기 컨텍스트에서 시작합니다.
+	// 하나라도 초기화에 실패하면 즉시 전체 서버 구동을 중단하고 롤백(종료) 절차를 밟습니다.
 	services := []service.Service{taskService, notificationService, apiService}
 	for _, s := range services {
 		serviceStopWG.Add(1)
 		if err := s.Start(serviceStopCtx, serviceStopWG); err != nil {
-			applog.WithComponentAndFields("main", log.Fields{
-				"error": err,
-			}).Error("서비스 초기화 실패")
-
-			cancel() // 다른 서비스들도 종료
-			serviceStopWG.Wait()
-
-			log.Fatal("서비스 초기화 실패로 프로그램을 종료합니다")
+			serviceStopCancel()  // 다른 서비스들도 종료
+			serviceStopWG.Wait() // 이미 시작된 서비스들의 종료를 대기
+			return fmt.Errorf("핵심 서비스(%T)를 시작하는 도중 치명적인 오류가 발생했습니다: %w", s, err)
 		}
 	}
 
-	// Handle sigterm and await termC signal
+	// 10. OS 시그널 처리기 등록
+	// 운영체제로부터의 종료 신호(SIGTERM: 정상 종료, SIGINT: Ctrl+C)를 수신할 채널을 생성합니다.
+	// 이는 서버가 즉시 종료되지 않고, 진행 중인 작업을 마무리할 시간을 확보(Graceful Shutdown)하기 위함입니다.
 	termC := make(chan os.Signal, 1)
 	signal.Notify(termC, syscall.SIGINT, syscall.SIGTERM)
 
-	applog.WithComponent("main").Info("서버 가동 완료")
+	applog.WithComponent("main").Info("Notify Server 가동이 완료되었습니다 (Ready to Serve)")
 
-	<-termC // Blocks here until interrupted
+	// 11. 메인 루프 대기
+	// 종료 신호가 들어올 때까지 메인 고루틴을 블로킹 상태로 유지합니다.
+	sig := <-termC
+	applog.WithComponentAndFields("main", log.Fields{
+		"signal": sig,
+	}).Info("종료 신호(Signal)를 수신했습니다. Graceful Shutdown 프로세스를 시작합니다.")
 
-	// Handle shutdown
-	applog.WithComponent("main").Info("Shutdown signal received")
-	cancel()             // Signal cancellation to context.Context
-	serviceStopWG.Wait() // Block here until are workers are done
+	// 12. 서비스 종료 전파
+	// 취소 함수(serviceStopCancel)를 호출하여 `serviceStopCtx`를 대기하고 있는 모든 하위 서비스에 종료를 알립니다.
+	// 각 서비스는 이를 감지하고 리소스 정리, 연결 해제 등의 정리 작업을 수행해야 합니다.
+	serviceStopCancel()
+
+	// 13. 종료 타임아웃 프로세스
+	// 서비스들이 무한정 종료되지 않는 상황(Deadlock 등)을 방지하기 위해 강제 종료 타임아웃(30초)을 설정합니다.
+	// `serviceStopCtx`는 이미 취소되었으므로, 타임아웃 카운트는 별도의 독립적인 Context(Background)에서 시작해야 합니다.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer shutdownCancel()
+
+	// 메인 고루틴이 Select 절에서 타임아웃을 감지할 수 있도록, Wait() 호출을 별도 고루틴으로 위임합니다.
+	done := make(chan struct{})
+	go func() {
+		serviceStopWG.Wait()
+		close(done)
+	}()
+
+	// 14. 종료 완료 대기 또는 강제 종료
+	select {
+	case <-done:
+		applog.WithComponent("main").Info("모든 서비스가 리소스를 정리하고 정상적으로 종료되었습니다.")
+	case <-shutdownCtx.Done():
+		applog.WithComponent("main").Error("종료 타임아웃 발생: 일부 서비스가 응답하지 않아 강제 종료합니다.")
+		return fmt.Errorf("종료 제한 시간(%v)을 초과하여 프로세스를 강제 종료합니다", shutdownTimeout)
+	}
+
+	return nil
 }
