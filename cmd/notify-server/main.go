@@ -80,11 +80,6 @@ var (
 )
 
 const (
-	// 로그 파일 보관 기간(일)
-	LogMaxAge = 30
-)
-
-const (
 	banner = `
   _   _         _    _   __          ____
  | \ | |  ___  | |_ (_) / _| _   _  / ___|   ___  _ __ __   __  ___  _ __
@@ -98,30 +93,30 @@ const (
 )
 
 func main() {
-	// 로그 시스템 초기화
-	appLogCloser, err := applog.Setup(applog.Options{
-		Name:              config.AppName,
-		MaxAge:            LogMaxAge,               // 오래된 로그 자동 정리 (디스크 효율화)
-		EnableCriticalLog: true,                    // 장애 대응 위한 Error 로그 분리
-		EnableVerboseLog:  true,                    // 정밀 분석 위한 Debug 로그 분리
-		ReportCaller:      true,                    // 문제 추적성 확보 (File:Line)
-		CallerPathPrefix:  "github.com/darkkaiser", // 로그 가독성 최적화 (경로 축약)
-	})
+	// 1. 환경설정 로드 (로그 설정에 필요하므로 가장 먼저 수행한다)
+	appConfig, err := config.InitAppConfig()
+	if err != nil {
+		// 로거 초기화 전이므로 표준 에러에 출력
+		fmt.Fprintf(os.Stderr, "[FATAL] 환경설정 로드 실패: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 2. 로그 시스템 초기화
+	var logOpts applog.Options
+	if appConfig.Debug {
+		logOpts = applog.NewDevelopmentConfig(config.AppName)
+	} else {
+		logOpts = applog.NewProductionConfig(config.AppName)
+	}
+
+	appLogCloser, err := applog.Setup(logOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[FATAL] 로그 시스템 초기화 실패. 서버 구동을 중단합니다. (Cause: %v)\n", err)
 		os.Exit(1)
 	}
 	defer appLogCloser.Close()
 
-	// 환경설정 정보를 읽어들인다.
-	appConfig, err := config.InitAppConfig()
-	if err != nil {
-		applog.WithComponentAndFields("main", log.Fields{
-			"error": err,
-		}).Fatal("환경설정 로드 실패")
-	}
-
-	// Debug 모드에 따라 로그 레벨을 설정한다.
+	// 3. 로그 레벨 최종 확정
 	applog.SetDebugMode(appConfig.Debug)
 
 	// 아스키아트 출력(https://ko.rakko.tools/tools/68/, 폰트:standard)
@@ -141,7 +136,8 @@ func main() {
 	// 빌드 정보 출력
 	applog.WithComponentAndFields("main", log.Fields{
 		"version": buildInfo.String(),
-	}).Info("빌드 정보")
+		"env":     map[bool]string{true: "development", false: "production"}[appConfig.Debug],
+	}).Info("서버 초기화 시작")
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
@@ -173,6 +169,8 @@ func main() {
 	// Handle sigterm and await termC signal
 	termC := make(chan os.Signal, 1)
 	signal.Notify(termC, syscall.SIGINT, syscall.SIGTERM)
+
+	applog.WithComponent("main").Info("서버 가동 완료")
 
 	<-termC // Blocks here until interrupted
 

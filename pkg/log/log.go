@@ -60,8 +60,10 @@ func Setup(opts Options) (io.Closer, error) {
 		TimestampFormat: time.RFC3339, // "2006-01-02T15:04:05Z07:00" (ISO8601 표준)
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
 			function = frame.Function + "(line:" + strconv.Itoa(frame.Line) + ")"
-			if opts.CallerPathPrefix != "" && strings.HasPrefix(function, opts.CallerPathPrefix) {
-				function = "..." + function[len(opts.CallerPathPrefix):]
+			if opts.CallerPathPrefix != "" {
+				if cut, found := strings.CutPrefix(function, opts.CallerPathPrefix); found {
+					function = "..." + cut
+				}
 			}
 			return
 		},
@@ -192,19 +194,10 @@ func SetDebugMode(debug bool) {
 // WithComponent component 필드를 포함한 로그 Entry를 반환합니다.
 // 모든 로그에 component 필드를 일관되게 추가하기 위해 사용합니다.
 func WithComponent(component string) *logrus.Entry {
-	return logrus.WithFields(logrus.Fields{
-		"component": component,
-	})
+	return logrus.WithField("component", component)
 }
 
 // WithComponentAndFields component 필드와 추가 필드를 포함한 로그 Entry를 반환합니다.
 func WithComponentAndFields(component string, fields logrus.Fields) *logrus.Entry {
-	l := len(fields)
-	newFields := make(logrus.Fields, l+1)
-	newFields["component"] = component
-
-	for k, v := range fields {
-		newFields[k] = v
-	}
-	return logrus.WithFields(newFields)
+	return logrus.WithFields(fields).WithField("component", component)
 }
