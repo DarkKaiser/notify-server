@@ -1,25 +1,35 @@
 // Package mark 애플리케이션 전반에서 사용되는 이모지 상수를 중앙 관리하는 패키지입니다.
 package mark
 
+// Mark 이모지 상수를 위한 타입입니다.
+type Mark string
+
 const (
-	// New 신규 항목임을 나타내는 마크 (앞 공백 포함)
-	New = " 🆕"
+	// 신규
+	New Mark = "🆕"
 
-	// Change 변경 사항(가격, 재입고 등)을 나타내는 마크 (앞 공백 포함)
-	Change = " 🔁"
+	// 변경
+	Modified Mark = "🔁"
 
-	// Disabled 비활성화 또는 품절 상태를 나타내는 마크 (앞 공백 포함)
-	Disabled = " 🚫"
+	// 품절/종료
+	Unavailable Mark = "🚫"
 
-	// Up 가격 또는 수치 상승을 나타내는 마크 (앞 공백 포함)
-	Up = " 🔺"
+	// 최저가
+	BestPrice Mark = "🔥"
 
-	// Down 가격 또는 수치 하락을 나타내는 마크 (앞 공백 포함)
-	Down = " 🔻"
-
-	// BestPrice 역대 최저가 갱신을 나타내는 마크 (앞 공백 포함)
-	BestPrice = " 🔥"
-
-	// Alert 긴급 알림 또는 오류를 나타내는 마크 (앞 공백 포함)
-	Alert = " 🚨"
+	// 긴급/오류
+	Alert Mark = "🚨"
 )
+
+// WithSpace 마크(이모지) 앞에 구분용 공백을 추가하여 반환합니다.
+func (m Mark) WithSpace() string {
+	if m == "" {
+		return ""
+	}
+	return " " + string(m)
+}
+
+// String 마크의 순수 이모지 값을 문자열로 반환합니다.
+func (m Mark) String() string {
+	return string(m)
+}

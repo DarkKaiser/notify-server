@@ -32,7 +32,7 @@ func TestPerformance_Render(t *testing.T) {
 		name         string
 		perf         *performance
 		supportsHTML bool
-		mark         string
+		mark         mark.Mark
 		wants        []string // 반드시 포함되어야 할 문자열
 		unwants      []string // 포함되어서는 안 되는 문자열 (Negative Check)
 	}{
@@ -40,7 +40,7 @@ func TestPerformance_Render(t *testing.T) {
 			name:         "HTML 포맷 - 표준 케이스",
 			perf:         defaultPerf,
 			supportsHTML: true,
-			mark:         " 🆕",
+			mark:         mark.New,
 			wants: []string{
 				"☞ ", // Prefix
 				fmt.Sprintf("<a href=\"%s?query=%%ED%%85%%8C%%EC%%8A%%A4%%ED%%8A%%B8+%%EA%%B3%%B5%%EC%%97%%B0\"><b>테스트 공연</b></a>", searchResultPageURL),
@@ -136,7 +136,7 @@ func TestPerformance_RenderDiff(t *testing.T) {
 	tests := []struct {
 		name         string
 		supportsHTML bool
-		mark         string
+		mark         mark.Mark
 		prev         *performance // 비교 대상 (현재 로직에서는 무시됨)
 		wants        []string
 	}{
@@ -148,7 +148,7 @@ func TestPerformance_RenderDiff(t *testing.T) {
 			wants: []string{
 				"☞ ",
 				fmt.Sprintf("<a href=\"%s?query=%%EC%%8B%%A0%%EA%%B7%%9C+%%EA%%B3%%B5%%EC%%97%%B0\"><b>신규 공연</b></a>", searchResultPageURL),
-				mark.New,
+				mark.New.WithSpace(),
 			},
 		},
 		{
@@ -158,17 +158,17 @@ func TestPerformance_RenderDiff(t *testing.T) {
 			prev:         nil,
 			wants: []string{
 				"☞ 신규 공연",
-				mark.New,
+				mark.New.WithSpace(),
 			},
 		},
 		{
 			name:         "확장성 테스트 - Prev가 존재하는 경우 (현재는 신규처럼 렌더링됨)",
 			supportsHTML: false,
-			mark:         mark.Change,
+			mark:         mark.Modified,
 			prev:         &performance{Title: "신규 공연", Place: "변경전 장소"},
 			wants: []string{
 				"☞ 신규 공연", // 현재 로직상 단순 렌더링
-				mark.Change,
+				mark.Modified.WithSpace(),
 			},
 		},
 	}
@@ -356,7 +356,7 @@ func BenchmarkPerformance_Render_Text(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(false, " MARK")
+		_ = p.Render(false, "MARK")
 	}
 }
 
@@ -367,7 +367,7 @@ func BenchmarkPerformance_Render_HTML(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(true, " MARK")
+		_ = p.Render(true, "MARK")
 	}
 }
 
@@ -379,7 +379,7 @@ func BenchmarkPerformance_RenderDiff(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// RenderDiff 호출 비용 측정 (현재는 Render와 거의 동일해야 함)
-		_ = p.RenderDiff(true, " MARK", nil)
+		_ = p.RenderDiff(true, "MARK", nil)
 	}
 }
 

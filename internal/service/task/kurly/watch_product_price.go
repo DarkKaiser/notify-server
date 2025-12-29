@@ -498,7 +498,7 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 		case eventLowestPriceRenewed:
 			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.BestPrice, diff.Prev))
 		case eventPriceChanged:
-			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Change, diff.Prev))
+			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Modified, diff.Prev))
 		}
 	}
 

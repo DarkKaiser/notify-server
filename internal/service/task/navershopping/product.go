@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
@@ -24,17 +25,17 @@ func (p *product) Key() string {
 
 // Render 상품 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
 // 주로 단일 상품 상태 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
-func (p *product) Render(supportsHTML bool, mark string) string {
-	return p.renderInternal(supportsHTML, mark, nil)
+func (p *product) Render(supportsHTML bool, m mark.Mark) string {
+	return p.renderInternal(supportsHTML, m, nil)
 }
 
 // RenderDiff 현재 상품 상태와 과거 상태를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
-func (p *product) RenderDiff(supportsHTML bool, mark string, prev *product) string {
-	return p.renderInternal(supportsHTML, mark, prev)
+func (p *product) RenderDiff(supportsHTML bool, m mark.Mark, prev *product) string {
+	return p.renderInternal(supportsHTML, m, prev)
 }
 
 // renderInternal 상품 알림 메시지를 생성하는 핵심 내부 구현체입니다.
-func (p *product) renderInternal(supportsHTML bool, mark string, prev *product) string {
+func (p *product) renderInternal(supportsHTML bool, m mark.Mark, prev *product) string {
 	var sb strings.Builder
 
 	// 예상 버퍼 크기 할당
@@ -69,7 +70,7 @@ func (p *product) renderInternal(supportsHTML bool, mark string, prev *product) 
 	}
 
 	// Mark 추가
-	sb.WriteString(mark)
+	sb.WriteString(m.WithSpace())
 
 	// Text 모드일 경우 줄바꿈 후 링크 추가
 	if !supportsHTML {

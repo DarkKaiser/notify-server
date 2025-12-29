@@ -433,7 +433,7 @@ func (t *task) renderProductDiffs(diffs []productDiff, supportsHTML bool) string
 		case eventNewProduct:
 			sb.WriteString(diff.Product.Render(supportsHTML, mark.New))
 		case eventPriceChanged:
-			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Change, diff.Prev))
+			sb.WriteString(diff.Product.RenderDiff(supportsHTML, mark.Modified, diff.Prev))
 		}
 	}
 

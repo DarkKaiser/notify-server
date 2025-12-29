@@ -386,7 +386,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
 				assert.Contains(t, msg, "상품 정보가 변경되었습니다")
 				assert.Contains(t, msg, "P2")
-				assert.Contains(t, msg, "🆕")
+				assert.Contains(t, msg, mark.New.WithSpace())
 				assert.True(t, shouldSave)
 			},
 		},
@@ -876,16 +876,16 @@ func TestRenderProductDiffs(t *testing.T) {
 
 	t.Run("HTML Mode", func(t *testing.T) {
 		msg := taskInstance.renderProductDiffs(diffs, true)
-		assert.Contains(t, msg, mark.New)
-		assert.Contains(t, msg, mark.Change)
+		assert.Contains(t, msg, mark.New.WithSpace())
+		assert.Contains(t, msg, mark.Modified.WithSpace())
 		assert.Contains(t, msg, "<a href=")
 		assert.Contains(t, msg, "(이전: 15,000원)") // 15000 -> 10000 Drop
 	})
 
 	t.Run("Text Mode", func(t *testing.T) {
 		msg := taskInstance.renderProductDiffs(diffs, false)
-		assert.Contains(t, msg, mark.New)
-		assert.Contains(t, msg, mark.Change)
+		assert.Contains(t, msg, mark.New.WithSpace())
+		assert.Contains(t, msg, mark.Modified.WithSpace())
 		assert.NotContains(t, msg, "<a href=")
 		assert.Contains(t, msg, "http://link1") // Link explicitly shown
 	})

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
@@ -107,18 +108,18 @@ func (p *product) updateLowestPrice() bool {
 
 // Render 상품 정보를 알림 메시지 포맷으로 변환합니다.
 // 주로 신규 상품 알림이나 단일 상품 상태 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
-func (p *product) Render(supportsHTML bool, mark string) string {
-	return p.renderInternal(supportsHTML, mark, nil)
+func (p *product) Render(supportsHTML bool, m mark.Mark) string {
+	return p.renderInternal(supportsHTML, m, nil)
 }
 
 // RenderDiff 현재 상품 상태와 과거 상태를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
 // 가격 변동, 품절 해제 등 사용자가 주목해야 할 변화가 있을 때 사용되며, 내부적으로 이전 가격 정보를 포함하여 렌더링합니다.
-func (p *product) RenderDiff(supportsHTML bool, mark string, prev *product) string {
-	return p.renderInternal(supportsHTML, mark, prev)
+func (p *product) RenderDiff(supportsHTML bool, m mark.Mark, prev *product) string {
+	return p.renderInternal(supportsHTML, m, prev)
 }
 
 // renderInternal 상품 알림 메시지를 생성하는 핵심 내부 구현체입니다.
-func (p *product) renderInternal(supportsHTML bool, mark string, prev *product) string {
+func (p *product) renderInternal(supportsHTML bool, m mark.Mark, prev *product) string {
 	var sb strings.Builder
 
 	// 예상되는 문자열 크기만큼 미리 할당
@@ -134,7 +135,7 @@ func (p *product) renderInternal(supportsHTML bool, mark string, prev *product) 
 		displayName = p.Name
 	}
 
-	fmt.Fprintf(&sb, "☞ %s%s", displayName, mark)
+	fmt.Fprintf(&sb, "☞ %s%s", displayName, m.WithSpace())
 
 	// 현재 가격
 	sb.WriteString("\n      • 현재 가격 : ")
