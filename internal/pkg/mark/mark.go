@@ -1,6 +1,8 @@
 // Package mark 애플리케이션 전반에서 사용되는 이모지 상수를 중앙 관리하는 패키지입니다.
 package mark
 
+import "fmt"
+
 // Mark 이모지 상수를 위한 타입입니다.
 type Mark string
 
@@ -21,7 +23,44 @@ const (
 	Alert Mark = "🚨"
 )
 
-// WithSpace 마크(이모지) 앞에 구분용 공백을 추가하여 반환합니다.
+// all 정의된 모든 마크를 담고 있는 슬라이스입니다.
+var all = []Mark{
+	New,
+	Modified,
+	Unavailable,
+	BestPrice,
+	Alert,
+}
+
+// Values 정의된 모든 마크의 슬라이스 복사본을 반환합니다.
+// 반환된 슬라이스를 수정해도 패키지 내부 상태에는 영향을 주지 않습니다.
+func Values() []Mark {
+	c := make([]Mark, len(all))
+	copy(c, all)
+	return c
+}
+
+// Parse 문자열을 Mark 타입으로 변환합니다.
+// 유효하지 않은 마크 문자열인 경우 에러를 반환합니다.
+func Parse(s string) (Mark, error) {
+	m := Mark(s)
+	if !m.IsValid() {
+		return "", fmt.Errorf("정의되지 않은 마크입니다: %q", s)
+	}
+	return m, nil
+}
+
+// IsValid 현재 마크가 패키지에 정의된 유효한 마크인지 검증합니다.
+func (m Mark) IsValid() bool {
+	for _, validMark := range all {
+		if m == validMark {
+			return true
+		}
+	}
+	return false
+}
+
+// WithSpace 마크 앞에 구분용 공백을 추가하여 반환합니다.
 func (m Mark) WithSpace() string {
 	if m == "" {
 		return ""
