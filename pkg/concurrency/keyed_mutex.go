@@ -1,3 +1,4 @@
+// Package concurrency 키(Key) 기반의 세분화된 락킹(Fine-grained Locking) 등 고효율 동시성 제어 유틸리티를 제공합니다.
 package concurrency
 
 import (
@@ -70,6 +71,7 @@ func (km *KeyedMutex) TryLock(key string) bool {
 
 		// 새 뮤텍스이므로 Lock은 무조건 성공하지만, 일관성을 위해 Lock 호출
 		e.mu.Lock()
+
 		return true
 	}
 
@@ -78,12 +80,15 @@ func (km *KeyedMutex) TryLock(key string) bool {
 	if e.mu.TryLock() {
 		// 락 획득 성공 시 참조 카운트 증가
 		e.refCount++
+
 		km.mu.Unlock()
+
 		return true
 	}
 
 	// 락 획득 실패 (이미 사용 중)
 	km.mu.Unlock()
+
 	return false
 }
 

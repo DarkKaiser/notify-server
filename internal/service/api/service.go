@@ -44,7 +44,7 @@ type Service struct {
 
 	notificationSender notification.Sender
 
-	versionInfo version.Info
+	buildInfo version.Info
 
 	running   bool
 	runningMu sync.Mutex
@@ -54,13 +54,13 @@ type Service struct {
 //
 // Returns:
 //   - 초기화된 Service 인스턴스
-func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, versionInfo version.Info) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
 	return &Service{
 		appConfig: appConfig,
 
 		notificationSender: notificationSender,
 
-		versionInfo: versionInfo,
+		buildInfo: buildInfo,
 
 		running:   false,
 		runningMu: sync.Mutex{},
@@ -140,7 +140,7 @@ func (s *Service) setupServer() *echo.Echo {
 	applicationManager := apiauth.NewApplicationManager(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationSender, s.versionInfo)
+	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
 	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
 
 	// Echo 서버 생성

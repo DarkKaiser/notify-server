@@ -26,17 +26,17 @@ const (
 type SystemHandler struct {
 	notificationSender notification.Sender
 
-	versionInfo version.Info
+	buildInfo version.Info
 
 	serverStartTime time.Time
 }
 
 // NewSystemHandler SystemHandler 인스턴스를 생성합니다.
-func NewSystemHandler(notificationSender notification.Sender, versionInfo version.Info) *SystemHandler {
+func NewSystemHandler(notificationSender notification.Sender, buildInfo version.Info) *SystemHandler {
 	return &SystemHandler{
 		notificationSender: notificationSender,
 
-		versionInfo: versionInfo,
+		buildInfo: buildInfo,
 
 		serverStartTime: time.Now(),
 	}
@@ -113,9 +113,9 @@ func (h *SystemHandler) VersionHandler(c echo.Context) error {
 	}).Debug("버전 정보 요청")
 
 	return c.JSON(http.StatusOK, response.VersionResponse{
-		Version:     h.versionInfo.Version,
-		BuildDate:   h.versionInfo.BuildDate,
-		BuildNumber: h.versionInfo.BuildNumber,
+		Version:     h.buildInfo.Version,
+		BuildDate:   h.buildInfo.BuildDate,
+		BuildNumber: h.buildInfo.BuildNumber,
 		GoVersion:   runtime.Version(),
 	})
 }

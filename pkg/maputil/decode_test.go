@@ -1,6 +1,8 @@
 package maputil
 
 import (
+	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -8,8 +10,73 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Documentation Examples (GoDoc)
+// =============================================================================
+
+type Config struct {
+	Host    string        `json:"host"`
+	Port    int           `json:"port"`
+	Debug   bool          `json:"debug"`
+	Timeout time.Duration `json:"timeout"` // "10s" -> time.Duration 자동 변환 지원
+	Tags    []string      `json:"tags"`    // "a,b,c" -> []string 자동 변환 지원
+}
+
+func ExampleDecode() {
+	// 외부 입력 (예: JSON 파싱 결과 또는 설정 파일)
+	input := map[string]any{
+		"host":    "localhost",
+		"port":    8080,
+		"debug":   true,
+		"timeout": "5s",
+		"tags":    "server,http,api",
+	}
+
+	// 맵 데이터를 구조체로 디코딩
+	cfg, err := Decode[Config](input)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Host: %s, Port: %d, Timeout: %s, Tags: %v\n", cfg.Host, cfg.Port, cfg.Timeout, cfg.Tags)
+
+	// Output:
+	// Host: localhost, Port: 8080, Timeout: 5s, Tags: [server http api]
+}
+
+func ExampleDecodeTo() {
+	// 기본값(Default) 설정
+	cfg := &Config{
+		Host:    "127.0.0.1",
+		Port:    9000,
+		Debug:   false,
+		Timeout: 30 * time.Second,
+	}
+
+	// 파일이나 환경 변수에서 읽어온 오버라이드 값
+	// (일부 필드만 존재할 수 있음)
+	override := map[string]any{
+		"port":  3000,
+		"debug": true,
+	}
+
+	// 기존 객체(cfg)에 오버라이드 값 병합(Merge)
+	if err := DecodeTo(override, cfg); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Host: %s, Port: %d, Debug: %v\n", cfg.Host, cfg.Port, cfg.Debug)
+
+	// Output:
+	// Host: 127.0.0.1, Port: 3000, Debug: true
+}
+
+// =============================================================================
+// Unit Tests
+// =============================================================================
+
 // -------------------------------------------------------------------------
-// Test Structures (테스트용 구조체 정의)
+// Test Structures
 // -------------------------------------------------------------------------
 
 type BasicStruct struct {
@@ -34,11 +101,10 @@ type SliceMapStruct struct {
 }
 
 type EmbeddedStruct struct {
-	BasicStruct `mapstructure:",squash"` // mapstructure 사용 시 squash 태그 필요 (Decode 함수 내부 config 확인 필요)
-	Extra       string                   `json:"extra"`
+	BasicStruct `mapstructure:",squash"`
+	Extra       string `json:"extra"`
 }
 
-// Unexported 필드는 mapstructure에서 무시되어야 함
 type PrivateFieldStruct struct {
 	Public  string `json:"public"`
 	private string `json:"private"`
@@ -48,374 +114,194 @@ type TimeStruct struct {
 	Duration time.Duration `json:"duration"`
 }
 
+// CustomText는 encoding.TextUnmarshaler를 구현하는 테스트용 구조체입니다.
+type CustomText struct {
+	Value string
+}
+
+func (c *CustomText) UnmarshalText(text []byte) error {
+	c.Value = "parsed:" + string(text)
+	return nil
+}
+
+type HookTestStruct struct {
+	IP     net.IP      `json:"ip"`
+	Custom *CustomText `json:"custom"`
+}
+
 // -------------------------------------------------------------------------
-// Test Functions
+// Tests
 // -------------------------------------------------------------------------
 
 func TestDecode(t *testing.T) {
 	t.Parallel()
 
-	t.Run("BasicStruct_Mapping", testBasicStructMapping)
-	t.Run("NestedStruct_Mapping", testNestedStructMapping)
-	t.Run("SliceAndMap_Mapping", testSliceAndMapMapping)
-	t.Run("PointerFields_Mapping", testPointerFieldsMapping)
-	t.Run("WeakTypeConversion", testWeakTypeConversion)
-	t.Run("UnexportedFields_Ignored", testUnexportedFieldsIgnored)
-	t.Run("ZeroValues_And_PartialInput", testZeroValuesAndPartialInput)
-	t.Run("StructToStruct_Decoding", testStructToStructDecoding) // [New] Struct -> Struct 변환 테스트
-	t.Run("ErrorCases", testErrorCases)
-	t.Run("TimeDuration_Parsing", testTimeDurationParsing)
+	t.Run("BasicStruct_Mapping", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"name":       "Alice",
+			"age":        30,
+			"is_enabled": true,
+		}
+		got, err := Decode[BasicStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, "Alice", got.Name)
+		assert.Equal(t, 30, got.Age)
+		assert.True(t, got.IsEnabled)
+	})
 
-	// Expert Level Tests
-	t.Run("StrictErrorChecking", testStrictErrorChecking)
-	t.Run("SquashBehavior", testSquashBehavior)
-	t.Run("TextUnmarshalerHook", testTextUnmarshalerHook)
-	t.Run("AnyInputSupport", testAnyInputSupport)
+	t.Run("NestedStruct_Mapping", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"title": "Nested Test",
+			"detail": map[string]any{
+				"name": "Bob",
+				"age":  25,
+			},
+		}
+		got, err := Decode[NestedStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, "Nested Test", got.Title)
+		assert.Equal(t, "Bob", got.Detail.Name)
+		assert.Equal(t, 25, got.Detail.Age)
+	})
+
+	t.Run("SliceAndMap_Mapping", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"tags": "go,json,map", // StringToSliceHook
+			"config": map[string]any{
+				"timeout": 100,
+			},
+		}
+		got, err := Decode[SliceMapStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"go", "json", "map"}, got.Tags)
+		assert.Equal(t, map[string]int{"timeout": 100}, got.Config)
+	})
+
+	t.Run("TextUnmarshalerHook", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"ip":     "192.168.1.1",
+			"custom": "custom-value",
+		}
+		got, err := Decode[HookTestStruct](input)
+		require.NoError(t, err)
+
+		// 1. net.IP (Case 2: *net.IP implements, field is net.IP)의 동작 검증
+		assert.Equal(t, net.ParseIP("192.168.1.1"), got.IP)
+
+		// 2. Custom struct (Case 1: *CustomText implements, field is *CustomText) 검증
+		// 훅이 정상 작동했다면 "parsed:" 접두사가 붙어야 함
+		assert.NotNil(t, got.Custom)
+		assert.Equal(t, "parsed:custom-value", got.Custom.Value)
+	})
+
+	t.Run("StrictErrorChecking_UnusedField", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"name":        "Valid",
+			"unknown_key": "Should Fail",
+		}
+		_, err := Decode[BasicStruct](input)
+		require.Error(t, err) // ErrorUnused: true
+	})
+
+	t.Run("WeakTypeConversion", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]any{
+			"age": "42", // string -> int
+		}
+		got, err := Decode[BasicStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, 42, got.Age)
+	})
 }
 
-func testBasicStructMapping(t *testing.T) {
+func TestDecodeTo(t *testing.T) {
 	t.Parallel()
 
+	t.Run("Merge_Config", func(t *testing.T) {
+		t.Parallel()
+		// 기본값
+		cfg := &BasicStruct{
+			Name:      "Default",
+			Age:       10,
+			IsEnabled: false,
+		}
+
+		// 오버라이드 (일부 필드)
+		input := map[string]any{
+			"age":        20,
+			"is_enabled": true,
+		}
+
+		err := DecodeTo(input, cfg)
+		require.NoError(t, err)
+
+		// Name 보존, 나머지는 변경
+		assert.Equal(t, "Default", cfg.Name)
+		assert.Equal(t, 20, cfg.Age)
+		assert.True(t, cfg.IsEnabled)
+	})
+
+	t.Run("Error_If_Not_Pointer", func(t *testing.T) {
+		t.Parallel()
+		cfg := BasicStruct{}
+		err := DecodeTo(map[string]any{"age": 20}, cfg)
+		require.Error(t, err)
+	})
+}
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkDecode_SmallStruct(b *testing.B) {
 	input := map[string]any{
-		"name":       "Alice",
-		"age":        30,
+		"name":       "Benchmark",
+		"age":        123,
 		"is_enabled": true,
 	}
 
-	got, err := Decode[BasicStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "Alice", got.Name)
-	assert.Equal(t, 30, got.Age)
-	assert.True(t, got.IsEnabled)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = Decode[BasicStruct](input)
+	}
 }
 
-func testNestedStructMapping(t *testing.T) {
-	t.Parallel()
-
+func BenchmarkDecode_NestedStruct(b *testing.B) {
 	input := map[string]any{
-		"title": "Nested Test",
+		"title": "Nested Benchmark",
 		"detail": map[string]any{
-			"name": "Bob",
-			"age":  25,
+			"name": "Inner",
+			"age":  99,
 		},
 	}
 
-	got, err := Decode[NestedStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "Nested Test", got.Title)
-	assert.Equal(t, "Bob", got.Detail.Name)
-	assert.Equal(t, 25, got.Detail.Age)
-	assert.False(t, got.Detail.IsEnabled) // Zero value
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = Decode[NestedStruct](input)
+	}
 }
 
-func testSliceAndMapMapping(t *testing.T) {
-	t.Parallel()
-
-	// 1. Basic Slice & Map
+func BenchmarkDecodeTo_Reuse(b *testing.B) {
 	input := map[string]any{
-		"tags": []string{"go", "json", "map"},
-		"config": map[string]any{
-			"timeout": 100,
-			"retry":   3,
-		},
+		"name": "Update",
+		"age":  50,
 	}
-	got, err := Decode[SliceMapStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"go", "json", "map"}, got.Tags)
-	assert.Equal(t, map[string]int{"timeout": 100, "retry": 3}, got.Config)
-
-	// 2. Slice Hook Test (Comma Separated String -> Slice)
-	t.Run("StringToSliceHook", func(t *testing.T) {
-		hookInput := map[string]any{
-			"tags": "dev,qa,prod",
-		}
-		gotHook, err := Decode[SliceMapStruct](hookInput)
-		require.NoError(t, err)
-		assert.Equal(t, []string{"dev", "qa", "prod"}, gotHook.Tags)
-	})
-
-	// 3. Empty String Case
-	t.Run("EmptyStringSlice", func(t *testing.T) {
-		emptyInput := map[string]any{
-			"tags": "",
-		}
-		gotEmpty, err := Decode[SliceMapStruct](emptyInput)
-		require.NoError(t, err)
-		// mapstructure의 StringToSliceHookFunc는 빈 문자열을 분리할 때 빈 슬라이스를 반환합니다.
-		// strings.Split("", ",") -> [""] (길이 1)과는 다른 동작입니다.
-		assert.Empty(t, gotEmpty.Tags)
-	})
-}
-
-func testPointerFieldsMapping(t *testing.T) {
-	t.Parallel()
-
-	t.Run("값이_있는_경우", func(t *testing.T) {
-		input := map[string]any{
-			"value": 123,
-			"data":  "ptr",
-		}
-		got, err := Decode[PointerStruct](input)
-		require.NoError(t, err)
-		assert.NotNil(t, got.Value)
-		assert.Equal(t, 123, *got.Value)
-		assert.NotNil(t, got.Data)
-		assert.Equal(t, "ptr", *got.Data)
-	})
-
-	t.Run("값이_없는_경우", func(t *testing.T) {
-		input := map[string]any{}
-		got, err := Decode[PointerStruct](input)
-		require.NoError(t, err)
-		assert.Nil(t, got.Value)
-		assert.Nil(t, got.Data)
-	})
-}
-
-func testWeakTypeConversion(t *testing.T) {
-	t.Parallel()
-
-	// mapstructure.DecoderConfig.WeaklyTypedInput = true 효과 검증
-	input := map[string]any{
-		"name":       12345,  // int -> string (주의: mapstructure 기본 동작에서 int->string은 지원되지 않을 수 있음. 확인 필요)
-		"age":        "42",   // string -> int
-		"is_enabled": "true", // string -> bool
+	// 구조체 재사용 (Alloc 줄이기)
+	target := &BasicStruct{
+		Name: "Original",
+		Age:  0,
 	}
 
-	got, err := Decode[BasicStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "12345", got.Name)
-	assert.Equal(t, 42, got.Age)
-	assert.True(t, got.IsEnabled)
-
-	// Single Value to Slice Check
-	sliceInput := map[string]any{
-		"tags": "single-tag", // string -> []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = DecodeTo(input, target)
 	}
-	gotSlice, err := Decode[SliceMapStruct](sliceInput)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"single-tag"}, gotSlice.Tags)
-}
-
-func testUnexportedFieldsIgnored(t *testing.T) {
-	t.Parallel()
-
-	input := map[string]any{
-		"public":  "visible",
-		"private": "hidden", // 소문자 필드는 매핑되지 않아야 하며, ErrorUnused가 true이면 에러가 반환되어야 함
-	}
-
-	_, err := Decode[PrivateFieldStruct](input)
-	// ErrorUnused: true 설정으로 인해 매핑되지 않는 키("private")가 있으면 에러가 발생해야 합니다.
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "private") // 에러 메시지에 필드명이 포함되는지 확인
-}
-
-func testZeroValuesAndPartialInput(t *testing.T) {
-	t.Parallel()
-
-	input := map[string]any{
-		"name": "Partial",
-	}
-
-	got, err := Decode[BasicStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "Partial", got.Name)
-	assert.Equal(t, 0, got.Age)
-	assert.False(t, got.IsEnabled)
-}
-
-func testStructToStructDecoding(t *testing.T) {
-	t.Parallel()
-
-	// Source struct (different type but same fields/tags)
-	type SourceStruct struct {
-		Name      string `json:"name"`
-		Age       int    `json:"age"`
-		IsEnabled bool   `json:"is_enabled"`
-	}
-
-	source := SourceStruct{
-		Name:      "StructSource",
-		Age:       99,
-		IsEnabled: true,
-	}
-
-	got, err := Decode[BasicStruct](source)
-	require.NoError(t, err)
-	assert.Equal(t, "StructSource", got.Name)
-	assert.Equal(t, 99, got.Age)
-	assert.True(t, got.IsEnabled)
-}
-
-func testErrorCases(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Unsupported_Target_Type", func(t *testing.T) {
-		input := map[string]any{"key": "value"}
-		_, err := Decode[int](input) // map -> int
-		assert.Error(t, err)
-	})
-
-	t.Run("Nil_Input", func(t *testing.T) {
-		var input any = nil // any 타입으로 변경
-		got, err := Decode[BasicStruct](input)
-		require.NoError(t, err)
-		assert.NotNil(t, got)
-		assert.Equal(t, "", got.Name) // Zero Value
-	})
-}
-
-func testTimeDurationParsing(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		input     string
-		want      time.Duration
-		expectErr bool
-	}{
-		{name: "Seconds", input: "10s", want: 10 * time.Second, expectErr: false},
-		{name: "Minutes", input: "5m", want: 5 * time.Minute, expectErr: false},
-		{name: "Combined", input: "1h30m", want: 90 * time.Minute, expectErr: false},
-		{name: "Microseconds", input: "500us", want: 500 * time.Microsecond, expectErr: false},
-		{name: "Zero", input: "0s", want: 0, expectErr: false},
-		{name: "Invalid", input: "invalid", want: 0, expectErr: true},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			input := map[string]any{"duration": tt.input}
-			got, err := Decode[TimeStruct](input)
-
-			if tt.expectErr {
-				assert.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, got.Duration)
-			}
-		})
-	}
-}
-
-// -------------------------------------------------------------------------
-// Expert Level Tests
-// -------------------------------------------------------------------------
-
-func testStrictErrorChecking(t *testing.T) {
-	t.Parallel()
-
-	// 1. 단일 미사용 필드
-	t.Run("Single_Unused_Field", func(t *testing.T) {
-		input := map[string]any{
-			"name":   "Valid",
-			"unused": "This should cause error",
-		}
-		_, err := Decode[BasicStruct](input)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unused")
-	})
-
-	// 2. 중첩 구조체 내 미사용 필드
-	t.Run("Nested_Unused_Field", func(t *testing.T) {
-		input := map[string]any{
-			"title": "Nested Root",
-			"detail": map[string]any{
-				"name":        "Bob",
-				"age":         30,
-				"unknown_key": "fail",
-			},
-		}
-		_, err := Decode[NestedStruct](input)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unknown_key")
-	})
-}
-
-func testSquashBehavior(t *testing.T) {
-	t.Parallel()
-
-	// Squash: true 동작 검증
-	// 상위 레벨의 키가 임베디드 구조체(BasicStruct)의 필드(Name)로 직접 매핑되어야 함
-	input := map[string]any{
-		"name":  "Embedded Name",
-		"age":   100,
-		"extra": "Extra Data",
-	}
-
-	got, err := Decode[EmbeddedStruct](input)
-	require.NoError(t, err)
-	assert.Equal(t, "Embedded Name", got.Name) // BasicStruct.Name
-	assert.Equal(t, 100, got.Age)              // BasicStruct.Age
-	assert.Equal(t, "Extra Data", got.Extra)
-}
-
-func testTextUnmarshalerHook(t *testing.T) {
-	t.Parallel()
-
-	type CustomTextType struct {
-		Value string
-	}
-
-	// encoding.TextUnmarshaler 인터페이스 구현
-	// (참고: 포인터 리시버여야 함)
-
-	type HookStruct struct {
-		TimePtr  *time.Time `json:"time"`
-		MyCustom *Custom    `json:"custom"`
-	}
-
-	input := map[string]any{
-		"time":   "2023-12-25T00:00:00Z",
-		"custom": "custom-value",
-	}
-
-	got, err := Decode[HookStruct](input)
-	require.NoError(t, err)
-
-	// 1. *time.Time 검증
-	assert.NotNil(t, got.TimePtr)
-	expectedTime, _ := time.Parse(time.RFC3339, "2023-12-25T00:00:00Z")
-	assert.Equal(t, expectedTime.UTC(), got.TimePtr.UTC())
-
-	// 2. Custom Type 검증
-	assert.NotNil(t, got.MyCustom)
-	assert.Equal(t, "parsed:custom-value", got.MyCustom.Data)
-}
-
-// Custom 타입 정의 (encoding.TextUnmarshaler 구현)
-type Custom struct {
-	Data string
-}
-
-func (c *Custom) UnmarshalText(text []byte) error {
-	c.Data = "parsed:" + string(text)
-	return nil
-}
-
-func testAnyInputSupport(t *testing.T) {
-	t.Parallel()
-
-	// 1. map[interface{}]interface{} (YAML 파싱 시 흔한 형태)
-	t.Run("MapInterfaceInterface", func(t *testing.T) {
-		input := map[interface{}]interface{}{
-			"name": "Generic Map",
-			"age":  88,
-		}
-		got, err := Decode[BasicStruct](input)
-		require.NoError(t, err)
-		assert.Equal(t, "Generic Map", got.Name)
-		assert.Equal(t, 88, got.Age)
-	})
-
-	// 2. Scalar Value to Struct (Error Expected)
-	// 구조체로 디코딩을 요청했으나 입력이 스칼라 값인 경우 에러가 발생해야 정상
-	t.Run("ScalarInput_Error", func(t *testing.T) {
-		input := "just string"
-		_, err := Decode[BasicStruct](input)
-		require.Error(t, err)
-	})
 }

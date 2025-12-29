@@ -14,12 +14,12 @@
 //	)
 //
 //	func main() {
-//	    info := version.Info{
+//	    buildInfo := version.Info{
 //	        Version:     Version,
 //	        BuildDate:   BuildDate,
 //	        BuildNumber: BuildNumber,
 //	    }
-//	    version.Set(info)
+//	    version.Set(buildInfo)
 //
 //	    // 어디서든 안전하게 접근 가능
 //	    log.Printf("Starting app: %s", version.Get())
@@ -61,6 +61,17 @@ func (i Info) String() string {
 	return fmt.Sprintf("%s (build: %s, date: %s, go_version: %s, os: %s, arch: %s)", i.Version, i.BuildNumber, i.BuildDate, i.GoVersion, i.OS, i.Arch)
 }
 
+// Get 전역 설정된 빌드 정보를 반환합니다.
+// 설정되지 않았을 경우 빈 Info(Zero Value)를 반환합니다.
+// Thread-Safe 합니다.
+func Get() Info {
+	val := globalInfo.Load()
+	if val == nil {
+		return Info{Version: "unknown", BuildDate: "unknown", BuildNumber: "0"}
+	}
+	return val.(Info)
+}
+
 // Set 전역 빌드 정보를 설정합니다.
 // 애플리케이션 시작 시(보통 main 함수) 단 한 번만 호출해야 합니다.
 // GoVersion, OS, Arch 등의 런타임 정보는 자동으로 채워집니다.
@@ -75,15 +86,4 @@ func Set(info Info) {
 		info.Arch = runtime.GOARCH
 	}
 	globalInfo.Store(info)
-}
-
-// Get 전역 설정된 빌드 정보를 반환합니다.
-// 설정되지 않았을 경우 빈 Info(Zero Value)를 반환합니다.
-// Thread-Safe 합니다.
-func Get() Info {
-	val := globalInfo.Load()
-	if val == nil {
-		return Info{Version: "unknown", BuildDate: "unknown", BuildNumber: "0"}
-	}
-	return val.(Info)
 }

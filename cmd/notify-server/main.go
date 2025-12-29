@@ -128,7 +128,7 @@ func main() {
 	fmt.Printf(banner, Version)
 
 	// 빌드 정보 설정 (전역 싱글톤 등록)
-	info := version.Info{
+	buildInfo := version.Info{
 		Version:     Version,
 		BuildDate:   BuildDate,
 		BuildNumber: BuildNumber,
@@ -136,17 +136,17 @@ func main() {
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
 	}
-	version.Set(info)
+	version.Set(buildInfo)
 
 	// 빌드 정보 출력
 	applog.WithComponentAndFields("main", log.Fields{
-		"version": info.String(),
+		"version": buildInfo.String(),
 	}).Info("빌드 정보")
 
 	// 서비스를 생성하고 초기화한다.
 	taskService := task.NewService(appConfig)
 	notificationService := notification.NewService(appConfig, taskService)
-	apiService := api.NewService(appConfig, notificationService, info)
+	apiService := api.NewService(appConfig, notificationService, buildInfo)
 
 	taskService.SetNotificationSender(notificationService)
 
