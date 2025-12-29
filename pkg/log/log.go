@@ -28,8 +28,8 @@ type Options struct {
 	Name          string // 로그 파일명 생성에 사용될 애플리케이션 식별자 (필수)
 	RetentionDays int    // 오래된 로그 삭제 기준일 (일 단위, 0: 삭제 안 함)
 
-	EnableCriticalLog bool // Error 이상(Error, Fatal, Panic)의 치명적 로그를 별도 파일로 분리 저장할지 여부
-	EnableVerboseLog  bool // Debug 이하(Trace, Debug)의 상세 로그를 별도 파일로 분리 저장할지 여부
+	EnableCriticalLog bool // ERROR 이상(ERROR, FATAL, PANIC)의 치명적 로그를 별도 파일로 분리 저장할지 여부
+	EnableVerboseLog  bool // DEBUG 이하(DEBUG, TRACE)의 상세 로그를 별도 파일로 분리 저장할지 여부
 	EnableConsoleLog  bool // 표준 출력(Stdout)에도 로그를 출력할지 여부 (개발 환경 권장)
 
 	// 로그 파일 생성 시의 권한 (기본값: 0644 - 소유자 쓰기/읽기, 그룹/기타 읽기)
@@ -99,16 +99,23 @@ func Setup(opts Options) (io.Closer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("메인 로그 파일 생성 실패: %w", err)
 	}
-	// 단일 로그 스트림을 '파일'과 '콘솔' 두 곳으로 동시에 내보냅니다.
-	// - mainLogFile: 로그를 영구적으로 디스크에 기록합니다. (보관 및 로테이션)
-	// - os.Stdout (옵션): 로그를 즉시 터미널에 출력합니다. (실시간 디버깅 및 컨테이너 수집기 연동)
-	writers := []io.Writer{mainLogFile}
-	if opts.EnableConsoleLog {
-		writers = append(writers, os.Stdout)
-	}
-	log.SetOutput(io.MultiWriter(writers...))
 
-	// 레벨별 로그 파일 생성 및 Hook 등록
+	// 로그 출력 전략을 '콘솔(Stdout)'과 '파일(File)'로 이원화하여 구성합니다.
+	//
+	// 1. 콘솔 출력 (Stdout):
+	//    - 컨테이너 및 클라우드 환경의 표준인 '12-Factor App' 로깅 원칙을 준수합니다.
+	//    - 개발 시에는 터미널 직관성을, 운영 시에는 로그 수집 파이프라인(Fluentd 등)과의 호환성을 보장합니다.
+	if opts.EnableConsoleLog {
+		log.SetOutput(os.Stdout)
+	} else {
+		log.SetOutput(io.Discard) // 콘솔 출력 비활성화
+	}
+
+	// 2. 파일 출력 (File Logging):
+	//    - 단순한 파일 기록을 넘어, 로그 레벨에 따른 '지능형 라우팅'을 수행합니다. (Logrus Hook 활용)
+	//    - 전략:
+	//      * Critical (Error/Fatal): 별도 파일로 격리하여 장애 발생 시 즉각적인 원인 분석을 지원합니다.
+	//      * Verbose (Debug/Trace): 메인 로그의 가독성을 해치지 않도록 별도 파일로 분리하여 저장합니다.
 	var hook *LogLevelHook
 	var criticalLogFile, verboseLogFile *os.File
 
@@ -134,14 +141,15 @@ func Setup(opts Options) (io.Closer, error) {
 		}
 	}
 
-	if criticalLogFile != nil || verboseLogFile != nil {
-		hook = &LogLevelHook{
-			criticalWriter: criticalLogFile,
-			verboseWriter:  verboseLogFile,
-			formatter:      log.StandardLogger().Formatter,
-		}
-		log.AddHook(hook)
+	// 모든 파일 로깅을 Hook이 전담
+	hook = &LogLevelHook{
+		mainWriter:     mainLogFile,
+		criticalWriter: criticalLogFile,
+		verboseWriter:  verboseLogFile,
+
+		formatter: log.StandardLogger().Formatter,
 	}
+	log.AddHook(hook)
 
 	// 만료된 로그 파일 삭제
 	if opts.RetentionDays > 0 {

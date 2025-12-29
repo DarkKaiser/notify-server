@@ -361,24 +361,119 @@ func assertLogFileExists(t *testing.T, logDir, appName, logType string) bool {
 			continue
 		}
 
-		switch logType {
-		case "main":
+		if logType == "main" {
 			if strings.HasSuffix(name, "."+fileExt) &&
 				!strings.Contains(name, ".critical.") &&
 				!strings.Contains(name, ".verbose.") {
 				return true
 			}
-		case "critical":
-			if strings.Contains(name, ".critical.") {
-				return true
-			}
-		case "verbose":
-			if strings.Contains(name, ".verbose.") {
-				return true
-			}
+		} else if strings.Contains(name, "."+logType+".") {
+			return true
 		}
 	}
 	return false
+}
+
+// TestSetup_LogFilterVerification은 로그 레벨 분리 및 오염 방지를 검증합니다.
+//
+// 검증 항목:
+//   - 파일 생성 여부
+//   - Main 로그에 Debug 메시지가 없는지 (Content Isolation)
+//   - Critical 로그에 Error 메시지가 있는지
+func TestSetup_LogFilterVerification(t *testing.T) {
+	tempDir, teardown := setupLogTest(t)
+	defer teardown()
+
+	appName := "test-app-filter"
+	logDir := filepath.Join(tempDir, appName)
+
+	// 모든 로그 활성화 (Critical + Verbose)
+	closer, err := Setup(Options{
+		Name:              appName,
+		RetentionDays:     7,
+		EnableCriticalLog: true,
+		EnableVerboseLog:  true,
+		Dir:               logDir,
+	})
+	require.NoError(t, err)
+	defer closer.Close()
+
+	// 로그 발생
+	log.Debug("This is debug log") // Verbose Only
+	log.Info("This is info log")   // Main Only (Info+)
+	log.Warn("This is warn log")   // Main Only (Info+)
+	log.Error("This is error log") // Main + Critical (Error+)
+
+	// 비동기 쓰기 가능성을 감안하여 잠시 대기 (File I/O)
+	// 하지만 Logrus Default는 동기식이므로 즉시 확인 가능해야 함.
+	// 안전을 위해 Sync 호출은 Setup에서 반환된 closer가 처리하지 않으므로(파일 객체 직접 접근 불가),
+	// 여기서는 OS Flush를 믿고 진행하되, 실패 시 약간의 sleep 고려.
+
+	// 파일 찾기
+	files, err := os.ReadDir(logDir)
+	require.NoError(t, err)
+
+	var mainPath, criticalPath, verbosePath string
+	for _, f := range files {
+		path := filepath.Join(logDir, f.Name())
+		if strings.Contains(f.Name(), "critical") {
+			criticalPath = path
+		} else if strings.Contains(f.Name(), "verbose") {
+			verbosePath = path
+		} else if strings.HasSuffix(f.Name(), "."+fileExt) {
+			mainPath = path
+		}
+	}
+
+	require.NotEmpty(t, mainPath, "Main log file must exist")
+	require.NotEmpty(t, criticalPath, "Critical log file must exist")
+	require.NotEmpty(t, verbosePath, "Verbose log file must exist")
+
+	// 내용물 검증 Helper
+	assertFileContent := func(path string, shouldContain []string, shouldNotContain []string) {
+		contentBytes, err := os.ReadFile(path)
+		require.NoError(t, err)
+		content := string(contentBytes)
+
+		for _, s := range shouldContain {
+			assert.Contains(t, content, s, "File %s SHOULD contain '%s'", filepath.Base(path), s)
+		}
+		for _, s := range shouldNotContain {
+			assert.NotContains(t, content, s, "File %s should NOT contain '%s'", filepath.Base(path), s)
+		}
+	}
+
+	// 1. Main Log 검증: Info/Warn/Error 포함, Debug 제외
+	assertFileContent(mainPath,
+		[]string{"This is info log", "This is warn log", "This is error log"},
+		[]string{"This is debug log"},
+	)
+
+	// 2. Critical Log 검증: Error 포함, Info/Debug 제외
+	assertFileContent(criticalPath,
+		[]string{"This is error log"},
+		[]string{"This is info log", "This is debug log"},
+	)
+
+	// 3. Verbose Log 검증: Debug 포함 (Error/Info는 설정에 따라 다를 수 있으나, 현재 구현상 LogLevelHook은 VerboseWriter에 Debug 이상을 다 줌?
+	//    -> 구현 확인: Level >= DebugLevel 이므로 Info, Warn, Error, Fatal, Panic 등 '모든' 로그가 Verbose에 포함됨)
+	//    -> **중요**: LogLevelHook 로직 상 'Verbose' 파일은 'DebugLevel 이상' 즉, 'All Logs'를 저장하는 개념인지, '오직 Debug/Trace'만 저장하는지?
+	//       hook.go: if entry.Level >= log.DebugLevel { ... Write ... }
+	//       Logrus Level은 Panic=0, User=1, Error=2, Warn=3, Info=4, Debug=5, Trace=6
+	//       entry.Level(5) >= Debug(5) -> True.
+	//       entry.Level(4 Info) >= Debug(5) -> False. (Logrus Level은 숫자가 작을수록 심각함)
+	//       Wait, Logrus definition:
+	//         PanicLevel Level = iota (0)
+	//         FatalLevel (1) ...
+	//         DebugLevel (5)
+	//       If entry is Info(4), is 4 >= 5? False.
+	//       So VerboseWriter (Level >= DebugLevel) implies ONLY Debug(5) and Trace(6).
+	//       Info(4) is NOT >= Debug(5).
+	//       So Verbose Log should ONLY contain Debug and Trace.
+	assertFileContent(verbosePath,
+		[]string{"This is debug log"},
+		[]string{"This is info log", "This is error log"}, // Info/Error는 Verbose 파일에 안 들어감
+	)
 }
 
 // TestSetup_LogLevelFiles는 로그 레벨별 파일 분리를 검증합니다.

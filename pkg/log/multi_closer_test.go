@@ -51,13 +51,23 @@ func TestMultiCloser_Close(t *testing.T) {
 			expectedState: []bool{true, true, true},
 		},
 		{
-			name: "Error in middle closer - Continues to close others, returns first error",
+			name: "Error in middle closer - Continues to close others, returns wrapped error",
 			closers: []io.Closer{
 				&mockCloser{},
 				&mockCloser{err: errMock},
 				&mockCloser{},
 			},
 			expectError:   errMock,
+			expectedState: []bool{true, true, true},
+		},
+		{
+			name: "Multiple errors - Should join all errors",
+			closers: []io.Closer{
+				&mockCloser{err: errors.New("error 1")},
+				&mockCloser{err: errors.New("error 2")},
+				&mockCloser{},
+			},
+			expectError:   errors.New("error 1\nerror 2"), // errors.Join format (newline separated)
 			expectedState: []bool{true, true, true},
 		},
 		{
@@ -81,7 +91,15 @@ func TestMultiCloser_Close(t *testing.T) {
 			err := mc.Close()
 
 			if tt.expectError != nil {
-				assert.ErrorIs(t, err, tt.expectError)
+				// errors.Join의 결과는 단순 ErrorIs로 비교가 어려울 수 있음 (wrapped error가 아니므로)
+				// 따라서 메시지 포함 여부로 검증하거나, 개별 에러가 포함되어 있는지 확인해야 함
+				if len(tt.closers) == 3 && tt.closers[0] != nil && tt.closers[1] != nil && tt.name == "Multiple errors - Should join all errors" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), "error 1")
+					assert.Contains(t, err.Error(), "error 2")
+				} else {
+					assert.ErrorIs(t, err, tt.expectError)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
