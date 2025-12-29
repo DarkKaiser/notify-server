@@ -65,6 +65,33 @@ func ExampleKeyedMutex_TryLock() {
 	// Failed to acquire lock, skipping task.
 }
 
+// ExampleKeyedMutex_TryLock_success KeyedMutex.TryLock 메서드의 성공 케이스 예제입니다.
+func ExampleKeyedMutex_TryLock_success() {
+	km := NewKeyedMutex()
+	key := "resource_key"
+
+	// 락 획득 시도 (성공)
+	if km.TryLock(key) {
+		fmt.Println("First lock acquired")
+
+		// 중첩된 락 시도 (실패 - 이미 다른 곳에서 소유 중이라고 가정)
+		// 주의: 동일 고루틴 내에서의 재진입(Reentrancy)은 지원하지 않으므로 실패합니다.
+		if km.TryLock(key) {
+			fmt.Println("Second lock acquired") // 실행되지 않음
+		} else {
+			fmt.Println("Second lock failed")
+		}
+
+		km.Unlock(key)
+		fmt.Println("First lock released")
+	}
+
+	// Output:
+	// First lock acquired
+	// Second lock failed
+	// First lock released
+}
+
 // =============================================================================
 // Unit Tests
 // =============================================================================

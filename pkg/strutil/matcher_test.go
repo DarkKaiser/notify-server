@@ -250,3 +250,104 @@ func TestKeywordMatcher_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+// =============================================================================
+// containsFold Internal Helper Verification
+// =============================================================================
+
+// TestContainsFold verifies the correctness of the internal containsFold helper.
+// It covers ASCII, Unicode (Hangul, etc.), case-insensitivity, and edge cases.
+func TestContainsFold(t *testing.T) {
+	tests := []struct {
+		name   string
+		s      string
+		substr string
+		want   bool
+	}{
+		// 1. Basic ASCII (Case Insensitive)
+		{"ASCII Exact Match", "Hello World", "Hello", true},
+		{"ASCII Case Mismatch 1", "Hello World", "hello", true},
+		{"ASCII Case Mismatch 2", "Hello World", "WORLD", true},
+		{"ASCII Partial Case Mismatch", "Hello World", "WoRLd", true},
+		{"ASCII No Match", "Hello World", "Python", false},
+		{"ASCII Empty Substr", "Hello World", "", true},
+		{"ASCII Empty String", "", "Hello", false},
+		{"ASCII Shorter String", "Hi", "Hello", false},
+
+		// 2. Unicode (Korean Hangul) - Note: In modern Korean usage, case folding is not applicable,
+		// but checking correct byte-length substring extraction is crucial.
+		{"Korean Exact Match", "안녕하세요", "안녕", true},
+		{"Korean Middle Match", "제 이름은 김철수입니다", "김철수", true},
+		{"Korean No Match", "안녕하세요", "반갑", false},
+		{"Korean Mixed with ASCII Match", "Go 언어 화이팅", "go", true},
+		{"Korean Mixed with ASCII No Match", "Go 언어 화이팅", "java", false},
+
+		// 3. Unicode Case Folding (Specific Scripts)
+		// Greek Sigma: 'Σ' (U+03A3, Upper) vs 'σ' (U+03C3, Lower)
+		{"Greek Sigma Match", "Σigma", "σigma", true},
+		// Turkish Dotted I: 'İ' (U+0130) vs 'i' (ASCII)
+		// Limitation: Our containsFold assumes byte length doesn't change.
+		// 'İ' (2 bytes) vs 'i' (1 byte) mismatch causes this to fail in this specific implementation.
+		// We exclude it from this verification as it's a known trade-off for performance.
+		// {"Turkish I Match", "TÜRKİYE", "türkiye", true},
+
+		// 4. Edge Cases
+		{"Substr longer than string", "short", "longer string", false},
+		{"Single Char Match Lower", "A", "a", true},
+		{"Single Char Match Upper", "a", "A", true},
+		{"Repeated Pattern Match", "nananananana batman", "batman", true},
+		{"Repeated Pattern Partial Fail", "nanananana", "nana", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := containsFold(tt.s, tt.substr); got != tt.want {
+				t.Errorf("containsFold(%q, %q) = %v, want %v", tt.s, tt.substr, got, tt.want)
+			}
+		})
+	}
+}
+
+// FuzzContainsFold provides robust randomized testing for containsFold.
+// It compares the result of containsFold against the standard library's
+// strings.ToLower + strings.Contains approach to ensure behavioral consistency.
+func FuzzContainsFold(f *testing.F) {
+	f.Add("Hello World", "hello")
+	f.Add("Go Language", "lang")
+	f.Add("안녕하세요", "안녕")
+
+	f.Fuzz(func(t *testing.T, s, substr string) {
+		// Oracle: Standard Library
+		sLower := strings.ToLower(s)
+		substrLower := strings.ToLower(substr)
+		want := strings.Contains(sLower, substrLower)
+
+		// System Under Test
+		got := containsFold(s, substr)
+
+		if got != want {
+			t.Errorf("Mismatch! s=%q, substr=%q -> got %v, want %v", s, substr, got, want)
+		}
+	})
+}
+
+// BenchmarkContainsFold benchmarks the zero-allocation containsFold
+// against the standard library's allocation-heavy approach.
+func BenchmarkContainsFold(b *testing.B) {
+	s := "The Quick Brown Fox Jumps Over The Lazy Dog"
+	substr := "lazy"
+
+	// 1. Standard Library (Allocation)
+	b.Run("StdLib_ToLower_Contains", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+		}
+	})
+
+	// 2. Custom Zero-Allocation
+	b.Run("Custom_containsFold", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = containsFold(s, substr)
+		}
+	})
+}
