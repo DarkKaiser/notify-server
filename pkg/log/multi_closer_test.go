@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"testing"
@@ -99,30 +100,17 @@ func TestMultiCloser_Close(t *testing.T) {
 // Hook Removal Tests
 // =============================================================================
 
-// TestMultiCloser_Close_HookRemoval은 Close 호출 시 Hook 제거를 검증합니다.
+// TestMultiCloser_Close_HookRemoval은 Close 호출 시 Hook 비활성화를 검증합니다.
 //
 // 검증 항목:
-//   - Close 호출 시 등록된 Hook이 제거됨
-func TestMultiCloser_Close_HookRemoval(t *testing.T) {
-	t.Run("Close 호출 시 Hook이 제거되는지 확인", func(t *testing.T) {
+//   - Close 호출 시 Hook의 closed 플래그가 설정됨 (Logical Disable)
+func TestMultiCloser_Close_HookDisable(t *testing.T) {
+	t.Run("Close 호출 시 Hook이 비활성화되는지 확인", func(t *testing.T) {
 		// 테스트용 Hook 생성
 		hook := &LogLevelHook{}
 
-		// Logrus에 Hook 등록
-		logger := log.StandardLogger()
-		logger.AddHook(hook)
-
-		// Hook이 등록되었는지 확인
-		found := false
-		for _, hooks := range logger.Hooks {
-			for _, h := range hooks {
-				if h == hook {
-					found = true
-					break
-				}
-			}
-		}
-		assert.True(t, found, "Hook이 등록되어야 합니다")
+		// Logrus에 Hook 등록 (여기서는 등록 여부보다는 Disable 여부가 중요)
+		log.AddHook(hook)
 
 		// multiCloser 생성 및 Close 호출
 		mc := &multiCloser{
@@ -131,19 +119,60 @@ func TestMultiCloser_Close_HookRemoval(t *testing.T) {
 		err := mc.Close()
 		require.NoError(t, err, "Close should not return error")
 
-		// Hook이 제거되었는지 확인
-		found = false
-		for _, hooks := range logger.Hooks {
-			for _, h := range hooks {
-				if h == hook {
-					found = true
-					break
-				}
-			}
-		}
+		// Hook이 비활성화(closed) 되었는지 내부 상태 확인 불가 (private field)
+		// 대신 Fire를 호출했을 때 더 이상 동작하지 않거나 에러가 없는지 간접 확인이 필요하지만,
+		// 여기서는 리팩토링된 동작(Atomic Flag 설정)을 신뢰하고
+		// Fire 호출 시 아무런 사이드 이펙트가 없는지 확인합니다.
+
+		// 테스트용 Writer 설정
+		buf := &bytes.Buffer{}
+		hook.verboseWriter = buf
+		hook.formatter = &log.TextFormatter{DisableTimestamp: true}
+
+		// Fire 호출 (이미 Close 되었으므로 기록되면 안 됨)
+		err = hook.Fire(&log.Entry{
+			Level:   log.DebugLevel,
+			Message: "Should not be logged",
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, buf.Len(), "Close된 Hook은 로그를 기록하지 않아야 합니다")
 	})
 }
 
 // =============================================================================
-// Nil Handling Tests
+// Sync Tests
 // =============================================================================
+
+// mockSyncCloser는 Sync를 지원하는 Mock Closer입니다.
+type mockSyncCloser struct {
+	mockCloser
+	synced bool
+}
+
+func (m *mockSyncCloser) Sync() error {
+	m.synced = true
+	return nil
+}
+
+// TestMultiCloser_Sync는 Close 시 Sync 호출 여부를 검증합니다.
+//
+// 검증 항목:
+//   - Sync 메서드를 가진 Closer에 대해 Sync()가 호출되는지
+//   - Sync 메서드가 없는 Closer는 문제없이 Close 되는지
+func TestMultiCloser_Sync(t *testing.T) {
+	t.Run("Sync 지원 Closer는 Sync가 호출되어야 함", func(t *testing.T) {
+		syncer := &mockSyncCloser{}
+		normal := &mockCloser{}
+
+		mc := &multiCloser{
+			closers: []io.Closer{syncer, normal},
+		}
+
+		err := mc.Close()
+		require.NoError(t, err)
+
+		assert.True(t, syncer.synced, "Sync() should be called")
+		assert.True(t, syncer.closed, "Close() should be called after Sync()")
+		assert.True(t, normal.closed, "Normal closer should be closed")
+	})
+}

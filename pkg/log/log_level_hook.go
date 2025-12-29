@@ -2,6 +2,7 @@ package log
 
 import (
 	"io"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -12,6 +13,8 @@ type LogLevelHook struct {
 	criticalWriter io.Writer     // ERROR, FATAL, PANIC 레벨 로그를 기록할 Writer
 	verboseWriter  io.Writer     // DEBUG, TRACE 레벨 로그를 기록할 Writer
 	formatter      log.Formatter // 로그 포매터
+
+	closed int32 // 원자적 접근을 위한 플래그 (0: open, 1: closed)
 }
 
 // Levels 이 Hook이 처리할 로그 레벨을 반환합니다.
@@ -21,6 +24,11 @@ func (hook *LogLevelHook) Levels() []log.Level {
 
 // Fire 로그 엔트리를 레벨에 따라 적절한 파일에 기록합니다.
 func (hook *LogLevelHook) Fire(entry *log.Entry) error {
+	// 닫힌 경우 무시 (Race Condition 방지)
+	if atomic.LoadInt32(&hook.closed) == 1 {
+		return nil
+	}
+
 	var writer io.Writer
 
 	switch entry.Level {
@@ -45,4 +53,9 @@ func (hook *LogLevelHook) Fire(entry *log.Entry) error {
 	}
 	_, err = writer.Write(msg)
 	return err
+}
+
+// Close Hook을 비활성화합니다. 이후 Fire 호출은 무시됩니다.
+func (hook *LogLevelHook) Close() {
+	atomic.StoreInt32(&hook.closed, 1)
 }

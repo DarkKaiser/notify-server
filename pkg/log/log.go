@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +61,7 @@ func Setup(opts Options) (io.Closer, error) {
 		FullTimestamp:   true,         // TTY가 아니어도 타임스탬프를 항상 출력
 		TimestampFormat: time.RFC3339, // "2006-01-02T15:04:05Z07:00" (ISO8601 표준)
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
-			function = fmt.Sprintf("%s(line:%d)", frame.Function, frame.Line)
+			function = frame.Function + "(line:" + strconv.Itoa(frame.Line) + ")"
 			if opts.CallerPathPrefix != "" && strings.HasPrefix(function, opts.CallerPathPrefix) {
 				function = "..." + function[len(opts.CallerPathPrefix):]
 			}
@@ -70,9 +71,9 @@ func Setup(opts Options) (io.Closer, error) {
 
 	// 파일 로깅을 위해서는 애플리케이션 식별자(Name)가 필수입니다.
 	// Name이 비어있는 경우, 전역 설정(Formatter 등)만 적용하고 파일 출력 설정은 생략합니다.
-	// 이는 에러가 아니므로 nil error를 반환합니다.
+	// API 안전성을 위해 nil 대신 빈 Closer를 반환하여 호출 측의 defer nil.Close() 패닉을 방지합니다.
 	if opts.Name == "" {
-		return nil, nil
+		return &multiCloser{}, nil
 	}
 
 	// 로그 저장 경로가 명시되지 않은 경우, 실행 위치의 'logs' 디렉토리를 기본값으로 사용합니다.
@@ -115,6 +116,7 @@ func Setup(opts Options) (io.Closer, error) {
 		// Error, Fatal, Panic 레벨을 저장할 파일
 		criticalLogFile, err = createLogFile(logDir, opts.Name, timestamp, "critical", opts.FileMode)
 		if err != nil {
+			_ = mainLogFile.Close() // 메인 로그 파일 정리
 			return nil, fmt.Errorf("에러 로그 파일 생성 실패: %w", err)
 		}
 	}
@@ -123,6 +125,11 @@ func Setup(opts Options) (io.Closer, error) {
 		// Debug, Trace 레벨을 저장할 파일
 		verboseLogFile, err = createLogFile(logDir, opts.Name, timestamp, "verbose", opts.FileMode)
 		if err != nil {
+			// 이미 열린 파일들 정리
+			if criticalLogFile != nil {
+				_ = criticalLogFile.Close()
+			}
+			_ = mainLogFile.Close()
 			return nil, fmt.Errorf("디버그 로그 파일 생성 실패: %w", err)
 		}
 	}
