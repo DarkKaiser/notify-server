@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 )
 
@@ -46,12 +47,17 @@ var (
 // init 애플리케이션의 빌드 정보를 초기화합니다.
 func init() {
 	bi := Info{
-		Version:     appVersion,
-		Commit:      gitCommitHash,
-		BuildDate:   buildDate,
-		BuildNumber: buildNumber,
+		Version:     strings.TrimSpace(appVersion),
+		Commit:      strings.TrimSpace(gitCommitHash),
+		BuildDate:   strings.TrimSpace(buildDate),
+		BuildNumber: strings.TrimSpace(buildNumber),
 	}
-	set(bi)
+
+	if strings.ToLower(strings.TrimSpace(gitTreeState)) == "dirty" {
+		bi.DirtyBuild = true
+	}
+
+	set(enrichBuildInfo(bi))
 }
 
 // Info 애플리케이션의 빌드 정보를 담고 있습니다.
@@ -85,19 +91,15 @@ func Get() Info {
 
 // set 애플리케이션의 빌드 정보를 설정합니다.
 func set(bi Info) {
-	// "dirty" 값은 커밋되지 않은 로컬 변경사항이 빌드에 포함되었음을 의미합니다.
-	if gitTreeState == "dirty" {
-		bi.DirtyBuild = true
-	}
-	globalBuildInfo.Store(collectRuntimeAndBuildMetadata(bi))
+	globalBuildInfo.Store(bi)
 }
 
-// collectRuntimeAndBuildMetadata 초기화되지 않은 빌드 정보에 런타임 환경 값(Go 버전, OS, Arch)을 채워 넣습니다.
+// enrichBuildInfo 초기화되지 않은 빌드 정보에 런타임 환경 값(Go 버전, OS, Arch)을 채워 넣습니다.
 //
 // 또한, 버전 정보가 누락된 경우 실행 파일의 디버그 메타데이터(debug.ReadBuildInfo)를 분석하여
 // VCS 리비전이나 수정 상태(Dirty) 등의 정보를 보강(Enrich)하는 역할을 수행합니다.
 // 순수 함수(Pure Function)로 설계되어 단위 테스트가 용이합니다.
-func collectRuntimeAndBuildMetadata(bi Info) Info {
+func enrichBuildInfo(bi Info) Info {
 	if bi.GoVersion == "" {
 		bi.GoVersion = runtime.Version()
 	}
@@ -107,24 +109,16 @@ func collectRuntimeAndBuildMetadata(bi Info) Info {
 	if bi.Arch == "" {
 		bi.Arch = runtime.GOARCH
 	}
-	if bi.Commit == "" || bi.Commit == none {
-		bi.Commit = unknown
-	}
-
-	// 이미 필수 정보가 모두 있다면 VCS(Git) 메타데이터 확인 스킵 (최적화)
-	if bi.Version != "" && bi.Commit != unknown && !bi.DirtyBuild {
-		return bi
-	}
 
 	// Go 모듈(debug.BuildInfo)을 통해 VCS(Git) 메타데이터 추출을 시도합니다.
-	// 이는 -ldflags 주입이 누락된 개발 환경(go run 등)에서도 최소한의 버전 정보를 확보하기 위함입니다.
+	// 이는 -ldflags 주입이 누락된 개발 환경(go run 등)에서도 최소한의 버전 정보를 확보하기 위함이며,
+	// ldflags가 있더라도 DirtyBuild 여부 등을 교차 검증하기 위해 항상 실행합니다.
 	if val, ok := readBuildInfo(); ok {
 		for _, setting := range val.Settings {
 			switch setting.Key {
 			case "vcs.revision":
-				// VCS 리비전은 항상 Commit 필드로 매핑
-				// 외부에서 주입된 값이 "unknown"이나 "none"일 경우에만 덮어씀
-				if bi.Commit == unknown || bi.Commit == none {
+				// 외부에서 주입된 값이 없거나 "none"일 경우에만 덮어씀
+				if bi.Commit == "" || bi.Commit == unknown || bi.Commit == none {
 					bi.Commit = setting.Value
 				}
 			case "vcs.time":
@@ -143,8 +137,12 @@ func collectRuntimeAndBuildMetadata(bi Info) Info {
 		}
 	}
 
+	// 최종적으로 값이 없는 필드에 기본값(unknown) 할당
 	if bi.Version == "" {
 		bi.Version = unknown
+	}
+	if bi.Commit == "" || bi.Commit == none {
+		bi.Commit = unknown
 	}
 
 	return bi
@@ -161,8 +159,8 @@ func Commit() string {
 }
 
 // ToMap 빌드 정보를 맵(Map) 형태로 반환합니다. (구조적 로깅용)
-func (i Info) ToMap() map[string]string {
-	return map[string]string{
+func (i Info) ToMap() map[string]any {
+	return map[string]any{
 		"version":      i.Version,
 		"commit":       i.Commit,
 		"build_date":   i.BuildDate,
@@ -170,7 +168,7 @@ func (i Info) ToMap() map[string]string {
 		"go_version":   i.GoVersion,
 		"os":           i.OS,
 		"arch":         i.Arch,
-		"dirty_build":  fmt.Sprintf("%t", i.DirtyBuild),
+		"dirty_build":  i.DirtyBuild,
 	}
 }
 
@@ -181,18 +179,46 @@ func (i Info) String() string {
 	}
 	version := i.Version
 	if i.DirtyBuild {
-		version += "-dirty"
+		version += "+dirty"
 	}
 
-	// 커밋 해시가 있으면 포함하여 출력
-	commit := i.Commit
-	if commit == "" {
-		commit = unknown
-	} else if len(commit) > 7 {
-		// 로그 가독성을 위해 Short 해시로 축약
-		commit = commit[:7]
+	var details []string
+
+	// 커밋 해시 (unknown이 아니면 포함)
+	if i.Commit != "" && i.Commit != unknown {
+		commit := i.Commit
+		if len(commit) > 7 {
+			commit = commit[:7]
+		}
+		details = append(details, fmt.Sprintf("commit: %s", commit))
 	}
 
-	return fmt.Sprintf("%s (commit: %s, build: %s, date: %s, go_version: %s, os: %s, arch: %s)",
-		version, commit, i.BuildNumber, i.BuildDate, i.GoVersion, i.OS, i.Arch)
+	// 빌드 번호 (값이 있을 때만 포함)
+	if i.BuildNumber != "" {
+		details = append(details, fmt.Sprintf("build: %s", i.BuildNumber))
+	}
+
+	// 빌드 날짜 (값이 있고 unknown이 아니면 포함)
+	if i.BuildDate != "" && i.BuildDate != unknown {
+		details = append(details, fmt.Sprintf("date: %s", i.BuildDate))
+	}
+
+	// Go 버전 (값이 있을 때만 포함)
+	if i.GoVersion != "" {
+		details = append(details, fmt.Sprintf("go_version: %s", i.GoVersion))
+	}
+
+	// OS/Arch (값이 있을 때만 포함)
+	if i.OS != "" {
+		details = append(details, fmt.Sprintf("os: %s", i.OS))
+	}
+	if i.Arch != "" {
+		details = append(details, fmt.Sprintf("arch: %s", i.Arch))
+	}
+
+	if len(details) == 0 {
+		return version
+	}
+
+	return fmt.Sprintf("%s (%s)", version, strings.Join(details, ", "))
 }
