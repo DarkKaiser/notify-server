@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"runtime"
 
 	"fmt"
 	"os"
@@ -73,13 +72,6 @@ import (
 // @externalDocs.description API 인증 가이드 (인증 플로우 다이어그램 포함)
 // @externalDocs.url https://github.com/DarkKaiser/notify-server#api-인증-플로우
 
-// 빌드 정보 변수 (Dockerfile의 ldflags로 주입됨)
-var (
-	Version     = "dev"     // Git 커밋 해시
-	BuildDate   = "unknown" // 빌드 날짜
-	BuildNumber = "0"       // 빌드 번호
-)
-
 const (
 	banner = `
   _   _         _    _   __          ____
@@ -138,25 +130,21 @@ func run() error {
 	// 4. 서버 아이덴티티 출력
 	// 서버 시작 시 시각적으로 식별 가능한 배너(Ascii Art)와 버전 정보를 출력하여,
 	// 운영자가 현재 구동되는 서버의 종류와 버전을 직관적으로 확인할 수 있게 합니다.
-	fmt.Printf(banner, Version)
+	fmt.Printf(banner, version.Version())
 
-	// 5. 빌드 메타데이터 등록
-	// 컴파일 시 주입된 빌드 정보(Version, BuildDate, GitCommit 등)를 전역 싱글톤으로 등록합니다.
-	// 이는 추후 API 응답 헤더나 모니터링 지표 등에서 활용될 수 있습니다.
-	buildInfo := version.Info{
-		Version:     Version,
-		BuildDate:   BuildDate,
-		BuildNumber: BuildNumber,
-		GoVersion:   runtime.Version(),
-		OS:          runtime.GOOS,
-		Arch:        runtime.GOARCH,
-	}
-	version.Set(buildInfo)
+	// 5. 빌드 메타데이터 조회
+	buildInfo := version.Get()
 
 	// 6. 초기화 시작 로그 기록
 	applog.WithComponentAndFields("main", log.Fields{
-		"version": buildInfo.String(),
-		"env":     map[bool]string{true: "development", false: "production"}[appConfig.Debug],
+		"env":          map[bool]string{true: "development", false: "production"}[appConfig.Debug],
+		"version":      buildInfo.Version,
+		"commit":       buildInfo.Commit,
+		"build_date":   buildInfo.BuildDate,
+		"build_number": buildInfo.BuildNumber,
+		"go_version":   buildInfo.GoVersion,
+		"os":           buildInfo.OS,
+		"arch":         buildInfo.Arch,
 	}).Info("Notify Server 초기화 프로세스를 시작합니다")
 
 	// 7. 서비스 객체 생성 및 연결
