@@ -16,8 +16,16 @@ import (
 	"sync/atomic"
 )
 
-// 전역 빌드 정보 (Atomic Value를 사용하여 Thread-Safe 보장)
+const (
+	unknown = "unknown"
+	none    = "none"
+)
+
+// globalBuildInfo 전역 빌드 정보 (Atomic Value를 사용하여 Thread-Safe 보장)
 var globalBuildInfo atomic.Value
+
+// readBuildInfo 테스트에서 교체(Mocking) 가능하도록 변수로 선언합니다.
+var readBuildInfo = debug.ReadBuildInfo
 
 // -----------------------------------------------------------------------------
 // 빌드 정보 변수
@@ -65,9 +73,9 @@ func Get() Info {
 	bi := globalBuildInfo.Load()
 	if bi == nil {
 		return Info{
-			Version:     "unknown",
-			Commit:      "unknown",
-			BuildDate:   "unknown",
+			Version:     unknown,
+			Commit:      unknown,
+			BuildDate:   unknown,
 			BuildNumber: "0",
 		}
 	}
@@ -94,44 +102,39 @@ func collectRuntimeAndBuildMetadata(bi Info) Info {
 	if bi.Arch == "" {
 		bi.Arch = runtime.GOARCH
 	}
-	if bi.Commit == "" || bi.Commit == "none" {
-		bi.Commit = "unknown"
+	if bi.Commit == "" || bi.Commit == none {
+		bi.Commit = unknown
 	}
 
 	// 이미 필수 정보가 모두 있다면 VCS(Git) 메타데이터 확인 스킵 (최적화)
-	if bi.Version != "" && bi.Commit != "unknown" && !bi.DirtyBuild {
+	if bi.Version != "" && bi.Commit != unknown && !bi.DirtyBuild {
 		return bi
 	}
 
 	// Go 모듈(debug.BuildInfo)을 통해 VCS(Git) 메타데이터 추출을 시도합니다.
 	// 이는 -ldflags 주입이 누락된 개발 환경(go run 등)에서도 최소한의 버전 정보를 확보하기 위함입니다.
-	if func() bool {
-		// 테스트 가능성 확보를 위한 래퍼 함수 패턴 (현재는 단순 실행)
-		return true
-	}() {
-		if val, ok := debug.ReadBuildInfo(); ok {
-			for _, setting := range val.Settings {
-				switch setting.Key {
-				case "vcs.revision":
-					// VCS 리비전은 항상 Commit 필드로 매핑
-					// 외부에서 주입된 값이 "unknown"이나 "none"일 경우에만 덮어씀
-					if bi.Commit == "unknown" || bi.Commit == "none" {
-						bi.Commit = setting.Value
-					}
-				case "vcs.time":
-					if bi.BuildDate == "" || bi.BuildDate == "unknown" {
-						bi.BuildDate = setting.Value
-					}
-				case "vcs.modified":
-					if setting.Value == "true" {
-						bi.DirtyBuild = true
-					}
+	if val, ok := readBuildInfo(); ok {
+		for _, setting := range val.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				// VCS 리비전은 항상 Commit 필드로 매핑
+				// 외부에서 주입된 값이 "unknown"이나 "none"일 경우에만 덮어씀
+				if bi.Commit == unknown || bi.Commit == none {
+					bi.Commit = setting.Value
+				}
+			case "vcs.time":
+				if bi.BuildDate == "" || bi.BuildDate == unknown {
+					bi.BuildDate = setting.Value
+				}
+			case "vcs.modified":
+				if setting.Value == "true" {
+					bi.DirtyBuild = true
 				}
 			}
-			// 여전히 버전이 비어있다면 Main 모듈 버전 사용 시도
-			if bi.Version == "" && val.Main.Version != "(devel)" {
-				bi.Version = val.Main.Version
-			}
+		}
+		// 여전히 버전이 비어있다면 Main 모듈 버전 사용 시도
+		if bi.Version == "" && val.Main.Version != "(devel)" {
+			bi.Version = val.Main.Version
 		}
 	}
 
@@ -165,7 +168,7 @@ func (i Info) ToMap() map[string]string {
 // String 빌드 정보를 사람이 읽기 쉬운 하나의 문자열로 요약해 반환합니다.
 func (i Info) String() string {
 	if i.Version == "" {
-		return "unknown"
+		return unknown
 	}
 	version := i.Version
 	if i.DirtyBuild {
@@ -175,7 +178,7 @@ func (i Info) String() string {
 	// 커밋 해시가 있으면 포함하여 출력
 	commit := i.Commit
 	if commit == "" {
-		commit = "unknown"
+		commit = unknown
 	} else if len(commit) > 7 {
 		// 로그 가독성을 위해 Short 해시로 축약
 		commit = commit[:7]

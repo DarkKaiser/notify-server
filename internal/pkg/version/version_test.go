@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"testing"
 
@@ -81,7 +82,7 @@ func TestInfo_FieldValidation(t *testing.T) {
 		{
 			name:    "Empty Info",
 			input:   Info{},
-			wantStr: "unknown",
+			wantStr: unknown,
 		},
 	}
 
@@ -109,7 +110,8 @@ func TestSetGet_RuntimeInfo(t *testing.T) {
 
 	got := Get()
 	assert.Equal(t, "v1.0.0", got.Version)
-	assert.Equal(t, "unknown", got.Commit, "Commit should default to unknown if not provided")
+	assert.Equal(t, "v1.0.0", got.Version)
+	assert.Equal(t, unknown, got.Commit, "Commit should default to unknown if not provided")
 	assert.Equal(t, runtime.Version(), got.GoVersion, "GoVersion should be auto-populated")
 	assert.Equal(t, runtime.GOOS, got.OS, "OS should be auto-populated")
 	assert.Equal(t, runtime.GOARCH, got.Arch, "Arch should be auto-populated")
@@ -117,29 +119,31 @@ func TestSetGet_RuntimeInfo(t *testing.T) {
 
 // TestCollectRuntimeAndBuildMetadata는 정보 수집 로직의 비즈니스 규칙을 검증합니다.
 func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
-	t.Parallel()
+	// Global state modification requires sequential execution.
+	// readBuildInfo is a package-level variable, so changing it is not thread-safe.
 
 	tests := []struct {
-		name     string
-		input    Info
-		wantInfo Info
-		// 런타임 값(GoVersion 등)은 환경마다 다르므로 검증 방식이 다를 수 있음
-		checkRuntime bool
+		name          string
+		input         Info
+		mockBuildInfo func() (*debug.BuildInfo, bool)
+		wantInfo      Info
+		checkRuntime  bool
 	}{
 		{
-			name: "All Missing (Defaults)",
-			input: Info{
-				Version: "v1.0.0",
+			name:  "Scenario: All Missing (Defaults) - No Build Info",
+			input: Info{Version: "v1.0.0"},
+			mockBuildInfo: func() (*debug.BuildInfo, bool) {
+				return nil, false
 			},
 			wantInfo: Info{
 				Version:    "v1.0.0",
-				Commit:     "unknown", // Default assertion
+				Commit:     unknown,
 				DirtyBuild: false,
 			},
 			checkRuntime: true,
 		},
 		{
-			name: "Pre-filled Info (Optimization)",
+			name: "Scenario: Pre-filled Info (Optimization)",
 			input: Info{
 				Version:    "v2.0.0",
 				Commit:     "abcdef",
@@ -147,6 +151,10 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 				OS:         "custom-os",
 				Arch:       "custom-arch",
 				DirtyBuild: true,
+			},
+			mockBuildInfo: func() (*debug.BuildInfo, bool) {
+				// Should not be relevant as optimization skips it
+				return nil, false
 			},
 			wantInfo: Info{
 				Version:    "v2.0.0",
@@ -156,17 +164,37 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 				Arch:       "custom-arch",
 				DirtyBuild: true,
 			},
-			checkRuntime: false, // 기존 값이 보존되어야 함
+			checkRuntime: false,
 		},
 		{
-			name: "None Commit Normalization",
-			input: Info{
-				Version: "v3.0.0",
-				Commit:  "none",
+			name:  "Scenario: 'none' Commit Normalization",
+			input: Info{Version: "v3.0.0", Commit: none},
+			mockBuildInfo: func() (*debug.BuildInfo, bool) {
+				return nil, false
 			},
 			wantInfo: Info{
 				Version: "v3.0.0",
-				Commit:  "unknown", // 'none' should be normalized to 'unknown' internally before enriching
+				Commit:  unknown,
+			},
+			checkRuntime: true,
+		},
+		{
+			name:  "Scenario: VCS Enrichment success",
+			input: Info{Version: "v4.0.0"}, // Commit missing
+			mockBuildInfo: func() (*debug.BuildInfo, bool) {
+				return &debug.BuildInfo{
+					Settings: []debug.BuildSetting{
+						{Key: "vcs.revision", Value: "git-hash-123"},
+						{Key: "vcs.time", Value: "2025-05-05"},
+						{Key: "vcs.modified", Value: "true"},
+					},
+				}, true
+			},
+			wantInfo: Info{
+				Version:    "v4.0.0",
+				Commit:     "git-hash-123",
+				BuildDate:  "2025-05-05",
+				DirtyBuild: true,
 			},
 			checkRuntime: true,
 		},
@@ -175,23 +203,15 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			mockReadBuildInfo(t, tt.mockBuildInfo)
+
 			got := collectRuntimeAndBuildMetadata(tt.input)
 
 			// 1. Static Fields Check
 			assert.Equal(t, tt.wantInfo.Version, got.Version)
-
-			// Commit Check: 'none' normalization or specific value
-			if tt.wantInfo.Commit != "" {
-				// Note: 로컬 개발 환경에서는 debug.ReadBuildInfo()가 실제 Git 정보를 읽어와
-				// 'unknown' 대신 실제 커밋 해시를 채울 수 있음.
-				// 따라서 'unknown'을 기대하는 경우, 실제 값이 채워졌다면(unknown이 아니라면) 테스트 통과로 간주할 수도 있음.
-				// 하지만 여기서는 로직의 '초기화' 동작을 검증하므로, 'none'이 그대로 남아있지만 않으면 됨.
-				assert.NotEqual(t, "none", got.Commit)
-				if tt.wantInfo.Commit != "unknown" {
-					assert.Equal(t, tt.wantInfo.Commit, got.Commit)
-				}
-			}
+			assert.Equal(t, tt.wantInfo.Commit, got.Commit)
+			assert.Equal(t, tt.wantInfo.BuildDate, got.BuildDate)
+			assert.Equal(t, tt.wantInfo.DirtyBuild, got.DirtyBuild)
 
 			// 2. Runtime Fields Check
 			if tt.checkRuntime {
@@ -199,7 +219,6 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 				assert.Equal(t, runtime.GOOS, got.OS, "OS should be auto-populated")
 				assert.Equal(t, runtime.GOARCH, got.Arch, "Arch should be auto-populated")
 			} else {
-				// 기존 값이 보존되었는지 확인
 				if tt.wantInfo.GoVersion != "" {
 					assert.Equal(t, tt.wantInfo.GoVersion, got.GoVersion)
 				}
@@ -212,6 +231,17 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mockReadBuildInfo safely replaces readBuildInfo for testing and ensures cleanup.
+func mockReadBuildInfo(t *testing.T, impl func() (*debug.BuildInfo, bool)) {
+	t.Helper()
+	// Capture the current value
+	original := readBuildInfo
+	// Restore it after the test
+	t.Cleanup(func() { readBuildInfo = original })
+	// Set the mock implementation
+	readBuildInfo = impl
 }
 
 // TestHelpers는 패키지 레벨 헬퍼 함수들을 검증합니다.
