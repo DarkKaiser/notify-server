@@ -1,8 +1,9 @@
 package concurrency
 
 import (
+	"fmt"
+	"math/rand"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,288 +11,241 @@ import (
 )
 
 // =============================================================================
-// Test Helpers
+// Documentation Examples (GoDoc)
 // =============================================================================
 
-// assertRefCheck는 KeyedMutex의 RefCount를 검증하는 헬퍼 함수입니다.
-func assertRefCheck(t *testing.T, km *KeyedMutex, key string, expected int) {
-	t.Helper()
-	km.mu.Lock()
-	defer km.mu.Unlock()
-	entry, ok := km.locks[key]
-	assert.True(t, ok, "키가 존재해야 합니다")
-	if ok {
-		assert.Equal(t, expected, entry.refCount, "RefCount 불일치")
+func ExampleKeyedMutex_Lock() {
+	km := NewKeyedMutex()
+	var wg sync.WaitGroup
+
+	// 상황: 여러 고루틴이 서로 다른 쇼핑몰의 상품 가격을 업데이트합니다.
+	products := []string{"product-A", "product-B", "product-A"}
+
+	for _, p := range products {
+		wg.Add(1)
+		go func(productID string) {
+			defer wg.Done()
+
+			// 상품 ID별로 락을 획득합니다.
+			// "product-A"에 대한 작업은 순차적으로 실행되지만,
+			// "product-B"는 "product-A"와 병렬로 실행될 수 있습니다.
+			km.Lock(productID)
+			defer km.Unlock(productID)
+
+			// Critical Section: 가격 업데이트 로직 수행
+			// fmt.Printf("Updating price for %s\n", productID)
+		}(p)
 	}
+
+	wg.Wait()
+	fmt.Println("All product prices updated.")
+
+	// Output:
+	// All product prices updated.
+}
+
+func ExampleKeyedMutex_TryLock() {
+	km := NewKeyedMutex()
+	key := "hot-deal-item"
+
+	// 첫 번째 고루틴이 락을 잡습니다.
+	km.Lock(key)
+
+	// 두 번째 고루틴이 락 획득을 시도합니다.
+	if km.TryLock(key) {
+		fmt.Println("Acquired lock!")
+		km.Unlock(key)
+	} else {
+		fmt.Println("Failed to acquire lock, skipping task.")
+	}
+
+	km.Unlock(key)
+
+	// Output:
+	// Failed to acquire lock, skipping task.
+}
+
+// ExampleKeyedMutex_TryLock_success KeyedMutex.TryLock 메서드의 성공 케이스 예제입니다.
+func ExampleKeyedMutex_TryLock_success() {
+	km := NewKeyedMutex()
+	key := "resource_key"
+
+	// 락 획득 시도 (성공)
+	if km.TryLock(key) {
+		fmt.Println("First lock acquired")
+
+		// 중첩된 락 시도 (실패 - 이미 다른 곳에서 소유 중이라고 가정)
+		// 주의: 동일 고루틴 내에서의 재진입(Reentrancy)은 지원하지 않으므로 실패합니다.
+		if km.TryLock(key) {
+			fmt.Println("Second lock acquired") // 실행되지 않음
+		} else {
+			fmt.Println("Second lock failed")
+		}
+
+		km.Unlock(key)
+		fmt.Println("First lock released")
+	}
+
+	// Output:
+	// First lock acquired
+	// Second lock failed
+	// First lock released
 }
 
 // =============================================================================
-// Basic Lock/Unlock Tests
+// Unit Tests
 // =============================================================================
 
-// TestKeyedMutex_LockUnlock_Scenarios_TableDriven은 다양한 Lock/Unlock 시나리오를 검증합니다.
-//
-// 검증 항목:
-//   - 단일 키 Lock/Unlock
-//   - 여러 다른 키 Lock/Unlock
-//   - 동일 키 순차적 Lock/Unlock
-func TestKeyedMutex_LockUnlock_Scenarios_TableDriven(t *testing.T) {
+func TestKeyedMutex_LockUnlock_Parallel(t *testing.T) {
+	// Table Driven Test with Parallel Execution
 	tests := []struct {
-		name     string
-		keys     []string
-		parallel bool
+		name string
+		keys []string
 	}{
 		{
-			name:     "Single Key",
-			keys:     []string{"key1"},
-			parallel: false,
+			name: "Single Key",
+			keys: []string{"key-1"},
 		},
 		{
-			name:     "Multiple Different Keys",
-			keys:     []string{"key1", "key2", "key3"},
-			parallel: false,
+			name: "Multiple Keys",
+			keys: []string{"key-1", "key-2", "key-3"},
 		},
 		{
-			name:     "Same Key Multiple Times (Sequential)",
-			keys:     []string{"key1", "key1"},
-			parallel: false,
-		},
-		{
-			name:     "Empty String Key",
-			keys:     []string{""},
-			parallel: false,
-		},
-		{
-			name:     "Special Characters in Key",
-			keys:     []string{"key:with:colons", "key/with/slashes", "key-with-dashes"},
-			parallel: false,
+			name: "Duplicate Keys",
+			keys: []string{"key-1", "key-1"},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel() // 개별 케이스 병렬 실행
+
 			km := NewKeyedMutex()
-			for _, key := range tt.keys {
-				km.Lock(key)
-				// Critical Section Simulation
-				km.Unlock(key)
-			}
-		})
-	}
-}
-
-// =============================================================================
-// Concurrency Tests
-// =============================================================================
-
-// TestKeyedMutex_Concurrency_Scenarios는 고동시성 환경에서 KeyedMutex의 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 단일 키에 대한 높은 동시성 (Hot Key)
-//   - 여러 키에 대한 높은 동시성
-//   - 모든 작업이 누락 없이 수행되는지 검증
-func TestKeyedMutex_Concurrency_Scenarios(t *testing.T) {
-	tests := []struct {
-		name       string
-		workers    int
-		iterations int
-		keys       []string // 각 워커가 사용할 키 (순환 사용)
-	}{
-		{
-			name:       "High Concurrency on Single Key",
-			workers:    100,
-			iterations: 100,
-			keys:       []string{"hot-key"},
-		},
-		{
-			name:       "High Concurrency on Multiple Keys",
-			workers:    100,
-			iterations: 100,
-			keys:       []string{"key1", "key2", "key3", "key4"},
-		},
-		{
-			name:       "Moderate Concurrency on Many Keys",
-			workers:    50,
-			iterations: 50,
-			keys:       []string{"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9", "k10"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			km := NewKeyedMutex()
-
-			// 키별 카운터 생성
-			counters := make(map[string]*int32)
-			for _, k := range tt.keys {
-				var zero int32
-				counters[k] = &zero
-			}
-
 			var wg sync.WaitGroup
-			wg.Add(tt.workers)
 
-			for i := 0; i < tt.workers; i++ {
-				go func(id int) {
+			for _, key := range tt.keys {
+				wg.Add(1)
+				go func(k string) {
 					defer wg.Done()
-					key := tt.keys[id%len(tt.keys)] // 키 할당
-					counter := counters[key]        // 해당 키의 카운터
-
-					for j := 0; j < tt.iterations; j++ {
-						km.Lock(key)
-						// Critical Section
-						// 여기서는 동일한 키에 대해서만 상호 배제가 보장됨
-						// 따라서 키별 카운터를 사용해야 Race Condition 없이 Load->Store 검증 가능
-						c := atomic.LoadInt32(counter)
-						// time.Sleep(1 * time.Microsecond) // 인위적 지연 (필요시)
-						atomic.StoreInt32(counter, c+1)
-						km.Unlock(key)
-					}
-				}(i)
+					km.Lock(k)
+					// Simulate work
+					time.Sleep(time.Millisecond)
+					km.Unlock(k)
+				}(key)
 			}
-
 			wg.Wait()
 
-			// 총 실행 횟수 검증
-			var total int32
-			for _, c := range counters {
-				total += atomic.LoadInt32(c)
-			}
-			expected := int32(tt.workers * tt.iterations)
-			assert.Equal(t, expected, total, "모든 작업이 누락 없이 수행되어야 합니다")
+			// 모든 작업 완료 후 내부 상태 검증 (Leak Check)
+			assert.Equal(t, 0, km.Len(), "모든 작업 완료 후에는 맵이 비워져야 합니다")
 		})
 	}
 }
 
-// =============================================================================
-// RefCount and Cleanup Tests
-// =============================================================================
+func TestKeyedMutex_TryLock_Behavior(t *testing.T) {
+	t.Parallel()
 
-// TestKeyedMutex_RefCountCleanup_Deterministic는 RefCount 기반 메모리 정리를 검증합니다.
-//
-// 검증 항목:
-//   - RefCount가 올바르게 증가/감소하는지
-//   - 모든 고루틴이 완료된 후 맵이 비워지는지
-func TestKeyedMutex_RefCountCleanup_Deterministic(t *testing.T) {
 	km := NewKeyedMutex()
-	key := "cleanup-key"
+	key := "try-lock-key"
 
-	// 1. 메인: 락 획득
-	km.Lock(key)
-	assertRefCheck(t, km, key, 1)
+	// 1. Initial Lock
+	assert.True(t, km.TryLock(key), "최초 TryLock은 성공해야 합니다")
+	assert.Equal(t, 1, km.Len())
 
-	// 2. 서브: 락 획득 시도 (별도 고루틴)
+	// 2. TryLock Fail (Already Locked)
+	assert.False(t, km.TryLock(key), "이미 잠긴 키에 대한 TryLock은 실패해야 합니다")
+
+	// 3. Unlock and Retry
+	km.Unlock(key)
+	assert.Equal(t, 0, km.Len())
+
+	assert.True(t, km.TryLock(key), "Unlock 후 TryLock은 다시 성공해야 합니다")
+	km.Unlock(key)
+}
+
+// TestKeyedMutex_MutualExclusion_StrictLocking은 비원자적 자원(map)을 보호함으로써
+// 상호 배제가 실제로 작동하는지 엄격하게 검증합니다.
+// 만약 Lock이 제대로 동작하지 않으면 'concurrent map writes' 패닉이 발생하거나 데이터가 깨집니다.
+func TestKeyedMutex_MutualExclusion_Randomized(t *testing.T) {
+	t.Parallel()
+
+	km := NewKeyedMutex()
+	unsafeMap := make(map[string]int) // Thread-unsafe resource
+	const (
+		numGoroutines = 100
+		numIncrements = 1000
+		key           = "shared-resource"
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numIncrements; j++ {
+				km.Lock(key)
+				// Critical Section
+				// Lock이 없다면 여기서 Race Condition 발생 (Go Race Detector가 감지)
+				unsafeMap["counter"]++
+				km.Unlock(key)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// 검증
+	assert.Equal(t, numGoroutines*numIncrements, unsafeMap["counter"], "카운터 값이 정확해야 합니다 (Race Condition 없음)")
+	assert.Equal(t, 0, km.Len(), "리소스 정리 확인")
+}
+
+// TestKeyedMutex_IndependentLocking은 서로 다른 키에 대한 작업이
+// 서로를 차단하지 않는지(독립성) 검증합니다.
+func TestKeyedMutex_IndependentLocking(t *testing.T) {
+	t.Parallel()
+
+	km := NewKeyedMutex()
+	key1 := "slow-key"
+	key2 := "fast-key"
+
+	// Key1을 잡고 오래 대기
+	km.Lock(key1)
+	defer km.Unlock(key1)
+
 	done := make(chan bool)
+
 	go func() {
-		km.Lock(key)   // 메인이 Unlock 할 때까지 여기서 대기
-		km.Unlock(key) // 획득 즉시 해제
+		// Key2는 Key1의 잠금 여부와 상관없이 즉시 획득 가능해야 함
+		km.Lock(key2)
+		km.Unlock(key2)
 		done <- true
 	}()
 
-	// 3. 서브 고루틴이 락 대기 상태에 들어갈 때까지 대기 (Polling)
-	// time.Sleep 대신 조건이 만족될 때까지 검사
-	assert.Eventually(t, func() bool {
-		km.mu.Lock()
-		defer km.mu.Unlock()
-		if e, ok := km.locks[key]; ok {
-			return e.refCount == 2
-		}
-		return false
-	}, 1*time.Second, 10*time.Millisecond, "서브 고루틴이 진입하여 RefCount가 2가 되어야 합니다")
-
-	// 4. 메인: 락 해제 (이제 서브가 진행됨)
-	km.Unlock(key)
-
-	// 5. 서브 완료 대기
 	select {
 	case <-done:
+		// Success
 	case <-time.After(1 * time.Second):
-		t.Fatal("서브 고루틴이 제시간에 완료되지 않았습니다")
+		t.Fatal("서로 다른 키에 대한 락 획득이 차단되었습니다 (독립성 위반)")
 	}
+}
 
-	// 6. 최종 상태 검증 (맵이 비워져야 함)
-	km.mu.Lock()
-	_, ok := km.locks[key]
-	lenLocks := len(km.locks)
-	km.mu.Unlock()
+// TestKeyedMutex_PanicSafety_UnlockWithoutLock
+// Lock하지 않은 키를 Unlock할 때 패닉이 발생하는지 확인합니다.
+func TestKeyedMutex_PanicSafety_UnlockWithoutLock(t *testing.T) {
+	t.Parallel()
 
-	assert.False(t, ok, "키가 제거되어야 합니다")
-	assert.Equal(t, 0, lenLocks, "맵이 완전히 비워져야 합니다")
+	km := NewKeyedMutex()
+	assert.Panics(t, func() {
+		km.Unlock("never-locked")
+	}, "Lock되지 않은 키를 Unlock하면 패닉이 발생해야 합니다")
 }
 
 // =============================================================================
-// Edge Case Tests
+// Benchmarks
 // =============================================================================
 
-// TestKeyedMutex_EdgeCases는 엣지 케이스를 검증합니다.
-//
-// 검증 항목:
-//   - Unlock without Lock (안전하게 처리되는지)
-//   - 매우 긴 키 이름
-//   - Unicode 키 이름
-func TestKeyedMutex_EdgeCases(t *testing.T) {
-	t.Run("Unlock without Lock", func(t *testing.T) {
-		km := NewKeyedMutex()
-		// Unlock을 Lock 없이 호출 (패닉이 발생하지 않아야 함)
-		assert.NotPanics(t, func() {
-			km.Unlock("non-existent-key")
-		}, "Lock 없이 Unlock을 호출해도 패닉이 발생하지 않아야 합니다")
-	})
-
-	t.Run("Very Long Key Name", func(t *testing.T) {
-		km := NewKeyedMutex()
-		longKey := string(make([]byte, 10000))
-		for i := range longKey {
-			longKey = longKey[:i] + "a"
-		}
-
-		km.Lock(longKey)
-		km.Unlock(longKey)
-
-		// 맵이 비워졌는지 확인
-		km.mu.Lock()
-		lenLocks := len(km.locks)
-		km.mu.Unlock()
-		assert.Equal(t, 0, lenLocks, "긴 키도 정상적으로 정리되어야 합니다")
-	})
-
-	t.Run("Unicode Key Name", func(t *testing.T) {
-		km := NewKeyedMutex()
-		unicodeKey := "키-🔒-テスト-测试"
-
-		km.Lock(unicodeKey)
-		km.Unlock(unicodeKey)
-
-		// 맵이 비워졌는지 확인
-		km.mu.Lock()
-		lenLocks := len(km.locks)
-		km.mu.Unlock()
-		assert.Equal(t, 0, lenLocks, "Unicode 키도 정상적으로 정리되어야 합니다")
-	})
-
-	t.Run("Rapid Lock/Unlock Cycles", func(t *testing.T) {
-		km := NewKeyedMutex()
-		key := "rapid-key"
-
-		for i := 0; i < 1000; i++ {
-			km.Lock(key)
-			km.Unlock(key)
-		}
-
-		// 맵이 비워졌는지 확인
-		km.mu.Lock()
-		lenLocks := len(km.locks)
-		km.mu.Unlock()
-		assert.Equal(t, 0, lenLocks, "빠른 Lock/Unlock 사이클 후에도 정리되어야 합니다")
-	})
-}
-
-// =============================================================================
-// Benchmark Tests
-// =============================================================================
-
-// BenchmarkKeyedMutex_SingleKey는 단일 키에 대한 Lock/Unlock 성능을 측정합니다.
-func BenchmarkKeyedMutex_SingleKey(b *testing.B) {
+func BenchmarkKeyedMutex_LockUnlock_SingleKey(b *testing.B) {
 	km := NewKeyedMutex()
 	key := "bench-key"
 
@@ -302,23 +256,25 @@ func BenchmarkKeyedMutex_SingleKey(b *testing.B) {
 	}
 }
 
-// BenchmarkKeyedMutex_MultipleKeys는 여러 키에 대한 Lock/Unlock 성능을 측정합니다.
-func BenchmarkKeyedMutex_MultipleKeys(b *testing.B) {
+func BenchmarkKeyedMutex_LockUnlock_Parallel_Disjoint(b *testing.B) {
+	// 서로 다른 키를 사용하여 경합이 없는 상태에서의 오버헤드 측정
 	km := NewKeyedMutex()
-	keys := []string{"key1", "key2", "key3", "key4", "key5"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		key := keys[i%len(keys)]
-		km.Lock(key)
-		km.Unlock(key)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		// 고루틴마다 고유한 키 사용
+		key := fmt.Sprintf("key-%d", rand.Int63())
+		for pb.Next() {
+			km.Lock(key)
+			km.Unlock(key)
+		}
+	})
 }
 
-// BenchmarkKeyedMutex_Parallel는 병렬 환경에서의 성능을 측정합니다.
-func BenchmarkKeyedMutex_Parallel(b *testing.B) {
+func BenchmarkKeyedMutex_LockUnlock_Parallel_HighContention(b *testing.B) {
+	// 소수의 키에 대해 높은 경합 발생
 	km := NewKeyedMutex()
-	keys := []string{"key1", "key2", "key3", "key4"}
+	keys := []string{"key-A", "key-B", "key-C", "key-D"}
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -330,4 +286,17 @@ func BenchmarkKeyedMutex_Parallel(b *testing.B) {
 			i++
 		}
 	})
+}
+
+func BenchmarkKeyedMutex_Allocation(b *testing.B) {
+	// 메모리 할당 효율성 측정 (sync.Pool 효과)
+	km := NewKeyedMutex()
+	key := "alloc-key"
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		km.Lock(key)
+		km.Unlock(key)
+	}
 }

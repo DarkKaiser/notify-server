@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"net/url"
 	"strings"
+
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 )
 
 const (
@@ -43,19 +45,19 @@ func (p *performance) Key() string {
 
 // Render 공연 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
 // 주로 단일 공연 정보 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
-func (p *performance) Render(supportsHTML bool, mark string) string {
-	return p.renderInternal(supportsHTML, mark)
+func (p *performance) Render(supportsHTML bool, m mark.Mark) string {
+	return p.renderInternal(supportsHTML, m)
 }
 
 // RenderDiff 현재 공연 정보와 과거 정보를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
 // 현재 Naver 패키지는 '신규' 위주이므로 Render와 큰 차이가 없을 수 있으나,
 // 향후 확장성 및 타 패키지(NaverShopping)와의 일관성을 위해 인터페이스를 분리합니다.
-func (p *performance) RenderDiff(supportsHTML bool, mark string, prev *performance) string {
-	return p.renderInternal(supportsHTML, mark)
+func (p *performance) RenderDiff(supportsHTML bool, m mark.Mark, prev *performance) string {
+	return p.renderInternal(supportsHTML, m)
 }
 
 // renderInternal 공연 알림 메시지를 생성하는 핵심 내부 구현체입니다.
-func (p *performance) renderInternal(supportsHTML bool, mark string) string {
+func (p *performance) renderInternal(supportsHTML bool, m mark.Mark) string {
 	var sb strings.Builder
 
 	// 예상 버퍼 크기 할당
@@ -70,14 +72,14 @@ func (p *performance) renderInternal(supportsHTML bool, mark string) string {
 			searchResultPageURL,
 			url.QueryEscape(p.Title),
 			template.HTMLEscapeString(p.Title),
-			mark,
+			m.WithSpace(),
 			p.Place,
 		)
 	} else {
 		const textFormat = `☞ %s%s
       • 장소 : %s`
 
-		fmt.Fprintf(&sb, textFormat, p.Title, mark, p.Place)
+		fmt.Fprintf(&sb, textFormat, p.Title, m.WithSpace(), p.Place)
 	}
 
 	return sb.String()

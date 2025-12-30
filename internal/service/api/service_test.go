@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
-
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +38,7 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 
 	mockService := &testutil.MockNotificationSender{}
 
-	service := NewService(appConfig, mockService, buildinfo.BuildInfo{
+	service := NewService(appConfig, mockService, version.Info{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
 		BuildNumber: "100",
@@ -136,7 +135,7 @@ func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	// No NotificationService
-	service := NewService(appConfig, nil, buildinfo.BuildInfo{})
+	service := NewService(appConfig, nil, version.Info{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

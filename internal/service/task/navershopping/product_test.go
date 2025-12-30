@@ -3,6 +3,7 @@ package navershopping
 import (
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,7 +47,7 @@ func TestProduct_Render(t *testing.T) {
 		name         string
 		product      *product
 		supportsHTML bool
-		mark         string
+		mark         mark.Mark
 		wants        []string // 결과 문자열에 반드시 포함되어야 할 부분 문자열
 		unwants      []string // 결과 문자열에 포함되지 말아야 할 부분 문자열
 	}{
@@ -66,7 +67,7 @@ func TestProduct_Render(t *testing.T) {
 			name:         "HTML Format - With New Mark",
 			product:      baseProduct,
 			supportsHTML: true,
-			mark:         " 🆕",
+			mark:         mark.New,
 			wants:        []string{"850,000원 🆕"},
 		},
 		{
@@ -84,7 +85,7 @@ func TestProduct_Render(t *testing.T) {
 			name:         "Text Format - With New Mark",
 			product:      baseProduct,
 			supportsHTML: false,
-			mark:         " 🆕",
+			mark:         mark.New,
 			wants:        []string{"850,000원 🆕"},
 		},
 		{
@@ -133,7 +134,7 @@ func TestProduct_RenderDiff(t *testing.T) {
 		product      *product
 		prev         *product
 		supportsHTML bool
-		mark         string
+		mark         mark.Mark
 		wants        []string
 	}{
 		{
@@ -141,7 +142,7 @@ func TestProduct_RenderDiff(t *testing.T) {
 			product:      current,
 			prev:         &product{LowPrice: 1100000}, // 110만원 -> 100만원
 			supportsHTML: false,
-			mark:         " 🔻",
+			mark:         mark.Mark("🔻"),
 			wants: []string{
 				"1,000,000원",
 				"(이전: 1,100,000원)",
@@ -153,7 +154,7 @@ func TestProduct_RenderDiff(t *testing.T) {
 			product:      current,
 			prev:         &product{LowPrice: 900000}, // 90만원 -> 100만원
 			supportsHTML: true,
-			mark:         " 🔺",
+			mark:         mark.Mark("🔺"),
 			wants: []string{
 				"1,000,000원",
 				"(이전: 900,000원)",
@@ -216,6 +217,6 @@ func BenchmarkProduct_RenderDiff(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.RenderDiff(false, " MARK", prev)
+		_ = p.RenderDiff(false, mark.Modified, prev)
 	}
 }

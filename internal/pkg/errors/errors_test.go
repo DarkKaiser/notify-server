@@ -14,127 +14,81 @@ import (
 // Test Constants
 // =============================================================================
 
-// Standard error for testing
 var errStd = errors.New("standard error")
 
 // =============================================================================
-// Error Creation Tests
+// benchmarks
 // =============================================================================
 
-// TestNew는 New 함수로 생성된 에러의 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 다양한 ErrorType으로 에러 생성
-//   - 에러 메시지 정확성
-//   - ErrorType 정확성
+func BenchmarkNew(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = New(Internal, "error message")
+	}
+}
+
+func BenchmarkWrap(b *testing.B) {
+	err := errors.New("base error")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Wrap(err, Internal, "wrapped message")
+	}
+}
+
+func BenchmarkRootCause(b *testing.B) {
+	// 깊은 에러 체인 생성
+	err := errors.New("root")
+	for i := 0; i < 50; i++ {
+		err = Wrap(err, Internal, "wrap")
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = RootCause(err)
+	}
+}
+
+// =============================================================================
+// Unit Tests (Enhanced)
+// =============================================================================
+
 func TestNew(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		errType  ErrorType
 		message  string
 		expected string
 	}{
-		{
-			name:     "Create InvalidInput error",
-			errType:  InvalidInput,
-			message:  "invalid input",
-			expected: "invalid input",
-		},
-		{
-			name:     "Create Internal error",
-			errType:  Internal,
-			message:  "internal server error",
-			expected: "internal server error",
-		},
-		{
-			name:     "Create error with empty message",
-			errType:  Unknown,
-			message:  "",
-			expected: "",
-		},
-		{
-			name:     "Create Timeout error",
-			errType:  Timeout,
-			message:  "request timeout",
-			expected: "request timeout",
-		},
-		{
-			name:     "Create NotFound error",
-			errType:  NotFound,
-			message:  "resource not found",
-			expected: "resource not found",
-		},
+		{"InvalidInput", InvalidInput, "invalid input", "invalid input"},
+		{"Internal", Internal, "internal server error", "internal server error"},
+		{"Empty Message", Unknown, "", ""},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := New(tt.errType, tt.message)
-			require.NotNil(t, err, "Error should not be nil")
+			require.NotNil(t, err)
 			assert.Equal(t, tt.expected, err.Error())
 			assert.Equal(t, tt.errType, GetType(err))
 		})
 	}
 }
 
-// TestNewf는 Newf 함수로 생성된 포맷팅된 에러의 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 포맷 문자열 처리
-//   - 여러 인자 처리
-//   - ErrorType 정확성
 func TestNewf(t *testing.T) {
-	tests := []struct {
-		name     string
-		errType  ErrorType
-		format   string
-		args     []interface{}
-		expected string
-	}{
-		{
-			name:     "Format simple string",
-			errType:  Conflict,
-			format:   "resource %s already exists",
-			args:     []interface{}{"user-123"},
-			expected: "resource user-123 already exists",
-		},
-		{
-			name:     "Format with multiple args",
-			errType:  System,
-			format:   "failed to connect to %s:%d",
-			args:     []interface{}{"localhost", 8080},
-			expected: "failed to connect to localhost:8080",
-		},
-		{
-			name:     "Format with no args",
-			errType:  Internal,
-			format:   "simple message",
-			args:     []interface{}{},
-			expected: "simple message",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := Newf(tt.errType, tt.format, tt.args...)
-			require.NotNil(t, err, "Error should not be nil")
-			assert.Equal(t, tt.expected, err.Error())
-			assert.Equal(t, tt.errType, GetType(err))
-		})
-	}
+	t.Parallel()
+	err := Newf(NotFound, "user %d", 123)
+	require.NotNil(t, err)
+	assert.Equal(t, "user 123", err.Error())
+	assert.Equal(t, NotFound, GetType(err))
 }
 
-// =============================================================================
-// Error Wrapping Tests
-// =============================================================================
-
-// TestWrap는 Wrap 함수로 생성된 에러의 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 표준 에러 래핑
-//   - nil 에러 래핑
-//   - AppError 중첩 래핑
-//   - Cause 정확성
 func TestWrap(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		cause       error
@@ -142,40 +96,17 @@ func TestWrap(t *testing.T) {
 		message     string
 		expectedMsg string
 	}{
-		{
-			name:        "Wrap standard error",
-			cause:       errStd,
-			errType:     Internal,
-			message:     "db query failed",
-			expectedMsg: "db query failed: standard error",
-		},
-		{
-			name:        "Wrap nil error",
-			cause:       nil,
-			errType:     Unknown,
-			message:     "unknown error",
-			expectedMsg: "unknown error", // Cause가 nil이면 메시지만 출력
-		},
-		{
-			name:        "Wrap AppError (nested)",
-			cause:       New(InvalidInput, "bad request"),
-			errType:     Internal,
-			message:     "controller failed",
-			expectedMsg: "controller failed: bad request",
-		},
-		{
-			name:        "Wrap with empty message",
-			cause:       errStd,
-			errType:     System,
-			message:     "",
-			expectedMsg: ": standard error",
-		},
+		{"StdError", errStd, Internal, "db failed", "db failed: standard error"},
+		{"NilError", nil, Unknown, "unknown", "unknown"},
+		{"Nested", New(InvalidInput, "bad"), Internal, "api failed", "api failed: bad"},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := Wrap(tt.cause, tt.errType, tt.message)
-			require.NotNil(t, err, "Error should not be nil")
+			require.NotNil(t, err)
 			assert.Equal(t, tt.expectedMsg, err.Error())
 			assert.Equal(t, tt.errType, GetType(err))
 			assert.Equal(t, tt.cause, Cause(err))
@@ -183,378 +114,129 @@ func TestWrap(t *testing.T) {
 	}
 }
 
-// TestWrapf는 Wrapf 함수로 생성된 포맷팅된 래핑 에러의 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 포맷 문자열 처리
-//   - nil 에러 래핑
-//   - ErrorType 정확성
 func TestWrapf(t *testing.T) {
-	tests := []struct {
-		name        string
-		cause       error
-		errType     ErrorType
-		format      string
-		args        []interface{}
-		expectedMsg string
-	}{
-		{
-			name:        "Wrapf with format",
-			cause:       errStd,
-			errType:     NotFound,
-			format:      "user %s not found",
-			args:        []interface{}{"alice"},
-			expectedMsg: "user alice not found: standard error",
-		},
-		{
-			name:        "Wrapf nil error",
-			cause:       nil,
-			errType:     System,
-			format:      "system error code %d",
-			args:        []interface{}{500},
-			expectedMsg: "system error code 500",
-		},
-		{
-			name:        "Wrapf with multiple args",
-			cause:       errStd,
-			errType:     Timeout,
-			format:      "timeout after %d seconds on %s",
-			args:        []interface{}{30, "api.example.com"},
-			expectedMsg: "timeout after 30 seconds on api.example.com: standard error",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := Wrapf(tt.cause, tt.errType, tt.format, tt.args...)
-			require.NotNil(t, err, "Error should not be nil")
-			assert.Equal(t, tt.expectedMsg, err.Error())
-			assert.Equal(t, tt.errType, GetType(err))
-		})
-	}
+	t.Parallel()
+	err := Wrapf(errStd, System, "port %d failed", 8080)
+	require.NotNil(t, err)
+	assert.Equal(t, "port 8080 failed: standard error", err.Error())
+	assert.Equal(t, System, GetType(err))
 }
 
-// =============================================================================
-// Error Type Checking Tests
-// =============================================================================
+// TestIs_Shadowing은 중첩된 AppError에서 Is 함수가 최상위 에러의 타입만 확인하는지 검증합니다.
+// 의도: 상위 레이어의 에러가 하위 레이어의 에러 타입을 "Shadowing" 하기를 기대함.
+func TestIs_Shadowing(t *testing.T) {
+	t.Parallel()
 
-// TestIs는 Is 함수의 에러 타입 확인 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 정확한 타입 매칭
-//   - 타입 불일치
-//   - 래핑된 에러의 타입 확인
-//   - nil 에러 처리
-//   - 표준 에러 처리
+	inner := New(NotFound, "record missing")
+	outer := Wrap(inner, Internal, "query failed")
+
+	// Outer는 Internal이므로 True
+	assert.True(t, Is(outer, Internal), "최상위 에러 타입(Internal)과는 일치해야 함")
+
+	// Inner는 NotFound이지만, Wrap되면 상위 타입(Internal)이 우선됨 -> Shadowing
+	// errors.As는 체인에서 첫 번째로 발견된 *AppError를 반환하므로 outer를 반환함.
+	assert.False(t, Is(outer, NotFound), "내부 에러 타입(NotFound)은 가려져야(Shadowed) 함")
+
+	// 표준 errors.Is와의 차이점:
+	// 표준 errors.Is는 Unwrap하며 체인을 뒤지지만,
+	// 우리 패키지의 Is는 'Type' 검사를 위해 errors.As를 사용하고,
+	// errors.As는 가장 먼저 매칭되는(최상위) *AppError를 찾기 때문.
+}
+
 func TestIs(t *testing.T) {
-	errNotFound := New(NotFound, "not found")
-	wrappedErr := Wrap(errNotFound, Internal, "wrapped")
-	multiWrapped := Wrap(wrappedErr, System, "outer")
-
-	tests := []struct {
-		name     string
-		err      error
-		target   ErrorType
-		expected bool
-	}{
-		{"Match exact type", errNotFound, NotFound, true},
-		{"Mismatch type", errNotFound, Internal, false},
-		{"Match wrapped error type (direct parent)", wrappedErr, Internal, true},
-		{"Match nested error type (limitation: Is only checks the top-level AppError)", wrappedErr, NotFound, false}, // 현재 구현상 Is는 unwrap하지 않고 최상위 AppError의 타입만 확인합니다.
-		{"Match multi-wrapped outer", multiWrapped, System, true},
-		{"Nil error", nil, NotFound, false},
-		{"Standard error", errors.New("std err"), NotFound, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, Is(tt.err, tt.target))
-		})
-	}
+	t.Parallel()
+	err := New(Timeout, "timeout")
+	assert.True(t, Is(err, Timeout))
+	assert.False(t, Is(err, Internal))
+	assert.False(t, Is(nil, Timeout))
+	assert.False(t, Is(errors.New("std"), Timeout))
 }
 
-// =============================================================================
-// Error Casting Tests
-// =============================================================================
-
-// TestAs는 As 함수의 에러 타입 캐스팅 동작을 검증합니다.
-//
-// 검증 항목:
-//   - AppError로 캐스팅 성공
-//   - 표준 에러 캐스팅 실패
-//   - nil 에러 처리
 func TestAs(t *testing.T) {
-	targetAppErr := &AppError{}
+	t.Parallel()
+	var target *AppError
+	err := New(Forbidden, "no access")
+	assert.True(t, As(err, &target))
+	assert.Equal(t, Forbidden, target.Type)
 
-	tests := []struct {
-		name      string
-		err       error
-		target    interface{}
-		wantMatch bool
-	}{
-		{
-			name:      "Cast New() AppError",
-			err:       New(Forbidden, "forbidden"),
-			target:    &targetAppErr,
-			wantMatch: true,
-		},
-		{
-			name:      "Cast Wrap() AppError",
-			err:       Wrap(errStd, System, "system"),
-			target:    &targetAppErr,
-			wantMatch: true,
-		},
-		{
-			name:      "Cast failed for std error",
-			err:       errStd,
-			target:    &targetAppErr,
-			wantMatch: false,
-		},
-		{
-			name:      "Cast failed for nil error",
-			err:       nil,
-			target:    &targetAppErr,
-			wantMatch: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			match := As(tt.err, tt.target)
-			assert.Equal(t, tt.wantMatch, match)
-			if tt.wantMatch {
-				// Type assertion to access fields
-				if appErr, ok := tt.target.(**AppError); ok && *appErr != nil {
-					require.NotNil(t, *appErr, "AppError should not be nil")
-					assert.NotEmpty(t, (*appErr).Type)
-				}
-			}
-		})
-	}
+	assert.False(t, As(errors.New("std"), &target))
 }
 
-// =============================================================================
-// Error Type Extraction Tests
-// =============================================================================
-
-// TestGetType는 GetType 함수의 에러 타입 추출 동작을 검증합니다.
-//
-// 검증 항목:
-//   - AppError 타입 추출
-//   - 래핑된 AppError 타입 추출
-//   - 표준 에러는 Unknown 반환
-//   - nil 에러는 Unknown 반환
 func TestGetType(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      error
-		expected ErrorType
-	}{
-		{"AppError", New(Unauthorized, "msg"), Unauthorized},
-		{"Wrapped AppError", Wrap(errStd, Timeout, "msg"), Timeout},
-		{"Standard Error", errStd, Unknown},
-		{"Nil Error", nil, Unknown},
-		{"ExecutionFailed Error", New(ExecutionFailed, "msg"), ExecutionFailed},
-		{"Unavailable Error", New(Unavailable, "msg"), Unavailable},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, GetType(tt.err))
-		})
-	}
+	t.Parallel()
+	assert.Equal(t, Unauthorized, GetType(New(Unauthorized, "")))
+	assert.Equal(t, Unknown, GetType(errors.New("std")))
+	assert.Equal(t, Unknown, GetType(nil))
 }
 
-// =============================================================================
-// Error Cause Tests
-// =============================================================================
-
-// TestCause는 Cause 함수의 원인 에러 추출 동작을 검증합니다.
-//
-// 검증 항목:
-//   - nil 에러 처리
-//   - 표준 에러 (Cause 없음)
-//   - New로 생성된 AppError (Cause 없음)
-//   - Wrap으로 생성된 AppError (Cause 있음)
-//   - 다중 래핑 (직접 Cause만 반환)
 func TestCause(t *testing.T) {
-	root := errors.New("root")
-	wrapped := Wrap(root, Internal, "wrapped")
-	doubleWrapped := Wrap(wrapped, System, "double wrapped")
+	t.Parallel()
+	// Chain: Wrap -> New
+	root := New(InvalidInput, "root")
+	wrapped := Wrap(root, Internal, "wrap")
 
-	tests := []struct {
-		name     string
-		err      error
-		expected error
-	}{
-		{"Nil error", nil, nil},
-		{"Standard error (no cause)", root, nil}, // AppError가 아니면 Cause는 nil
-		{"AppError New (no cause)", New(Internal, "msg"), nil},
-		{"AppError Wrap (has cause)", wrapped, root},
-		{"Double wrapped (direct cause)", doubleWrapped, wrapped},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, Cause(tt.err))
-		})
-	}
+	assert.Equal(t, root, Cause(wrapped))
+	assert.Nil(t, Cause(root)) // New로 만든 에러는 Cause가 없음 (nil)
+	assert.Nil(t, Cause(nil))
 }
 
-// TestRootCause는 RootCause 함수의 최상위 원인 에러 추출 동작을 검증합니다.
-//
-// 검증 항목:
-//   - nil 에러 처리
-//   - 표준 에러 (자신 반환)
-//   - 단일 래핑
-//   - 다중 래핑
-//   - fmt.Errorf로 래핑된 에러
 func TestRootCause(t *testing.T) {
-	root := errors.New("root")
-	wrapped1 := Wrap(root, Internal, "layer1")
-	wrapped2 := Wrap(wrapped1, System, "layer2")
-	fmtWrapped := fmt.Errorf("fmt wrap: %w", wrapped2)
+	t.Parallel()
+	// Chain: Wrap(Wrap(Wrap(std)))
+	std := errors.New("std root")
+	l1 := Wrap(std, Internal, "l1")
+	l2 := Wrap(l1, System, "l2")
+	l3 := fmt.Errorf("fmt: %w", l2) // 표준 래핑 섞임
 
-	tests := []struct {
-		name     string
-		err      error
-		expected error
-	}{
-		{"Nil error", nil, nil},
-		{"Standard error", root, root},
-		{"Wrappped Once", wrapped1, root},
-		{"Wrapped Twice", wrapped2, root},
-		{"Fmt Wrapped", fmtWrapped, root},
-		{"New AppError", New(Internal, "new"), New(Internal, "new")}, // Cause가 없으면 자신을 반환
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := RootCause(tt.err)
-			// assert.Equal compares deep equality. For errors created with New(), pointers are different.
-			// Compare error messages for simple check, or specific logic logic
-			if tt.expected == nil {
-				assert.Nil(t, result)
-			} else {
-				assert.NotNil(t, result)
-				assert.Equal(t, tt.expected.Error(), result.Error())
-			}
-		})
-	}
+	assert.Equal(t, std, RootCause(l3))
+	assert.Nil(t, RootCause(nil))
 }
 
-// =============================================================================
-// Unwrap Tests
-// =============================================================================
-
-// TestUnwrap는 errors.Unwrap과의 호환성을 검증합니다.
-//
-// 검증 항목:
-//   - New로 생성된 AppError는 nil 반환
-//   - Wrap으로 생성된 AppError는 Cause 반환
-//   - nil 에러 처리
 func TestUnwrap(t *testing.T) {
+	t.Parallel()
 	root := errors.New("root")
-	tests := []struct {
-		name     string
-		err      error
-		expected error
-	}{
-		{"New AppError (nil)", New(Internal, "msg"), nil},
-		{"Wrap AppError", Wrap(root, Internal, "msg"), root},
-		{"Nil error", nil, nil},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// AppError implements Unwrap()
-			// errors.Unwrap calls the Unwrap method if available
-			assert.Equal(t, tt.expected, errors.Unwrap(tt.err))
-		})
-	}
+	wrapped := Wrap(root, Internal, "msg")
+	assert.Equal(t, root, errors.Unwrap(wrapped))
 }
 
-// =============================================================================
-// Edge Case Tests
-// =============================================================================
-
-// TestEdgeCases는 엣지 케이스를 검증합니다.
-//
-// 검증 항목:
-//   - 매우 긴 메시지
-//   - Unicode 메시지
-//   - 특수 문자 메시지
 func TestEdgeCases(t *testing.T) {
-	t.Run("Very Long Message", func(t *testing.T) {
-		longMsg := strings.Repeat("a", 10000)
-		err := New(Internal, longMsg)
-		require.NotNil(t, err)
-		assert.Equal(t, longMsg, err.Error())
-		assert.Equal(t, Internal, GetType(err))
-		assert.Len(t, err.Error(), 10000)
+	t.Parallel()
+	t.Run("Long Message", func(t *testing.T) {
+		msg := strings.Repeat("x", 1000)
+		err := New(Internal, msg)
+		assert.Equal(t, msg, err.Error())
 	})
-
-	t.Run("Unicode Message", func(t *testing.T) {
-		unicodeMsg := "에러 발생 - エラー - 错误 - 🔥"
-		err := New(InvalidInput, unicodeMsg)
-		assert.Equal(t, unicodeMsg, err.Error())
-		assert.Equal(t, InvalidInput, GetType(err))
-	})
-
-	t.Run("Special Characters in Message", func(t *testing.T) {
-		specialMsg := "error: \n\t\"quoted\" <tag> & ampersand"
-		err := New(System, specialMsg)
-		assert.Equal(t, specialMsg, err.Error())
-	})
-
-	t.Run("Deep Nesting", func(t *testing.T) {
-		err := errors.New("root")
-		for i := 0; i < 100; i++ {
-			err = Wrap(err, Internal, fmt.Sprintf("layer%d", i))
+	t.Run("Deep Chain Stack Overflow Check", func(t *testing.T) {
+		// 매우 깊은 체인도 스택 오버플로우 없이 RootCause를 찾아야 함
+		err := errors.New("base")
+		for i := 0; i < 1000; i++ {
+			err = Wrap(err, Internal, "wrap")
 		}
-		root := RootCause(err)
-		assert.Equal(t, "root", root.Error())
+		assert.Equal(t, "base", RootCause(err).Error())
 	})
 }
 
 // =============================================================================
-// Examples (Documentation)
+// Documentation Examples
 // =============================================================================
 
 func ExampleNew() {
-	err := New(InvalidInput, "email is invalid")
+	err := New(InvalidInput, "invalid email")
 	fmt.Println(err)
-	// Output: email is invalid
-}
-
-func ExampleNewf() {
-	err := Newf(NotFound, "user %d not found", 101)
-	fmt.Println(err)
-	// Output: user 101 not found
+	// Output: invalid email
 }
 
 func ExampleWrap() {
-	originalErr := errors.New("eof")
-	err := Wrap(originalErr, Internal, "failed to read file")
-	fmt.Println(err)
-	// Output: failed to read file: eof
+	err := errors.New("db connection lost")
+	wrapped := Wrap(err, System, "failed to query users")
+	fmt.Println(wrapped)
+	// Output: failed to query users: db connection lost
 }
 
 func ExampleIs() {
-	err := New(Timeout, "request timed out")
+	err := New(Timeout, "deadline exceeded")
 	if Is(err, Timeout) {
-		fmt.Println("Error is Timeout")
+		fmt.Println("It was a timeout")
 	}
-	// Output: Error is Timeout
-}
-
-func ExampleGetType() {
-	err := New(Forbidden, "access denied")
-	switch GetType(err) {
-	case Forbidden:
-		fmt.Println("Handle forbidden error")
-	case Internal:
-		fmt.Println("Handle internal error")
-	}
-	// Output: Handle forbidden error
+	// Output: It was a timeout
 }

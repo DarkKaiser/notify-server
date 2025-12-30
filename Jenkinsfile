@@ -59,15 +59,19 @@ pipeline {
                 
                 // Git 정보 설정
                 script {
-                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.GIT_COMMIT_FULL = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    
                     // 태그 정보가 없으면 커밋 해시만 반환 (--always)
-                    env.GIT_VERSION = sh(script: "git describe --tags --always --dirty", returnStdout: true).trim()
+                    env.APP_VERSION = sh(script: "git describe --tags --always --dirty", returnStdout: true).trim()
+
+                    env.GIT_COMMIT_HASH_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.GIT_COMMIT_HASH_FULL = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+
+                    // Git 트리 상태 (clean / dirty) 확인
+                    env.GIT_TREE_STATE = sh(script: 'if [ -z "$(git status --porcelain)" ]; then echo "clean"; else echo "dirty"; fi', returnStdout: true).trim()
                     
                     echo "Git 정보:"
-                    echo "  버전: ${env.GIT_VERSION}"
-                    echo "  커밋: ${env.GIT_COMMIT_SHORT} (${env.GIT_COMMIT_FULL})"
+                    echo "  버전: ${env.APP_VERSION}"
+                    echo "  상태: ${env.GIT_TREE_STATE}"
+                    echo "  커밋: ${env.GIT_COMMIT_HASH_SHORT} (${env.GIT_COMMIT_HASH_FULL})"
                     echo "  빌드: #${env.BUILD_NUMBER}"
                 }
             }
@@ -82,8 +86,9 @@ pipeline {
                     echo "빌드 및 테스트 시작..."
                     sh """
                         docker build --target builder \\
-                            --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \\
-                            --build-arg GIT_VERSION=${env.GIT_VERSION} \\
+                            --build-arg APP_VERSION=${env.APP_VERSION} \\
+                            --build-arg GIT_COMMIT_HASH=${env.GIT_COMMIT_HASH_SHORT} \\
+                            --build-arg GIT_TREE_STATE=${env.GIT_TREE_STATE} \\
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
                             -t notify-server:test .
@@ -142,12 +147,13 @@ pipeline {
                     echo "프로덕션 이미지 빌드 중..."
                     
                     // 버전 태그 생성 (Git Version 사용)
-                    env.VERSION_TAG = "${env.GIT_VERSION}"
+                    env.VERSION_TAG = "${env.APP_VERSION}"
                     
                     sh """
                         docker build \\
-                            --build-arg GIT_COMMIT=${env.GIT_COMMIT_SHORT} \\
-                            --build-arg GIT_VERSION=${env.GIT_VERSION} \\
+                            --build-arg APP_VERSION=${env.APP_VERSION} \\
+                            --build-arg GIT_COMMIT_HASH=${env.GIT_COMMIT_HASH_SHORT} \\
+                            --build-arg GIT_TREE_STATE=${env.GIT_TREE_STATE} \\
                             --build-arg BUILD_DATE=${env.BUILD_TIMESTAMP} \\
                             --build-arg BUILD_NUMBER=${env.BUILD_NUMBER} \\
                             -t ${env.DOCKER_IMAGE_NAME}:latest \\
@@ -228,7 +234,7 @@ pipeline {
 
 ✅ 빌드 작업이 성공하였습니다.
 
-커밋: ${env.GIT_COMMIT_SHORT}
+커밋: ${env.GIT_COMMIT_HASH_SHORT}
 빌드: #${env.BUILD_NUMBER}
 버전: ${env.VERSION_TAG}
 시간: ${env.BUILD_TIMESTAMP}
@@ -249,7 +255,7 @@ ${env.BUILD_URL}"""
 
 ❌ 빌드 작업이 실패하였습니다.
 
-커밋: ${env.GIT_COMMIT_SHORT}
+커밋: ${env.GIT_COMMIT_HASH_SHORT}
 빌드: #${env.BUILD_NUMBER}
 시간: ${env.BUILD_TIMESTAMP}
 

@@ -2,39 +2,112 @@
 package strutil
 
 import (
-	"fmt"
 	"html"
-	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-var (
-	// ToSnakeCase에서 사용하는 정규식
-	matchFirstRegexp = regexp.MustCompile("(.)([A-Z][a-z]+)")
-	matchAllRegexp   = regexp.MustCompile("([a-z0-9])([A-Z])")
-
-	// HTML 태그 제거에 사용하는 정규식
-	// < 다음에 영문자가 오는 경우만 태그로 인식하여 수학 기호(<) 오탐지를 방지합니다.
-	// 예: "3 < 5"는 유지되고, "<br>"이나 "<b>"는 제거됩니다.
-	htmlTagRegexp = regexp.MustCompile(`</?([a-zA-Z]+)[^>]*>`)
-)
-
-// ToSnakeCase CamelCase 문자열을 snake_case로 변환합니다.
-// 예: "MyVariableName" -> "my_variable_name"
+// ToSnakeCase CamelCase 또는 PascalCase 문자열을 snake_case로 변환합니다.
+//
+// [주요 특징]
+// 1. Acronym 지원: "HTTPServer" -> "http_server"와 같이 연속된 대문자 내의 단어 경계를 지능적으로 식별합니다.
+// 2. 구분자 정규화: 공백(' '), 하이픈('-'), 점('.') 등의 기존 구분자를 언더스코어('_')로 통일하며, 중복('_')을 생성하지 않습니다.
+// 3. 다국어 지원: 한글 등 비라틴 문자와 영문 사이의 경계를 올바르게 처리합니다.
+//
+// [성능]
+// utf8.DecodeRuneInString과 strings.Builder를 활용하여 메모리 할당을 최소화했습니다.
 func ToSnakeCase(str string) string {
-	snakeCaseString := matchFirstRegexp.ReplaceAllString(str, "${1}_${2}")
-	snakeCaseString = matchAllRegexp.ReplaceAllString(snakeCaseString, "${1}_${2}")
-	return strings.ToLower(snakeCaseString)
+	if str == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(str) + 4)
+
+	var prev rune
+	for i, r := range str {
+		originalR := r // Save original rune for state tracking
+
+		// 1. Handle delimiters
+		if r == '_' || r == '-' || r == ' ' || r == '.' {
+			if builder.Len() > 0 && prev != '_' {
+				builder.WriteByte('_')
+			}
+			prev = '_'
+			continue
+		}
+
+		// 2. Handle Uppercase
+		if unicode.IsUpper(r) {
+			prefixUnderscore := false
+			if builder.Len() > 0 && prev != '_' {
+				// If previous was NOT uppercase (Lower, Digit, or Other Letter like Hangul), implies word boundary.
+				if !unicode.IsUpper(prev) {
+					prefixUnderscore = true
+				} else {
+					// Previous was Upper. Check if we are at the start of a new Lowercase word (e.g. "P" in "HTTPServer")
+					nextR, _ := utf8.DecodeRuneInString(str[i+utf8.RuneLen(r):])
+					if nextR != utf8.RuneError && unicode.IsLower(nextR) {
+						prefixUnderscore = true
+					}
+				}
+			}
+			if prefixUnderscore {
+				builder.WriteByte('_')
+			}
+			r = unicode.ToLower(r)
+		}
+
+		builder.WriteRune(r)
+		prev = originalR
+	}
+
+	res := builder.String()
+	if len(res) > 0 && res[len(res)-1] == '_' {
+		return res[:len(res)-1]
+	}
+	return res
 }
 
-// NormalizeSpaces 문자열의 앞뒤 공백을 제거하고 연속된 공백을 하나로 축약합니다.
-// 예: "  hello   world  " -> "hello world"
+// NormalizeSpaces 문자열의 앞뒤 공백을 제거하고, 내부의 연속된 공백을 단일 공백(' ')으로 정규화합니다.
+//
+// [동작 방식]
+// 1. Trim: 문자열 양 끝의 모든 유니코드 공백(Unicode Space)을 제거합니다.
+// 2. Collapse: "Hello   World" -> "Hello World"와 같이 내부의 연속된 공백을 하나로 축약합니다.
+//
+// [성능]
+// 한 번의 순회(One-Pass)로 처리를 완료하며, strings.Builder를 사용하여 메모리 재할당을 최소화합니다.
 func NormalizeSpaces(s string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
+	if s == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(s))
+
+	spaceCount := 0
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			spaceCount++
+		} else {
+			if spaceCount > 0 && builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteRune(r)
+			spaceCount = 0
+		}
+	}
+
+	return builder.String()
 }
 
-// NormalizeMultiLineSpaces 여러 줄 문자열의 각 줄을 정규화하고 연속된 빈 줄을 하나로 축약합니다.
-// 앞뒤의 빈 줄도 제거됩니다.
+// NormalizeMultiLineSpaces 여러 줄로 된 문자열을 정리(Clean-up)합니다.
+//
+// [동작 방식]
+// 1. Line Normalization: 각 줄에 대해 NormalizeSpaces를 수행(앞뒤 공백 제거, 내부 공백 축약)합니다.
+// 2. Vertical Collapse: 연속된 빈 줄을 하나의 빈 줄로 축약하여 문단 구분은 유지하되 불필요한 공백 라인을 제거합니다.
+// 3. Trim: 전체 텍스트의 시작과 끝에 있는 빈 줄을 제거합니다.
 func NormalizeMultiLineSpaces(s string) string {
 	var result []string
 	var appendedEmptyLine bool
@@ -72,61 +145,136 @@ type Integer interface {
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }
 
-// FormatCommas 숫자를 천 단위 구분 기호(,)가 포함된 문자열로 변환합니다.
+// FormatCommas 정수(Integer)를 천 단위 구분 기호(,)가 포함된 문자열로 변환합니다.
 // 예: 1234567 -> "1,234,567"
+//
+// [지원 타입]
+// 제네릭(Integer)을 사용하여 int, int64, uint, uint64 등 모든 정수 타입을 지원합니다.
+// Signed 정수의 경우 음수 부호(-)를 올바르게 처리합니다.
+//
+// [성능]
+// 1. Stack Allocation: 숫자 변환 시 힙 대신 스택 버퍼([24]byte)를 사용하여 중간 할당을 제거했습니다.
+// 2. Single Allocation: 최종 결과 문자열 생성 시에만 단 1회의 메모리 할당이 발생합니다(strings.Builder 활용).
 func FormatCommas[T Integer](num T) string {
-	str := fmt.Sprintf("%d", num)
+	// 1. 부호 있는(Signed) 정수와 부호 없는(Unsigned) 정수 변환 처리
+	var val uint64
+	var negative bool
 
-	// 음수 처리 (문자열 기반으로 판단)
-	startOffset := 0
-	if strings.HasPrefix(str, "-") {
-		startOffset = 1
+	// 리플렉션을 사용하지 않고 Type Switch를 통해 모든 정수 타입을 효율적으로 처리
+	switch v := any(num).(type) {
+	case int:
+		if v < 0 {
+			negative, val = true, uint64(-v)
+		} else {
+			val = uint64(v)
+		}
+	case int8:
+		if v < 0 {
+			negative, val = true, uint64(-v)
+		} else {
+			val = uint64(v)
+		}
+	case int16:
+		if v < 0 {
+			negative, val = true, uint64(-v)
+		} else {
+			val = uint64(v)
+		}
+	case int32:
+		if v < 0 {
+			negative, val = true, uint64(-v)
+		} else {
+			val = uint64(v)
+		}
+	case int64:
+		// int64의 최솟값(MinInt64)은 절대값이 MaxInt64보다 1 큽니다.
+		// 따라서 단순 부호 반전(-v)을 하면 int64 범위를 초과(Overflow)하게 됩니다.
+		// 이를 방지하기 위해 uint64로 캐스팅 후 비트 연산(2의 보수)을 수행합니다.
+		if v < 0 {
+			negative = true
+			val = uint64(^v + 1) // 2의 보수(2's Complement)를 사용하여 양수로 변환
+		} else {
+			val = uint64(v)
+		}
+	case uint:
+		val = uint64(v)
+	case uint8:
+		val = uint64(v)
+	case uint16:
+		val = uint64(v)
+	case uint32:
+		val = uint64(v)
+	case uint64:
+		val = v
+	case uintptr:
+		val = uint64(v)
 	}
 
-	// 콤마가 필요 없는 경우 (3자리 이하)
-	if len(str)-startOffset <= 3 {
-		return str
+	return formatUint64(val, negative)
+}
+
+// formatUint64 uint64 값을 천 단위 콤마가 포함된 문자열로 포맷팅합니다.
+// negative가 true일 경우 결과 문자열 앞에 마이너스 부호(-)를 추가합니다.
+func formatUint64(n uint64, negative bool) string {
+	if n == 0 {
+		return "0"
 	}
 
-	var builder strings.Builder
-
-	// 예상 크기 미리 할당: 원래 길이 + 콤마 개수
-	commaCount := (len(str) - startOffset - 1) / 3
-	builder.Grow(len(str) + commaCount)
-
-	if startOffset == 1 {
-		builder.WriteByte('-')
-		str = str[1:]
+	// 1. 스택 버퍼에 숫자 추출 (역순 저장)
+	// 힙 할당을 피하기 위해 고정 크기 스택 배열을 사용합니다.
+	var buf [24]byte // uint64 최대값은 20자리입니다. 여유분을 포함해 24바이트를 할당합니다.
+	pos := 0
+	for n > 0 {
+		buf[pos] = byte(n%10) + '0'
+		n /= 10
+		pos++
 	}
 
-	// 첫 번째 그룹 (1~3자리)
-	firstGroupLen := len(str) % 3
-	if firstGroupLen == 0 {
-		firstGroupLen = 3
+	// 2. 최종 문자열 길이 계산
+	// 콤마 개수 = (전체 자릿수 - 1) / 3
+	commaCount := (pos - 1) / 3
+	totalLen := pos + commaCount
+	if negative {
+		totalLen++
 	}
 
-	builder.WriteString(str[:firstGroupLen])
+	// 3. 문자열 조합
+	var b strings.Builder
+	b.Grow(totalLen) // 정확한 크기를 미리 계산하여 재할당 방지
 
-	// 나머지 그룹들 (3자리씩)
-	for i := firstGroupLen; i < len(str); i += 3 {
-		builder.WriteByte(',')
-		builder.WriteString(str[i : i+3])
+	if negative {
+		b.WriteByte('-')
 	}
 
-	return builder.String()
+	// 버퍼에 역순(일의 자리 -> 높은 자리)으로 저장된 숫자를
+	// 다시 역순(높은 자리 -> 일의 자리)으로 순회하며 문자열을 생성합니다.
+	for i := pos - 1; i >= 0; i-- {
+		b.WriteByte(buf[i])
+
+		// 콤마 삽입 조건:
+		// 남은 자릿수(i)가 3의 배수이고, 마지막 자리가 아닐 때(i > 0) 콤마를 추가합니다.
+		if i > 0 && i%3 == 0 {
+			b.WriteByte(',')
+		}
+	}
+
+	return b.String()
 }
 
 // SplitAndTrim 주어진 구분자로 문자열을 분리한 후, 각 항목의 앞뒤 공백을 제거하고 빈 문자열을 제외한 슬라이스를 반환합니다.
-// 결과가 없거나 입력 문자열이 비어있는 경우 nil을 반환합니다.
-// 예: "a, , b,c" (구분자 ",") -> ["a", "b", "c"]
+// 입력 문자열이 비어있거나 유효한 항목이 없는 경우 nil을 반환합니다.
+// 예: "apple, , banana, " (구분자 ",") -> ["apple", "banana"]
 func SplitAndTrim(s, sep string) []string {
-	tokens := strings.Split(s, sep)
-	if len(tokens) == 0 {
+	if s == "" {
 		return nil
 	}
 
-	result := make([]string, 0, len(tokens))
-	for _, token := range tokens {
+	// separator 개수를 미리 세어 슬라이스 용량을 예약
+	// 정확한 개수는 아니지만(빈 문자열 제외 전), 재할당 횟수를 줄이는 데 효과적입니다.
+	count := strings.Count(s, sep) + 1
+	result := make([]string, 0, count)
+
+	for token := range strings.SplitSeq(s, sep) {
 		token = strings.TrimSpace(token)
 		if token != "" {
 			result = append(result, token)
@@ -140,39 +288,164 @@ func SplitAndTrim(s, sep string) []string {
 	return result
 }
 
-// MaskSensitiveData 민감한 정보를 마스킹합니다.
-// 토큰, 키 등의 민감 정보를 안전하게 로깅하기 위해 사용합니다.
+// MaskSensitiveData API 키, 토큰 등 민감한 정보를 안전하게 로깅하기 위해 일부를 가립니다(Masking).
+//
+// [마스킹 규칙]
+// 1. 3자 이하: 전체를 가립니다 ("***").
+// 2. 4자: 앞 1자만 노출하고 나머지를 가립니다 ("a***").
+// 3. 5자 ~ 12자: 앞 4자만 노출하고 나머지를 가립니다 ("abcd***").
+// 4. 12자 초과: 앞 4자와 뒤 4자를 노출하고 중간을 가립니다 ("abcd***wxyz").
 func MaskSensitiveData(data string) string {
 	if data == "" {
 		return ""
 	}
 
-	// 3자 이하는 전체 마스킹
-	if len(data) <= 3 {
+	// 문자열 길이(룬 글자 수) 계산
+	length := utf8.RuneCountInString(data)
+
+	// 1. 3자 이하: 전체 마스킹
+	if length <= 3 {
 		return "***"
 	}
 
-	// 앞 4자만 표시하고 나머지는 마스킹
-	if len(data) <= 12 {
-		return data[:4] + "***"
+	// 바이트 인덱스 찾기 함수 (Closure로 캡쳐하여 재사용)
+	getByteIndex := func(n int) int {
+		idx := 0
+		for i := 0; i < n; i++ {
+			_, size := utf8.DecodeRuneInString(data[idx:])
+			idx += size
+		}
+		return idx
 	}
 
-	// 긴 토큰은 앞 4자 + 마스킹 + 뒤 4자
-	return data[:4] + "***" + data[len(data)-4:]
+	// 2. 4자: 앞 1자 + *** (비밀번호 등 짧은 중요 데이터 보호)
+	if length == 4 {
+		end := getByteIndex(1)
+		return data[:end] + "***"
+	}
+
+	// 3. 12자 이하: 앞 4자 + ***
+	if length <= 12 {
+		end := getByteIndex(4)
+		return data[:end] + "***"
+	}
+
+	// 4. 12자 초과: 앞 4자 + *** + 뒤 4자
+	// 앞 4자 인덱스
+	prefixEnd := getByteIndex(4)
+
+	// 뒤 4자 인덱스 (뒤에서부터 찾는 것이 효율적일 수 있으나 UTF-8은 앞에서부터가 안전/간단)
+	suffixStart := getByteIndex(length - 4)
+
+	return data[:prefixEnd] + "***" + data[suffixStart:]
 }
 
-// StripHTMLTags 문자열에서 HTML 태그를 제거하고, HTML 엔티티를 디코딩하여 순수한 텍스트를 반환합니다.
-// 예: "<b>Hello</b> &amp; World" -> "Hello & World"
-func StripHTMLTags(s string) string {
-	stripped := htmlTagRegexp.ReplaceAllString(s, "")
-	return html.UnescapeString(stripped)
-}
-
-// HasAnyContent 가변 인자로 전달된 문자열들 중, 유효한 내용을 가진 항목이 하나라도 존재하는지 검사합니다.
+// StripHTMLTags 입력된 문자열에서 HTML 태그(<...>)를 모두 제거하고, HTML 엔티티(예: &amp;)를 디코딩하여 순수한 텍스트만 반환합니다.
 //
 // [동작 방식]
-// - 순차적으로 인자를 순회하며 길이가 0보다 큰(`len > 0`) 문자열을 발견하면 즉시 `true`를 반환합니다.
-// - 모든 인자가 빈 문자열(`""`)이거나 인자가 없는 경우 `false`를 반환합니다.
+// 1. 빠른 검사: '<' 문자가 발견되면 즉시 다음 문자를 확인하여 태그 가능성을 검사합니다.
+//   - 태그가 아닌 패턴(예: "3 < 5", "<123>")은 스캔을 건너뛰어 성능을 보존합니다.
+//
+// 2. 태그 제거: '<'로 시작해 '>'로 끝나는 블록을 제거합니다.
+//   - 속성 값 내의 '>' 문자(예: <a title=">">)를 오인하지 않도록 따옴표(', ") 상태를 추적합니다(State Machine).
+//
+// 3. 주석 제거: '<!--' ... '-->' 형태의 HTML 주석도 함께 제거됩니다.
+//
+// 4. 엔티티 디코딩: 남은 텍스트에 대해 html.UnescapeString을 수행합니다.
+//
+// [성능 및 주의사항]
+// - Zero Allocation: 정규식 대신 바이트 단위 순회(Linear Scan)를 사용하여 메모리 할당을 최소화했습니다.
+// - 안전성: XSS 방지용이 아니며, 잘못된 형식의 HTML(깨진 태그 등)에 대해서는 최선의 노력으로 처리합니다.
+func StripHTMLTags(s string) string {
+	if !strings.ContainsAny(s, "<&") {
+		return s
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(s))
+
+	n := len(s)
+	for i := 0; i < n; i++ {
+		b := s[i]
+
+		// Tag 시작 ('<')
+		if b == '<' {
+			// [Fail-Fast] 태그 이름 유효성 검사 (즉시 수행)
+			// < 뒤에 유효한 태그 시작 문자(알파벳, /, !, ?)가 없으면 태그가 아니므로 스킵
+			if i+1 < n {
+				next := s[i+1]
+				isValidTagStart := (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') || next == '/' || next == '!' || next == '?'
+				if !isValidTagStart {
+					builder.WriteByte(b)
+					continue
+				}
+			} else {
+				// < 로 끝나는 경우
+				builder.WriteByte(b)
+				continue
+			}
+
+			// 주석 처리: <!-- ... -->
+			if i+3 < n && s[i+1] == '!' && s[i+2] == '-' && s[i+3] == '-' {
+				closeIndex := strings.Index(s[i+4:], "-->")
+				if closeIndex != -1 {
+					i += 4 + closeIndex + 2 // i를 --> 끝으로 이동
+					continue
+				}
+			}
+
+			// 태그 닫기 ('>') 찾기 - 따옴표 컨텍스트 고려
+			inQuote := false
+			var quoteChar byte
+			closed := false
+
+			// 현재 위치 이후를 순회
+			j := i + 1
+			for ; j < n; j++ {
+				curr := s[j]
+
+				if inQuote {
+					if curr == quoteChar {
+						inQuote = false // 따옴표 종료
+					}
+					// 따옴표 내부이므로 '>'가 나와도 무시하고 계속 진행
+				} else {
+					if curr == '"' || curr == '\'' {
+						inQuote = true
+						quoteChar = curr
+					} else if curr == '>' {
+						// 따옴표 밖에서 '>'를 만났으므로 태그 종료 -> 루프 탈출
+						closed = true
+						break
+					}
+				}
+			}
+
+			// 태그가 정상적으로 닫혔다면, i를 j로 이동시켜 태그 내용 스킵
+			if closed {
+				i = j
+				continue
+			}
+
+			// 닫히지 않은 '<'는 일반 텍스트로 취급하여 출력 (루프 계속)
+		}
+
+		builder.WriteByte(b)
+	}
+
+	// HTML Entity 디코딩
+	return html.UnescapeString(builder.String())
+}
+
+// HasAnyContent 전달된 문자열 중 하나라도 비어있지 않은(non-empty) 값이 존재하는지 확인합니다.
+//
+// [동작 방식]
+// 인자를 순차적으로 순회하며 길이가 1 이상인 문자열을 발견하면 즉시 true를 반환합니다(Short-circuit).
+// 인자가 없거나 모든 문자열이 비어있는 경우 false를 반환합니다.
+//
+// [주의사항]
+// 공백 문자(" ")나 제어 문자도 내용이 있는 것으로 간주합니다.
+// 의미 있는 텍스트 존재 여부를 확인하려면 먼저 strings.TrimSpace 등을 적용해야 합니다.
 func HasAnyContent(strs ...string) bool {
 	for _, s := range strs {
 		if len(s) > 0 {

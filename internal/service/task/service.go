@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
 

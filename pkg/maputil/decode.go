@@ -8,18 +8,20 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-// Decode 맵(`map[string]any`) 또는 일반 인터페이스 데이터를 지정된 타입(`T`)의 구조체로 디코딩하여 반환합니다.
+// Decode 맵 또는 인터페이스 데이터를 지정된 타입(`T`)의 구조체로 디코딩하여 반환합니다.
 //
 // 내부적으로 `mapstructure` 라이브러리를 사용하여 리플렉션 기반의 디코딩을 수행합니다.
-// 이 함수는 JSON 마샬링/언마샬링 방식(map -> json bytes -> struct)보다 오버헤드가 적고,
-// 타입 변환에 있어 훨씬 더 유연한 처리를 지원합니다.
-//
-// [주의사항]
-//  1. `T`는 주로 구조체(struct) 타입이어야 합니다.
-//  2. `mapstructure`의 특성상 구조체의 비공개 필드(Unexported Fields)는 디코딩 대상에서 제외됩니다.
+// 새로운 구조체 인스턴스를 생성하여 반환하므로, 기존 값을 덮어쓰지 않고 온전히 새로운 객체가 필요할 때 사용합니다.
 func Decode[T any](input any) (*T, error) {
 	output := new(T)
+	if err := DecodeTo(input, output); err != nil {
+		return nil, err
+	}
+	return output, nil
+}
 
+// DecodeTo 맵 또는 인터페이스 데이터를 주어진 대상 객체(`output`)로 디코딩합니다.
+func DecodeTo(input any, output any) error {
 	config := &mapstructure.DecoderConfig{
 		Metadata: nil,
 
@@ -43,22 +45,18 @@ func Decode[T any](input any) (*T, error) {
 
 		// 기본 변환 로직 외에 추가적인 타입 변환 규칙을 정의합니다.
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			textUnmarshalerHookFunc(),                   // [순서 중요] encoding.TextUnmarshaler가 가장 먼저 처리되어야 함 (예: net.IP가 Slice로 오인되는 것 방지)
 			mapstructure.StringToTimeDurationHookFunc(), // "10s" -> time.Duration
 			mapstructure.StringToSliceHookFunc(","),     // "a,b,c" -> []string
-			textUnmarshalerHookFunc(),                   // encoding.TextUnmarshaler 구현체(예: net.IP, url.URL) 자동 변환
 		),
 	}
 
 	decoder, err := mapstructure.NewDecoder(config)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if err := decoder.Decode(input); err != nil {
-		return nil, err
-	}
-
-	return output, nil
+	return decoder.Decode(input)
 }
 
 // textUnmarshalerType encoding.TextUnmarshaler 인터페이스의 리플렉션 타입 정보를 캐싱합니다.
@@ -92,7 +90,8 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFunc {
 
 		// Case 1: T가 포인터이고, T 자체가 TextUnmarshaler를 구현하는 경우
 		// 예: *url.URL
-		if t.Kind() == reflect.Ptr && t.Implements(textUnmarshalerType) {
+		isPtrImpl := t.Kind() == reflect.Ptr && t.Implements(textUnmarshalerType)
+		if isPtrImpl {
 			// T가 *url.URL이면 t.Elem()은 url.URL
 			// reflect.New(t.Elem())은 *url.URL (초기화된 값, 예: &url.URL{})
 			val := reflect.New(t.Elem())
@@ -106,7 +105,8 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFunc {
 		}
 
 		// Case 2: *T가 TextUnmarshaler를 구현하는 경우
-		if reflect.PointerTo(t).Implements(textUnmarshalerType) {
+		isValImpl := reflect.PointerTo(t).Implements(textUnmarshalerType)
+		if isValImpl {
 			val := reflect.New(t)
 			u, ok := val.Interface().(encoding.TextUnmarshaler)
 			if !ok {

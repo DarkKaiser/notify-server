@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -384,7 +385,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		name         string
 		product      *product
 		supportsHTML bool
-		mark         string
+		mark         mark.Mark
 		wants        []string
 		unwants      []string
 	}{
@@ -575,7 +576,7 @@ func BenchmarkProduct_Render(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(true, " 🔥")
+		_ = p.Render(true, mark.BestPrice)
 	}
 }
 
@@ -601,7 +602,7 @@ func BenchmarkProduct_RenderDiff(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = p.RenderDiff(true, " 🔥", prev)
+		_ = p.RenderDiff(true, mark.BestPrice, prev)
 	}
 }
 
@@ -624,7 +625,7 @@ func Example_render() {
 
 	// 2. Diff Render
 	fmt.Println("\n--- RenderDiff ---")
-	fmt.Println(p.RenderDiff(false, " 📉", prev))
+	fmt.Println(p.RenderDiff(false, mark.Mark("📉"), prev))
 
 	// Output:
 	// --- Render ---

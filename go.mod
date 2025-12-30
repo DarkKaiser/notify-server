@@ -18,6 +18,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/net v0.47.0
 	golang.org/x/text v0.31.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

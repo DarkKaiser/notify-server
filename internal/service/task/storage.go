@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/concurrency"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	log "github.com/sirupsen/logrus"
 )

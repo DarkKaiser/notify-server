@@ -5,10 +5,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/pkg/buildinfo"
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
+	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
@@ -26,13 +26,13 @@ const (
 type SystemHandler struct {
 	notificationSender notification.Sender
 
-	buildInfo buildinfo.BuildInfo
+	buildInfo version.Info
 
 	serverStartTime time.Time
 }
 
 // NewSystemHandler SystemHandler 인스턴스를 생성합니다.
-func NewSystemHandler(notificationSender notification.Sender, buildInfo buildinfo.BuildInfo) *SystemHandler {
+func NewSystemHandler(notificationSender notification.Sender, buildInfo version.Info) *SystemHandler {
 	return &SystemHandler{
 		notificationSender: notificationSender,
 

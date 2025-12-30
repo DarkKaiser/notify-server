@@ -1,6 +1,7 @@
 package strutil
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func TestToSnakeCase(t *testing.T) {
 		{name: "CamelCase 4", str: "123abcDefGHIjK", expected: "123abc_def_gh_ij_k"},
 		{name: "PascalCase", str: "MyNameIsTom", expected: "my_name_is_tom"},
 		{name: "camelCase", str: "myNameIsTom", expected: "my_name_is_tom"},
-		{name: "With spaces", str: " myNameIsTom ", expected: " my_name_is_tom "},
+		{name: "With spaces", str: " myNameIsTom ", expected: "my_name_is_tom"},
 		{name: "Acronyms", str: "JSONData", expected: "json_data"},
 		{name: "Acronyms at end", str: "HTTPClient", expected: "http_client"},
 		{name: "Foreign characters", str: "안녕Hello", expected: "안녕_hello"},
@@ -53,15 +54,6 @@ func TestToSnakeCase(t *testing.T) {
 // =============================================================================
 
 // TestNormalizeSpaces는 NormalizeSpaces 함수의 공백 정규화 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 한글 문자열 (변경 없음)
-//   - 앞뒤 공백 제거
-//   - 단일 공백 유지
-//   - 연속된 공백을 하나로 축약
-//   - 복잡한 공백 패턴
-//   - 특수 문자 포함
-//   - 여러 줄 문자열 (한 줄로 축약)
 func TestNormalizeSpaces(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -88,7 +80,7 @@ func TestNormalizeSpaces(t *testing.T) {
 		
 		
 				라인5
-
+	
 			`,
 			expected: "라인 1 라인2 라인3 라인4 라인5",
 		},
@@ -102,14 +94,6 @@ func TestNormalizeSpaces(t *testing.T) {
 }
 
 // TestNormalizeMultiLineSpaces는 NormalizeMultiLineSpaces 함수의 여러 줄 공백 정규화 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 빈 문자열
-//   - 공백만 있는 문자열
-//   - 앞뒤 공백 제거
-//   - 복잡한 여러 줄 문자열
-//   - 연속된 빈 줄을 하나로 축약
-//   - 앞뒤 빈 줄 제거
 func TestNormalizeMultiLineSpaces(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -128,25 +112,24 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 		
 		
 				라인3
-
+		
 				라인4
-
-
-
+		
+		
 				라인5
-
-
+		
+		
 			`,
 			expected: "라인 1\r\n라인2\r\n\r\n라인3\r\n\r\n라인4\r\n\r\n라인5",
 		},
 		{
 			name: "Complex multiline 2",
 			s: ` 라인    1
-
-
+		
+		
 			라인2
-
-
+		
+		
 			라인3
 			라인4
 			라인5   `,
@@ -155,16 +138,16 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 		{
 			name: "Empty lines",
 			s: `
-
+		
 			`,
 			expected: "",
 		},
 		{
 			name: "Single value with newlines",
 			s: `
-
+		
 			1
-
+		
 			`,
 			expected: "1",
 		},
@@ -182,12 +165,6 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 // =============================================================================
 
 // TestFormatCommas는 FormatCommas 함수의 숫자 천 단위 구분 기호 포맷팅 동작을 검증합니다.
-//
-// 검증 항목:
-//   - int 타입 (0, 양수, 음수)
-//   - int64 타입 (최대값, 최소값)
-//   - uint 타입
-//   - uint64 타입 (최대값)
 func TestFormatCommas(t *testing.T) {
 	t.Run("int", func(t *testing.T) {
 		tests := []struct {
@@ -248,15 +225,6 @@ func TestFormatCommas(t *testing.T) {
 // =============================================================================
 
 // TestSplitAndTrim은 SplitAndTrim 함수의 문자열 분리 및 트림 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 쉼표로 구분된 문자열
-//   - 빈 항목 제거
-//   - 공백 포함 항목 트림
-//   - 빈 구분자
-//   - 여러 문자 구분자
-//   - 구분자가 없는 경우
-//   - 빈 문자열 (nil 반환)
 func TestSplitAndTrim(t *testing.T) {
 	var notAssign []string
 
@@ -287,12 +255,6 @@ func TestSplitAndTrim(t *testing.T) {
 // =============================================================================
 
 // TestMaskSensitiveData는 MaskSensitiveData 함수의 민감 정보 마스킹 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 빈 문자열
-//   - 짧은 문자열 (1-3자) - 전체 마스킹
-//   - 중간 길이 문자열 (4-12자) - 앞 4자 표시
-//   - 긴 문자열 (13자 이상) - 앞 4자 + 마스킹 + 뒤 4자
 func TestMaskSensitiveData(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -303,16 +265,22 @@ func TestMaskSensitiveData(t *testing.T) {
 		{"Short string (1 char)", "a", "***"},
 		{"Short string (2 chars)", "ab", "***"},
 		{"Short string (3 chars)", "abc", "***"},
-		{"Medium string (4 chars)", "abcd", "abcd***"},
+		{"Medium string (4 chars)", "abcd", "a***"},
+		{"Medium string (5 chars)", "abcde", "abcd***"},
 		{"Medium string (12 chars)", "123456789012", "1234***"},
 		{"Long string (token)", "123456789:ABCdefGHIjklMNOpqrsTUVwxyz", "1234***wxyz"},
 		{"Long string (general)", "this_is_a_very_long_secret_key", "this***_key"},
+		// UTF-8 Tests
+		{"Korean Short", "안녕", "***"},
+		{"Korean Medium", "안녕하세요", "안녕하세***"},
+		{"Korean Long", "안녕하세요반갑습니다", "안녕하세***"},
+		{"Emoji Short", "😀😁😂", "***"},
+		{"Emoji Long", "😀😁😂🤣😃😄😅😆😉😊😋😎", "😀😁😂🤣***"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := MaskSensitiveData(tt.input)
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(t, tt.expected, MaskSensitiveData(tt.input))
 		})
 	}
 }
@@ -322,39 +290,53 @@ func TestMaskSensitiveData(t *testing.T) {
 // =============================================================================
 
 // TestStripHTMLTags는 StripHTMLTags 함수의 HTML 태그 제거 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 일반 텍스트 (변경 없음)
-//   - 단순 태그 포함 (<b>, </b>)
-//   - 복합 태그 포함 (<a>, <span> 등)
-//   - 속성이 있는 태그 (<a href="...">)
-//   - 중첩 태그
-//   - 불완전한 태그 (HTML 파서가 아니므로 단순 정규식 동작 확인)
 func TestStripHTMLTags(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
 		expected string
 	}{
+		// 1. Basic Functionality
 		{"Plain text", "Hello World", "Hello World"},
 		{"Simple bold tag", "<b>Hello</b> World", "Hello World"},
 		{"Tag with attributes", `<a href="http://example.com">Link</a>`, "Link"},
 		{"Complex structure", "<div><span><b>Hello</b></span></div>", "Hello"},
 		{"Nested tags", "<b><i>BoldItalic</i></b>", "BoldItalic"},
-		{"Self-closing tag", "Hello<br/>World", "HelloWorld"}, // 공백 없이 제거됨에 유의
+		{"Self-closing tag", "Hello<br/>World", "HelloWorld"},
 		{"Multiple tags", "<h1>Title</h1><p>Paragraph</p>", "TitleParagraph"},
-		{"Naver Search API Example", "삼성 갤럭시 <b>S25</b> <b>FE</b> 256GB 자급제", "삼성 갤럭시 S25 FE 256GB 자급제"},
+		{"Real-world Example", "삼성 갤럭시 <b>S25</b> <b>FE</b> 256GB 자급제", "삼성 갤럭시 S25 FE 256GB 자급제"},
 
-		// Expert Level Cases (HTML 태그 제거 고도화 검증)
+		// 2. Advanced / Edge Case Functionality (Robustness)
+		{"HTML Comment", "Hello <!-- comment --> World", "Hello  World"},
+		{"HTML Comment with tags", "<div><!-- comment --></div>", ""},
+		{"Incomplete Comment", "Hello <!-- comment", "Hello <!-- comment"},
 		{"Math operator < (Not a tag)", "3 < 5", "3 < 5"},
 		{"Math operator >", "5 > 3", "5 > 3"},
 		{"Mixed math and tags", "<b>Values:</b> 3 < 5", "Values: 3 < 5"},
+
+		// 3. HTML Entities
 		{"HTML Entities: Ampersand", "Tom &amp; Jerry", "Tom & Jerry"},
 		{"HTML Entities: Less Than", "3 &lt; 5", "3 < 5"},
 		{"HTML Entities: Greater Than", "5 &gt; 3", "5 > 3"},
 		{"HTML Entities: Quote", "&quot;Quote&quot;", "\"Quote\""},
-		{"Case Insensitive Tag", "<B>Bold</B>", "Bold"},
 		{"Complex Mix", "Start <b>&lt;Middle&gt;</b> End", "Start <Middle> End"},
+
+		// 4. Complex Attributes (State Machine Verification)
+		{"Attribute with single quotes", "<a title='foo'>Link</a>", "Link"},
+		{"Attribute with double quotes", `<a title="foo">Link</a>`, "Link"},
+		{"Attribute containing > in double quotes", `<a title="Greater > Than">Link</a>`, "Link"},
+		{"Attribute containing > in single quotes", `<a title='Greater > Than'>Link</a>`, "Link"},
+		{"Attribute containing <", `<div data-val="<">Content</div>`, "Content"},
+		{"Nested mixed quotes 1", `<img src="foo.jpg" alt='It"s me'>`, ""},
+		{"Nested mixed quotes 2", `<img src='foo.jpg' alt="It's me">`, ""},
+
+		// 5. Fail-Fast & Regression Checks
+		{"Tag candidate start with number", "<123>", "<123>"},
+		{"Tag candidate start with space", "< a>", "< a>"},
+		{"Tag candidate start with symbol", "<$100>", "<$100>"},
+		{"Unclosed tag", "<b", "<b"},
+		{"Unclosed quote in tag", `<a title="open`, `<a title="open`},
+		{"Combo edge case", `Text < 5 but <b>Bold</b> and <a href=">">Link</a>`, `Text < 5 but Bold and Link`},
 	}
 
 	for _, tt := range tests {
@@ -362,4 +344,138 @@ func TestStripHTMLTags(t *testing.T) {
 			assert.Equal(t, tt.expected, StripHTMLTags(tt.input))
 		})
 	}
+}
+
+// =============================================================================
+// Helper Function Tests
+// =============================================================================
+
+// TestHasAnyContent는 HasAnyContent 함수의 동작을 검증합니다.
+func TestHasAnyContent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		strs []string
+		want bool
+	}{
+		// [Category 1] 기본 동작
+		{"Single non-empty", []string{"hello"}, true},
+		{"Single empty", []string{""}, false},
+		{"Multiple with content middle", []string{"", "world", ""}, true},
+
+		// [Category 2] 엣지 케이스
+		{"Nil slice", nil, false},
+		{"Empty slice", []string{}, false},
+		{"All empty", []string{"", "", ""}, false},
+		{"Whitespace only (Trim not applied)", []string{"   "}, true}, // HasAnyContent does not trim
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := HasAnyContent(tt.strs...)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkToSnakeCase(b *testing.B) {
+	input := "ThisIsAVeryLongVariableNameForBenchmarkPurposes123"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ToSnakeCase(input)
+	}
+}
+
+func BenchmarkNormalizeSpaces(b *testing.B) {
+	input := "   This   is   a   test   string   with   many   spaces   "
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = NormalizeSpaces(input)
+	}
+}
+
+func BenchmarkFormatCommas(b *testing.B) {
+	input := int64(123456789012345)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = FormatCommas(input)
+	}
+}
+
+func BenchmarkStripHTMLTags(b *testing.B) {
+	input := `
+		<html>
+			<head><title>Benchmark</title></head>
+			<body>
+				<h1>Welcome</h1>
+				<p>This is a <b>bold</b> paragraph with <a href="#">link</a>.</p>
+				<div class="container">
+					<span>Nested Content</span>
+				</div>
+			</body>
+		</html>
+	`
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = StripHTMLTags(input)
+	}
+}
+
+func BenchmarkMaskSensitiveData(b *testing.B) {
+	input := "1234567890123456"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MaskSensitiveData(input)
+	}
+}
+
+// =============================================================================
+// Examples (Documentation)
+// =============================================================================
+
+func ExampleToSnakeCase() {
+	fmt.Println(ToSnakeCase("MyVariableName"))
+	fmt.Println(ToSnakeCase("HTTPClient"))
+	// Output:
+	// my_variable_name
+	// http_client
+}
+
+func ExampleNormalizeSpaces() {
+	fmt.Println(NormalizeSpaces("  Hello   World  "))
+	// Output: Hello World
+}
+
+func ExampleFormatCommas() {
+	fmt.Println(FormatCommas(1234567))
+	fmt.Println(FormatCommas(100))
+	// Output:
+	// 1,234,567
+	// 100
+}
+
+func ExampleStripHTMLTags() {
+	htmlStr := "<b>Bold</b> &amp; <i>Italic</i>"
+	fmt.Println(StripHTMLTags(htmlStr))
+	// Output: Bold & Italic
+}
+
+func ExampleMaskSensitiveData() {
+	fmt.Println(MaskSensitiveData("1234567890123456"))
+	fmt.Println(MaskSensitiveData("secret"))
+	// Output:
+	// 1234***3456
+	// secr***
 }

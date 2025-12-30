@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	applog "github.com/darkkaiser/notify-server/internal/pkg/log"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 )
