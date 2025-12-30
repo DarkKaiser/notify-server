@@ -109,7 +109,7 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
-				if err := appvalidation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+				if err := appvalidation.ValidateCronExpression(cmd.Scheduler.TimeSpec); err != nil {
 					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
