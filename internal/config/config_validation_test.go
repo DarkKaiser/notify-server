@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -175,20 +176,30 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 			modifyConfig: func(c *AppConfig) {
 				c.NotifyAPI.WS.TLSServer = true
 				c.NotifyAPI.WS.TLSCertFile = "" // Missing
-				c.NotifyAPI.WS.TLSKeyFile = "key.pem"
+				c.NotifyAPI.WS.TLSKeyFile = os.Args[0]
 			},
 			shouldError:   true,
-			errorContains: "인증서 파일 경로(TLSCertFile)",
+			errorContains: "인증서 파일 경로(TLSCertFile)는 필수입니다",
 		},
 		{
 			name: "TLS Enabled but Missing Key",
 			modifyConfig: func(c *AppConfig) {
 				c.NotifyAPI.WS.TLSServer = true
-				c.NotifyAPI.WS.TLSCertFile = "cert.pem"
+				c.NotifyAPI.WS.TLSCertFile = os.Args[0]
 				c.NotifyAPI.WS.TLSKeyFile = "" // Missing
 			},
 			shouldError:   true,
-			errorContains: "키 파일 경로(TLSKeyFile)",
+			errorContains: "키 파일 경로(TLSKeyFile)는 필수입니다",
+		},
+		{
+			name: "TLS Enabled but Files Not Found",
+			modifyConfig: func(c *AppConfig) {
+				c.NotifyAPI.WS.TLSServer = true
+				c.NotifyAPI.WS.TLSCertFile = "nonexistent_cert.pem"
+				c.NotifyAPI.WS.TLSKeyFile = "nonexistent_key.pem"
+			},
+			shouldError:   true,
+			errorContains: "TLS 인증서 파일이 존재하지 않거나 유효하지 않습니다",
 		},
 
 		// =================================================================

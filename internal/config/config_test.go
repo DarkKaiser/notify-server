@@ -516,15 +516,6 @@ func TestVerifyRecommendations(t *testing.T) {
 				"시스템 예약 포트(1-1023)가 설정되었습니다",
 			},
 		},
-		{
-			name: "TLS Enabled but Certificate Missing",
-			configBuilder: NewConfigBuilder().
-				WithTLSServer(true, "missing_cert.pem", "missing_key.pem"),
-			expectedWarnings: []string{
-				"TLS 인증서 파일 접근 불가",
-				"TLS 키 파일 접근 불가",
-			},
-		},
 	}
 
 	for _, tt := range tests {

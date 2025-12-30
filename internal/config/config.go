@@ -9,7 +9,6 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/pkg/validation"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/go-playground/validator/v10"
 	log "github.com/sirupsen/logrus"
@@ -249,8 +248,8 @@ func (c *NotifyAPIConfig) VerifyRecommendations() {
 // WSConfig 웹서버 설정 구조체
 type WSConfig struct {
 	TLSServer   bool   `json:"tls_server"`
-	TLSCertFile string `json:"tls_cert_file" validate:"required_if=TLSServer true"`
-	TLSKeyFile  string `json:"tls_key_file" validate:"required_if=TLSServer true"`
+	TLSCertFile string `json:"tls_cert_file" validate:"required_if=TLSServer true,omitempty,file"`
+	TLSKeyFile  string `json:"tls_key_file" validate:"required_if=TLSServer true,omitempty,file"`
 	ListenPort  int    `json:"listen_port" validate:"min=1,max=65535"`
 }
 
@@ -264,9 +263,23 @@ func (c *WSConfig) Validate() error {
 				case "ListenPort":
 					return apperrors.New(apperrors.InvalidInput, "웹 서버 포트 설정이 올바르지 않습니다 (허용 범위: 1-65535)")
 				case "TLSCertFile":
-					return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 인증서 파일 경로(TLSCertFile)는 필수입니다")
+					switch fieldErr.Tag() {
+					case "required_if":
+						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 인증서 파일 경로(TLSCertFile)는 필수입니다")
+					case "file":
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TLS 인증서 파일이 존재하지 않거나 유효하지 않습니다 (입력값: %v)", fieldErr.Value()))
+					default:
+						return apperrors.New(apperrors.InvalidInput, "TLS 인증서 파일 설정이 올바르지 않습니다")
+					}
 				case "TLSKeyFile":
-					return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 키 파일 경로(TLSKeyFile)는 필수입니다")
+					switch fieldErr.Tag() {
+					case "required_if":
+						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 키 파일 경로(TLSKeyFile)는 필수입니다")
+					case "file":
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TLS 키 파일이 존재하지 않거나 유효하지 않습니다 (입력값: %v)", fieldErr.Value()))
+					default:
+						return apperrors.New(apperrors.InvalidInput, "TLS 키 파일 설정이 올바르지 않습니다")
+					}
 				}
 			}
 		}
@@ -283,16 +296,6 @@ func (c *WSConfig) VerifyRecommendations() {
 		applog.WithComponentAndFields("config", log.Fields{
 			"port": c.ListenPort,
 		}).Warn("시스템 예약 포트(1-1023)가 설정되었습니다. 서버 구동 시 관리자 권한이 필요할 수 있습니다")
-	}
-
-	// TLS 인증서/키 파일 접근 가능 여부 확인
-	if c.TLSServer {
-		if err := validation.ValidateFileExists(c.TLSCertFile, false); err != nil {
-			applog.WithComponent("config").Warnf("TLS 인증서 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSCertFile, err)
-		}
-		if err := validation.ValidateFileExists(c.TLSKeyFile, false); err != nil {
-			applog.WithComponent("config").Warnf("TLS 키 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSKeyFile, err)
-		}
 	}
 }
 
