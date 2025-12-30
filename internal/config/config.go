@@ -12,6 +12,8 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/go-playground/validator/v10"
 	log "github.com/sirupsen/logrus"
+
+	appvalidation "github.com/darkkaiser/notify-server/pkg/validation"
 )
 
 // 애플리케이션 기본 정보
@@ -28,11 +30,6 @@ const (
 
 	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
 	DefaultRetryDelay = "2s"
-)
-
-var (
-	// validate 구조체 태그를 통해 설정값의 유효성을 검사합니다.
-	validate = validator.New()
 )
 
 // AppConfig 애플리케이션 전체 설정 구조체
@@ -112,7 +109,7 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
-				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+				if err := appvalidation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
 					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
@@ -300,7 +297,7 @@ func (c *WSConfig) VerifyRecommendations() {
 
 // CORSConfig CORS 설정 구조체
 type CORSConfig struct {
-	AllowOrigins []string `json:"allow_origins"`
+	AllowOrigins []string `json:"allow_origins" validate:"dive,cors_origin"`
 }
 
 // Validate CORS 설정의 유효성을 검사합니다.
@@ -314,12 +311,24 @@ func (c *CORSConfig) Validate() error {
 			if len(c.AllowOrigins) > 1 {
 				return apperrors.New(apperrors.InvalidInput, "CORS AllowOrigins에 와일드카드(*)가 포함된 경우, 다른 Origin과 함께 사용할 수 없습니다")
 			}
+			// 와일드카드만 있는 경우는 유효함 (validator skip)
 			continue
 		}
+	}
 
-		if err := validation.ValidateCORSOrigin(origin); err != nil {
-			return err
+	// 각 Origin 유효성 검사
+	if err := validate.Struct(c); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "cors_origin" {
+					// 상세 에러 메시지가 잘려서 아쉽지만, validator의 한계로 인해 일반적인 메시지 반환
+					// 필요하다면 validation.ValidateCORSOrigin을 다시 호출하여 정확한 메시지를 얻을 수도 있음
+					// 여기서는 간단하게 처리
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("CORS 설정 오류: 유효하지 않은 Origin 형식입니다 (input=%q). 'Scheme://Host[:Port]' 표준을 준수해야 합니다", fieldErr.Value()))
+				}
+			}
 		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, "CORS 설정 유효성 검증 실패")
 	}
 	return nil
 }

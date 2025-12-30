@@ -10,14 +10,10 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	// cronParser Cron 표현식 파서
-	cronParser = cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-
 	// urlRegex URL 유효성 검사 정규식
 	// 형식: ^https?://[호스트](?::[포트])?(?:/[경로])*$
 	//
@@ -37,17 +33,6 @@ var (
 	//   - https://192.168.1.1:8443/api
 	urlRegex = regexp.MustCompile(`^https?://(?:[^:@/]+(?::[^@/]+)?@)?(?:[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})+|localhost|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?::\d+)?(?:[/?#].*)?$`)
 )
-
-// ValidateRobfigCronExpression Cron 표현식의 유효성을 검사합니다.
-// robfig/cron 패키지를 사용하며, 초 단위를 포함한 7개 필드 형식을 지원합니다.
-// 형식: 초 분 시 일 월 요일 (예: "0 */5 * * * *" - 5분마다)
-func ValidateRobfigCronExpression(spec string) error {
-	_, err := cronParser.Parse(spec)
-	if err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 Cron 표현식입니다: %s", spec))
-	}
-	return nil
-}
 
 // ValidateDuration duration 문자열의 유효성을 검사합니다.
 func ValidateDuration(d string) error {
@@ -123,49 +108,6 @@ func ValidateURL(urlStr string) error {
 	// Host 검증
 	if parsedURL.Host == "" {
 		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("URL에 호스트가 없습니다: %s", urlStr))
-	}
-
-	return nil
-}
-
-// ValidateCORSOrigin CORS Origin의 유효성을 검사합니다.
-// Origin은 스키마(http/https), 도메인(또는 IP), 포트로만 구성되어야 하며, 경로(Path)나 쿼리 스트링을 포함할 수 없습니다.
-// 또한 마지막에 슬래시(/)가 없어야 합니다.
-func ValidateCORSOrigin(origin string) error {
-	if origin == "*" {
-		return nil
-	}
-
-	// 빈 문자열 또는 공백만 있는 경우 체크
-	trimmedOrigin := strings.TrimSpace(origin)
-	if trimmedOrigin == "" {
-		return apperrors.New(apperrors.InvalidInput, "Origin은 빈 문자열일 수 없습니다")
-	}
-
-	if strings.HasSuffix(origin, "/") {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin은 슬래시(/)로 끝날 수 없습니다: %s", origin))
-	}
-
-	parsedURL, err := url.Parse(origin)
-	if err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다: %s", origin))
-	}
-
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin은 http 또는 https 스키마를 사용해야 합니다: %s", origin))
-	}
-
-	if parsedURL.Path != "" && parsedURL.Path != "/" {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin에는 경로(Path)를 포함할 수 없습니다: %s", origin))
-	}
-
-	if parsedURL.RawQuery != "" {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Origin에는 쿼리 스트링을 포함할 수 없습니다: %s", origin))
-	}
-
-	// 호스트 검증 (정규식 사용)
-	if !urlRegex.MatchString(origin) {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다 (호스트/포트 오류): %s", origin))
 	}
 
 	return nil

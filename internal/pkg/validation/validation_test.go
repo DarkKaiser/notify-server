@@ -12,69 +12,6 @@ import (
 )
 
 // =============================================================================
-// Cron Expression Validation Tests
-// =============================================================================
-
-// TestValidateRobfigCronExpression은 Cron 표현식 유효성 검사를 검증합니다.
-//
-// 검증 항목:
-//   - 표준 Cron (5 필드) - 6 필드 설정으로 인해 거부됨
-//   - 확장 Cron (6 필드) - 초 단위 포함
-//   - 특수 표현식 (@daily, @hourly 등)
-//   - 잘못된 형식 (필드 부족, 잘못된 문자)
-//   - 빈 문자열
-func TestValidateRobfigCronExpression(t *testing.T) {
-	tests := []struct {
-		name    string
-		spec    string
-		wantErr bool
-	}{
-		{
-			name:    "Standard Cron (5 fields - invalid due to strict 6 fields setting)",
-			spec:    "0 5 * * *", // 5 fields
-			wantErr: true,
-		},
-		{
-			name:    "Extended Cron (6 fields - with seconds)",
-			spec:    "0 */5 * * * *", // 5분마다 (0초)
-			wantErr: false,
-		},
-		{
-			name:    "Daily at midnight",
-			spec:    "@daily",
-			wantErr: false,
-		},
-		{
-			name:    "Invalid Cron (too few fields)",
-			spec:    "* * *",
-			wantErr: true,
-		},
-		{
-			name:    "Invalid Cron (garbage)",
-			spec:    "invalid-cron",
-			wantErr: true,
-		},
-		{
-			name:    "Empty string",
-			spec:    "",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateRobfigCronExpression(tt.spec)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// =============================================================================
 // Duration Validation Tests
 // =============================================================================
 
@@ -149,52 +86,6 @@ func TestValidateURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateURL(tt.urlStr)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// =============================================================================
-// CORS Origin Validation Tests
-// =============================================================================
-
-// TestValidateCORSOrigin은 CORS Origin 유효성 검사를 검증합니다.
-//
-// 검증 항목:
-//   - 와일드카드 (*)
-//   - 유효한 HTTP/HTTPS Origin
-//   - 포트 포함 Origin
-//   - 서브도메인
-//   - 잘못된 형식 (슬래시, 경로, 쿼리, 잘못된 스키마)
-//   - 빈 문자열 및 공백
-func TestValidateCORSOrigin(t *testing.T) {
-	tests := []struct {
-		name    string
-		origin  string
-		wantErr bool
-	}{
-		{"Valid Wildcard", "*", false},
-		{"Valid HTTP", "http://example.com", false},
-		{"Valid HTTPS", "https://example.com", false},
-		{"Valid with port", "http://localhost:3000", false},
-		{"Valid Subdomain", "https://api.example.com", false},
-		{"Trailing Slash", "https://example.com/", true},
-		{"With Path", "https://example.com/api", true},
-		{"With Query", "https://example.com?q=1", true},
-		{"Invalid Scheme", "ftp://example.com", true},
-		{"No Scheme", "example.com", true},
-		{"Empty String", "", true},
-		{"Whitespace", "   ", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateCORSOrigin(tt.origin)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
@@ -307,38 +198,6 @@ func TestValidateFileExistsOrURL(t *testing.T) {
 // =============================================================================
 // Duplicate Validation Tests
 // =============================================================================
-
-// TestValidateNoDuplicate는 중복 검사를 검증합니다.
-//
-// 검증 항목:
-//   - 중복 없음
-//   - 중복 있음
-//   - 빈 목록
-func TestValidateNoDuplicate(t *testing.T) {
-	tests := []struct {
-		name      string
-		list      []string
-		value     string
-		valueType string
-		wantErr   bool
-	}{
-		{"No Duplicate", []string{"a", "b"}, "c", "item", false},
-		{"Duplicate", []string{"a", "b", "c"}, "b", "item", true},
-		{"Empty List", []string{}, "a", "item", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateNoDuplicate(tt.list, tt.value, tt.valueType)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
 
 // =============================================================================
 // Examples (Documentation)

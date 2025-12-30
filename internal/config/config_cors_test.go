@@ -68,19 +68,19 @@ func TestCORSConfig_Validate_Origins(t *testing.T) {
 		{"숫자 포함 도메인", "https://example123.com", false, ""},
 
 		// Invalid Origins
-		{"슬래시로 끝남", "http://example.com/", true, "슬래시"},
-		{"경로 포함", "http://example.com/api", true, "경로"},
-		{"쿼리 스트링 포함", "http://example.com?query=1", true, "쿼리"},
-		{"프로토콜 없음", "example.com", true, "스키마"},
-		{"잘못된 프로토콜 (ftp)", "ftp://example.com", true, "스키마"},
-		{"잘못된 프로토콜 (ws)", "ws://example.com", true, "스키마"},
-		{"프로토콜만", "http://", true, "슬래시"},
-		{"빈 문자열", "", true, "빈 문자열"},
-		{"공백만", "   ", true, "빈 문자열"},
-		{"잘못된 IP 주소", "http://999.999.999.999", true, "형식"},
-		{"포트만", "http://:8080", true, "형식"},
-		{"localhost IPv6 (지원하지 않음)", "http://[::1]", true, "형식"},
-		{"대문자 도메인", "HTTP://EXAMPLE.COM", true, "형식"},
+		{"슬래시로 끝남", "http://example.com/", true, "CORS 설정 오류"},
+		{"경로 포함", "http://example.com/api", true, "CORS 설정 오류"},
+		{"쿼리 스트링 포함", "http://example.com?query=1", true, "CORS 설정 오류"},
+		{"프로토콜 없음", "example.com", true, "CORS 설정 오류"},
+		{"잘못된 프로토콜 (ftp)", "ftp://example.com", true, "CORS 설정 오류"},
+		{"잘못된 프로토콜 (ws)", "ws://example.com", true, "CORS 설정 오류"},
+		{"프로토콜만", "http://", true, "CORS 설정 오류"},
+		{"빈 문자열", "", true, "CORS 설정 오류"},
+		{"공백만", "   ", true, "CORS 설정 오류"},
+		{"잘못된 IP 주소", "http://999.999.999.999", true, "CORS 설정 오류"},
+		{"포트만", "http://:8080", true, "CORS 설정 오류"},
+		{"localhost IPv6 (지원하지 않음)", "http://[::1]", true, "CORS 설정 오류"},
+		{"대문자 도메인", "HTTP://EXAMPLE.COM", true, "CORS 설정 오류"},
 	}
 
 	for _, tt := range tests {
@@ -123,7 +123,7 @@ func TestCORSConfig_Validate_MultipleOrigins(t *testing.T) {
 		)
 		err := cfg.Validate()
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "경로")
+		assert.Contains(t, err.Error(), "CORS 설정 오류")
 	})
 }
 
