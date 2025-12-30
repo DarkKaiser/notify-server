@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,13 +42,12 @@ func TestValidateFileExists(t *testing.T) {
 		path     string
 		warnOnly bool
 		wantErr  bool
-		errType  apperrors.ErrorType
 	}{
-		{"Existing File", tmpFile.Name(), false, false, ""},
-		{"Existing Directory", tmpDir, false, false, ""},
-		{"Non-existing File", filepath.Join(tmpDir, "nonexistent"), false, true, apperrors.NotFound},
-		{"Non-existing File (WarnOnly)", filepath.Join(tmpDir, "nonexistent"), true, false, ""}, // Error logged but nil returned
-		{"Empty Path", "", false, false, ""},
+		{"Existing File", tmpFile.Name(), false, false},
+		{"Existing Directory", tmpDir, false, false},
+		{"Non-existing File", filepath.Join(tmpDir, "nonexistent"), false, true},
+		{"Non-existing File (WarnOnly)", filepath.Join(tmpDir, "nonexistent"), true, false}, // Error logged but nil returned
+		{"Empty Path", "", false, false},
 	}
 
 	for _, tt := range tests {
@@ -57,9 +55,6 @@ func TestValidateFileExists(t *testing.T) {
 			err := ValidateFileExists(tt.path, tt.warnOnly)
 			if tt.wantErr {
 				assert.Error(t, err)
-				if tt.errType != "" {
-					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
-				}
 			} else {
 				assert.NoError(t, err)
 			}

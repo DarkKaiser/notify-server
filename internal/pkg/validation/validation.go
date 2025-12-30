@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,7 +18,7 @@ func ValidateFileExists(path string, warnOnly bool) error {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			errMsg := apperrors.New(apperrors.NotFound, fmt.Sprintf("파일이 존재하지 않습니다: %s", path))
+			errMsg := fmt.Errorf("파일이 존재하지 않습니다: %s", path)
 			if warnOnly {
 				applog.WithComponentAndFields("validation", log.Fields{
 					"file_path": path,
@@ -28,7 +27,7 @@ func ValidateFileExists(path string, warnOnly bool) error {
 			}
 			return errMsg
 		}
-		return apperrors.Wrap(err, apperrors.Internal, fmt.Sprintf("파일 접근 오류: %s", path))
+		return fmt.Errorf("파일 접근 오류: %s (원인: %w)", path, err)
 	}
 	return nil
 }

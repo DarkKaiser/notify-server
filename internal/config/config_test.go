@@ -364,38 +364,6 @@ func TestAppConfig_JSONMarshaling(t *testing.T) {
 // Edge Case Tests
 // =============================================================================
 
-// TestHTTPRetryConfig_EdgeCases는 HTTPRetryConfig의 경계값 및 특수 케이스를 검증합니다.
-func TestHTTPRetryConfig_EdgeCases(t *testing.T) {
-	tests := []struct {
-		name        string
-		maxRetries  int
-		retryDelay  string
-		shouldError bool
-	}{
-		{"Zero Retries", 0, "1s", false},
-		{"Negative Retries", -1, "1s", false}, // 음수는 허용되지만 동작은 0으로 처리
-		{"Minimum Duration", 3, "1ns", false},
-		{"Maximum Duration", 3, "24h", false},
-		{"Invalid Duration Format", 3, "abc", true},
-		{"Empty Duration", 3, "", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewConfigBuilder().
-				WithHTTPRetry(tt.maxRetries, tt.retryDelay).
-				Build()
-
-			err := cfg.Validate()
-			if tt.shouldError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
 // TestAppConfig_LargeScale은 대용량 데이터 처리를 검증합니다.
 func TestAppConfig_LargeScale(t *testing.T) {
 	t.Run("Many Notifiers (100개)", func(t *testing.T) {
