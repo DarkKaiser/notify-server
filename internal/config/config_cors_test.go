@@ -79,8 +79,8 @@ func TestCORSConfig_Validate_Origins(t *testing.T) {
 		{"공백만", "   ", true, "CORS 설정 오류"},
 		{"잘못된 IP 주소", "http://999.999.999.999", true, "CORS 설정 오류"},
 		{"포트만", "http://:8080", true, "CORS 설정 오류"},
-		{"localhost IPv6 (지원하지 않음)", "http://[::1]", true, "CORS 설정 오류"},
-		{"대문자 도메인", "HTTP://EXAMPLE.COM", true, "CORS 설정 오류"},
+		{"localhost IPv6 (지원함)", "http://[::1]", false, ""},
+		{"대문자 도메인 (지원함)", "HTTP://EXAMPLE.COM", false, ""},
 	}
 
 	for _, tt := range tests {

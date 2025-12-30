@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/validation"
@@ -126,8 +127,8 @@ type HTTPRetryConfig struct {
 
 // Validate HTTPRetryConfig의 유효성을 검사합니다.
 func (c *HTTPRetryConfig) Validate() error {
-	if err := validation.ValidateDuration(c.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "HTTP Retry 설정 오류")
+	if _, err := time.ParseDuration(c.RetryDelay); err != nil {
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("HTTP Retry 설정 오류: 잘못된 duration 형식입니다 (%s)", c.RetryDelay))
 	}
 	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -33,15 +32,6 @@ var (
 	//   - https://192.168.1.1:8443/api
 	urlRegex = regexp.MustCompile(`^https?://(?:[^:@/]+(?::[^@/]+)?@)?(?:[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})+|localhost|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))(?::\d+)?(?:[/?#].*)?$`)
 )
-
-// ValidateDuration duration 문자열의 유효성을 검사합니다.
-func ValidateDuration(d string) error {
-	_, err := time.ParseDuration(d)
-	if err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("잘못된 duration 형식입니다: %s (예: 2s, 100ms, 1m)", d))
-	}
-	return nil
-}
 
 // ValidateFileExistsOrURL 파일 경로 또는 URL의 유효성을 검사합니다.
 // warnOnly가 true면 경고만 출력하고 에러는 반환하지 않습니다.

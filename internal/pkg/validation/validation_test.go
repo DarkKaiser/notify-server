@@ -12,45 +12,6 @@ import (
 )
 
 // =============================================================================
-// Duration Validation Tests
-// =============================================================================
-
-// TestValidateDuration은 Duration 문자열 유효성 검사를 검증합니다.
-//
-// 검증 항목:
-//   - 유효한 단위 (초, 밀리초, 분, 시간)
-//   - 복합 형식 (1h30m)
-//   - 잘못된 형식
-//   - 빈 문자열
-func TestValidateDuration(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{"Valid seconds", "10s", false},
-		{"Valid milliseconds", "500ms", false},
-		{"Valid minutes", "5m", false},
-		{"Valid combined", "1h30m", false},
-		{"Invalid format", "10seconds", true},
-		{"Invalid number", "invalid", true},
-		{"Empty string", "", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateDuration(tt.input)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// =============================================================================
 // URL Validation Tests
 // =============================================================================
 
@@ -202,13 +163,6 @@ func TestValidateFileExistsOrURL(t *testing.T) {
 // =============================================================================
 // Examples (Documentation)
 // =============================================================================
-
-func ExampleValidateDuration() {
-	if err := ValidateDuration("10m"); err == nil {
-		fmt.Println("Valid duration")
-	}
-	// Output: Valid duration
-}
 
 func ExampleValidateURL() {
 	if err := ValidateURL("https://example.com"); err == nil {
