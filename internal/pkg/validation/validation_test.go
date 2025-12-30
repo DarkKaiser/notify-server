@@ -209,41 +209,6 @@ func TestValidateCORSOrigin(t *testing.T) {
 // Port Validation Tests
 // =============================================================================
 
-// TestValidatePort는 포트 번호 유효성 검사를 검증합니다.
-//
-// 검증 항목:
-//   - 유효한 포트 (1-65535)
-//   - 경계값 (최소 1, 최대 65535)
-//   - 시스템 예약 포트 (1-1023) - 경고만 출력
-//   - 잘못된 포트 (0, 음수, 범위 초과)
-func TestValidatePort(t *testing.T) {
-	tests := []struct {
-		name    string
-		port    int
-		wantErr bool
-	}{
-		{"Valid Port", 8080, false},
-		{"Valid Port (Min)", 1, false},
-		{"Valid Port (Max)", 65535, false},
-		{"System Port (Allowed but logs warning)", 80, false},
-		{"Invalid Port (Zero)", 0, true},
-		{"Invalid Port (Negative)", -1, true},
-		{"Invalid Port (High)", 65536, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidatePort(tt.port)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.True(t, apperrors.Is(err, apperrors.InvalidInput))
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
 // =============================================================================
 // File Existence Validation Tests
 // =============================================================================

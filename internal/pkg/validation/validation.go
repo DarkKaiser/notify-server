@@ -172,21 +172,6 @@ func ValidateCORSOrigin(origin string) error {
 	return nil
 }
 
-// ValidatePort TCP/UDP 네트워크 포트 번호의 유효성을 검사합니다.
-// 유효 범위: 1-65535, 1024 미만 포트는 시스템 예약 포트로 경고를 출력합니다.
-func ValidatePort(port int) error {
-	if port < 1 || port > 65535 {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("포트 번호는 1-65535 범위여야 합니다 (입력값: %d)", port))
-	}
-	if port < 1024 {
-		// 경고만 로그로 출력 (에러는 아님)
-		applog.WithComponentAndFields("validation", log.Fields{
-			"port": port,
-		}).Warn("1-1023 포트는 시스템 예약 포트입니다. 권한이 필요할 수 있습니다")
-	}
-	return nil
-}
-
 // ValidateNoDuplicate 목록에 중복된 값이 없는지 검사합니다.
 func ValidateNoDuplicate(list []string, value, valueType string) error {
 	if slices.Contains(list, value) {

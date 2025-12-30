@@ -9,6 +9,9 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/validation"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/go-playground/validator/v10"
+	log "github.com/sirupsen/logrus"
 )
 
 // 애플리케이션 기본 정보
@@ -25,6 +28,11 @@ const (
 
 	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
 	DefaultRetryDelay = "2s"
+)
+
+var (
+	// validate 구조체 태그를 통해 설정값의 유효성을 검사합니다.
+	validate = validator.New()
 )
 
 // AppConfig 애플리케이션 전체 설정 구조체
@@ -61,6 +69,12 @@ func (c *AppConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// VerifyRecommendations 애플리케이션 전반의 운영 적합성 및 안정성을 점검합니다.
+func (c *AppConfig) VerifyRecommendations() {
+	// NotifyAPI 권고 사항 검토
+	c.NotifyAPI.VerifyRecommendations()
 }
 
 // validateTasks Task 설정의 유효성을 검사합니다.
@@ -202,36 +216,59 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 	return nil
 }
 
+// VerifyRecommendations Notify API 서비스의 운영 적합성 및 안정성을 점검합니다.
+func (c *NotifyAPIConfig) VerifyRecommendations() {
+	c.WS.VerifyRecommendations()
+}
+
 // WSConfig 웹서버 설정 구조체
 type WSConfig struct {
 	TLSServer   bool   `json:"tls_server"`
-	TLSCertFile string `json:"tls_cert_file"`
-	TLSKeyFile  string `json:"tls_key_file"`
-	ListenPort  int    `json:"listen_port"`
+	TLSCertFile string `json:"tls_cert_file" validate:"required_if=TLSServer true"`
+	TLSKeyFile  string `json:"tls_key_file" validate:"required_if=TLSServer true"`
+	ListenPort  int    `json:"listen_port" validate:"min=1,max=65535"`
 }
 
 // Validate WSConfig의 유효성을 검사합니다.
 func (c *WSConfig) Validate() error {
-	// 포트 번호 검증
-	if err := validation.ValidatePort(c.ListenPort); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "웹서버 포트 설정 오류")
-	}
-
-	// TLS 설정 검사
-	if c.TLSServer {
-		if strings.TrimSpace(c.TLSCertFile) == "" {
-			return apperrors.New(apperrors.InvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+	if err := validate.Struct(c); err != nil {
+		// Validator 에러를 사용자 친화적인 메시지로 변환
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				switch fieldErr.StructField() {
+				case "ListenPort":
+					return apperrors.New(apperrors.InvalidInput, "웹 서버 포트 설정이 올바르지 않습니다 (허용 범위: 1-65535)")
+				case "TLSCertFile":
+					return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 인증서 파일 경로(TLSCertFile)는 필수입니다")
+				case "TLSKeyFile":
+					return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 키 파일 경로(TLSKeyFile)는 필수입니다")
+				}
+			}
 		}
-		if strings.TrimSpace(c.TLSKeyFile) == "" {
-			return apperrors.New(apperrors.InvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
-		}
-
-		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
-		_ = validation.ValidateFileExistsOrURL(c.TLSCertFile, true)
-		_ = validation.ValidateFileExistsOrURL(c.TLSKeyFile, true)
+		return apperrors.Wrap(err, apperrors.InvalidInput, "웹 서버 구성 검증에 실패하였습니다")
 	}
 
 	return nil
+}
+
+// VerifyRecommendations 웹서버의 운영 보안 및 안정성 설정을 점검합니다.
+func (c *WSConfig) VerifyRecommendations() {
+	// 시스템 예약 포트(1024 미만) 사용 경고
+	if c.ListenPort < 1024 {
+		applog.WithComponentAndFields("config", log.Fields{
+			"port": c.ListenPort,
+		}).Warn("시스템 예약 포트(1-1023)가 설정되었습니다. 서버 구동 시 관리자 권한이 필요할 수 있습니다")
+	}
+
+	// TLS 인증서/키 파일 접근 가능 여부 확인
+	if c.TLSServer {
+		if err := validation.ValidateFileExistsOrURL(c.TLSCertFile, false); err != nil {
+			applog.WithComponent("config").Warnf("TLS 인증서 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSCertFile, err)
+		}
+		if err := validation.ValidateFileExistsOrURL(c.TLSKeyFile, false); err != nil {
+			applog.WithComponent("config").Warnf("TLS 키 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSKeyFile, err)
+		}
+	}
 }
 
 // CORSConfig CORS 설정 구조체

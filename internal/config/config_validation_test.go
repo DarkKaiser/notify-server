@@ -177,7 +177,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 				c.NotifyAPI.WS.TLSKeyFile = "key.pem"
 			},
 			shouldError:   true,
-			errorContains: "Cert 파일 경로",
+			errorContains: "인증서 파일 경로(TLSCertFile)",
 		},
 		{
 			name: "TLS Enabled but Missing Key",
@@ -187,7 +187,7 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 				c.NotifyAPI.WS.TLSKeyFile = "" // Missing
 			},
 			shouldError:   true,
-			errorContains: "Key 파일 경로",
+			errorContains: "키 파일 경로(TLSKeyFile)",
 		},
 		{
 			name: "TLS Valid URL Cert",

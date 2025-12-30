@@ -8,7 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"strings"
+
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +89,20 @@ func (b *ConfigBuilder) WithApplication(id, appKey, defaultNotifierID string) *C
 		AppKey:            appKey,
 		DefaultNotifierID: defaultNotifierID,
 	})
+	return b
+}
+
+// WithWSListenPort는 웹서버 수신 포트를 설정합니다.
+func (b *ConfigBuilder) WithWSListenPort(port int) *ConfigBuilder {
+	b.config.NotifyAPI.WS.ListenPort = port
+	return b
+}
+
+// WithTLSServer는 TLS 서버 설정을 지정합니다.
+func (b *ConfigBuilder) WithTLSServer(enabled bool, certFile, keyFile string) *ConfigBuilder {
+	b.config.NotifyAPI.WS.TLSServer = enabled
+	b.config.NotifyAPI.WS.TLSCertFile = certFile
+	b.config.NotifyAPI.WS.TLSKeyFile = keyFile
 	return b
 }
 
@@ -493,6 +511,84 @@ func TestAppConfig_JSONEdgeCases(t *testing.T) {
 				assert.NoError(t, err)
 				if tt.validate != nil {
 					tt.validate(t, cfg)
+				}
+			}
+		})
+	}
+}
+
+// =============================================================================
+// VerifyRecommendations Tests
+// =============================================================================
+
+// TestVerifyRecommendations는 VerifyRecommendations 메서드가 권장 설정 미준수 시
+// 적절한 경고 로그를 출력하는지 검증합니다.
+func TestVerifyRecommendations(t *testing.T) {
+	// Logrus 로그 캡처 훅 설정
+	hook := test.NewGlobal()
+	defer hook.Reset()
+
+	tests := []struct {
+		name             string
+		configBuilder    *ConfigBuilder
+		expectedWarnings []string
+	}{
+		{
+			name: "Default Valid Config - No Warnings",
+			configBuilder: NewConfigBuilder().
+				WithDebug(true).
+				WithHTTPRetry(3, "1s"),
+			expectedWarnings: []string{},
+		},
+		{
+			name: "System Reserved Port (< 1024)",
+			configBuilder: NewConfigBuilder().
+				WithWSListenPort(80),
+			expectedWarnings: []string{
+				"시스템 예약 포트(1-1023)가 설정되었습니다",
+			},
+		},
+		{
+			name: "TLS Enabled but Certificate Missing",
+			configBuilder: NewConfigBuilder().
+				WithTLSServer(true, "missing_cert.pem", "missing_key.pem"),
+			expectedWarnings: []string{
+				"TLS 인증서 파일 접근 불가",
+				"TLS 키 파일 접근 불가",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hook.Reset()
+			cfg := tt.configBuilder.Build()
+
+			cfg.VerifyRecommendations()
+
+			if len(tt.expectedWarnings) == 0 {
+				// 경고 로그가 없어야 함
+				// 주의: 다른 컴포넌트나 초기화 과정에서 발생한 로그가 있을 수 있으므로 WarnLevel 이상만 체크하거나
+				// VerifyRecommendations가 생성하는 특정 로그가 없는지 확인해야 합니다.
+				// 여기서는 간단히 WarnLevel 카운트로 체크합니다.
+				warnCount := 0
+				for _, entry := range hook.Entries {
+					if entry.Level == logrus.WarnLevel {
+						warnCount++
+					}
+				}
+				assert.Equal(t, 0, warnCount, "예상치 못한 경고 로그가 발생했습니다")
+			} else {
+				// 예상되는 경고 로그가 존재하는지 확인
+				for _, expected := range tt.expectedWarnings {
+					found := false
+					for _, entry := range hook.Entries {
+						if entry.Level == logrus.WarnLevel && strings.Contains(entry.Message, expected) {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "예상 경고 로그를 찾을 수 없습니다: '%s'", expected)
 				}
 			}
 		})
