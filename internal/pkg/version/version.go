@@ -36,17 +36,18 @@ var readBuildInfo = debug.ReadBuildInfo
 // 실제 애플리케이션 로직에서는 이 변수들에 직접 접근하지 말고,
 // 반드시 Get() 함수나 Info 구조체를 통해 안전하게 접근해야 합니다.
 var (
-	appVersion  = "" // 애플리케이션 버전 (예: v1.0.1-155-gf25b8bf)
-	gitCommit   = "" // Git 커밋 해시 (예: f25b8bf)
-	buildDate   = "" // 빌드 수행 시간
-	buildNumber = "" // CI/CD 파이프라인 빌드 번호
+	appVersion    = "" // 애플리케이션 버전 (예: v1.0.1-155-gf25b8bf)
+	gitCommitHash = "" // Git 커밋 해시 (예: f25b8bf)
+	gitTreeState  = "" // Git 작업 트리의 변경 상태 (clean 또는 dirty)
+	buildDate     = "" // 빌드 수행 시간
+	buildNumber   = "" // CI/CD 파이프라인 빌드 번호
 )
 
 // init 애플리케이션의 빌드 정보를 초기화합니다.
 func init() {
 	bi := Info{
 		Version:     appVersion,
-		Commit:      gitCommit,
+		Commit:      gitCommitHash,
 		BuildDate:   buildDate,
 		BuildNumber: buildNumber,
 	}
@@ -84,6 +85,10 @@ func Get() Info {
 
 // set 애플리케이션의 빌드 정보를 설정합니다.
 func set(bi Info) {
+	// "dirty" 값은 커밋되지 않은 로컬 변경사항이 빌드에 포함되었음을 의미합니다.
+	if gitTreeState == "dirty" {
+		bi.DirtyBuild = true
+	}
 	globalBuildInfo.Store(collectRuntimeAndBuildMetadata(bi))
 }
 
@@ -136,6 +141,10 @@ func collectRuntimeAndBuildMetadata(bi Info) Info {
 		if bi.Version == "" && val.Main.Version != "(devel)" {
 			bi.Version = val.Main.Version
 		}
+	}
+
+	if bi.Version == "" {
+		bi.Version = unknown
 	}
 
 	return bi

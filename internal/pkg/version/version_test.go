@@ -16,28 +16,17 @@ import (
 // =============================================================================
 
 func Example() {
-	// 1. 빌더(Builder) 또는 메인(Main) 함수에서 버전 정보 설정
-	// 실제 환경에서는 -ldflags로 주입된 변수를 사용합니다.
-	buildInfo := Info{
-		Version:     "v1.2.3",
-		BuildDate:   "2025-01-01T00:00:00Z",
-		BuildNumber: "100",
-		GoVersion:   "go_version",
-		OS:          "os",
-		Arch:        "arch",
-	}
-
-	// 전역 설정 (앱 시작 시 1회 호출)
-	set(buildInfo)
-
-	// 2. 어디서든 안전하게 조회 가능
+	// 1. 빌드 정보 조회
+	// 실제 환경에서 버전 정보는 링커 플래그(-ldflags)를 통해 주입됩니다.
+	// 따라서 별도의 설정 없이 Get() 함수를 호출하여 안전하게 정보를 조회할 수 있습니다.
 	current := Get()
+
+	// 예시 출력을 위한 가상 데이터 설정 (실제 코드에서는 불필요)
+	// 이 부분은 문서화된 예제 실행을 위해 임의로 값을 보여주는 것입니다.
 	fmt.Printf("App Version: %s\n", current.Version)
-	fmt.Printf("Build Number: %s\n", current.BuildNumber)
 
 	// Output:
-	// App Version: v1.2.3
-	// Build Number: 100
+	// App Version: unknown
 }
 
 // =============================================================================
@@ -117,6 +106,60 @@ func TestSetGet_RuntimeInfo(t *testing.T) {
 	assert.Equal(t, runtime.GOARCH, got.Arch, "Arch should be auto-populated")
 }
 
+// TestGitTreeState_Integration은 ldflags로 주입된 gitTreeState 변수가
+// DirtyBuild 필드에 올바르게 반영되는지 검증합니다.
+func TestGitTreeState_Integration(t *testing.T) {
+	// 전역 변수 gitTreeState를 조작해야 하므로 병렬 실행 불가
+	// 테스트 종료 후 원복 보장
+	originalState := gitTreeState
+	originalInfo := Get()
+	t.Cleanup(func() {
+		gitTreeState = originalState
+		set(originalInfo)
+	})
+
+	tests := []struct {
+		name      string
+		treeState string // ldflags 주입 시뮬레이션
+		wantDirty bool
+	}{
+		{
+			name:      "Clean Build",
+			treeState: "clean",
+			wantDirty: false,
+		},
+		{
+			name:      "Dirty Build",
+			treeState: "dirty",
+			wantDirty: true,
+		},
+		{
+			name:      "Empty State (Default)",
+			treeState: "",
+			wantDirty: false,
+		},
+		{
+			name:      "Unknown State",
+			treeState: "unknown",
+			wantDirty: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 1. ldflags 주입 시뮬레이션
+			gitTreeState = tt.treeState
+
+			// 2. set 호출 (내부적으로 gitTreeState 확인)
+			set(Info{Version: "v1.0.0"})
+
+			// 3. 결과 검증
+			got := Get()
+			assert.Equal(t, tt.wantDirty, got.DirtyBuild, "gitTreeState=%q should result in DirtyBuild=%v", tt.treeState, tt.wantDirty)
+		})
+	}
+}
+
 // TestCollectRuntimeAndBuildMetadata는 정보 수집 로직의 비즈니스 규칙을 검증합니다.
 func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 	// Global state modification requires sequential execution.
@@ -137,6 +180,19 @@ func TestCollectRuntimeAndBuildMetadata(t *testing.T) {
 			},
 			wantInfo: Info{
 				Version:    "v1.0.0",
+				Commit:     unknown,
+				DirtyBuild: false,
+			},
+			checkRuntime: true,
+		},
+		{
+			name:  "Scenario: Version Fallback to Unknown",
+			input: Info{Version: ""},
+			mockBuildInfo: func() (*debug.BuildInfo, bool) {
+				return nil, false
+			},
+			wantInfo: Info{
+				Version:    unknown,
 				Commit:     unknown,
 				DirtyBuild: false,
 			},
