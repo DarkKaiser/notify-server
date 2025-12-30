@@ -41,7 +41,7 @@ type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
 	Notifiers NotifierConfig  `json:"notifiers"`
-	Tasks     []TaskConfig    `json:"tasks"`
+	Tasks     []TaskConfig    `json:"tasks" validate:"unique=ID"`
 	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
@@ -79,20 +79,33 @@ func (c *AppConfig) VerifyRecommendations() {
 
 // validateTasks Task 설정의 유효성을 검사합니다.
 func (c *AppConfig) validateTasks(notifierIDs []string) error {
-	var taskIDs []string
-	for _, t := range c.Tasks {
-		if err := validation.ValidateNoDuplicate(taskIDs, t.ID, "TaskID"); err != nil {
-			return err
-		}
-		taskIDs = append(taskIDs, t.ID)
-
-		var commandIDs []string
-		for _, cmd := range t.Commands {
-			if err := validation.ValidateNoDuplicate(commandIDs, cmd.ID, "CommandID"); err != nil {
-				return err
+	// Tasks 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Tasks, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TaskID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
 			}
-			commandIDs = append(commandIDs, cmd.ID)
+		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, "Task 설정 검증 실패")
+	}
 
+	for _, t := range c.Tasks {
+		// Commands 중복 ID 검사 (Validator)
+		// 구조체 태그를 활용하기 위해 validate.Var 사용
+		if err := validate.Var(t.Commands, "unique=ID"); err != nil {
+			if validationErrors, ok := err.(validator.ValidationErrors); ok {
+				for _, fieldErr := range validationErrors {
+					if fieldErr.Tag() == "unique" {
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("CommandID(%v)가 중복되었습니다", fieldErr.Value()))
+					}
+				}
+			}
+			return apperrors.Wrap(err, apperrors.InvalidInput, "Command 설정 검증 실패")
+		}
+
+		for _, cmd := range t.Commands {
 			if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
 				return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
 			}
@@ -125,17 +138,26 @@ func (c *HTTPRetryConfig) Validate() error {
 // NotifierConfig 알림 설정 구조체
 type NotifierConfig struct {
 	DefaultNotifierID string           `json:"default_notifier_id"`
-	Telegrams         []TelegramConfig `json:"telegrams"`
+	Telegrams         []TelegramConfig `json:"telegrams" validate:"unique=ID"`
 }
 
 // Validate NotifierConfig의 유효성을 검사하고, 정의된 모든 Notifier의 ID 목록을 반환합니다.
 // 반환된 ID 목록은 Task 및 Application 설정에서 참조하는 NotifierID의 유효성을 검증하는 데 사용됩니다.
 func (c *NotifierConfig) Validate() ([]string, error) {
+	// Notifier 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Telegrams, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf("NotifierID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
+			}
+		}
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "Notifier 설정 검증 실패")
+	}
+
 	var notifierIDs []string
 	for _, telegram := range c.Telegrams {
-		if err := validation.ValidateNoDuplicate(notifierIDs, telegram.ID, "NotifierID"); err != nil {
-			return nil, err
-		}
 		notifierIDs = append(notifierIDs, telegram.ID)
 	}
 
@@ -157,7 +179,7 @@ type TelegramConfig struct {
 type TaskConfig struct {
 	ID       string                 `json:"id"`
 	Title    string                 `json:"title"`
-	Commands []CommandConfig        `json:"commands"`
+	Commands []CommandConfig        `json:"commands" validate:"unique=ID"`
 	Data     map[string]interface{} `json:"data"`
 }
 
@@ -181,7 +203,7 @@ type CommandConfig struct {
 type NotifyAPIConfig struct {
 	WS           WSConfig            `json:"ws"`
 	CORS         CORSConfig          `json:"cors"`
-	Applications []ApplicationConfig `json:"applications"`
+	Applications []ApplicationConfig `json:"applications" validate:"unique=ID"`
 }
 
 // Validate NotifyAPIConfig의 유효성을 검사합니다.
@@ -196,14 +218,19 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		return err
 	}
 
-	// Applications 설정 검사
-	var applicationIDs []string
-	for _, app := range c.Applications {
-		if err := validation.ValidateNoDuplicate(applicationIDs, app.ID, "ApplicationID"); err != nil {
-			return err
+	// Applications 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Applications, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("ApplicationID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
+			}
 		}
-		applicationIDs = append(applicationIDs, app.ID)
+		return apperrors.Wrap(err, apperrors.InvalidInput, "Applications 설정 검증 실패")
+	}
 
+	for _, app := range c.Applications {
 		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
 			return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}

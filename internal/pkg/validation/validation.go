@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -169,13 +168,5 @@ func ValidateCORSOrigin(origin string) error {
 		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("잘못된 Origin 형식입니다 (호스트/포트 오류): %s", origin))
 	}
 
-	return nil
-}
-
-// ValidateNoDuplicate 목록에 중복된 값이 없는지 검사합니다.
-func ValidateNoDuplicate(list []string, value, valueType string) error {
-	if slices.Contains(list, value) {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("%s(%s)가 중복되었습니다", valueType, value))
-	}
 	return nil
 }
