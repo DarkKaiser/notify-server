@@ -189,15 +189,6 @@ func TestAppConfig_Validate_TableDriven(t *testing.T) {
 			shouldError:   true,
 			errorContains: "키 파일 경로(TLSKeyFile)",
 		},
-		{
-			name: "TLS Valid URL Cert",
-			modifyConfig: func(c *AppConfig) {
-				c.NotifyAPI.WS.TLSServer = true
-				c.NotifyAPI.WS.TLSCertFile = "https://example.com/cert"
-				c.NotifyAPI.WS.TLSKeyFile = "https://example.com/key"
-			},
-			shouldError: false,
-		},
 
 		// =================================================================
 		// Duplicate ID Validation

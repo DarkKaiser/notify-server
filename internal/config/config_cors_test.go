@@ -147,11 +147,11 @@ func TestCORSConfig_Validate_EmptyOrigins(t *testing.T) {
 //   - 특수 문자 포함 Origin
 //   - 중복된 Origin
 func TestCORSConfig_Validate_EdgeCases(t *testing.T) {
-	t.Run("매우 긴 Origin (1000자)", func(t *testing.T) {
-		// 1000자 이상의 긴 서브도메인 생성
-		longSubdomain := strings.Repeat("subdomain.", 100) + "example.com"
+	t.Run("최대 길이에 근접한 긴 Origin", func(t *testing.T) {
+		// RFC 1123에 따라 호스트명은 253자를 넘을 수 없음
+		// "subdomain." (10자) * 20 = 200자 + "example.com" = 211자 (허용 범위)
+		longSubdomain := strings.Repeat("subdomain.", 20) + "example.com"
 		cfg := createCORSTestConfig("https://" + longSubdomain)
-		// 매우 긴 Origin도 형식이 올바르면 허용
 		assert.NoError(t, cfg.Validate())
 	})
 

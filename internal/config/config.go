@@ -287,10 +287,10 @@ func (c *WSConfig) VerifyRecommendations() {
 
 	// TLS 인증서/키 파일 접근 가능 여부 확인
 	if c.TLSServer {
-		if err := validation.ValidateFileExistsOrURL(c.TLSCertFile, false); err != nil {
+		if err := validation.ValidateFileExists(c.TLSCertFile, false); err != nil {
 			applog.WithComponent("config").Warnf("TLS 인증서 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSCertFile, err)
 		}
-		if err := validation.ValidateFileExistsOrURL(c.TLSKeyFile, false); err != nil {
+		if err := validation.ValidateFileExists(c.TLSKeyFile, false); err != nil {
 			applog.WithComponent("config").Warnf("TLS 키 파일 접근 불가 (경로: %s): %v. 서버 구동에 실패할 수 있습니다", c.TLSKeyFile, err)
 		}
 	}
