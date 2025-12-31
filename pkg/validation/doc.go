@@ -7,7 +7,7 @@ Package validation 애플리케이션 전반에서 사용되는 입력 데이터
 주요 기능:
 
   - CORS (Cross-Origin Resource Sharing) Origin 검증
-  - Cron 표현식 (Extended/Quartz Format) 검증
+  - 파일 및 디렉터리 경로 유효성 검증 (존재 여부, 타입, 권한)
 
 사용 시 주의사항:
 

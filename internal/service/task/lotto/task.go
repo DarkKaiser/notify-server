@@ -10,9 +10,9 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/pkg/validation"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
+	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
 const (

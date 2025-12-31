@@ -65,8 +65,11 @@ func ValidateCORSOrigin(origin string) error {
 	// 3. Port 검증 (포트가 명시된 경우)
 	if portStr := parsedURL.Port(); portStr != "" {
 		port, err := strconv.Atoi(portStr)
-		if err != nil || port < 1 || port > 65535 {
-			return fmt.Errorf("CORS Origin 포트 오류: 유효한 포트 범위(1-65535)가 아닙니다 (input=%q, port=%s)", trimmedOrigin, portStr)
+		if err != nil {
+			return fmt.Errorf("CORS Origin 포트 오류: 포트 번호가 유효하지 않습니다 (input=%q, port=%s)", trimmedOrigin, portStr)
+		}
+		if err := ValidatePort(port); err != nil {
+			return fmt.Errorf("CORS Origin 포트 오류: %w (input=%q)", err, trimmedOrigin)
 		}
 	}
 
@@ -75,12 +78,28 @@ func ValidateCORSOrigin(origin string) error {
 	if host == "" {
 		return fmt.Errorf("CORS Origin 포맷 오류: 호스트(Host) 정보가 누락되었습니다 (input=%q)", trimmedOrigin)
 	}
+	if err := ValidateHostname(host); err != nil {
+		return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: %w", err)
+	}
 
-	return validateHostname(host)
+	return nil
 }
 
-// validateHostname 호스트명이 RFC 1123 표준을 준수하는지, 또는 IP 주소/로컬호스트인지 검증합니다.
-func validateHostname(host string) error {
+// ValidatePort 포트 번호가 유효한 범위(1-65535) 내에 있는지 검증합니다.
+func ValidatePort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("유효한 포트 범위(1-65535)가 아닙니다 (port=%d)", port)
+	}
+	return nil
+}
+
+// ValidateHostname 호스트명이 RFC 1123 표준을 준수하는지, 또는 IP 주소/로컬호스트인지 검증합니다.
+//
+// 규칙:
+//   - localhost 허용
+//   - 유효한 IPv4 및 IPv6 주소 허용
+//   - 도메인명은 RFC 1123 규칙을 따름 (최대 253자, 레이블당 63자, 영문/숫자/하이픈)
+func ValidateHostname(host string) error {
 	// 1. localhost 체크
 	if host == "localhost" {
 		return nil
@@ -102,21 +121,21 @@ func validateHostname(host string) error {
 	*/
 
 	if len(host) > 253 {
-		return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 호스트명 전체 길이는 253자를 초과할 수 없습니다 (len=%d)", len(host))
+		return fmt.Errorf("호스트명 전체 길이는 253자를 초과할 수 없습니다 (len=%d)", len(host))
 	}
 
 	labels := strings.Split(host, ".")
 	for _, label := range labels {
 		if len(label) == 0 {
-			return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 호스트명에 빈 레이블(연속된 점 등)이 포함되어 있습니다 (host=%q)", host)
+			return fmt.Errorf("호스트명에 빈 레이블(연속된 점 등)이 포함되어 있습니다 (host=%q)", host)
 		}
 		if len(label) > 63 {
-			return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 각 레이블은 63자를 초과할 수 없습니다 (label=%q)", label)
+			return fmt.Errorf("각 레이블은 63자를 초과할 수 없습니다 (label=%q)", label)
 		}
 
 		// 시작과 끝 문자는 하이픈이 아니어야 함
 		if label[0] == '-' || label[len(label)-1] == '-' {
-			return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 레이블은 하이픈(-)으로 시작하거나 끝날 수 없습니다 (label=%q)", label)
+			return fmt.Errorf("레이블은 하이픈(-)으로 시작하거나 끝날 수 없습니다 (label=%q)", label)
 		}
 
 		// 정규식이나 복잡한 파싱 대신 직접 순회하며 검증 (성능 및 명확성)
@@ -124,7 +143,7 @@ func validateHostname(host string) error {
 			// 허용 문자: 영문( 대소문자), 숫자, 하이픈
 			isValidChar := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-'
 			if !isValidChar {
-				return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 호스트명은 영문, 숫자, 하이픈(-)으로만 구성되어야 합니다 (invalid_char=%q, host=%q)", r, host)
+				return fmt.Errorf("호스트명은 영문, 숫자, 하이픈(-)으로만 구성되어야 합니다 (invalid_char=%q, host=%q)", r, host)
 			}
 		}
 	}
@@ -142,7 +161,7 @@ func validateHostname(host string) error {
 			}
 		}
 		if isAllNumeric {
-			return fmt.Errorf("CORS Origin 호스트 유효성 검증 실패: 최상위 도메인(TLD)은 숫자로만 구성될 수 없습니다 (tld=%q)", lastLabel)
+			return fmt.Errorf("최상위 도메인(TLD)은 숫자로만 구성될 수 없습니다 (tld=%q)", lastLabel)
 		}
 	}
 

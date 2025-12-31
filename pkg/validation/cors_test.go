@@ -1,164 +1,207 @@
-package validation
+package validation_test
 
 import (
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/pkg/validation"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestValidateCORSOrigin은 CORS Origin 유효성 검사 로직을 검증합니다.
+// TestValidateCORSOrigin_Comprehensive 는 CORS Origin 검증의 모든 측면을 테스트합니다.
 //
-// 배경:
-//
-//	Origin 헤더는 브라우저 보안의 핵심 요소이며, 모호함 없이 정확하게 검증되어야 합니다.
-//	이 테스트는 표준(RFC 6454), 네트워크 스펙(IPv4/IPv6), 호스트명 규칙(RFC 1123)을 포괄합니다.
-//
-// 검증 범위:
-//  1. [Valid] 표준 스키마(http/https), 도메인, IP(v4/v6), Localhost, Wildcard
-//  2. [Invalid] 포맷 위반 (Path, Query, Fragment, UserInfo 포함)
-//  3. [Invalid] 스키마 위반 (ftp, file 등)
-//  4. [Invalid] 호스트명 규칙 위반 (특수문자, 하이픈 위치, 길이 제한)
-//  5. [Invalid] 포트 범위 위반
+// 테스트 전략:
+//  1. [Standard] 표준 웹 오리진 (Scheme + Host + [Port])
+//  2. [Security] 보안 취약점 방지 (Null origin, 스크립트 삽입 시도 등)
+//  3. [Network] 다양한 네트워크 주소 포맷 (IPv4, IPv6)
+//  4. [RFC Rules] RFC 6454 및 URL 스펙 준수 여부
 func TestValidateCORSOrigin(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		group         string // 테스트 그룹 (리포팅 용도)
-		name          string // 테스트 케이스 명
-		origin        string // 입력 Origin
-		wantErr       bool   // 에러 발생 여부
-		errorContains string // 포함되어야 할 에러 메시지 (옵션)
+	type testCase struct {
+		name          string
+		origin        string
+		isValid       bool
+		errorContains string
+	}
+
+	testGroups := []struct {
+		groupName string
+		cases     []testCase
 	}{
-		// =================================================================
-		// 1. Valid Cases
-		// =================================================================
-		{group: "Valid", name: "Wildcard", origin: "*"},
-		{group: "Valid", name: "HTTP Domain", origin: "http://example.com"},
-		{group: "Valid", name: "HTTPS Domain", origin: "https://example.com"},
-		{group: "Valid", name: "Subdomain", origin: "https://api.dev.example.com"},
-		{group: "Valid", name: "Localhost", origin: "http://localhost"},
-		{group: "Valid", name: "Localhost with Port", origin: "http://localhost:3000"},
-		{group: "Valid", name: "IPv4", origin: "http://192.168.0.1"},
-		{group: "Valid", name: "IPv4 with Port", origin: "https://10.0.0.1:8443"},
-		{group: "Valid", name: "IPv6 Loopback", origin: "http://[::1]"},
-		{group: "Valid", name: "IPv6 Full", origin: "https://[2001:db8::1]"},
-		{group: "Valid", name: "IPv6 with Port", origin: "http://[::1]:8080"},
-		{group: "Valid", name: "Internal Hostname", origin: "http://backend"},
-		{group: "Valid", name: "Mixed Case Scheme", origin: "HTTP://example.com"}, // url.Parse가 스킴을 소문자로 정규화함
-
-		// =================================================================
-		// 2. Input Validation (Empty, Space)
-		// =================================================================
-		{group: "Input", name: "Empty String", origin: "", wantErr: true, errorContains: "비어있을 수 없습니다"},
-		{group: "Input", name: "Whitespace Only", origin: "   ", wantErr: true, errorContains: "비어있을 수 없습니다"},
-
-		// =================================================================
-		// 3. Scheme Validation
-		// =================================================================
-		{group: "Scheme", name: "Unsupported Scheme (FTP)", origin: "ftp://example.com", wantErr: true, errorContains: "허용됩니다"},
-		{group: "Scheme", name: "Missing Scheme", origin: "example.com", wantErr: true, errorContains: "허용됩니다"},
-		{group: "Scheme", name: "Scheme Relative", origin: "//example.com", wantErr: true, errorContains: "허용됩니다"},
-		{group: "Scheme", name: "Just Scheme", origin: "https://", wantErr: true}, // url.Parse 에러 또는 Host 누락
-
-		// =================================================================
-		// 4. Format Constraints (Pure Origin Only)
-		// =================================================================
-		{group: "Format", name: "Trailing Slash", origin: "https://example.com/", wantErr: true, errorContains: "경로 구분자"},
-		{group: "Format", name: "Deep Path", origin: "https://example.com/api/v1", wantErr: true, errorContains: "경로(Path)"},
-		{group: "Format", name: "Query Parameter", origin: "https://example.com?q=1", wantErr: true, errorContains: "쿼리 파라미터"},
-		{group: "Format", name: "Fragment", origin: "https://example.com#home", wantErr: true, errorContains: "URL Fragment"},
-		{group: "Format", name: "UserInfo", origin: "https://user:pass@example.com", wantErr: true, errorContains: "사용자 자격 증명"},
-
-		// =================================================================
-		// 5. Host & Port Validation
-		// =================================================================
-		{group: "HostPort", name: "Invalid Port (Letters)", origin: "http://example.com:abc", wantErr: true},
-		{group: "HostPort", name: "Invalid Port (Zero)", origin: "http://example.com:0", wantErr: true, errorContains: "유효한 포트 범위"}, // 1-65535
-		{group: "HostPort", name: "Invalid Port (Too Large)", origin: "http://example.com:70000", wantErr: true, errorContains: "유효한 포트 범위"},
-		{group: "HostPort", name: "Invalid Domain (Spaces)", origin: "http://exa mple.com", wantErr: true},
-
-		// =================================================================
-		// 6. RFC 1123 Hostname Rules
-		// =================================================================
 		{
-			group:         "RFC1123",
-			name:          "Invalid Char (Underscore)",
-			origin:        "http://ex_ample.com",
-			wantErr:       true,
-			errorContains: "영문, 숫자, 하이픈(-)으로만 구성",
+			groupName: "1. Wildcard & Basic Domains",
+			cases: []testCase{
+				{name: "Wildcard (Allow All)", origin: "*", isValid: true},
+				{name: "Simple HTTP", origin: "http://example.com", isValid: true},
+				{name: "Simple HTTPS", origin: "https://example.com", isValid: true},
+				{name: "Subdomain", origin: "https://api.ver1.example.com", isValid: true},
+				{name: "Hyphenated Domain", origin: "https://my-cool-app.com", isValid: true},
+			},
 		},
 		{
-			group:         "RFC1123",
-			name:          "Empty Label (Start Dot)",
-			origin:        "http://.example.com",
-			wantErr:       true,
-			errorContains: "빈 레이블",
+			groupName: "2. Port Handling",
+			cases: []testCase{
+				{name: "Standard HTTP Port", origin: "http://example.com:80", isValid: true},
+				{name: "Standard HTTPS Port", origin: "https://example.com:443", isValid: true},
+				{name: "Custom Port", origin: "http://localhost:8080", isValid: true},
+				{name: "High Port", origin: "http://example.com:65535", isValid: true},
+				{name: "Port 0 (Invalid)", origin: "http://example.com:0", isValid: false, errorContains: "유효한 포트 범위"},
+				{name: "Port Too High", origin: "http://example.com:65536", isValid: false, errorContains: "유효한 포트 범위"},
+				{name: "Non-numeric Port", origin: "http://example.com:abc", isValid: false, errorContains: "유효한 URL 형식이 아닙니다"},
+			},
 		},
 		{
-			group:         "RFC1123",
-			name:          "Empty Label (Double Dot)",
-			origin:        "http://example..com",
-			wantErr:       true,
-			errorContains: "빈 레이블",
+			groupName: "3. IP Address Support",
+			cases: []testCase{
+				{name: "IPv4 Localhost", origin: "http://127.0.0.1", isValid: true},
+				{name: "IPv4 Private", origin: "http://192.168.1.100", isValid: true},
+				{name: "IPv4 with Port", origin: "http://10.0.0.1:3000", isValid: true},
+				{name: "IPv6 Loopback", origin: "http://[::1]", isValid: true},
+				{name: "IPv6 Full", origin: "http://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]", isValid: true},
+				{name: "IPv6 with Port", origin: "https://[::1]:9090", isValid: true},
+			},
 		},
 		{
-			group:         "RFC1123",
-			name:          "Hyphen at Start",
-			origin:        "http://-example.com",
-			wantErr:       true,
-			errorContains: "하이픈(-)으로 시작하거나 끝날 수 없습니다",
+			groupName: "4. Internal & Special Hostnames",
+			cases: []testCase{
+				{name: "Localhost", origin: "http://localhost", isValid: true},
+				{name: "Internal Service DNS", origin: "http://notify-backend", isValid: true},              // K8s service name style
+				{name: "Punycode (International Domain)", origin: "https://xn--b60b52j.com", isValid: true}, // "테스트.com"
+			},
 		},
 		{
-			group:         "RFC1123",
-			name:          "Hyphen at End",
-			origin:        "http://example-.com",
-			wantErr:       true,
-			errorContains: "하이픈(-)으로 시작하거나 끝날 수 없습니다",
+			groupName: "5. Invalid Formats & Constraints",
+			cases: []testCase{
+				{name: "Empty String", origin: "", isValid: false, errorContains: "비어있을 수 없습니다"},
+				{name: "Whitespace Only", origin: "   ", isValid: false, errorContains: "비어있을 수 없습니다"},
+				{name: "Trailing Slash", origin: "https://example.com/", isValid: false, errorContains: "경로 구분자"},
+				{name: "With Explicit Path", origin: "https://example.com/api", isValid: false, errorContains: "경로(Path)"},
+				{name: "With Query Params", origin: "https://example.com?foo=bar", isValid: false, errorContains: "쿼리 파라미터"},
+				{name: "With Fragment", origin: "https://example.com#section", isValid: false, errorContains: "URL Fragment"},
+				{name: "With Credentials", origin: "https://user:pass@example.com", isValid: false, errorContains: "자격 증명"},
+			},
 		},
 		{
-			group:         "RFC1123",
-			name:          "Label Too Long (>63)",
-			origin:        "http://" + strings.Repeat("a", 64) + ".com",
-			wantErr:       true,
-			errorContains: "63자를 초과할 수 없습니다",
-		},
-		{
-			group:   "RFC1123",
-			name:    "Max Label Length (63) - Valid",
-			origin:  "http://" + strings.Repeat("a", 63) + ".com",
-			wantErr: false,
-		},
-		{
-			group:         "RFC1123",
-			name:          "Total Host Too Long (>253)",
-			origin:        "http://" + strings.Repeat("a.", 130) + "com", // Roughly 260 chars
-			wantErr:       true,
-			errorContains: "전체 길이는 253자를 초과할 수 없습니다",
-		},
-		{
-			group:         "RFC1123",
-			name:          "Invalid TLD (Numeric)",
-			origin:        "http://example.123",
-			wantErr:       true,
-			errorContains: "최상위 도메인(TLD)은 숫자로만 구성될 수 없습니다",
+			groupName: "6. Scheme & Protocol Validation",
+			cases: []testCase{
+				{name: "Mixed Case HTTP", origin: "HTTP://example.com", isValid: true},   // Should be normalized
+				{name: "Mixed Case HTTPS", origin: "HtTpS://example.com", isValid: true}, // Should be normalized
+				{name: "FTP Scheme (Unsupported)", origin: "ftp://example.com", isValid: false, errorContains: "http' 또는 'https'만 허용"},
+				{name: "File Scheme (Unsupported)", origin: "file:///etc/passwd", isValid: false, errorContains: "http' 또는 'https'만 허용"},
+				{name: "Missing Scheme", origin: "example.com", isValid: false, errorContains: "허용됩니다"}, // URL parse error or scheme check
+				{name: "Scheme Relative", origin: "//example.com", isValid: false, errorContains: "허용됩니다"},
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt // Capture for closure
-		t.Run(fmt.Sprintf("[%s] %s", tt.group, tt.name), func(t *testing.T) {
+	for _, tg := range testGroups {
+		tg := tg // Capture for closure
+		t.Run(tg.groupName, func(t *testing.T) {
 			t.Parallel()
+			for _, tc := range tg.cases {
+				tc := tc
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					err := validation.ValidateCORSOrigin(tc.origin)
+					if tc.isValid {
+						assert.NoError(t, err, "Origin should be valid: %s", tc.origin)
+					} else {
+						assert.Error(t, err, "Origin should be invalid: %s", tc.origin)
+						if tc.errorContains != "" {
+							assert.Contains(t, err.Error(), tc.errorContains)
+						}
+					}
+				})
+			}
+		})
+	}
+}
 
-			err := ValidateCORSOrigin(tt.origin)
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errorContains != "" {
-					assert.Contains(t, err.Error(), tt.errorContains, "에러 메시지 불일치")
-				}
+// TestValidateHostname_EdgeCases 는 호스트명 검증의 엣지 케이스를 집중적으로 확인합니다.
+func TestValidateHostname_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	// 253자 (Max Valid Length) 생성
+	// 'a' * 63 + '.' ...
+	// 63자 레이블 4개(252자) + 점 3개 = 255자 -> 너무 김.
+	// 60자 * 4 = 240 + 점 3개 = 243. OK.
+	longLabel := strings.Repeat("a", 63)
+	validLongHost := longLabel + "." + longLabel + "." + longLabel + ".com" // ~190 chars
+
+	// 254자 (Invalid Length)
+	tooLongHost := strings.Repeat("a.", 127) + "com" // 256+ chars
+
+	tests := []struct {
+		name          string
+		host          string
+		isValid       bool
+		errorContains string
+	}{
+		// Valid Edge Cases
+		{name: "Max Length Label (63 chars)", host: longLabel + ".com", isValid: true},
+		{name: "Valid Long Hostname", host: validLongHost, isValid: true},
+		{name: "Single Label (Intranet)", host: "localhost", isValid: true},
+		{name: "Punycode Domain", host: "xn--b60b52j.com", isValid: true},
+		{name: "Numeric Label (Valid for non-TLD)", host: "123.example.com", isValid: true},
+
+		// Invalid Edge Cases
+		{name: "Empty Host", host: "", isValid: false, errorContains: "빈 레이블"},
+		{name: "Label Too Long (>63)", host: strings.Repeat("a", 64) + ".com", isValid: false, errorContains: "63자를 초과"},
+		{name: "Host Too Long (>253)", host: tooLongHost, isValid: false, errorContains: "253자를 초과"},
+		{name: "Starts with Hyphen", host: "-example.com", isValid: false, errorContains: "하이픈"},
+		{name: "Ends with Hyphen", host: "example-.com", isValid: false, errorContains: "하이픈"},
+		{name: "Starts with Dot", host: ".example.com", isValid: false, errorContains: "빈 레이블"},
+		{name: "Double Dot", host: "example..com", isValid: false, errorContains: "빈 레이블"},
+		{name: "Invalid Characters", host: "ex_ample.com", isValid: false, errorContains: "영문, 숫자, 하이픈"},
+		{name: "Numeric TLD", host: "example.123", isValid: false, errorContains: "최상위 도메인"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validation.ValidateHostname(tc.host)
+			if tc.isValid {
+				assert.NoError(t, err, "Hostname should be valid: %s", tc.host)
 			} else {
+				assert.Error(t, err, "Hostname should be invalid: %s", tc.host)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+			}
+		})
+	}
+}
+
+// TestValidatePort_Boundaries 는 포트 검증의 경계값을 테스트합니다.
+func TestValidatePort_Boundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		port    int
+		isValid bool
+	}{
+		{-1, false},
+		{0, false},
+		{1, true}, // Min Valid
+		{80, true},
+		{443, true},
+		{65535, true}, // Max Valid
+		{65536, false},
+		{99999, false},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(fmt.Sprintf("Port %d", tc.port), func(t *testing.T) {
+			t.Parallel()
+			err := validation.ValidatePort(tc.port)
+			if tc.isValid {
 				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
 			}
 		})
 	}
