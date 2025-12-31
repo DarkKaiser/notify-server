@@ -2,9 +2,6 @@
 package maputil
 
 import (
-	"encoding"
-	"reflect"
-
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -45,7 +42,7 @@ func DecodeTo(input any, output any) error {
 
 		// 기본 변환 로직 외에 추가적인 타입 변환 규칙을 정의합니다.
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			textUnmarshalerHookFunc(),                   // [순서 중요] encoding.TextUnmarshaler가 가장 먼저 처리되어야 함 (예: net.IP가 Slice로 오인되는 것 방지)
+			mapstructure.TextUnmarshallerHookFunc(),     // encoding.TextUnmarshaler 지원 (Built-in)
 			mapstructure.StringToTimeDurationHookFunc(), // "10s" -> time.Duration
 			mapstructure.StringToSliceHookFunc(","),     // "a,b,c" -> []string
 		),
@@ -57,67 +54,4 @@ func DecodeTo(input any, output any) error {
 	}
 
 	return decoder.Decode(input)
-}
-
-// textUnmarshalerType encoding.TextUnmarshaler 인터페이스의 리플렉션 타입 정보를 캐싱합니다.
-//
-// [최적화 노트]
-// 훅 함수가 호출될 때마다 reflect.TypeOf(...)를 수행하는 오버헤드를 줄이기 위해
-// 패키지 레벨 변수로 한 번만 초기화하여 재사용합니다. 이를 통해 대량의 필드 디코딩 시 성능을 확보합니다.
-var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
-
-// textUnmarshalerHookFunc Go 표준 encoding.TextUnmarshaler 인터페이스를 지원하는 디코딩 훅을 반환합니다.
-//
-// [기능 설명]
-// mapstructure는 기본적으로 복잡한 타입(구조체 등)에 대한 문자열 디코딩을 지원하지 않습니다.
-// 이 훅은 문자열 데이터가 주어졌을 때, 대상 타입이 UnmarshalText 메서드를 구현하고 있다면
-// 이를 자동으로 호출하여 해당 타입으로 안전하게 변환해줍니다.
-//
-// [지원 예시]
-//   - net.IP ("127.0.0.1" -> net.IP{...})
-//   - time.Time (RFC3339 문자열 -> time.Time 구조체)
-//   - url.URL (및 이를 임베딩하거나 감싼 사용자 정의 타입)
-func textUnmarshalerHookFunc() mapstructure.DecodeHookFunc {
-	return func(
-		f reflect.Type,
-		t reflect.Type,
-		data interface{}) (interface{}, error) {
-		if f.Kind() != reflect.String {
-			return data, nil
-		}
-
-		strData := reflect.ValueOf(data).String()
-
-		// Case 1: T가 포인터이고, T 자체가 TextUnmarshaler를 구현하는 경우
-		// 예: *url.URL
-		isPtrImpl := t.Kind() == reflect.Ptr && t.Implements(textUnmarshalerType)
-		if isPtrImpl {
-			// T가 *url.URL이면 t.Elem()은 url.URL
-			// reflect.New(t.Elem())은 *url.URL (초기화된 값, 예: &url.URL{})
-			val := reflect.New(t.Elem())
-
-			// 인터페이스 캐스팅 및 호출
-			u := val.Interface().(encoding.TextUnmarshaler)
-			if err := u.UnmarshalText([]byte(strData)); err != nil {
-				return nil, err
-			}
-			return val.Interface(), nil
-		}
-
-		// Case 2: *T가 TextUnmarshaler를 구현하는 경우
-		isValImpl := reflect.PointerTo(t).Implements(textUnmarshalerType)
-		if isValImpl {
-			val := reflect.New(t)
-			u, ok := val.Interface().(encoding.TextUnmarshaler)
-			if !ok {
-				return data, nil // Should not happen if Implements is true
-			}
-			if err := u.UnmarshalText([]byte(strData)); err != nil {
-				return nil, err
-			}
-			return val.Elem().Interface(), nil
-		}
-
-		return data, nil
-	}
 }
