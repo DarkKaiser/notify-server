@@ -109,7 +109,7 @@ func Setup(opts Options) (io.Closer, error) {
 		MaxSize:    defaultMaxSizeMB,
 		MaxBackups: defaultMaxBackups,
 		MaxAge:     opts.MaxAge,
-		Compress:   true,
+		Compress:   false,
 		LocalTime:  true,
 	}
 
@@ -123,7 +123,7 @@ func Setup(opts Options) (io.Closer, error) {
 			MaxSize:    defaultMaxSizeMB,
 			MaxBackups: defaultMaxBackups,
 			MaxAge:     opts.MaxAge,
-			Compress:   true,
+			Compress:   false,
 			LocalTime:  true,
 		}
 	}
@@ -135,7 +135,7 @@ func Setup(opts Options) (io.Closer, error) {
 			MaxSize:    defaultMaxSizeMB,
 			MaxBackups: defaultMaxBackups,
 			MaxAge:     opts.MaxAge,
-			Compress:   true,
+			Compress:   false,
 			LocalTime:  true,
 		}
 	}

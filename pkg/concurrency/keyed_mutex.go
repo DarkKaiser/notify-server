@@ -2,12 +2,17 @@
 package concurrency
 
 import (
+	"fmt"
 	"sync"
 )
 
-// KeyedMutex 키별로 독립적인 Mutex를 제공하는 구조체입니다.
-// 서로 다른 키에 대한 작업은 병렬로 처리될 수 있습니다.
-// Reference Counting을 사용하여 사용되지 않는 Mutex를 메모리에서 정리합니다.
+// KeyedMutex는 키(Key)를 기반으로 세분화된 락(Fine-grained Locking)을 제공하는 구조체입니다.
+//
+// 전역 락(Global Lock) 대신 키별로 독립적인 락을 생성하여, 서로 다른 키에 대한 작업이
+// 병렬로 처리될 수 있도록 동시성 성능을 극대화합니다. 단, 동일한 키에 대한 접근은 안전하게 직렬화됩니다.
+//
+// 내부적으로 참조 카운팅(Reference Counting) 기법을 사용하여, 락이 필요한 시점에만 리소스를 할당하고
+// 사용이 끝나면 자동으로 메모리를 정리하여 리소스를 효율적으로 관리합니다.
 type KeyedMutex[T comparable] struct {
 	mu    sync.Mutex
 	locks map[T]*entry
@@ -66,11 +71,13 @@ func (km *KeyedMutex[T]) TryLock(key T) bool {
 		// 키가 없으면 새로 생성 (무조건 성공)
 		e = km.pool.Get().(*entry)
 		e.refCount = 1
+
 		// 중요: 전역 락(km.mu)을 해제하기 전에 개별 락(e.mu)을 먼저 선점해야 합니다.
 		// 만약 순서가 바뀌면 km.mu Unlock 직후 다른 고루틴이 해당 키에 대해 Lock을 걸어버릴 수 있으며,
 		// 이 경우 TryLock 호출자가 e.mu.Lock()에서 블로킹되어 "즉시 반환"이라는 TryLock의 계약을 위반하게 됩니다.
 		e.mu.Lock()
 		km.locks[key] = e
+
 		km.mu.Unlock()
 
 		return true
@@ -79,7 +86,6 @@ func (km *KeyedMutex[T]) TryLock(key T) bool {
 	// 키가 있으면 TryLock 시도
 	// 주의: TryLock은 mu가 잠겨있지 않을 때만 성공함
 	if e.mu.TryLock() {
-		// 락 획득 성공 시 참조 카운트 증가
 		e.refCount++
 
 		km.mu.Unlock()
@@ -87,9 +93,9 @@ func (km *KeyedMutex[T]) TryLock(key T) bool {
 		return true
 	}
 
-	// 락 획득 실패 (이미 사용 중)
 	km.mu.Unlock()
 
+	// 락 획득 실패 (이미 사용 중)
 	return false
 }
 
@@ -102,7 +108,7 @@ func (km *KeyedMutex[T]) Unlock(key T) {
 
 	e, ok := km.locks[key]
 	if !ok {
-		panic("잠기지 않은 KeyedMutex의 잠금 해제 시도")
+		panic(fmt.Sprintf("잠기지 않은 KeyedMutex 해제 시도 (key: %v)", key))
 	}
 
 	// 1. 개별 키에 대한 락을 해제합니다.
@@ -116,8 +122,7 @@ func (km *KeyedMutex[T]) Unlock(key T) {
 	}
 }
 
-// WithLock 지정된 키에 대해 Lock을 획득하고 에러를 반환할 수 있는 함수(action)를 실행한 뒤 자동으로 Unlock합니다.
-// action 실행 중 에러가 발생하더라도 Lock은 안전하게 해제됩니다.
+// WithLock 지정된 키에 대해 Lock을 획득하고 에러를 반환할 수 있는 함수(action)를 실행한 뒤 자동으로 Unlock 합니다.
 func (km *KeyedMutex[T]) WithLock(key T, action func() error) error {
 	km.Lock(key)
 	defer km.Unlock(key)

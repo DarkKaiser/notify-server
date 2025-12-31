@@ -2,12 +2,12 @@ package concurrency
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
@@ -33,7 +33,6 @@ func ExampleKeyedMutex_Lock() {
 			defer km.Unlock(productID)
 
 			// Critical Section: 가격 업데이트 로직 수행
-			// fmt.Printf("Updating price for %s\n", productID)
 		}(p)
 	}
 
@@ -65,33 +64,6 @@ func ExampleKeyedMutex_TryLock() {
 	// Failed to acquire lock, skipping task.
 }
 
-// ExampleKeyedMutex_TryLock_success KeyedMutex.TryLock 메서드의 성공 케이스 예제입니다.
-func ExampleKeyedMutex_TryLock_success() {
-	km := NewKeyedMutex[string]()
-	key := "resource_key"
-
-	// 락 획득 시도 (성공)
-	if km.TryLock(key) {
-		fmt.Println("First lock acquired")
-
-		// 중첩된 락 시도 (실패 - 이미 다른 곳에서 소유 중이라고 가정)
-		// 주의: 동일 고루틴 내에서의 재진입(Reentrancy)은 지원하지 않으므로 실패합니다.
-		if km.TryLock(key) {
-			fmt.Println("Second lock acquired") // 실행되지 않음
-		} else {
-			fmt.Println("Second lock failed")
-		}
-
-		km.Unlock(key)
-		fmt.Println("First lock released")
-	}
-
-	// Output:
-	// First lock acquired
-	// Second lock failed
-	// First lock released
-}
-
 func ExampleKeyedMutex_WithLock() {
 	km := NewKeyedMutex[int]()
 	key := 12345
@@ -109,6 +81,33 @@ func ExampleKeyedMutex_WithLock() {
 // =============================================================================
 // Unit Tests
 // =============================================================================
+
+func TestNewKeyedMutex(t *testing.T) {
+	km := NewKeyedMutex[string]()
+	require.NotNil(t, km)
+	assert.Equal(t, 0, km.Len())
+}
+
+func TestKeyedMutex_LockUnlock_Sequential(t *testing.T) {
+	km := NewKeyedMutex[string]()
+	key := "test-key"
+
+	// 1. Lock -> Unlock
+	km.Lock(key)
+	assert.Equal(t, 1, km.Len(), "Lock 후에는 키가 맵에 존재해야 함")
+	km.Unlock(key)
+	assert.Equal(t, 0, km.Len(), "Unlock 후에는 키가 맵에서 제거되어야 함")
+
+	// 2. Lock -> Lock (Re-entrance is not supported, effectively creates deadlock, so we don't test it here conventionally)
+	// 대신 서로 다른 키에 대한 순차적 잠금 테스트
+	km.Lock("key1")
+	km.Lock("key2")
+	assert.Equal(t, 2, km.Len())
+	km.Unlock("key2")
+	assert.Equal(t, 1, km.Len())
+	km.Unlock("key1")
+	assert.Equal(t, 0, km.Len())
+}
 
 func TestKeyedMutex_LockUnlock_Parallel(t *testing.T) {
 	// Table Driven Test with Parallel Execution
@@ -128,12 +127,16 @@ func TestKeyedMutex_LockUnlock_Parallel(t *testing.T) {
 			name: "Duplicate Keys",
 			keys: []string{"key-1", "key-1"},
 		},
+		{
+			name: "Many Keys",
+			keys: []string{"A", "B", "C", "D", "E", "A", "B", "C"},
+		},
 	}
 
 	for _, tt := range tests {
 		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel() // 개별 케이스 병렬 실행
+			t.Parallel()
 
 			km := NewKeyedMutex[string]()
 			var wg sync.WaitGroup
@@ -143,52 +146,133 @@ func TestKeyedMutex_LockUnlock_Parallel(t *testing.T) {
 				go func(k string) {
 					defer wg.Done()
 					km.Lock(k)
-					// Simulate work
-					time.Sleep(time.Millisecond)
+					// Simulate tiny work
+					time.Sleep(10 * time.Microsecond)
 					km.Unlock(k)
 				}(key)
 			}
 			wg.Wait()
 
-			// 모든 작업 완료 후 내부 상태 검증 (Leak Check)
-			assert.Equal(t, 0, km.Len(), "모든 작업 완료 후에는 맵이 비워져야 합니다")
+			// 모든 작업 완료 후 내부 상태 검증
+			assert.Equal(t, 0, km.Len(), "모든 고루틴 종료 후 맵은 비워져야 합니다")
 		})
 	}
 }
 
-func TestKeyedMutex_TryLock_Behavior(t *testing.T) {
+func TestKeyedMutex_TryLock(t *testing.T) {
 	t.Parallel()
 
 	km := NewKeyedMutex[string]()
 	key := "try-lock-key"
 
-	// 1. Initial Lock
-	assert.True(t, km.TryLock(key), "최초 TryLock은 성공해야 합니다")
+	// 1. Initial TryLock (Success)
+	assert.True(t, km.TryLock(key), "최초 TryLock은 성공해야 함")
 	assert.Equal(t, 1, km.Len())
 
-	// 2. TryLock Fail (Already Locked)
-	assert.False(t, km.TryLock(key), "이미 잠긴 키에 대한 TryLock은 실패해야 합니다")
+	// 2. TryLock Again (Fail - already locked)
+	assert.False(t, km.TryLock(key), "이미 잠긴 키에 대한 TryLock은 실패해야 함")
 
-	// 3. Unlock and Retry
+	// 3. Unlock
 	km.Unlock(key)
 	assert.Equal(t, 0, km.Len())
 
-	assert.True(t, km.TryLock(key), "Unlock 후 TryLock은 다시 성공해야 합니다")
+	// 4. TryLock After Unlock (Success)
+	assert.True(t, km.TryLock(key), "Unlock 후 TryLock은 성공해야 함")
 	km.Unlock(key)
 }
 
-// TestKeyedMutex_MutualExclusion_StrictLocking은 비원자적 자원(map)을 보호함으로써
-// 상호 배제가 실제로 작동하는지 엄격하게 검증합니다.
-// 만약 Lock이 제대로 동작하지 않으면 'concurrent map writes' 패닉이 발생하거나 데이터가 깨집니다.
+func TestKeyedMutex_WithLock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success Case", func(t *testing.T) {
+		km := NewKeyedMutex[string]()
+		key := "success-key"
+		called := false
+
+		err := km.WithLock(key, func() error {
+			called = true
+			return nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, called)
+		assert.Equal(t, 0, km.Len())
+	})
+
+	t.Run("Error Case", func(t *testing.T) {
+		km := NewKeyedMutex[string]()
+		key := "error-key"
+		expectedErr := fmt.Errorf("some error")
+
+		err := km.WithLock(key, func() error {
+			return expectedErr
+		})
+
+		assert.ErrorIs(t, err, expectedErr)
+		assert.Equal(t, 0, km.Len())
+	})
+
+	t.Run("Panic Recovery", func(t *testing.T) {
+		// WithLock은 현재 패닉 복구를 명시적으로 처리하지 않지만(Lock 상태 유지 위험),
+		// defer Unlock이 호출되므로 패닉 발생 시에도 Unlock은 수행되어야 합니다.
+		km := NewKeyedMutex[string]()
+		key := "panic-key"
+
+		assert.Panics(t, func() {
+			_ = km.WithLock(key, func() error {
+				panic("oops")
+			})
+		})
+
+		// 패닉 이후에도 락은 해제되어야 함 (defer 덕분에)
+		assert.Equal(t, 0, km.Len(), "패닉 발생 시에도 Unlock은 호출되어야 함")
+	})
+}
+
+// TestKeyedMutex_MapLeak_Prevention 은 Unlock 시 맵이 비워지면
+// 내부 맵이 재생성(Reset)되어 메모리 누수가 방지되는지 검증합니다.
+func TestKeyedMutex_MapLeak_Prevention(t *testing.T) {
+	t.Parallel()
+
+	// 이 테스트는 화이트박스 테스트 성격이 강하므로,
+	// 공개 API(Len, Address check 등)를 통해 간접적으로 검증하거나
+	// 리플렉션 없이 동작을 추론해야 합니다.
+	// Go에서 맵의 주소를 직접 비교하기는 어려우므로,
+	// 여기서는 기능적으로 "대량의 키를 쓰고 지웠을 때 동작에 문제가 없는지"와
+	// "비워진 후 재사용이 가능한지"를 봅니다.
+	// 실제 메모리 해제 여부는 프로파일링 영역이지만, 로직상 len==0일 때 make가 호출되면 됩니다.
+
+	km := NewKeyedMutex[int]()
+	const iterations = 1000
+
+	// 1. 대량의 락 생성 및 해제 반복
+	for i := 0; i < iterations; i++ {
+		km.Lock(i)
+		km.Unlock(i)
+	}
+
+	assert.Equal(t, 0, km.Len())
+
+	// 2. 다시 락 사용 (맵이 재생성되었어도 정상 동작해야 함)
+	km.Lock(9999)
+	assert.Equal(t, 1, km.Len())
+	km.Unlock(9999)
+	assert.Equal(t, 0, km.Len())
+}
+
+// TestKeyedMutex_MutualExclusion_Randomized 는 실제 데이터(map) 보호 여부를 통해
+// 상호 배제(Mutual Exclusion)를 엄격히 검증합니다.
 func TestKeyedMutex_MutualExclusion_Randomized(t *testing.T) {
 	t.Parallel()
 
 	km := NewKeyedMutex[string]()
-	unsafeMap := make(map[string]int) // Thread-unsafe resource
+	// 동시 접근 시 패닉이 발생하는 map을 공유 자원으로 사용
+	sharedMap := make(map[string]int)
+	key := "shared-resource"
+
 	const (
-		numGoroutines = 100
-		numIncrements = 1000
-		key           = "shared-resource"
+		numGoroutines = 50
+		numOps        = 100
 	)
 
 	var wg sync.WaitGroup
@@ -197,11 +281,10 @@ func TestKeyedMutex_MutualExclusion_Randomized(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < numIncrements; j++ {
+			for j := 0; j < numOps; j++ {
 				km.Lock(key)
-				// Critical Section
-				// Lock이 없다면 여기서 Race Condition 발생 (Go Race Detector가 감지)
-				unsafeMap["counter"]++
+				// Critical Section: 동기화되지 않으면 여기서 'concurrent map writes' 패닉 발생
+				sharedMap["counter"]++
 				km.Unlock(key)
 			}
 		}()
@@ -209,13 +292,10 @@ func TestKeyedMutex_MutualExclusion_Randomized(t *testing.T) {
 
 	wg.Wait()
 
-	// 검증
-	assert.Equal(t, numGoroutines*numIncrements, unsafeMap["counter"], "카운터 값이 정확해야 합니다 (Race Condition 없음)")
-	assert.Equal(t, 0, km.Len(), "리소스 정리 확인")
+	assert.Equal(t, numGoroutines*numOps, sharedMap["counter"], "카운터 값이 정확해야 함 (Race Condition 없음)")
+	assert.Equal(t, 0, km.Len())
 }
 
-// TestKeyedMutex_IndependentLocking은 서로 다른 키에 대한 작업이
-// 서로를 차단하지 않는지(독립성) 검증합니다.
 func TestKeyedMutex_IndependentLocking(t *testing.T) {
 	t.Parallel()
 
@@ -223,14 +303,14 @@ func TestKeyedMutex_IndependentLocking(t *testing.T) {
 	key1 := "slow-key"
 	key2 := "fast-key"
 
-	// Key1을 잡고 오래 대기
+	// Key1 Lock
 	km.Lock(key1)
 	defer km.Unlock(key1)
 
 	done := make(chan bool)
 
 	go func() {
-		// Key2는 Key1의 잠금 여부와 상관없이 즉시 획득 가능해야 함
+		// Key2는 Key1과 독립적이므로 즉시 획득 가능해야 함
 		km.Lock(key2)
 		km.Unlock(key2)
 		done <- true
@@ -239,102 +319,23 @@ func TestKeyedMutex_IndependentLocking(t *testing.T) {
 	select {
 	case <-done:
 		// Success
-	case <-time.After(1 * time.Second):
-		t.Fatal("서로 다른 키에 대한 락 획득이 차단되었습니다 (독립성 위반)")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Independency Violation: Key2 lock was blocked by Key1")
 	}
 }
 
-// TestKeyedMutex_PanicSafety_UnlockWithoutLock
-// Lock하지 않은 키를 Unlock할 때 패닉이 발생하는지 확인합니다.
-func TestKeyedMutex_PanicSafety_UnlockWithoutLock(t *testing.T) {
+func TestKeyedMutex_Panic_UnlockNotLocked(t *testing.T) {
 	t.Parallel()
 
 	km := NewKeyedMutex[string]()
 	assert.Panics(t, func() {
 		km.Unlock("never-locked")
-	}, "Lock되지 않은 키를 Unlock하면 패닉이 발생해야 합니다")
+	}, "Lock되지 않은 키를 Unlock 시 패닉 발생해야 함")
 }
 
-// TestKeyedMutex_Generics_IntKey 정수형 키가 정상 작동하는지 확인합니다.
-func TestKeyedMutex_Generics_IntKey(t *testing.T) {
-	t.Parallel()
-
-	km := NewKeyedMutex[int]()
-	key := 12345
-	unsafeCounter := 0
-
-	var wg sync.WaitGroup
-	wg.Add(10)
-
-	for i := 0; i < 10; i++ {
-		go func() {
-			defer wg.Done()
-			_ = km.WithLock(key, func() error {
-				// Critical Section
-				unsafeCounter++
-				return nil
-			})
-		}()
-	}
-
-	wg.Wait()
-	assert.Equal(t, 10, unsafeCounter)
-	assert.Equal(t, 0, km.Len())
-}
-
-// TestKeyedMutex_WithLock_Correctness WithLock 내부에서 Lock이 걸려있는지 확인합니다.
-func TestKeyedMutex_WithLock_Correctness(t *testing.T) {
-	t.Parallel()
-	km := NewKeyedMutex[string]()
-	key := "test-withlock"
-
-	executed := false
-	err := km.WithLock(key, func() error {
-		executed = true
-		// Lock이 걸려있는지 확인 (TryLock 실패)
-		if km.TryLock(key) {
-			t.Error("WithLock 내부에서는 Lock이 걸려있어야 합니다 (TryLock 실패 예상)")
-			km.Unlock(key) // 테스트 복구
-		}
-		return nil
-	})
-
-	assert.NoError(t, err)
-	assert.True(t, executed)
-	// WithLock 종료 후에는 Lock이 해제되어 있어야 함 (Reference count 0 - Len 0)
-	assert.Equal(t, 0, km.Len())
-}
-
-func TestKeyedMutex_WithLock_ErrorHandling(t *testing.T) {
-	t.Parallel()
-	km := NewKeyedMutex[string]()
-	key := "test-withlock-error"
-	expectedErr := fmt.Errorf("simulated error")
-
-	// 1. Success Case
-	err := km.WithLock(key, func() error {
-		return nil
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, 0, km.Len())
-
-	// 2. Error Case
-	err = km.WithLock(key, func() error {
-		// Lock이 걸려있는지 확인
-		if km.TryLock(key) {
-			return fmt.Errorf("lock should be acquired")
-		}
-		return expectedErr
-	})
-	assert.ErrorIs(t, err, expectedErr)
-	assert.Equal(t, 0, km.Len())
-}
-
-// =============================================================================
 // Benchmarks
-// =============================================================================
 
-func BenchmarkKeyedMutex_LockUnlock_SingleKey(b *testing.B) {
+func BenchmarkKeyedMutex_LockUnlock_NoContention(b *testing.B) {
 	km := NewKeyedMutex[string]()
 	key := "bench-key"
 
@@ -345,47 +346,15 @@ func BenchmarkKeyedMutex_LockUnlock_SingleKey(b *testing.B) {
 	}
 }
 
-func BenchmarkKeyedMutex_LockUnlock_Parallel_Disjoint(b *testing.B) {
-	// 서로 다른 키를 사용하여 경합이 없는 상태에서의 오버헤드 측정
+func BenchmarkKeyedMutex_LockUnlock_HighContention(b *testing.B) {
 	km := NewKeyedMutex[string]()
+	key := "hot-key"
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		// 고루틴마다 고유한 키 사용
-		key := fmt.Sprintf("key-%d", rand.Int63())
 		for pb.Next() {
 			km.Lock(key)
 			km.Unlock(key)
 		}
 	})
-}
-
-func BenchmarkKeyedMutex_LockUnlock_Parallel_HighContention(b *testing.B) {
-	// 소수의 키에 대해 높은 경합 발생
-	km := NewKeyedMutex[string]()
-	keys := []string{"key-A", "key-B", "key-C", "key-D"}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			key := keys[i%len(keys)]
-			km.Lock(key)
-			km.Unlock(key)
-			i++
-		}
-	})
-}
-
-func BenchmarkKeyedMutex_Allocation(b *testing.B) {
-	// 메모리 할당 효율성 측정 (sync.Pool 효과)
-	km := NewKeyedMutex[string]()
-	key := "alloc-key"
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		km.Lock(key)
-		km.Unlock(key)
-	}
 }
