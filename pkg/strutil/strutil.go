@@ -8,68 +8,6 @@ import (
 	"unicode/utf8"
 )
 
-// ToSnakeCase CamelCase 또는 PascalCase 문자열을 snake_case로 변환합니다.
-//
-// [주요 특징]
-// 1. Acronym 지원: "HTTPServer" -> "http_server"와 같이 연속된 대문자 내의 단어 경계를 지능적으로 식별합니다.
-// 2. 구분자 정규화: 공백(' '), 하이픈('-'), 점('.') 등의 기존 구분자를 언더스코어('_')로 통일하며, 중복('_')을 생성하지 않습니다.
-// 3. 다국어 지원: 한글 등 비라틴 문자와 영문 사이의 경계를 올바르게 처리합니다.
-//
-// [성능]
-// utf8.DecodeRuneInString과 strings.Builder를 활용하여 메모리 할당을 최소화했습니다.
-func ToSnakeCase(str string) string {
-	if str == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(str) + 4)
-
-	var prev rune
-	for i, r := range str {
-		originalR := r // Save original rune for state tracking
-
-		// 1. Handle delimiters
-		if r == '_' || r == '-' || r == ' ' || r == '.' {
-			if builder.Len() > 0 && prev != '_' {
-				builder.WriteByte('_')
-			}
-			prev = '_'
-			continue
-		}
-
-		// 2. Handle Uppercase
-		if unicode.IsUpper(r) {
-			prefixUnderscore := false
-			if builder.Len() > 0 && prev != '_' {
-				// If previous was NOT uppercase (Lower, Digit, or Other Letter like Hangul), implies word boundary.
-				if !unicode.IsUpper(prev) {
-					prefixUnderscore = true
-				} else {
-					// Previous was Upper. Check if we are at the start of a new Lowercase word (e.g. "P" in "HTTPServer")
-					nextR, _ := utf8.DecodeRuneInString(str[i+utf8.RuneLen(r):])
-					if nextR != utf8.RuneError && unicode.IsLower(nextR) {
-						prefixUnderscore = true
-					}
-				}
-			}
-			if prefixUnderscore {
-				builder.WriteByte('_')
-			}
-			r = unicode.ToLower(r)
-		}
-
-		builder.WriteRune(r)
-		prev = originalR
-	}
-
-	res := builder.String()
-	if len(res) > 0 && res[len(res)-1] == '_' {
-		return res[:len(res)-1]
-	}
-	return res
-}
-
 // NormalizeSpaces 문자열의 앞뒤 공백을 제거하고, 내부의 연속된 공백을 단일 공백(' ')으로 정규화합니다.
 //
 // [동작 방식]

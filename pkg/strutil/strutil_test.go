@@ -8,48 +8,6 @@ import (
 )
 
 // =============================================================================
-// Case Conversion Tests
-// =============================================================================
-
-// TestToSnakeCase는 ToSnakeCase 함수의 CamelCase/PascalCase를 snake_case로 변환하는 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 빈 문자열 처리
-//   - 단순 문자열 (소문자 변환)
-//   - 숫자 포함 문자열
-//   - CamelCase 변환
-//   - PascalCase 변환
-//   - 공백 포함 문자열
-func TestToSnakeCase(t *testing.T) {
-	cases := []struct {
-		name     string
-		str      string
-		expected string
-	}{
-		{name: "Empty string", str: "", expected: ""},
-		{name: "Simple", str: "My", expected: "my"},
-		{name: "Numeric", str: "123", expected: "123"},
-		{name: "Numeric and letters", str: "123abc", expected: "123abc"},
-		{name: "CamelCase 1", str: "123abcDef", expected: "123abc_def"},
-		{name: "CamelCase 2", str: "123abcDefGHI", expected: "123abc_def_ghi"},
-		{name: "CamelCase 3", str: "123abcDefGHIj", expected: "123abc_def_gh_ij"},
-		{name: "CamelCase 4", str: "123abcDefGHIjK", expected: "123abc_def_gh_ij_k"},
-		{name: "PascalCase", str: "MyNameIsTom", expected: "my_name_is_tom"},
-		{name: "camelCase", str: "myNameIsTom", expected: "my_name_is_tom"},
-		{name: "With spaces", str: " myNameIsTom ", expected: "my_name_is_tom"},
-		{name: "Acronyms", str: "JSONData", expected: "json_data"},
-		{name: "Acronyms at end", str: "HTTPClient", expected: "http_client"},
-		{name: "Foreign characters", str: "안녕Hello", expected: "안녕_hello"},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.expected, ToSnakeCase(c.str))
-		})
-	}
-}
-
-// =============================================================================
 // Space Normalization Tests
 // =============================================================================
 
@@ -385,15 +343,6 @@ func TestHasAnyContent(t *testing.T) {
 // Benchmarks
 // =============================================================================
 
-func BenchmarkToSnakeCase(b *testing.B) {
-	input := "ThisIsAVeryLongVariableNameForBenchmarkPurposes123"
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = ToSnakeCase(input)
-	}
-}
-
 func BenchmarkNormalizeSpaces(b *testing.B) {
 	input := "   This   is   a   test   string   with   many   spaces   "
 	b.ReportAllocs()
@@ -444,14 +393,6 @@ func BenchmarkMaskSensitiveData(b *testing.B) {
 // =============================================================================
 // Examples (Documentation)
 // =============================================================================
-
-func ExampleToSnakeCase() {
-	fmt.Println(ToSnakeCase("MyVariableName"))
-	fmt.Println(ToSnakeCase("HTTPClient"))
-	// Output:
-	// my_variable_name
-	// http_client
-}
 
 func ExampleNormalizeSpaces() {
 	fmt.Println(NormalizeSpaces("  Hello   World  "))
