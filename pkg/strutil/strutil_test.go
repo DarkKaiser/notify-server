@@ -78,7 +78,7 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 		
 		
 			`,
-			expected: "라인 1\r\n라인2\r\n\r\n라인3\r\n\r\n라인4\r\n\r\n라인5",
+			expected: "라인 1\n라인2\n\n라인3\n\n라인4\n\n라인5",
 		},
 		{
 			name: "Complex multiline 2",
@@ -91,7 +91,7 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 			라인3
 			라인4
 			라인5   `,
-			expected: "라인 1\r\n\r\n라인2\r\n\r\n라인3\r\n라인4\r\n라인5",
+			expected: "라인 1\n\n라인2\n\n라인3\n라인4\n라인5",
 		},
 		{
 			name: "Empty lines",

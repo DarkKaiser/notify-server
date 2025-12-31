@@ -50,7 +50,7 @@ func NormalizeMultiLineSpaces(s string) string {
 		}
 	}
 
-	return strings.Join(result, "\r\n")
+	return strings.Join(result, "\n")
 }
 
 // Integer 모든 정수 타입을 포괄하는 제네릭 인터페이스
