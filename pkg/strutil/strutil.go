@@ -14,8 +14,8 @@ func NormalizeSpace(s string) string {
 		return ""
 	}
 
-	var b strings.Builder
-	b.Grow(len(s))
+	var builder strings.Builder
+	builder.Grow(len(s))
 
 	// 버퍼에 유효한 콘텐츠(Non-Space)가 기록되기 시작했는지 여부입니다.
 	// 첫 번째 유효 문자 이전의 모든 공백을 무시하는 데 사용됩니다.
@@ -28,9 +28,9 @@ func NormalizeSpace(s string) string {
 	for _, r := range s {
 		if !unicode.IsSpace(r) {
 			if firstValWritten && spaceWritten {
-				b.WriteByte(' ')
+				builder.WriteByte(' ')
 			}
-			b.WriteRune(r)
+			builder.WriteRune(r)
 			firstValWritten = true
 			spaceWritten = false
 		} else {
@@ -40,7 +40,7 @@ func NormalizeSpace(s string) string {
 		}
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 // NormalizeMultiline 각 줄의 공백을 정규화하고, 연속된 빈 줄을 하나로 축약하여 전체 텍스트를 정리합니다.
@@ -49,8 +49,8 @@ func NormalizeMultiline(s string) string {
 		return ""
 	}
 
-	var b strings.Builder
-	b.Grow(len(s))
+	var builder strings.Builder
+	builder.Grow(len(s))
 
 	// 버퍼에 유효한 콘텐츠가 최소 한 줄 이상 기록되었는지 여부입니다.
 	// 첫 번째 라인 이전에 불필요한 개행(Leading Newline)이 삽입되는 것을 방지합니다.
@@ -66,13 +66,13 @@ func NormalizeMultiline(s string) string {
 		if normalizedLine != "" {
 			if firstValWritten {
 				if pendingEmpty {
-					b.WriteByte('\n')
-					b.WriteByte('\n')
+					builder.WriteByte('\n')
+					builder.WriteByte('\n')
 				} else {
-					b.WriteByte('\n')
+					builder.WriteByte('\n')
 				}
 			}
-			b.WriteString(normalizedLine)
+			builder.WriteString(normalizedLine)
 			firstValWritten = true
 			pendingEmpty = false
 		} else {
@@ -82,7 +82,7 @@ func NormalizeMultiline(s string) string {
 		}
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 // Integer 모든 정수 타입을 포괄하는 제네릭 인터페이스
@@ -170,25 +170,25 @@ func commaUint64(n uint64, negative bool) string {
 	}
 
 	// 3. 문자열 조합
-	var b strings.Builder
-	b.Grow(totalLen) // 정확한 크기를 미리 계산하여 재할당 방지
+	var builder strings.Builder
+	builder.Grow(totalLen) // 정확한 크기를 미리 계산하여 재할당 방지
 
 	if negative {
-		b.WriteByte('-')
+		builder.WriteByte('-')
 	}
 
 	// 버퍼에 역순(일의 자리 -> 높은 자리)으로 저장된 숫자를
 	// 다시 역순(높은 자리 -> 일의 자리)으로 순회하며 문자열을 생성합니다.
 	for i := pos - 1; i >= 0; i-- {
-		b.WriteByte(buf[i])
+		builder.WriteByte(buf[i])
 
 		// 남은 자릿수(i)가 3의 배수이고, 마지막 자리가 아닐 때(i > 0) 콤마를 추가합니다.
 		if i > 0 && i%3 == 0 {
-			b.WriteByte(',')
+			builder.WriteByte(',')
 		}
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 // SplitClean 주어진 구분자로 문자열을 분리한 후, 각 항목의 앞뒤 공백을 제거하고 빈 문자열을 제외(Filter)한 슬라이스를 반환합니다.
