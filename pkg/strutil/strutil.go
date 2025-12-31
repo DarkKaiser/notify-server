@@ -4,40 +4,16 @@ package strutil
 import (
 	"html"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
 // NormalizeSpaces 문자열의 앞뒤 공백을 제거하고, 내부의 연속된 공백을 단일 공백(' ')으로 정규화합니다.
 //
 // [동작 방식]
-// 1. Trim: 문자열 양 끝의 모든 유니코드 공백(Unicode Space)을 제거합니다.
-// 2. Collapse: "Hello   World" -> "Hello World"와 같이 내부의 연속된 공백을 하나로 축약합니다.
-//
-// [성능]
-// 한 번의 순회(One-Pass)로 처리를 완료하며, strings.Builder를 사용하여 메모리 재할당을 최소화합니다.
+// strings.Fields를 사용하여 공백 기준으로 단어를 분리한 후, 단일 공백으로 다시 결합합니다.
+// 이는 Go의 표준 관용구로, 가독성과 유지보수성이 뛰어납니다.
 func NormalizeSpaces(s string) string {
-	if s == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(s))
-
-	spaceCount := 0
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			spaceCount++
-		} else {
-			if spaceCount > 0 && builder.Len() > 0 {
-				builder.WriteByte(' ')
-			}
-			builder.WriteRune(r)
-			spaceCount = 0
-		}
-	}
-
-	return builder.String()
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // NormalizeMultiLineSpaces 여러 줄로 된 문자열을 정리(Clean-up)합니다.
