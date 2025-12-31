@@ -2,6 +2,7 @@ package concurrency
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -83,12 +84,14 @@ func ExampleKeyedMutex_WithLock() {
 // =============================================================================
 
 func TestNewKeyedMutex(t *testing.T) {
+	t.Parallel()
 	km := NewKeyedMutex[string]()
 	require.NotNil(t, km)
 	assert.Equal(t, 0, km.Len())
 }
 
 func TestKeyedMutex_LockUnlock_Sequential(t *testing.T) {
+	t.Parallel()
 	km := NewKeyedMutex[string]()
 	key := "test-key"
 
@@ -98,8 +101,7 @@ func TestKeyedMutex_LockUnlock_Sequential(t *testing.T) {
 	km.Unlock(key)
 	assert.Equal(t, 0, km.Len(), "Unlock 후에는 키가 맵에서 제거되어야 함")
 
-	// 2. Lock -> Lock (Re-entrance is not supported, effectively creates deadlock, so we don't test it here conventionally)
-	// 대신 서로 다른 키에 대한 순차적 잠금 테스트
+	// 2. 서로 다른 키에 대한 순차적 잠금
 	km.Lock("key1")
 	km.Lock("key2")
 	assert.Equal(t, 2, km.Len())
@@ -134,7 +136,7 @@ func TestKeyedMutex_LockUnlock_Parallel(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // Capture range variable
+		tt := tt // Capture variable for closure
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -213,8 +215,8 @@ func TestKeyedMutex_WithLock(t *testing.T) {
 	})
 
 	t.Run("Panic Recovery", func(t *testing.T) {
-		// WithLock은 현재 패닉 복구를 명시적으로 처리하지 않지만(Lock 상태 유지 위험),
-		// defer Unlock이 호출되므로 패닉 발생 시에도 Unlock은 수행되어야 합니다.
+		// WithLock은 현재 패닉 복구를 명시적으로 처리하지 않지만,
+		// defer Unlock이 호출되므로 패닉 발생 시에도 Unlock은 수행되어야 함을 검증
 		km := NewKeyedMutex[string]()
 		key := "panic-key"
 
@@ -233,14 +235,6 @@ func TestKeyedMutex_WithLock(t *testing.T) {
 // 내부 맵이 재생성(Reset)되어 메모리 누수가 방지되는지 검증합니다.
 func TestKeyedMutex_MapLeak_Prevention(t *testing.T) {
 	t.Parallel()
-
-	// 이 테스트는 화이트박스 테스트 성격이 강하므로,
-	// 공개 API(Len, Address check 등)를 통해 간접적으로 검증하거나
-	// 리플렉션 없이 동작을 추론해야 합니다.
-	// Go에서 맵의 주소를 직접 비교하기는 어려우므로,
-	// 여기서는 기능적으로 "대량의 키를 쓰고 지웠을 때 동작에 문제가 없는지"와
-	// "비워진 후 재사용이 가능한지"를 봅니다.
-	// 실제 메모리 해제 여부는 프로파일링 영역이지만, 로직상 len==0일 때 make가 호출되면 됩니다.
 
 	km := NewKeyedMutex[int]()
 	const iterations = 1000
@@ -266,7 +260,7 @@ func TestKeyedMutex_MutualExclusion_Randomized(t *testing.T) {
 	t.Parallel()
 
 	km := NewKeyedMutex[string]()
-	// 동시 접근 시 패닉이 발생하는 map을 공유 자원으로 사용
+	// 동시 접근 시 패닉이 발생하는 map을 공유 자원으로 사용 (Race Detector 감지용)
 	sharedMap := make(map[string]int)
 	key := "shared-resource"
 
@@ -333,7 +327,32 @@ func TestKeyedMutex_Panic_UnlockNotLocked(t *testing.T) {
 	}, "Lock되지 않은 키를 Unlock 시 패닉 발생해야 함")
 }
 
+// FuzzKeyedMutex는 랜덤한 키 입력에 대해 락킹 메커니즘이 안정적으로 동작하는지 검증합니다.
+func FuzzKeyedMutex(f *testing.F) {
+	f.Add("key1", uint8(1))
+	f.Add("key2", uint8(2))
+	f.Add("key3", uint8(5))
+
+	km := NewKeyedMutex[string]()
+
+	f.Fuzz(func(t *testing.T, key string, count uint8) {
+		// Fuzzing은 병렬로 실행될 수 있으므로, Lock/Unlock 쌍만 맞춘다면 상태가 꼬이지 않아야 합니다.
+		// 단, Fuzz 함수 본체 내부에서 순차적 실행을 보장하지 않으면 TestState 자체가 꼬일 수 있으나,
+		// KeyedMutex 자체의 내구성(Panic 없음)을 테스트합니다.
+
+		// limit repetition to avoid timeout
+		n := int(count) % 10
+		for i := 0; i < n; i++ {
+			km.Lock(key)
+			// Critical section simulation
+			km.Unlock(key)
+		}
+	})
+}
+
+// =============================================================================
 // Benchmarks
+// =============================================================================
 
 func BenchmarkKeyedMutex_LockUnlock_NoContention(b *testing.B) {
 	km := NewKeyedMutex[string]()
@@ -352,6 +371,22 @@ func BenchmarkKeyedMutex_LockUnlock_HighContention(b *testing.B) {
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			km.Lock(key)
+			km.Unlock(key)
+		}
+	})
+}
+
+func BenchmarkKeyedMutex_LockUnlock_Independent(b *testing.B) {
+	km := NewKeyedMutex[string]()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		// 각 고루틴마다 다른 키를 생성하여 독립적인 락킹 성능 측정
+		// 주의: 랜덤 키 생성 오버헤드가 포함될 수 있으므로, 미리 할당하거나 고루틴 ID 등을 활용하는 것이 좋으나
+		// 여기서는 간단히 랜덤 Int64를 사용 (문자열 변환 비용 포함됨)
+		key := fmt.Sprintf("key-%d", rand.Int63())
 		for pb.Next() {
 			km.Lock(key)
 			km.Unlock(key)
