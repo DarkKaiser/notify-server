@@ -668,7 +668,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			name:          "성공: 공백만 있는 필드 처리 (Trimmed result check needed if validation existed, but parser allows currently)",
 			item:          item("   ", "100"),
 			wantProduct:   true,
-			expectedTitle: "   ", // 현재 로직상 Trim은 수행하지 않음 (strutil.StripHTMLTags에 의존)
+			expectedTitle: "   ", // 현재 로직상 Trim은 수행하지 않음 (strutil.StripHTML에 의존)
 		},
 		{
 			name:          "성공: HTML 엔티티 디코딩 (ex: &amp; -> &)",

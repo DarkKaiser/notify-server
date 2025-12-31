@@ -180,12 +180,12 @@ func writeFormattedPrice(sb *strings.Builder, price, discountedPrice, discountRa
 	// 2. discountedPrice >= price: 할인가가 정가보다 비싸거나 같음 (데이터 오류 또는 할인 없음)
 	// 위 경우에는 할인 표기를 하지 않고 '정가'만 노출하여 혼란을 방지합니다.
 	if discountedPrice <= 0 || discountedPrice >= price {
-		fmt.Fprintf(sb, "%s원", strutil.FormatCommas(price))
+		fmt.Fprintf(sb, "%s원", strutil.Comma(price))
 		return
 	}
 
-	formattedPrice := strutil.FormatCommas(price)
-	formattedDiscountedPrice := strutil.FormatCommas(discountedPrice)
+	formattedPrice := strutil.Comma(price)
+	formattedDiscountedPrice := strutil.Comma(discountedPrice)
 
 	// 할인율이 유효한 경우에만 문자열 생성 (0% 표시 방지)
 	var discountRateStr string

@@ -37,7 +37,7 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"notifier_id": id,
-		"bot_token":   strutil.MaskSensitiveData(botToken),
+		"bot_token":   strutil.Mask(botToken),
 		"chat_id":     chatID,
 	}).Debug("텔레그램 봇 초기화 시도")
 

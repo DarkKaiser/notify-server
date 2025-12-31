@@ -1,56 +1,88 @@
-// Package strutil은 문자열 처리를 위한 다양한 유틸리티 함수들을 제공합니다.
+// Package strutil 문자열 처리를 위한 다양한 유틸리티 함수들을 제공합니다.
 package strutil
 
 import (
 	"html"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
-// NormalizeSpaces 문자열의 앞뒤 공백을 제거하고, 내부의 연속된 공백을 단일 공백(' ')으로 정규화합니다.
-//
-// [동작 방식]
-// strings.Fields를 사용하여 공백 기준으로 단어를 분리한 후, 단일 공백으로 다시 결합합니다.
-// 이는 Go의 표준 관용구로, 가독성과 유지보수성이 뛰어납니다.
-func NormalizeSpaces(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}
+// NormalizeSpace 문자열의 앞뒤 공백을 제거하고, 내부의 연속된 공백을 단일 공백(' ')으로 정규화합니다.
+func NormalizeSpace(s string) string {
+	if s == "" {
+		return ""
+	}
 
-// NormalizeMultiLineSpaces 여러 줄로 된 문자열을 정리(Clean-up)합니다.
-//
-// [동작 방식]
-// 1. Line Normalization: 각 줄에 대해 NormalizeSpaces를 수행(앞뒤 공백 제거, 내부 공백 축약)합니다.
-// 2. Vertical Collapse: 연속된 빈 줄을 하나의 빈 줄로 축약하여 문단 구분은 유지하되 불필요한 공백 라인을 제거합니다.
-// 3. Trim: 전체 텍스트의 시작과 끝에 있는 빈 줄을 제거합니다.
-func NormalizeMultiLineSpaces(s string) string {
-	var result []string
-	var appendedEmptyLine bool
+	var b strings.Builder
+	b.Grow(len(s))
 
-	lineIter := strings.SplitSeq(s, "\n")
-	for line := range lineIter {
-		normalizedLine := NormalizeSpaces(line)
-		if normalizedLine != "" {
-			appendedEmptyLine = false
-			result = append(result, normalizedLine)
+	// 버퍼에 유효한 콘텐츠(Non-Space)가 기록되기 시작했는지 여부입니다.
+	// 첫 번째 유효 문자 이전의 모든 공백을 무시하는 데 사용됩니다.
+	firstValWritten := false
+
+	// 이전에 공백이 감지되었으나 아직 버퍼에 기록되지 않은 상태(Pending Space)를 나타냅니다.
+	// 다음 비공백 문자가 올 때 단 한 번의 공백(' ')만 기록하여 연속된 공백을 압축합니다.
+	spaceWritten := false
+
+	for _, r := range s {
+		if !unicode.IsSpace(r) {
+			if firstValWritten && spaceWritten {
+				b.WriteByte(' ')
+			}
+			b.WriteRune(r)
+			firstValWritten = true
+			spaceWritten = false
 		} else {
-			if !appendedEmptyLine {
-				appendedEmptyLine = true
-				result = append(result, "")
+			if firstValWritten {
+				spaceWritten = true
 			}
 		}
 	}
 
-	// 앞뒤의 빈 줄 제거
-	if len(result) >= 2 {
-		if result[0] == "" {
-			result = result[1:]
-		}
-		if len(result) > 0 && result[len(result)-1] == "" {
-			result = result[:len(result)-1]
+	return b.String()
+}
+
+// NormalizeMultiline 각 줄의 공백을 정규화하고, 연속된 빈 줄을 하나로 축약하여 전체 텍스트를 정리합니다.
+func NormalizeMultiline(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+
+	// 버퍼에 유효한 콘텐츠가 최소 한 줄 이상 기록되었는지 여부입니다.
+	// 첫 번째 라인 이전에 불필요한 개행(Leading Newline)이 삽입되는 것을 방지합니다.
+	var firstValWritten bool
+
+	// 유효한 라인 이후에 빈 줄이 감지되었으나 아직 버퍼에 기록되지 않은 상태입니다.
+	// 연속된 빈 줄을 하나로 압축하고, 후행 빈 줄 방지를 위해 기록 시점을 지연시킵니다.
+	var pendingEmpty bool
+
+	for line := range strings.SplitSeq(s, "\n") {
+		normalizedLine := NormalizeSpace(line)
+
+		if normalizedLine != "" {
+			if firstValWritten {
+				if pendingEmpty {
+					b.WriteByte('\n')
+					b.WriteByte('\n')
+				} else {
+					b.WriteByte('\n')
+				}
+			}
+			b.WriteString(normalizedLine)
+			firstValWritten = true
+			pendingEmpty = false
+		} else {
+			if firstValWritten {
+				pendingEmpty = true
+			}
 		}
 	}
 
-	return strings.Join(result, "\n")
+	return b.String()
 }
 
 // Integer 모든 정수 타입을 포괄하는 제네릭 인터페이스
@@ -59,83 +91,68 @@ type Integer interface {
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }
 
-// FormatCommas 정수(Integer)를 천 단위 구분 기호(,)가 포함된 문자열로 변환합니다.
-// 예: 1234567 -> "1,234,567"
-//
-// [지원 타입]
-// 제네릭(Integer)을 사용하여 int, int64, uint, uint64 등 모든 정수 타입을 지원합니다.
-// Signed 정수의 경우 음수 부호(-)를 올바르게 처리합니다.
-//
-// [성능]
-// 1. Stack Allocation: 숫자 변환 시 힙 대신 스택 버퍼([24]byte)를 사용하여 중간 할당을 제거했습니다.
-// 2. Single Allocation: 최종 결과 문자열 생성 시에만 단 1회의 메모리 할당이 발생합니다(strings.Builder 활용).
-func FormatCommas[T Integer](num T) string {
+// Comma 정수를 천 단위 구분 기호(,)가 포함된 문자열로 변환합니다. (예: 1234567 -> "1,234,567")
+func Comma[T Integer](num T) string {
 	// 1. 부호 있는(Signed) 정수와 부호 없는(Unsigned) 정수 변환 처리
 	var val uint64
 	var negative bool
 
-	// 리플렉션을 사용하지 않고 Type Switch를 통해 모든 정수 타입을 효율적으로 처리
 	switch v := any(num).(type) {
-	case int:
-		if v < 0 {
-			negative, val = true, uint64(-v)
-		} else {
-			val = uint64(v)
+	case int, int8, int16, int32, int64:
+		// Signed Integer 처리
+		var i64 int64
+		switch val := v.(type) {
+		case int:
+			i64 = int64(val)
+		case int8:
+			i64 = int64(val)
+		case int16:
+			i64 = int64(val)
+		case int32:
+			i64 = int64(val)
+		case int64:
+			i64 = val
 		}
-	case int8:
-		if v < 0 {
-			negative, val = true, uint64(-v)
-		} else {
-			val = uint64(v)
-		}
-	case int16:
-		if v < 0 {
-			negative, val = true, uint64(-v)
-		} else {
-			val = uint64(v)
-		}
-	case int32:
-		if v < 0 {
-			negative, val = true, uint64(-v)
-		} else {
-			val = uint64(v)
-		}
-	case int64:
-		// int64의 최솟값(MinInt64)은 절대값이 MaxInt64보다 1 큽니다.
-		// 따라서 단순 부호 반전(-v)을 하면 int64 범위를 초과(Overflow)하게 됩니다.
-		// 이를 방지하기 위해 uint64로 캐스팅 후 비트 연산(2의 보수)을 수행합니다.
-		if v < 0 {
+
+		if i64 < 0 {
 			negative = true
-			val = uint64(^v + 1) // 2의 보수(2's Complement)를 사용하여 양수로 변환
+
+			// int64의 최솟값(MinInt64)은 절대값이 MaxInt64보다 1 큽니다.
+			// 단순 부호 반전(-v) 시 오버플로우가 발생하므로 2의 보수(^v + 1)를 사용합니다.
+			val = uint64(^i64 + 1)
 		} else {
-			val = uint64(v)
+			val = uint64(i64)
 		}
-	case uint:
-		val = uint64(v)
-	case uint8:
-		val = uint64(v)
-	case uint16:
-		val = uint64(v)
-	case uint32:
-		val = uint64(v)
-	case uint64:
-		val = v
-	case uintptr:
-		val = uint64(v)
+
+	case uint, uint8, uint16, uint32, uint64, uintptr:
+		// Unsigned Integer 처리
+		switch vTyped := v.(type) {
+		case uint:
+			val = uint64(vTyped)
+		case uint8:
+			val = uint64(vTyped)
+		case uint16:
+			val = uint64(vTyped)
+		case uint32:
+			val = uint64(vTyped)
+		case uint64:
+			val = vTyped
+		case uintptr:
+			val = uint64(vTyped)
+		}
 	}
 
-	return formatUint64(val, negative)
+	return commaUint64(val, negative)
 }
 
-// formatUint64 uint64 값을 천 단위 콤마가 포함된 문자열로 포맷팅합니다.
+// commaUint64 uint64 값을 천 단위 구분 기호(,)가 포함된 문자열로 포맷팅합니다.
 // negative가 true일 경우 결과 문자열 앞에 마이너스 부호(-)를 추가합니다.
-func formatUint64(n uint64, negative bool) string {
+func commaUint64(n uint64, negative bool) string {
 	if n == 0 {
 		return "0"
 	}
 
 	// 1. 스택 버퍼에 숫자 추출 (역순 저장)
-	// 힙 할당을 피하기 위해 고정 크기 스택 배열을 사용합니다.
 	var buf [24]byte // uint64 최대값은 20자리입니다. 여유분을 포함해 24바이트를 할당합니다.
 	pos := 0
 	for n > 0 {
@@ -165,7 +182,6 @@ func formatUint64(n uint64, negative bool) string {
 	for i := pos - 1; i >= 0; i-- {
 		b.WriteByte(buf[i])
 
-		// 콤마 삽입 조건:
 		// 남은 자릿수(i)가 3의 배수이고, 마지막 자리가 아닐 때(i > 0) 콤마를 추가합니다.
 		if i > 0 && i%3 == 0 {
 			b.WriteByte(',')
@@ -175,18 +191,18 @@ func formatUint64(n uint64, negative bool) string {
 	return b.String()
 }
 
-// SplitAndTrim 주어진 구분자로 문자열을 분리한 후, 각 항목의 앞뒤 공백을 제거하고 빈 문자열을 제외한 슬라이스를 반환합니다.
+// SplitClean 주어진 구분자로 문자열을 분리한 후, 각 항목의 앞뒤 공백을 제거하고 빈 문자열을 제외(Filter)한 슬라이스를 반환합니다.
 // 입력 문자열이 비어있거나 유효한 항목이 없는 경우 nil을 반환합니다.
 // 예: "apple, , banana, " (구분자 ",") -> ["apple", "banana"]
-func SplitAndTrim(s, sep string) []string {
+func SplitClean(s, sep string) []string {
 	if s == "" {
 		return nil
 	}
 
-	// separator 개수를 미리 세어 슬라이스 용량을 예약
-	// 정확한 개수는 아니지만(빈 문자열 제외 전), 재할당 횟수를 줄이는 데 효과적입니다.
-	count := strings.Count(s, sep) + 1
-	result := make([]string, 0, count)
+	// 구분자의 개수를 미리 세어 슬라이스 용량을 예약합니다.
+	// 빈 문자열이 제거되기 전이라 정확한 크기는 아니지만, 메모리 재할당 비용을 줄이는 데 효과적입니다.
+	estimatedCap := strings.Count(s, sep) + 1
+	result := make([]string, 0, estimatedCap)
 
 	for token := range strings.SplitSeq(s, sep) {
 		token = strings.TrimSpace(token)
@@ -202,14 +218,8 @@ func SplitAndTrim(s, sep string) []string {
 	return result
 }
 
-// MaskSensitiveData API 키, 토큰 등 민감한 정보를 안전하게 로깅하기 위해 일부를 가립니다(Masking).
-//
-// [마스킹 규칙]
-// 1. 3자 이하: 전체를 가립니다 ("***").
-// 2. 4자: 앞 1자만 노출하고 나머지를 가립니다 ("a***").
-// 3. 5자 ~ 12자: 앞 4자만 노출하고 나머지를 가립니다 ("abcd***").
-// 4. 12자 초과: 앞 4자와 뒤 4자를 노출하고 중간을 가립니다 ("abcd***wxyz").
-func MaskSensitiveData(data string) string {
+// Mask API 키나 토큰 등 민감한 정보의 일부를 가려서(Masking) 안전하게 로깅할 수 있도록 합니다.
+func Mask(data string) string {
 	if data == "" {
 		return ""
 	}
@@ -254,23 +264,8 @@ func MaskSensitiveData(data string) string {
 	return data[:prefixEnd] + "***" + data[suffixStart:]
 }
 
-// StripHTMLTags 입력된 문자열에서 HTML 태그(<...>)를 모두 제거하고, HTML 엔티티(예: &amp;)를 디코딩하여 순수한 텍스트만 반환합니다.
-//
-// [동작 방식]
-// 1. 빠른 검사: '<' 문자가 발견되면 즉시 다음 문자를 확인하여 태그 가능성을 검사합니다.
-//   - 태그가 아닌 패턴(예: "3 < 5", "<123>")은 스캔을 건너뛰어 성능을 보존합니다.
-//
-// 2. 태그 제거: '<'로 시작해 '>'로 끝나는 블록을 제거합니다.
-//   - 속성 값 내의 '>' 문자(예: <a title=">">)를 오인하지 않도록 따옴표(', ") 상태를 추적합니다(State Machine).
-//
-// 3. 주석 제거: '<!--' ... '-->' 형태의 HTML 주석도 함께 제거됩니다.
-//
-// 4. 엔티티 디코딩: 남은 텍스트에 대해 html.UnescapeString을 수행합니다.
-//
-// [성능 및 주의사항]
-// - Zero Allocation: 정규식 대신 바이트 단위 순회(Linear Scan)를 사용하여 메모리 할당을 최소화했습니다.
-// - 안전성: XSS 방지용이 아니며, 잘못된 형식의 HTML(깨진 태그 등)에 대해서는 최선의 노력으로 처리합니다.
-func StripHTMLTags(s string) string {
+// StripHTML 문자열에서 HTML 태그와 주석을 제거하고, HTML 엔티티를 디코딩하여 순수한 텍스트만 추출합니다.
+func StripHTML(s string) string {
 	if !strings.ContainsAny(s, "<&") {
 		return s
 	}
@@ -347,22 +342,14 @@ func StripHTMLTags(s string) string {
 		builder.WriteByte(b)
 	}
 
-	// HTML Entity 디코딩
+	// HTML 엔티티 디코딩
 	return html.UnescapeString(builder.String())
 }
 
-// HasAnyContent 전달된 문자열 중 하나라도 비어있지 않은(non-empty) 값이 존재하는지 확인합니다.
-//
-// [동작 방식]
-// 인자를 순차적으로 순회하며 길이가 1 이상인 문자열을 발견하면 즉시 true를 반환합니다(Short-circuit).
-// 인자가 없거나 모든 문자열이 비어있는 경우 false를 반환합니다.
-//
-// [주의사항]
-// 공백 문자(" ")나 제어 문자도 내용이 있는 것으로 간주합니다.
-// 의미 있는 텍스트 존재 여부를 확인하려면 먼저 strings.TrimSpace 등을 적용해야 합니다.
-func HasAnyContent(strs ...string) bool {
+// AnyContent 주어진 문자열 목록 중 하나라도 비어있지 않은(공백 제외) 값이 존재하는지 검사합니다.
+func AnyContent(strs ...string) bool {
 	for _, s := range strs {
-		if len(s) > 0 {
+		if len(strings.TrimSpace(s)) > 0 {
 			return true
 		}
 	}

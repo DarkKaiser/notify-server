@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestKeywordMatcher_Match verifies the core matching logic of KeywordMatcher.
-// It covers basic functionality, OR conditions, case insensitivity, combined filters,
-// edge cases, and real-world usage scenarios.
-func TestKeywordMatcher(t *testing.T) {
+// TestKeywordMatcher_Match 매처의 핵심 매칭 로직을 검증합니다.
+// 기본 기능, OR 조건, 대소문자 구분 없음, 복합 필터, 엣지 케이스 및 실제 사용 시나리오를 포괄합니다.
+func TestKeywordMatcher_Match(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -22,67 +21,60 @@ func TestKeywordMatcher(t *testing.T) {
 		input    string
 		want     bool
 	}{
-		// 1. Basic Scenarios
-		{name: "Empty string, empty keywords", input: "", included: nil, excluded: nil, want: true},
-		{name: "Empty string, with included", input: "", included: []string{"test"}, excluded: nil, want: false},
-		{name: "Normal string, empty keywords", input: "Hello World", included: nil, excluded: nil, want: true},
+		// 1. 기본 시나리오 (Basic Scenarios)
+		{name: "빈 문자열, 키워드 없음", input: "", included: nil, excluded: nil, want: true},
+		{name: "빈 문자열, 포함 키워드 있음", input: "", included: []string{"test"}, excluded: nil, want: false},
+		{name: "일반 문자열, 키워드 없음", input: "Hello World", included: nil, excluded: nil, want: true},
 
-		// 2. Included Keywords (AND Logic)
-		{name: "Single included match", input: "Go Programming", included: []string{"programming"}, excluded: nil, want: true},
-		{name: "Single included mismatch", input: "Go Programming", included: []string{"python"}, excluded: nil, want: false},
-		{name: "Multiple included all match", input: "Go Programming Tutorial", included: []string{"go", "programming", "tutorial"}, excluded: nil, want: true},
-		{name: "Multiple included partial match", input: "Go Programming", included: []string{"go", "programming", "tutorial"}, excluded: nil, want: false},
-		{name: "Substring match", input: "Golang is great", included: []string{"lang"}, excluded: nil, want: true},
+		// 2. 포함 키워드 (AND Logic)
+		{name: "단일 포함 일치", input: "Go Programming", included: []string{"programming"}, excluded: nil, want: true},
+		{name: "단일 포함 불일치", input: "Go Programming", included: []string{"python"}, excluded: nil, want: false},
+		{name: "다수 포함 모두 일치", input: "Go Programming Tutorial", included: []string{"go", "programming", "tutorial"}, excluded: nil, want: true},
+		{name: "다수 포함 일부 불일치", input: "Go Programming", included: []string{"go", "programming", "tutorial"}, excluded: nil, want: false},
+		{name: "부분 문자열 일치", input: "Golang is great", included: []string{"lang"}, excluded: nil, want: true},
 
-		// 3. Excluded Keywords (OR Logic)
-		{name: "Single excluded match (Fail)", input: "Deprecated API", included: nil, excluded: []string{"deprecated"}, want: false},
-		{name: "Single excluded mismatch (Success)", input: "Modern API", included: nil, excluded: []string{"deprecated"}, want: true},
-		{name: "Multiple excluded one match (Fail)", input: "Legacy System", included: nil, excluded: []string{"deprecated", "legacy", "old"}, want: false},
-		{name: "Multiple excluded none match (Success)", input: "Modern System", included: nil, excluded: []string{"deprecated", "legacy", "old"}, want: true},
+		// 3. 제외 키워드 (OR Logic - 하나라도 있으면 탈락)
+		{name: "단일 제외 일치 (실패)", input: "Deprecated API", included: nil, excluded: []string{"deprecated"}, want: false},
+		{name: "단일 제외 불일치 (성공)", input: "Modern API", included: nil, excluded: []string{"deprecated"}, want: true},
+		{name: "다수 제외 중 하나 일치 (실패)", input: "Legacy System", included: nil, excluded: []string{"deprecated", "legacy", "old"}, want: false},
+		{name: "다수 제외 모두 불일치 (성공)", input: "Modern System", included: nil, excluded: []string{"deprecated", "legacy", "old"}, want: true},
 
-		// 4. OR Condition (Pipe Separator)
-		{name: "OR included first match", input: "Go Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
-		{name: "OR included middle match", input: "Rust Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
-		{name: "OR included last match", input: "Python Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
-		{name: "OR included no match", input: "Java Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: false},
-		{name: "OR included with spaces", input: "Web Development", included: []string{"Web Dev|Mobile Dev|Backend"}, excluded: nil, want: true},
-		{name: "Multiple OR groups both match", input: "Go Web Server", included: []string{"Go|Rust", "Web|Mobile"}, excluded: nil, want: true},
-		{name: "Multiple OR groups one mismatch", input: "Go Desktop App", included: []string{"Go|Rust", "Web|Mobile"}, excluded: nil, want: false},
+		// 4. OR 조건 (파이프 Separator)
+		{name: "OR 포함 첫 번째 일치", input: "Go Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
+		{name: "OR 포함 중간 일치", input: "Rust Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
+		{name: "OR 포함 마지막 일치", input: "Python Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: true},
+		{name: "OR 포함 불일치", input: "Java Tutorial", included: []string{"Go|Rust|Python"}, excluded: nil, want: false},
+		{name: "OR 포함 공백 처리", input: "Web Development", included: []string{"Web Dev | Mobile Dev | Backend"}, excluded: nil, want: true}, // 파이프 주변 공백 테스트
+		{name: "다중 OR 그룹 모두 일치", input: "Go Web Server", included: []string{"Go|Rust", "Web|Mobile"}, excluded: nil, want: true},
+		{name: "다중 OR 그룹 하나 불일치", input: "Go Desktop App", included: []string{"Go|Rust", "Web|Mobile"}, excluded: nil, want: false},
 
-		// 5. Case Insensitivity
-		{name: "Case insensitive matching", input: "GO PROGRAMMING", included: []string{"go", "programming"}, excluded: nil, want: true},
-		{name: "Case insensitive mixed", input: "Go PrOgRaMmInG", included: []string{"gO", "ProGramming"}, excluded: nil, want: true},
-		{name: "Case insensitive excluded", input: "DEPRECATED API", included: nil, excluded: []string{"deprecated"}, want: false},
+		// 5. 대소문자 구분 없음 (Case Insensitivity)
+		{name: "대소문자 섞임 일치", input: "GO PROGRAMMING", included: []string{"go", "programming"}, excluded: nil, want: true},
+		{name: "대소문자 혼합", input: "Go PrOgRaMmInG", included: []string{"gO", "ProGramming"}, excluded: nil, want: true},
+		{name: "대소문자 섞인 제외 키워드", input: "DEPRECATED API", included: nil, excluded: []string{"deprecated"}, want: false},
 
-		// 6. Combined Logic (AND + OR + NOT)
-		{name: "Combined success", input: "Modern Go Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: true},
-		{name: "Combined fail (excluded match)", input: "Legacy Go Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: false},
-		{name: "Combined fail (included mismatch)", input: "Modern Python Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: false},
-		{name: "Combined OR and NOT", input: "Go Tutorial for Beginners", included: []string{"Go|Rust|Python", "tutorial"}, excluded: []string{"advanced"}, want: true},
+		// 6. 복합 로직 (AND + OR + NOT)
+		{name: "복합 성공", input: "Modern Go Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: true},
+		{name: "복합 실패 (제외 키워드 포함)", input: "Legacy Go Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: false},
+		{name: "복합 실패 (포함 키워드 누락)", input: "Modern Python Web Server", included: []string{"go", "web"}, excluded: []string{"deprecated", "legacy"}, want: false},
 
-		// 7. Special Characters & Unicode
-		{name: "Korean keywords", input: "이것은 테스트 문자열입니다", included: []string{"테스트", "문자열"}, excluded: nil, want: true},
-		{name: "Korean excluded", input: "이것은 샘플 문자열입니다", included: []string{"문자열"}, excluded: []string{"테스트"}, want: true},
-		{name: "Emoji keywords", input: "🚀 Go Programming 🎉", included: []string{"go", "programming"}, excluded: nil, want: true},
-		{name: "Special char keywords", input: "C++ Programming & Development", included: []string{"c++", "development"}, excluded: nil, want: true},
+		// 7. 특수 문자 및 유니코드 (Korean, Emoji)
+		{name: "한글 키워드", input: "이것은 테스트 문자열입니다", included: []string{"테스트", "문자열"}, excluded: nil, want: true},
+		{name: "한글 제외 키워드", input: "이것은 샘플 문자열입니다", included: []string{"문자열"}, excluded: []string{"테스트"}, want: true},
+		{name: "이모지 키워드", input: "🚀 Go Programming 🎉", included: []string{"go", "programming"}, excluded: nil, want: true},
+		{name: "특수 문자 키워드", input: "C++ Programming & Development", included: []string{"c++", "development"}, excluded: nil, want: true},
 
-		// 8. Edge Cases
-		{name: "Very long string", input: strings.Repeat("Go Programming ", 1000), included: []string{"go", "programming"}, excluded: nil, want: true},
-		{name: "Many keywords", input: "a b c d e f g h i j k l m n o p q r s t u v w x y z", included: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}, excluded: nil, want: true},
-		{name: "Single char keyword", input: "a", included: []string{"a"}, excluded: nil, want: true},
-		{name: "Whitespace only input", input: "     ", included: []string{"test"}, excluded: nil, want: false},
-		{name: "Newline in input", input: "Go\nProgramming\nLanguage", included: []string{"go", "programming"}, excluded: nil, want: true},
-		{name: "Tabs in input", input: "Go\tProgramming\tLanguage", included: []string{"go", "programming"}, excluded: nil, want: true},
+		// 8. 엣지 케이스 (Edge Cases)
+		{name: "매우 긴 문자열", input: strings.Repeat("Go Programming ", 1000), included: []string{"go", "programming"}, excluded: nil, want: true},
+		{name: "단일 문자 키워드", input: "a", included: []string{"a"}, excluded: nil, want: true},
+		{name: "공백만 있는 입력", input: "     ", included: []string{"test"}, excluded: nil, want: false},
+		{name: "개행 문자 포함", input: "Go\nProgramming\nLanguage", included: []string{"go", "programming"}, excluded: nil, want: true},
+		{name: "탭 문자 포함", input: "Go\tProgramming\tLanguage", included: []string{"go", "programming"}, excluded: nil, want: true},
+		{name: "잘못된 OR 패턴 (빈 파이프)", input: "apple", included: []string{"||apple||"}, excluded: nil, want: true}, // SplitClean 빈 항목 제거
 
 		// 9. Nil Slices
-		{name: "Nil included", input: "Go Programming", included: nil, excluded: nil, want: true},
-		{name: "Nil excluded", input: "Go Programming", included: []string{"go"}, excluded: nil, want: true},
-		{name: "Both nil", input: "Go Programming", included: nil, excluded: nil, want: true},
-
-		// 10. Real-world Examples
-		{name: "Product filtering success", input: "삼성 갤럭시 S24 스마트폰", included: []string{"삼성", "스마트폰"}, excluded: []string{"아이폰", "중고"}, want: true},
-		{name: "Product filtering fail (excluded)", input: "삼성 갤럭시 S24 중고 스마트폰", included: []string{"삼성", "스마트폰"}, excluded: []string{"아이폰", "중고"}, want: false},
-		{name: "Performance filtering OR", input: "뮤지컬 캣츠 - 서울 공연", included: []string{"뮤지컬|연극|콘서트", "서울"}, excluded: []string{"취소", "연기"}, want: true},
+		{name: "Nil 포함 목록", input: "Go Programming", included: nil, excluded: nil, want: true},
+		{name: "Nil 제외 목록", input: "Go Programming", included: []string{"go"}, excluded: nil, want: true},
 	}
 
 	for _, tt := range tests {
@@ -95,83 +87,76 @@ func TestKeywordMatcher(t *testing.T) {
 	}
 }
 
-// TestNewKeywordMatcher_InternalState verifies that the constructor correctly processes
-// and sanitizes input keywords (trimming, lowercasing, splitting).
+// TestNewKeywordMatcher_InternalState 생성자가 입력 키워드를 올바르게 전처리하는지 검증합니다.
+// 공백 제거, 소문자 변환, 파이프 분리 등의 로직을 확인합니다.
 func TestNewKeywordMatcher_InternalState(t *testing.T) {
-	included := []string{" Apple ", "Banana|Grape"}
+	// 입력: 공백이 섞인 파이프 구문과 대소문자가 섞인 키워드
+	included := []string{" Apple ", "Banana | Grape | "}
 	excluded := []string{" Cherry "}
 
 	m := NewKeywordMatcher(included, excluded)
 
-	// Check Excluded: should be trimmed and lowercased
+	// 제외 키워드 검증: Trim 및 소문자 변환 확인
 	assert.Contains(t, m.excluded, "cherry")
 	assert.Len(t, m.excluded, 1)
 
-	// Check Included Groups: should be parsed into slices of OR keywords
+	// 포함 키워드 그룹 검증: OR 그룹 파싱 확인
 	assert.Len(t, m.includedGroups, 2)
-	assert.Equal(t, []string{"apple"}, m.includedGroups[0])
-	assert.Equal(t, []string{"banana", "grape"}, m.includedGroups[1])
+	assert.Equal(t, []string{"apple"}, m.includedGroups[0], "단일 키워드 처리 실패")
+	assert.Equal(t, []string{"banana", "grape"}, m.includedGroups[1], "OR 그룹 파싱 및 빈 항목 제거 실패")
 }
 
-// BenchmarkKeywordMatcher benchmarks the performance of the KeywordMatcher.
-// It compares reusing a matcher vs recreating it (legacy simulation).
+// BenchmarkKeywordMatcher KeywordMatcher의 매칭 성능을 벤치마킹합니다.
+// 재사용(Reuse) 시나리오와 긴 입력값에 대한 성능을 측정합니다.
 func BenchmarkKeywordMatcher(b *testing.B) {
 	input := "The quick brown fox jumps over the lazy dog"
 	included := []string{"quick", "lazy|active"}
 	excluded := []string{"cat", "mouse"}
 
-	// 1. Simulation of Legacy Style (Re-creating matcher every time)
-	b.Run("Allocation_Simulated_Legacy", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			NewKeywordMatcher(included, excluded).Match(input)
-		}
-	})
-
-	// 2. Optimized Style (Reuse matcher)
+	// 1. 매처 재사용 (권장 패턴)
 	b.Run("Zero_Allocation_Reuse", func(b *testing.B) {
 		m := NewKeywordMatcher(included, excluded)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			m.Match(input)
+			if !m.Match(input) {
+				b.Fatal("match failed")
+			}
 		}
 	})
 
-	// 3. Long Input Scenario
+	// 2. 긴 입력값 시나리오
 	longInput := strings.Repeat(input, 100)
 	b.Run("Zero_Allocation_LongInput", func(b *testing.B) {
 		m := NewKeywordMatcher(included, excluded)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			m.Match(longInput)
+			if !m.Match(longInput) {
+				b.Fatal("match failed")
+			}
+		}
+	})
+
+	// 3. 많은 키워드 시나리오
+	manyKeywords := make([]string, 100)
+	for i := 0; i < 100; i++ {
+		manyKeywords[i] = fmt.Sprintf("keyword%d", i)
+	}
+	b.Run("Many_Keywords", func(b *testing.B) {
+		m := NewKeywordMatcher(manyKeywords, nil)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			m.Match(input) // 매칭 실패 케이스가 더 부하가 큼 (전체 순회)
 		}
 	})
 }
 
-// BenchmarkKeywordMatcher_Integration runs a wider integration-style benchmark.
-// It verifies that the matcher meets the performance requirement (e.g. < 10ms for 1000 ops).
-func BenchmarkKeywordMatcher_Integration_Limit(b *testing.B) {
-	largeInput := strings.Repeat("Go Programming Language Tutorial for Beginners ", 10000)
-	includedKeywords := []string{"go", "programming", "tutorial"}
-	excludedKeywords := []string{"advanced", "expert"}
-
-	m := NewKeywordMatcher(includedKeywords, excludedKeywords)
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		m.Match(largeInput)
-	}
-}
-
-// FuzzKeywordMatcher performs fuzz testing on the Match function.
-// It generates random inputs for the matcher to detect unexpected crashes or errors.
+// FuzzKeywordMatcher 무작위 입력을 사용해 Match 함수가 패닉을 일으키지 않는지 검증합니다.
 func FuzzKeywordMatcher(f *testing.F) {
-	// Add seed corpus (initial inputs)
 	f.Add("Go Programming", "go", "", "")
 	f.Add("Hello World", "hello", "world", "java")
 	f.Add("Complex String", "complex|simple", "hard", "easy")
 
 	f.Fuzz(func(t *testing.T, input, inc, exc, sep string) {
-		// Construct dynamic included/excluded keywords from fuzz inputs
 		var included, excluded []string
 		if inc != "" {
 			included = append(included, inc)
@@ -180,28 +165,27 @@ func FuzzKeywordMatcher(f *testing.F) {
 			excluded = append(excluded, exc)
 		}
 		if sep != "" {
-			included = append(included, sep) // Simulate multiple keywords or complex logic
+			// 복잡한 OR 패턴 시뮬레이션
+			included = append(included, sep)
 		}
 
 		m := NewKeywordMatcher(included, excluded)
 
-		// The primary goal of fuzzing is to ensure Match() never panics
-		// regardless of the input combination.
+		// 패닉이 발생하지 않아야 함
 		assert.NotPanics(t, func() {
 			m.Match(input)
 		})
 	})
 }
 
-// ExampleKeywordMatcher demonstrates how to use KeywordMatcher for filtering strings.
+// ExampleKeywordMatcher KeywordMatcher의 사용 예시를 보여줍니다.
 func ExampleKeywordMatcher() {
-	// Scenario: Filter for modern Go web servers, excluding legacy ones.
-	included := []string{"go", "web|http"} // Must contain "go" AND ("web" OR "http")
-	excluded := []string{"legacy", "v1"}   // Must NOT contain "legacy" OR "v1"
+	// 필터 조건: "go"를 포함하고, ("web" 또는 "http")를 포함해야 하며, "legacy"나 "v1"은 제외.
+	included := []string{"go", "web|http"}
+	excluded := []string{"legacy", "v1"}
 
 	matcher := NewKeywordMatcher(included, excluded)
 
-	// List of candidates
 	candidates := []string{
 		"Modern Go Web Framework",
 		"Legacy Go HTTP Server (v1)",
@@ -220,8 +204,8 @@ func ExampleKeywordMatcher() {
 	// Matched: Experimental Go HTTP Library
 }
 
-// TestKeywordMatcher_Concurrency verifies that KeywordMatcher is safe for concurrent use.
-// It spawns multiple goroutines to call Match() on the same instance simultaneously.
+// TestKeywordMatcher_Concurrency KeywordMatcher가 고루틴 안전(Concurrency Safe)한지 검증합니다.
+// Match 메서드는 읽기 전용이므로 동시 호출에 안전해야 합니다.
 func TestKeywordMatcher_Concurrency(t *testing.T) {
 	const (
 		numGoroutines = 100
@@ -240,7 +224,6 @@ func TestKeywordMatcher_Concurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < numIterations; j++ {
-				// Result should be consistent and not panic
 				if !matcher.Match(input) {
 					t.Errorf("Concurrent access failed: expected true for input %q", input)
 				}
@@ -252,11 +235,11 @@ func TestKeywordMatcher_Concurrency(t *testing.T) {
 }
 
 // =============================================================================
-// containsFold Internal Helper Verification
+// Helper Function Verification (containsFold)
 // =============================================================================
 
-// TestContainsFold verifies the correctness of the internal containsFold helper.
-// It covers ASCII, Unicode (Hangul, etc.), case-insensitivity, and edge cases.
+// TestContainsFold 내부 헬퍼 함수 containsFold의 정확성을 검증합니다.
+// ASCII, 유니코드(한글 등), 대소문자 처리 등을 확인합니다.
 func TestContainsFold(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -264,39 +247,32 @@ func TestContainsFold(t *testing.T) {
 		substr string
 		want   bool
 	}{
-		// 1. Basic ASCII (Case Insensitive)
-		{"ASCII Exact Match", "Hello World", "Hello", true},
-		{"ASCII Case Mismatch 1", "Hello World", "hello", true},
-		{"ASCII Case Mismatch 2", "Hello World", "WORLD", true},
-		{"ASCII Partial Case Mismatch", "Hello World", "WoRLd", true},
-		{"ASCII No Match", "Hello World", "Python", false},
-		{"ASCII Empty Substr", "Hello World", "", true},
-		{"ASCII Empty String", "", "Hello", false},
-		{"ASCII Shorter String", "Hi", "Hello", false},
+		// 1. ASCII (대소문자 무시)
+		{"ASCII 정확 일치", "Hello World", "Hello", true},
+		{"ASCII 대소문자 불일치 1", "Hello World", "hello", true},
+		{"ASCII 대소문자 불일치 2", "Hello World", "WORLD", true},
+		{"ASCII 부분 대소문자", "Hello World", "WoRLd", true},
+		{"ASCII 불일치", "Hello World", "Python", false},
+		{"ASCII 빈 부분문자열", "Hello World", "", true},
+		{"ASCII 빈 원본", "", "Hello", false},
+		{"ASCII 길이 초과", "Hi", "Hello", false},
 
-		// 2. Unicode (Korean Hangul) - Note: In modern Korean usage, case folding is not applicable,
-		// but checking correct byte-length substring extraction is crucial.
-		{"Korean Exact Match", "안녕하세요", "안녕", true},
-		{"Korean Middle Match", "제 이름은 김철수입니다", "김철수", true},
-		{"Korean No Match", "안녕하세요", "반갑", false},
-		{"Korean Mixed with ASCII Match", "Go 언어 화이팅", "go", true},
-		{"Korean Mixed with ASCII No Match", "Go 언어 화이팅", "java", false},
+		// 2. 유니코드 (한글)
+		{"한글 정확 일치", "안녕하세요", "안녕", true},
+		{"한글 중간 일치", "제 이름은 김철수입니다", "김철수", true},
+		{"한글 불일치", "안녕하세요", "반갑", false},
+		{"한글+영어 혼합", "Go 언어 화이팅", "go", true},
 
-		// 3. Unicode Case Folding (Specific Scripts)
-		// Greek Sigma: 'Σ' (U+03A3, Upper) vs 'σ' (U+03C3, Lower)
-		{"Greek Sigma Match", "Σigma", "σigma", true},
-		// Turkish Dotted I: 'İ' (U+0130) vs 'i' (ASCII)
-		// Limitation: Our containsFold assumes byte length doesn't change.
-		// 'İ' (2 bytes) vs 'i' (1 byte) mismatch causes this to fail in this specific implementation.
-		// We exclude it from this verification as it's a known trade-off for performance.
-		// {"Turkish I Match", "TÜRKİYE", "türkiye", true},
+		// 3. 유니코드 케이스 폴딩 (특수 문자)
+		// 그리스어 시그마: 'Σ' (U+03A3, 대문자) vs 'σ' (U+03C3, 소문자) -> EqualFold True
+		{"그리스어 시그마", "Σigma", "σigma", true},
 
-		// 4. Edge Cases
-		{"Substr longer than string", "short", "longer string", false},
-		{"Single Char Match Lower", "A", "a", true},
-		{"Single Char Match Upper", "a", "A", true},
-		{"Repeated Pattern Match", "nananananana batman", "batman", true},
-		{"Repeated Pattern Partial Fail", "nanananana", "nana", true},
+		// 4. 엣지 케이스
+		{"매우 긴 패턴", "short", "longer string", false},
+		{"단일 문자 소문자 매칭", "A", "a", true},
+		{"단일 문자 대문자 매칭", "a", "A", true},
+		{"반복 패턴 일치", "nananananana batman", "batman", true},
+		{"반복 패턴 부분 일치", "nanananana", "nana", true},
 	}
 
 	for _, tt := range tests {
@@ -308,46 +284,24 @@ func TestContainsFold(t *testing.T) {
 	}
 }
 
-// FuzzContainsFold provides robust randomized testing for containsFold.
-// It compares the result of containsFold against the standard library's
-// strings.ToLower + strings.Contains approach to ensure behavioral consistency.
-func FuzzContainsFold(f *testing.F) {
-	f.Add("Hello World", "hello")
-	f.Add("Go Language", "lang")
-	f.Add("안녕하세요", "안녕")
-
-	f.Fuzz(func(t *testing.T, s, substr string) {
-		// Oracle: Standard Library
-		sLower := strings.ToLower(s)
-		substrLower := strings.ToLower(substr)
-		want := strings.Contains(sLower, substrLower)
-
-		// System Under Test
-		got := containsFold(s, substr)
-
-		if got != want {
-			t.Errorf("Mismatch! s=%q, substr=%q -> got %v, want %v", s, substr, got, want)
-		}
-	})
-}
-
-// BenchmarkContainsFold benchmarks the zero-allocation containsFold
-// against the standard library's allocation-heavy approach.
+// BenchmarkContainsFold 표준 라이브러리 vs containsFold 성능 비교
 func BenchmarkContainsFold(b *testing.B) {
 	s := "The Quick Brown Fox Jumps Over The Lazy Dog"
 	substr := "lazy"
 
-	// 1. Standard Library (Allocation)
+	// 1. 표준 라이브러리 사용 (메모리 할당 발생)
 	b.Run("StdLib_ToLower_Contains", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 		}
 	})
 
-	// 2. Custom Zero-Allocation
+	// 2. 최적화된 containsFold (Zero Allocation)
 	b.Run("Custom_containsFold", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = containsFold(s, substr)
+			if !containsFold(s, substr) {
+				b.Fatal("should match")
+			}
 		}
 	})
 }

@@ -62,7 +62,7 @@ func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain
 	if app.AppKey != appKey {
 		applog.WithComponentAndFields("api.handler", log.Fields{
 			"application_id":   applicationID,
-			"received_app_key": strutil.MaskSensitiveData(appKey),
+			"received_app_key": strutil.Mask(appKey),
 		}).Warn("APP_KEY 불일치")
 
 		return nil, handler.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))

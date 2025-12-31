@@ -235,7 +235,7 @@ func (t *task) fetchProductInfo(id int) (*product, error) {
 		if ps.Length() != 1 {
 			return nil, apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 이름 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
 		}
-		product.Name = strutil.NormalizeSpaces(ps.Text())
+		product.Name = strutil.NormalizeSpace(ps.Text())
 
 		// 상품 가격 정보를 추출한다.
 		if err := t.extractPriceDetails(sel, product, productPageURL); err != nil {
@@ -380,8 +380,7 @@ func (t *task) analyzeAndReport(currentSnapshot *watchProductPriceSnapshot, prev
 	// 알림을 보내는 기준과 데이터를 저장하는 기준을 다르게 적용하여 효율성을 높입니다.
 	// - 알림: 사용자가 직접 확인하고 싶어 할 때(RunByUser)는 변경 사항이 없더라도 현재 상태를 리포트하여 안심시켜 줍니다.
 	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격이나 상태가 변했을 때만 저장하여 시스템 성능을 아낍니다.
-	hasChanges := len(diffs) > 0 || strutil.HasAnyContent(duplicateRecordsMessage, unavailableProductsMessage)
-
+	hasChanges := len(diffs) > 0 || strutil.AnyContent(duplicateRecordsMessage, unavailableProductsMessage)
 	return message, hasChanges
 }
 
@@ -618,7 +617,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 	// [메시지 조합 여부 판단 (Change Detection)]
 	// 개별 메시지들(가격 변동, 중복, 식별 불가) 중에서 유효한 내용이 단 하나라도 존재하는지 검사합니다.
 	// 이는 알림의 성격을 단순 '현황 보고'에서 유의미한 '이벤트 알림'으로 전환하는 기준이 됩니다.
-	hasChanges := strutil.HasAnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
+	hasChanges := strutil.AnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
 	if hasChanges {
 		var sb strings.Builder
 
