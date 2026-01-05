@@ -18,15 +18,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// 애플리케이션 기본 정보
 const (
+	// AppName 애플리케이션의 전역 고유 식별자입니다.
 	AppName string = "notify-server"
 
+	// AppConfigFileName 애플리케이션 초기화 시 참조하는 기본 설정 파일명입니다.
+	// 실행 인자를 통해 명시적인 경로가 제공되지 않을 경우, 시스템은 이 파일을 탐색하여 구성을 로드합니다.
 	AppConfigFileName = AppName + ".json"
-)
 
-// HTTP 재시도 기본값
-const (
+	// ------------------------------------------------------------------------------------------------
+	// HTTP 재시도 기본값
+	// ------------------------------------------------------------------------------------------------
+
 	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
 	DefaultMaxRetries = 3
 
@@ -34,8 +37,7 @@ const (
 	DefaultRetryDelay = "2s"
 )
 
-// AppConfig 애플리케이션 전체 설정 구조체
-// JSON to Go struct 변환 도구: mholt.github.io/json-to-go
+// AppConfig 애플리케이션의 모든 설정을 관장하는 최상위 루트 구조체
 type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
@@ -44,9 +46,19 @@ type AppConfig struct {
 	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
-// Validate AppConfig의 유효성을 검사합니다.
+// SetDefaults 초기화되지 않은 설정 필드에 대해 애플리케이션 운영에 필요한 기본값을 적용합니다.
+func (c *AppConfig) SetDefaults() {
+	if c.HTTPRetry.MaxRetries == 0 {
+		c.HTTPRetry.MaxRetries = DefaultMaxRetries
+	}
+	if c.HTTPRetry.RetryDelay == "" {
+		c.HTTPRetry.RetryDelay = DefaultRetryDelay
+	}
+}
+
+// Validate 설정 파일 로드 직후, 구성 요소 간의 정합성과 필수 값의 유효성을 검증하는 진입점입니다.
 func (c *AppConfig) Validate() error {
-	// HTTP Retry 설정 검증
+	// HTTP 재시도 유효성 검사
 	if err := c.HTTPRetry.Validate(); err != nil {
 		return err
 	}
@@ -70,14 +82,10 @@ func (c *AppConfig) Validate() error {
 	return nil
 }
 
-// VerifyRecommendations 애플리케이션 전반의 운영 적합성 및 안정성을 점검합니다.
-func (c *AppConfig) VerifyRecommendations() {
-	// NotifyAPI 권고 사항 검토
-	c.NotifyAPI.VerifyRecommendations()
-}
-
-// validateTasks Task 설정의 유효성을 검사합니다.
+// validateTasks 작업(Task) 목록에 대한 무결성을 검증합니다.
+// 각 작업의 ID 중복을 방지하고, 연결된 알림 채널(Notifier)이 실제로 존재하는지 확인하여 런타임 오류를 예방합니다.
 func (c *AppConfig) validateTasks(notifierIDs []string) error {
+	// @@@@@
 	// Tasks 중복 ID 검사 (Validator)
 	if err := validate.Var(c.Tasks, "unique=ID"); err != nil {
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
@@ -120,7 +128,14 @@ func (c *AppConfig) validateTasks(notifierIDs []string) error {
 	return nil
 }
 
-// HTTPRetryConfig HTTP 재시도 설정 구조체
+// VerifyRecommendations 서비스 운영의 안정성과 보안을 위해 권장되는 설정 준수 여부를 진단합니다.
+// 강제적인 에러를 발생시키지는 않으나, 잠재적 위험 요소(예: Well-known Port 사용)에 대해 경고 로그를 남깁니다.
+func (c *AppConfig) VerifyRecommendations() {
+	c.NotifyAPI.VerifyRecommendations()
+}
+
+// @@@@@
+// HTTPRetryConfig는 안정적인 통신을 위한 HTTP 재시도 정책(최대 횟수 및 지연 시간)을 정의합니다.
 type HTTPRetryConfig struct {
 	MaxRetries int    `json:"max_retries"`
 	RetryDelay string `json:"retry_delay"`
@@ -396,14 +411,4 @@ func InitAppConfigWithFile(filename string) (*AppConfig, error) {
 	}
 
 	return &appConfig, nil
-}
-
-func (c *AppConfig) SetDefaults() {
-	// HTTP Retry 설정 기본값 적용
-	if c.HTTPRetry.MaxRetries == 0 {
-		c.HTTPRetry.MaxRetries = DefaultMaxRetries
-	}
-	if c.HTTPRetry.RetryDelay == "" {
-		c.HTTPRetry.RetryDelay = DefaultRetryDelay
-	}
 }
