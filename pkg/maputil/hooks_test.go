@@ -152,10 +152,10 @@ func TestHooks_StringToDuration(t *testing.T) {
 			want:   "invalid", // Hook returns nil err on parse fail, passing data through
 		},
 		{
-			name:   "Alias Type (Current Strict Behavior)",
+			name:   "Alias Type (Supported)",
 			input:  "10s",
 			target: MyDuration(0),
-			want:   "10s", // Hook strictly checks type, ignores Alias -> Pass through
+			want:   MyDuration(10 * time.Second),
 		},
 		{
 			name:   "Ignore Non-String",
@@ -206,6 +206,12 @@ func TestHooks_StringToBytes(t *testing.T) {
 		{
 			name:   "Base64 Prefix Valid",
 			input:  "base64:aGVsbG8=", // "hello"
+			target: []byte{},
+			want:   []byte("hello"),
+		},
+		{
+			name:   "Base64 Prefix with Whitespace",
+			input:  "  base64:aGVsbG8=  ",
 			target: []byte{},
 			want:   []byte("hello"),
 		},

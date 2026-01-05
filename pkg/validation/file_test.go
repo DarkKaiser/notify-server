@@ -155,6 +155,11 @@ func TestPermissions_UnixOnly(t *testing.T) {
 		t.Skip("Skipping permission tests on Windows")
 	}
 
+	// root 사용자는 권한 무시 가능하므로 테스트 스킵
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission tests when running as root (UID 0)")
+	}
+
 	t.Parallel()
 	tmpDir := t.TempDir()
 
