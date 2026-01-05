@@ -20,30 +20,40 @@ func TestHooks_StringToSlice(t *testing.T) {
 		name      string
 		trimSpace bool
 		input     any
-		target    any // slice pointer
-		want      any // slice value
+		target    any // Slice pointer expected by mapstructure
+		want      any // Expected result in the slice
 		wantErr   bool
 	}{
+		// ---------------------------------------------------------------------
+		// Happy Paths
+		// ---------------------------------------------------------------------
 		{
-			name:      "Basic CSV Splitting",
+			name:      "Standard CSV",
 			trimSpace: true,
-			input:     "a,b,c",
+			input:     "apple,banana,cherry",
 			target:    &[]string{},
-			want:      []string{"a", "b", "c"},
+			want:      []string{"apple", "banana", "cherry"},
 		},
 		{
-			name:      "Whitespace Trimming Enabled",
+			name:      "With Whitespace - Trimmed",
 			trimSpace: true,
-			input:     " a , b , c ",
+			input:     "  apple ,  banana  , cherry  ",
 			target:    &[]string{},
-			want:      []string{"a", "b", "c"},
+			want:      []string{"apple", "banana", "cherry"},
 		},
 		{
-			name:      "Whitespace Trimming Disabled",
+			name:      "With Whitespace - Untrimmed",
 			trimSpace: false,
-			input:     " a , b , c ",
+			input:     "  apple ,  banana  , cherry  ",
 			target:    &[]string{},
-			want:      []string{" a ", " b ", " c "},
+			want:      []string{"  apple ", "  banana  ", " cherry  "},
+		},
+		{
+			name:      "Single Value",
+			trimSpace: true,
+			input:     "apple",
+			target:    &[]string{},
+			want:      []string{"apple"},
 		},
 		{
 			name:      "Empty String",
@@ -53,66 +63,76 @@ func TestHooks_StringToSlice(t *testing.T) {
 			want:      []string{},
 		},
 		{
-			name:      "Integer CSV (Weakly Typed)",
+			name:      "Numeric CSV (Int Slice)",
 			trimSpace: true,
-			input:     "1, 2, 3",
+			input:     "1, 20, 300",
 			target:    &[]int{},
-			want:      []int{1, 2, 3}, // mapstructure handles string->int conversion after split
+			// Hook splits to []string, mapstructure converts to []int later
+			want: []string{"1", "20", "300"},
 		},
+
+		// ---------------------------------------------------------------------
+		// Ignored Cases (Pass-through)
+		// ---------------------------------------------------------------------
 		{
-			name:      "Ignore Non-String Input",
+			name:      "Non-String Input",
 			trimSpace: true,
-			input:     123,
+			input:     12345,
 			target:    &[]string{},
-			want:      123, // Hook should pass through non-string input
+			want:      12345,
 		},
 		{
-			name:      "Preserve Byte Slice (Security)",
+			name:      "Byte Slice Target (Security)",
 			trimSpace: true,
-			input:     "data",
+			input:     "some_data",
 			target:    &[]byte{},
-			want:      "data", // Hook should NOT split []byte target, pass through
+			want:      "some_data", // Should not split []byte
+		},
+		{
+			name:      "Byte Array Target (Security)",
+			trimSpace: true,
+			input:     "1234",
+			target:    &[4]byte{},
+			want:      "1234",
+		},
+		{
+			name:      "Non-Slice Target",
+			trimSpace: true,
+			input:     "a,b",
+			target:    &struct{}{}, // Not a slice
+			want:      "a,b",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// Manually invoke hook for unit testing logic
+			t.Parallel()
+
+			// Create the hook
 			hook := stringToSliceHookFunc(tt.trimSpace)
 			hookFunc := hook.(func(reflect.Type, reflect.Type, any) (any, error))
 
-			// Determine target type
+			// Prepare types
+			inputType := reflect.TypeOf(tt.input)
+
+			// Handle pointer to slice vs slice type
 			targetType := reflect.TypeOf(tt.target)
 			if targetType.Kind() == reflect.Ptr {
 				targetType = targetType.Elem()
 			}
 
-			got, err := hookFunc(reflect.TypeOf(tt.input), targetType, tt.input)
+			// Execute Hook
+			got, err := hookFunc(inputType, targetType, tt.input)
 
 			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				if tt.name == "Ignore Non-String Input" || tt.name == "Preserve Byte Slice (Security)" {
-					// Input passed through unmodified
-					assert.Equal(t, tt.input, got)
-				} else {
-					if slice, ok := got.([]string); ok {
-						// For string comparison
-						if wantStringSlice, ok2 := tt.want.([]string); ok2 {
-							assert.Equal(t, wantStringSlice, slice)
-							return
-						}
-						// For int test, we expect []string from hook, then mapstructure converts.
-						if tt.name == "Integer CSV (Weakly Typed)" {
-							assert.Equal(t, []string{"1", "2", "3"}, slice)
-							return
-						}
-					}
-					// Fallback
-					assert.Equal(t, tt.want, got)
-				}
+				return
 			}
+			require.NoError(t, err)
+
+			// Assertions
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -124,61 +144,72 @@ func TestHooks_StringToSlice(t *testing.T) {
 func TestHooks_StringToDuration(t *testing.T) {
 	t.Parallel()
 
-	type MyDuration time.Duration
+	type CustomDuration time.Duration
 
 	tests := []struct {
 		name    string
 		input   any
-		target  any // target TYPE check
-		want    any
+		target  any // instance of target type
+		want    any // expected return
 		wantErr bool
 	}{
 		{
-			name:   "Valid Duration",
+			name:   "Standard Duration",
 			input:  "10s",
 			target: time.Duration(0),
 			want:   10 * time.Second,
 		},
 		{
-			name:   "Duration with Whitespace",
-			input:  " 5m ",
+			name:   "Duration with Whitespace - Trimmed",
+			input:  "  5m  ",
 			target: time.Duration(0),
 			want:   5 * time.Minute,
 		},
 		{
-			name:   "Invalid Format (Pass Through)",
-			input:  "invalid",
+			name:   "Ignored: Invalid Format (Pass-through)",
+			input:  "invalid-time",
 			target: time.Duration(0),
-			want:   "invalid", // Hook returns nil err on parse fail, passing data through
+			want:   "invalid-time", // Hook returns nil error, passes data along
 		},
 		{
-			name:   "Alias Type (Supported)",
+			name:   "Ignored: Custom Alias Type",
 			input:  "10s",
-			target: MyDuration(0),
-			want:   MyDuration(10 * time.Second),
+			target: CustomDuration(0), // strict check should ignore this
+			want:   "10s",
 		},
 		{
-			name:   "Ignore Non-String",
+			name:   "Ignored: Non-String Input",
 			input:  123,
 			target: time.Duration(0),
 			want:   123,
 		},
+		{
+			name:   "Ignored: Non-Duration Target (int64)",
+			input:  "10s",
+			target: int64(0),
+			want:   "10s",
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			hook := stringToDurationHookFunc()
 			hookFunc := hook.(func(reflect.Type, reflect.Type, any) (any, error))
 
+			inputType := reflect.TypeOf(tt.input)
 			targetType := reflect.TypeOf(tt.target)
-			got, err := hookFunc(reflect.TypeOf(tt.input), targetType, tt.input)
+
+			got, err := hookFunc(inputType, targetType, tt.input)
 
 			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, got)
+				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -191,71 +222,86 @@ func TestHooks_StringToBytes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		input   any
-		target  any
-		want    any
-		wantErr bool
+		name     string
+		input    any
+		target   any
+		want     any
+		wantErr  bool
+		errMatch string
 	}{
 		{
-			name:   "Plain String (UTF-8)",
-			input:  "hello",
+			name:   "Standard String",
+			input:  "hello world",
 			target: []byte{},
-			want:   []byte("hello"),
+			want:   []byte("hello world"),
 		},
 		{
-			name:   "Base64 Prefix Valid",
-			input:  "base64:aGVsbG8=", // "hello"
+			name:   "No Prefix (Ambiguous) - Treat as String",
+			input:  "SGVsbG8=", // Looks like base64 but missing prefix
 			target: []byte{},
-			want:   []byte("hello"),
+			want:   []byte("SGVsbG8="),
 		},
 		{
-			name:   "Base64 Prefix with Whitespace",
-			input:  "  base64:aGVsbG8=  ",
+			name:   "Base64 Prefix - Standard",
+			input:  "base64:SGVsbG8=", // "Hello"
 			target: []byte{},
-			want:   []byte("hello"),
+			want:   []byte("Hello"),
 		},
 		{
-			name:    "Base64 Prefix Invalid",
-			input:   "base64:INVALID!!!",
-			target:  []byte{},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name:   "No Prefix (Ambiguous) -> Treat as Plain",
-			input:  "aGVsbG8=", // Looks like base64 but no prefix
+			name:   "Base64 Prefix - With Whitespace",
+			input:  "  base64:SGVsbG8=  ",
 			target: []byte{},
-			want:   []byte("aGVsbG8="),
+			want:   []byte("Hello"),
 		},
 		{
-			name:   "Target is Array",
+			name:     "Base64 Prefix - Invalid Content",
+			input:    "base64:!!!INVALID!!!",
+			target:   []byte{},
+			wantErr:  true,
+			errMatch: "base64",
+		},
+		{
+			name:   "Target Array [N]byte",
 			input:  "1234",
 			target: [4]byte{},
-			want:   []byte("1234"), // Hook returns slice, mapstructure copies to array
+			want:   []byte("1234"), // Hook returns slice, structure adapts
 		},
 		{
-			name:   "Ignore Non-Byte Slice Target",
-			input:  "hello",
+			name:   "Ignored: Non-String Input",
+			input:  123,
+			target: []byte{},
+			want:   123,
+		},
+		{
+			name:   "Ignored: Non-ByteSlice Target",
+			input:  "base64:SGVsbG8=",
 			target: []string{},
-			want:   "hello", // Pass through
+			want:   "base64:SGVsbG8=",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			hook := stringToBytesHookFunc()
 			hookFunc := hook.(func(reflect.Type, reflect.Type, any) (any, error))
 
+			inputType := reflect.TypeOf(tt.input)
 			targetType := reflect.TypeOf(tt.target)
-			got, err := hookFunc(reflect.TypeOf(tt.input), targetType, tt.input)
+
+			got, err := hookFunc(inputType, targetType, tt.input)
 
 			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, got)
+				if tt.errMatch != "" {
+					assert.Contains(t, err.Error(), tt.errMatch)
+				}
+				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -298,5 +344,61 @@ func TestHooks_Integration(t *testing.T) {
 		assert.Contains(t, err.Error(), "base64", "Error message should mention base64 failure")
 
 		// Mapstructure errors are often wrapped, but let's just check containing text as it's safer.
+	})
+}
+
+// =============================================================================
+// Regression Tests
+// =============================================================================
+
+func TestFix_DurationHookScope(t *testing.T) {
+	t.Parallel()
+
+	// 1. Regression: Int64 field should NOT be hijacked by Duration hook
+	t.Run("Regression: Int64 field safety", func(t *testing.T) {
+		type Data struct {
+			Count int64 `json:"count"`
+		}
+		// Input is "10s", which is invalid for a plain int64
+		input := map[string]any{
+			"count": "10s",
+		}
+
+		var target Data
+		err := DecodeTo(input, &target)
+
+		require.Error(t, err, "Should fail to decode '10s' into int64 without the duration hook")
+		// mapstructure error: * cannot parse 'count' as int: strconv.ParseInt: parsing "10s": invalid syntax
+		assert.Contains(t, err.Error(), "parsing \"10s\": invalid syntax", "Error should indicate parsing failure")
+	})
+
+	// 2. Verification: time.Duration field SHOULD be handled by Duration hook
+	t.Run("Verification: time.Duration field support", func(t *testing.T) {
+		type Config struct {
+			Timeout time.Duration `json:"timeout"`
+		}
+		input := map[string]any{
+			"timeout": "10s",
+		}
+
+		var target Config
+		err := DecodeTo(input, &target)
+		require.NoError(t, err)
+		assert.Equal(t, 10*time.Second, target.Timeout)
+	})
+
+	// 3. Verification: duration alias mismatch (Strict check)
+	t.Run("Verification: duration alias strict check", func(t *testing.T) {
+		type MyDuration time.Duration
+		type Wrapper struct {
+			D MyDuration `json:"d"`
+		}
+		input := map[string]any{"d": "10s"}
+
+		var target Wrapper
+		err := DecodeTo(input, &target)
+
+		// Strict check means alias is not handled by the hook
+		require.Error(t, err)
 	})
 }

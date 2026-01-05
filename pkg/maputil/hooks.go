@@ -102,6 +102,11 @@ func stringToDurationHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
+		// 모든 int64를 시간으로 변환하지 않도록, 이름에 기반한 불확실한 추론을 제거하고 엄격하게 타입 검사
+		if t != reflect.TypeOf(time.Duration(0)) {
+			return data, nil
+		}
+
 		// 안전하게 문자열 값 추출
 		s := reflect.ValueOf(data).String()
 		s = strings.TrimSpace(s)
