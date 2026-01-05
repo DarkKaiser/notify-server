@@ -277,14 +277,14 @@ func TestInitAppConfig_Failure(t *testing.T) {
 			setupFile: func(t *testing.T) string {
 				return filepath.Join(t.TempDir(), "non-existent.json")
 			},
-			errorContains: "파일을 열 수 없습니다",
+			errorContains: "파일을 찾을 수 없습니다",
 		},
 		{
 			name: "Invalid JSON",
 			setupFile: func(t *testing.T) string {
 				return createTempConfigFile(t, "{ invalid json")
 			},
-			errorContains: "JSON 파싱이 실패하였습니다",
+			errorContains: "파일 로드 중 오류가 발생했습니다",
 		},
 	}
 

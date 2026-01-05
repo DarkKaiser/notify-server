@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -12,6 +11,10 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/cronx"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/go-playground/validator/v10"
+	"github.com/knadh/koanf/parsers/json"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -352,23 +355,41 @@ func InitAppConfig() (*AppConfig, error) {
 // InitAppConfigWithFile 지정된 파일에서 설정을 로드합니다.
 // 이 함수는 테스트에서 사용할 수 있도록 파일명을 인자로 받습니다.
 func InitAppConfigWithFile(filename string) (*AppConfig, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.System, fmt.Sprintf("%s 파일을 열 수 없습니다", filename))
+	k := koanf.New(".")
+
+	// 1. JSON 설정 파일 로드
+	if err := k.Load(file.Provider(filename), json.Parser()); err != nil {
+		// 파일이 없거나 파싱 에러인 경우 시스템 에러 또는 InvalidInput으로 처리
+		// 기존 로직과 유사하게 파일 열기 실패와 파싱 실패를 구분하기는 어렵지만,
+		// Koanf 에러 메시지를 포함하여 전달
+		if os.IsNotExist(err) {
+			return nil, apperrors.Wrap(err, apperrors.System, fmt.Sprintf("%s 파일을 찾을 수 없습니다", filename))
+		}
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 파일 로드 중 오류가 발생했습니다", filename))
 	}
-	defer file.Close()
+
+	// 2. 환경 변수 로드 (오버라이드)
+	// 접두사: NOTIFY_
+	// 변환: NOTIFY_HTTP_RETRY_MAX_RETRIES -> http_retry.max_retries
+	err := k.Load(env.Provider("NOTIFY_", ".", func(s string) string {
+		return strings.Replace(strings.ToLower(strings.TrimPrefix(s, "NOTIFY_")), "_", ".", -1)
+	}), nil)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.System, "환경 변수 로드 중 오류가 발생했습니다")
+	}
 
 	var appConfig AppConfig
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&appConfig); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 파일의 JSON 파싱이 실패하였습니다", filename))
+	// 3. 구조체로 언마샬링
+	// 기존 json 태그를 그대로 사용하기 위해 Tag 설정을 "json"으로 지정
+	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: "json"}); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.System, "설정 언마샬링에 실패했습니다")
 	}
 
 	// 기본값 설정
 	appConfig.SetDefaults()
 
 	//
-	// 파일 내용에 대해 유효성 검사를 한다.
+	// 설정 내용에 대해 유효성 검사를 한다.
 	//
 	if err := appConfig.Validate(); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 파일의 내용이 유효하지 않습니다", filename))

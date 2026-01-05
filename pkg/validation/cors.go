@@ -22,7 +22,11 @@ import (
 //   - 쿼리 스트링 (Query String)
 //   - URL 프래그먼트/해시 (Fragment)
 func ValidateCORSOrigin(origin string) error {
-	trimmedOrigin := strings.TrimSpace(origin)
+	if strings.TrimSpace(origin) != origin {
+		return fmt.Errorf("CORS Origin은 앞뒤 공백을 포함할 수 없습니다 (input=%q)", origin)
+	}
+
+	trimmedOrigin := origin
 	if trimmedOrigin == "*" {
 		return nil
 	}
