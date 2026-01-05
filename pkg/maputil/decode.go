@@ -70,7 +70,7 @@ func DecodeTo[T any](input any, output *T, opts ...Option) error {
 	}
 
 	// 1. 기본 설정값으로 초기화합니다.
-	cfg := &decodingConfig{
+	config := &decodingConfig{
 		// 태그 설정
 		tagName: "json",
 
@@ -85,13 +85,13 @@ func DecodeTo[T any](input any, output *T, opts ...Option) error {
 	// 2. 사용자 정의 옵션 적용
 	for _, opt := range opts {
 		if opt != nil {
-			opt(cfg)
+			opt(config)
 		}
 	}
 
 	// 3. ZeroFields 처리 (필요 시 구조체 초기화)
 	// output 포인터가 가리키는 값을 Zero Value로 덮어씌워 초기화합니다.
-	if cfg.zeroFields {
+	if config.zeroFields {
 		var zero T
 		*output = zero
 	}
@@ -102,17 +102,17 @@ func DecodeTo[T any](input any, output *T, opts ...Option) error {
 		Result: output,
 
 		// 태그 설정
-		TagName: cfg.tagName,
+		TagName: config.tagName,
 
 		// 디코딩 동작 방식 제어
-		WeaklyTypedInput: cfg.weaklyTypedInput,
-		ErrorUnused:      cfg.errorUnused,
-		Squash:           cfg.squash,
+		WeaklyTypedInput: config.weaklyTypedInput,
+		ErrorUnused:      config.errorUnused,
+		Squash:           config.squash,
 
 		// 확장 기능
-		Metadata:   cfg.metadata,
-		MatchName:  cfg.matchName,
-		DecodeHook: cfg.buildDecodeHook(), // 훅 체인 조립
+		Metadata:   config.metadata,
+		MatchName:  config.matchName,
+		DecodeHook: config.buildDecodeHook(), // 훅 체인 조립
 	}
 
 	decoder, err := mapstructure.NewDecoder(msConfig)

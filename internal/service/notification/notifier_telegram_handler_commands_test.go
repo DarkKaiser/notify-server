@@ -73,7 +73,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 				wg.Add(1) // Expect reply
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					return ok && strings.Contains(msg.Text, "/help") && strings.Contains(msg.Text, "/task1_run")
+					return ok && strings.Contains(msg.Text, "입력 가능한 명령어")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil)
@@ -81,7 +81,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		},
 		{
 			name:         "Task Run Command",
-			commandText:  "/task1_run",
+			commandText:  "/task_1_run",
 			expectAction: true,
 			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1) // Expect run call
