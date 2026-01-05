@@ -28,6 +28,9 @@ func stringToBytesHookFunc() mapstructure.DecodeHookFunc {
 
 		s := reflect.ValueOf(data).String()
 
+		// 앞뒤 공백을 제거하여 "  base64:..." 같은 케이스도 처리
+		s = strings.TrimSpace(s)
+
 		// 의도치 않은 바이너리 디코딩("user" -> broken bytes)을 방지하기 위해
 		// 반드시 접두사가 있어야만 Base64로 처리합니다.
 		const prefix = "base64:"
@@ -99,11 +102,6 @@ func stringToDurationHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		// 모든 int64를 시간으로 변환하지 않도록, 이름에 기반한 불확실한 추론을 제거하고 엄격하게 타입 검사
-		if t != reflect.TypeOf(time.Duration(0)) {
-			return data, nil
-		}
-
 		// 안전하게 문자열 값 추출
 		s := reflect.ValueOf(data).String()
 		s = strings.TrimSpace(s)
@@ -115,6 +113,7 @@ func stringToDurationHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		return d, nil
+		// 성공적으로 Duration으로 파싱되었다면, 타겟 타입(t)으로 변환하여 반환
+		return reflect.ValueOf(d).Convert(t).Interface(), nil
 	}
 }
