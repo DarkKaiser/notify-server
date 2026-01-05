@@ -170,7 +170,7 @@ func (c *decodingConfig) buildDecodeHook() mapstructure.DecodeHookFunc {
 	hooks = append(hooks,
 		mapstructure.TextUnmarshallerHookFunc(), // unmarshal interface 지원
 		stringToDurationHookFunc(),              // "10s" -> time.Duration (strict type check, does not support aliases)
-		stringToBytesHookFunc(),                 // Base64 string -> []byte
+		stringToBytesHookFunc(c.trimSpace),      // Base64 string -> []byte
 		stringToSliceHookFunc(c.trimSpace),      // "a,b" -> []string (Configurable Trim)
 	)
 

@@ -222,13 +222,21 @@ func TestHooks_StringToBytes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		input    any
-		target   any
-		want     any
-		wantErr  bool
-		errMatch string
+		name      string
+		input     any
+		target    any
+		want      any
+		wantErr   bool
+		errMatch  string
+		trimSpace bool
 	}{
+		{
+			name:      "With Whitespace - Untrimmed",
+			input:     "  val  ",
+			target:    []byte{},
+			want:      []byte("  val  "),
+			trimSpace: false,
+		},
 		{
 			name:   "Standard String",
 			input:  "hello world",
@@ -285,7 +293,7 @@ func TestHooks_StringToBytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			hook := stringToBytesHookFunc()
+			hook := stringToBytesHookFunc(tt.trimSpace)
 			hookFunc := hook.(func(reflect.Type, reflect.Type, any) (any, error))
 
 			inputType := reflect.TypeOf(tt.input)
@@ -344,6 +352,28 @@ func TestHooks_Integration(t *testing.T) {
 		assert.Contains(t, err.Error(), "base64", "Error message should mention base64 failure")
 
 		// Mapstructure errors are often wrapped, but let's just check containing text as it's safer.
+	})
+
+	t.Run("Byte Slice TrimSpace Support", func(t *testing.T) {
+		// Verifies that WithTrimSpace(false) is correctly propagated to []byte decoding
+		input := map[string]any{
+			"bytes": "  val  ",
+		}
+		type Target struct {
+			Bytes []byte `json:"bytes"`
+		}
+
+		// Case 1: Default (TrimSpace = true)
+		var got1 Target
+		err1 := DecodeTo(input, &got1)
+		require.NoError(t, err1)
+		assert.Equal(t, []byte("val"), got1.Bytes, "Default should trim spaces")
+
+		// Case 2: Explicit TrimSpace = false
+		var got2 Target
+		err2 := DecodeTo(input, &got2, WithTrimSpace(false))
+		require.NoError(t, err2)
+		assert.Equal(t, []byte("  val  "), got2.Bytes, "WithTrimSpace(false) should preserve spaces")
 	})
 }
 

@@ -13,7 +13,7 @@ import (
 
 // stringToBytesHookFunc 문자열을 []byte로 변환하는 훅입니다.
 // "base64:" 접두사가 있는 경우에만 Base64로 디코딩하며, 그 외에는 원본 문자열의 바이트를 반환합니다.
-func stringToBytesHookFunc() mapstructure.DecodeHookFunc {
+func stringToBytesHookFunc(trimSpace bool) mapstructure.DecodeHookFunc {
 	return func(f reflect.Type, t reflect.Type, data any) (any, error) {
 		if f.Kind() != reflect.String {
 			return data, nil
@@ -29,19 +29,27 @@ func stringToBytesHookFunc() mapstructure.DecodeHookFunc {
 		s := reflect.ValueOf(data).String()
 
 		// 앞뒤 공백을 제거하여 "  base64:..." 같은 케이스도 처리
-		s = strings.TrimSpace(s)
+		// 단, trimSpace 옵션이 false라면 원본 데이터를 보존해야 함.
+		// Base64 접두사 확인을 위해서는 Trim이 필요할 수 있으나,
+		// 일반 바이트 변환("  val  ") 시에는 trimSpace 설정을 따라야 함.
+		trimmed := strings.TrimSpace(s)
 
 		// 의도치 않은 바이너리 디코딩("user" -> broken bytes)을 방지하기 위해
 		// 반드시 접두사가 있어야만 Base64로 처리합니다.
 		const prefix = "base64:"
-		if strings.HasPrefix(s, prefix) {
-			s = strings.TrimPrefix(s, prefix)
+		if strings.HasPrefix(trimmed, prefix) {
+			s = strings.TrimPrefix(trimmed, prefix)
 			if decoded, err := base64.StdEncoding.DecodeString(s); err == nil {
 				return decoded, nil
 			}
 			// 사용자가 "base64:" 접두사를 통해 명시적으로 변환을 요청했으므로,
 			// 디코딩에 실패할 경우 이를 무시하지 않고 에러를 반환하여 잘못된 입력임을 알립니다.
 			return nil, fmt.Errorf("base64 접두사가 포함된 잘못된 문자열입니다: %w", errors.New("decoding failed"))
+		}
+
+		// 공백 제거 옵션이 켜져있을 때만 TrimSpace 수행
+		if trimSpace {
+			s = trimmed
 		}
 
 		return []byte(s), nil
