@@ -10,9 +10,9 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/pkg/validation"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
+	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
 const (
@@ -45,7 +45,7 @@ func (s *taskSettings) validate() error {
 	}
 	s.AppPath = absPath
 
-	if err := validation.ValidateFileExists(s.AppPath, false); err != nil {
+	if err := validation.ValidateDir(s.AppPath); err != nil {
 		return apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다")
 	}
 
@@ -93,7 +93,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 			// JAR 파일 존재 여부 검증
 			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
 			jarPath := filepath.Join(appPath, jarFileName)
-			if err := validation.ValidateFileExists(jarPath, false); err != nil {
+			if err := validation.ValidateFile(jarPath); err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName))
 			}
 

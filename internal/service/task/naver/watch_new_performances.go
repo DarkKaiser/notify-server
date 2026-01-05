@@ -157,12 +157,12 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 Matcher 형태로 변환합니다.
 	matchers := &keywordMatchers{
 		TitleMatcher: strutil.NewKeywordMatcher(
-			strutil.SplitAndTrim(commandSettings.Filters.Title.IncludedKeywords, ","),
-			strutil.SplitAndTrim(commandSettings.Filters.Title.ExcludedKeywords, ","),
+			strutil.SplitClean(commandSettings.Filters.Title.IncludedKeywords, ","),
+			strutil.SplitClean(commandSettings.Filters.Title.ExcludedKeywords, ","),
 		),
 		PlaceMatcher: strutil.NewKeywordMatcher(
-			strutil.SplitAndTrim(commandSettings.Filters.Place.IncludedKeywords, ","),
-			strutil.SplitAndTrim(commandSettings.Filters.Place.ExcludedKeywords, ","),
+			strutil.SplitClean(commandSettings.Filters.Place.IncludedKeywords, ","),
+			strutil.SplitClean(commandSettings.Filters.Place.ExcludedKeywords, ","),
 		),
 	}
 

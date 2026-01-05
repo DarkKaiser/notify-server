@@ -49,11 +49,11 @@ func parseAnalysisResult(analysisResultData string) (string, error) {
 	sb.WriteString(reAnalysisResult.FindString(analysisResultData))
 	sb.WriteString("\r\n\r\n")
 
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum1.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum2.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum3.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum4.FindString(analysisResultData)) + "\r\n")
-	sb.WriteString("• " + strutil.NormalizeSpaces(reLottoNum5.FindString(analysisResultData)))
+	sb.WriteString("• " + strutil.NormalizeSpace(reLottoNum1.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpace(reLottoNum2.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpace(reLottoNum3.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpace(reLottoNum4.FindString(analysisResultData)) + "\r\n")
+	sb.WriteString("• " + strutil.NormalizeSpace(reLottoNum5.FindString(analysisResultData)))
 
 	return sb.String(), nil
 }

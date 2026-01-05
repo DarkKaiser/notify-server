@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/pkg/cronx"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
@@ -29,7 +30,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, submitter Submitter, noti
 
 	// Cron 인스턴스 초기화: 초 단위 스케줄링 지원 및 로거, 미들웨어 설정
 	s.cron = cron.New(
-		cron.WithSeconds(),
+		cron.WithParser(cronx.StandardParser()),
 		cron.WithLogger(cron.VerbosePrintfLogger(log.StandardLogger())), // 기본 로거 추가
 		cron.WithChain(
 			cron.Recover(cron.VerbosePrintfLogger(log.StandardLogger())),            // Panic 복구

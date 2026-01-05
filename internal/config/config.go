@@ -6,9 +6,13 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/pkg/validation"
+	"github.com/darkkaiser/notify-server/pkg/cronx"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/go-playground/validator/v10"
+	log "github.com/sirupsen/logrus"
 )
 
 // 애플리케이션 기본 정보
@@ -33,7 +37,7 @@ type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
 	Notifiers NotifierConfig  `json:"notifiers"`
-	Tasks     []TaskConfig    `json:"tasks"`
+	Tasks     []TaskConfig    `json:"tasks" validate:"unique=ID"`
 	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
@@ -63,29 +67,48 @@ func (c *AppConfig) Validate() error {
 	return nil
 }
 
+// VerifyRecommendations 애플리케이션 전반의 운영 적합성 및 안정성을 점검합니다.
+func (c *AppConfig) VerifyRecommendations() {
+	// NotifyAPI 권고 사항 검토
+	c.NotifyAPI.VerifyRecommendations()
+}
+
 // validateTasks Task 설정의 유효성을 검사합니다.
 func (c *AppConfig) validateTasks(notifierIDs []string) error {
-	var taskIDs []string
-	for _, t := range c.Tasks {
-		if err := validation.ValidateNoDuplicate(taskIDs, t.ID, "TaskID"); err != nil {
-			return err
-		}
-		taskIDs = append(taskIDs, t.ID)
-
-		var commandIDs []string
-		for _, cmd := range t.Commands {
-			if err := validation.ValidateNoDuplicate(commandIDs, cmd.ID, "CommandID"); err != nil {
-				return err
+	// Tasks 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Tasks, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TaskID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
 			}
-			commandIDs = append(commandIDs, cmd.ID)
+		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, "Task 설정 검증 실패")
+	}
 
+	for _, t := range c.Tasks {
+		// Commands 중복 ID 검사 (Validator)
+		// 구조체 태그를 활용하기 위해 validate.Var 사용
+		if err := validate.Var(t.Commands, "unique=ID"); err != nil {
+			if validationErrors, ok := err.(validator.ValidationErrors); ok {
+				for _, fieldErr := range validationErrors {
+					if fieldErr.Tag() == "unique" {
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("CommandID(%v)가 중복되었습니다", fieldErr.Value()))
+					}
+				}
+			}
+			return apperrors.Wrap(err, apperrors.InvalidInput, "Command 설정 검증 실패")
+		}
+
+		for _, cmd := range t.Commands {
 			if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
 				return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s::%s Task의 기본 NotifierID(%s)가 존재하지 않습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
 			}
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
-				if err := validation.ValidateRobfigCronExpression(cmd.Scheduler.TimeSpec); err != nil {
+				if err := cronx.Validate(cmd.Scheduler.TimeSpec); err != nil {
 					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s::%s Task의 Scheduler 설정 오류", t.ID, cmd.ID))
 				}
 			}
@@ -102,8 +125,8 @@ type HTTPRetryConfig struct {
 
 // Validate HTTPRetryConfig의 유효성을 검사합니다.
 func (c *HTTPRetryConfig) Validate() error {
-	if err := validation.ValidateDuration(c.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "HTTP Retry 설정 오류")
+	if _, err := time.ParseDuration(c.RetryDelay); err != nil {
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("HTTP Retry 설정 오류: 잘못된 duration 형식입니다 (%s)", c.RetryDelay))
 	}
 	return nil
 }
@@ -111,17 +134,26 @@ func (c *HTTPRetryConfig) Validate() error {
 // NotifierConfig 알림 설정 구조체
 type NotifierConfig struct {
 	DefaultNotifierID string           `json:"default_notifier_id"`
-	Telegrams         []TelegramConfig `json:"telegrams"`
+	Telegrams         []TelegramConfig `json:"telegrams" validate:"unique=ID"`
 }
 
 // Validate NotifierConfig의 유효성을 검사하고, 정의된 모든 Notifier의 ID 목록을 반환합니다.
 // 반환된 ID 목록은 Task 및 Application 설정에서 참조하는 NotifierID의 유효성을 검증하는 데 사용됩니다.
 func (c *NotifierConfig) Validate() ([]string, error) {
+	// Notifier 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Telegrams, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf("NotifierID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
+			}
+		}
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "Notifier 설정 검증 실패")
+	}
+
 	var notifierIDs []string
 	for _, telegram := range c.Telegrams {
-		if err := validation.ValidateNoDuplicate(notifierIDs, telegram.ID, "NotifierID"); err != nil {
-			return nil, err
-		}
 		notifierIDs = append(notifierIDs, telegram.ID)
 	}
 
@@ -143,7 +175,7 @@ type TelegramConfig struct {
 type TaskConfig struct {
 	ID       string                 `json:"id"`
 	Title    string                 `json:"title"`
-	Commands []CommandConfig        `json:"commands"`
+	Commands []CommandConfig        `json:"commands" validate:"unique=ID"`
 	Data     map[string]interface{} `json:"data"`
 }
 
@@ -167,7 +199,7 @@ type CommandConfig struct {
 type NotifyAPIConfig struct {
 	WS           WSConfig            `json:"ws"`
 	CORS         CORSConfig          `json:"cors"`
-	Applications []ApplicationConfig `json:"applications"`
+	Applications []ApplicationConfig `json:"applications" validate:"unique=ID"`
 }
 
 // Validate NotifyAPIConfig의 유효성을 검사합니다.
@@ -182,14 +214,19 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 		return err
 	}
 
-	// Applications 설정 검사
-	var applicationIDs []string
-	for _, app := range c.Applications {
-		if err := validation.ValidateNoDuplicate(applicationIDs, app.ID, "ApplicationID"); err != nil {
-			return err
+	// Applications 중복 ID 검사 (Validator)
+	if err := validate.Var(c.Applications, "unique=ID"); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("ApplicationID(%v)가 중복되었습니다", fieldErr.Value()))
+				}
+			}
 		}
-		applicationIDs = append(applicationIDs, app.ID)
+		return apperrors.Wrap(err, apperrors.InvalidInput, "Applications 설정 검증 실패")
+	}
 
+	for _, app := range c.Applications {
 		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
 			return apperrors.New(apperrors.NotFound, fmt.Sprintf("전체 NotifierID 목록에서 %s Application의 기본 NotifierID(%s)가 존재하지 않습니다", app.ID, app.DefaultNotifierID))
 		}
@@ -202,41 +239,68 @@ func (c *NotifyAPIConfig) Validate(notifierIDs []string) error {
 	return nil
 }
 
+// VerifyRecommendations Notify API 서비스의 운영 적합성 및 안정성을 점검합니다.
+func (c *NotifyAPIConfig) VerifyRecommendations() {
+	c.WS.VerifyRecommendations()
+}
+
 // WSConfig 웹서버 설정 구조체
 type WSConfig struct {
 	TLSServer   bool   `json:"tls_server"`
-	TLSCertFile string `json:"tls_cert_file"`
-	TLSKeyFile  string `json:"tls_key_file"`
-	ListenPort  int    `json:"listen_port"`
+	TLSCertFile string `json:"tls_cert_file" validate:"required_if=TLSServer true,omitempty,file"`
+	TLSKeyFile  string `json:"tls_key_file" validate:"required_if=TLSServer true,omitempty,file"`
+	ListenPort  int    `json:"listen_port" validate:"min=1,max=65535"`
 }
 
 // Validate WSConfig의 유효성을 검사합니다.
 func (c *WSConfig) Validate() error {
-	// 포트 번호 검증
-	if err := validation.ValidatePort(c.ListenPort); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "웹서버 포트 설정 오류")
-	}
-
-	// TLS 설정 검사
-	if c.TLSServer {
-		if strings.TrimSpace(c.TLSCertFile) == "" {
-			return apperrors.New(apperrors.InvalidInput, "웹서버의 Cert 파일 경로가 입력되지 않았습니다")
+	if err := validate.Struct(c); err != nil {
+		// Validator 에러를 사용자 친화적인 메시지로 변환
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				switch fieldErr.StructField() {
+				case "ListenPort":
+					return apperrors.New(apperrors.InvalidInput, "웹 서버 포트 설정이 올바르지 않습니다 (허용 범위: 1-65535)")
+				case "TLSCertFile":
+					switch fieldErr.Tag() {
+					case "required_if":
+						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 인증서 파일 경로(TLSCertFile)는 필수입니다")
+					case "file":
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TLS 인증서 파일이 존재하지 않거나 유효하지 않습니다 (입력값: %v)", fieldErr.Value()))
+					default:
+						return apperrors.New(apperrors.InvalidInput, "TLS 인증서 파일 설정이 올바르지 않습니다")
+					}
+				case "TLSKeyFile":
+					switch fieldErr.Tag() {
+					case "required_if":
+						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 키 파일 경로(TLSKeyFile)는 필수입니다")
+					case "file":
+						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("TLS 키 파일이 존재하지 않거나 유효하지 않습니다 (입력값: %v)", fieldErr.Value()))
+					default:
+						return apperrors.New(apperrors.InvalidInput, "TLS 키 파일 설정이 올바르지 않습니다")
+					}
+				}
+			}
 		}
-		if strings.TrimSpace(c.TLSKeyFile) == "" {
-			return apperrors.New(apperrors.InvalidInput, "웹서버의 Key 파일 경로가 입력되지 않았습니다")
-		}
-
-		// TLS 인증서 파일/URL 존재 여부 검증 (경고만)
-		_ = validation.ValidateFileExistsOrURL(c.TLSCertFile, true)
-		_ = validation.ValidateFileExistsOrURL(c.TLSKeyFile, true)
+		return apperrors.Wrap(err, apperrors.InvalidInput, "웹 서버 구성 검증에 실패하였습니다")
 	}
 
 	return nil
 }
 
+// VerifyRecommendations 웹서버의 운영 보안 및 안정성 설정을 점검합니다.
+func (c *WSConfig) VerifyRecommendations() {
+	// 시스템 예약 포트(1024 미만) 사용 경고
+	if c.ListenPort < 1024 {
+		applog.WithComponentAndFields("config", log.Fields{
+			"port": c.ListenPort,
+		}).Warn("시스템 예약 포트(1-1023)가 설정되었습니다. 서버 구동 시 관리자 권한이 필요할 수 있습니다")
+	}
+}
+
 // CORSConfig CORS 설정 구조체
 type CORSConfig struct {
-	AllowOrigins []string `json:"allow_origins"`
+	AllowOrigins []string `json:"allow_origins" validate:"dive,cors_origin"`
 }
 
 // Validate CORS 설정의 유효성을 검사합니다.
@@ -250,12 +314,24 @@ func (c *CORSConfig) Validate() error {
 			if len(c.AllowOrigins) > 1 {
 				return apperrors.New(apperrors.InvalidInput, "CORS AllowOrigins에 와일드카드(*)가 포함된 경우, 다른 Origin과 함께 사용할 수 없습니다")
 			}
+			// 와일드카드만 있는 경우는 유효함 (validator skip)
 			continue
 		}
+	}
 
-		if err := validation.ValidateCORSOrigin(origin); err != nil {
-			return err
+	// 각 Origin 유효성 검사
+	if err := validate.Struct(c); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "cors_origin" {
+					// 상세 에러 메시지가 잘려서 아쉽지만, validator의 한계로 인해 일반적인 메시지 반환
+					// 필요하다면 validation.ValidateCORSOrigin을 다시 호출하여 정확한 메시지를 얻을 수도 있음
+					// 여기서는 간단하게 처리
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("CORS 설정 오류: 유효하지 않은 Origin 형식입니다 (input=%q). 'Scheme://Host[:Port]' 표준을 준수해야 합니다", fieldErr.Value()))
+				}
+			}
 		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, "CORS 설정 유효성 검증 실패")
 	}
 	return nil
 }

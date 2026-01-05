@@ -9,6 +9,7 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -36,7 +37,7 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", log.Fields{
 		"notifier_id": id,
-		"bot_token":   strutil.MaskSensitiveData(botToken),
+		"bot_token":   strutil.Mask(botToken),
 		"chat_id":     chatID,
 	}).Debug("텔레그램 봇 초기화 시도")
 
@@ -72,7 +73,7 @@ func newTelegramNotifierWithBot(id NotifierID, botAPI telegramBotAPI, chatID int
 			// 명령어 문자열 생성: taskID와 commandID를 SnakeCase로 변환하여 조합 (예: myTask, run -> my_task_run)
 			notifier.botCommands = append(notifier.botCommands,
 				telegramBotCommand{
-					command:            fmt.Sprintf("%s_%s", strutil.ToSnakeCase(t.ID), strutil.ToSnakeCase(c.ID)),
+					command:            fmt.Sprintf("%s_%s", strcase.ToSnake(t.ID), strcase.ToSnake(c.ID)),
 					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
 					commandDescription: c.Description,                            // 설명: 커맨드 설명
 

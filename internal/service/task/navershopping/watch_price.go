@@ -244,8 +244,8 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 
 	// 키워드 매칭을 위한 Matcher를 생성합니다.
 	// 반복문 내부에서 파싱 비용을 절감하기 위해 루프 진입 전에 미리 생성합니다.
-	includedKeywords := strutil.SplitAndTrim(commandSettings.Filters.IncludedKeywords, ",")
-	excludedKeywords := strutil.SplitAndTrim(commandSettings.Filters.ExcludedKeywords, ",")
+	includedKeywords := strutil.SplitClean(commandSettings.Filters.IncludedKeywords, ",")
+	excludedKeywords := strutil.SplitClean(commandSettings.Filters.ExcludedKeywords, ",")
 	matcher := strutil.NewKeywordMatcher(includedKeywords, excludedKeywords)
 
 	// 결과 슬라이스의 용량(Capacity)을 원본 데이터 크기만큼 미리 확보합니다.
@@ -257,7 +257,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		// 키워드 매칭 검사 전에 HTML 태그를 제거합니다.
 		// 네이버 검색 API는 매칭된 키워드를 <b> 태그로 감싸서 반환하므로,
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
-		plainTitle := strutil.StripHTMLTags(item.Title)
+		plainTitle := strutil.StripHTML(item.Title)
 
 		if !matcher.Match(plainTitle) {
 			continue
@@ -302,7 +302,7 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 	return &product{
 		ProductID:   item.ProductID,
 		ProductType: item.ProductType,
-		Title:       strutil.StripHTMLTags(item.Title), // HTML 태그 제거
+		Title:       strutil.StripHTML(item.Title), // HTML 태그 제거
 		Link:        item.Link,
 		LowPrice:    lowPrice,
 		MallName:    item.MallName,
@@ -451,6 +451,6 @@ func (t *task) buildSearchConditionsSummary(commandSettings *watchPriceSettings)
 		commandSettings.Query,
 		commandSettings.Filters.IncludedKeywords,
 		commandSettings.Filters.ExcludedKeywords,
-		strutil.FormatCommas(commandSettings.Filters.PriceLessThan),
+		strutil.Comma(commandSettings.Filters.PriceLessThan),
 	)
 }

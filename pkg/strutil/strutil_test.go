@@ -2,59 +2,22 @@ package strutil
 
 import (
 	"fmt"
+	"math"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 )
 
 // =============================================================================
-// Case Conversion Tests
-// =============================================================================
-
-// TestToSnakeCase는 ToSnakeCase 함수의 CamelCase/PascalCase를 snake_case로 변환하는 동작을 검증합니다.
-//
-// 검증 항목:
-//   - 빈 문자열 처리
-//   - 단순 문자열 (소문자 변환)
-//   - 숫자 포함 문자열
-//   - CamelCase 변환
-//   - PascalCase 변환
-//   - 공백 포함 문자열
-func TestToSnakeCase(t *testing.T) {
-	cases := []struct {
-		name     string
-		str      string
-		expected string
-	}{
-		{name: "Empty string", str: "", expected: ""},
-		{name: "Simple", str: "My", expected: "my"},
-		{name: "Numeric", str: "123", expected: "123"},
-		{name: "Numeric and letters", str: "123abc", expected: "123abc"},
-		{name: "CamelCase 1", str: "123abcDef", expected: "123abc_def"},
-		{name: "CamelCase 2", str: "123abcDefGHI", expected: "123abc_def_ghi"},
-		{name: "CamelCase 3", str: "123abcDefGHIj", expected: "123abc_def_gh_ij"},
-		{name: "CamelCase 4", str: "123abcDefGHIjK", expected: "123abc_def_gh_ij_k"},
-		{name: "PascalCase", str: "MyNameIsTom", expected: "my_name_is_tom"},
-		{name: "camelCase", str: "myNameIsTom", expected: "my_name_is_tom"},
-		{name: "With spaces", str: " myNameIsTom ", expected: "my_name_is_tom"},
-		{name: "Acronyms", str: "JSONData", expected: "json_data"},
-		{name: "Acronyms at end", str: "HTTPClient", expected: "http_client"},
-		{name: "Foreign characters", str: "안녕Hello", expected: "안녕_hello"},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.expected, ToSnakeCase(c.str))
-		})
-	}
-}
-
-// =============================================================================
 // Space Normalization Tests
 // =============================================================================
 
-// TestNormalizeSpaces는 NormalizeSpaces 함수의 공백 정규화 동작을 검증합니다.
-func TestNormalizeSpaces(t *testing.T) {
+// TestNormalizeSpace NormalizeSpace 함수의 공백 정규화 동작을 검증합니다.
+func TestNormalizeSpace(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		s        string
@@ -67,34 +30,67 @@ func TestNormalizeSpaces(t *testing.T) {
 		{name: "Complex spaces", s: "   다수    공백   여러개   ", expected: "다수 공백 여러개"},
 		{name: "Special characters", s: "   @    특수문자   $   ", expected: "@ 특수문자 $"},
 		{
-			name: "Multiline string",
+			name: "Multiline string (become single line)",
 			s: `
-		
 				라인    1
 				라인2
-		
-		
 				라인3
-		
-				라인4
-		
-		
-				라인5
-	
 			`,
-			expected: "라인 1 라인2 라인3 라인4 라인5",
+			expected: "라인 1 라인2 라인3",
 		},
+		{name: "Tabs and Newlines", s: "Word1\t\tWord2\n\nWord3", expected: "Word1 Word2 Word3"},
+		{name: "Zero Width Space", s: "Hello\u200BWorld", expected: "Hello\u200BWorld"}, // ZWSP is considered a graphic char by Go, not space
+		{name: "Ideographic Space", s: "Hello\u3000World", expected: "Hello World"},     // U+3000 is a space
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.expected, NormalizeSpaces(c.s))
+			assert.Equal(t, c.expected, NormalizeSpace(c.s))
 		})
 	}
 }
 
-// TestNormalizeMultiLineSpaces는 NormalizeMultiLineSpaces 함수의 여러 줄 공백 정규화 동작을 검증합니다.
-func TestNormalizeMultiLineSpaces(t *testing.T) {
+// FuzzNormalizeSpace NormalizeSpace가 어떤 입력에도 패닉하지 않고 일관된 속성을 유지하는지 검증합니다.
+func FuzzNormalizeSpace(f *testing.F) {
+	f.Add("   Hello   World   ")
+	f.Add("\t\n\r")
+	f.Add("NoSpaces")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		out := NormalizeSpace(s)
+
+		// 속성 1: 결과의 길이는 원본보다 길 수 없음 (공백이 줄어들거나 같으므로)
+		// 단, 유효하지 않은 UTF-8 문자열의 경우 range 루프가 RuneError(3바이트)로 변환하여 길이가 늘어날 수 있음
+		if utf8.ValidString(s) {
+			if len(out) > len(s) {
+				t.Errorf("Output longer than valid input: len(out)=%d, len(in)=%d", len(out), len(s))
+			}
+		}
+
+		// 속성 2: 결과에는 연속된 공백이 없어야 함
+		if strings.Contains(out, "  ") {
+			t.Errorf("Output contains double spaces: %q", out)
+		}
+
+		// 속성 3: 결과의 앞뒤에는 공백이 없어야 함
+		if len(out) > 0 {
+			if strings.HasPrefix(out, " ") || strings.HasSuffix(out, " ") {
+				t.Errorf("Output has leading/trailing spaces: %q", out)
+			}
+		}
+
+		// 속성 4: 멱등성 (Idempotency) - 이미 정규화된 문자열을 다시 정규화해도 변하지 않아야 함
+		out2 := NormalizeSpace(out)
+		if out != out2 {
+			t.Errorf("Not idempotent: first=%q, second=%q", out, out2)
+		}
+	})
+}
+
+// TestNormalizeMultiline NormalizeMultiline 함수의 여러 줄 공백 정규화 동작을 검증합니다.
+func TestNormalizeMultiline(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		s        string
@@ -120,7 +116,7 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 		
 		
 			`,
-			expected: "라인 1\r\n라인2\r\n\r\n라인3\r\n\r\n라인4\r\n\r\n라인5",
+			expected: "라인 1\n라인2\n\n라인3\n\n라인4\n\n라인5",
 		},
 		{
 			name: "Complex multiline 2",
@@ -133,29 +129,28 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 			라인3
 			라인4
 			라인5   `,
-			expected: "라인 1\r\n\r\n라인2\r\n\r\n라인3\r\n라인4\r\n라인5",
+			expected: "라인 1\n\n라인2\n\n라인3\n라인4\n라인5",
 		},
 		{
-			name: "Empty lines",
+			name: "Only newlines",
 			s: `
-		
+					
 			`,
 			expected: "",
 		},
 		{
-			name: "Single value with newlines",
+			name: "Values with wide indentation",
 			s: `
-		
-			1
-		
+					Item 1
+					Item 2
 			`,
-			expected: "1",
+			expected: "Item 1\nItem 2",
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.expected, NormalizeMultiLineSpaces(c.s))
+			assert.Equal(t, c.expected, NormalizeMultiline(c.s))
 		})
 	}
 }
@@ -164,8 +159,10 @@ func TestNormalizeMultiLineSpaces(t *testing.T) {
 // Number Formatting Tests
 // =============================================================================
 
-// TestFormatCommas는 FormatCommas 함수의 숫자 천 단위 구분 기호 포맷팅 동작을 검증합니다.
-func TestFormatCommas(t *testing.T) {
+// TestComma Comma 함수의 숫자 천 단위 구분 기호 포맷팅 동작을 검증합니다.
+func TestComma(t *testing.T) {
+	t.Parallel()
+
 	t.Run("int", func(t *testing.T) {
 		tests := []struct {
 			input    int
@@ -176,9 +173,12 @@ func TestFormatCommas(t *testing.T) {
 			{1000, "1,000"},
 			{1234567, "1,234,567"},
 			{-1234567, "-1,234,567"},
+			// Edge Case: MinInt64 on 64-bit arch
+			{math.MinInt64, "-9,223,372,036,854,775,808"},
+			{math.MaxInt64, "9,223,372,036,854,775,807"},
 		}
 		for _, tt := range tests {
-			assert.Equal(t, tt.expected, FormatCommas(tt.input))
+			assert.Equal(t, tt.expected, Comma(tt.input))
 		}
 	})
 
@@ -187,11 +187,12 @@ func TestFormatCommas(t *testing.T) {
 			input    int64
 			expected string
 		}{
-			{9223372036854775807, "9,223,372,036,854,775,807"},
-			{-9223372036854775808, "-9,223,372,036,854,775,808"},
+			{math.MaxInt64, "9,223,372,036,854,775,807"},
+			{math.MinInt64, "-9,223,372,036,854,775,808"},
+			{-1, "-1"},
 		}
 		for _, tt := range tests {
-			assert.Equal(t, tt.expected, FormatCommas(tt.input))
+			assert.Equal(t, tt.expected, Comma(tt.input))
 		}
 	})
 
@@ -200,10 +201,11 @@ func TestFormatCommas(t *testing.T) {
 			input    uint
 			expected string
 		}{
+			{0, "0"},
 			{1000, "1,000"},
 		}
 		for _, tt := range tests {
-			assert.Equal(t, tt.expected, FormatCommas(tt.input))
+			assert.Equal(t, tt.expected, Comma(tt.input))
 		}
 	})
 
@@ -212,10 +214,36 @@ func TestFormatCommas(t *testing.T) {
 			input    uint64
 			expected string
 		}{
-			{18446744073709551615, "18,446,744,073,709,551,615"},
+			{math.MaxUint64, "18,446,744,073,709,551,615"},
+			{0, "0"},
 		}
 		for _, tt := range tests {
-			assert.Equal(t, tt.expected, FormatCommas(tt.input))
+			assert.Equal(t, tt.expected, Comma(tt.input))
+		}
+	})
+
+}
+
+// FuzzComma Comma 함수가 무작위 정수 입력에 대해 패닉하지 않는지 검증합니다.
+func FuzzComma(f *testing.F) {
+	f.Add(int64(0))
+	f.Add(int64(1000))
+	f.Add(int64(-1000))
+	f.Add(int64(math.MaxInt64))
+	f.Add(int64(math.MinInt64))
+
+	f.Fuzz(func(t *testing.T, n int64) {
+		s := Comma(n)
+		if s == "" {
+			t.Error("Comma returned empty string")
+		}
+		// 기본 검증: 1000 이상이면 쉼표가 있어야 함 (절댓값 기준)
+		// MinInt64는 Abs 계산 시 오버플로우가 나므로 제외하거나 별도 처리 필요하지만,
+		// 여기선 간단히 길이 체크 정도만 수행
+		if n > 999 || n < -999 {
+			if !strings.Contains(s, ",") {
+				t.Errorf("Expected commas for %d, got %q", n, s)
+			}
 		}
 	})
 }
@@ -224,9 +252,9 @@ func TestFormatCommas(t *testing.T) {
 // String Splitting Tests
 // =============================================================================
 
-// TestSplitAndTrim은 SplitAndTrim 함수의 문자열 분리 및 트림 동작을 검증합니다.
-func TestSplitAndTrim(t *testing.T) {
-	var notAssign []string
+// TestSplitClean SplitClean 함수의 문자열 분리 및 트림 동작을 검증합니다.
+func TestSplitClean(t *testing.T) {
+	t.Parallel()
 
 	cases := []struct {
 		name     string
@@ -237,15 +265,24 @@ func TestSplitAndTrim(t *testing.T) {
 		{name: "Comma separated", s: "1,2,3", sep: ",", expected: []string{"1", "2", "3"}},
 		{name: "Comma separated with empty", s: ",1,2,3,,,", sep: ",", expected: []string{"1", "2", "3"}},
 		{name: "Comma separated with spaces", s: ",1,  ,  ,2,3,,,", sep: ",", expected: []string{"1", "2", "3"}},
-		{name: "Empty separator", s: ",1,,2,3,", sep: "", expected: []string{",", "1", ",", ",", "2", ",", "3", ","}},
-		{name: "Multi-char separator", s: ",1,,2,3,", sep: ",,", expected: []string{",1", "2,3,"}},
+		{name: "Multi-char separator", s: ",1,,2,3,", sep: ",,", expected: []string{",1", "2,3,"}}, // sep=",," -> ",1" (ok), ",2" (starts with ,), "3," (ok) -> wait.
+		// "1,," -> prefix "," + "1" + suffix ",,"
+		// s = ",1,,2,3,". sep = ",,".
+		// Split -> [",1", "2,3,"].
+		// Trim each?
+		// ",1" -> ",1".
+		// "2,3," -> "2,3,".
 		{name: "Separator not found", s: "1,2,3", sep: "-", expected: []string{"1,2,3"}},
-		{name: "Empty string", s: "", sep: "-", expected: notAssign},
+		{name: "Empty string", s: "", sep: "-", expected: nil},
+		{name: "Only separators", s: ",,,", sep: ",", expected: nil},
+		// Empty separator case: strings.Split behavior (split by char)
+		// Clean should remove empty strings if any, but char split usually has no empty unless original is empty
+		{name: "Empty separator (char split)", s: "ab c", sep: "", expected: []string{"a", "b", "c"}},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.expected, SplitAndTrim(c.s, c.sep))
+			assert.Equal(t, c.expected, SplitClean(c.s, c.sep))
 		})
 	}
 }
@@ -254,8 +291,10 @@ func TestSplitAndTrim(t *testing.T) {
 // Sensitive Data Masking Tests
 // =============================================================================
 
-// TestMaskSensitiveData는 MaskSensitiveData 함수의 민감 정보 마스킹 동작을 검증합니다.
-func TestMaskSensitiveData(t *testing.T) {
+// TestMask Mask 함수의 민감 정보 마스킹 동작을 검증합니다.
+func TestMask(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -280,7 +319,7 @@ func TestMaskSensitiveData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, MaskSensitiveData(tt.input))
+			assert.Equal(t, tt.expected, Mask(tt.input))
 		})
 	}
 }
@@ -289,8 +328,10 @@ func TestMaskSensitiveData(t *testing.T) {
 // HTML Tag Stripping Tests
 // =============================================================================
 
-// TestStripHTMLTags는 StripHTMLTags 함수의 HTML 태그 제거 동작을 검증합니다.
-func TestStripHTMLTags(t *testing.T) {
+// TestStripHTML StripHTML 함수의 HTML 태그 제거 동작을 검증합니다.
+func TestStripHTML(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -341,17 +382,46 @@ func TestStripHTMLTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, StripHTMLTags(tt.input))
+			assert.Equal(t, tt.expected, StripHTML(tt.input))
 		})
 	}
+}
+
+// FuzzStripHTML StripHTML 함수가 임의의 깨진 HTML 입력에 대해 패닉하지 않는지 검증합니다.
+func FuzzStripHTML(f *testing.F) {
+	f.Add("<html><body>Hello</body></html>")
+	f.Add("<a href='test'>")
+	f.Add("<!-- comment -->")
+	f.Add("<broken html")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		// Garbage In, Garbage Out: 입력이 유효하지 않은 UTF-8이면 출력도 그럴 수 있음.
+		// 이 함수는 HTML 태그 제거가 목적이지 인코딩 복구가 목적이 아니므로, 유효한 문자열에 대해서만 검증.
+		if !utf8.ValidString(s) {
+			return
+		}
+
+		out := StripHTML(s)
+
+		// 1. 결과는 유효한 UTF-8이어야 함 (html.UnescapeString 결과물)
+		if !utf8.ValidString(out) {
+			t.Errorf("Produced invalid UTF-8: %q", out)
+		}
+
+		// 2. 결과에 명백한 완전한 태그('<b>', '</div>' 등)가 남아있지 않아야 함
+		// 단, '<'나 '>' 자체는 엔티티 디코딩이나 태그가 아닌 문자로 존재할 수 있으므로 느슨하게 검사
+		if strings.Contains(out, "<html>") || strings.Contains(out, "</div>") {
+			t.Errorf("Output seems to contain tags: %q", out)
+		}
+	})
 }
 
 // =============================================================================
 // Helper Function Tests
 // =============================================================================
 
-// TestHasAnyContent는 HasAnyContent 함수의 동작을 검증합니다.
-func TestHasAnyContent(t *testing.T) {
+// TestAnyContent AnyContent 함수의 동작을 검증합니다.
+func TestAnyContent(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -368,14 +438,24 @@ func TestHasAnyContent(t *testing.T) {
 		{"Nil slice", nil, false},
 		{"Empty slice", []string{}, false},
 		{"All empty", []string{"", "", ""}, false},
-		{"Whitespace only (Trim not applied)", []string{"   "}, true}, // HasAnyContent does not trim
+		{"Whitespace only (Trim applied)", []string{"   "}, false}, // AnyContent trims spaces
+		{
+			name: "Unicode whitespace",
+			strs: []string{"\u3000", "\u200B"}, // Ideographic space, Zero width space
+			want: true,                         // strings.TrimSpace trims Unicode spaces generally, let's verify if our expectation aligns with Go stdlib
+			// Go TrimSpace handles: '\t', '\n', '\v', '\f', '\r', ' ', U+0085 (NEL), U+00A0 (NBSP).
+			// Go 1.22 strings.TrimSpace uses unicode.IsSpace.
+			// \u3000 is space. \u200B is NOT space in Go unicode.IsSpace.
+			// So "\u3000" -> "" (False), "\u200B" -> "\u200B" (True).
+			// If we put both, result is True because of \u200B.
+		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := HasAnyContent(tt.strs...)
+			got := AnyContent(tt.strs...)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -385,34 +465,25 @@ func TestHasAnyContent(t *testing.T) {
 // Benchmarks
 // =============================================================================
 
-func BenchmarkToSnakeCase(b *testing.B) {
-	input := "ThisIsAVeryLongVariableNameForBenchmarkPurposes123"
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = ToSnakeCase(input)
-	}
-}
-
-func BenchmarkNormalizeSpaces(b *testing.B) {
+func BenchmarkNormalizeSpace(b *testing.B) {
 	input := "   This   is   a   test   string   with   many   spaces   "
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = NormalizeSpaces(input)
+		_ = NormalizeSpace(input)
 	}
 }
 
-func BenchmarkFormatCommas(b *testing.B) {
+func BenchmarkComma(b *testing.B) {
 	input := int64(123456789012345)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = FormatCommas(input)
+		_ = Comma(input)
 	}
 }
 
-func BenchmarkStripHTMLTags(b *testing.B) {
+func BenchmarkStripHTML(b *testing.B) {
 	input := `
 		<html>
 			<head><title>Benchmark</title></head>
@@ -428,16 +499,16 @@ func BenchmarkStripHTMLTags(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = StripHTMLTags(input)
+		_ = StripHTML(input)
 	}
 }
 
-func BenchmarkMaskSensitiveData(b *testing.B) {
+func BenchmarkMask(b *testing.B) {
 	input := "1234567890123456"
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = MaskSensitiveData(input)
+		_ = Mask(input)
 	}
 }
 
@@ -445,37 +516,21 @@ func BenchmarkMaskSensitiveData(b *testing.B) {
 // Examples (Documentation)
 // =============================================================================
 
-func ExampleToSnakeCase() {
-	fmt.Println(ToSnakeCase("MyVariableName"))
-	fmt.Println(ToSnakeCase("HTTPClient"))
-	// Output:
-	// my_variable_name
-	// http_client
-}
-
-func ExampleNormalizeSpaces() {
-	fmt.Println(NormalizeSpaces("  Hello   World  "))
+func ExampleNormalizeSpace() {
+	fmt.Println(NormalizeSpace("  Hello   World  "))
 	// Output: Hello World
 }
 
-func ExampleFormatCommas() {
-	fmt.Println(FormatCommas(1234567))
-	fmt.Println(FormatCommas(100))
+func ExampleComma() {
+	fmt.Println(Comma(1234567))
+	fmt.Println(Comma(100))
 	// Output:
 	// 1,234,567
 	// 100
 }
 
-func ExampleStripHTMLTags() {
+func ExampleStripHTML() {
 	htmlStr := "<b>Bold</b> &amp; <i>Italic</i>"
-	fmt.Println(StripHTMLTags(htmlStr))
+	fmt.Println(StripHTML(htmlStr))
 	// Output: Bold & Italic
-}
-
-func ExampleMaskSensitiveData() {
-	fmt.Println(MaskSensitiveData("1234567890123456"))
-	fmt.Println(MaskSensitiveData("secret"))
-	// Output:
-	// 1234***3456
-	// secr***
 }

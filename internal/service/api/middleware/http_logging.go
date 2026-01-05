@@ -126,7 +126,7 @@ func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 
 // maskSensitiveQueryParams URI의 민감 정보를 마스킹합니다.
 //
-// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 strutils.MaskSensitiveData로 대체합니다.
+// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 strutils.Mask로 대체합니다.
 // URI 파싱에 실패한 경우, 원본 URI를 그대로 반환하여 로깅이 중단되지 않도록 합니다.
 //
 // 예시:
@@ -146,7 +146,7 @@ func maskSensitiveQueryParams(uri string) string {
 	for _, param := range sensitiveQueryParams {
 		if q.Has(param) {
 			val := q.Get(param)
-			q.Set(param, strutil.MaskSensitiveData(val))
+			q.Set(param, strutil.Mask(val))
 			masked = true
 		}
 	}

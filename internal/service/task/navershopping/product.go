@@ -49,7 +49,7 @@ func (p *product) renderInternal(supportsHTML bool, m mark.Mark, prev *product) 
 			p.Link,
 			p.Title,
 			p.MallName,
-			strutil.FormatCommas(p.LowPrice),
+			strutil.Comma(p.LowPrice),
 		)
 	} else {
 		const textFormat = `☞ %s (%s) %s원`
@@ -58,14 +58,14 @@ func (p *product) renderInternal(supportsHTML bool, m mark.Mark, prev *product) 
 			textFormat,
 			p.Title,
 			p.MallName,
-			strutil.FormatCommas(p.LowPrice),
+			strutil.Comma(p.LowPrice),
 		)
 	}
 
 	// 이전 가격 정보 추가 (HTML/Text 공통)
 	if prev != nil {
 		if p.LowPrice != prev.LowPrice {
-			fmt.Fprintf(&sb, " (이전: %s원)", strutil.FormatCommas(prev.LowPrice))
+			fmt.Fprintf(&sb, " (이전: %s원)", strutil.Comma(prev.LowPrice))
 		}
 	}
 

@@ -178,7 +178,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: invalidConfig_MissingField,
 			wantErr:   true,
-			errMsg:    "invalid keys", // 정의되지 않은 키가 포함되어 디코딩 실패
+			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다", // 필수 필드 확인 실패 메시지
 		},
 	}
 

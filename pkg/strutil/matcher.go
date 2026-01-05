@@ -50,7 +50,7 @@ func NewKeywordMatcher(included, excluded []string) *KeywordMatcher {
 
 		// 파이프(|) 처리
 		if strings.Contains(k, "|") {
-			orGroup := SplitAndTrim(k, "|")
+			orGroup := SplitClean(k, "|")
 			for i, v := range orGroup {
 				orGroup[i] = strings.ToLower(v)
 			}
@@ -69,7 +69,6 @@ func NewKeywordMatcher(included, excluded []string) *KeywordMatcher {
 // Match 대상 문자열이 키워드 조건을 만족하는지 검사합니다.
 //
 // 문자열 s가 제외 키워드를 포함하지 않고, 모든 포함 키워드 그룹 조건을 만족하면 true를 반환합니다.
-// 내부적으로 Zero Allocation 방식의 대소문자 무시 비교를 수행합니다.
 func (m *KeywordMatcher) Match(s string) bool {
 	// 1. 제외 키워드 검사
 	// 제외 조건은 하나라도 걸리면 즉시 실패하므로 먼저 검사하여 불필요한 연산을 줄입니다.
@@ -106,6 +105,12 @@ func (m *KeywordMatcher) Match(s string) bool {
 // 표준 라이브러리의 strings.ToLower(s)를 사용할 경우, 매 호출마다 전체 문자열의 복사본을 힙에 할당하게 됩니다.
 // 이 함수는 메모리 할당을 0(Zero Allocation)으로 억제하기 위해, 원본 문자열을 순회하며
 // 필요한 부분만 슬라이싱하여 strings.EqualFold로 비교하는 방식을 채택했습니다.
+//
+// [제한사항]
+// 이 최적화는 대소문자 변환 시 바이트 길이가 동일하다는 가정에 의존합니다.
+// 대부분의 언어(ASCII, 한글, 중국어, 일본어 등)에서는 정상 동작하지만,
+// 터키어(İ/i)와 같이 대소문자 변환 시 바이트 길이가 달라지는 특수 케이스에서는
+// 정확하지 않은 결과를 반환할 수 있습니다.
 func containsFold(s, substr string) bool {
 	if substr == "" {
 		return true
