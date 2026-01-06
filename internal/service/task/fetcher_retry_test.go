@@ -241,7 +241,7 @@ func (m *MockReadCloser) Close() error {
 func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
 	tests := []struct {
 		name                 string
-		configRetryDelay     string
+		configRetryDelay     time.Duration
 		configMaxRetries     int
 		expectedRetryDelay   time.Duration
 		expectedMaxRetries   int
@@ -250,7 +250,7 @@ func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
 	}{
 		{
 			name:                 "Valid Config",
-			configRetryDelay:     "3s",
+			configRetryDelay:     3 * time.Second,
 			configMaxRetries:     5,
 			expectedRetryDelay:   3 * time.Second,
 			expectedMaxRetries:   5,
@@ -258,26 +258,17 @@ func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
 			expectedInternalType: "*task.HTTPFetcher",
 		},
 		{
-			name:                 "Invalid Duration - Fallback to Default",
-			configRetryDelay:     "invalid",
+			name:                 "Short Duration - Enforce Minimum (1s)",
+			configRetryDelay:     500 * time.Millisecond,
 			configMaxRetries:     3,
-			expectedRetryDelay:   2 * time.Second, // DefaultRetryDelay is "2s"
+			expectedRetryDelay:   1 * time.Second, // Should default to 1s
 			expectedMaxRetries:   3,
 			expectedFetcherType:  "*task.RetryFetcher",
 			expectedInternalType: "*task.HTTPFetcher",
 		},
 		{
-			name:                 "Empty Duration - Fallback to Default",
-			configRetryDelay:     "",
-			configMaxRetries:     10,
-			expectedRetryDelay:   2 * time.Second, // DefaultRetryDelay is "2s"
-			expectedMaxRetries:   10,
-			expectedFetcherType:  "*task.RetryFetcher",
-			expectedInternalType: "*task.HTTPFetcher",
-		},
-		{
-			name:                 "Negative Retries - Correted",
-			configRetryDelay:     "1s",
+			name:                 "Negative Retries - Corrected",
+			configRetryDelay:     1 * time.Second,
 			configMaxRetries:     -1,
 			expectedRetryDelay:   1 * time.Second,
 			expectedMaxRetries:   0,
