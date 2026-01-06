@@ -12,9 +12,9 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/json"
-	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
 )
 
@@ -30,14 +30,26 @@ const (
 	// HTTP 재시도 정책 기본값
 	// ------------------------------------------------------------------------------------------------
 
-	// DefaultMaxRetries HTTP 요청 실패 시 최대 재시도 횟수 기본값
+	// DefaultMaxRetries HTTP 요청 실패 시 기본 재시도 횟수입니다.
 	DefaultMaxRetries = 3
 
-	// DefaultRetryDelay 재시도 사이의 대기 시간 기본값
-	DefaultRetryDelay = "2s"
+	// DefaultRetryDelay HTTP 요청 실패 시 기본 재시도 사이의 대기 시간입니다.
+	DefaultRetryDelay = 2 * time.Second
 )
 
-// AppConfig 애플리케이션의 모든 설정을 관장하는 최상위 루트 구조체
+// newDefaultConfig 애플리케이션의 모든 설정에 대한 '기본값'을 정의하고 초기화합니다.
+// 사용자 설정이 누락되더라도 안전하게 실행될 수 있도록 미리 값을 채워주는 역할을 합니다.
+func newDefaultConfig() AppConfig {
+	return AppConfig{
+		Debug: true,
+		HTTPRetry: HTTPRetryConfig{
+			MaxRetries: DefaultMaxRetries,
+			RetryDelay: DefaultRetryDelay,
+		},
+	}
+}
+
+// AppConfig 애플리케이션의 모든 설정을 포함하는 최상위 구조체
 type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
@@ -47,46 +59,42 @@ type AppConfig struct {
 }
 
 // validate 설정 파일 로드 직후, 각 설정 항목의 정합성과 필수 값의 유효성을 검증합니다.
-func (c *AppConfig) validate() error {
-	// HTTP 재시도 정책 유효성 검사
+func (c *AppConfig) validate(v *validator.Validate) error {
 	if err := c.HTTPRetry.validate(); err != nil {
 		return err
 	}
 
-	// Notifiers 유효성 검사
-	notifierIDs, err := c.Notifiers.validate()
+	notifierIDs, err := c.Notifiers.validate(v)
 	if err != nil {
 		return err
 	}
 
-	// Tasks 유효성 검사
-	if err := c.validateTasks(notifierIDs); err != nil {
+	if err := c.validateTasks(v, notifierIDs); err != nil {
 		return err
 	}
 
-	// NotifyAPI 유효성 검사
-	if err := c.NotifyAPI.validate(notifierIDs); err != nil {
+	if err := c.NotifyAPI.validate(v, notifierIDs); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *AppConfig) validateTasks(notifierIDs []string) error {
+func (c *AppConfig) validateTasks(v *validator.Validate, notifierIDs []string) error {
 	// Tasks 중복 ID 검사
-	if err := checkUniqueField(c.Tasks, "ID", "Task"); err != nil {
+	if err := checkUniqueField(v, c.Tasks, "ID", "Task"); err != nil {
 		return err
 	}
 
 	for _, t := range c.Tasks {
 		// Task 구조체 유효성 검사
-		if err := validateStruct(t, fmt.Sprintf("Task['%s']", t.ID)); err != nil {
+		if err := checkStruct(v, t, fmt.Sprintf("Task['%s']", t.ID)); err != nil {
 			return err
 		}
 
 		for _, cmd := range t.Commands {
 			// Command 구조체 유효성 검사
-			if err := validateStruct(cmd, fmt.Sprintf("Task['%s'] > Command['%s']", t.ID, cmd.ID)); err != nil {
+			if err := checkStruct(v, cmd, fmt.Sprintf("Task['%s'] > Command['%s']", t.ID, cmd.ID)); err != nil {
 				return err
 			}
 
@@ -115,13 +123,13 @@ func (c *AppConfig) VerifyRecommendations() []string {
 
 // HTTPRetryConfig HTTP 요청 실패 시 재시도 횟수와 대기 시간을 정의하는 설정 구조체
 type HTTPRetryConfig struct {
-	MaxRetries int    `json:"max_retries"`
-	RetryDelay string `json:"retry_delay"`
+	MaxRetries int           `json:"max_retries"`
+	RetryDelay time.Duration `json:"retry_delay"`
 }
 
 func (c *HTTPRetryConfig) validate() error {
-	if _, err := time.ParseDuration(c.RetryDelay); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("HTTP 재시도 대기 시간(retry_delay) 설정이 올바르지 않습니다: '%s' (예: 1s, 500ms)", c.RetryDelay))
+	if c.RetryDelay <= 0 {
+		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("HTTP 재시도 대기 시간(retry_delay)은 0보다 커야 합니다: '%v'", c.RetryDelay))
 	}
 	return nil
 }
@@ -132,15 +140,15 @@ type NotifierConfig struct {
 	Telegrams         []TelegramConfig `json:"telegrams" validate:"unique=ID"`
 }
 
-func (c *NotifierConfig) validate() ([]string, error) {
+func (c *NotifierConfig) validate(v *validator.Validate) ([]string, error) {
 	// Notifier 중복 ID 검사
-	if err := checkUniqueField(c.Telegrams, "ID", "Notifier"); err != nil {
+	if err := checkUniqueField(v, c.Telegrams, "ID", "Notifier"); err != nil {
 		return nil, err
 	}
 
-	// Telegrams 개별 유효성 검사
+	// Notifier 개별 유효성 검사
 	for _, telegram := range c.Telegrams {
-		if err := validateStruct(telegram, fmt.Sprintf("Telegram Notifier['%s']", telegram.ID)); err != nil {
+		if err := checkStruct(v, telegram, fmt.Sprintf("Telegram Notifier['%s']", telegram.ID)); err != nil {
 			return nil, err
 		}
 	}
@@ -161,7 +169,7 @@ func (c *NotifierConfig) validate() ([]string, error) {
 // TelegramConfig 텔레그램 봇 토큰 및 채팅 ID 정보를 담는 설정 구조체
 type TelegramConfig struct {
 	ID       string `json:"id" validate:"required"`
-	BotToken string `json:"bot_token" validate:"required"`
+	BotToken string `json:"bot_token" validate:"required,telegram_bot_token"`
 	ChatID   int64  `json:"chat_id" validate:"required"`
 }
 
@@ -175,18 +183,24 @@ type TaskConfig struct {
 
 // CommandConfig 작업(Task) 내에서 실제로 실행되는 개별 명령을 정의하는 구조체
 type CommandConfig struct {
-	ID          string `json:"id" validate:"required"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Scheduler   struct {
-		Runnable bool   `json:"runnable"`
-		TimeSpec string `json:"time_spec"`
-	} `json:"scheduler"`
-	Notifier struct {
-		Usable bool `json:"usable"`
-	} `json:"notifier"`
+	ID                string                 `json:"id" validate:"required"`
+	Title             string                 `json:"title"`
+	Description       string                 `json:"description"`
+	Scheduler         SchedulerConfig        `json:"scheduler"`
+	Notifier          CommandNotifierConfig  `json:"notifier"`
 	DefaultNotifierID string                 `json:"default_notifier_id"`
 	Data              map[string]interface{} `json:"data"`
+}
+
+// SchedulerConfig 작업 스케줄링 설정을 정의하는 구조체
+type SchedulerConfig struct {
+	Runnable bool   `json:"runnable"`
+	TimeSpec string `json:"time_spec"`
+}
+
+// CommandNotifierConfig 작업 완료 후 알림 발송 여부를 정의하는 구조체
+type CommandNotifierConfig struct {
+	Usable bool `json:"usable"`
 }
 
 // NotifyAPIConfig 알림 발송을 위한 REST API 서버 및 웹소켓 설정 구조체
@@ -196,19 +210,19 @@ type NotifyAPIConfig struct {
 	Applications []ApplicationConfig `json:"applications" validate:"unique=ID"`
 }
 
-func (c *NotifyAPIConfig) validate(notifierIDs []string) error {
+func (c *NotifyAPIConfig) validate(v *validator.Validate, notifierIDs []string) error {
 	// WS 유효성 검사
-	if err := c.WS.validate(); err != nil {
+	if err := c.WS.validate(v); err != nil {
 		return err
 	}
 
 	// CORS 유효성 검사
-	if err := c.CORS.validate(); err != nil {
+	if err := c.CORS.validate(v); err != nil {
 		return err
 	}
 
 	// Applications 중복 ID 검사
-	if err := checkUniqueField(c.Applications, "ID", "Application"); err != nil {
+	if err := checkUniqueField(v, c.Applications, "ID", "Application"); err != nil {
 		return err
 	}
 
@@ -237,8 +251,8 @@ type WSConfig struct {
 	ListenPort  int    `json:"listen_port" validate:"min=1,max=65535"`
 }
 
-func (c *WSConfig) validate() error {
-	if err := validate.Struct(c); err != nil {
+func (c *WSConfig) validate(v *validator.Validate) error {
+	if err := v.Struct(c); err != nil {
 		// Validator 에러를 사용자 친화적인 메시지로 변환한다.
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
 			for _, fieldErr := range validationErrors {
@@ -288,7 +302,7 @@ type CORSConfig struct {
 	AllowOrigins []string `json:"allow_origins" validate:"dive,cors_origin"`
 }
 
-func (c *CORSConfig) validate() error {
+func (c *CORSConfig) validate(v *validator.Validate) error {
 	if len(c.AllowOrigins) == 0 {
 		return apperrors.New(apperrors.InvalidInput, "CORS 허용 도메인(allow_origins) 목록이 비어있습니다")
 	}
@@ -305,7 +319,7 @@ func (c *CORSConfig) validate() error {
 	}
 
 	// 각 Origin 유효성 검사
-	if err := validate.Struct(c); err != nil {
+	if err := v.Struct(c); err != nil {
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
 			for _, fieldErr := range validationErrors {
 				if fieldErr.Tag() == "cors_origin" {
@@ -337,10 +351,7 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 	k := koanf.New(".")
 
 	// 1. 기본값 로드 (가장 낮은 우선순위)
-	err := k.Load(confmap.Provider(map[string]interface{}{
-		"http_retry.max_retries": DefaultMaxRetries,
-		"http_retry.retry_delay": DefaultRetryDelay,
-	}, "."), nil)
+	err := k.Load(structs.Provider(newDefaultConfig(), "json"), nil)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.System, "애플리케이션 기본 설정 로드에 실패했습니다")
 	}
@@ -357,11 +368,7 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 	// 접두사: NOTIFY_
 	// 구분자: 이중 언더스코어(__)를 점(.)으로 변환 (계층 구조 표현)
 	// 예: NOTIFY_HTTP_RETRY__MAX_RETRIES -> http_retry.max_retries
-	if err := k.Load(env.Provider("NOTIFY_", ".", func(s string) string {
-		s = strings.TrimPrefix(s, "NOTIFY_")
-		s = strings.ToLower(s)
-		return strings.ReplaceAll(s, "__", ".")
-	}), nil); err != nil {
+	if err := k.Load(env.Provider("NOTIFY_", ".", normalizeEnvKey), nil); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.System, "환경 변수 로드에 실패했습니다")
 	}
 
@@ -371,6 +378,9 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 		DecoderConfig: &mapstructure.DecoderConfig{
 			ErrorUnused:      true, // 파일에 존재하지만 구조체에 없는 필드가 있을 경우 에러를 발생시킴
 			WeaklyTypedInput: true,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+			),
 		},
 	}
 	var appConfig AppConfig
@@ -378,10 +388,17 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 		return nil, apperrors.Wrap(err, apperrors.System, "설정 데이터를 애플리케이션 구조체로 변환하는데 실패했습니다")
 	}
 
-	// 5. 유효성 검사 수행 (정합성 체크)
-	if err := appConfig.validate(); err != nil {
+	// 5. 유효성 검사 수행
+	if err := appConfig.validate(newValidator()); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("설정 파일('%s')의 유효성 검증에 실패했습니다", filename))
 	}
 
 	return &appConfig, nil
+}
+
+// normalizeEnvKey 환경 변수 키를 내부 설정 구조체에 매핑하기 위해 표준화된 키 형식으로 변환합니다.
+// Koanf의 환경 변수 로더가 이 함수를 사용하여 'NOTIFY_' 접두사가 붙은 환경 변수를 올바른 설정 경로로 해석합니다.
+func normalizeEnvKey(s string) string {
+	s = strings.ToLower(strings.TrimPrefix(s, "NOTIFY_"))
+	return strings.ReplaceAll(s, "__", ".")
 }

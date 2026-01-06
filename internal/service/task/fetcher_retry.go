@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	log "github.com/sirupsen/logrus"
@@ -22,16 +21,12 @@ type RetryFetcher struct {
 	maxDelay   time.Duration
 }
 
-// NewRetryFetcherFromConfig 설정값(재시도 횟수, 지연 시간 문자열)을 기반으로 RetryFetcher 인스턴스를 생성합니다.
+// NewRetryFetcherFromConfig 설정값(재시도 횟수, 지연 시간)을 기반으로 RetryFetcher 인스턴스를 생성합니다.
 //
 // Parameters:
 //   - maxRetries: 최대 재시도 횟수 (0-10 권장)
-//   - retryDelayStr: 재시도 대기 시간 문자열 (최소 1초)
-func NewRetryFetcherFromConfig(maxRetries int, retryDelayStr string) *RetryFetcher {
-	retryDelay, err := time.ParseDuration(retryDelayStr)
-	if err != nil {
-		retryDelay, _ = time.ParseDuration(config.DefaultRetryDelay)
-	}
+//   - retryDelay: 재시도 대기 시간 (최소 1초)
+func NewRetryFetcherFromConfig(maxRetries int, retryDelay time.Duration) *RetryFetcher {
 	return NewRetryFetcher(NewHTTPFetcher(), maxRetries, retryDelay, 30*time.Second)
 }
 

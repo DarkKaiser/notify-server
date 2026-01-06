@@ -8,7 +8,7 @@ import (
 )
 
 // =============================================================================
-// Unit Tests: Helper Functions (checkUniqueField, validateStruct)
+// Unit Tests: Helper Functions (checkUniqueField, checkStruct)
 // =============================================================================
 
 // TestCheckUniqueField verifies duplicate detection logic within slices.
@@ -29,27 +29,6 @@ func TestCheckUniqueField(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "Unique Items",
-			data: []Item{
-				{ID: "1", Name: "A"},
-				{ID: "2", Name: "B"},
-			},
-			fieldName:   "ID",
-			contextName: "Items",
-			shouldError: false,
-		},
-		{
-			name: "Duplicate Items",
-			data: []Item{
-				{ID: "1", Name: "A"},
-				{ID: "1", Name: "B"}, // Duplicate
-			},
-			fieldName:     "ID",
-			contextName:   "Items",
-			shouldError:   true,
-			errorContains: "중복된 Items ID가 존재합니다",
-		},
-		{
 			name:        "Empty Slice",
 			data:        []Item{},
 			fieldName:   "ID",
@@ -63,13 +42,57 @@ func TestCheckUniqueField(t *testing.T) {
 			contextName: "Items",
 			shouldError: false,
 		},
+		{
+			name: "Single Item (Unique)",
+			data: []Item{
+				{ID: "1", Name: "A"},
+			},
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name: "Multiple Items (Unique)",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "2", Name: "B"},
+				{ID: "3", Name: "C"},
+			},
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name: "Duplicate Items",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "1", Name: "B"}, // Duplicate ID
+			},
+			fieldName:     "ID",
+			contextName:   "Items",
+			shouldError:   true,
+			errorContains: "중복된 Items ID가 존재합니다",
+		},
+		{
+			name: "Triplicate Items",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "1", Name: "B"},
+				{ID: "1", Name: "C"},
+			},
+			fieldName:     "ID",
+			contextName:   "Items",
+			shouldError:   true,
+			errorContains: "중복된 Items ID가 존재합니다",
+		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := checkUniqueField(tt.data, tt.fieldName, tt.contextName)
+			v := newValidator()
+			err := checkUniqueField(v, tt.data, tt.fieldName, tt.contextName)
 			if tt.shouldError {
 				require.Error(t, err)
 				if tt.errorContains != "" {
@@ -82,8 +105,8 @@ func TestCheckUniqueField(t *testing.T) {
 	}
 }
 
-// TestValidateStruct verifies structural validation and error formatting.
-func TestValidateStruct(t *testing.T) {
+// TestCheckStruct verifies structural validation and error formatting.
+func TestCheckStruct(t *testing.T) {
 	t.Parallel()
 
 	type SubConfig struct {
@@ -140,7 +163,8 @@ func TestValidateStruct(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateStruct(tt.input, tt.contextName)
+			v := newValidator()
+			err := checkStruct(v, tt.input, tt.contextName)
 			if tt.shouldError {
 				require.Error(t, err)
 				if tt.errorContains != "" {
@@ -192,12 +216,55 @@ func TestValidate_Infrastructure_JSONTagName(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateStruct(tt.input, "TestStruct")
+			v := newValidator()
+			err := checkStruct(v, tt.input, "TestStruct")
 			if !tt.expectedValid {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorContains)
 			} else {
 				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidate_Unit_TelegramBotToken verifies the custom Telegram Bot Token validator.
+func TestValidate_Unit_TelegramBotToken(t *testing.T) {
+	t.Parallel()
+
+	type BotTokenStruct struct {
+		Token string `validate:"telegram_bot_token"`
+	}
+
+	tests := []struct {
+		name  string
+		token string
+		valid bool
+	}{
+		// Valid cases
+		{"Valid Token", "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+		{"Valid Token (Minimum Length)", "123:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+		{"Valid Token (Long ID)", "12345678901234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+
+		// Invalid cases
+		{"Empty Token", "", false},
+		{"No Separator", "123456789ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"ID Too Short", "12:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"ID Not Numeric", "ABC:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"Secret Too Short", "123456789:ShortSecret", false},
+		{"Secret Contains Special Char", "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123@#$", false}, // Only - and _ allowed
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := newValidator()
+			err := v.Struct(BotTokenStruct{Token: tt.token})
+			if tt.valid {
+				assert.NoError(t, err, "Token '%s' should be valid", tt.token)
+			} else {
+				assert.Error(t, err, "Token '%s' should be invalid", tt.token)
 			}
 		})
 	}
@@ -241,7 +308,8 @@ func TestValidate_Unit_CORSOrigin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Direct usage of validator to test custom tag registration
-			err := validate.Struct(CORSStruct{Origin: tt.origin})
+			v := newValidator()
+			err := v.Struct(CORSStruct{Origin: tt.origin})
 			if tt.valid {
 				assert.NoError(t, err, "Origin '%s' should be valid", tt.origin)
 			} else {

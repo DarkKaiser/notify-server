@@ -137,7 +137,7 @@ func TestInitAppConfig(t *testing.T) {
 				"notifiers": {
 					"default_notifier_id": "test",
 					"telegrams": [
-						{ "id": "test", "bot_token": "token", "chat_id": 12345 }
+						{ "id": "test", "bot_token": "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", "chat_id": 12345 }
 					]
 				},
 				"tasks": [],

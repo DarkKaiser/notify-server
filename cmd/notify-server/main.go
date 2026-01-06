@@ -130,7 +130,9 @@ func run() error {
 	// 4. 운영 적합성 진단
 	// 서비스 안정성과 보안을 높이기 위한 권장 설정 준수 여부를 검사합니다.
 	// 미준수 항목은 경고(Warn) 레벨로 로깅되며, 실행 흐름에는 영향을 주지 않습니다.
-	appConfig.VerifyRecommendations()
+	for _, warning := range appConfig.VerifyRecommendations() {
+		applog.WithComponent("config").Warn(warning)
+	}
 
 	// 5. 서버 아이덴티티 출력
 	// 서버 시작 시 시각적으로 식별 가능한 배너(Ascii Art)와 버전 정보를 출력하여,
