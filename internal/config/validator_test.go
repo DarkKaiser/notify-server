@@ -3,14 +3,188 @@ package config
 import (
 	"testing"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestValidate_JSONTagName은 검증 실패 시 구조체 필드명 대신
-// 'json' 태그에 정의된 이름이 반환되는지 확인합니다.
-func TestValidate_JSONTagName(t *testing.T) {
-	// 테스트용 구조체 정의
+// =============================================================================
+// Unit Tests: Helper Functions (checkUniqueField, checkStruct)
+// =============================================================================
+
+// TestCheckUniqueField verifies duplicate detection logic within slices.
+func TestCheckUniqueField(t *testing.T) {
+	t.Parallel()
+
+	type Item struct {
+		ID   string `validate:"required"`
+		Name string
+	}
+
+	tests := []struct {
+		name          string
+		data          interface{}
+		fieldName     string
+		contextName   string
+		shouldError   bool
+		errorContains string
+	}{
+		{
+			name:        "Empty Slice",
+			data:        []Item{},
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name:        "Nil Slice",
+			data:        []Item(nil),
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name: "Single Item (Unique)",
+			data: []Item{
+				{ID: "1", Name: "A"},
+			},
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name: "Multiple Items (Unique)",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "2", Name: "B"},
+				{ID: "3", Name: "C"},
+			},
+			fieldName:   "ID",
+			contextName: "Items",
+			shouldError: false,
+		},
+		{
+			name: "Duplicate Items",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "1", Name: "B"}, // Duplicate ID
+			},
+			fieldName:     "ID",
+			contextName:   "Items",
+			shouldError:   true,
+			errorContains: "중복된 Items ID가 존재합니다",
+		},
+		{
+			name: "Triplicate Items",
+			data: []Item{
+				{ID: "1", Name: "A"},
+				{ID: "1", Name: "B"},
+				{ID: "1", Name: "C"},
+			},
+			fieldName:     "ID",
+			contextName:   "Items",
+			shouldError:   true,
+			errorContains: "중복된 Items ID가 존재합니다",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := newValidator()
+			err := checkUniqueField(v, tt.data, tt.fieldName, tt.contextName)
+			if tt.shouldError {
+				require.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestCheckStruct verifies structural validation and error formatting.
+func TestCheckStruct(t *testing.T) {
+	t.Parallel()
+
+	type SubConfig struct {
+		ID string `json:"id" validate:"required"`
+	}
+
+	type TestConfig struct {
+		Name     string      `json:"name" validate:"required"`
+		Age      int         `json:"age" validate:"min=18"`
+		Optional string      `json:"optional"`
+		Sub      []SubConfig `json:"sub" validate:"unique=ID"`
+	}
+
+	tests := []struct {
+		name          string
+		input         TestConfig
+		contextName   string
+		shouldError   bool
+		errorContains string
+	}{
+		{
+			name:        "Valid Struct",
+			input:       TestConfig{Name: "John", Age: 20},
+			contextName: "User",
+			shouldError: false,
+		},
+		{
+			name:          "Missing Required Field",
+			input:         TestConfig{Age: 20}, // Name missing
+			contextName:   "User",
+			shouldError:   true,
+			errorContains: "User의 설정이 올바르지 않습니다: name (조건: required)",
+		},
+		{
+			name:          "Validation Failed (Min)",
+			input:         TestConfig{Name: "John", Age: 10}, // Age < 18
+			contextName:   "User",
+			shouldError:   true,
+			errorContains: "User의 설정이 올바르지 않습니다: age (조건: min)",
+		},
+		{
+			name: "Duplicate ID in SubSlice (unique tag)",
+			input: TestConfig{
+				Name: "John", Age: 20,
+				Sub: []SubConfig{{ID: "a"}, {ID: "a"}},
+			},
+			contextName:   "User",
+			shouldError:   true,
+			errorContains: "User 내에 중복된 ID가 존재합니다",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := newValidator()
+			err := checkStruct(v, tt.input, tt.contextName)
+			if tt.shouldError {
+				require.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// Unit Tests: Custom Validators & Infrastructure
+// =============================================================================
+
+// TestValidate_Infrastructure_JSONTagName checks if error messages use JSON tags.
+func TestValidate_Infrastructure_JSONTagName(t *testing.T) {
+	t.Parallel()
+
 	type TestStruct struct {
 		RequiredField string `json:"required_field" validate:"required"`
 		OmitField     string `json:"omit_field,omitempty" validate:"required"`
@@ -21,92 +195,125 @@ func TestValidate_JSONTagName(t *testing.T) {
 	tests := []struct {
 		name          string
 		input         TestStruct
-		expectedError string
+		expectedValid bool
+		errorContains string
 	}{
 		{
-			name:  "Required Field Missing",
-			input: TestStruct{},
-			// 'RequiredField' 대신 'required_field'가 에러 메시지에 포함되어야 함
-			expectedError: "required_field",
+			name:          "Required Field Missing",
+			input:         TestStruct{},
+			expectedValid: false,
+			errorContains: "required_field", // json tag name
 		},
 		{
-			name:  "Omit Option Handling",
-			input: TestStruct{},
-			// 'omit_field,omitempty'에서 ',omitempty'가 제거되고 'omit_field'만 포함되어야 함
-			expectedError: "omit_field",
-		},
-		{
-			name:  "No JSON Tag",
-			input: TestStruct{},
-			// JSON 태그가 없으면 구조체 필드명 'NoTagField'가 사용됨
-			expectedError: "NoTagField",
+			name:          "No JSON Tag",
+			input:         TestStruct{RequiredField: "valid", OmitField: "valid"}, // Fill prior required fields
+			expectedValid: false,
+			errorContains: "NoTagField", // fallback to field name
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			err := validate.Struct(tt.input)
-			assert.Error(t, err)
-
-			// 에러가 ValidationErrors 타입인지 확인
-			validationErrors, ok := err.(validator.ValidationErrors)
-			assert.True(t, ok)
-
-			// 발생한 모든 에러 메시지에서 기대하는 필드명이 포함되어 있는지 확인
-			found := false
-			for _, fieldError := range validationErrors {
-				// Namespace()는 Struct.Field 형식을 반환하므로, 뒷부분인 Field(우리가 정의한 json 태그)를 확인
-				if fieldError.Field() == tt.expectedError {
-					found = true
-					break
-				}
-			}
-
-			// DashTagField의 경우 json:"-" 이므로 Field Name 생성 함수에서 빈 문자열을 반환.
-			// go-playground/validator는 이름이 비어있으면 Field Name을 그대로 사용하지 않고
-			// 내부적으로 처리가 달라질 수 있으므로, 이 테스트의 주 목적(JSON 태그 반영 확인)에 집중
-			if tt.name != "No JSON Tag" {
-				assert.Truef(t, found, "Expected error message to contain field name '%s', but got: %v", tt.expectedError, err)
+			t.Parallel()
+			v := newValidator()
+			err := checkStruct(v, tt.input, "TestStruct")
+			if !tt.expectedValid {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
-// TestValidate_CORSOrigin은 validateCORSOrigin 커스텀 밸리데이터가
-// 올바르게 동작하는지 테이블 기반 테스트로 검증합니다.
-func TestValidate_CORSOrigin(t *testing.T) {
+// TestValidate_Unit_TelegramBotToken verifies the custom Telegram Bot Token validator.
+func TestValidate_Unit_TelegramBotToken(t *testing.T) {
+	t.Parallel()
+
+	type BotTokenStruct struct {
+		Token string `validate:"telegram_bot_token"`
+	}
+
+	tests := []struct {
+		name  string
+		token string
+		valid bool
+	}{
+		// Valid cases
+		{"Valid Token", "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+		{"Valid Token (Minimum Length)", "123:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+		{"Valid Token (Long ID)", "12345678901234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", true},
+
+		// Invalid cases
+		{"Empty Token", "", false},
+		{"No Separator", "123456789ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"ID Too Short", "12:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"ID Not Numeric", "ABC:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", false},
+		{"Secret Too Short", "123456789:ShortSecret", false},
+		{"Secret Contains Special Char", "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123@#$", false}, // Only - and _ allowed
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := newValidator()
+			err := v.Struct(BotTokenStruct{Token: tt.token})
+			if tt.valid {
+				assert.NoError(t, err, "Token '%s' should be valid", tt.token)
+			} else {
+				assert.Error(t, err, "Token '%s' should be invalid", tt.token)
+			}
+		})
+	}
+}
+
+// TestValidate_Unit_CORSOrigin verifies the custom CORS origin validator.
+func TestValidate_Unit_CORSOrigin(t *testing.T) {
+	t.Parallel()
+
 	type CORSStruct struct {
 		Origin string `validate:"cors_origin"`
 	}
 
 	tests := []struct {
-		name    string
-		origin  string
-		isValid bool
+		name   string
+		origin string
+		valid  bool
 	}{
 		// Valid cases
-		{name: "Wildcard", origin: "*", isValid: true},
-		{name: "HTTP Localhost", origin: "http://localhost", isValid: true},
-		{name: "HTTPS Example", origin: "https://example.com", isValid: true},
-		{name: "HTTP with Port", origin: "http://localhost:8080", isValid: true},
-		{name: "Subdomain", origin: "https://api.example.com", isValid: true},
+		{"Wildcard", "*", true},
+		{"HTTP Localhost", "http://localhost", true},
+		{"HTTPS Example", "https://example.com", true},
+		{"HTTP with Port", "http://localhost:8080", true},
+		{"Subdomain", "https://api.example.com", true},
+		{"IP Address", "http://127.0.0.1", true},
+		{"IP with Port", "http://192.168.0.1:3000", true},
 
 		// Invalid cases
-		{name: "Missing Scheme", origin: "example.com", isValid: false},
-		{name: "Unsupported Scheme (FTP)", origin: "ftp://example.com", isValid: false},
-		{name: "Empty String", origin: "", isValid: false}, // implementation detail: validation packge might allow empty, but let's check current behavior
-		{name: "Just Scheme", origin: "http://", isValid: false},
+		{"Missing Scheme", "example.com", false},
+		{"Unsupported Scheme (FTP)", "ftp://example.com", false},
+		{"Empty String", "", false},
+		{"Just Scheme", "http://", false},
+		{"Leading Whitespace", " https://example.com", false},
+		{"Trailing Slash", "https://example.com/", false},
+		{"Path Included", "https://example.com/api", false},
+		{"Query String Included", "https://example.com?q=1", false},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			input := CORSStruct{Origin: tt.origin}
-			err := validate.Struct(input)
-
-			if tt.isValid {
-				assert.NoError(t, err, "Expected '%s' to be valid", tt.origin)
+			t.Parallel()
+			// Direct usage of validator to test custom tag registration
+			v := newValidator()
+			err := v.Struct(CORSStruct{Origin: tt.origin})
+			if tt.valid {
+				assert.NoError(t, err, "Origin '%s' should be valid", tt.origin)
 			} else {
-				assert.Error(t, err, "Expected '%s' to be invalid", tt.origin)
+				assert.Error(t, err, "Origin '%s' should be invalid", tt.origin)
 			}
 		})
 	}

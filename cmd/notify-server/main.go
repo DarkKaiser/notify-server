@@ -101,7 +101,7 @@ func run() error {
 	// 1. 환경설정 로드
 	// 애플리케이션 구동에 필요한 모든 설정(로깅, 타임아웃, 포트 등)을 파일로부터 읽어 메모리에 적재합니다.
 	// 이 단계가 실패하면 서버는 정상 동작할 수 없으므로 즉시 종료됩니다.
-	appConfig, err := config.InitAppConfig()
+	appConfig, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("환경설정 파일을 로드하는 중 치명적인 오류가 발생했습니다: %w", err)
 	}
@@ -130,7 +130,9 @@ func run() error {
 	// 4. 운영 적합성 진단
 	// 서비스 안정성과 보안을 높이기 위한 권장 설정 준수 여부를 검사합니다.
 	// 미준수 항목은 경고(Warn) 레벨로 로깅되며, 실행 흐름에는 영향을 주지 않습니다.
-	appConfig.VerifyRecommendations()
+	for _, warning := range appConfig.VerifyRecommendations() {
+		applog.WithComponent("config").Warn(warning)
+	}
 
 	// 5. 서버 아이덴티티 출력
 	// 서버 시작 시 시각적으로 식별 가능한 배너(Ascii Art)와 버전 정보를 출력하여,

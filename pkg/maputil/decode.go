@@ -17,7 +17,7 @@ import (
 //   - 유연한 타입 변환 (Weakly Typed): "123" -> 123 (int), 1 -> true (bool) 등 타입을 자동으로 보정합니다.
 //   - 구조체 평탄화 (Squash): 임베디드 구조체를 자동으로 평탄화하여 상위 맵 필드와 매핑합니다.
 //   - 태그 지원: 기본적으로 구조체의 `json` 태그를 기준으로 필드를 매핑합니다.
-//   - 고급 타입 지원: `[]byte` (Base64 자동 디코딩), `time.Duration`, `net.IP` 등을 위한 전용 훅이 내장되어 있습니다.
+//   - 고급 타입 지원: `[]byte` ("base64:" 접두사 필요), `time.Duration`, `net.IP` 등을 위한 전용 훅이 내장되어 있습니다.
 //
 // [주의사항]
 // 기본적으로 `ErrorUnused` 옵션이 꺼져 있습니다 (`false`).
@@ -170,7 +170,7 @@ func (c *decodingConfig) buildDecodeHook() mapstructure.DecodeHookFunc {
 	hooks = append(hooks,
 		mapstructure.TextUnmarshallerHookFunc(), // unmarshal interface 지원
 		stringToDurationHookFunc(),              // "10s" -> time.Duration (strict type check, does not support aliases)
-		stringToBytesHookFunc(),                 // Base64 string -> []byte
+		stringToBytesHookFunc(c.trimSpace),      // Base64 string -> []byte
 		stringToSliceHookFunc(c.trimSpace),      // "a,b" -> []string (Configurable Trim)
 	)
 

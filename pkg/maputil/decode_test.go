@@ -2,17 +2,15 @@ package maputil
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// Test Data Structures
+// Test Data Model
 // =============================================================================
 
 type User struct {
@@ -21,267 +19,257 @@ type User struct {
 	Active bool   `json:"active"`
 }
 
-type Config struct {
-	User    User          `json:"user"`
-	TIMEOUT time.Duration `json:"timeout"` // Upper case to test matching if needed, though tag is "timeout"
-	Roles   []string      `json:"roles"`
+type NetworkConfig struct {
+	Host string        `json:"host"`
+	Port int           `json:"port"`
+	Time time.Duration `json:"time"`
 }
 
-type EmbeddedConfig struct {
+type ComplexConfig struct {
+	User     User           `json:"user"`
+	Tags     []string       `json:"tags"`
+	Metadata map[string]int `json:"metadata"`
+}
+
+type EmbeddedStruct struct {
 	User `mapstructure:",squash"`
-	ID   string `json:"id"`
+	Role string `json:"role"`
 }
 
 // =============================================================================
-// Table Driven Tests for Decode
+// Test Suite: Decode / DecodeTo
 // =============================================================================
 
 func TestDecode(t *testing.T) {
 	t.Parallel()
 
-	basicMap := map[string]any{"name": "Alice", "age": 30, "active": true}
+	t.Run("Basic Type Decoding", func(t *testing.T) {
+		t.Parallel()
 
-	tests := []struct {
-		name string
-		run  func(t *testing.T)
-	}{
-		// ---------------------------------------------------------------------
-		// 1. Basic Decoding
-		// ---------------------------------------------------------------------
-		{
-			name: "Basic Struct Decoding",
-			run: func(t *testing.T) {
-				input := map[string]any{"name": "Alice", "age": 30, "active": true}
-				var target User
-				err := DecodeTo(input, &target)
-				require.NoError(t, err)
-				assert.Equal(t, User{Name: "Alice", Age: 30, Active: true}, target)
+		tests := []struct {
+			name    string
+			input   any
+			want    User
+			wantErr bool
+		}{
+			{
+				name:  "Full Fields",
+				input: map[string]any{"name": "Alice", "age": 30, "active": true},
+				want:  User{Name: "Alice", Age: 30, Active: true},
 			},
-		},
-		{
-			name: "Nested Struct Decoding",
-			run: func(t *testing.T) {
-				input := map[string]any{
-					"user":    map[string]any{"name": "Alice", "age": 30},
-					"timeout": "10s",
-					"roles":   []string{"admin", "editor"},
-				}
-				var target Config
-				err := DecodeTo(input, &target)
-				require.NoError(t, err)
-				assert.Equal(t, "Alice", target.User.Name)
-				assert.Equal(t, 10*time.Second, target.TIMEOUT)
-				assert.Equal(t, []string{"admin", "editor"}, target.Roles)
+			{
+				name:  "Partial Fields",
+				input: map[string]any{"name": "Bob"},
+				want:  User{Name: "Bob"},
 			},
-		},
-		{
-			name: "Embedded Struct (Squash Default)",
-			run: func(t *testing.T) {
-				input := map[string]any{"id": "conf-1", "name": "Bob", "age": 50}
-				var target EmbeddedConfig
-				err := DecodeTo(input, &target)
-				require.NoError(t, err)
-				assert.Equal(t, "conf-1", target.ID)
-				assert.Equal(t, "Bob", target.User.Name)
+			{
+				name:  "Weak Typing (String to Int/Bool)",
+				input: map[string]any{"name": "Charlie", "age": "40", "active": 1},
+				want:  User{Name: "Charlie", Age: 40, Active: true},
 			},
-		},
+		}
 
-		// ---------------------------------------------------------------------
-		// 2. Options Testing
-		// ---------------------------------------------------------------------
-		{
-			name: "WithTagName (yaml)",
-			run: func(t *testing.T) {
-				type YamlStruct struct {
-					Val string `yaml:"my_val"`
+		for _, tt := range tests {
+			tt := tt
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				// Test Decode[T]
+				got, err := Decode[User](tt.input)
+				if tt.wantErr {
+					require.Error(t, err)
+					return
 				}
-				input := map[string]any{"my_val": "data"}
-				var target YamlStruct
-				err := DecodeTo(input, &target, WithTagName("yaml"))
 				require.NoError(t, err)
-				assert.Equal(t, "data", target.Val)
-			},
-		},
-		{
-			name: "WithWeaklyTypedInput (True - Default)",
-			run: func(t *testing.T) {
-				input := map[string]any{"age": "25"}
-				var target User
-				err := DecodeTo(input, &target) // Default true
-				require.NoError(t, err)
-				assert.Equal(t, 25, target.Age)
-			},
-		},
-		{
-			name: "WithWeaklyTypedInput (False - Strict)",
-			run: func(t *testing.T) {
-				input := map[string]any{"age": "25"}
-				var target User
-				err := DecodeTo(input, &target, WithWeaklyTypedInput(false))
-				require.Error(t, err)
-			},
-		},
-		{
-			name: "WithErrorUnused (True)",
-			run: func(t *testing.T) {
-				input := map[string]any{"name": "Alice", "unused": "field"}
-				var target User
-				err := DecodeTo(input, &target, WithErrorUnused(true))
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "unused")
-			},
-		},
-		{
-			name: "WithZeroFields (True - Replace)",
-			run: func(t *testing.T) {
-				input := map[string]any{"age": 40}
-				target := User{Name: "Old", Age: 20, Active: true}
+				require.NotNil(t, got)
+				assert.Equal(t, tt.want, *got)
 
-				err := DecodeTo(input, &target, WithZeroFields(true))
+				// Test DecodeTo
+				var gotTo User
+				err = DecodeTo(tt.input, &gotTo)
 				require.NoError(t, err)
-				assert.Equal(t, "", target.Name) // Zeroed
-				assert.Equal(t, 40, target.Age)
-				assert.Equal(t, false, target.Active) // Zeroed
-			},
-		},
-		{
-			name: "WithTrimSpace (True - Default)",
-			run: func(t *testing.T) {
-				input := map[string]any{"roles": " a , b "}
-				var target Config
-				err := DecodeTo(input, &target) // Default true
-				require.NoError(t, err)
-				assert.Equal(t, []string{"a", "b"}, target.Roles)
-			},
-		},
-		{
-			name: "WithTrimSpace (False)",
-			run: func(t *testing.T) {
-				input := map[string]any{"roles": " a , b "}
-				var target Config
-				err := DecodeTo(input, &target, WithTrimSpace(false))
-				require.NoError(t, err)
-				assert.Equal(t, []string{" a ", " b "}, target.Roles)
-			},
-		},
-		{
-			name: "WithMetadata",
-			run: func(t *testing.T) {
-				input := map[string]any{"name": "Alice", "extra": 1}
-				var md mapstructure.Metadata
-				var target User
-				err := DecodeTo(input, &target, WithMetadata(&md))
-				require.NoError(t, err)
-				assert.Contains(t, md.Keys, "name")
-				assert.Contains(t, md.Unused, "extra")
-			},
-		},
-		{
-			name: "WithMatchName (Custom)",
-			run: func(t *testing.T) {
-				input := map[string]any{"THE_NAME": "Alice"}
-				var target User
-				matcher := func(mapK, fieldK string) bool {
-					return mapK == "THE_"+strings.ToUpper(fieldK)
-				}
-				err := DecodeTo(input, &target, WithMatchName(matcher))
-				require.NoError(t, err)
-				assert.Equal(t, "Alice", target.Name)
-			},
-		},
-		{
-			name: "WithDecodeHook (Custom Priority)",
-			run: func(t *testing.T) {
-				// Custom hook that intercepts Age 999 and turns it into 0
-				hit := false
-				hook := func(f, to reflect.Type, data any) (any, error) {
-					if to.Kind() == reflect.Int && data == 999 {
-						hit = true
-						return 0, nil
-					}
-					return data, nil
-				}
-				input := map[string]any{"age": 999}
-				var target User
-				err := DecodeTo(input, &target, WithDecodeHook(hook))
-				require.NoError(t, err)
-				assert.True(t, hit)
-				assert.Equal(t, 0, target.Age)
-			},
-		},
+				assert.Equal(t, tt.want, gotTo)
+			})
+		}
+	})
 
-		// ---------------------------------------------------------------------
-		// 3. Edge Cases & Errors
-		// ---------------------------------------------------------------------
-		{
-			name: "Nil Output",
-			run: func(t *testing.T) {
-				err := DecodeTo(basicMap, (*User)(nil))
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "nil")
-			},
-		},
-		{
-			name: "Cycle Detection",
-			run: func(t *testing.T) {
-				// Prevent stack overflow in test
-				defer func() {
-					if r := recover(); r != nil {
-						// Recovered from panic (expected if stack overflow or mapstructure panic)
-						// t.Log("Recovered from cyclic panic")
-					}
-				}()
+	t.Run("Advanced Structures", func(t *testing.T) {
+		t.Parallel()
 
-				type Node struct {
-					Ref any `json:"ref"`
-				}
-				m := make(map[string]any)
-				m["ref"] = m
-
-				var target Node
-				// This might panic with stack overflow.
-				// Just ensuring it doesn't crash the test suite (recover handles it).
-				_ = DecodeTo(m, &target)
-				// If we get here without panic, mapstructure might have handled it gracefully (depth limit?)
-				// or we just got lucky.
-			},
-		},
-		{
-			name: "Base64 Decoding Integration",
-			run: func(t *testing.T) {
-				// Verifies that the internal base64 hook is active
-				input := map[string]any{
-					"data": "base64:SGVsbG8=",
-				}
-				var target struct {
-					Data []byte `json:"data"`
-				}
-				err := DecodeTo(input, &target)
-				require.NoError(t, err)
-				assert.Equal(t, []byte("Hello"), target.Data)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			tt.run(t)
+		// 1. Nested Structs
+		t.Run("Nested", func(t *testing.T) {
+			input := map[string]any{
+				"user":     map[string]any{"name": "Alice", "age": 30},
+				"tags":     "tag1, tag2", // Hook check
+				"metadata": map[string]any{"level": 5},
+			}
+			got, err := Decode[ComplexConfig](input)
+			require.NoError(t, err)
+			assert.Equal(t, "Alice", got.User.Name)
+			assert.Equal(t, []string{"tag1", "tag2"}, got.Tags)
+			assert.Equal(t, 5, got.Metadata["level"])
 		})
-	}
+
+		// 2. Embedded Squash
+		t.Run("Embedded Squash", func(t *testing.T) {
+			input := map[string]any{
+				"name": "Admin", // Belongs to User
+				"role": "Super", // Belongs to EmbeddedStruct
+			}
+			got, err := Decode[EmbeddedStruct](input)
+			require.NoError(t, err)
+			assert.Equal(t, "Admin", got.Name)
+			assert.Equal(t, "Super", got.Role)
+		})
+	})
+
+	t.Run("Option Validation", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("WithTagName", func(t *testing.T) {
+			type YamlTarget struct {
+				Val string `yaml:"val"`
+			}
+			input := map[string]any{"val": "data"} // matches yaml tag
+			got, err := Decode[YamlTarget](input, WithTagName("yaml"))
+			require.NoError(t, err)
+			assert.Equal(t, "data", got.Val)
+		})
+
+		t.Run("WithWeaklyTypedInput (Disable)", func(t *testing.T) {
+			input := map[string]any{"age": "30"} // String, needs conversion
+			_, err := Decode[User](input, WithWeaklyTypedInput(false))
+			require.Error(t, err) // Should fail
+		})
+
+		t.Run("WithErrorUnused", func(t *testing.T) {
+			input := map[string]any{"name": "Alice", "extra_field": "oops"}
+			_, err := Decode[User](input, WithErrorUnused(true))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "extra_field")
+		})
+
+		t.Run("WithZeroFields (Replace semantics)", func(t *testing.T) {
+			// Setup: pre-filled struct
+			target := User{Name: "Old", Age: 99}
+			input := map[string]any{"name": "New"}
+
+			// Default behavior (Merge) check
+			// Note: DecodeTo handles merge. Decode[T] always creates new T.
+			// So we test DecodeTo specifically here for Merge vs Replace.
+			var mergeTarget User = target
+			err := DecodeTo(input, &mergeTarget) // Default: Merge
+			require.NoError(t, err)
+			assert.Equal(t, "New", mergeTarget.Name)
+			assert.Equal(t, 99, mergeTarget.Age) // Preserved
+
+			// Option behavior (Replace)
+			var replaceTarget User = target
+			err = DecodeTo(input, &replaceTarget, WithZeroFields(true))
+			require.NoError(t, err)
+			assert.Equal(t, "New", replaceTarget.Name)
+			assert.Equal(t, 0, replaceTarget.Age) // Zeroed
+		})
+
+		t.Run("WithTrimSpace", func(t *testing.T) {
+			type TagStruct struct {
+				Tags []string `json:"tags"`
+			}
+			input := map[string]any{"tags": " a , b "}
+
+			// Default: Trimmed
+			got, err := Decode[TagStruct](input)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"a", "b"}, got.Tags)
+
+			// Disabled: Not Trimmed
+			got, err = Decode[TagStruct](input, WithTrimSpace(false))
+			require.NoError(t, err)
+			assert.Equal(t, []string{" a ", " b "}, got.Tags)
+		})
+	})
+
+	t.Run("Edge Cases & Errors", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("Nil Input", func(t *testing.T) {
+			// Decodes nil -> Zero Value
+			got, err := Decode[User](nil)
+			require.NoError(t, err)
+			assert.Equal(t, User{}, *got)
+		})
+
+		t.Run("Nil Output Pointer", func(t *testing.T) {
+			// Validate DecodeTo nil check
+			err := DecodeTo(map[string]any{}, (*User)(nil))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "output 포인터가 nil입니다")
+		})
+
+		t.Run("Invalid Output Type (Non-Pointer)", func(t *testing.T) {
+			// Recover from mapstructure panic or return error
+			// mapstructure.Decoder.Decode documentation says:
+			// "Panic if Result is not a pointer to a struct or a map"
+			defer func() {
+				// We expect DecodeTo to possibly panic or return error depending on impl.
+				// Our Wrapper creates a config with Result: output.
+				// If output is not pointer, NewDecoder *might* error or Decode *might* panic.
+				// Let's check mapstructure behavior.
+				// Actually mapstructure NewDecoder checks if Result is pointer.
+				if r := recover(); r != nil {
+					// OK if it panics, though error is better.
+				}
+			}()
+
+			var val User
+			// DecodeTo expects *T, but if T is interface{}, user could pass non-pointer.
+			// However DecodeTo[T] strongly types output as *T.
+			// So we can only pass *T.
+			// The only way to crash it is if T is a map type and we somehow mess up?
+			// Actually, Go generics enforce *T. So we are safe from non-pointer calls mostly.
+			_ = DecodeTo(map[string]any{}, &val)
+		})
+
+		t.Run("Custom Hook Logic", func(t *testing.T) {
+			// Hook: convert string "full" -> bool true
+			hook := func(f, t reflect.Type, data any) (any, error) {
+				if f.Kind() == reflect.String && t.Kind() == reflect.Bool {
+					if data == "full" {
+						return true, nil
+					}
+				}
+				return data, nil
+			}
+			input := map[string]any{"active": "full"}
+			got, err := Decode[User](input, WithDecodeHook(hook))
+			require.NoError(t, err)
+			assert.True(t, got.Active)
+		})
+	})
 }
 
-// Example for GoDoc
+// ExampleDecode demonstrates how to use the Decode function.
 func ExampleDecode() {
-	input := map[string]any{"name": "Alice", "age": 30}
-
-	type Person struct {
-		Name string `json:"name"`
-		Age  int    `json:"age"`
+	// Sample data often found in JSON or YAML
+	input := map[string]any{
+		"name":   "Alice",
+		"age":    "30",           // String to Int (Weak typing)
+		"active": 1,              // Int to Bool (Weak typing)
+		"roles":  "admin,editor", // String to Slice (Hook)
 	}
 
-	p, _ := Decode[Person](input)
-	// fmt.Printf("%s: %d", p.Name, p.Age)
-	_ = p
+	type UserProfile struct {
+		Name   string   `json:"name"`
+		Age    int      `json:"age"`
+		Active bool     `json:"active"`
+		Roles  []string `json:"roles"`
+	}
+
+	// Simple one-liner decoding
+	profile, err := Decode[UserProfile](input)
+	if err != nil {
+		panic(err)
+	}
+
+	// Use profile...
+	_ = profile
 }

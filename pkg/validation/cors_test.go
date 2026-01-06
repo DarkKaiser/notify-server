@@ -75,7 +75,9 @@ func TestValidateCORSOrigin(t *testing.T) {
 			groupName: "5. Invalid Formats & Constraints",
 			cases: []testCase{
 				{name: "Empty String", origin: "", isValid: false, errorContains: "비어있을 수 없습니다"},
-				{name: "Whitespace Only", origin: "   ", isValid: false, errorContains: "비어있을 수 없습니다"},
+				{name: "Whitespace Only", origin: "   ", isValid: false, errorContains: "앞뒤 공백을 포함할 수 없습니다"},
+				{name: "Leading Whitespace", origin: " https://example.com", isValid: false, errorContains: "앞뒤 공백을 포함할 수 없습니다"},
+				{name: "Trailing Whitespace", origin: "https://example.com ", isValid: false, errorContains: "앞뒤 공백을 포함할 수 없습니다"},
 				{name: "Trailing Slash", origin: "https://example.com/", isValid: false, errorContains: "경로 구분자"},
 				{name: "With Explicit Path", origin: "https://example.com/api", isValid: false, errorContains: "경로(Path)"},
 				{name: "With Query Params", origin: "https://example.com?foo=bar", isValid: false, errorContains: "쿼리 파라미터"},

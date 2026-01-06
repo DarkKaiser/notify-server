@@ -43,7 +43,7 @@ func TestAppMetadata(t *testing.T) {
 	t.Run("ConfigFileName 검증", func(t *testing.T) {
 		t.Parallel()
 		expected := "notify-server.json"
-		assert.Equal(t, expected, config.AppConfigFileName, "설정 파일명은 '%s'여야 합니다", expected)
+		assert.Equal(t, expected, config.DefaultFilename, "설정 파일명은 '%s'여야 합니다", expected)
 	})
 }
 
@@ -137,7 +137,7 @@ func TestInitAppConfig(t *testing.T) {
 				"notifiers": {
 					"default_notifier_id": "test",
 					"telegrams": [
-						{ "id": "test", "bot_token": "token", "chat_id": 12345 }
+						{ "id": "test", "bot_token": "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", "chat_id": 12345 }
 					]
 				},
 				"tasks": [],
@@ -163,7 +163,7 @@ func TestInitAppConfig(t *testing.T) {
 			name:        "Error_EmptyFile",
 			fileContent: "",
 			wantErr:     true,
-			errContains: "EOF",
+			errContains: "unexpected end of JSON input",
 		},
 		{
 			name:        "Error_EmptyJSON",
@@ -183,7 +183,7 @@ func TestInitAppConfig(t *testing.T) {
 			f := createTempConfigFile(t, tt.file, tt.fileContent)
 
 			// 테스트 실행
-			cfg, err := config.InitAppConfigWithFile(f)
+			cfg, err := config.LoadWithFile(f)
 
 			// 검증
 			if tt.wantErr {
@@ -208,7 +208,7 @@ func TestInitAppConfig_FileNotFound(t *testing.T) {
 	t.Parallel()
 
 	nonExistentFile := filepath.Join(t.TempDir(), "ghost_config.json")
-	cfg, err := config.InitAppConfigWithFile(nonExistentFile)
+	cfg, err := config.LoadWithFile(nonExistentFile)
 
 	assert.Error(t, err)
 	assert.Nil(t, cfg)
@@ -217,7 +217,7 @@ func TestInitAppConfig_FileNotFound(t *testing.T) {
 	errMsg := err.Error()
 	isPathError := strings.Contains(errMsg, "no such file") || strings.Contains(errMsg, "지정된 파일을 찾을 수 없습니다") || os.IsNotExist(err)
 
-	// config.InitAppConfigWithFile이 에러를 래핑할 수 있으므로, 언래핑하여 원본 에러 확인 시도
+	// config.LoadWithFile이 에러를 래핑할 수 있으므로, 언래핑하여 원본 에러 확인 시도
 	if !isPathError {
 		// 만약 래핑된 에러라면 "파일을 찾을 수 없습니다" 등의 키워드가 포함되어야 함
 		// (실제 구현에 따라 다름, 여기서는 보수적으로 체크)
