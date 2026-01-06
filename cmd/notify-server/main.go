@@ -101,7 +101,7 @@ func run() error {
 	// 1. 환경설정 로드
 	// 애플리케이션 구동에 필요한 모든 설정(로깅, 타임아웃, 포트 등)을 파일로부터 읽어 메모리에 적재합니다.
 	// 이 단계가 실패하면 서버는 정상 동작할 수 없으므로 즉시 종료됩니다.
-	appConfig, err := config.InitAppConfig()
+	appConfig, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("환경설정 파일을 로드하는 중 치명적인 오류가 발생했습니다: %w", err)
 	}

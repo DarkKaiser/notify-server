@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 	"github.com/go-playground/validator/v10"
 )
@@ -37,4 +38,43 @@ func init() {
 // 즉, 설정 파일에 있는 CORS Origin 문자열을 꺼내서 실제 검증 함수에 전달하고 그 결과를 반환합니다.
 func validateCORSOrigin(fl validator.FieldLevel) bool {
 	return validation.ValidateCORSOrigin(fl.Field().String()) == nil
+}
+
+// checkUniqueField 슬라이스 내의 특정 필드 값이 유일한지 검사합니다.
+func checkUniqueField(data interface{}, fieldName, contextName string) error {
+	if err := validate.Var(data, "unique="+fieldName); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			for _, fieldErr := range validationErrors {
+				if fieldErr.Tag() == "unique" {
+					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 %s ID가 존재합니다: '%v'", contextName, fieldErr.Value()))
+				}
+			}
+		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 유일성 검증에 실패했습니다", contextName))
+	}
+	return nil
+}
+
+// validateStruct 구조체의 유효성을 검사하고, 사용자 친화적인 에러 메시지를 반환합니다.
+func validateStruct(s interface{}, contextName string) error {
+	if err := validate.Struct(s); err != nil {
+		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+			// 첫 번째 에러만 상세히 보고
+			firstErr := validationErrors[0]
+
+			// 커스텀 메시지가 필요한 경우 (예: unique 태그 중첩)
+			if firstErr.Tag() == "unique" {
+				target := "ID"
+				// Commands 필드의 경우 "Command ID"로 명시
+				if firstErr.Field() == "commands" {
+					target = "Command ID"
+				}
+				return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("%s 내에 중복된 %s가 존재합니다: '%v'", contextName, target, firstErr.Value()))
+			}
+
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("%s의 설정이 올바르지 않습니다: %s (조건: %s)", contextName, firstErr.Field(), firstErr.Tag()))
+		}
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("%s 유효성 검증에 실패했습니다", contextName))
+	}
+	return nil
 }
