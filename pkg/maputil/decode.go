@@ -66,15 +66,15 @@ func Decode[T any](input any, opts ...Option) (*T, error) {
 //     순환 참조(Cyclic Reference)가 포함된 입력 데이터는 무한 루프를 유발할 수 있으므로 주의가 필요합니다.
 func DecodeTo[T any](input any, output *T, opts ...Option) error {
 	if output == nil {
-		return errors.New("디코딩 결과를 저장할 output 포인터가 nil입니다")
+		return errors.New("디코딩 결과를 저장할 output 포인터가 초기화되지 않았습니다(nil)")
 	}
 
-	// 1. 기본 설정값으로 초기화합니다.
+	// 1. 기본값으로 초기화합니다.
 	config := &decodingConfig{
-		// 태그 설정
+		// 구조체 필드와 매핑할 태그
 		tagName: "json",
 
-		// 디코딩 동작 방식 제어
+		// 타입 변환 및 동작 설정
 		weaklyTypedInput: true,
 		errorUnused:      false,
 		squash:           true,
@@ -98,18 +98,18 @@ func DecodeTo[T any](input any, output *T, opts ...Option) error {
 
 	// 4. mapstructure.DecoderConfig 생성
 	msConfig := &mapstructure.DecoderConfig{
-		// 디코딩 대상 설정
+		// 디코딩 결과를 저장할 포인터
 		Result: output,
 
-		// 태그 설정
+		// 구조체 필드 매핑 태그
 		TagName: config.tagName,
 
-		// 디코딩 동작 방식 제어
+		// 타입 변환 및 동작 설정
 		WeaklyTypedInput: config.weaklyTypedInput,
 		ErrorUnused:      config.errorUnused,
 		Squash:           config.squash,
 
-		// 확장 기능
+		// 메타데이터 및 커스텀 훅
 		Metadata:   config.metadata,
 		MatchName:  config.matchName,
 		DecodeHook: config.buildDecodeHook(), // 훅 체인 조립
@@ -132,17 +132,17 @@ func DecodeTo[T any](input any, output *T, opts ...Option) error {
 // 사용자가 Option 함수(예: WithTagName, WithSquash 등)를 통해 전달한 값들이 이곳에 저장되며,
 // Decode 함수가 실행될 때 이 설정을 참조하여 동작 방식을 결정합니다.
 type decodingConfig struct {
-	// 태그 설정
-	tagName string // Go 표준 json 패키지와 호환성을 위해 "json" 태그 사용
+	// 구조체 필드 매핑 태그
+	tagName string
 
-	// 디코딩 동작 방식 제어
+	// 타입 변환 및 동작 설정
 	weaklyTypedInput bool // 유연한 타입 변환 허용 (예: string -> int)
 	errorUnused      bool // 알 수 없는 필드 무시 (유연성 확보)
 	squash           bool // 임베디드 구조체 평탄화 지원 (Composition 패턴)
 	zeroFields       bool // 기본적으로는 덮어쓰기/병합 모드
 	trimSpace        bool // 기본적으로 문자열 슬라이스 변환 시 공백 제거 (Backward Compatibility)
 
-	// 확장 기능
+	// 메타데이터 및 커스텀 훅
 	metadata   *mapstructure.Metadata
 	matchName  func(key, field string) bool
 	extraHooks []mapstructure.DecodeHookFunc
@@ -159,6 +159,8 @@ func (c *decodingConfig) buildDecodeHook() mapstructure.DecodeHookFunc {
 	// 용량 = [사용자 정의 훅 개수] + [기본 내장 훅 4개]
 	// 기본 훅 목록: TextUnmarshaller, TimeDuration, StringToBytes, StringToSlice
 	expectedSize := len(c.extraHooks) + 4
+
+	// 훅 체인을 저장할 슬라이스를 생성합니다.
 	hooks := make([]mapstructure.DecodeHookFunc, 0, expectedSize)
 
 	// 1. User Custom Hooks (우선순위를 높게 둠)

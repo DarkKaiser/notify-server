@@ -2,15 +2,17 @@ package maputil
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// Test Data Model
+// Test Data Models
 // =============================================================================
 
 type User struct {
@@ -19,16 +21,11 @@ type User struct {
 	Active bool   `json:"active"`
 }
 
-type NetworkConfig struct {
-	Host string        `json:"host"`
-	Port int           `json:"port"`
-	Time time.Duration `json:"time"`
-}
-
-type ComplexConfig struct {
-	User     User           `json:"user"`
-	Tags     []string       `json:"tags"`
-	Metadata map[string]int `json:"metadata"`
+type NestedConfig struct {
+	Database struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	} `json:"database"`
 }
 
 type EmbeddedStruct struct {
@@ -36,240 +33,226 @@ type EmbeddedStruct struct {
 	Role string `json:"role"`
 }
 
+type SliceConfig struct {
+	Tags []string `json:"tags"`
+}
+
 // =============================================================================
 // Test Suite: Decode / DecodeTo
 // =============================================================================
 
-func TestDecode(t *testing.T) {
+func TestDecode_Basic(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Basic Type Decoding", func(t *testing.T) {
+	t.Run("Primitive Types", func(t *testing.T) {
 		t.Parallel()
-
-		tests := []struct {
-			name    string
-			input   any
-			want    User
-			wantErr bool
-		}{
-			{
-				name:  "Full Fields",
-				input: map[string]any{"name": "Alice", "age": 30, "active": true},
-				want:  User{Name: "Alice", Age: 30, Active: true},
-			},
-			{
-				name:  "Partial Fields",
-				input: map[string]any{"name": "Bob"},
-				want:  User{Name: "Bob"},
-			},
-			{
-				name:  "Weak Typing (String to Int/Bool)",
-				input: map[string]any{"name": "Charlie", "age": "40", "active": 1},
-				want:  User{Name: "Charlie", Age: 40, Active: true},
-			},
-		}
-
-		for _, tt := range tests {
-			tt := tt
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				// Test Decode[T]
-				got, err := Decode[User](tt.input)
-				if tt.wantErr {
-					require.Error(t, err)
-					return
-				}
-				require.NoError(t, err)
-				require.NotNil(t, got)
-				assert.Equal(t, tt.want, *got)
-
-				// Test DecodeTo
-				var gotTo User
-				err = DecodeTo(tt.input, &gotTo)
-				require.NoError(t, err)
-				assert.Equal(t, tt.want, gotTo)
-			})
-		}
+		input := map[string]any{"name": "Alice", "age": 30, "active": true}
+		got, err := Decode[User](input)
+		require.NoError(t, err)
+		assert.Equal(t, User{Name: "Alice", Age: 30, Active: true}, *got)
 	})
 
-	t.Run("Advanced Structures", func(t *testing.T) {
+	t.Run("Nil Input -> Zero Value", func(t *testing.T) {
 		t.Parallel()
-
-		// 1. Nested Structs
-		t.Run("Nested", func(t *testing.T) {
-			input := map[string]any{
-				"user":     map[string]any{"name": "Alice", "age": 30},
-				"tags":     "tag1, tag2", // Hook check
-				"metadata": map[string]any{"level": 5},
-			}
-			got, err := Decode[ComplexConfig](input)
-			require.NoError(t, err)
-			assert.Equal(t, "Alice", got.User.Name)
-			assert.Equal(t, []string{"tag1", "tag2"}, got.Tags)
-			assert.Equal(t, 5, got.Metadata["level"])
-		})
-
-		// 2. Embedded Squash
-		t.Run("Embedded Squash", func(t *testing.T) {
-			input := map[string]any{
-				"name": "Admin", // Belongs to User
-				"role": "Super", // Belongs to EmbeddedStruct
-			}
-			got, err := Decode[EmbeddedStruct](input)
-			require.NoError(t, err)
-			assert.Equal(t, "Admin", got.Name)
-			assert.Equal(t, "Super", got.Role)
-		})
+		got, err := Decode[User](nil)
+		require.NoError(t, err)
+		assert.Equal(t, User{}, *got)
 	})
 
-	t.Run("Option Validation", func(t *testing.T) {
+	t.Run("Partial Fields", func(t *testing.T) {
 		t.Parallel()
-
-		t.Run("WithTagName", func(t *testing.T) {
-			type YamlTarget struct {
-				Val string `yaml:"val"`
-			}
-			input := map[string]any{"val": "data"} // matches yaml tag
-			got, err := Decode[YamlTarget](input, WithTagName("yaml"))
-			require.NoError(t, err)
-			assert.Equal(t, "data", got.Val)
-		})
-
-		t.Run("WithWeaklyTypedInput (Disable)", func(t *testing.T) {
-			input := map[string]any{"age": "30"} // String, needs conversion
-			_, err := Decode[User](input, WithWeaklyTypedInput(false))
-			require.Error(t, err) // Should fail
-		})
-
-		t.Run("WithErrorUnused", func(t *testing.T) {
-			input := map[string]any{"name": "Alice", "extra_field": "oops"}
-			_, err := Decode[User](input, WithErrorUnused(true))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "extra_field")
-		})
-
-		t.Run("WithZeroFields (Replace semantics)", func(t *testing.T) {
-			// Setup: pre-filled struct
-			target := User{Name: "Old", Age: 99}
-			input := map[string]any{"name": "New"}
-
-			// Default behavior (Merge) check
-			// Note: DecodeTo handles merge. Decode[T] always creates new T.
-			// So we test DecodeTo specifically here for Merge vs Replace.
-			var mergeTarget User = target
-			err := DecodeTo(input, &mergeTarget) // Default: Merge
-			require.NoError(t, err)
-			assert.Equal(t, "New", mergeTarget.Name)
-			assert.Equal(t, 99, mergeTarget.Age) // Preserved
-
-			// Option behavior (Replace)
-			var replaceTarget User = target
-			err = DecodeTo(input, &replaceTarget, WithZeroFields(true))
-			require.NoError(t, err)
-			assert.Equal(t, "New", replaceTarget.Name)
-			assert.Equal(t, 0, replaceTarget.Age) // Zeroed
-		})
-
-		t.Run("WithTrimSpace", func(t *testing.T) {
-			type TagStruct struct {
-				Tags []string `json:"tags"`
-			}
-			input := map[string]any{"tags": " a , b "}
-
-			// Default: Trimmed
-			got, err := Decode[TagStruct](input)
-			require.NoError(t, err)
-			assert.Equal(t, []string{"a", "b"}, got.Tags)
-
-			// Disabled: Not Trimmed
-			got, err = Decode[TagStruct](input, WithTrimSpace(false))
-			require.NoError(t, err)
-			assert.Equal(t, []string{" a ", " b "}, got.Tags)
-		})
-	})
-
-	t.Run("Edge Cases & Errors", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("Nil Input", func(t *testing.T) {
-			// Decodes nil -> Zero Value
-			got, err := Decode[User](nil)
-			require.NoError(t, err)
-			assert.Equal(t, User{}, *got)
-		})
-
-		t.Run("Nil Output Pointer", func(t *testing.T) {
-			// Validate DecodeTo nil check
-			err := DecodeTo(map[string]any{}, (*User)(nil))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "output 포인터가 nil입니다")
-		})
-
-		t.Run("Invalid Output Type (Non-Pointer)", func(t *testing.T) {
-			// Recover from mapstructure panic or return error
-			// mapstructure.Decoder.Decode documentation says:
-			// "Panic if Result is not a pointer to a struct or a map"
-			defer func() {
-				// We expect DecodeTo to possibly panic or return error depending on impl.
-				// Our Wrapper creates a config with Result: output.
-				// If output is not pointer, NewDecoder *might* error or Decode *might* panic.
-				// Let's check mapstructure behavior.
-				// Actually mapstructure NewDecoder checks if Result is pointer.
-				if r := recover(); r != nil {
-					// OK if it panics, though error is better.
-				}
-			}()
-
-			var val User
-			// DecodeTo expects *T, but if T is interface{}, user could pass non-pointer.
-			// However DecodeTo[T] strongly types output as *T.
-			// So we can only pass *T.
-			// The only way to crash it is if T is a map type and we somehow mess up?
-			// Actually, Go generics enforce *T. So we are safe from non-pointer calls mostly.
-			_ = DecodeTo(map[string]any{}, &val)
-		})
-
-		t.Run("Custom Hook Logic", func(t *testing.T) {
-			// Hook: convert string "full" -> bool true
-			hook := func(f, t reflect.Type, data any) (any, error) {
-				if f.Kind() == reflect.String && t.Kind() == reflect.Bool {
-					if data == "full" {
-						return true, nil
-					}
-				}
-				return data, nil
-			}
-			input := map[string]any{"active": "full"}
-			got, err := Decode[User](input, WithDecodeHook(hook))
-			require.NoError(t, err)
-			assert.True(t, got.Active)
-		})
+		input := map[string]any{"name": "Bob"}
+		got, err := Decode[User](input)
+		require.NoError(t, err)
+		assert.Equal(t, User{Name: "Bob"}, *got)
 	})
 }
 
-// ExampleDecode demonstrates how to use the Decode function.
-func ExampleDecode() {
-	// Sample data often found in JSON or YAML
+func TestDecode_Options(t *testing.T) {
+	t.Parallel()
+
+	// 1. WithTagName
+	t.Run("WithTagName", func(t *testing.T) {
+		type YamlTarget struct {
+			Val string `yaml:"val"`
+		}
+		input := map[string]any{"val": "data"}
+		got, err := Decode[YamlTarget](input, WithTagName("yaml"))
+		require.NoError(t, err)
+		assert.Equal(t, "data", got.Val)
+	})
+
+	// 2. WithWeaklyTypedInput
+	t.Run("WithWeaklyTypedInput", func(t *testing.T) {
+		input := map[string]any{
+			"age":    "40", // string -> int
+			"active": 1,    // int -> bool
+		}
+
+		// Default: Enabled
+		got, err := Decode[User](input)
+		require.NoError(t, err)
+		assert.Equal(t, 40, got.Age)
+		assert.True(t, got.Active)
+
+		// Disabled
+		_, err = Decode[User](input, WithWeaklyTypedInput(false))
+		require.Error(t, err)
+	})
+
+	// 3. WithZeroFields (Replace vs Merge)
+	t.Run("WithZeroFields", func(t *testing.T) {
+		// Setup: Pre-filled struct
+		target := User{Name: "Old", Age: 99}
+		input := map[string]any{"name": "New"}
+
+		// Default: Merge (fields not in input are preserved)
+		var mergeTarget User = target
+		err := DecodeTo(input, &mergeTarget)
+		require.NoError(t, err)
+		assert.Equal(t, "New", mergeTarget.Name)
+		assert.Equal(t, 99, mergeTarget.Age)
+
+		// Option: Replace (struct is zeroed before decode)
+		var replaceTarget User = target
+		err = DecodeTo(input, &replaceTarget, WithZeroFields(true))
+		require.NoError(t, err)
+		assert.Equal(t, "New", replaceTarget.Name)
+		assert.Equal(t, 0, replaceTarget.Age)
+	})
+
+	// 4. WithSquash
+	t.Run("WithSquash", func(t *testing.T) {
+		input := map[string]any{
+			"name": "Admin",
+			"role": "Super",
+		}
+
+		// Default: Squash Enabled
+		got, err := Decode[EmbeddedStruct](input)
+		require.NoError(t, err)
+		assert.Equal(t, "Admin", got.Name)
+		assert.Equal(t, "Super", got.Role)
+
+		// Disabled
+		// Without squash, mapstructure expects "User": map[string]any{"name": ...}
+		// Since input is flat, it won't find "User" key and nested fields remain empty.
+		got2, err := Decode[EmbeddedStruct](input, WithSquash(false))
+		require.NoError(t, err)
+		assert.Equal(t, "", got2.Name)
+		assert.Equal(t, "Super", got2.Role)
+	})
+
+	// 5. WithErrorUnused
+	t.Run("WithErrorUnused", func(t *testing.T) {
+		input := map[string]any{"name": "Alice", "unexpected": "value"}
+
+		// Default: Ignored (Success)
+		_, err := Decode[User](input)
+		require.NoError(t, err)
+
+		// Enabled: Error
+		_, err = Decode[User](input, WithErrorUnused(true))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected")
+	})
+
+	// 6. WithTrimSpace
+	t.Run("WithTrimSpace", func(t *testing.T) {
+		input := map[string]any{"tags": " a , b "}
+
+		// Default: Trimmed
+		got, err := Decode[SliceConfig](input)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a", "b"}, got.Tags)
+
+		// Disabled: Not Trimmed
+		got2, err := Decode[SliceConfig](input, WithTrimSpace(false))
+		require.NoError(t, err)
+		assert.Equal(t, []string{" a ", " b "}, got2.Tags)
+	})
+
+	// 7. WithDecodeHook (Custom Hook Priority)
+	t.Run("WithDecodeHook", func(t *testing.T) {
+		// Custom hook to convert string "admin" to age 100
+		hook := func(f, t reflect.Type, data any) (any, error) {
+			if f.Kind() == reflect.String && t.Kind() == reflect.Int {
+				if data.(string) == "admin" {
+					return 100, nil
+				}
+			}
+			return data, nil
+		}
+		input := map[string]any{"age": "admin"}
+
+		got, err := Decode[User](input, WithDecodeHook(hook))
+		require.NoError(t, err)
+		assert.Equal(t, 100, got.Age)
+	})
+}
+
+func TestDecode_Metadata(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Metadata Collection", func(t *testing.T) {
+		input := map[string]any{
+			"name":   "Alice", // Used
+			"unused": "foo",   // Unused
+		}
+		var md mapstructure.Metadata
+		_, err := Decode[User](input, WithMetadata(&md))
+		require.NoError(t, err)
+
+		assert.Contains(t, md.Keys, "name")
+		assert.Contains(t, md.Unused, "unused")
+	})
+
+	t.Run("Custom MatchName", func(t *testing.T) {
+		// Custom matcher: ignore underscores
+		matcher := func(key, field string) bool {
+			return strings.ReplaceAll(key, "_", "") == strings.ToLower(field)
+		}
+		input := map[string]any{"n_a_m_e": "Alice"}
+
+		got, err := Decode[User](input, WithMatchName(matcher))
+		require.NoError(t, err)
+		assert.Equal(t, "Alice", got.Name)
+	})
+}
+
+func TestDecode_Errors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Nil Output Pointer", func(t *testing.T) {
+		err := DecodeTo(map[string]any{}, (*User)(nil))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "초기화되지 않았습니다")
+	})
+
+	t.Run("Invalid Type Conversion", func(t *testing.T) {
+		input := map[string]any{"age": "not-a-number"}
+		_, err := Decode[User](input)
+		require.Error(t, err)
+		// Should contain type mismatch details
+		assert.Contains(t, err.Error(), "cannot parse")
+	})
+}
+
+func TestDecode_Integration_Hooks(t *testing.T) {
+	t.Parallel()
+
+	// Verify that internal default hooks (Time, Strings, etc.) are active by default
+	type Config struct {
+		Duration time.Duration `json:"duration"`
+		Tags     []string      `json:"tags"`
+	}
 	input := map[string]any{
-		"name":   "Alice",
-		"age":    "30",           // String to Int (Weak typing)
-		"active": 1,              // Int to Bool (Weak typing)
-		"roles":  "admin,editor", // String to Slice (Hook)
+		"duration": "10s",
+		"tags":     "a,b",
 	}
 
-	type UserProfile struct {
-		Name   string   `json:"name"`
-		Age    int      `json:"age"`
-		Active bool     `json:"active"`
-		Roles  []string `json:"roles"`
-	}
-
-	// Simple one-liner decoding
-	profile, err := Decode[UserProfile](input)
-	if err != nil {
-		panic(err)
-	}
-
-	// Use profile...
-	_ = profile
+	got, err := Decode[Config](input)
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Second, got.Duration)
+	assert.Equal(t, []string{"a", "b"}, got.Tags)
 }

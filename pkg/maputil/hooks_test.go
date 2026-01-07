@@ -49,6 +49,15 @@ func TestHooks_StringToSlice(t *testing.T) {
 			want:      []string{"  apple ", "  banana  ", " cherry  "},
 		},
 		{
+			name:      "Multi-line String (Environment Variable Sim)",
+			trimSpace: true,
+			input: `apple
+banana
+cherry`,
+			target: &[]string{},
+			want:   []string{"apple", "banana", "cherry"},
+		},
+		{
 			name:      "Single Value",
 			trimSpace: true,
 			input:     "apple",
@@ -63,6 +72,13 @@ func TestHooks_StringToSlice(t *testing.T) {
 			want:      []string{},
 		},
 		{
+			name:      "Whitespace Only String",
+			trimSpace: true,
+			input:     "   ",
+			target:    &[]string{},
+			want:      []string{}, // Split on empty string returns []
+		},
+		{
 			name:      "Numeric CSV (Int Slice)",
 			trimSpace: true,
 			input:     "1, 20, 300",
@@ -70,7 +86,30 @@ func TestHooks_StringToSlice(t *testing.T) {
 			// Hook splits to []string, mapstructure converts to []int later
 			want: []string{"1", "20", "300"},
 		},
-
+		// ---------------------------------------------------------------------
+		// CSV Edge Cases
+		// ---------------------------------------------------------------------
+		{
+			name:      "Quoted String (CSS Selector)",
+			trimSpace: true,
+			input:     `"div.a, div.b", span.c`,
+			target:    &[]string{},
+			want:      []string{"div.a, div.b", "span.c"},
+		},
+		{
+			name:      "Escaped Quotes",
+			trimSpace: true,
+			input:     `"Foo ""Bar"" Baz", Qux`,
+			target:    &[]string{},
+			want:      []string{`Foo "Bar" Baz`, "Qux"},
+		},
+		{
+			name:      "Trailing Comma",
+			trimSpace: true,
+			input:     "a,b,",
+			target:    &[]string{},
+			want:      []string{"a", "b", ""},
+		},
 		// ---------------------------------------------------------------------
 		// Ignored Cases (Pass-through)
 		// ---------------------------------------------------------------------
@@ -101,6 +140,16 @@ func TestHooks_StringToSlice(t *testing.T) {
 			input:     "a,b",
 			target:    &struct{}{}, // Not a slice
 			want:      "a,b",
+		},
+		// ---------------------------------------------------------------------
+		// Failure Cases
+		// ---------------------------------------------------------------------
+		{
+			name:      "Unclosed Quote Error",
+			trimSpace: true,
+			input:     `"open quote`,
+			target:    &[]string{},
+			wantErr:   true,
 		},
 	}
 
@@ -153,6 +202,9 @@ func TestHooks_StringToDuration(t *testing.T) {
 		want    any // expected return
 		wantErr bool
 	}{
+		// ---------------------------------------------------------------------
+		// Happy Paths
+		// ---------------------------------------------------------------------
 		{
 			name:   "Standard Duration",
 			input:  "10s",
@@ -160,11 +212,38 @@ func TestHooks_StringToDuration(t *testing.T) {
 			want:   10 * time.Second,
 		},
 		{
+			name:   "Zero Duration",
+			input:  "0",
+			target: time.Duration(0),
+			want:   time.Duration(0),
+		},
+		{
+			name:   "Zero Duration (Unit)",
+			input:  "0s",
+			target: time.Duration(0),
+			want:   time.Duration(0),
+		},
+		{
+			name:   "Negative Duration",
+			input:  "-5m",
+			target: time.Duration(0),
+			want:   -5 * time.Minute,
+		},
+		{
+			name:   "Fractional Duration",
+			input:  "1.5h",
+			target: time.Duration(0),
+			want:   90 * time.Minute,
+		},
+		{
 			name:   "Duration with Whitespace - Trimmed",
 			input:  "  5m  ",
 			target: time.Duration(0),
 			want:   5 * time.Minute,
 		},
+		// ---------------------------------------------------------------------
+		// Ignored Cases
+		// ---------------------------------------------------------------------
 		{
 			name:   "Ignored: Invalid Format (Pass-through)",
 			input:  "invalid-time",
@@ -230,6 +309,45 @@ func TestHooks_StringToBytes(t *testing.T) {
 		errMatch  string
 		trimSpace bool
 	}{
+		// ---------------------------------------------------------------------
+		// Base64 Decoding
+		// ---------------------------------------------------------------------
+		{
+			name:   "Base64 Prefix - Standard",
+			input:  "base64:SGVsbG8=", // "Hello"
+			target: []byte{},
+			want:   []byte("Hello"),
+		},
+		{
+			name:   "Base64 Prefix - With Whitespace (Internal Trim)",
+			input:  "  base64:SGVsbG8=  ",
+			target: []byte{},
+			want:   []byte("Hello"), // Logic: Trims -> Checks Prefix -> Decodes payload
+		},
+		{
+			name:      "Base64 Prefix - With TrimSpace=False",
+			input:     "  base64:SGVsbG8=  ",
+			target:    []byte{},
+			want:      []byte("Hello"), // Even with trimSpace=false, base64 logic should handle prefix check robustly
+			trimSpace: false,
+		},
+		{
+			name:     "Base64 Prefix - Invalid Content",
+			input:    "base64:!!!INVALID!!!",
+			target:   []byte{},
+			wantErr:  true,
+			errMatch: "base64",
+		},
+		{
+			name:     "Double Prefix (Invalid Content)",
+			input:    "base64:base64:SGVsbG8=", // Payload "base64:..." has invalid char ':'
+			target:   []byte{},
+			wantErr:  true,
+			errMatch: "illegal base64 data",
+		},
+		// ---------------------------------------------------------------------
+		// Raw String Conversion
+		// ---------------------------------------------------------------------
 		{
 			name:      "With Whitespace - Untrimmed",
 			input:     "  val  ",
@@ -250,23 +368,10 @@ func TestHooks_StringToBytes(t *testing.T) {
 			want:   []byte("SGVsbG8="),
 		},
 		{
-			name:   "Base64 Prefix - Standard",
-			input:  "base64:SGVsbG8=", // "Hello"
+			name:   "Case Sensitivity - BASE64:",
+			input:  "BASE64:SGVsbG8=",
 			target: []byte{},
-			want:   []byte("Hello"),
-		},
-		{
-			name:   "Base64 Prefix - With Whitespace",
-			input:  "  base64:SGVsbG8=  ",
-			target: []byte{},
-			want:   []byte("Hello"),
-		},
-		{
-			name:     "Base64 Prefix - Invalid Content",
-			input:    "base64:!!!INVALID!!!",
-			target:   []byte{},
-			wantErr:  true,
-			errMatch: "base64",
+			want:   []byte("BASE64:SGVsbG8="), // Prefix must be lowercase "base64:"
 		},
 		{
 			name:   "Target Array [N]byte",
@@ -274,6 +379,9 @@ func TestHooks_StringToBytes(t *testing.T) {
 			target: [4]byte{},
 			want:   []byte("1234"), // Hook returns slice, structure adapts
 		},
+		// ---------------------------------------------------------------------
+		// Ignored Cases
+		// ---------------------------------------------------------------------
 		{
 			name:   "Ignored: Non-String Input",
 			input:  123,
@@ -348,10 +456,7 @@ func TestHooks_Integration(t *testing.T) {
 		var got Target
 		err := DecodeTo(input, &got)
 		require.Error(t, err)
-
-		assert.Contains(t, err.Error(), "base64", "Error message should mention base64 failure")
-
-		// Mapstructure errors are often wrapped, but let's just check containing text as it's safer.
+		assert.Contains(t, err.Error(), "illegal base64 data")
 	})
 
 	t.Run("Byte Slice TrimSpace Support", func(t *testing.T) {
@@ -398,8 +503,7 @@ func TestFix_DurationHookScope(t *testing.T) {
 		err := DecodeTo(input, &target)
 
 		require.Error(t, err, "Should fail to decode '10s' into int64 without the duration hook")
-		// mapstructure error: * cannot parse 'count' as int: strconv.ParseInt: parsing "10s": invalid syntax
-		assert.Contains(t, err.Error(), "parsing \"10s\": invalid syntax", "Error should indicate parsing failure")
+		assert.Contains(t, err.Error(), "parsing \"10s\": invalid syntax")
 	})
 
 	// 2. Verification: time.Duration field SHOULD be handled by Duration hook
@@ -429,6 +533,7 @@ func TestFix_DurationHookScope(t *testing.T) {
 		err := DecodeTo(input, &target)
 
 		// Strict check means alias is not handled by the hook
+		// And since string "10s" cannot be directly assigned to int64 based type, it errors.
 		require.Error(t, err)
 	})
 }
