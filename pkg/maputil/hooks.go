@@ -2,7 +2,7 @@ package maputil
 
 import (
 	"encoding/base64"
-	"errors"
+	"encoding/csv"
 	"fmt"
 	"reflect"
 	"strings"
@@ -39,12 +39,13 @@ func stringToBytesHookFunc(trimSpace bool) mapstructure.DecodeHookFunc {
 		const prefix = "base64:"
 		if strings.HasPrefix(trimmed, prefix) {
 			s = strings.TrimPrefix(trimmed, prefix)
-			if decoded, err := base64.StdEncoding.DecodeString(s); err == nil {
+			decoded, err := base64.StdEncoding.DecodeString(s)
+			if err == nil {
 				return decoded, nil
 			}
 			// 사용자가 "base64:" 접두사를 통해 명시적으로 변환을 요청했으므로,
 			// 디코딩에 실패할 경우 이를 무시하지 않고 에러를 반환하여 잘못된 입력임을 알립니다.
-			return nil, fmt.Errorf("base64 접두사가 포함된 잘못된 문자열입니다: %w", errors.New("decoding failed"))
+			return nil, fmt.Errorf("base64 접두사가 포함된 잘못된 문자열입니다: %w", err)
 		}
 
 		// 공백 제거 옵션이 켜져있을 때만 TrimSpace 수행
@@ -56,7 +57,7 @@ func stringToBytesHookFunc(trimSpace bool) mapstructure.DecodeHookFunc {
 	}
 }
 
-// stringToSliceHookFunc 쉼표(,)로 구분된 문자열을 잘라서 슬라이스로 변환합니다.
+// stringToSliceHookFunc 쉼표(,)로 구분된 문자열을 CSV 규칙에 따라 잘라서 슬라이스로 변환합니다.
 //
 // [중요] []byte 타입은 쪼개지 않고 원본 그대로 둡니다.
 // mapstructure가 []byte를 일반 슬라이스처럼 취급하여 문자열을 분할해버리는 문제를 막기 위함입니다.
@@ -79,13 +80,35 @@ func stringToSliceHookFunc(trimSpace bool) mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		// 4. 그 외의 슬라이스 타입에 대해서는 쉼표(,)로 구분된 문자열을 슬라이스로 변환
+		// 4. 그 외의 슬라이스 타입에 대해서는 CSV 규칙으로 파싱
 		strData := reflect.ValueOf(data).String()
+		// 앞뒤 공백 제거 (빈 문자열이나 공백만 있는 경우 처리)
+		if trimSpace {
+			strData = strings.TrimSpace(strData)
+		}
 		if strData == "" {
 			return []string{}, nil
 		}
 
-		parts := strings.Split(strData, ",")
+		r := csv.NewReader(strings.NewReader(strData))
+		// 필드 개수가 달라도 유연하게 처리 (멀티라인 등)
+		r.FieldsPerRecord = -1
+
+		records, err := r.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("CSV 문자열 파싱 실패: %w", err)
+		}
+
+		if len(records) == 0 {
+			return []string{}, nil
+		}
+
+		// 2차원 슬라이스([[a,b], [c,d]])를 1차원([a,b,c,d])으로 평탄화
+		var parts []string
+		for _, row := range records {
+			parts = append(parts, row...)
+		}
+
 		if trimSpace {
 			for i := range parts {
 				parts[i] = strings.TrimSpace(parts[i])
