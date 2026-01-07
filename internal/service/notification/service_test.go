@@ -321,7 +321,7 @@ func TestNotificationService_StartAndRun(t *testing.T) {
 		mockNotifier.id = "default"
 
 		cfg := &config.AppConfig{}
-		cfg.Notifiers.DefaultNotifierID = "default"
+		cfg.Notifier.DefaultNotifierID = "default"
 
 		// Mock factory
 		mockFactory := &mockNotifierFactory{
@@ -388,7 +388,7 @@ func TestNotificationService_StartErrors(t *testing.T) {
 		{
 			name: "Missing Default Notifier",
 			cfgSetup: func(c *config.AppConfig) {
-				c.Notifiers.DefaultNotifierID = "def"
+				c.Notifier.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mockNotifierFactory) {
 				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {

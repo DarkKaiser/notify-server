@@ -150,7 +150,7 @@ func TestInitAppConfig(t *testing.T) {
 			wantErr: false,
 			validate: func(t *testing.T, c *config.AppConfig) {
 				assert.True(t, c.Debug)
-				assert.Equal(t, "test", c.Notifiers.DefaultNotifierID)
+				assert.Equal(t, "test", c.Notifier.DefaultNotifierID)
 			},
 		},
 		{

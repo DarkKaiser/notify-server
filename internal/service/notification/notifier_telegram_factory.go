@@ -21,7 +21,7 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 	return func(appConfig *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 		var handlers []NotifierHandler
 
-		for _, telegram := range appConfig.Notifiers.Telegrams {
+		for _, telegram := range appConfig.Notifier.Telegrams {
 			h, err := creator(NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
 			if err != nil {
 				return nil, err
