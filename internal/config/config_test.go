@@ -180,6 +180,7 @@ func TestLoad_Integration(t *testing.T) {
 		wantErr       bool
 		errType       apperrors.ErrorType
 		errMsg        string
+		wantWarnings  bool
 		validate      func(*testing.T, *AppConfig)
 	}{
 		{
@@ -251,6 +252,17 @@ func TestLoad_Integration(t *testing.T) {
 			},
 		},
 		{
+			name:        "Success: Warnings Generated (Well-known Port)",
+			fileContent: minimalValidJSON,
+			envVars: map[string]string{
+				"NOTIFY_NOTIFY_API__WS__LISTEN_PORT": "80",
+			},
+			wantWarnings: true,
+			validate: func(t *testing.T, c *AppConfig) {
+				assert.Equal(t, 80, c.NotifyAPI.WS.ListenPort)
+			},
+		},
+		{
 			name:          "Failure: File Not Found",
 			fileContent:   "",   // Will trigger file not found if we pass a non-existent path
 			useInvalidDir: true, // Marker to pass invalid path
@@ -302,7 +314,7 @@ func TestLoad_Integration(t *testing.T) {
 			}
 
 			// 3. Execution
-			cfg, err := LoadWithFile(filePath)
+			cfg, warnings, err := LoadWithFile(filePath)
 
 			// 4. Assertion
 			if tt.wantErr {
@@ -322,6 +334,11 @@ func TestLoad_Integration(t *testing.T) {
 				require.NotNil(t, cfg)
 				if tt.validate != nil {
 					tt.validate(t, cfg)
+				}
+
+				// Check warnings if expected
+				if tt.wantWarnings {
+					assert.NotEmpty(t, warnings, "Expected warnings but got empty")
 				}
 			}
 		})

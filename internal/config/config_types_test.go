@@ -404,7 +404,7 @@ func TestNotifierConfig_GetIDs(t *testing.T) {
 	assert.ElementsMatch(t, []string{"t1", "t2"}, ids)
 }
 
-func TestVerifyRecommendations(t *testing.T) {
+func TestLint(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -422,7 +422,7 @@ func TestVerifyRecommendations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := &AppConfig{NotifyAPI: NotifyAPIConfig{WS: WSConfig{ListenPort: tt.port}}}
-			warnings := cfg.VerifyRecommendations()
+			warnings := cfg.lint()
 			if tt.expectWarn {
 				assert.NotEmpty(t, warnings)
 				assert.Contains(t, warnings[0], tt.warnMsg)

@@ -383,7 +383,7 @@ func TestEndToEndScenario(t *testing.T) {
 func createTestConfig() *config.AppConfig {
 	return &config.AppConfig{
 		Debug: true,
-		Notifiers: config.NotifierConfig{
+		Notifier: config.NotifierConfig{
 			DefaultNotifierID: "test-notifier",
 			Telegrams: []config.TelegramConfig{
 				{
@@ -405,8 +405,8 @@ func createTestConfig() *config.AppConfig {
 
 func createTestConfigWithNotifier() *config.AppConfig {
 	appConfig := createTestConfig()
-	appConfig.Notifiers.DefaultNotifierID = "default-notifier"
-	appConfig.Notifiers.Telegrams = []config.TelegramConfig{
+	appConfig.Notifier.DefaultNotifierID = "default-notifier"
+	appConfig.Notifier.Telegrams = []config.TelegramConfig{
 		{
 			ID:       "default-notifier",
 			BotToken: "test-token",

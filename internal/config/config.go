@@ -59,26 +59,26 @@ func newDefaultConfig() AppConfig {
 }
 
 // Load 기본 설정 파일을 읽어 애플리케이션 설정을 로드합니다.
-func Load() (*AppConfig, error) {
+func Load() (*AppConfig, []string, error) {
 	return LoadWithFile(DefaultFilename)
 }
 
 // LoadWithFile 지정된 경로의 설정 파일을 읽어 AppConfig 객체를 생성합니다.
-func LoadWithFile(filename string) (*AppConfig, error) {
+func LoadWithFile(filename string) (*AppConfig, []string, error) {
 	k := koanf.New(".")
 
 	// 1. 기본값 로드
 	err := k.Load(structs.Provider(newDefaultConfig(), "json"), nil)
 	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.System, "기본값 로드 중 오류가 발생하였습니다")
+		return nil, nil, apperrors.Wrap(err, apperrors.System, "기본값 로드 중 오류가 발생하였습니다")
 	}
 
 	// 2. 설정 파일 로드 (기본값 덮어쓰기)
 	if err := k.Load(file.Provider(filename), json.Parser()); err != nil {
 		if os.IsNotExist(err) {
-			return nil, apperrors.Wrap(err, apperrors.System, fmt.Sprintf("설정 파일을 찾을 수 없습니다: '%s'", filename))
+			return nil, nil, apperrors.Wrap(err, apperrors.System, fmt.Sprintf("설정 파일을 찾을 수 없습니다: '%s'", filename))
 		}
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("설정 파일 로드 중 오류가 발생하였습니다: '%s'", filename))
+		return nil, nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("설정 파일 로드 중 오류가 발생하였습니다: '%s'", filename))
 	}
 
 	// 3. 환경 변수 로드 (JSON 설정 덮어쓰기)
@@ -86,7 +86,7 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 	//  - 구분자: 이중 언더스코어(__)를 점(.)으로 변환 (계층 구조 표현)
 	//  - 예: NOTIFY_HTTP_RETRY__MAX_RETRIES -> http_retry.max_retries
 	if err := k.Load(env.Provider("NOTIFY_", ".", normalizeEnvKey), nil); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.System, "환경 변수 로드 중 오류가 발생하였습니다")
+		return nil, nil, apperrors.Wrap(err, apperrors.System, "환경 변수 로드 중 오류가 발생하였습니다")
 	}
 
 	// 4. 구조체 언마샬링
@@ -103,15 +103,18 @@ func LoadWithFile(filename string) (*AppConfig, error) {
 
 	var appConfig AppConfig
 	if err := k.UnmarshalWithConf("", &appConfig, unmarshalConf); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.System, "설정값을 구조체에 매핑하지 못했습니다. 데이터 타입(숫자/문자 등)을 확인해주세요")
+		return nil, nil, apperrors.Wrap(err, apperrors.System, "설정값을 구조체에 매핑하지 못했습니다. 데이터 타입(숫자/문자 등)을 확인해주세요")
 	}
 
 	// 5. 유효성 검사 수행
 	if err := appConfig.validate(newValidator()); err != nil {
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("설정 파일('%s')의 유효성 검증에 실패하였습니다", filename))
+		return nil, nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("설정 파일('%s')의 유효성 검증에 실패하였습니다", filename))
 	}
 
-	return &appConfig, nil
+	// 6. 권장 설정 검사 (유효성 검사 통과 후 수행)
+	warnings := appConfig.lint()
+
+	return &appConfig, warnings, nil
 }
 
 // normalizeEnvKey 환경 변수 키를 내부 설정 구조체에 매핑하기 위해 표준화된 키 형식으로 변환합니다.

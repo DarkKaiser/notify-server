@@ -80,10 +80,10 @@ func (c *AppConfig) validateTasks(v *validator.Validate, notifierIDs []string) e
 	return nil
 }
 
-// VerifyRecommendations 서비스 운영의 안정성과 보안을 위해 권장되는 설정 준수 여부를 진단합니다.
+// lint 서비스 운영의 안정성과 보안을 위해 권장되는 설정 준수 여부를 진단합니다.
 // 강제적인 에러를 발생시키지는 않으나, 잠재적 위험 요소(예: Well-known Port 사용)에 대한 경고 메시지를 반환합니다.
-func (c *AppConfig) VerifyRecommendations() []string {
-	return c.NotifyAPI.verifyRecommendations()
+func (c *AppConfig) lint() []string {
+	return c.NotifyAPI.lint()
 }
 
 // HTTPRetryConfig HTTP 요청 실패 시 재시도 횟수와 대기 시간을 정의하는 설정 구조체
@@ -212,8 +212,8 @@ func (c *NotifyAPIConfig) validate(v *validator.Validate, notifierIDs []string) 
 	return nil
 }
 
-func (c *NotifyAPIConfig) verifyRecommendations() []string {
-	return c.WS.verifyRecommendations()
+func (c *NotifyAPIConfig) lint() []string {
+	return c.WS.lint()
 }
 
 // WSConfig 웹 서비스의 포트 및 TLS(HTTPS) 보안 설정을 정의하는 구조체
@@ -232,7 +232,7 @@ func (c *WSConfig) validate(v *validator.Validate) error {
 	return nil
 }
 
-func (c *WSConfig) verifyRecommendations() []string {
+func (c *WSConfig) lint() []string {
 	var warnings []string
 
 	// 시스템 예약 포트(1024 미만) 사용 경고
