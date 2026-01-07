@@ -3,11 +3,11 @@ package config
 import (
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/pkg/cronx"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -15,19 +15,20 @@ import (
 type AppConfig struct {
 	Debug     bool            `json:"debug"`
 	HTTPRetry HTTPRetryConfig `json:"http_retry"`
-	Notifiers NotifierConfig  `json:"notifiers"`
+	Notifier  NotifierConfig  `json:"notifier"`
 	Tasks     []TaskConfig    `json:"tasks" validate:"unique=ID"`
 	NotifyAPI NotifyAPIConfig `json:"notify_api"`
 }
 
 // validate 설정 파일 로드 직후, 각 설정 항목의 정합성과 필수 값의 유효성을 검증합니다.
 func (c *AppConfig) validate(v *validator.Validate) error {
-	if err := c.HTTPRetry.validate(); err != nil {
+	if err := c.HTTPRetry.validate(v); err != nil {
 		return err
 	}
 
-	notifierIDs, err := c.Notifiers.validate(v)
-	if err != nil {
+	notifierIDs := c.Notifier.GetIDs()
+
+	if err := c.Notifier.validate(v, notifierIDs); err != nil {
 		return err
 	}
 
@@ -43,32 +44,34 @@ func (c *AppConfig) validate(v *validator.Validate) error {
 }
 
 func (c *AppConfig) validateTasks(v *validator.Validate, notifierIDs []string) error {
-	// Tasks 중복 ID 검사
-	if err := checkUniqueField(v, c.Tasks, "ID", "Task"); err != nil {
+	// Task ID 중복 검사
+	if err := checkStruct(v, c, "작업 설정", "Tasks"); err != nil {
 		return err
 	}
 
 	for _, t := range c.Tasks {
-		// Task 구조체 유효성 검사
-		if err := checkStruct(v, t, fmt.Sprintf("Task['%s']", t.ID)); err != nil {
+		// Task 설정 상세 검증
+		if err := checkStruct(v, t, fmt.Sprintf("작업 설정 내 작업(ID: %s)", t.ID)); err != nil {
 			return err
 		}
 
 		for _, cmd := range t.Commands {
-			// Command 구조체 유효성 검사
-			if err := checkStruct(v, cmd, fmt.Sprintf("Task['%s'] > Command['%s']", t.ID, cmd.ID)); err != nil {
+			// Command 설정 상세 검증
+			if err := checkStruct(v, cmd, fmt.Sprintf("작업 설정 내 작업(ID: %s)에 속한 명령(ID: %s)", t.ID, cmd.ID)); err != nil {
 				return err
 			}
 
-			// Notifier 존재 여부 확인
-			if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
-				return apperrors.New(apperrors.NotFound, fmt.Sprintf("Task['%s'] > Command['%s']에서 참조하는 NotifierID('%s')가 정의되지 않았습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
+			// 알림 채널(Notifier) 참조 무결성 검사
+			if cmd.Notifier.Usable {
+				if !slices.Contains(notifierIDs, cmd.DefaultNotifierID) {
+					return apperrors.New(apperrors.NotFound, fmt.Sprintf("작업 설정 내 작업(ID: %s)에 속한 명령(ID: %s)에서 참조하는 알림 채널(ID: '%s')이 정의되지 않았습니다", t.ID, cmd.ID, cmd.DefaultNotifierID))
+				}
 			}
 
 			// Cron 표현식 검증 (Scheduler가 활성화된 경우)
 			if cmd.Scheduler.Runnable {
 				if err := cronx.Validate(cmd.Scheduler.TimeSpec); err != nil {
-					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("Task['%s'] > Command['%s']의 스케줄러(TimeSpec) 설정이 유효하지 않습니다", t.ID, cmd.ID))
+					return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("작업 설정 내 작업(ID: %s)에 속한 명령(ID: %s)의 스케줄러(TimeSpec) 설정이 유효하지 않습니다", t.ID, cmd.ID))
 				}
 			}
 		}
@@ -77,55 +80,59 @@ func (c *AppConfig) validateTasks(v *validator.Validate, notifierIDs []string) e
 	return nil
 }
 
-// VerifyRecommendations 서비스 운영의 안정성과 보안을 위해 권장되는 설정 준수 여부를 진단합니다.
+// lint 서비스 운영의 안정성과 보안을 위해 권장되는 설정 준수 여부를 진단합니다.
 // 강제적인 에러를 발생시키지는 않으나, 잠재적 위험 요소(예: Well-known Port 사용)에 대한 경고 메시지를 반환합니다.
-func (c *AppConfig) VerifyRecommendations() []string {
-	return c.NotifyAPI.VerifyRecommendations()
+func (c *AppConfig) lint() []string {
+	return c.NotifyAPI.lint()
 }
 
 // HTTPRetryConfig HTTP 요청 실패 시 재시도 횟수와 대기 시간을 정의하는 설정 구조체
 type HTTPRetryConfig struct {
-	MaxRetries int           `json:"max_retries"`
-	RetryDelay time.Duration `json:"retry_delay"`
+	MaxRetries int           `json:"max_retries" validate:"gte=0"`
+	RetryDelay time.Duration `json:"retry_delay" validate:"gt=0"`
 }
 
-func (c *HTTPRetryConfig) validate() error {
-	if c.RetryDelay <= 0 {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("HTTP 재시도 대기 시간(retry_delay)은 0보다 커야 합니다: '%v'", c.RetryDelay))
+func (c *HTTPRetryConfig) validate(v *validator.Validate) error {
+	if err := checkStruct(v, c, "HTTP 재시도 설정"); err != nil {
+		return err
 	}
 	return nil
 }
 
 // NotifierConfig 텔레그램 등 다양한 알림 채널을 정의하는 설정 구조체
 type NotifierConfig struct {
-	DefaultNotifierID string           `json:"default_notifier_id"`
+	DefaultNotifierID string           `json:"default_notifier_id" validate:"required"`
 	Telegrams         []TelegramConfig `json:"telegrams" validate:"unique=ID"`
 }
 
-func (c *NotifierConfig) validate(v *validator.Validate) ([]string, error) {
-	// Notifier 중복 ID 검사
-	if err := checkUniqueField(v, c.Telegrams, "ID", "Notifier"); err != nil {
-		return nil, err
+func (c *NotifierConfig) validate(v *validator.Validate, notifierIDs []string) error {
+	// 필수 값 및 ID 중복 검사
+	if err := checkStruct(v, c, "알림 설정", "DefaultNotifierID", "Telegrams"); err != nil {
+		return err
 	}
 
-	// Notifier 개별 유효성 검사
+	// 각 알림 채널 설정 상세 검증
 	for _, telegram := range c.Telegrams {
-		if err := checkStruct(v, telegram, fmt.Sprintf("Telegram Notifier['%s']", telegram.ID)); err != nil {
-			return nil, err
+		if err := checkStruct(v, telegram, fmt.Sprintf("알림 설정 내 텔레그램 알림 채널(ID: %s)", telegram.ID)); err != nil {
+			return err
 		}
 	}
 
-	var notifierIDs []string
-	for _, telegram := range c.Telegrams {
-		notifierIDs = append(notifierIDs, telegram.ID)
-	}
-
-	// 기본 Notifier ID 검사
+	// 기본 알림 채널 ID 유효성 검사 (참조 무결성)
 	if !slices.Contains(notifierIDs, c.DefaultNotifierID) {
-		return nil, apperrors.New(apperrors.NotFound, fmt.Sprintf("기본 NotifierID('%s')가 정의된 Notifier 목록에 존재하지 않습니다", c.DefaultNotifierID))
+		return apperrors.New(apperrors.NotFound, fmt.Sprintf("알림 설정 내 기본 알림 채널로 설정된 ID('%s')가 정의되지 않았습니다. 등록된 알림 채널 목록을 확인해주세요", c.DefaultNotifierID))
 	}
 
-	return notifierIDs, nil
+	return nil
+}
+
+// GetIDs 등록된 모든 알림 채널의 ID 목록을 반환합니다.
+func (c *NotifierConfig) GetIDs() []string {
+	var ids []string
+	for _, telegram := range c.Telegrams {
+		ids = append(ids, telegram.ID)
+	}
+	return ids
 }
 
 // TelegramConfig 텔레그램 봇 토큰 및 채팅 ID 정보를 담는 설정 구조체
@@ -135,11 +142,15 @@ type TelegramConfig struct {
 	ChatID   int64  `json:"chat_id" validate:"required"`
 }
 
+func (c TelegramConfig) String() string {
+	return fmt.Sprintf("{ID:%s BotToken:%s ChatID:%d}", c.ID, strutil.Mask(c.BotToken), c.ChatID)
+}
+
 // TaskConfig 주기적으로 실행하거나 특정 조건에 따라 수행할 작업을 정의하는 구조체
 type TaskConfig struct {
 	ID       string                 `json:"id" validate:"required"`
 	Title    string                 `json:"title"`
-	Commands []CommandConfig        `json:"commands" validate:"unique=ID"`
+	Commands []CommandConfig        `json:"commands" validate:"required,min=1,unique=ID"`
 	Data     map[string]interface{} `json:"data"`
 }
 
@@ -173,39 +184,39 @@ type NotifyAPIConfig struct {
 }
 
 func (c *NotifyAPIConfig) validate(v *validator.Validate, notifierIDs []string) error {
-	// WS 유효성 검사
 	if err := c.WS.validate(v); err != nil {
 		return err
 	}
 
-	// CORS 유효성 검사
 	if err := c.CORS.validate(v); err != nil {
 		return err
 	}
 
-	// Applications 중복 ID 검사
-	if err := checkUniqueField(v, c.Applications, "ID", "Application"); err != nil {
+	// Application ID 중복 검사
+	if err := checkStruct(v, c, "알림 API 설정", "Applications"); err != nil {
 		return err
 	}
 
 	for _, app := range c.Applications {
-		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
-			return apperrors.New(apperrors.NotFound, fmt.Sprintf("Application['%s']에서 참조하는 기본 NotifierID('%s')가 정의되지 않았습니다", app.ID, app.DefaultNotifierID))
+		// Application 설정 상세 검증
+		if err := checkStruct(v, app, fmt.Sprintf("알림 API 설정 내 애플리케이션(ID: %s)", app.ID)); err != nil {
+			return err
 		}
 
-		if strings.TrimSpace(app.AppKey) == "" {
-			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("Application['%s']의 API 키(APP_KEY)가 설정되지 않았습니다", app.ID))
+		// 알림 채널(Notifier) 참조 무결성 검사
+		if !slices.Contains(notifierIDs, app.DefaultNotifierID) {
+			return apperrors.New(apperrors.NotFound, fmt.Sprintf("알림 API 설정 내 애플리케이션(ID: %s)에서 참조하는 알림 채널(ID: '%s')이 정의되지 않았습니다", app.ID, app.DefaultNotifierID))
 		}
 	}
 
 	return nil
 }
 
-func (c *NotifyAPIConfig) VerifyRecommendations() []string {
-	return c.WS.VerifyRecommendations()
+func (c *NotifyAPIConfig) lint() []string {
+	return c.WS.lint()
 }
 
-// WSConfig 웹소버의 포트 및 TLS(HTTPS) 보안 설정을 정의하는 구조체
+// WSConfig 웹 서비스의 포트 및 TLS(HTTPS) 보안 설정을 정의하는 구조체
 type WSConfig struct {
 	TLSServer   bool   `json:"tls_server"`
 	TLSCertFile string `json:"tls_cert_file" validate:"required_if=TLSServer true,omitempty,file"`
@@ -214,46 +225,19 @@ type WSConfig struct {
 }
 
 func (c *WSConfig) validate(v *validator.Validate) error {
-	if err := v.Struct(c); err != nil {
-		// Validator 에러를 사용자 친화적인 메시지로 변환한다.
-		if validationErrors, ok := err.(validator.ValidationErrors); ok {
-			for _, fieldErr := range validationErrors {
-				switch fieldErr.StructField() {
-				case "ListenPort":
-					return apperrors.New(apperrors.InvalidInput, "웹 서버 포트(listen_port)는 1에서 65535 사이의 값이어야 합니다")
-				case "TLSCertFile":
-					switch fieldErr.Tag() {
-					case "required_if":
-						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 인증서 파일 경로(tls_cert_file)는 필수입니다")
-					case "file":
-						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지정된 TLS 인증서 파일(tls_cert_file)을 찾을 수 없습니다: '%v'", fieldErr.Value()))
-					default:
-						return apperrors.New(apperrors.InvalidInput, "TLS 인증서 파일 경로(tls_cert_file) 설정이 올바르지 않습니다")
-					}
-				case "TLSKeyFile":
-					switch fieldErr.Tag() {
-					case "required_if":
-						return apperrors.New(apperrors.InvalidInput, "TLS 서버 활성화 시 키 파일 경로(tls_key_file)는 필수입니다")
-					case "file":
-						return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지정된 TLS 키 파일(tls_key_file)을 찾을 수 없습니다: '%v'", fieldErr.Value()))
-					default:
-						return apperrors.New(apperrors.InvalidInput, "TLS 키 파일 경로(tls_key_file) 설정이 올바르지 않습니다")
-					}
-				}
-			}
-		}
-		return apperrors.Wrap(err, apperrors.InvalidInput, "웹 서버 설정 검증 중 알 수 없는 오류가 발생했습니다")
+	// 웹 서비스(포트, TLS) 설정 유효성 검사
+	if err := checkStruct(v, c, "웹 서비스 설정"); err != nil {
+		return err
 	}
-
 	return nil
 }
 
-func (c *WSConfig) VerifyRecommendations() []string {
+func (c *WSConfig) lint() []string {
 	var warnings []string
 
 	// 시스템 예약 포트(1024 미만) 사용 경고
 	if c.ListenPort < 1024 {
-		warnings = append(warnings, fmt.Sprintf("시스템 예약 포트(1-1023)를 사용하도록 설정되었습니다(port: %d). 이 경우 서버 구동 시 관리자 권한이 필요할 수 있습니다", c.ListenPort))
+		warnings = append(warnings, fmt.Sprintf("시스템 예약 포트(1-1023)를 사용하도록 설정되었습니다(포트: %d). 이 경우 서버 구동 시 관리자 권한이 필요할 수 있습니다", c.ListenPort))
 	}
 
 	return warnings
@@ -272,7 +256,7 @@ func (c *CORSConfig) validate(v *validator.Validate) error {
 	for _, origin := range c.AllowOrigins {
 		if origin == "*" {
 			if len(c.AllowOrigins) > 1 {
-				return apperrors.New(apperrors.InvalidInput, "와일드카드(*)는 다른 도메인과 함께 사용할 수 없습니다. 모든 도메인을 허용하려면 와일드카드만 설정하세요")
+				return apperrors.New(apperrors.InvalidInput, "CORS 허용 도메인(allow_origins)에서 와일드카드(*)는 다른 도메인과 함께 사용할 수 없습니다. 모든 도메인을 허용하려면 와일드카드만 설정하세요")
 			}
 
 			// 와일드카드만 있는 경우는 유효함 (validator skip)
@@ -280,25 +264,23 @@ func (c *CORSConfig) validate(v *validator.Validate) error {
 		}
 	}
 
-	// 각 Origin 유효성 검사
-	if err := v.Struct(c); err != nil {
-		if validationErrors, ok := err.(validator.ValidationErrors); ok {
-			for _, fieldErr := range validationErrors {
-				if fieldErr.Tag() == "cors_origin" {
-					return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("CORS Origin 형식이 올바르지 않습니다: '%v' (형식: Scheme://Host[:Port], 예: https://example.com)", fieldErr.Value()))
-				}
-			}
-		}
-		return apperrors.Wrap(err, apperrors.InvalidInput, "CORS 설정 검증 중 알 수 없는 오류가 발생했습니다")
+	// 개별 Origin 형식 유효성 검사
+	if err := checkStruct(v, c, "CORS 설정"); err != nil {
+		return err
 	}
 	return nil
 }
 
 // ApplicationConfig 알림 API를 사용할 수 있는 클라이언트 어플리케이션의 인증 정보를 정의하는 구조체
 type ApplicationConfig struct {
-	ID                string `json:"id"`
+	ID                string `json:"id" validate:"required"`
 	Title             string `json:"title"`
 	Description       string `json:"description"`
-	DefaultNotifierID string `json:"default_notifier_id"`
-	AppKey            string `json:"app_key"`
+	DefaultNotifierID string `json:"default_notifier_id" validate:"required"`
+	AppKey            string `json:"app_key" validate:"required"`
+}
+
+func (c ApplicationConfig) String() string {
+	return fmt.Sprintf("{ID:%s Title:%s Description:%s DefaultNotifierID:%s AppKey:%s}",
+		c.ID, c.Title, c.Description, c.DefaultNotifierID, strutil.Mask(c.AppKey))
 }

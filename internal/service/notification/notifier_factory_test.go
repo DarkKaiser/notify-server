@@ -32,7 +32,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 		{
 			name: "Success Telegram",
 			cfg: &config.AppConfig{
-				Notifiers: config.NotifierConfig{
+				Notifier: config.NotifierConfig{
 					Telegrams: []config.TelegramConfig{
 						{ID: "t1", BotToken: "tok", ChatID: 1},
 						{ID: "t2", BotToken: "tok", ChatID: 2},
@@ -50,7 +50,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 		{
 			name: "Empty Config",
 			cfg: &config.AppConfig{
-				Notifiers: config.NotifierConfig{
+				Notifier: config.NotifierConfig{
 					Telegrams: []config.TelegramConfig{},
 				},
 			},

@@ -134,7 +134,7 @@ func TestInitAppConfig(t *testing.T) {
 			name: "Success_ValidConfig",
 			fileContent: `{
 				"debug": true,
-				"notifiers": {
+				"notifier": {
 					"default_notifier_id": "test",
 					"telegrams": [
 						{ "id": "test", "bot_token": "123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", "chat_id": 12345 }
@@ -150,7 +150,7 @@ func TestInitAppConfig(t *testing.T) {
 			wantErr: false,
 			validate: func(t *testing.T, c *config.AppConfig) {
 				assert.True(t, c.Debug)
-				assert.Equal(t, "test", c.Notifiers.DefaultNotifierID)
+				assert.Equal(t, "test", c.Notifier.DefaultNotifierID)
 			},
 		},
 		{
@@ -183,7 +183,7 @@ func TestInitAppConfig(t *testing.T) {
 			f := createTempConfigFile(t, tt.file, tt.fileContent)
 
 			// 테스트 실행
-			cfg, err := config.LoadWithFile(f)
+			cfg, _, err := config.LoadWithFile(f)
 
 			// 검증
 			if tt.wantErr {
@@ -208,7 +208,7 @@ func TestInitAppConfig_FileNotFound(t *testing.T) {
 	t.Parallel()
 
 	nonExistentFile := filepath.Join(t.TempDir(), "ghost_config.json")
-	cfg, err := config.LoadWithFile(nonExistentFile)
+	cfg, _, err := config.LoadWithFile(nonExistentFile)
 
 	assert.Error(t, err)
 	assert.Nil(t, cfg)

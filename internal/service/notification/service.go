@@ -80,7 +80,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 		return apperrors.Wrap(err, apperrors.Internal, "Notifier 초기화 중 에러가 발생했습니다")
 	}
 
-	defaultNotifierID := NotifierID(s.appConfig.Notifiers.DefaultNotifierID)
+	defaultNotifierID := NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
 	for _, h := range notifiers {
 		s.notifiers = append(s.notifiers, h)
@@ -104,7 +104,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	// 2. 기본 Notifier 존재 여부 확인
 	if s.defaultNotifier == nil {
 		defer serviceStopWG.Done()
-		return apperrors.New(apperrors.NotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifiers.DefaultNotifierID))
+		return apperrors.New(apperrors.NotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifier.DefaultNotifierID))
 	}
 
 	// 3. 서비스 종료 감시 루틴 실행
