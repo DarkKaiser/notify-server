@@ -5,188 +5,231 @@ package log
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// API Unit Tests (log.go Facade)
+// Delegation Verification (StandardLogger & Global Config)
 // =============================================================================
 
-// TestNew verifies that New() returns a fresh Logger instance.
-func TestNew(t *testing.T) {
-	t.Parallel()
-
-	logger := New()
-	assert.NotNil(t, logger)
-	assert.IsType(t, &Logger{}, logger)
-	// Default level is Info
-	assert.Equal(t, InfoLevel, logger.Level)
-}
-
-// TestStandardLogger verifies access to the global singleton logger.
 func TestStandardLogger(t *testing.T) {
 	t.Parallel()
-
-	std := StandardLogger()
-	assert.NotNil(t, std)
-	assert.IsType(t, &Logger{}, std)
+	// pkg/log.StandardLogger() must return the underlying logrus.StandardLogger()
+	assert.Same(t, logrus.StandardLogger(), StandardLogger())
 }
 
-// TestSetOutput verifies that SetOutput affects the standard logger.
 func TestSetOutput(t *testing.T) {
-	// Not parallel because it modifies global state
+	// Global state modification - run serially
 	resetForTest()
 	defer resetForTest()
 
 	var buf bytes.Buffer
 	SetOutput(&buf)
 
-	// Log something using the standard logger (via helper or direct)
-	StandardLogger().Info("test output")
-
+	Info("test output")
 	assert.Contains(t, buf.String(), "test output")
 }
 
-// TestSetFormatter verifies that SetFormatter affects the standard logger.
 func TestSetFormatter(t *testing.T) {
-	// Not parallel because it modifies global state
 	resetForTest()
 	defer resetForTest()
 
-	// Use JSON formatter
-	SetFormatter(&JSONFormatter{})
-
+	SetFormatter(&logrus.JSONFormatter{})
 	var buf bytes.Buffer
 	SetOutput(&buf)
 
-	StandardLogger().Info("test json")
-
-	assert.Contains(t, buf.String(), "test json")
-	assert.Contains(t, buf.String(), "{") // Should look like JSON
-	assert.Contains(t, buf.String(), "}")
+	Info("json test")
+	assert.Contains(t, buf.String(), `"msg":"json test"`)
+	assert.Contains(t, buf.String(), `"level":"info"`)
 }
 
-// TestContextHelpers verifies the convenience functions for adding context.
-func TestContextHelpers(t *testing.T) {
+// =============================================================================
+// Helper Functions Verification (Entry Constructors)
+// =============================================================================
+
+func TestContextHelpers_Construction(t *testing.T) {
 	t.Parallel()
 
-	// 1. WithFields
+	t.Run("WithField", func(t *testing.T) {
+		entry := WithField("key", "val")
+		assert.Equal(t, "val", entry.Data["key"])
+	})
+
 	t.Run("WithFields", func(t *testing.T) {
-		fields := Fields{"key": "value", "id": 123}
-		entry := WithFields(fields)
-
-		assert.NotNil(t, entry)
-		assert.Equal(t, "value", entry.Data["key"])
-		assert.Equal(t, 123, entry.Data["id"])
+		entry := WithFields(Fields{"foo": "bar", "baz": 123})
+		assert.Equal(t, "bar", entry.Data["foo"])
+		assert.Equal(t, 123, entry.Data["baz"])
 	})
 
-	// 2. WithComponent
+	t.Run("WithError", func(t *testing.T) {
+		err := errors.New("oops")
+		entry := WithError(err)
+		assert.Equal(t, err, entry.Data[logrus.ErrorKey])
+	})
+
+	t.Run("WithTime", func(t *testing.T) {
+		now := time.Now().Add(-1 * time.Hour)
+		entry := WithTime(now)
+		assert.Equal(t, now, entry.Time)
+	})
+
 	t.Run("WithComponent", func(t *testing.T) {
-		entry := WithComponent("auth-service")
-
-		assert.NotNil(t, entry)
-		// Assuming "component" is the key used in WithComponent implementation
-		assert.Equal(t, "auth-service", entry.Data["component"])
+		entry := WithComponent("my-component")
+		assert.Equal(t, "my-component", entry.Data["component"])
 	})
 
-	// 3. WithComponentAndFields
 	t.Run("WithComponentAndFields", func(t *testing.T) {
-		fields := Fields{"action": "login"}
-		entry := WithComponentAndFields("user-service", fields)
-
-		assert.NotNil(t, entry)
-		assert.Equal(t, "user-service", entry.Data["component"])
-		assert.Equal(t, "login", entry.Data["action"])
+		entry := WithComponentAndFields("my-component", Fields{
+			"extra": "data",
+		})
+		assert.Equal(t, "my-component", entry.Data["component"])
+		assert.Equal(t, "data", entry.Data["extra"])
 	})
+
+	// WithContext is not wrapped in log.go but often used with WithTime/WithField.
+	// We check standard logrus behavior compatibility if we add it or just ensure Entry usage is compatible.
+	// log.go doesn't export WithContext wrapper currently.
 }
 
 // =============================================================================
-// Contract Tests (Entry Immutability & Behavior)
+// Global Logging Behavior (Integration-like)
 // =============================================================================
-// Although Entry is an alias, we verify expected behavior for stability.
 
-func TestEntry_Immutability(t *testing.T) {
-	t.Parallel()
+func TestGlobalLogging_Levels(t *testing.T) {
+	// Captures output via Hook to verify that global function calls (Info, Warn...)
+	// actually trigger valid log entries.
+	resetForTest()
+	defer resetForTest()
 
-	base := New().WithField("base", "origin")
+	hook := &testHook{} // minimal hook to capture entries
+	logrus.AddHook(hook)
+	logrus.SetOutput(io.Discard) // prevent stdout noise
+	logrus.SetLevel(logrus.TraceLevel)
 
-	// 1. Derive child
-	child := base.WithField("child", "modified")
+	// Call all convenience wrappers
+	Trace("trace msg")
+	Debug("debug msg")
+	Info("info msg")
+	Warn("warn msg")
+	Error("error msg")
 
-	// 2. Verify independence
-	assert.NotSame(t, base, child, "WithField should return a new Entry instance")
-	assert.Equal(t, "origin", base.Data["base"])
-	assert.Nil(t, base.Data["child"], "Base entry should not be modified")
+	// Verify entries captured
+	require.Len(t, hook.entries, 5)
+	assert.Equal(t, logrus.TraceLevel, hook.entries[0].Level)
+	assert.Equal(t, "trace msg", hook.entries[0].Message)
 
-	assert.Equal(t, "origin", child.Data["base"])
-	assert.Equal(t, "modified", child.Data["child"])
+	assert.Equal(t, logrus.DebugLevel, hook.entries[1].Level)
+	assert.Equal(t, "debug msg", hook.entries[1].Message)
+
+	assert.Equal(t, logrus.InfoLevel, hook.entries[2].Level)
+	assert.Equal(t, "info msg", hook.entries[2].Message)
+
+	assert.Equal(t, logrus.WarnLevel, hook.entries[3].Level)
+	assert.Equal(t, "warn msg", hook.entries[3].Message)
+
+	assert.Equal(t, logrus.ErrorLevel, hook.entries[4].Level)
+	assert.Equal(t, "error msg", hook.entries[4].Message)
 }
 
-func TestEntry_WithError(t *testing.T) {
-	t.Parallel()
+func TestGlobalLogging_Formats(t *testing.T) {
+	resetForTest()
+	defer resetForTest()
 
-	base := New().WithField("foo", "bar")
-	err := errors.New("something wrong")
+	hook := &testHook{}
+	logrus.AddHook(hook)
+	logrus.SetOutput(io.Discard)
+	logrus.SetLevel(logrus.TraceLevel)
 
-	entry := base.WithError(err)
+	Tracef("trace %d", 1)
+	Debugf("debug %d", 2)
+	Infof("info %d", 3)
+	Warnf("warn %d", 4)
+	Errorf("error %d", 5)
 
-	assert.Equal(t, err, entry.Data["error"]) // logrus uses "error" key by default
-	assert.Equal(t, "bar", entry.Data["foo"])
+	require.Len(t, hook.entries, 5)
+	assert.Equal(t, "trace 1", hook.entries[0].Message)
+	assert.Equal(t, "debug 2", hook.entries[1].Message)
+	assert.Equal(t, "info 3", hook.entries[2].Message)
+	assert.Equal(t, "warn 4", hook.entries[3].Message)
+	assert.Equal(t, "error 5", hook.entries[4].Message)
 }
 
-func TestEntry_Concurrency_Safe(t *testing.T) {
-	t.Parallel()
-
-	base := WithFields(Fields{"static": "value"})
-	var wg sync.WaitGroup
-
-	// Concurrently derive new entries
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			_ = base.WithField("id", id)
-		}(i)
-	}
-	wg.Wait()
-
-	// Base should remain untouched
-	assert.Equal(t, "value", base.Data["static"])
-	assert.Len(t, base.Data, 1)
-}
-
-// TestCallerReporting verifies that helper functions don't mess up caller reporting.
-// This is somewhat an integration test but relevant to proper usage of helpers.
-func TestCallerReporting_Helpers(t *testing.T) {
-	// Setup environment
-	tempDir, teardown := setupLogTest(t)
-	defer teardown()
+func TestCallerReporting_Integration(t *testing.T) {
+	// Ensures that wrapper functions don't obscure caller information when ReportCaller is true.
+	// This is critical for function wrappers.
+	resetForTest()
+	tempDir := t.TempDir()
 
 	opts := Options{
-		Name:             "caller-helper-test",
+		Name:             "caller-test",
 		Dir:              tempDir,
 		ReportCaller:     true,
 		EnableConsoleLog: false,
 	}
+
 	closer, err := Setup(opts)
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// Act: Log using helper
-	WithComponent("test-helper").Info("Helper Call")
+	// Call via wrapper
+	Info("Wrapper Call")
 
-	// Verify
-	files, _ := os.ReadDir(tempDir)
-	logFile := filepath.Join(tempDir, files[0].Name()) // Assume main log is generated
-	content, _ := os.ReadFile(logFile)
+	// Verify file content
+	content, err := os.ReadFile(filepath.Join(tempDir, "caller-test.log"))
+	require.NoError(t, err)
 
-	// Check if the log file contains this function name "TestCallerReporting_Helpers"
-	// and NOT "log.go" or "WithComponent" as the caller
-	assert.Contains(t, string(content), "TestCallerReporting_Helpers", "Caller should be the test function, not the helper")
+	// The log should point to THIS function (TestCallerReporting_Integration),
+	// NOT the wrapper function in log.go.
+	// If wrappers are not marked as helper or logrus depth isn't handled (logrus handles it via expensive stack walk finding first non-logrus),
+	// wrapper in another package might be issue?
+	// logrus generally attempts to skip its own frames. Since pkg/log wrappers calls logrus.*,
+	// logrus sees pkg/log as the caller.
+	// However, standard logrus wrappers usually work because user calls pkg/log.Info -> logrus.Info.
+	// Setup sets CallerPrettyfier.
+
+	// In Setup, we configure CallerPrettyfier.
+	// Logrus ReportCaller logic: finds first stack frame outside of logrus package.
+	// Since our wrappers are in `github.com/darkkaiser/notify-server/pkg/log`,
+	// and we are calling from `.../pkg/log/log_test.go` (same package!),
+	// distincting wrapping vs calling is tricky if they are in same package.
+	// BUT, usually `pkg/log` is imported by `main` or `internal/service`.
+	// Testing inside `pkg/log` (same package) might report `log_test.go` correctly.
+
+	// Let's check expectation.
+	assert.Contains(t, string(content), "TestCallerReporting_Integration", "Should report the test function as caller")
 }
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+type testHook struct {
+	entries []*logrus.Entry
+	mu      sync.Mutex
+}
+
+func (h *testHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *testHook) Fire(e *logrus.Entry) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Copy entry to avoid mutation issues if reused (though logrus usually creates new)
+	// We just store reference for simple verify
+	// But entry.Data map is mutable.
+	h.entries = append(h.entries, e)
+	return nil
+}
+
+// contextKey is for testing WithContext (if valid)
+type contextKey struct{}

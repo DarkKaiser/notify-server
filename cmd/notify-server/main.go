@@ -115,6 +115,8 @@ func run() error {
 	} else {
 		logOpts = applog.NewProductionOptions(config.AppName)
 	}
+	// 로그 파일 경로 단축을 위해 프로젝트 모듈 경로 주입
+	logOpts.CallerPathPrefix = "github.com/darkkaiser/notify-server"
 
 	appLogCloser, err := applog.Setup(logOpts)
 	if err != nil {

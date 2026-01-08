@@ -13,102 +13,106 @@ import (
 func TestOptions_Validate(t *testing.T) {
 	t.Parallel()
 
-	// 임시 디렉토리 생성 (유효한 Dir 테스트용)
-	tempDir := t.TempDir()
-
-	// 임시 파일 생성 (Dir이 파일인 경우 테스트용)
-	tempFile := filepath.Join(tempDir, "testfile")
-	err := os.WriteFile(tempFile, []byte("test"), 0644)
-	require.NoError(t, err)
+	// 테스트 환경 셋업을 위한 헬퍼 함수
+	createTempFile := func(t *testing.T) string {
+		t.Helper()
+		tempDir := t.TempDir()
+		tempFile := filepath.Join(tempDir, "conflict_file")
+		err := os.WriteFile(tempFile, []byte("conflict"), 0644)
+		require.NoError(t, err)
+		return tempFile
+	}
 
 	tests := []struct {
 		name        string
-		opts        Options
+		buildOpts   func(t *testing.T) Options // 동적 설정 생성을 위해 함수로 변경 (Setup 격리)
 		expectError bool
 		errorMsg    string
 	}{
 		{
-			name: "유효한 설정값 (기본)",
-			opts: Options{
-				Name:       "test-app",
-				MaxAge:     7,
-				MaxSizeMB:  100,
-				MaxBackups: 20,
+			name: "Success_DefaultDefaults",
+			buildOpts: func(t *testing.T) Options {
+				return Options{
+					Name:       "test-app",
+					MaxAge:     7,
+					MaxSizeMB:  100,
+					MaxBackups: 20,
+				}
 			},
 			expectError: false,
 		},
 		{
-			name: "유효한 설정값 (Dir 포함)",
-			opts: Options{
-				Name:       "test-app",
-				Dir:        tempDir,
-				MaxAge:     7,
-				MaxSizeMB:  100,
-				MaxBackups: 20,
+			name: "Success_WithValidDir",
+			buildOpts: func(t *testing.T) Options {
+				return Options{
+					Name:       "test-app",
+					Dir:        t.TempDir(), // 각 테스트마다 독립된 임시 디렉토리 사용
+					MaxAge:     7,
+					MaxSizeMB:  100,
+					MaxBackups: 20,
+				}
 			},
 			expectError: false,
 		},
 		{
-			name: "Name 누락",
-			opts: Options{
-				MaxAge:     7,
-				MaxSizeMB:  100,
-				MaxBackups: 20,
+			name: "Success_ZeroValues_UseDefaults",
+			buildOpts: func(t *testing.T) Options {
+				return Options{
+					Name:       "test-app",
+					MaxAge:     0,
+					MaxSizeMB:  0,
+					MaxBackups: 0,
+				}
+			},
+			expectError: false,
+		},
+		{
+			name: "Error_MissingName",
+			buildOpts: func(t *testing.T) Options {
+				return Options{
+					MaxAge:     7,
+					MaxSizeMB:  100,
+					MaxBackups: 20,
+				}
 			},
 			expectError: true,
 			errorMsg:    "애플리케이션 식별자(Name)가 설정되지 않았습니다",
 		},
 		{
-			name: "Dir이 파일인 경우 (경로 충돌)",
-			opts: Options{
-				Name:       "test-app",
-				Dir:        tempFile, // 파일 경로를 Dir로 설정
-				MaxAge:     7,
-				MaxSizeMB:  100,
-				MaxBackups: 20,
+			name: "Error_DirConflictWithFile",
+			buildOpts: func(t *testing.T) Options {
+				conflictFile := createTempFile(t)
+				return Options{
+					Name:       "test-app",
+					Dir:        conflictFile, // 파일 경로를 Dir로 설정하여 에러 유도
+					MaxAge:     7,
+					MaxSizeMB:  100,
+					MaxBackups: 20,
+				}
 			},
 			expectError: true,
-			errorMsg:    "로그 디렉토리 경로(" + tempFile + ")가 이미 파일로 존재합니다",
+			errorMsg:    "이미 파일로 존재합니다", // 부분 일치 검증
 		},
 		{
-			name: "모든 값이 0 (기본값 사용)",
-			opts: Options{
-				Name:       "test-app",
-				MaxAge:     0,
-				MaxSizeMB:  0,
-				MaxBackups: 0,
-			},
-			expectError: false,
-		},
-		{
-			name: "음수 MaxAge",
-			opts: Options{
-				Name:       "test-app",
-				MaxAge:     -1,
-				MaxSizeMB:  100,
-				MaxBackups: 20,
+			name: "Error_NegativeMaxAge",
+			buildOpts: func(t *testing.T) Options {
+				return Options{Name: "app", MaxAge: -1}
 			},
 			expectError: true,
 			errorMsg:    "MaxAge는 0 이상이어야 합니다",
 		},
 		{
-			name: "음수 MaxSizeMB",
-			opts: Options{
-				Name:       "test-app",
-				MaxAge:     7,
-				MaxSizeMB:  -100,
-				MaxBackups: 20,
+			name: "Error_NegativeMaxSizeMB",
+			buildOpts: func(t *testing.T) Options {
+				return Options{Name: "app", MaxSizeMB: -1}
 			},
 			expectError: true,
 			errorMsg:    "MaxSizeMB는 0 이상이어야 합니다",
 		},
 		{
-			name: "음수 MaxBackups",
-			opts: Options{
-				Name:       "test-app",
-				MaxAge:     7,
-				MaxSizeMB:  100,
-				MaxBackups: -5,
+			name: "Error_NegativeMaxBackups",
+			buildOpts: func(t *testing.T) Options {
+				return Options{Name: "app", MaxBackups: -1}
 			},
 			expectError: true,
 			errorMsg:    "MaxBackups는 0 이상이어야 합니다",
@@ -119,11 +123,12 @@ func TestOptions_Validate(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := tc.opts.Validate()
+			opts := tc.buildOpts(t)
+			err := opts.Validate()
 
 			if tc.expectError {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tc.errorMsg)
+				require.Error(t, err)
+				assert.ErrorContains(t, err, tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
 			}

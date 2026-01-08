@@ -8,11 +8,13 @@ import (
 )
 
 // TestTypeAliases verifies that our local types correctly alias logrus types.
-// This is a form of contract testing to ensure our abstraction doesn't drift.
+// This ensures that the abstraction layer provided by pkg/log is transparent
+// and fully compatible with the underlying logrus library.
 func TestTypeAliases(t *testing.T) {
 	t.Parallel()
 
 	// 1. Verify Level Constants Mappings
+	// Check if the values of the constants are exactly the same.
 	assert.Equal(t, logrus.PanicLevel, PanicLevel)
 	assert.Equal(t, logrus.FatalLevel, FatalLevel)
 	assert.Equal(t, logrus.ErrorLevel, ErrorLevel)
@@ -21,17 +23,111 @@ func TestTypeAliases(t *testing.T) {
 	assert.Equal(t, logrus.DebugLevel, DebugLevel)
 	assert.Equal(t, logrus.TraceLevel, TraceLevel)
 
-	// 2. Verify Implements (Interface Compliance)
-	// Hook Interface
-	var _ Hook = &testHook{}        // Verify our Hook alias matches implementation expectation
-	var _ logrus.Hook = &testHook{} // Verify it's indeed compatible with logrus
+	// 2. Verify AllLevels
+	assert.Equal(t, logrus.AllLevels, AllLevels)
+}
 
-	// Formatter Interface
-	var _ Formatter = &logrus.TextFormatter{} // Verify logrus formatter implements our alias
+// TestTypeCompatibility verifies that types defined in pkg/log are truly aliases
+// and can be interchangeably used with logrus types.
+func TestTypeCompatibility(t *testing.T) {
+	t.Parallel()
+
+	// 1. Fields Interchangeability
+	// log.Fields should be assignable to logrus.Fields and vice versa.
+	localFields := Fields{"key": "value"}
+	var logrusFields logrus.Fields = localFields
+	var backToLocal Fields = logrusFields
+
+	assert.Equal(t, localFields, Fields(logrusFields))
+	assert.Equal(t, logrusFields, logrus.Fields(backToLocal))
+
+	// 2. Level Interchangeability
+	localLevel := InfoLevel
+	var logrusLevel logrus.Level = localLevel
+	var backToLocalLevel Level = logrusLevel
+
+	assert.Equal(t, localLevel, Level(logrusLevel))
+	assert.Equal(t, logrusLevel, logrus.Level(backToLocalLevel))
+
+	// 3. Logger Interchangeability
+	// Pointers should be exchangeable.
+	localLogger := &Logger{}
+	var logrusLogger *logrus.Logger = localLogger
+	var backToLocalLogger *Logger = logrusLogger
+
+	assert.NotNil(t, logrusLogger)
+	assert.NotNil(t, backToLocalLogger)
+
+	// 4. Entry Interchangeability
+	localEntry := &Entry{}
+	var logrusEntry *logrus.Entry = localEntry
+	var backToLocalEntry *Entry = logrusEntry
+
+	assert.NotNil(t, logrusEntry)
+	assert.NotNil(t, backToLocalEntry)
+}
+
+// TestInterfaceCompliance ensures that our aliases satisfy imperative interfaces.
+func TestInterfaceCompliance(t *testing.T) {
+	t.Parallel()
+
+	// 1. Hook Interface
+	// Our 'Hook' alias should be compatible with logrus.Hook interface requirements.
+	var _ Hook = &testHook{}        // Verify our implementation satisfies our alias
+	var _ logrus.Hook = &testHook{} // Verify it satisfies the original interface
+
+	// 2. Formatter Interface
+	// Standard logrus formatters should satisfy our 'Formatter' alias.
+	var _ Formatter = &logrus.TextFormatter{}
 	var _ Formatter = &logrus.JSONFormatter{}
 
-	// 3. Verify AllLevels
-	assert.Equal(t, logrus.AllLevels, AllLevels)
+	// Our aliases for formatters should also satisfy the interface.
+	var _ Formatter = &TextFormatter{}
+	var _ Formatter = &JSONFormatter{}
+}
+
+// TestStructAliases verifies that struct aliases are correctly defined and usable.
+func TestStructAliases(t *testing.T) {
+	t.Parallel()
+
+	// TextFormatter
+	tf := &TextFormatter{
+		DisableColors: true,
+		FullTimestamp: true,
+	}
+	// Verify it's actually a logrus.TextFormatter under the hood
+	assert.IsType(t, &logrus.TextFormatter{}, tf)
+	assert.True(t, tf.DisableColors)
+
+	// JSONFormatter
+	jf := &JSONFormatter{
+		PrettyPrint: true,
+	}
+	// Verify it's actually a logrus.JSONFormatter under the hood
+	assert.IsType(t, &logrus.JSONFormatter{}, jf)
+	assert.True(t, jf.PrettyPrint)
+}
+
+// TestLevelString verifies that the String() representation of Levels matches logrus.
+func TestLevelString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		level    Level
+		expected string
+	}{
+		{PanicLevel, "panic"},
+		{FatalLevel, "fatal"},
+		{ErrorLevel, "error"},
+		{WarnLevel, "warning"},
+		{InfoLevel, "info"},
+		{DebugLevel, "debug"},
+		{TraceLevel, "trace"},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.expected, tt.level.String())
+	}
 }
 
 // TestInternalConstants verifies package-internal constants.
@@ -42,7 +138,7 @@ func TestInternalConstants(t *testing.T) {
 	assert.Equal(t, "log", fileExt)
 }
 
-// testHook is a simple struct to verify House interface compliance
+// Helper for Hook interface testing
 type testHook struct{}
 
 func (h *testHook) Levels() []Level     { return AllLevels }

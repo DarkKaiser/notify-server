@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestProfileOptions_Defaults는 각 환경별 프로필 함수(New...Options)가
 // 기획된 정책대로 정확한 기본값을 반환하는지 모든 필드를 검증합니다.
 func TestProfileOptions_Defaults(t *testing.T) {
+	t.Parallel()
+
 	const appName = "notify-server-test"
 
 	t.Run("NewProductionOptions (운영 환경)", func(t *testing.T) {
@@ -29,13 +30,13 @@ func TestProfileOptions_Defaults(t *testing.T) {
 		assert.Equal(t, 20, opts.MaxBackups, "백업 개수는 20개")
 
 		// Then - 3. Feature Flags
-		assert.True(t, opts.EnableCriticalLog, "장애 격리 활성화")
-		assert.True(t, opts.EnableVerboseLog, "상세 로그 분리 활성화")
+		assert.True(t, opts.EnableCriticalLog, "장애 대응을 위한 중요 로그 격리 활성화")
+		assert.True(t, opts.EnableVerboseLog, "문제 추적을 위한 상세 로그 분리 활성화")
 		assert.False(t, opts.EnableConsoleLog, "성능을 위해 콘솔 출력 비활성화")
 
 		// Then - 4. Metadata Detail
-		assert.True(t, opts.ReportCaller, "문제 해결을 위해 호출 위치 추적 활성화")
-		assert.Equal(t, "github.com/darkkaiser", opts.CallerPathPrefix, "경로 단순화 Prefix 확인")
+		assert.True(t, opts.ReportCaller, "정확한 문제 원인 파악을 위한 호출 위치 기록 활성화")
+		assert.Equal(t, "", opts.CallerPathPrefix, "기본값: 전체 경로 출력 (Prefix 없음)")
 
 		// Validation Check
 		err := opts.Validate()
@@ -63,28 +64,10 @@ func TestProfileOptions_Defaults(t *testing.T) {
 
 		// Then - 4. Metadata Detail
 		assert.True(t, opts.ReportCaller, "디버깅을 위해 호출 위치 추적 활성화")
-		assert.Equal(t, "github.com/darkkaiser", opts.CallerPathPrefix)
+		assert.Equal(t, "", opts.CallerPathPrefix, "기본값: 전체 경로 출력 (Prefix 없음)")
 
 		// Validation Check
 		err := opts.Validate()
 		assert.NoError(t, err, "생성된 옵션은 유효해야 함")
-	})
-}
-
-// TestProfileOptions_Validity는 생성된 옵션이 실제 Setup 호출 시
-// 유효성 검사를 통과하는지 확인합니다.
-func TestProfileOptions_Validity(t *testing.T) {
-	appName := "valid-test"
-
-	t.Run("Production Options Validity", func(t *testing.T) {
-		opts := NewProductionOptions(appName)
-		err := opts.Validate()
-		require.NoError(t, err)
-	})
-
-	t.Run("Development Options Validity", func(t *testing.T) {
-		opts := NewDevelopmentOptions(appName)
-		err := opts.Validate()
-		require.NoError(t, err)
 	})
 }

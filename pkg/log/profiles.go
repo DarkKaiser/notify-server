@@ -14,8 +14,8 @@ func NewProductionOptions(appName string) Options {
 		EnableVerboseLog:  true,  // 문제 추적을 위한 상세 로그 분리
 		EnableConsoleLog:  false, // 터미널 출력 비활성화
 
-		ReportCaller:     true,                    // 정확한 문제 원인 파악을 위한 호출 위치 기록
-		CallerPathPrefix: "github.com/darkkaiser", // 경로 단순화
+		ReportCaller:     true, // 정확한 문제 원인 파악을 위한 호출 위치 기록
+		CallerPathPrefix: "",   // 기본값: 전체 경로 출력
 	}
 }
 
@@ -33,7 +33,7 @@ func NewDevelopmentOptions(appName string) Options {
 		EnableVerboseLog:  false, // 개발 편의를 위한 로그 파일 통합
 		EnableConsoleLog:  true,  // 터미널 출력 활성화
 
-		ReportCaller:     true,                    // 정확한 문제 원인 파악을 위한 호출 위치 기록
-		CallerPathPrefix: "github.com/darkkaiser", // 경로 단순화
+		ReportCaller:     true, // 정확한 문제 원인 파악을 위한 호출 위치 기록
+		CallerPathPrefix: "",   // 기본값: 전체 경로 출력
 	}
 }

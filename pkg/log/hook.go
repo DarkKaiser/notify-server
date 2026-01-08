@@ -1,7 +1,9 @@
 package log
 
 import (
+	"fmt"
 	"io"
+	"os"
 	"sync"
 )
 
@@ -53,7 +55,9 @@ func (h *hook) Fire(entry *Entry) error {
 	//    설정된 경우, 레벨 필터링 없이 모든 로그를 표준 출력으로 내보내 실시간 모니터링을 지원합니다.
 	if h.consoleWriter != nil {
 		// 표준 출력(Stdout) 쓰기가 실패해도 전체 로깅 시스템의 가용성에 영향을 주지 않도록, 발생한 에러를 전파하지 않고 의도적으로 무시합니다.
-		_, _ = h.consoleWriter.Write(msg)
+		if _, err := h.consoleWriter.Write(msg); err != nil {
+			fmt.Fprintf(os.Stderr, "[LOG-SYSTEM-WARN] 표준 출력(Console) 쓰기 실패 (모니터링 제한 가능성): %v\n", err)
+		}
 	}
 
 	// 1. Critical Writer (Error 이상)
@@ -63,6 +67,9 @@ func (h *hook) Fire(entry *Entry) error {
 		if h.criticalWriter != nil {
 			if _, err := h.criticalWriter.Write(msg); err != nil {
 				firstErr = err
+
+				// 심각한 오류(Critical) 기록 실패는 데이터 유실을 의미하므로, 즉시 표준 에러로 알립니다.
+				fmt.Fprintf(os.Stderr, "[LOG-SYSTEM-FAILURE] Critical 로그 파일 쓰기 실패 (데이터 유실 위험): %v\n", err)
 			}
 		}
 	}
@@ -72,8 +79,13 @@ func (h *hook) Fire(entry *Entry) error {
 	//    중요: 처리 후 함수를 즉시 종료하여, 상세 정보가 메인 운영 로그를 오염시키지 않도록 원천 차단합니다.
 	if entry.Level >= DebugLevel {
 		if h.verboseWriter != nil {
-			if _, err := h.verboseWriter.Write(msg); err != nil && firstErr == nil {
-				firstErr = err
+			if _, err := h.verboseWriter.Write(msg); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+
+				// 상세 로그(Verbose) 기록 실패는 운영에 치명적이지 않으므로 경고 수준으로 알립니다.
+				fmt.Fprintf(os.Stderr, "[LOG-SYSTEM-WARN] Verbose 로그 파일 쓰기 실패: %v\n", err)
 			}
 		}
 
@@ -86,8 +98,13 @@ func (h *hook) Fire(entry *Entry) error {
 	//    전반적인 시스템 운영 이력을 기록합니다. 앞선 단계의 에러 로그도 중복 기록하여 문맥을 보존합니다.
 	//    Critical Writer의 실패 여부와 관계없이 기록 시도를 보장합니다.
 	if h.mainWriter != nil {
-		if _, err := h.mainWriter.Write(msg); err != nil && firstErr == nil {
-			firstErr = err
+		if _, err := h.mainWriter.Write(msg); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+
+			// 메인 로그(Main) 기록 실패는 운영 기록의 공백을 의미하므로 즉시 알립니다.
+			fmt.Fprintf(os.Stderr, "[LOG-SYSTEM-FAILURE] Main 로그 파일 쓰기 실패 (운영 기록 유실 위험): %v\n", err)
 		}
 	}
 

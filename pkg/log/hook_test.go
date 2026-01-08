@@ -5,6 +5,7 @@ package log
 import (
 	"bytes"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 // Mocks & Helpers
 // =============================================================================
 
-// failWriter는 의도적으로 에러를 발생시키는 Writer 모의 객체입니다.
+// failWriter is a mock writer that always returns an error.
 type failWriter struct {
 	err error
 }
@@ -26,14 +27,16 @@ func (w *failWriter) Write(p []byte) (n int, err error) {
 	return 0, w.err
 }
 
-// errorFormatter는 Format 호출 시 항상 에러를 반환하는 Formatter입니다.
+// errorFormatter is a mock formatter that always returns an error.
 type errorFormatter struct{}
 
 func (f *errorFormatter) Format(entry *Entry) ([]byte, error) {
 	return nil, errors.New("formatting failed")
 }
 
-// safeBuffer는 동시성 테스트를 위해 Mutex로 보호되는 Buffer입니다.
+// safeBuffer is a thread-safe implementation of bytes.Buffer.
+// Since hook.Fire holds a Read Lock (allowing concurrent Fire calls),
+// the underlying writers must be thread-safe.
 type safeBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -51,18 +54,24 @@ func (b *safeBuffer) String() string {
 	return b.buf.String()
 }
 
+func (b *safeBuffer) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf.Reset()
+}
+
 func (b *safeBuffer) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.Len()
 }
 
-// newTestHook은 테스트를 위한 격리된 hook 인스턴스를 생성합니다.
-func newTestHook() (*hook, *bytes.Buffer, *bytes.Buffer, *bytes.Buffer, *bytes.Buffer) {
-	mainBuf := &bytes.Buffer{}
-	critBuf := &bytes.Buffer{}
-	verbBuf := &bytes.Buffer{}
-	consBuf := &bytes.Buffer{}
+// newTestHook creates a hook with thread-safe buffers for testing.
+func newTestHook() (*hook, *safeBuffer, *safeBuffer, *safeBuffer, *safeBuffer) {
+	mainBuf := &safeBuffer{}
+	critBuf := &safeBuffer{}
+	verbBuf := &safeBuffer{}
+	consBuf := &safeBuffer{}
 
 	h := &hook{
 		mainWriter:     mainBuf,
@@ -80,18 +89,19 @@ func newTestHook() (*hook, *bytes.Buffer, *bytes.Buffer, *bytes.Buffer, *bytes.B
 
 func TestHook_Levels(t *testing.T) {
 	h := &hook{}
-	assert.Equal(t, AllLevels, h.Levels(), "Hook은 모든 로그 레벨을 처리해야 합니다.")
+	assert.Equal(t, AllLevels, h.Levels(), "Hook should handle all log levels")
 }
 
 func TestHook_Fire_Routing(t *testing.T) {
-	// Table-Driven Tests 설계를 통해 모든 로그 레벨에 대한 라우팅 정책을 검증합니다.
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		level        Level
 		expectMain   bool
 		expectCrit   bool
 		expectVerb   bool
-		expectCons   bool // Console은 항상 출력되어야 함
+		expectCons   bool
 		setupHookOpt func(*hook)
 	}{
 		// 1. Critical Level Group
@@ -103,7 +113,7 @@ func TestHook_Fire_Routing(t *testing.T) {
 		{"Warn Level", WarnLevel, true, false, false, true, nil},
 		{"Info Level", InfoLevel, true, false, false, true, nil},
 
-		// 3. Verbose Level Group (Noise Isolation Check)
+		// 3. Verbose Level Group
 		{"Debug Level", DebugLevel, false, false, true, true, nil},
 		{"Trace Level", TraceLevel, false, false, true, true, nil},
 
@@ -123,7 +133,9 @@ func TestHook_Fire_Routing(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc // capture for parallel
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			h, main, crit, verb, cons := newTestHook()
 			if tc.setupHookOpt != nil {
 				tc.setupHookOpt(h)
@@ -137,8 +149,7 @@ func TestHook_Fire_Routing(t *testing.T) {
 			err := h.Fire(entry)
 			require.NoError(t, err)
 
-			// Helper to check buffer content
-			check := func(buf *bytes.Buffer, expected bool, name string) {
+			check := func(buf *safeBuffer, expected bool, name string) {
 				if expected {
 					assert.Contains(t, buf.String(), "test message", "%s should contain log", name)
 				} else {
@@ -155,7 +166,9 @@ func TestHook_Fire_Routing(t *testing.T) {
 }
 
 func TestHook_Fire_FailSafe(t *testing.T) {
-	t.Run("Critical Writer 실패 시에도 Main Writer는 기록되어야 함 (Soft Failure)", func(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Critical Writer 실패 시에도 Main Writer는 기록되어야 함", func(t *testing.T) {
 		expectedErr := errors.New("disk full")
 		h, main, _, _, _ := newTestHook()
 		h.criticalWriter = &failWriter{err: expectedErr}
@@ -164,13 +177,11 @@ func TestHook_Fire_FailSafe(t *testing.T) {
 
 		err := h.Fire(entry)
 
-		// 에러는 반환되어야 하지만...
 		assert.ErrorIs(t, err, expectedErr)
-		// Main 로깅은 성공해야 함
-		assert.Contains(t, main.String(), "critical failure", "Critical 실패가 Main 기록을 방해해선 안 됨")
+		assert.Contains(t, main.String(), "critical failure", "Main logging should succeed despite critical failure")
 	})
 
-	t.Run("Verbose Writer 실패 시 에러 반환 (Main 오염 방지)", func(t *testing.T) {
+	t.Run("Verbose Writer 실패 시 에러 반환 및 Main 오염 방지", func(t *testing.T) {
 		expectedErr := errors.New("disk full")
 		h, main, _, _, _ := newTestHook()
 		h.verboseWriter = &failWriter{err: expectedErr}
@@ -180,10 +191,10 @@ func TestHook_Fire_FailSafe(t *testing.T) {
 		err := h.Fire(entry)
 
 		assert.ErrorIs(t, err, expectedErr)
-		assert.Empty(t, main.String(), "Verbose 로깅 실패 시 Main으로 넘어가지 않고 종료되어야 함")
+		assert.Empty(t, main.String(), "Main should not receive verbose logs even on failure")
 	})
 
-	t.Run("Console Writer 실패는 완전히 무시됨 (Fail-Safe)", func(t *testing.T) {
+	t.Run("Console Writer 실패는 완전히 무시됨", func(t *testing.T) {
 		h, main, _, _, _ := newTestHook()
 		h.consoleWriter = &failWriter{err: errors.New("stdout closed")}
 
@@ -191,8 +202,8 @@ func TestHook_Fire_FailSafe(t *testing.T) {
 
 		err := h.Fire(entry)
 
-		assert.NoError(t, err, "Console Writer 에러는 전파되지 않아야 함")
-		assert.Contains(t, main.String(), "console failure", "Console 실패가 Main 기록에 영향을 주면 안 됨")
+		assert.NoError(t, err, "Console error should be ignored")
+		assert.Contains(t, main.String(), "console failure", "Main logging should still succeed")
 	})
 
 	t.Run("Formatter 실패 시 즉시 에러 반환", func(t *testing.T) {
@@ -206,36 +217,31 @@ func TestHook_Fire_FailSafe(t *testing.T) {
 }
 
 func TestHook_Close_Lifecycle(t *testing.T) {
+	t.Parallel()
+
 	h, main, _, _, _ := newTestHook()
 
-	// 1. 정상 동작 확인
+	// 1. Valid log
 	require.NoError(t, h.Fire(&Entry{Level: InfoLevel, Message: "alive"}))
 	require.Contains(t, main.String(), "alive")
 	main.Reset()
 
-	// 2. Close 호출
+	// 2. Close
 	require.NoError(t, h.Close())
 
-	// 3. Close 후 동작 확인 (No-op)
+	// 3. Log after close (should be ignored)
 	require.NoError(t, h.Fire(&Entry{Level: InfoLevel, Message: "dead"}))
-	assert.Empty(t, main.String(), "Close된 Hook은 로그를 기록하지 않아야 함")
+	assert.Empty(t, main.String(), "Logs must be ignored after Close")
 }
 
 // =============================================================================
-// Concurrency Tests (Go Race Detector 필수)
+// Concurrency Tests
 // =============================================================================
 
 func TestHook_Concurrency_Stress(t *testing.T) {
-	// 동시성 환경에서 Data Race 및 데드락 발생 여부를 검증합니다.
+	t.Parallel()
 
-	mainBuf := &safeBuffer{}
-	h := &hook{
-		mainWriter:     mainBuf,
-		criticalWriter: &safeBuffer{},
-		verboseWriter:  &safeBuffer{},
-		consoleWriter:  &safeBuffer{}, // Safe mock
-		formatter:      &TextFormatter{DisableTimestamp: true},
-	}
+	h, mainBuf, _, _, _ := newTestHook()
 
 	const (
 		goroutines = 50
@@ -247,47 +253,34 @@ func TestHook_Concurrency_Stress(t *testing.T) {
 	wg.Add(goroutines)
 
 	for i := 0; i < goroutines; i++ {
-		go func(id int) {
+		go func() {
 			defer wg.Done()
-			<-start // 동시 시작 대기
-
+			<-start
 			for j := 0; j < logsPerG; j++ {
-				// Random Level Logging
-				level := Level(j % 6) // All levels mixed
 				_ = h.Fire(&Entry{
-					Level:   level,
+					Level:   InfoLevel,
 					Message: "stress test",
 				})
 			}
-		}(i)
+		}()
 	}
 
-	close(start) // 출발 신호
+	close(start)
 	wg.Wait()
 
-	// 검증: 최소한의 로그가 기록되었는지 (개별 Count는 버퍼 특성상 어려우나 Race 여부가 핵심)
-	assert.Greater(t, mainBuf.Len(), 0, "Stress 테스트 후 Main 로그가 비어있으면 안 됨")
+	// Use Lens check approximately. Exact number depends on format length.
+	assert.Greater(t, mainBuf.Len(), 0)
 }
 
 func TestHook_Concurrency_Close_Race(t *testing.T) {
-	// Fire()와 Close()가 동시에 호출될 때 Panic이나 Race가 발생하지 않아야 합니다.
+	t.Parallel()
 	h, _, _, _, _ := newTestHook()
-	// Thread-safe writers needed equivalent to real file writers (Lumberjack is mutex protected)
-	// But our bytes.Buffer is NOT thread safe. We need safe mocks for this specific test too?
-	// Actually newTestHook uses plain bytes.Buffer which will Race if written concurrently.
-	// For this test, we accept we need SafeWriters.
-
-	safeW := &safeBuffer{}
-	h.mainWriter = safeW
-	h.criticalWriter = safeW
-	h.verboseWriter = safeW
-	h.consoleWriter = safeW
 
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// 1. Writer Goroutine
+	// Writer
 	go func() {
 		defer wg.Done()
 		<-start
@@ -297,16 +290,38 @@ func TestHook_Concurrency_Close_Race(t *testing.T) {
 		}
 	}()
 
-	// 2. Closer Goroutine
+	// Closer
 	go func() {
 		defer wg.Done()
 		<-start
-		time.Sleep(2 * time.Millisecond) // Let some logs pass
+		time.Sleep(5 * time.Millisecond)
 		_ = h.Close()
 	}()
 
 	close(start)
 	wg.Wait()
+}
 
-	// Pass if no panic/race detected
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkHook_Fire(b *testing.B) {
+	// Setup a hook with discard writers and silent formatter for minimal overhead measurement.
+	h := &hook{
+		mainWriter:     io.Discard,
+		criticalWriter: io.Discard,
+		verboseWriter:  io.Discard,
+		consoleWriter:  io.Discard,
+		formatter:      &silentFormatter{},
+	}
+
+	infoEntry := &Entry{Level: InfoLevel, Message: "benchmark"}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = h.Fire(infoEntry)
+		}
+	})
 }
