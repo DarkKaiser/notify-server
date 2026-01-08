@@ -20,7 +20,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -170,7 +169,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	defer close(done)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
-	applog.WithComponentAndFields("api.service", log.Fields{
+	applog.WithComponentAndFields("api.service", applog.Fields{
 		"port": port,
 	}).Debug("API 서비스 > http 서버 시작")
 
@@ -205,7 +204,7 @@ func (s *Service) handleServerError(err error) {
 
 	// 예상치 못한 에러 발생
 	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
-	applog.WithComponentAndFields("api.service", log.Fields{
+	applog.WithComponentAndFields("api.service", applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
 	}).Error(message)
@@ -237,7 +236,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		applog.WithComponentAndFields("api.service", log.Fields{
+		applog.WithComponentAndFields("api.service", applog.Fields{
 			"error": err,
 		}).Error("서버 종료 중 오류 발생")
 	}

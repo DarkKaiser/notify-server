@@ -9,7 +9,7 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 type predictionSnapshot struct {
@@ -57,7 +57,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		// 에러 발생 시 Stderr 내용을 포함하여 로깅합니다.
 		stderr := process.Stderr()
 		if len(stderr) > 0 {
-			t.LogWithContext("task.lotto", log.ErrorLevel, "외부 프로세스 실행 중 에러 발생", log.Fields{
+			t.LogWithContext("task.lotto", applog.ErrorLevel, "외부 프로세스 실행 중 에러 발생", applog.Fields{
 				"stderr": stderr,
 			}, err)
 		}
@@ -95,7 +95,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 	defer func() {
 		// 분석이 끝난 로그 파일은 삭제한다.
 		if err := os.Remove(analysisFilePath); err != nil {
-			t.LogWithContext("task.lotto", log.WarnLevel, "분석 결과 임시 파일 삭제 실패", log.Fields{
+			t.LogWithContext("task.lotto", applog.WarnLevel, "분석 결과 임시 파일 삭제 실패", applog.Fields{
 				"path": analysisFilePath,
 			}, err)
 		}

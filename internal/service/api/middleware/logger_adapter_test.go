@@ -4,28 +4,28 @@ import (
 	"bytes"
 	"testing"
 
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/gommon/log"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLoggerAdapter_Level_Table(t *testing.T) {
 	tests := []struct {
 		name          string
-		logrusLevel   logrus.Level
+		appLogLevel   applog.Level
 		expectedLevel log.Lvl
 	}{
-		{"Debug Level", logrus.DebugLevel, log.DEBUG},
-		{"Info Level", logrus.InfoLevel, log.INFO},
-		{"Warn Level", logrus.WarnLevel, log.WARN},
-		{"Error Level", logrus.ErrorLevel, log.ERROR},
+		{"Debug Level", applog.DebugLevel, log.DEBUG},
+		{"Info Level", applog.InfoLevel, log.INFO},
+		{"Warn Level", applog.WarnLevel, log.WARN},
+		{"Error Level", applog.ErrorLevel, log.ERROR},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := logrus.New()
+			l := applog.New()
 			logger := Logger{l}
-			l.SetLevel(tt.logrusLevel)
+			l.SetLevel(tt.appLogLevel)
 			assert.Equal(t, tt.expectedLevel, logger.Level())
 		})
 	}
@@ -35,17 +35,17 @@ func TestLoggerAdapter_SetLevel_Table(t *testing.T) {
 	tests := []struct {
 		name          string
 		inputLevel    log.Lvl
-		expectedLevel logrus.Level
+		expectedLevel applog.Level
 	}{
-		{"Set Debug", log.DEBUG, logrus.DebugLevel},
-		{"Set Info", log.INFO, logrus.InfoLevel},
-		{"Set Warn", log.WARN, logrus.WarnLevel},
-		{"Set Error", log.ERROR, logrus.ErrorLevel},
+		{"Set Debug", log.DEBUG, applog.DebugLevel},
+		{"Set Info", log.INFO, applog.InfoLevel},
+		{"Set Warn", log.WARN, applog.WarnLevel},
+		{"Set Error", log.ERROR, applog.ErrorLevel},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := logrus.New()
+			l := applog.New()
 			logger := Logger{l}
 			logger.SetLevel(tt.inputLevel)
 			assert.Equal(t, tt.expectedLevel, l.Level)
@@ -143,9 +143,9 @@ func TestLoggerAdapter_Methods_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			l := logrus.New()
+			l := applog.New()
 			l.SetOutput(&buf)
-			l.SetFormatter(&logrus.JSONFormatter{}) // Use JSON formatter for easier check
+			l.SetFormatter(&applog.JSONFormatter{}) // Use JSON formatter for easier check
 
 			logger := &Logger{l}
 			logger.SetLevel(tt.level)
@@ -161,7 +161,7 @@ func TestLoggerAdapter_Methods_Table(t *testing.T) {
 }
 
 func TestLoggerAdapter_Output(t *testing.T) {
-	l := logrus.New()
+	l := applog.New()
 	logger := Logger{l}
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
@@ -171,7 +171,7 @@ func TestLoggerAdapter_Output(t *testing.T) {
 func TestLoggerAdapter_Prefix(t *testing.T) {
 	// Logger adapter implementation of SetPrefix might be no-op or specific.
 	// Current implementation doesn't seem to use prefix but let's check basic interface compliance
-	l := logrus.New()
+	l := applog.New()
 	logger := Logger{l}
 	logger.SetPrefix("test")
 	// Implementation intentionally ignores prefix
@@ -179,8 +179,8 @@ func TestLoggerAdapter_Prefix(t *testing.T) {
 }
 
 func TestLoggerAdapter_SetHeader(t *testing.T) {
-	// Header is likely ignored by logrus adapter but needs to be callable
-	l := logrus.New()
+	// Header is likely ignored by adapter but needs to be callable
+	l := applog.New()
 	logger := Logger{l}
 	logger.SetHeader("header")
 	// No assertion really possible if it's a no-op, just compliance

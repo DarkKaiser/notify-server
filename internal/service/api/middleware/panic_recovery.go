@@ -7,7 +7,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -34,7 +33,7 @@ func PanicRecovery() echo.MiddlewareFunc {
 					length := runtime.Stack(stack, false)
 
 					// 로깅 필드 구성
-					fields := log.Fields{
+					fields := applog.Fields{
 						"error": err,
 						"stack": string(stack[:length]),
 					}

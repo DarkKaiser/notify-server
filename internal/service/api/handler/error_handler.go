@@ -6,7 +6,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	log "github.com/sirupsen/logrus"
 )
 
 // CustomHTTPErrorHandler 커스텀 HTTP 에러 핸들러입니다.
@@ -31,7 +30,7 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 
 	// 500 에러 발생 시 로깅 (디버깅 용도)
 	if code == http.StatusInternalServerError {
-		applog.WithComponentAndFields("api.error_handler", log.Fields{
+		applog.WithComponentAndFields("api.error_handler", applog.Fields{
 			"path":   c.Request().URL.Path,
 			"method": c.Request().Method,
 			"error":  err,
