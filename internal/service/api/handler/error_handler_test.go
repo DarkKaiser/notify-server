@@ -64,7 +64,7 @@ func TestCustomHTTPErrorHandler_Table(t *testing.T) {
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
 				var errorResp response.ErrorResponse
 				json.Unmarshal(rec.Body.Bytes(), &errorResp)
-				assert.Equal(t, "Custom 404", errorResp.Message)
+				assert.Equal(t, "페이지를 찾을 수 없습니다.", errorResp.Message)
 			},
 		},
 		{

@@ -19,12 +19,14 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 		code = he.Code
 		if msg, ok := he.Message.(string); ok {
 			message = msg
+		} else if resp, ok := he.Message.(response.ErrorResponse); ok {
+			message = resp.Message
 		}
 	}
 
-	// HTTP 상태 코드가 404 (찾을 수 없음)이고, 기본 메시지가 "Not Found"인 경우
-	// 사용자에게 더 친숙한 한국어 메시지로 변경하여 반환합니다.
-	if code == http.StatusNotFound && message == "Not Found" {
+	// HTTP 상태 코드가 404 (찾을 수 없음)인 경우 사용자에게 더 친숙한 한국어 메시지로 변경하여 반환합니다.
+	// 주의: 모든 404 에러에 대해 일괄적으로 메시지를 변경합니다.
+	if code == http.StatusNotFound {
 		message = "페이지를 찾을 수 없습니다."
 	}
 
