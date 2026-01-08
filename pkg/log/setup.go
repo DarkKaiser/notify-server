@@ -66,9 +66,14 @@ func setupInternal(opts Options) (io.Closer, error) {
 	}
 	logrus.SetLevel(level)
 
-	// 호출자 정보(파일명, 라인번호) 기록 여부 및 로그 포맷 형식을 설정합니다.
+	// 호출자 정보(파일명, 라인번호) 기록 여부를 설정합니다.
 	logrus.SetReportCaller(opts.ReportCaller)
-	logrus.SetFormatter(&logrus.TextFormatter{
+
+	// Logrus는 io.Discard라도 포맷팅을 수행하므로, 이를 막기 위해 아무것도 안 하는 포맷터를 설정합니다.
+	logrus.SetFormatter(&silentFormatter{})
+
+	// 실제 파일/콘솔 출력에 사용할 TextFormatter를 설정합니다. (hook에서 사용)
+	textFormatter := &logrus.TextFormatter{
 		FullTimestamp:   true,         // TTY가 아니어도 타임스탬프를 항상 출력
 		TimestampFormat: time.RFC3339, // "2006-01-02T15:04:05Z07:00" (ISO8601 표준)
 		CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
@@ -80,7 +85,7 @@ func setupInternal(opts Options) (io.Closer, error) {
 			}
 			return
 		},
-	})
+	}
 
 	// 로그 저장 경로가 명시되지 않은 경우, 실행 위치의 'logs' 디렉토리를 기본값으로 사용합니다.
 	logDir := opts.Dir
@@ -172,7 +177,7 @@ func setupInternal(opts Options) (io.Closer, error) {
 	// 메인 로그, 중요 로그(Critical), 상세 로그(Verbose), 콘솔 출력을 중앙에서 분배할 Hook을 생성합니다.
 	h = &hook{
 		mainWriter: mainLogger,
-		formatter:  logrus.StandardLogger().Formatter,
+		formatter:  textFormatter,
 	}
 
 	// 활성화된 옵션에 따라 추가적인 Writer(Critical, Verbose, Console)를 연결합니다.

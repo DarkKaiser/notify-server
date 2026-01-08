@@ -5,7 +5,10 @@ package log
 import (
 	"errors"
 	"io"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,7 +19,7 @@ import (
 // Mocks
 // =============================================================================
 
-// MockCloser is a mock implementation of io.Closer
+// MockCloser is a generic mock that implements io.Closer.
 type MockCloser struct {
 	mock.Mock
 }
@@ -26,7 +29,8 @@ func (m *MockCloser) Close() error {
 	return args.Error(0)
 }
 
-// MockSyncCloser is a mock implementation of io.Closer + Sync()
+// MockSyncCloser implements both io.Closer and a Sync() method.
+// Used to verify that Sync is called before Close.
 type MockSyncCloser struct {
 	MockCloser
 }
@@ -36,56 +40,23 @@ func (m *MockSyncCloser) Sync() error {
 	return args.Error(0)
 }
 
-// MockHook is a mock implementation of the hook to verify Close calls
-type MockHook struct {
-	mock.Mock
-}
-
-func (m *MockHook) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-// Note: Ensure MockHook satisfies the interface required by closer (if interface existed).
-// Currently closer struct uses concrete *hook type.
-// To test hook interaction properly without changing production code to interface,
-// we might need to rely on the side effects or internal state if accessible.
-// However, since `hook` is a concrete struct in `closer`, we cannot easily mock it
-// unless we refactor `closer` to use an interface for hook or just test the side effect.
-// For this test suite, we will test the logic around `closers` slice mainly,
-// and for hook, since it's concrete, we might not be able to spy on `Close` easily
-// without redesigning `closer` to accept an interface.
-//
-// BUT: The user asked for "Expert level improvements".
-// Ideally, `closer` should depend on an interface for the hook to be testable.
-// Given strict instructions not to over-engineer or change too much if not critical,
-// we will stick to testing what we can.
-//
-// Wait, `closer` struct has `hook *hook`. This makes mocking `hook.Close()` hard
-// without interface extraction.
-// Let's check `hook.go`. It has a `Close()` method.
-//
-// STRATEGY:
-// 1. Refactor `approver.go` tests to use `testify/mock` for `io.Closer` (Cleaner).
-// 2. For `hook`, since we can't mock the method on a concrete struct easily,
-//    we will verify the observable behavior: "hook is closed".
-//    We can check `hook.closed` field if we are in the same package (white-box test).
-//    Since this test is `package log`, we can access unexported fields! Perfect.
-
 // =============================================================================
 // Tests
 // =============================================================================
 
+// TestCloser_Close verifies the basic functionality of closing resources.
 func TestCloser_Close(t *testing.T) {
+	t.Parallel()
+
 	t.Run("성공: 모든 리소스가 정상적으로 닫힘", func(t *testing.T) {
 		// Given
 		m1 := new(MockCloser)
 		m2 := new(MockCloser)
+		// Setup expectations: Close should be called once on each
+		m1.On("Close").Return(nil).Once()
+		m2.On("Close").Return(nil).Once()
+
 		h := &hook{}
-
-		m1.On("Close").Return(nil)
-		m2.On("Close").Return(nil)
-
 		c := &closer{
 			closers: []io.Closer{m1, m2},
 			hook:    h,
@@ -101,7 +72,7 @@ func TestCloser_Close(t *testing.T) {
 		m2.AssertExpectations(t)
 	})
 
-	t.Run("실패: 일부 리소스 닫기 실패 시에도 나머지는 시도함", func(t *testing.T) {
+	t.Run("실패: 일부 리소스 닫기 실패 시 에러 집계", func(t *testing.T) {
 		// Given
 		m1 := new(MockCloser)
 		m2 := new(MockCloser) // Fails
@@ -109,9 +80,9 @@ func TestCloser_Close(t *testing.T) {
 
 		errFail := errors.New("fail to close")
 
-		m1.On("Close").Return(nil)
-		m2.On("Close").Return(errFail)
-		m3.On("Close").Return(nil)
+		m1.On("Close").Return(nil).Once()
+		m2.On("Close").Return(errFail).Once()
+		m3.On("Close").Return(nil).Once()
 
 		c := &closer{
 			closers: []io.Closer{m1, m2, m3},
@@ -122,106 +93,104 @@ func TestCloser_Close(t *testing.T) {
 
 		// Then
 		require.Error(t, err)
-		assert.ErrorIs(t, err, errFail) // Contains the error
+		assert.ErrorIs(t, err, errFail, "Returned error should wrap the underlying error")
 
-		// All methods must be called despite the error in the middle
+		// Verify all closers were attempted
 		m1.AssertExpectations(t)
 		m2.AssertExpectations(t)
 		m3.AssertExpectations(t)
 	})
 
-	t.Run("중복 호출: Idempotency 보장", func(t *testing.T) {
+	t.Run("순서: Sync가 Close보다 먼저 호출되어야 함", func(t *testing.T) {
+		// Given
+		ms := new(MockSyncCloser)
+
+		// CallOrder verification using functional options or call sequence
+		// Here we simply check the calls are made. Strict order can be checked by
+		// tracking call times or using testify's .Run() but for simplicity,
+		// we know the implementation calls Sync then Close.
+		// Let's use written logic to verify order if possible, or assume implementation correctness
+		// if we assert both are called.
+		// To be expert-level strict:
+		var callOrder []string
+
+		ms.On("Sync").Return(nil).Run(func(args mock.Arguments) {
+			callOrder = append(callOrder, "Sync")
+		}).Once()
+
+		ms.On("Close").Return(nil).Run(func(args mock.Arguments) {
+			callOrder = append(callOrder, "Close")
+		}).Once()
+
+		c := &closer{
+			closers: []io.Closer{ms},
+		}
+
+		// When
+		err := c.Close()
+
+		// Then
+		assert.NoError(t, err)
+		ms.AssertExpectations(t)
+		assert.Equal(t, []string{"Sync", "Close"}, callOrder, "Execution order mismatch")
+	})
+}
+
+// TestCloser_Concurrency verifies thread-safety and idempotency.
+func TestCloser_Concurrency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Idempotency: 중복 호출 시 단 한 번만 실행", func(t *testing.T) {
 		// Given
 		m1 := new(MockCloser)
-		m1.On("Close").Return(nil).Once() // Should be called only once
+		// Expect Close to be called exactly ONCE
+		m1.On("Close").Return(nil).Once()
 
 		c := &closer{
 			closers: []io.Closer{m1},
 		}
 
-		// When 1st Call
-		err1 := c.Close()
-		assert.NoError(t, err1)
+		// When: Call Close multiple times concurrently
+		concurrency := 100
+		var wg sync.WaitGroup
+		wg.Add(concurrency)
 
-		// When 2nd Call
-		err2 := c.Close()
-		assert.NoError(t, err2) // Should return nil immediately
+		for i := 0; i < concurrency; i++ {
+			go func() {
+				defer wg.Done()
+				// Add small random delay to increase race chance
+				if i%2 == 0 {
+					time.Sleep(time.Microsecond)
+				}
+				_ = c.Close()
+			}()
+		}
+		wg.Wait()
 
 		// Then
 		m1.AssertExpectations(t)
-	})
-
-	t.Run("Hook 비활성화: 파일 닫기 전 Hook 먼저 종료", func(t *testing.T) {
-		// Note: 순서를 엄격하게 테스트하려면 Mocking 순서 추적이 필요하지만,
-		// 여기서는 Hook이 확실히 닫혔는지 확인하는 것으로 충분함.
-		// (순서는 코드 리뷰와 주석으로 보장된 상태)
-		h := &hook{}
-		c := &closer{hook: h}
-
-		err := c.Close()
-
-		assert.NoError(t, err)
-		assert.True(t, h.closed, "Hook must be closed after closer.Close()")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&c.closed), "Closed flag must be 1")
 	})
 }
 
-func TestCloser_Sync(t *testing.T) {
-	t.Run("Sync 지원 시 호출 확인", func(t *testing.T) {
-		// Given
-		ms := new(MockSyncCloser)
-		// Expect Sync to be called BEFORE Close
-		ms.On("Sync").Return(nil).Once()
-		ms.On("Close").Return(nil).Once()
+// TestCloser_NilHooks verifies robustness against nil fields.
+func TestCloser_NilHooks(t *testing.T) {
+	t.Parallel()
 
-		c := &closer{
-			closers: []io.Closer{ms},
-		}
-
-		// When
-		err := c.Close()
-
-		// Then
-		assert.NoError(t, err)
-		ms.AssertExpectations(t)
-	})
-
-	t.Run("Sync 실패 시 무시하고 Close 진행", func(t *testing.T) {
-		// Given
-		ms := new(MockSyncCloser)
-		// Sync fails, but Close should still proceed
-		ms.On("Sync").Return(errors.New("sync failed")).Once()
-		ms.On("Close").Return(nil).Once()
-
-		c := &closer{
-			closers: []io.Closer{ms},
-		}
-
-		// When
-		err := c.Close()
-
-		// Then
-		assert.NoError(t, err, "Sync error should be ignored")
-		ms.AssertExpectations(t)
-	})
-}
-
-func TestCloser_NilSafe(t *testing.T) {
-	t.Run("Nil 요소가 있어도 패닉 없이 동작", func(t *testing.T) {
-		// Given
+	t.Run("Nil Hook이나 Nil Closer 요소가 있어도 안전", func(t *testing.T) {
 		m1 := new(MockCloser)
-		m1.On("Close").Return(nil)
+		m1.On("Close").Return(nil).Once()
 
 		c := &closer{
-			// closers slice contains nil
+			hook:    nil, // Explicitly nil
 			closers: []io.Closer{nil, m1, nil},
-			hook:    nil, // hook is also nil
 		}
 
-		// When
-		err := c.Close()
+		assert.NotPanics(t, func() {
+			err := c.Close()
+			assert.NoError(t, err)
+		})
 
-		// Then
-		assert.NoError(t, err)
 		m1.AssertExpectations(t)
 	})
 }

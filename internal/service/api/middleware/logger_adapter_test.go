@@ -6,6 +6,7 @@ import (
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/gommon/log"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +24,7 @@ func TestLoggerAdapter_Level_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := applog.New()
+			l := logrus.New()
 			logger := Logger{l}
 			l.SetLevel(tt.appLogLevel)
 			assert.Equal(t, tt.expectedLevel, logger.Level())
@@ -45,7 +46,7 @@ func TestLoggerAdapter_SetLevel_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := applog.New()
+			l := logrus.New()
 			logger := Logger{l}
 			logger.SetLevel(tt.inputLevel)
 			assert.Equal(t, tt.expectedLevel, l.Level)
@@ -143,7 +144,7 @@ func TestLoggerAdapter_Methods_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			l := applog.New()
+			l := logrus.New()
 			l.SetOutput(&buf)
 			l.SetFormatter(&applog.JSONFormatter{}) // Use JSON formatter for easier check
 
@@ -161,7 +162,7 @@ func TestLoggerAdapter_Methods_Table(t *testing.T) {
 }
 
 func TestLoggerAdapter_Output(t *testing.T) {
-	l := applog.New()
+	l := logrus.New()
 	logger := Logger{l}
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
@@ -171,7 +172,7 @@ func TestLoggerAdapter_Output(t *testing.T) {
 func TestLoggerAdapter_Prefix(t *testing.T) {
 	// Logger adapter implementation of SetPrefix might be no-op or specific.
 	// Current implementation doesn't seem to use prefix but let's check basic interface compliance
-	l := applog.New()
+	l := logrus.New()
 	logger := Logger{l}
 	logger.SetPrefix("test")
 	// Implementation intentionally ignores prefix
@@ -180,7 +181,7 @@ func TestLoggerAdapter_Prefix(t *testing.T) {
 
 func TestLoggerAdapter_SetHeader(t *testing.T) {
 	// Header is likely ignored by adapter but needs to be callable
-	l := applog.New()
+	l := logrus.New()
 	logger := Logger{l}
 	logger.SetHeader("header")
 	// No assertion really possible if it's a no-op, just compliance
