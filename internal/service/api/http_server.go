@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	appmiddleware "github.com/darkkaiser/notify-server/internal/service/api/middleware"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	log "github.com/sirupsen/logrus"
 )
 
 // HTTPServerConfig 서버 생성 시 필요한 설정을 정의합니다.
@@ -54,9 +54,9 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	e.Debug = cfg.Debug
 	e.HideBanner = true
 
-	// echo에서 출력되는 로그를 Logrus Logger로 출력되도록 한다.
-	// echo Logger의 인터페이스를 래핑한 객체를 이용하여 Logrus Logger로 보낸다.
-	e.Logger = appmiddleware.Logger{Logger: log.StandardLogger()}
+	// echo에서 출력되는 로그를 Logger로 출력되도록 한다.
+	// echo Logger의 인터페이스를 래핑한 객체를 이용하여 Logger로 보낸다.
+	e.Logger = appmiddleware.Logger{Logger: applog.StandardLogger()}
 
 	// 미들웨어 적용 (권장 순서)
 	e.Use(appmiddleware.PanicRecovery())                   // 1. Panic 복구

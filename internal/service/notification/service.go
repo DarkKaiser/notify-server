@@ -9,7 +9,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 type Service struct {
@@ -96,7 +95,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 			handler.Run(serviceStopCtx)
 		}(h)
 
-		applog.WithComponentAndFields("notification.service", log.Fields{
+		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": h.ID(),
 		}).Debug("Notifier가 Notification 서비스에 등록됨")
 	}
@@ -214,7 +213,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 	defer s.runningMu.Unlock()
 
 	if !s.running {
-		applog.WithComponentAndFields("notification.service", log.Fields{
+		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": notifierID,
 		}).Warn("Notification 서비스가 실행 중이 아니어서 메시지를 전송할 수 없습니다")
 		return false
@@ -229,7 +228,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 
 	m := fmt.Sprintf("알 수 없는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
 
-	applog.WithComponentAndFields("notification.service", log.Fields{
+	applog.WithComponentAndFields("notification.service", applog.Fields{
 		"notifier_id": notifierID,
 	}).Error(m)
 

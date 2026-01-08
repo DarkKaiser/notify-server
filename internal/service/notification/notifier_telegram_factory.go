@@ -10,7 +10,6 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/iancoleman/strcase"
-	log "github.com/sirupsen/logrus"
 )
 
 type telegramNotifierCreatorFunc func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error)
@@ -35,7 +34,7 @@ func NewTelegramConfigProcessor(creator telegramNotifierCreatorFunc) NotifierCon
 
 // newTelegramNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
 func newTelegramNotifier(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
-	applog.WithComponentAndFields("notification.telegram", log.Fields{
+	applog.WithComponentAndFields("notification.telegram", applog.Fields{
 		"notifier_id": id,
 		"bot_token":   strutil.Mask(botToken),
 		"chat_id":     chatID,

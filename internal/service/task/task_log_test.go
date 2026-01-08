@@ -4,14 +4,14 @@ import (
 	"errors"
 	"testing"
 
-	log "github.com/sirupsen/logrus"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTask_Log(t *testing.T) {
 	// 로거 훅 설정 (로그 캡처)
 	hook := NewMemoryHook()
-	log.AddHook(hook)
+	applog.StandardLogger().AddHook(hook)
 	defer func() {
 		hook.Reset()
 		// RemoveHook 기능이 없으므로... (동일)
@@ -22,21 +22,21 @@ func TestTask_Log(t *testing.T) {
 	tests := []struct {
 		name      string
 		component string
-		level     log.Level
+		level     applog.Level
 		message   string
-		fields    log.Fields
+		fields    applog.Fields
 		err       error
-		validate  func(t *testing.T, entry *log.Entry)
+		validate  func(t *testing.T, entry *applog.Entry)
 	}{
 		{
 			name:      "기본 로깅 (필드 없음, 에러 없음)",
 			component: "test.component",
-			level:     log.InfoLevel,
+			level:     applog.InfoLevel,
 			message:   "info message",
 			fields:    nil,
 			err:       nil,
-			validate: func(t *testing.T, entry *log.Entry) {
-				assert.Equal(t, log.InfoLevel, entry.Level)
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.InfoLevel, entry.Level)
 				assert.Equal(t, "info message", entry.Message)
 				assert.Equal(t, "test.component", entry.Data["component"])
 				assert.Equal(t, ID("TEST_TASK"), entry.Data["task_id"])
@@ -46,12 +46,12 @@ func TestTask_Log(t *testing.T) {
 		{
 			name:      "추가 필드 포함",
 			component: "test.component",
-			level:     log.WarnLevel,
+			level:     applog.WarnLevel,
 			message:   "warn message",
-			fields:    log.Fields{"custom_field": "value"},
+			fields:    applog.Fields{"custom_field": "value"},
 			err:       nil,
-			validate: func(t *testing.T, entry *log.Entry) {
-				assert.Equal(t, log.WarnLevel, entry.Level)
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.WarnLevel, entry.Level)
 				assert.Equal(t, "warn message", entry.Message)
 				assert.Equal(t, "value", entry.Data["custom_field"])
 			},
@@ -59,12 +59,12 @@ func TestTask_Log(t *testing.T) {
 		{
 			name:      "에러 포함",
 			component: "test.component",
-			level:     log.ErrorLevel,
+			level:     applog.ErrorLevel,
 			message:   "error message",
 			fields:    nil,
 			err:       errors.New("test error"),
-			validate: func(t *testing.T, entry *log.Entry) {
-				assert.Equal(t, log.ErrorLevel, entry.Level)
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.ErrorLevel, entry.Level)
 				assert.Equal(t, "error message", entry.Message)
 				assert.Equal(t, "test error", entry.Data["error"].(error).Error())
 			},
@@ -90,27 +90,27 @@ func requireEntry(t *testing.T, hook *MemoryHook) {
 
 // MemoryHook 테스트용 로그 훅 구현체
 type MemoryHook struct {
-	Entries []*log.Entry
+	Entries []*applog.Entry
 }
 
 func NewMemoryHook() *MemoryHook {
 	return &MemoryHook{}
 }
 
-func (h *MemoryHook) Levels() []log.Level {
-	return log.AllLevels
+func (h *MemoryHook) Levels() []applog.Level {
+	return applog.AllLevels
 }
 
-func (h *MemoryHook) Fire(entry *log.Entry) error {
+func (h *MemoryHook) Fire(entry *applog.Entry) error {
 	h.Entries = append(h.Entries, entry)
 	return nil
 }
 
 func (h *MemoryHook) Reset() {
-	h.Entries = make([]*log.Entry, 0)
+	h.Entries = make([]*applog.Entry, 0)
 }
 
-func (h *MemoryHook) LastEntry() *log.Entry {
+func (h *MemoryHook) LastEntry() *applog.Entry {
 	if len(h.Entries) == 0 {
 		return nil
 	}

@@ -5,7 +5,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	log "github.com/sirupsen/logrus"
 )
 
 // PublishNotificationHandler godoc
@@ -60,7 +59,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	}
 
 	// 4. 비즈니스 로직
-	h.log(c).WithFields(log.Fields{
+	h.log(c).WithFields(applog.Fields{
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
@@ -73,8 +72,8 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 }
 
 // log는 공통 로깅 필드가 설정된 로거 엔트리를 반환합니다.
-func (h *Handler) log(c echo.Context) *log.Entry {
-	return applog.WithComponentAndFields("api.handler", log.Fields{
+func (h *Handler) log(c echo.Context) *applog.Entry {
+	return applog.WithComponentAndFields("api.handler", applog.Fields{
 		"endpoint": c.Path(),
 	})
 }

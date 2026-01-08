@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,10 +16,10 @@ func TestPanicRecovery_Table(t *testing.T) {
 	// Setup capture
 	setupLogger := func() (*bytes.Buffer, func()) {
 		var buf bytes.Buffer
-		logrus.SetOutput(&buf)
-		logrus.SetFormatter(&logrus.JSONFormatter{})
+		applog.SetOutput(&buf)
+		applog.SetFormatter(&applog.JSONFormatter{})
 		restore := func() {
-			logrus.SetOutput(logrus.StandardLogger().Out)
+			applog.SetOutput(applog.StandardLogger().Out)
 		}
 		return &buf, restore
 	}

@@ -12,7 +12,6 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/concurrency"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/iancoleman/strcase"
-	log "github.com/sirupsen/logrus"
 )
 
 // defaultDataDirectory 기본 데이터 저장 디렉토리 이름
@@ -60,7 +59,7 @@ func (s *FileTaskResultStorage) cleanupTempFiles() {
 	pattern := filepath.Join(s.baseDir, "task-result-*.tmp")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		applog.WithComponentAndFields("storage", log.Fields{
+		applog.WithComponentAndFields("storage", applog.Fields{
 			"pattern": pattern,
 			"error":   err,
 		}).Warn("임시 파일 정리 중 패턴 매칭 실패")
@@ -69,12 +68,12 @@ func (s *FileTaskResultStorage) cleanupTempFiles() {
 
 	for _, match := range matches {
 		if err := os.Remove(match); err != nil {
-			applog.WithComponentAndFields("storage", log.Fields{
+			applog.WithComponentAndFields("storage", applog.Fields{
 				"file":  match,
 				"error": err,
 			}).Warn("남겨진 임시 파일 삭제 실패")
 		} else {
-			applog.WithComponentAndFields("storage", log.Fields{
+			applog.WithComponentAndFields("storage", applog.Fields{
 				"file": match,
 			}).Info("남겨진 임시 파일을 삭제했습니다")
 		}
@@ -106,7 +105,7 @@ func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (str
 
 	// Path Traversal 검사: 생성된 경로가 반드시 Base 디렉토리로 시작해야 함
 	if !strings.HasPrefix(cleanPath, basePath) {
-		applog.WithComponentAndFields("storage", log.Fields{
+		applog.WithComponentAndFields("storage", applog.Fields{
 			"task_id":    taskID,
 			"command_id": commandID,
 			"path":       cleanPath,

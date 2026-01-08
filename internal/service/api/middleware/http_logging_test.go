@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,10 +16,10 @@ func TestRequestLoggerHandler_Table(t *testing.T) {
 	// Common Setup
 	setupLogger := func() (*bytes.Buffer, func()) {
 		var buf bytes.Buffer
-		logrus.SetOutput(&buf)
-		logrus.SetFormatter(&logrus.JSONFormatter{})
+		applog.SetOutput(&buf)
+		applog.SetFormatter(&applog.JSONFormatter{})
 		restore := func() {
-			logrus.SetOutput(logrus.StandardLogger().Out)
+			applog.SetOutput(applog.StandardLogger().Out)
 		}
 		return &buf, restore
 	}
@@ -132,7 +132,7 @@ func TestRequestLoggerHandler_Table(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Log Verification
-			// Since logrus writes asynchronously or buffered?? No, usually sync.
+			// Since logger writes synchronously or buffered?
 			// But we are unmarshaling JSON.
 			// If panic recovery is involved, we might have multiple logs, but here only one request log expected.
 

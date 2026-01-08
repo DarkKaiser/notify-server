@@ -1,282 +1,192 @@
+//go:build test
+
 package log
 
 import (
-	"fmt"
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
+	"sync"
 	"testing"
-	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// Test Helpers
+// API Unit Tests (log.go Facade)
 // =============================================================================
 
-// setupLogTest prepares a clean environment for log testing.
-// It returns a temporary directory path and a teardown function.
-func setupLogTest(t *testing.T) (string, func()) {
-	t.Helper()
-	// Create a unique temporary directory for each test
-	tempDir := t.TempDir()
-
-	// Redirect stdout to capture console output if needed (optional)
-	// For this suite, we mainly check file system side-effects.
-
-	return tempDir, func() {
-		// Reset global logrus state
-		log.SetOutput(os.Stdout)
-		log.SetFormatter(&log.TextFormatter{})
-		log.SetLevel(log.InfoLevel)
-		// Clear hooks
-		log.StandardLogger().ReplaceHooks(make(log.LevelHooks))
-	}
-}
-
-// assertLogFileExists verifies if a specific log file exists.
-// expectedType: "main", "critical", or "verbose"
-func assertLogFileExists(t *testing.T, logDir, appName, expectedType string) bool {
-	t.Helper()
-	files, err := os.ReadDir(logDir)
-	if err != nil {
-		return false
-	}
-
-	for _, file := range files {
-		name := file.Name()
-		// Basic prefix check
-		if !strings.HasPrefix(name, appName) {
-			continue
-		}
-
-		if expectedType == "main" {
-			// Main log: "appName.log"
-			if name == appName+"."+fileExt {
-				return true
-			}
-		} else {
-			// Sub logs: "appName.type.log"
-			// e.g., "notify-server.critical.log"
-			expected := fmt.Sprintf("%s.%s.%s", appName, expectedType, fileExt)
-			if name == expected {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// =============================================================================
-// Unit Tests
-// =============================================================================
-
-func TestConstants(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "log", fileExt, "File extension mismatch")
-}
-
-func TestWithComponentFields(t *testing.T) {
+// TestNew verifies that New() returns a fresh Logger instance.
+func TestNew(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		comp     string
-		fields   log.Fields
-		expected log.Fields
-	}{
-		{
-			name:     "Simple Component",
-			comp:     "api",
-			fields:   nil,
-			expected: log.Fields{"component": "api"},
-		},
-		{
-			name:     "Component with Fields",
-			comp:     "task",
-			fields:   log.Fields{"job_id": 123},
-			expected: log.Fields{"component": "task", "job_id": 123},
-		},
-	}
+	logger := New()
+	assert.NotNil(t, logger)
+	assert.IsType(t, &Logger{}, logger)
+	// Default level is Info
+	assert.Equal(t, InfoLevel, logger.Level)
+}
 
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			var entry *log.Entry
-			if tc.fields == nil {
-				entry = WithComponent(tc.comp)
-			} else {
-				entry = WithComponentAndFields(tc.comp, tc.fields)
-			}
-			assert.Equal(t, tc.expected, entry.Data)
-		})
-	}
+// TestStandardLogger verifies access to the global singleton logger.
+func TestStandardLogger(t *testing.T) {
+	t.Parallel()
+
+	std := StandardLogger()
+	assert.NotNil(t, std)
+	assert.IsType(t, &Logger{}, std)
+}
+
+// TestSetOutput verifies that SetOutput affects the standard logger.
+func TestSetOutput(t *testing.T) {
+	// Not parallel because it modifies global state
+	resetForTest()
+	defer resetForTest()
+
+	var buf bytes.Buffer
+	SetOutput(&buf)
+
+	// Log something using the standard logger (via helper or direct)
+	StandardLogger().Info("test output")
+
+	assert.Contains(t, buf.String(), "test output")
+}
+
+// TestSetFormatter verifies that SetFormatter affects the standard logger.
+func TestSetFormatter(t *testing.T) {
+	// Not parallel because it modifies global state
+	resetForTest()
+	defer resetForTest()
+
+	// Use JSON formatter
+	SetFormatter(&JSONFormatter{})
+
+	var buf bytes.Buffer
+	SetOutput(&buf)
+
+	StandardLogger().Info("test json")
+
+	assert.Contains(t, buf.String(), "test json")
+	assert.Contains(t, buf.String(), "{") // Should look like JSON
+	assert.Contains(t, buf.String(), "}")
+}
+
+// TestContextHelpers verifies the convenience functions for adding context.
+func TestContextHelpers(t *testing.T) {
+	t.Parallel()
+
+	// 1. WithFields
+	t.Run("WithFields", func(t *testing.T) {
+		fields := Fields{"key": "value", "id": 123}
+		entry := WithFields(fields)
+
+		assert.NotNil(t, entry)
+		assert.Equal(t, "value", entry.Data["key"])
+		assert.Equal(t, 123, entry.Data["id"])
+	})
+
+	// 2. WithComponent
+	t.Run("WithComponent", func(t *testing.T) {
+		entry := WithComponent("auth-service")
+
+		assert.NotNil(t, entry)
+		// Assuming "component" is the key used in WithComponent implementation
+		assert.Equal(t, "auth-service", entry.Data["component"])
+	})
+
+	// 3. WithComponentAndFields
+	t.Run("WithComponentAndFields", func(t *testing.T) {
+		fields := Fields{"action": "login"}
+		entry := WithComponentAndFields("user-service", fields)
+
+		assert.NotNil(t, entry)
+		assert.Equal(t, "user-service", entry.Data["component"])
+		assert.Equal(t, "login", entry.Data["action"])
+	})
 }
 
 // =============================================================================
-// Integration Tests (File System)
+// Contract Tests (Entry Immutability & Behavior)
 // =============================================================================
+// Although Entry is an alias, we verify expected behavior for stability.
 
-func TestSetup_Basic(t *testing.T) {
+func TestEntry_Immutability(t *testing.T) {
+	t.Parallel()
+
+	base := New().WithField("base", "origin")
+
+	// 1. Derive child
+	child := base.WithField("child", "modified")
+
+	// 2. Verify independence
+	assert.NotSame(t, base, child, "WithField should return a new Entry instance")
+	assert.Equal(t, "origin", base.Data["base"])
+	assert.Nil(t, base.Data["child"], "Base entry should not be modified")
+
+	assert.Equal(t, "origin", child.Data["base"])
+	assert.Equal(t, "modified", child.Data["child"])
+}
+
+func TestEntry_WithError(t *testing.T) {
+	t.Parallel()
+
+	base := New().WithField("foo", "bar")
+	err := errors.New("something wrong")
+
+	entry := base.WithError(err)
+
+	assert.Equal(t, err, entry.Data["error"]) // logrus uses "error" key by default
+	assert.Equal(t, "bar", entry.Data["foo"])
+}
+
+func TestEntry_Concurrency_Safe(t *testing.T) {
+	t.Parallel()
+
+	base := WithFields(Fields{"static": "value"})
+	var wg sync.WaitGroup
+
+	// Concurrently derive new entries
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			_ = base.WithField("id", id)
+		}(i)
+	}
+	wg.Wait()
+
+	// Base should remain untouched
+	assert.Equal(t, "value", base.Data["static"])
+	assert.Len(t, base.Data, 1)
+}
+
+// TestCallerReporting verifies that helper functions don't mess up caller reporting.
+// This is somewhat an integration test but relevant to proper usage of helpers.
+func TestCallerReporting_Helpers(t *testing.T) {
+	// Setup environment
 	tempDir, teardown := setupLogTest(t)
 	defer teardown()
 
 	opts := Options{
-		Name:             "test-app-basic",
+		Name:             "caller-helper-test",
 		Dir:              tempDir,
-		MaxAge:           7,
+		ReportCaller:     true,
 		EnableConsoleLog: false,
 	}
-
 	closer, err := Setup(opts)
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// Trigger lazy file creation
-	log.Info("Hello World")
+	// Act: Log using helper
+	WithComponent("test-helper").Info("Helper Call")
 
-	// Verify file existence
-	assert.True(t, assertLogFileExists(t, tempDir, opts.Name, "main"))
-}
+	// Verify
+	files, _ := os.ReadDir(tempDir)
+	logFile := filepath.Join(tempDir, files[0].Name()) // Assume main log is generated
+	content, _ := os.ReadFile(logFile)
 
-func TestSetup_InvalidConfig(t *testing.T) {
-	// 1. Missing Name
-	_, err := Setup(Options{Dir: "logs"}) // Name missing
-	// Current implementation gracefully returns empty closer, logic changed in Step 238
-	// "if opts.Name == "" { return &multiCloser{}, nil }"
-	require.NoError(t, err)
-
-	// 2. Invalid Directory (Permission Denied or Invalid Path)
-	// Note: Hard to simulate reliably across OS without mocking.
-	// We skip this for unit tests to avoid flakiness.
-}
-
-func TestLogLevelSeparation(t *testing.T) {
-	tempDir, teardown := setupLogTest(t)
-	defer teardown()
-
-	opts := Options{
-		Name:              "test-app-levels",
-		Dir:               tempDir,
-		EnableCriticalLog: true,
-		EnableVerboseLog:  true,
-	}
-
-	closer, err := Setup(opts)
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// 1. Write Logs
-	log.Debug("Debug Message")
-	log.Info("Info Message")
-	log.Error("Error Message")
-
-	// 2. Verify Files Exist
-	assert.True(t, assertLogFileExists(t, tempDir, opts.Name, "main"))
-	assert.True(t, assertLogFileExists(t, tempDir, opts.Name, "critical"))
-	assert.True(t, assertLogFileExists(t, tempDir, opts.Name, "verbose"))
-
-	// 3. Verify Content Isolation
-	// Main: Info, Error (No Debug)
-	// Critical: Error (No Info, No Debug)
-	// Verbose: Debug (And potentially others depending on hook logic -> Hook sends ALL >= Debug to verbose)
-
-	// Helper to read file
-	readFile := func(typeSuffix string) string {
-		name := opts.Name + "." + fileExt
-		if typeSuffix != "main" {
-			name = fmt.Sprintf("%s.%s.%s", opts.Name, typeSuffix, fileExt)
-		}
-		content, err := os.ReadFile(filepath.Join(tempDir, name))
-		require.NoError(t, err)
-		return string(content)
-	}
-
-	mainContent := readFile("main")
-	assert.Contains(t, mainContent, "Info Message")
-	assert.Contains(t, mainContent, "Error Message")
-	assert.NotContains(t, mainContent, "Debug Message")
-
-	critContent := readFile("critical")
-	assert.Contains(t, critContent, "Error Message")
-	assert.NotContains(t, critContent, "Info Message")
-
-	verbContent := readFile("verbose")
-	assert.Contains(t, verbContent, "Debug Message")
-}
-
-// TestDailyRotation_Simulation verifies that calling Setup() (simulating server restart)
-// triggers a log rotation, ensuring separate files for separate runs/days.
-func TestDailyRotation_Simulation(t *testing.T) {
-	tempDir, teardown := setupLogTest(t)
-	defer teardown()
-
-	appName := "test-app-rotate"
-	opts := Options{
-		Name: appName,
-		Dir:  tempDir,
-	}
-
-	// --- Day 1 (Run 1) ---
-	closer1, err := Setup(opts)
-	require.NoError(t, err)
-
-	log.Info("Log entry from Run 1")
-	closer1.Close() // Simulate server shutdown
-
-	// Allow file system timestamp to tick (Windows precision is sometimes low)
-	if runtime.GOOS == "windows" {
-		time.Sleep(100 * time.Millisecond) // Safe buffer
-	}
-
-	// --- Day 2 (Run 2 - Restart) ---
-	closer2, err := Setup(opts)
-	require.NoError(t, err)
-	defer closer2.Close()
-
-	log.Info("Log entry from Run 2")
-
-	// --- Verification ---
-	// We expect:
-	// 1. appName.log (Active, contains "Run 2")
-	// 2. appName-TIMESTAMP.log (Rotated/Backup, contains "Run 1")
-
-	files, err := os.ReadDir(tempDir)
-	require.NoError(t, err)
-
-	activeFileCount := 0
-	backupFileCount := 0
-
-	for _, f := range files {
-		if f.IsDir() {
-			continue
-		}
-		name := f.Name()
-
-		// Active File: "test-app-rotate.log"
-		if name == appName+"."+fileExt {
-			activeFileCount++
-			content, _ := os.ReadFile(filepath.Join(tempDir, name))
-			assert.Contains(t, string(content), "Run 2", "Active file should contain new logs")
-			assert.NotContains(t, string(content), "Run 1", "Active file should NOT contain old logs (rotated)")
-		} else if strings.HasPrefix(name, appName) && strings.Contains(name, ".log") {
-			// Backup File: "test-app-rotate-2023...."
-			// It's a backup if it's not the active one
-			backupFileCount++
-			// We can try to read it to verify content, but Lumberjack compresses by default (Compress: true in Setup)
-			// If compressed (.gz), we just check existence.
-			// In our Setup, Compress is true. So extension should be .gz
-			if strings.HasSuffix(name, ".gz") {
-				// Good, it's compressed
-			}
-		}
-	}
-
-	assert.Equal(t, 1, activeFileCount, "Should have exactly 1 active log file")
-	assert.GreaterOrEqual(t, backupFileCount, 1, "Should have at least 1 backup log file after rotation")
+	// Check if the log file contains this function name "TestCallerReporting_Helpers"
+	// and NOT "log.go" or "WithComponent" as the caller
+	assert.Contains(t, string(content), "TestCallerReporting_Helpers", "Caller should be the test function, not the helper")
 }

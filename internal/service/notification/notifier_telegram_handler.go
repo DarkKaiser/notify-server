@@ -7,7 +7,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -283,13 +282,13 @@ func (n *telegramNotifier) sendSingleMessage(message string) {
 	messageConfig.ParseMode = tgbotapi.ModeHTML
 
 	if _, err := n.botAPI.Send(messageConfig); err != nil {
-		applog.WithComponentAndFields("notification.telegram", log.Fields{
+		applog.WithComponentAndFields("notification.telegram", applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"error":       err,
 		}).Error("알림메시지 발송 실패")
 	} else {
-		applog.WithComponentAndFields("notification.telegram", log.Fields{
+		applog.WithComponentAndFields("notification.telegram", applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 		}).Info("알림메시지 발송 성공")

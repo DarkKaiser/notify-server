@@ -3,7 +3,6 @@ package notification
 import (
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 // notifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
@@ -44,7 +43,7 @@ func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded b
 		if r := recover(); r != nil {
 			succeeded = false
 
-			applog.WithComponentAndFields("notification.service", log.Fields{
+			applog.WithComponentAndFields("notification.service", applog.Fields{
 				"notifier_id":    n.ID(),
 				"message_length": len(message),
 				"panic":          r,

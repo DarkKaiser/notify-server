@@ -9,7 +9,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -135,7 +134,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitG
 	// 메인 루프가 예기치 않게 종료(Panic)되지 않도록 보호합니다.
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"panic": r,
 			}).Error("Critical: Task Service 메인 루프 Panic 발생")
 		}
@@ -165,7 +164,7 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitG
 
 // handleSubmitRequest 새로운 Task 실행 요청을 처리합니다.
 func (s *Service) handleSubmitRequest(req *SubmitRequest) {
-	applog.WithComponentAndFields("task.service", log.Fields{
+	applog.WithComponentAndFields("task.service", applog.Fields{
 		"task_id":    req.TaskID,
 		"command_id": req.CommandID,
 		"run_by":     req.RunBy,
@@ -178,7 +177,7 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 
 	cfg, err := findConfig(req.TaskID, req.CommandID)
 	if err != nil {
-		applog.WithComponentAndFields("task.service", log.Fields{
+		applog.WithComponentAndFields("task.service", applog.Fields{
 			"task_id":    req.TaskID,
 			"command_id": req.CommandID,
 			"error":      err,
@@ -232,7 +231,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 			s.runningMu.Unlock()
 
 			// 로그는 디버그 레벨로 낮춰서 과도한 로깅을 방지합니다 (어차피 재시도하므로)
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"instance_id": instanceID,
 			}).Debug("Task ID 충돌 (1차 확인) - 재시도")
 
@@ -243,7 +242,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		// Task 인스턴스 생성
 		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig)
 		if h == nil {
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,
 				"command_id": req.CommandID,
 				"error":      err,
@@ -261,7 +260,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		if _, exists := s.handlers[instanceID]; exists {
 			s.runningMu.Unlock()
 
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":     req.TaskID,
 				"command_id":  req.CommandID,
 				"instance_id": instanceID,
@@ -287,7 +286,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 	}
 
 	// 모든 재시도 실패 시
-	applog.WithComponentAndFields("task.service", log.Fields{
+	applog.WithComponentAndFields("task.service", applog.Fields{
 		"task_id":    req.TaskID,
 		"command_id": req.CommandID,
 	}).Error("Task ID 생성 충돌이 반복되어 실행에 실패했습니다.")
@@ -300,7 +299,7 @@ func (s *Service) handleTaskDone(instanceID InstanceID) {
 	defer s.runningMu.Unlock()
 
 	if handler, exists := s.handlers[instanceID]; exists {
-		applog.WithComponentAndFields("task.service", log.Fields{
+		applog.WithComponentAndFields("task.service", applog.Fields{
 			"task_id":     handler.GetID(),
 			"command_id":  handler.GetCommandID(),
 			"instance_id": instanceID,
@@ -308,7 +307,7 @@ func (s *Service) handleTaskDone(instanceID InstanceID) {
 
 		delete(s.handlers, instanceID)
 	} else {
-		applog.WithComponentAndFields("task.service", log.Fields{
+		applog.WithComponentAndFields("task.service", applog.Fields{
 			"instance_id": instanceID,
 		}).Warn("등록되지 않은 Task에 대한 작업완료 메시지 수신")
 	}
@@ -321,7 +320,7 @@ func (s *Service) handleTaskCancel(instanceID InstanceID) {
 	if handler, exists := s.handlers[instanceID]; exists {
 		handler.Cancel()
 
-		applog.WithComponentAndFields("task.service", log.Fields{
+		applog.WithComponentAndFields("task.service", applog.Fields{
 			"task_id":     handler.GetID(),
 			"command_id":  handler.GetCommandID(),
 			"instance_id": instanceID,
@@ -329,7 +328,7 @@ func (s *Service) handleTaskCancel(instanceID InstanceID) {
 
 		go s.notificationSender.Notify(NewTaskContext().WithTask(handler.GetID(), handler.GetCommandID()), handler.GetNotifierID(), msgTaskCanceledByUser)
 	} else {
-		applog.WithComponentAndFields("task.service", log.Fields{
+		applog.WithComponentAndFields("task.service", applog.Fields{
 			"instance_id": instanceID,
 		}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
@@ -396,7 +395,7 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
 
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,
 				"command_id": req.CommandID,
 				"panic":      r,
@@ -432,7 +431,7 @@ func (s *Service) CancelTask(instanceID InstanceID) (err error) {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))
 
-			applog.WithComponentAndFields("task.service", log.Fields{
+			applog.WithComponentAndFields("task.service", applog.Fields{
 				"instance_id": instanceID,
 				"panic":       r,
 			}).Error("Task 취소 요청중에 panic 발생")

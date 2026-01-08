@@ -8,7 +8,6 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 // RetryFetcher Fetcher 인터페이스를 구현하며, HTTP 요청 실패 시 자동으로 재시도를 수행합니다.
@@ -113,7 +112,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 				delay = f.retryDelay
 			}
 
-			applog.WithComponentAndFields("task.fetcher", log.Fields{
+			applog.WithComponentAndFields("task.fetcher", applog.Fields{
 				"url":         req.URL.String(),
 				"retry":       i,
 				"max_retries": f.maxRetries,

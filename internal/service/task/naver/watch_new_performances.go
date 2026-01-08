@@ -11,8 +11,8 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -141,7 +141,7 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.naver", logrus.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.LogWithContext("task.naver", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 
@@ -183,7 +183,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.naver", logrus.WarnLevel, "작업 취소 요청이 감지되어 공연 정보 수집 프로세스를 중단합니다", logrus.Fields{
+			t.LogWithContext("task.naver", applog.WarnLevel, "작업 취소 요청이 감지되어 공연 정보 수집 프로세스를 중단합니다", applog.Fields{
 				"page_index":      pageIndex,
 				"collected_count": len(currentPerformances),
 				"fetched_count":   totalFetchedCount,
@@ -193,7 +193,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		}
 
 		if pageIndex > commandSettings.MaxPages {
-			t.LogWithContext("task.naver", logrus.WarnLevel, "설정된 최대 페이지 수집 제한에 도달하여 프로세스를 조기 종료합니다", logrus.Fields{
+			t.LogWithContext("task.naver", applog.WarnLevel, "설정된 최대 페이지 수집 제한에 도달하여 프로세스를 조기 종료합니다", applog.Fields{
 				"limit_max_pages": commandSettings.MaxPages,
 				"current_page":    pageIndex,
 				"collected_count": len(currentPerformances),
@@ -203,7 +203,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 			break
 		}
 
-		t.LogWithContext("task.naver", logrus.DebugLevel, "네이버 공연 검색 API 페이지를 요청합니다", logrus.Fields{
+		t.LogWithContext("task.naver", applog.DebugLevel, "네이버 공연 검색 API 페이지를 요청합니다", applog.Fields{
 			"query":      commandSettings.Query,
 			"page_index": pageIndex,
 		}, nil)
@@ -241,7 +241,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		// 현재 페이지에서 탐색된 원본 항목(Raw Count)이 0개라면, 더 이상 제공될 데이터가 없는 상태입니다.
 		// 이는 모든 공연 정보를 수집했음을 의미하므로, 불필요한 추가 요청을 방지하기 위해 루프를 정상 종료합니다.
 		if rawCount == 0 {
-			t.LogWithContext("task.naver", logrus.DebugLevel, "페이지네이션 종료 조건(데이터 없음)에 도달하여 수집 프로세스를 정상 종료합니다", logrus.Fields{
+			t.LogWithContext("task.naver", applog.DebugLevel, "페이지네이션 종료 조건(데이터 없음)에 도달하여 수집 프로세스를 정상 종료합니다", applog.Fields{
 				"last_visited_page": pageIndex - 1,
 				"collected_count":   len(currentPerformances),
 				"fetched_count":     totalFetchedCount,
@@ -253,7 +253,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
 	}
 
-	t.LogWithContext("task.naver", logrus.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", logrus.Fields{
+	t.LogWithContext("task.naver", applog.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", applog.Fields{
 		"collected_count": len(currentPerformances),
 		"fetched_count":   totalFetchedCount,
 		"request_pages":   pageIndex - 1,
@@ -315,7 +315,7 @@ func parsePerformancesFromHTML(html string, matchers *keywordMatchers) ([]*perfo
 
 		if !matchers.TitleMatcher.Match(perf.Title) || !matchers.PlaceMatcher.Match(perf.Place) {
 			// 키워드 매칭 실패 로깅 (Verbose)
-			// t.LogWithContext("task.naver", logrus.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", logrus.Fields{"title": perf.Title}, nil)
+			// t.LogWithContext("task.naver", applog.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", applog.Fields{"title": perf.Title}, nil)
 			return true // 계속 진행
 		}
 

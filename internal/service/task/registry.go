@@ -7,7 +7,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 // NewTaskFunc Task 인스턴스를 생성하는 팩토리 함수입니다.
@@ -129,7 +128,7 @@ func (r *Registry) Register(taskID ID, config *Config) {
 
 	r.configs[taskID] = &configCopy
 
-	applog.WithComponentAndFields("task.registry", log.Fields{
+	applog.WithComponentAndFields("task.registry", applog.Fields{
 		"task_id": taskID,
 	}).Info("태스크 정보가 성공적으로 등록되었습니다")
 }

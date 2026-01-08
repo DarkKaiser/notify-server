@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,9 +29,9 @@ import (
 func TestCustomHTTPErrorHandler_Table(t *testing.T) {
 	// Setup Logger capture
 	var buf bytes.Buffer
-	logrus.SetOutput(&buf)
-	logrus.SetFormatter(&logrus.JSONFormatter{})
-	defer logrus.SetOutput(logrus.StandardLogger().Out)
+	applog.SetOutput(&buf)
+	applog.SetFormatter(&applog.JSONFormatter{})
+	defer applog.SetOutput(applog.StandardLogger().Out)
 
 	tests := []struct {
 		name           string

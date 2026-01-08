@@ -8,7 +8,6 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -150,7 +149,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 	defer func() {
 		if r := recover(); r != nil {
 			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
-			t.LogWithContext("task.executor", log.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
+			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
 			t.handleExecutionResult(taskCtx, notificationSender, "", nil, err)
@@ -183,7 +182,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender NotificationSender) (interface{}, error) {
 	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
-		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
+		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
 	}
@@ -195,14 +194,14 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	}
 	if snapshot == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
-		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
+		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
 	}
 
 	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
-		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, nil)
+		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
 		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
 	}
@@ -210,7 +209,7 @@ func (t *Task) prepareExecution(taskCtx TaskContext, notificationSender Notifica
 	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
 	if err != nil {
 		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-		t.LogWithContext("task.executor", log.WarnLevel, message, nil, err)
+		t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
 		t.notify(taskCtx, notificationSender, message)
 	}
 
@@ -230,13 +229,13 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 		if newSnapshot != nil {
 			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
 				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
-				t.LogWithContext("task.executor", log.WarnLevel, message, nil, err0)
+				t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err0)
 				t.notifyError(nonCancelableCtx, notificationSender, message)
 			}
 		}
 	} else {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
-		t.LogWithContext("task.executor", log.ErrorLevel, message, nil, err)
+		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, err)
 		t.notifyError(nonCancelableCtx, notificationSender, message)
 	}
 }
@@ -250,8 +249,8 @@ func (t *Task) notifyError(taskCtx TaskContext, notificationSender NotificationS
 }
 
 // LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
-func (t *Task) LogWithContext(component string, level log.Level, message string, fields log.Fields, err error) {
-	fieldsMap := log.Fields{
+func (t *Task) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
+	fieldsMap := applog.Fields{
 		"task_id":     t.GetID(),
 		"command_id":  t.GetCommandID(),
 		"instance_id": t.GetInstanceID(),

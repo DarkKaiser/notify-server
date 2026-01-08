@@ -6,7 +6,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -73,7 +72,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 	// 메시지 수신 채널 획득
 	updateC := n.botAPI.GetUpdatesChan(config)
 
-	applog.WithComponentAndFields("notification.telegram", log.Fields{
+	applog.WithComponentAndFields("notification.telegram", applog.Fields{
 		"notifier_id":  n.ID(),
 		"bot_username": n.botAPI.GetSelf().UserName,
 		"chat_id":      n.chatID,
@@ -107,7 +106,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			n.Close()
 			n.botAPI = nil
 
-			applog.WithComponentAndFields("notification.telegram", log.Fields{
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 			}).Debug("Telegram Notifier의 작업이 중지됨")

@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/labstack/echo/v4"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -104,7 +104,7 @@ func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 	uri := maskSensitiveQueryParams(req.RequestURI)
 
 	// 구조화된 로그 기록
-	logrus.WithFields(map[string]interface{}{
+	applog.WithFields(applog.Fields{
 		"time_rfc3339":  stop.Format(time.RFC3339),
 		"remote_ip":     c.RealIP(),
 		"host":          req.Host,

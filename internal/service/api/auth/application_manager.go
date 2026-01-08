@@ -8,7 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
-	log "github.com/sirupsen/logrus"
 )
 
 // ApplicationManager 애플리케이션 로딩 및 인증을 담당하는 매니저입니다.
@@ -60,7 +59,7 @@ func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain
 	}
 
 	if app.AppKey != appKey {
-		applog.WithComponentAndFields("api.handler", log.Fields{
+		applog.WithComponentAndFields("api.handler", applog.Fields{
 			"application_id":   applicationID,
 			"received_app_key": strutil.Mask(appKey),
 		}).Warn("APP_KEY 불일치")
