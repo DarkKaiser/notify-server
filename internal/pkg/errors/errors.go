@@ -34,6 +34,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // ErrorType 에러의 종류를 나타내는 타입
@@ -121,11 +124,47 @@ const (
 // 이 메서드는 stringer 도구에 의해 자동 생성됩니다.
 // 수동으로 수정하지 마세요. 대신 `go generate ./...` 를 실행하세요.
 
+// StackFrame 스택 트레이스의 단일 프레임 정보
+type StackFrame struct {
+	File     string // 파일명 (경로 제외)
+	Line     int    // 라인 번호
+	Function string // 함수명
+}
+
 // AppError 애플리케이션 전용 에러 구조체
 type AppError struct {
-	Type    ErrorType // 에러 종류
-	Message string    // 사용자에게 보여줄 메시지
-	Cause   error     // 원인 에러 (Wrapping)
+	Type    ErrorType    // 에러 종류
+	Message string       // 사용자에게 보여줄 메시지
+	Cause   error        // 원인 에러 (Wrapping)
+	Stack   []StackFrame // 스택 트레이스 (최대 5개)
+}
+
+// captureStack 현재 호출 스택을 캡처합니다 (최대 5개 프레임)
+func captureStack(skip int) []StackFrame {
+	const maxFrames = 5
+	pc := make([]uintptr, maxFrames)
+	n := runtime.Callers(skip, pc)
+
+	if n == 0 {
+		return nil
+	}
+
+	frames := make([]StackFrame, 0, n)
+	callersFrames := runtime.CallersFrames(pc[:n])
+
+	for {
+		frame, more := callersFrames.Next()
+		frames = append(frames, StackFrame{
+			File:     filepath.Base(frame.File),
+			Line:     frame.Line,
+			Function: frame.Function,
+		})
+		if !more {
+			break
+		}
+	}
+
+	return frames
 }
 
 func (e *AppError) Error() string {
@@ -136,12 +175,28 @@ func (e *AppError) Error() string {
 }
 
 // Format fmt.Formatter 인터페이스를 구현합니다.
-// %+v 사용 시 에러 체인과 타입 정보를 상세히 출력합니다.
+// %+v 사용 시 에러 체인과 스택 트레이스를 상세히 출력합니다.
 func (e *AppError) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
+			// 에러 타입과 메시지
 			fmt.Fprintf(s, "[%s] %s", e.Type, e.Message)
+
+			// 스택 트레이스 출력
+			if len(e.Stack) > 0 {
+				fmt.Fprint(s, "\nStack trace:")
+				for _, frame := range e.Stack {
+					// 함수명에서 패키지 경로 간소화
+					funcName := frame.Function
+					if idx := strings.LastIndex(funcName, "/"); idx != -1 {
+						funcName = funcName[idx+1:]
+					}
+					fmt.Fprintf(s, "\n\t%s:%d %s", frame.File, frame.Line, funcName)
+				}
+			}
+
+			// Cause 출력
 			if e.Cause != nil {
 				fmt.Fprint(s, "\nCaused by:\n")
 				if formatter, ok := e.Cause.(fmt.Formatter); ok {
@@ -165,12 +220,17 @@ func New(errType ErrorType, message string) error {
 	return &AppError{
 		Type:    errType,
 		Message: message,
+		Stack:   captureStack(3),
 	}
 }
 
 // Newf 포맷 문자열을 사용하여 새로운 에러를 생성합니다.
 func Newf(errType ErrorType, format string, args ...interface{}) error {
-	return New(errType, fmt.Sprintf(format, args...))
+	return &AppError{
+		Type:    errType,
+		Message: fmt.Sprintf(format, args...),
+		Stack:   captureStack(3),
+	}
 }
 
 // Wrap 기존 에러를 감싸서 새로운 에러를 생성합니다.
@@ -183,6 +243,7 @@ func Wrap(err error, errType ErrorType, message string) error {
 		Type:    errType,
 		Message: message,
 		Cause:   err,
+		Stack:   captureStack(3),
 	}
 }
 
@@ -192,7 +253,12 @@ func Wrapf(err error, errType ErrorType, format string, args ...interface{}) err
 	if err == nil {
 		return nil
 	}
-	return Wrap(err, errType, fmt.Sprintf(format, args...))
+	return &AppError{
+		Type:    errType,
+		Message: fmt.Sprintf(format, args...),
+		Cause:   err,
+		Stack:   captureStack(3),
+	}
 }
 
 // Unwrap 표준 errors.Unwrap 인터페이스를 구현합니다.
@@ -218,17 +284,10 @@ func As(err error, target interface{}) bool {
 	return errors.As(err, target)
 }
 
-// Cause 원인 에러를 반환합니다.
-func Cause(err error) error {
-	var appErr *AppError
-	if errors.As(err, &appErr) {
-		return appErr.Cause
-	}
-	return nil
-}
-
 // RootCause 에러 체인의 최상위 원인 에러를 반환합니다.
 // 중첩된 에러를 재귀적으로 unwrap하여 가장 근본적인 원인을 찾습니다.
+//
+// 한 단계만 unwrap이 필요한 경우 표준 errors.Unwrap()을 사용하세요.
 func RootCause(err error) error {
 	if err == nil {
 		return nil
