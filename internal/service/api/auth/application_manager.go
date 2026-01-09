@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -59,7 +60,7 @@ func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain
 	}
 
 	if app.AppKey != appKey {
-		applog.WithComponentAndFields("api.handler", applog.Fields{
+		applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 			"application_id":   applicationID,
 			"received_app_key": strutil.Mask(appKey),
 		}).Warn("APP_KEY 불일치")

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -57,7 +58,7 @@ func NewSystemHandler(notificationSender notification.Sender, buildInfo version.
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
-	applog.WithComponentAndFields("api.handler", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 		"endpoint": "/health",
 	}).Debug("헬스체크 요청")
 
@@ -107,7 +108,7 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *SystemHandler) VersionHandler(c echo.Context) error {
-	applog.WithComponentAndFields("api.handler", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 		"endpoint": "/version",
 	}).Debug("버전 정보 요청")
 

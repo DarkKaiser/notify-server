@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	commonhandler "github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -45,10 +46,10 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		return commonhandler.NewBadRequestError(commonhandler.FormatValidationError(err))
 	}
 
-	appKey := c.QueryParam("app_key")
+	appKey := c.QueryParam(constants.QueryParamAppKey)
 	if appKey == "" {
 		h.log(c).WithField("application_id", req.ApplicationID).Warn("app_key가 비어있음")
-		return commonhandler.NewBadRequestError("app_key는 필수입니다")
+		return commonhandler.NewBadRequestError(constants.ErrMsgAppKeyRequired)
 	}
 
 	// 3. 인증
@@ -73,7 +74,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 // log는 공통 로깅 필드가 설정된 로거 엔트리를 반환합니다.
 func (h *Handler) log(c echo.Context) *applog.Entry {
-	return applog.WithComponentAndFields("api.handler", applog.Fields{
+	return applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 		"endpoint": c.Path(),
 	})
 }

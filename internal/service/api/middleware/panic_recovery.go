@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
@@ -43,7 +44,7 @@ func PanicRecovery() echo.MiddlewareFunc {
 						fields["request_id"] = requestID
 					}
 
-					applog.WithComponentAndFields("api.middleware", fields).Error("PANIC RECOVERED")
+					applog.WithComponentAndFields(constants.ComponentMiddleware, fields).Error("PANIC RECOVERED")
 
 					// Echo의 에러 핸들러로 전달
 					c.Error(err)

@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -12,7 +13,7 @@ import (
 // 모든 HTTP 에러를 표준 ErrorResponse 형식으로 반환합니다.
 func CustomHTTPErrorHandler(err error, c echo.Context) {
 	code := http.StatusInternalServerError
-	message := "내부 서버 오류가 발생했습니다."
+	message := constants.ErrMsgInternalServer
 
 	// Echo HTTPError 타입 확인
 	if he, ok := err.(*echo.HTTPError); ok {
@@ -27,7 +28,7 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 	// HTTP 상태 코드가 404 (찾을 수 없음)인 경우 사용자에게 더 친숙한 한국어 메시지로 변경하여 반환합니다.
 	// 주의: 모든 404 에러에 대해 일괄적으로 메시지를 변경합니다.
 	if code == http.StatusNotFound {
-		message = "페이지를 찾을 수 없습니다."
+		message = constants.ErrMsgNotFound
 	}
 
 	// 에러 로깅 (보안 및 디버깅 용도)
@@ -40,10 +41,10 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 
 	if code >= http.StatusInternalServerError {
 		// 5xx: 서버 에러 (내부 오류)
-		applog.WithComponentAndFields("api.error_handler", fields).Error("서버 내부 오류 발생")
+		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Error("서버 내부 오류 발생")
 	} else if code >= http.StatusBadRequest {
 		// 4xx: 클라이언트 에러 (인증 실패, 잘못된 요청 등)
-		applog.WithComponentAndFields("api.error_handler", fields).Warn("클라이언트 에러 발생")
+		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Warn("클라이언트 에러 발생")
 	}
 
 	// 응답이 이미 전송되었는지 확인

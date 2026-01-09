@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/labstack/echo/v4"
@@ -18,16 +19,6 @@ const (
 	// defaultBytesIn Content-Length 헤더가 없을 때 사용하는 기본값
 	defaultBytesIn = "0"
 )
-
-// sensitiveQueryParams 민감 정보로 간주할 쿼리 파라미터 목록입니다.
-// 로그에 기록될 때 이 목록의 파라미터 값은 마스킹됩니다.
-var sensitiveQueryParams = []string{
-	"app_key",
-	"api_key",
-	"password",
-	"token",
-	"secret",
-}
 
 // HTTPLogger HTTP 요청/응답 정보를 로깅하는 미들웨어를 반환합니다.
 //
@@ -143,7 +134,7 @@ func maskSensitiveQueryParams(uri string) string {
 	q := u.Query()
 	masked := false
 
-	for _, param := range sensitiveQueryParams {
+	for _, param := range constants.SensitiveQueryParams {
 		if q.Has(param) {
 			val := q.Get(param)
 			q.Set(param, strutil.Mask(val))
