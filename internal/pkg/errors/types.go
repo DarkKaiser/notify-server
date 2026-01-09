@@ -40,8 +40,3 @@ const (
 	// Unavailable 서비스 일시적 사용 불가
 	Unavailable
 )
-
-// Error error 인터페이스 구현
-func (e ErrorType) Error() string {
-	return e.String()
-}

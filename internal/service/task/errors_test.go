@@ -34,7 +34,6 @@ func TestErrorTypes(t *testing.T) {
 // TestErrorCreation은 특정 에러 타입이 pkg/errors.New와 올바르게 작동하는지 검증합니다.
 //
 // 검증 항목:
-//   - GetType이 올바른 타입 반환
 //   - errors.Is 헬퍼 동작
 //   - 에러 메시지 포함
 func TestErrorCreation(t *testing.T) {
@@ -47,8 +46,8 @@ func TestErrorCreation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := errors.New(tt.errType, "test error message")
 
-			// Verify GetType returns the correct type
-			assert.Equal(t, tt.errType, errors.GetType(err))
+			// Verify errors.Is helper works
+			assert.True(t, errors.Is(err, tt.errType))
 
 			// Verify our custom errors.Is helper works
 			assert.True(t, errors.Is(err, tt.errType))
@@ -96,7 +95,7 @@ func TestSentinelErrors(t *testing.T) {
 			require.NotNil(t, tt.actualErr, "Error should not be nil")
 
 			// Check underlying type classification
-			assert.Equal(t, tt.expectedType, errors.GetType(tt.actualErr))
+			assert.True(t, errors.Is(tt.actualErr, tt.expectedType))
 
 			// Check error message content
 			assert.Equal(t, "[InvalidInput] "+tt.expectedMsg, tt.actualErr.Error())

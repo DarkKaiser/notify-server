@@ -5,9 +5,17 @@ import (
 	"runtime"
 )
 
-// defaultCallerSkip runtime.Callers를 통해 스택 트레이스를 수집할 때 건너뛸 프레임 수입니다.
-// 에러 생성 함수(New, Wrap 등)와 내부 유틸리티 함수(captureStack)의 호출 스택을 제외하고,
-// 실제 에러가 발생한 지점(Caller)부터 추적하기 위해 설정된 값입니다.
+// defaultCallerSkip 스택 트레이스 수집 시 건너뛸 호출 스택의 깊이입니다.
+//
+// runtime.Callers를 호출하면 현재 실행 중인 함수들부터 역순으로 스택이 쌓입니다.
+// 사용자가 에러를 생성한 위치(New/Wrap 호출 지점)를 정확히 기록하기 위해
+// 불필요한 내부 함수 호출 3단계를 건너뜁니다:
+//
+// 1. runtime.Callers      (스택 수집 함수)
+// 2. captureStack         (내부 유틸리티 함수)
+// 3. New/Wrap/Newf/Wrapf  (공개 에러 생성 함수)
+//
+// 결과적으로 이 값(3)을 사용해야 사용자의 코드 위치가 0번째 스택으로 기록됩니다.
 const defaultCallerSkip = 3
 
 // StackFrame 단일 함수 호출 스택의 실행 컨텍스트 정보를 캡슐화한 구조체입니다.

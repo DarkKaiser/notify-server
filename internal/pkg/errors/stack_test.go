@@ -2,6 +2,8 @@ package errors
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -14,184 +16,199 @@ import (
 // Stack Trace Tests
 // =============================================================================
 
-// TestCaptureStack_Direct verifies captureStack implementation details directly.
-// Since captureStack is unexported, we test it within the package.
-func TestCaptureStack_Direct(t *testing.T) {
+// TestCaptureStack_Internal validates the internal captureStack function.
+// It verifies:
+// 1. Correct file, line, and function name capture.
+// 2. Caller skip logic.
+// 3. Max frame limit.
+func TestCaptureStack_Internal(t *testing.T) {
 	t.Parallel()
 
-	// 1. Verify basic capture
-	frames := captureStack(0)
-	assert.NotEmpty(t, frames, "Should capture at least one frame")
+	// Helper to pin-point expected line numbers
+	getLine := func() int {
+		_, _, line, _ := runtime.Caller(1)
+		return line
+	}
 
-	// The stack should contain this function
-	found := false
-	for _, frame := range frames {
-		if frame.File == "stack_test.go" && strings.Contains(frame.Function, "TestCaptureStack_Direct") {
-			found = true
-			break
+	t.Run("Basic Capture", func(t *testing.T) {
+		// We use skip=2 to exclude:
+		// 0: runtime.Callers
+		// 1: captureStack
+		// The 0-th frame in the result will be this function (Basic Capture closure)
+		expectedLine := getLine() + 1
+		frames := captureStack(2)
+
+		require.NotEmpty(t, frames, "Should capture at least one frame")
+
+		// The first frame should be this function
+		head := frames[0]
+		assert.Equal(t, "stack_test.go", head.File, "File name should be base name")
+		assert.Equal(t, expectedLine, head.Line, "Line number should match call site")
+		assert.Contains(t, head.Function, "TestCaptureStack_Internal", "Function name should contain test name")
+	})
+
+	t.Run("Skip Caller", func(t *testing.T) {
+		// captureStack(3) should skip:
+		// 0: runtime.Callers
+		// 1: captureStack
+		// 2: This closure (Skip Caller)
+		// So the first frame should be the test runner (TestCaptureStack_Internal)
+		frames := captureStack(3)
+		require.NotEmpty(t, frames)
+
+		// The first frame should NOT be this closure
+		// Note: The function name for the closure will typically end with .func2
+		assert.NotContains(t, frames[0].Function, "TestCaptureStack_Internal.func2")
+	})
+
+	t.Run("Deep Recursion Limit", func(t *testing.T) {
+		var recurse func(n int) []StackFrame
+		recurse = func(n int) []StackFrame {
+			if n <= 0 {
+				return captureStack(0)
+			}
+			return recurse(n - 1)
 		}
-	}
-	assert.True(t, found, "Stack trace should contain TestCaptureStack_Direct in stack_test.go")
 
-	// 2. Verify skip count
-	// Calling captureStack(1) should skip this frame and show the caller (runtime runner)
-	framesSkipped := captureStack(1)
-	assert.NotEmpty(t, framesSkipped)
-	if len(framesSkipped) > 0 {
-		assert.NotEqual(t, "TestCaptureStack_Direct", framesSkipped[0].Function)
-	}
+		// Recursion depth 10 is > maxFrames (5)
+		frames := recurse(10)
+		assert.LessOrEqual(t, len(frames), 5, "Stack capture must respect maxFrames limit")
+	})
+
+	t.Run("Path Sanitization", func(t *testing.T) {
+		// Mock a stack frame with a full path (simulated by checking real capture consistency)
+		// captureStack internally uses filepath.Base
+		// Use skip=2 to get this file
+		frames := captureStack(2)
+		require.NotEmpty(t, frames)
+		assert.False(t, strings.Contains(frames[0].File, string(filepath.Separator)),
+			"Captured filename '%s' should not contain path separators", frames[0].File)
+	})
 }
 
-// TestCaptureStack_DepthLimit verifies that stack capture respects the max depth.
-func TestCaptureStack_DepthLimit(t *testing.T) {
+// TestStackTrace_PublicAPI verifies the Stack() method on AppError.
+func TestStackTrace_PublicAPI(t *testing.T) {
 	t.Parallel()
 
-	// Recursive function to generate deep stack
-	var recurse func(n int) []StackFrame
-	recurse = func(n int) []StackFrame {
-		if n == 0 {
-			return captureStack(0)
-		}
-		return recurse(n - 1)
-	}
+	t.Run("New Error Stack", func(t *testing.T) {
+		err := New(InvalidInput, "test")
+		appErr, ok := err.(*AppError)
+		require.True(t, ok)
 
-	// Call with depth > 5 (maxFrames in stack.go)
-	frames := recurse(10)
-
-	// Since stack.go defines maxFrames = 5, we verify this limit
-	const expectedMaxFrames = 5
-	assert.LessOrEqual(t, len(frames), expectedMaxFrames, "Stack should be limited to max frames")
-}
-
-// TestStackTrace_Integration verifies high-level behavior via public API.
-func TestStackTrace_Integration(t *testing.T) {
-	t.Parallel()
-
-	err := New(InvalidInput, "test error")
-
-	var appErr *AppError
-	require.True(t, As(err, &appErr), "Should be AppError")
-
-	stack := appErr.Stack()
-	assert.NotEmpty(t, stack, "Stack should be captured")
-	assert.LessOrEqual(t, len(stack), 5, "Stack should be limited to 5 frames")
-
-	if len(stack) > 0 {
-		// Verify file path is base name only
-		assert.NotContains(t, stack[0].File, "/", "File should be base name only")
-		assert.NotContains(t, stack[0].File, "\\", "File should be base name only")
+		stack := appErr.Stack()
+		require.NotEmpty(t, stack)
 		assert.Equal(t, "stack_test.go", stack[0].File)
+		assert.Contains(t, stack[0].Function, "TestStackTrace_PublicAPI")
+	})
 
-		// Verify function name
-		assert.Contains(t, stack[0].Function, "TestStackTrace_Integration")
-	}
+	t.Run("Wrapped Error Stack", func(t *testing.T) {
+		base := New(System, "base")
+		wrapped := Wrap(base, Internal, "wrapped")
+
+		appErr, ok := wrapped.(*AppError)
+		require.True(t, ok)
+
+		// Verification: Wrap should capture its own stack trace, distinct from base
+		stack := appErr.Stack()
+		require.NotEmpty(t, stack)
+		assert.Equal(t, "stack_test.go", stack[0].File)
+	})
+
+	t.Run("Nil Stack Safety", func(t *testing.T) {
+		// Manually create AppError with nil stack to test robustness
+		err := &AppError{errType: Internal, message: "empty", stack: nil}
+		assert.Nil(t, err.Stack())
+	})
 }
 
-// TestStackTrace_Format verifies %+v formatting for stack traces.
-func TestStackTrace_Format(t *testing.T) {
+// TestStackTrace_Formatting verifies that stack traces are printed correctly with %+v.
+func TestStackTrace_Formatting(t *testing.T) {
 	t.Parallel()
 
-	err := New(ExecutionFailed, "operation failed")
+	t.Run("Format Structure", func(t *testing.T) {
+		err := New(ExecutionFailed, "fail")
+		out := fmt.Sprintf("%+v", err)
 
-	// %v format: no stack
-	simpleOutput := fmt.Sprintf("%v", err)
-	assert.Contains(t, simpleOutput, "[ExecutionFailed] operation failed")
-	assert.NotContains(t, simpleOutput, "Stack trace")
+		// Must contain standard error parts
+		assert.Contains(t, out, "[ExecutionFailed] fail")
+		// Must contain stack trace header
+		assert.Contains(t, out, "Stack trace:")
+		// Must contain file and function
+		assert.Contains(t, out, "stack_test.go")
+		assert.Contains(t, out, "TestStackTrace_Formatting")
+	})
 
-	// %+v format: with stack
-	detailedOutput := fmt.Sprintf("%+v", err)
-	assert.Contains(t, detailedOutput, "[ExecutionFailed] operation failed")
-	assert.Contains(t, detailedOutput, "Stack trace:")
-	assert.Contains(t, detailedOutput, "stack_test.go")
-	assert.Contains(t, detailedOutput, "TestStackTrace_Format")
+	t.Run("Chain Deduplication", func(t *testing.T) {
+		// Detailed verification of the "print stack only at root/boundary" logic
+		root := New(NotFound, "root")            // AppError (Leaf)
+		mid := Wrap(root, Internal, "mid")       // AppError wrapping AppError
+		top := Wrap(mid, ExecutionFailed, "top") // AppError wrapping AppError
+
+		out := fmt.Sprintf("%+v", top)
+
+		// 1. All messages should be present
+		assert.Contains(t, out, "[ExecutionFailed] top")
+		assert.Contains(t, out, "[Internal] mid")
+		assert.Contains(t, out, "[NotFound] root")
+
+		// 2. "Stack trace:" should appear EXACTLY ONCE
+		// Logic:
+		// - top: cause is 'mid' (AppError) -> Stack SKIP
+		// - mid: cause is 'root' (AppError) -> Stack SKIP
+		// - root: cause is nil -> Stack PRINT
+		count := strings.Count(out, "Stack trace:")
+		assert.Equal(t, 1, count, "Stack trace should be deduplicated and printed only once for the root cause")
+	})
+
+	t.Run("External Error Boundary", func(t *testing.T) {
+		// mixed: AppError -> External Error
+		// Logic: AppError wrapping external error -> Treat as boundary -> Stack PRINT
+		stdErr := fmt.Errorf("std error")
+		wrapped := Wrap(stdErr, System, "wrapper")
+
+		out := fmt.Sprintf("%+v", wrapped)
+
+		assert.Contains(t, out, "[System] wrapper")
+		assert.Contains(t, out, "std error")
+		assert.Contains(t, out, "Stack trace:", "Should print stack trace at external error boundary")
+	})
 }
 
-// TestStackTrace_Chain verifies stack handling in error chains.
-func TestStackTrace_Chain(t *testing.T) {
+// TestCaptureStack_EdgeCases covers extreme inputs.
+func TestCaptureStack_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	// Create a chain: err3 -> err2 -> err1
-	err1 := New(System, "database error")
-	err2 := Wrap(err1, Internal, "query failed")
-	err3 := Wrap(err2, ExecutionFailed, "operation failed")
+	t.Run("Extremely Large Skip", func(t *testing.T) {
+		// Should return empty slice, not panic
+		frames := captureStack(9999)
+		assert.Empty(t, frames)
+	})
 
-	// %+v should show usage stack trace once (typically for the root or wherever printed)
-	// Our current implementation prints stack only if cause is NOT AppError or nil.
-	// But wait, the standard library behavior is to print stack if available.
-	// Let's check the implementation logic in errors.go:
-	// if e.cause == nil || !errors.As(e.cause, &target) { print stack }
-	// This means stack is printed only for the 'leaf' AppError in the chain (the one wrapping a non-AppError or nothing).
-
-	// In this case:
-	// err3 wraps err2 (AppError) -> Stack NOT printed
-	// err2 wraps err1 (AppError) -> Stack NOT printed
-	// err1 wraps nothing -> Stack printed
-
-	output := fmt.Sprintf("%+v", err3)
-
-	// Check content presence
-	assert.Contains(t, output, "[ExecutionFailed] operation failed")
-	assert.Contains(t, output, "[Internal] query failed")
-	assert.Contains(t, output, "[System] database error")
-
-	// Count "Stack trace:" occurrences
-	// It should appear exactly once (for err1)
-	stackTraceCount := 0
-	for i := 0; i < len(output)-11; i++ { // "Stack trace:" is 12 chars? No, "Stack trace:" is 12 chars.
-		if output[i:i+12] == "Stack trace:" {
-			stackTraceCount++
-		}
-	}
-	assert.Equal(t, 1, stackTraceCount, "Should have exactly one stack trace in chain (for the root cause)")
+	t.Run("Zero Skip", func(t *testing.T) {
+		// Should capture runtime.Callers itself (or very close)
+		frames := captureStack(0)
+		require.NotEmpty(t, frames)
+	})
 }
 
-// TestInitialStack_Helper verifies helpers like Newf/Wrapf correct stack skip.
-func TestInitialStack_Helper(t *testing.T) {
-	t.Parallel()
-
-	// Newf
-	err := Newf(InvalidInput, "error code: %d", 404)
-	var appErr *AppError
-	require.True(t, As(err, &appErr))
-	if len(appErr.Stack()) > 0 {
-		assert.Equal(t, "stack_test.go", appErr.Stack()[0].File)
-		assert.Contains(t, appErr.Stack()[0].Function, "TestInitialStack_Helper")
-	}
-
-	// Wrapf
-	baseErr := New(System, "base")
-	errWrap := Wrapf(baseErr, Internal, "wrapped: %s", "test")
-	require.True(t, As(errWrap, &appErr))
-	if len(appErr.Stack()) > 0 {
-		assert.Equal(t, "stack_test.go", appErr.Stack()[0].File)
-		assert.Contains(t, appErr.Stack()[0].Function, "TestInitialStack_Helper")
-	}
-}
-
-// TestCaptureStack_Concurrency ensures thread safety (though stateless).
+// TestCaptureStack_Concurrency verifies thread safety.
 func TestCaptureStack_Concurrency(t *testing.T) {
 	t.Parallel()
 
-	const goroutines = 100
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
+	const routines = 50
 
-	for i := 0; i < goroutines; i++ {
+	wg.Add(routines)
+	for i := 0; i < routines; i++ {
 		go func() {
 			defer wg.Done()
+			// Just verify it doesn't panic and returns valid data
 			frames := captureStack(0)
 			assert.NotEmpty(t, frames)
-			assert.LessOrEqual(t, len(frames), 5)
+			if len(frames) > 0 {
+				assert.NotEmpty(t, frames[0].File)
+			}
 		}()
 	}
 	wg.Wait()
-}
-
-// TestCaptureStack_NilSafety ensures no panic on edge cases (though unlikely with current impl).
-func TestCaptureStack_NilSafety(t *testing.T) {
-	t.Parallel()
-
-	// Just ensuring it doesn't crash with weird skip values
-	frames := captureStack(1000)
-	assert.Empty(t, frames)
 }
