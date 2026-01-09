@@ -1,0 +1,27 @@
+{
+  "go.toolsManagement.autoUpdate": true,
+  "go.buildOnSave": "workspace",
+  "go.lintOnSave": "workspace",
+  "go.vetOnSave": "workspace",
+
+  // 파일 저장 시 자동 포맷팅
+  "editor.formatOnSave": true,
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  // go generate 관련
+  "go.generateTestsFlags": ["-v"],
+
+  // 파일 감시 제외 (성능 향상)
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.hg/store/**": true,
+    "**/logs/**": true
+  }
+}

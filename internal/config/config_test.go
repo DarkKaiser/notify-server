@@ -322,7 +322,7 @@ func TestLoad_Integration(t *testing.T) {
 				if tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg)
 				}
-				if tt.errType != "" {
+				if tt.errType != apperrors.Unknown {
 					var appErr *apperrors.AppError
 					if errors.As(err, &appErr) {
 						assert.Equal(t, tt.errType, appErr.Type)

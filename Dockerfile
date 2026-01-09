@@ -21,9 +21,11 @@ RUN go mod download
 # 소스 코드 복사
 COPY . .
 
-# 빌드 도구 설치 및 Swagger 문서 생성 (레이어 최적화)
+# 빌드 도구 설치, Swagger 문서 및 코드 생성 (레이어 최적화)
 RUN apk add --no-cache git && \
+    go install golang.org/x/tools/cmd/stringer@latest && \
     go install github.com/swaggo/swag/cmd/swag@latest && \
+    go generate ./... && \
     swag init -g cmd/notify-server/main.go
 
 # 테스트 실행 (빌드 전 품질 검증)

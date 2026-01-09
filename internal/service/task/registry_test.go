@@ -149,7 +149,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "NewTask는 nil일 수 없습니다",
+			expectedPanic: "[InvalidInput] NewTask는 nil일 수 없습니다",
 		},
 		{
 			name: "CommandConfigs is empty",
@@ -157,7 +157,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask:  dummyNewTask(),
 				Commands: []*CommandConfig{},
 			},
-			expectedPanic: "Commands는 비어있을 수 없습니다",
+			expectedPanic: "[InvalidInput] Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
@@ -171,7 +171,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "CommandID는 비어있을 수 없습니다",
+			expectedPanic: "[InvalidInput] CommandID는 비어있을 수 없습니다",
 		},
 		{
 			name: "NewSnapshot is nil",
@@ -185,7 +185,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "NewSnapshot은 nil일 수 없습니다",
+			expectedPanic: "[InvalidInput] NewSnapshot은 nil일 수 없습니다",
 		},
 		{
 			name: "Duplicate CommandID",
@@ -204,7 +204,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "중복된 CommandID입니다: DuplicateCommand",
+			expectedPanic: "[InvalidInput] 중복된 CommandID입니다: DuplicateCommand",
 		},
 	}
 

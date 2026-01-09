@@ -127,7 +127,7 @@ func TestCheckStruct_CommandsMessageVerify(t *testing.T) {
 
 	require.Error(t, err)
 	// validator.go: case "Commands" -> if tag == "min" -> "작업(Task)은 최소 1개 이상의 명령(Command)를 포함해야 합니다"
-	assert.Equal(t, "작업(Task)은 최소 1개 이상의 명령(Command)를 포함해야 합니다", err.Error())
+	assert.Equal(t, "[InvalidInput] 작업(Task)은 최소 1개 이상의 명령(Command)를 포함해야 합니다", err.Error())
 }
 
 // =============================================================================
