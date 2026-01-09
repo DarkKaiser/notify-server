@@ -43,6 +43,41 @@ type AppError struct {
 	stack   []StackFrame // 에러 발생 시점의 함수 호출 스택 정보
 }
 
+// Message 에러 메시지를 반환합니다.
+func (e *AppError) Message() string {
+	return e.message
+}
+
+// Stack 스택 트레이스를 반환합니다.
+func (e *AppError) Stack() []StackFrame {
+	if e.stack == nil {
+		return nil
+	}
+	return e.stack
+}
+
+// Error 표준 errors.Error 인터페이스를 구현합니다.
+func (e *AppError) Error() string {
+	if e.cause != nil {
+		return fmt.Sprintf("[%s] %s: %v", e.errType, e.message, e.cause)
+	}
+	return fmt.Sprintf("[%s] %s", e.errType, e.message)
+}
+
+// Unwrap 표준 errors.Unwrap 인터페이스를 구현합니다.
+func (e *AppError) Unwrap() error {
+	return e.cause
+}
+
+// Is 표준 errors.Is 인터페이스를 구현합니다.
+func (e *AppError) Is(target error) bool {
+	t, ok := target.(ErrorType)
+	if !ok {
+		return false
+	}
+	return e.errType == t
+}
+
 // Format fmt.Formatter 인터페이스를 구현합니다.
 // %+v 사용 시 에러 체인과 스택 트레이스를 상세히 출력합니다.
 func (e *AppError) Format(s fmt.State, verb rune) {
@@ -86,41 +121,6 @@ func (e *AppError) Format(s fmt.State, verb rune) {
 	case 'q':
 		fmt.Fprintf(s, "%q", e.Error())
 	}
-}
-
-// Message 에러 메시지를 반환합니다.
-func (e *AppError) Message() string {
-	return e.message
-}
-
-// Stack 스택 트레이스를 반환합니다.
-func (e *AppError) Stack() []StackFrame {
-	if e.stack == nil {
-		return nil
-	}
-	return e.stack
-}
-
-// Error 표준 errors.Error 인터페이스를 구현합니다.
-func (e *AppError) Error() string {
-	if e.cause != nil {
-		return fmt.Sprintf("[%s] %s: %v", e.errType, e.message, e.cause)
-	}
-	return fmt.Sprintf("[%s] %s", e.errType, e.message)
-}
-
-// Unwrap 표준 errors.Unwrap 인터페이스를 구현합니다.
-func (e *AppError) Unwrap() error {
-	return e.cause
-}
-
-// Is 표준 errors.Is 인터페이스를 구현합니다.
-func (e *AppError) Is(target error) bool {
-	t, ok := target.(ErrorType)
-	if !ok {
-		return false
-	}
-	return e.errType == t
 }
 
 // New 새로운 에러를 생성합니다.
