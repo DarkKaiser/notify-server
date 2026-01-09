@@ -129,7 +129,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
-				if tt.errType != "" {
+				if tt.errType != apperrors.Unknown {
 					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
 				}
 				assert.Nil(t, doc)
@@ -331,7 +331,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
-				if tt.errType != "" {
+				if tt.errType != apperrors.Unknown {
 					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
 				}
 			} else {

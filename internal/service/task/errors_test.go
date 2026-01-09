@@ -26,7 +26,7 @@ func TestErrorTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, string(tt.errType))
+			assert.Equal(t, tt.expected, tt.errType.String())
 		})
 	}
 }
@@ -99,7 +99,7 @@ func TestSentinelErrors(t *testing.T) {
 			assert.Equal(t, tt.expectedType, errors.GetType(tt.actualErr))
 
 			// Check error message content
-			assert.Equal(t, tt.expectedMsg, tt.actualErr.Error())
+			assert.Equal(t, "[InvalidInput] "+tt.expectedMsg, tt.actualErr.Error())
 
 			// Verify standard errors.Is identity
 			var appErr *errors.AppError
