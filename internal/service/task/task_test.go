@@ -389,5 +389,5 @@ func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.IsType(t, &apperrors.AppError{}, err) // AppError 타입 확인
 	// Snapshot 생성 실패 메시지 확인
-	assert.Equal(t, msgSnapshotCreationFailed, err.(*apperrors.AppError).Message)
+	assert.Equal(t, msgSnapshotCreationFailed, err.(*apperrors.AppError).Message())
 }

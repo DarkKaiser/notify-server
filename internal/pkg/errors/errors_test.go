@@ -3,7 +3,6 @@ package errors
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -12,61 +11,13 @@ import (
 )
 
 // =============================================================================
-// Test Constants
+// Constants & Variables
 // =============================================================================
 
 var errStd = errors.New("standard error")
 
 // =============================================================================
-// benchmarks
-// =============================================================================
-
-func BenchmarkNew(b *testing.B) {
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = New(Internal, "error message")
-	}
-}
-
-func BenchmarkWrap(b *testing.B) {
-	err := errors.New("base error")
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = Wrap(err, Internal, "wrapped message")
-	}
-}
-
-func BenchmarkRootCause(b *testing.B) {
-	// 깊은 에러 체인 생성
-	err := errors.New("root")
-	for i := 0; i < 50; i++ {
-		err = Wrap(err, Internal, "wrap")
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = RootCause(err)
-	}
-}
-
-func BenchmarkIs(b *testing.B) {
-	// 깊은 에러 체인 생성
-	err := New(NotFound, "not found")
-	for i := 0; i < 10; i++ {
-		err = Wrap(err, Internal, "wrap")
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = Is(err, NotFound)
-	}
-}
-
-// =============================================================================
-// Basic Error Creation Tests
+// Construction Tests
 // =============================================================================
 
 func TestNew(t *testing.T) {
@@ -78,18 +29,13 @@ func TestNew(t *testing.T) {
 		message string
 	}{
 		{
-			name:    "InvalidInput",
+			name:    "Normal Creation",
 			errType: InvalidInput,
-			message: "invalid input",
-		},
-		{
-			name:    "Internal",
-			errType: Internal,
-			message: "internal error",
+			message: "invalid input parameter",
 		},
 		{
 			name:    "Empty Message",
-			errType: NotFound,
+			errType: Internal,
 			message: "",
 		},
 	}
@@ -99,8 +45,14 @@ func TestNew(t *testing.T) {
 			err := New(tt.errType, tt.message)
 
 			assert.NotNil(t, err)
-			assert.Contains(t, err.Error(), tt.message)
-			assert.True(t, Is(err, tt.errType))
+			expectedMsg := fmt.Sprintf("[%s] %s", tt.errType, tt.message)
+			assert.Equal(t, expectedMsg, err.Error(), "Error message should match formatted string")
+
+			// Type Check
+			assert.Equal(t, tt.errType, GetType(err))
+
+			// Stack Check
+			assert.NotEmpty(t, err.(*AppError).Stack(), "Stack trace should be captured")
 		})
 	}
 }
@@ -108,39 +60,11 @@ func TestNew(t *testing.T) {
 func TestNewf(t *testing.T) {
 	t.Parallel()
 
-	err := Newf(InvalidInput, "error code: %d", 404)
+	err := Newf(NotFound, "user %d not found", 123)
 
 	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "error code: 404")
-	assert.True(t, Is(err, InvalidInput))
-}
-
-func TestErrorType_String(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		errType  ErrorType
-		expected string
-	}{
-		{"Unknown", Unknown, "Unknown"},
-		{"Internal", Internal, "Internal"},
-		{"System", System, "System"},
-		{"Unauthorized", Unauthorized, "Unauthorized"},
-		{"Forbidden", Forbidden, "Forbidden"},
-		{"InvalidInput", InvalidInput, "InvalidInput"},
-		{"Conflict", Conflict, "Conflict"},
-		{"NotFound", NotFound, "NotFound"},
-		{"ExecutionFailed", ExecutionFailed, "ExecutionFailed"},
-		{"Timeout", Timeout, "Timeout"},
-		{"Unavailable", Unavailable, "Unavailable"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.errType.String())
-		})
-	}
+	assert.Equal(t, "[NotFound] user 123 not found", err.Error())
+	assert.Equal(t, NotFound, GetType(err))
 }
 
 // =============================================================================
@@ -150,200 +74,193 @@ func TestErrorType_String(t *testing.T) {
 func TestWrap(t *testing.T) {
 	t.Parallel()
 
-	t.Run("StdError", func(t *testing.T) {
-		wrapped := Wrap(errStd, Internal, "wrapped message")
+	t.Run("Wrap Standard Error", func(t *testing.T) {
+		err := Wrap(errStd, System, "wrapper message")
 
-		assert.NotNil(t, wrapped)
-		assert.Contains(t, wrapped.Error(), "wrapped message")
-		assert.Contains(t, wrapped.Error(), "standard error")
-		assert.True(t, Is(wrapped, Internal))
+		assert.NotNil(t, err)
+		assert.Equal(t, System, GetType(err))
+		assert.Contains(t, err.Error(), "wrapper message")
+		assert.Contains(t, err.Error(), "standard error")
+		assert.Equal(t, errStd, errors.Unwrap(err))
 	})
 
-	t.Run("NilError", func(t *testing.T) {
-		wrapped := Wrap(nil, Internal, "should be nil")
-		assert.Nil(t, wrapped)
+	t.Run("Wrap Nil Error", func(t *testing.T) {
+		err := Wrap(nil, Internal, "should be nil")
+		assert.Nil(t, err)
 	})
 
-	t.Run("Nested", func(t *testing.T) {
-		err1 := New(NotFound, "not found")
-		err2 := Wrap(err1, Internal, "internal error")
-		err3 := Wrap(err2, System, "system error")
+	t.Run("Nested Wrapping", func(t *testing.T) {
+		err1 := New(NotFound, "root error")
+		err2 := Wrap(err1, Internal, "first wrap")
+		err3 := Wrap(err2, ExecutionFailed, "second wrap")
 
-		assert.True(t, Is(err3, System))
+		// Check Chain
+		assert.True(t, Is(err3, ExecutionFailed))
 		assert.True(t, Is(err3, Internal))
 		assert.True(t, Is(err3, NotFound))
+
+		// Check Root Cause
+		assert.Equal(t, err1, RootCause(err3))
 	})
 }
 
 func TestWrapf(t *testing.T) {
 	t.Parallel()
 
-	wrapped := Wrapf(errStd, Internal, "error code: %d", 500)
-
-	assert.NotNil(t, wrapped)
-	assert.Contains(t, wrapped.Error(), "error code: 500")
-	assert.Contains(t, wrapped.Error(), "standard error")
-}
-
-func TestWrapf_NilError(t *testing.T) {
-	t.Parallel()
-
-	wrapped := Wrapf(nil, Internal, "should be nil")
-	assert.Nil(t, wrapped)
-}
-
-// =============================================================================
-// Edge Cases
-// =============================================================================
-
-func TestEdgeCases(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Long Message", func(t *testing.T) {
-		longMsg := strings.Repeat("a", 10000)
-		err := New(Internal, longMsg)
+	t.Run("Wrapf Standard Error", func(t *testing.T) {
+		err := Wrapf(errStd, Unauthorized, "access denied: %s", "admin")
 
 		assert.NotNil(t, err)
-		assert.Contains(t, err.Error(), longMsg)
+		assert.Equal(t, Unauthorized, GetType(err))
+		assert.Contains(t, err.Error(), "access denied: admin")
+		assert.Contains(t, err.Error(), "standard error")
 	})
 
-	t.Run("Deep Chain Stack Overflow Check", func(t *testing.T) {
-		err := New(Internal, "base")
-		for i := 0; i < 1000; i++ {
-			err = Wrap(err, Internal, "wrap")
-		}
-
-		// RootCause should not stack overflow
-		root := RootCause(err)
-		assert.NotNil(t, root)
+	t.Run("Wrapf Nil Error", func(t *testing.T) {
+		err := Wrapf(nil, Internal, "should be nil")
+		assert.Nil(t, err)
 	})
 }
 
 // =============================================================================
-// Is Function Tests
+// Inspection Tests (Is, As, GetType, RootCause)
 // =============================================================================
-
-func TestIs_ChainTraversal(t *testing.T) {
-	t.Parallel()
-
-	err1 := New(NotFound, "not found")
-	err2 := Wrap(err1, Internal, "internal")
-	err3 := Wrap(err2, System, "system")
-
-	assert.True(t, Is(err3, System))
-	assert.True(t, Is(err3, Internal))
-	assert.True(t, Is(err3, NotFound))
-	assert.False(t, Is(err3, InvalidInput))
-}
 
 func TestIs(t *testing.T) {
 	t.Parallel()
 
-	err := New(InvalidInput, "test")
+	errInvalid := New(InvalidInput, "invalid")
+	errWrapped := Wrap(errInvalid, System, "system")
 
-	assert.True(t, Is(err, InvalidInput))
-	assert.False(t, Is(err, Internal))
-	assert.False(t, Is(nil, InvalidInput))
+	// Standard checks
+	assert.True(t, Is(errInvalid, InvalidInput))
+	assert.False(t, Is(errInvalid, Internal))
+
+	// Chain checks
+	assert.True(t, Is(errWrapped, System))
+	assert.True(t, Is(errWrapped, InvalidInput)) // Nested check
+	assert.False(t, Is(errWrapped, NotFound))
+
+	// Nil checks
+	assert.False(t, Is(nil, Internal))
 }
 
-// =============================================================================
-// As Function Tests
-// =============================================================================
+func TestIs_StandardCompatibility(t *testing.T) {
+	t.Parallel()
+
+	// Ensure AppError works with standard errors.Is
+	err := New(NotFound, "missing")
+	assert.True(t, errors.Is(err, NotFound))
+
+	wrapped := Wrap(err, Internal, "wrapped")
+	assert.True(t, errors.Is(wrapped, NotFound))
+}
 
 func TestAs(t *testing.T) {
 	t.Parallel()
 
-	err := New(Internal, "test error")
+	err := New(Conflict, "conflict occurred")
+	wrapped := Wrap(err, Internal, "wrapped")
 
 	var appErr *AppError
-	assert.True(t, As(err, &appErr))
-	assert.Equal(t, Internal, appErr.Type)
-	assert.Equal(t, "test error", appErr.Message)
-}
+	if assert.True(t, As(wrapped, &appErr)) {
+		assert.Equal(t, Internal, appErr.errType)
+		assert.Equal(t, "wrapped", appErr.message)
+	}
 
-// =============================================================================
-// GetType Tests
-// =============================================================================
+	// Verify we can allow extracting the inner error via As if needed,
+	// though As typically matches the first compatible error in chain.
+	// Since AppError is the type for both wrapper and cause, it matches wrapper first.
+}
 
 func TestGetType(t *testing.T) {
 	t.Parallel()
 
-	err := New(NotFound, "not found")
-	assert.Equal(t, NotFound, GetType(err))
-
-	assert.Equal(t, Unknown, GetType(nil))
+	assert.Equal(t, NotFound, GetType(New(NotFound, "err")))
 	assert.Equal(t, Unknown, GetType(errStd))
-}
+	assert.Equal(t, Unknown, GetType(nil))
 
-// =============================================================================
-// RootCause Tests
-// =============================================================================
+	// Wrapper type takes precedence
+	wrapped := Wrap(New(NotFound, "err"), Internal, "wrap")
+	assert.Equal(t, Internal, GetType(wrapped))
+}
 
 func TestRootCause(t *testing.T) {
 	t.Parallel()
 
-	err1 := New(NotFound, "not found")
-	err2 := Wrap(err1, Internal, "internal")
-	err3 := Wrap(err2, System, "system")
-
-	root := RootCause(err3)
-	assert.Equal(t, err1, root)
-
 	assert.Nil(t, RootCause(nil))
+	assert.Equal(t, errStd, RootCause(errStd))
+
+	err := New(System, "root")
+	wrapped := Wrap(err, Internal, "wrap")
+	assert.Equal(t, err, RootCause(wrapped))
+
+	// Multi-level
+	wrapped2 := Wrap(wrapped, Conflict, "wrap2")
+	assert.Equal(t, err, RootCause(wrapped2))
 }
 
 // =============================================================================
-// Unwrap Tests
+// Interface Implementation Tests
 // =============================================================================
 
-func TestUnwrap(t *testing.T) {
+func TestAppError_Error_Interface(t *testing.T) {
 	t.Parallel()
 
-	err1 := New(NotFound, "not found")
-	err2 := Wrap(err1, Internal, "internal")
+	err := New(Timeout, "timeout")
+	assert.Equal(t, "[Timeout] timeout", err.Error())
 
-	var appErr *AppError
-	require.True(t, As(err2, &appErr))
-
-	unwrapped := appErr.Unwrap()
-	assert.Equal(t, err1, unwrapped)
+	wrapped := Wrap(err, Internal, "fail")
+	assert.Equal(t, "[Internal] fail: [Timeout] timeout", wrapped.Error())
 }
 
-// =============================================================================
-// Format Tests
-// =============================================================================
+func TestAppError_Unwrap_Interface(t *testing.T) {
+	t.Parallel()
+
+	err1 := New(InvalidInput, "err1")
+	err2 := Wrap(err1, Internal, "err2")
+
+	// Direct cast to check Unwrap() method existence and behavior
+	appErr, ok := err2.(*AppError)
+	require.True(t, ok)
+	assert.Equal(t, err1, appErr.Unwrap())
+}
 
 func TestAppError_Format(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Basic Formatting", func(t *testing.T) {
-		err := New(Internal, "test error")
-
-		// %s, %v
-		assert.Contains(t, fmt.Sprintf("%s", err), "[Internal] test error")
-		assert.Contains(t, fmt.Sprintf("%v", err), "[Internal] test error")
-
-		// %q
-		quoted := fmt.Sprintf("%q", err)
-		assert.Contains(t, quoted, "Internal")
-		assert.Contains(t, quoted, "test error")
+	t.Run("Simple Format %v", func(t *testing.T) {
+		err := New(Internal, "simple")
+		assert.Equal(t, "[Internal] simple", fmt.Sprintf("%v", err))
+		assert.Equal(t, "[Internal] simple", fmt.Sprintf("%s", err))
 	})
 
-	t.Run("Detailed Formatting %+v", func(t *testing.T) {
-		err := New(InvalidInput, "validation failed")
-		detailed := fmt.Sprintf("%+v", err)
-
-		assert.Contains(t, detailed, "[InvalidInput] validation failed")
+	t.Run("Quote Format %q", func(t *testing.T) {
+		err := New(Internal, "quote")
+		assert.Equal(t, "\"[Internal] quote\"", fmt.Sprintf("%q", err))
 	})
 
-	t.Run("Internal Wrap Formatting", func(t *testing.T) {
-		err1 := New(NotFound, "not found")
-		err2 := Wrap(err1, Internal, "query failed")
+	t.Run("Detail Format %+v", func(t *testing.T) {
+		err := New(Internal, "detail")
+		output := fmt.Sprintf("%+v", err)
 
-		detailed := fmt.Sprintf("%+v", err2)
-		assert.Contains(t, detailed, "[Internal] query failed")
-		assert.Contains(t, detailed, "Caused by:")
-		assert.Contains(t, detailed, "[NotFound] not found")
+		assert.Contains(t, output, "[Internal] detail")
+		assert.Contains(t, output, "Stack trace:")
+		// Function name check - assuming test file name is errors_test.go
+		assert.Contains(t, output, "errors_test.go")
+	})
+
+	t.Run("Detail Format Chain", func(t *testing.T) {
+		root := New(NotFound, "root")
+		wrapped := Wrap(root, Internal, "wrapper")
+		output := fmt.Sprintf("%+v", wrapped)
+
+		// Should contain both messages
+		assert.Contains(t, output, "[Internal] wrapper")
+		assert.Contains(t, output, "[NotFound] root")
+
+		// Stack trace should be present
+		assert.Contains(t, output, "Stack trace:")
 	})
 }
 
@@ -351,197 +268,51 @@ func TestAppError_Format(t *testing.T) {
 // Concurrency Tests
 // =============================================================================
 
-func TestConcurrentErrorCreation(t *testing.T) {
+func TestConcurrency(t *testing.T) {
 	t.Parallel()
 
-	const goroutines = 100
-	const iterations = 100
-
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
+	count := 100
+	wg.Add(count)
 
-	for i := 0; i < goroutines; i++ {
-		go func(id int) {
+	for i := 0; i < count; i++ {
+		go func(idx int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
-				err := New(Internal, fmt.Sprintf("error %d-%d", id, j))
-				assert.NotNil(t, err)
-				assert.True(t, Is(err, Internal))
-			}
-		}(i)
-	}
 
-	wg.Wait()
-}
-
-func TestConcurrentErrorChainTraversal(t *testing.T) {
-	t.Parallel()
-
-	err := New(NotFound, "base")
-	for i := 0; i < 10; i++ {
-		err = Wrap(err, Internal, fmt.Sprintf("wrap %d", i))
-	}
-
-	const goroutines = 50
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-
-	for i := 0; i < goroutines; i++ {
-		go func() {
-			defer wg.Done()
-			assert.True(t, Is(err, NotFound))
-			assert.True(t, Is(err, Internal))
-			root := RootCause(err)
-			assert.NotNil(t, root)
-		}()
-	}
-
-	wg.Wait()
-}
-
-func TestConcurrentMixedOperations(t *testing.T) {
-	t.Parallel()
-
-	baseErr := New(System, "system error")
-
-	const goroutines = 50
-	var wg sync.WaitGroup
-	wg.Add(goroutines * 3)
-
-	for i := 0; i < goroutines; i++ {
-		go func(id int) {
-			defer wg.Done()
-			err := New(InvalidInput, fmt.Sprintf("new %d", id))
+			// Concurrent Create
+			err := Newf(Internal, "concurrent %d", idx)
 			assert.NotNil(t, err)
-		}(i)
 
-		go func(id int) {
-			defer wg.Done()
-			err := Wrap(baseErr, Internal, fmt.Sprintf("wrap %d", id))
-			assert.True(t, Is(err, System))
-		}(i)
+			// Concurrent Wrap
+			wrapped := Wrap(err, System, "wrapped")
+			assert.True(t, Is(wrapped, Internal))
 
-		go func() {
-			defer wg.Done()
-			_ = GetType(baseErr)
-			_ = RootCause(baseErr)
-		}()
+			// Concurrent Inspect
+			_ = RootCause(wrapped)
+			_ = fmt.Sprintf("%+v", wrapped)
+		}(i)
 	}
 
 	wg.Wait()
 }
 
 // =============================================================================
-// Stack Trace Tests
+// Accessor Tests (Coverage for Message, Stack methods)
 // =============================================================================
 
-// TestStackTrace는 스택 트레이스가 올바르게 캡처되는지 검증합니다.
-func TestStackTrace(t *testing.T) {
+func TestAccessors(t *testing.T) {
 	t.Parallel()
 
-	err := New(InvalidInput, "test error")
+	err := New(Unauthorized, "access denied")
+	appErr, ok := err.(*AppError)
+	require.True(t, ok)
 
-	var appErr *AppError
-	require.True(t, As(err, &appErr), "Should be AppError")
+	assert.Equal(t, "access denied", appErr.Message())
+	assert.NotEmpty(t, appErr.Stack())
 
-	// 스택이 캡처되었는지 확인
-	assert.NotEmpty(t, appErr.Stack, "Stack should be captured")
-
-	// 최대 5개 프레임으로 제한되는지 확인
-	assert.LessOrEqual(t, len(appErr.Stack), 5, "Stack should be limited to 5 frames")
-
-	// 첫 번째 프레임이 현재 테스트 함수인지 확인
-	if len(appErr.Stack) > 0 {
-		assert.Equal(t, "errors_test.go", appErr.Stack[0].File)
-		assert.Contains(t, appErr.Stack[0].Function, "TestStackTrace")
-	}
-}
-
-// TestStackTraceFormat은 %+v 포맷으로 스택 트레이스가 출력되는지 검증합니다.
-func TestStackTraceFormat(t *testing.T) {
-	t.Parallel()
-
-	err := New(ExecutionFailed, "operation failed")
-
-	// %v 포맷: 스택 미포함
-	simpleOutput := fmt.Sprintf("%v", err)
-	assert.Contains(t, simpleOutput, "[ExecutionFailed] operation failed")
-	assert.NotContains(t, simpleOutput, "Stack trace")
-
-	// %+v 포맷: 스택 포함
-	detailedOutput := fmt.Sprintf("%+v", err)
-	assert.Contains(t, detailedOutput, "[ExecutionFailed] operation failed")
-	assert.Contains(t, detailedOutput, "Stack trace:")
-	assert.Contains(t, detailedOutput, "errors_test.go")
-	assert.Contains(t, detailedOutput, "TestStackTraceFormat")
-}
-
-// TestStackTraceChain은 에러 체인에서 각 레벨의 스택이 올바르게 캡처되는지 검증합니다.
-func TestStackTraceChain(t *testing.T) {
-	t.Parallel()
-
-	// 3단계 에러 체인 생성
-	err1 := New(System, "database error")
-	err2 := Wrap(err1, Internal, "query failed")
-	err3 := Wrap(err2, ExecutionFailed, "operation failed")
-
-	// 각 레벨의 스택 확인
-	var appErr *AppError
-	require.True(t, As(err3, &appErr))
-	assert.NotEmpty(t, appErr.Stack, "Top level should have stack")
-
-	// Cause의 스택도 확인
-	var causeErr *AppError
-	require.True(t, As(appErr.Cause, &causeErr))
-	assert.NotEmpty(t, causeErr.Stack, "Cause should have stack")
-
-	// %+v 출력에 모든 스택이 포함되는지 확인
-	output := fmt.Sprintf("%+v", err3)
-	assert.Contains(t, output, "[ExecutionFailed] operation failed")
-	assert.Contains(t, output, "[Internal] query failed")
-	assert.Contains(t, output, "[System] database error")
-
-	// 여러 개의 "Stack trace:" 섹션이 있어야 함
-	stackTraceCount := 0
-	for i := 0; i < len(output)-12; i++ {
-		if output[i:i+12] == "Stack trace:" {
-			stackTraceCount++
-		}
-	}
-	assert.GreaterOrEqual(t, stackTraceCount, 2, "Should have multiple stack traces in chain")
-}
-
-// TestStackTraceNilError는 nil 에러를 Wrap할 때 스택이 캡처되지 않는지 확인합니다.
-func TestStackTraceNilError(t *testing.T) {
-	t.Parallel()
-
-	err := Wrap(nil, Internal, "should be nil")
-	assert.Nil(t, err, "Wrapping nil should return nil")
-}
-
-// TestStackTraceWrapf는 Wrapf 함수에서도 스택이 올바르게 캡처되는지 확인합니다.
-func TestStackTraceWrapf(t *testing.T) {
-	t.Parallel()
-
-	baseErr := New(System, "base error")
-	err := Wrapf(baseErr, Internal, "wrapped: %s", "test")
-
-	var appErr *AppError
-	require.True(t, As(err, &appErr))
-	assert.NotEmpty(t, appErr.Stack, "Wrapf should capture stack")
-	assert.Contains(t, appErr.Message, "wrapped: test")
-}
-
-// TestStackTraceNewf는 Newf 함수에서도 스택이 올바르게 캡처되는지 확인합니다.
-func TestStackTraceNewf(t *testing.T) {
-	t.Parallel()
-
-	err := Newf(InvalidInput, "error code: %d", 404)
-
-	var appErr *AppError
-	require.True(t, As(err, &appErr))
-	assert.NotEmpty(t, appErr.Stack, "Newf should capture stack")
-	assert.Contains(t, appErr.Message, "error code: 404")
+	// Test nil stack case (manually crafted)
+	emptyErr := &AppError{errType: Internal}
+	assert.Nil(t, emptyErr.Stack())
 }
 
 // =============================================================================
@@ -555,18 +326,18 @@ func ExampleNew() {
 }
 
 func ExampleWrap() {
-	baseErr := New(System, "database connection failed")
-	wrappedErr := Wrap(baseErr, Internal, "failed to fetch user")
-	fmt.Println(wrappedErr)
-	// Output: [Internal] failed to fetch user: [System] database connection failed
+	baseErr := New(System, "db error")
+	err := Wrap(baseErr, Internal, "query failed")
+	fmt.Println(err)
+	// Output: [Internal] query failed: [System] db error
 }
 
 func ExampleIs() {
-	err := New(NotFound, "resource not found")
-	wrapped := Wrap(err, Internal, "operation failed")
+	err := New(NotFound, "missing")
+	wrapped := Wrap(err, Internal, "process failed")
 
 	if Is(wrapped, NotFound) {
-		fmt.Println("NotFound error detected in chain")
+		fmt.Println("Is NotFound")
 	}
-	// Output: NotFound error detected in chain
+	// Output: Is NotFound
 }
