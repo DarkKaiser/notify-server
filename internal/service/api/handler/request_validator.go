@@ -3,31 +3,43 @@ package handler
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/go-playground/validator/v10"
 )
 
-// validate 전역 validator 인스턴스입니다.
-var validate *validator.Validate
+var (
+	// validate 전역 validator 인스턴스입니다.
+	validate *validator.Validate
 
-func init() {
-	validate = validator.New()
+	// validateOnce validator 초기화가 정확히 한 번만 실행되도록 보장합니다.
+	validateOnce sync.Once
+)
 
-	// korean tag를 필드명으로 사용하도록 설정
-	// 이렇게 하면 validator가 에러 메시지를 생성할 때 korean tag 값을 필드명으로 사용합니다.
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		koreanName := fld.Tag.Get("korean")
-		if koreanName != "" {
-			return koreanName
-		}
-		return fld.Name
+// getValidator 초기화된 validator 인스턴스를 반환합니다.
+// sync.Once를 사용하여 초기화가 정확히 한 번만 실행되도록 보장합니다.
+func getValidator() *validator.Validate {
+	validateOnce.Do(func() {
+		validate = validator.New()
+
+		// korean tag를 필드명으로 사용하도록 설정
+		// 이렇게 하면 validator가 에러 메시지를 생성할 때 korean tag 값을 필드명으로 사용합니다.
+		validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+			koreanName := fld.Tag.Get("korean")
+			if koreanName != "" {
+				return koreanName
+			}
+			return fld.Name
+		})
 	})
+
+	return validate
 }
 
 // ValidateRequest 구조체의 validation tag를 기반으로 검증을 수행합니다.
 // 검증 실패 시 첫 번째 에러를 반환합니다.
 func ValidateRequest(req interface{}) error {
-	return validate.Struct(req)
+	return getValidator().Struct(req)
 }
 
 // FormatValidationError validator 에러를 사용자 친화적인 한글 메시지로 변환합니다.

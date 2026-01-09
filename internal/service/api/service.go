@@ -246,7 +246,10 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	// 상태 정리
 	s.runningMu.Lock()
 	s.running = false
-	s.notificationSender = nil
+	// 주의: notificationSender는 의도적으로 nil로 설정하지 않음
+	// - 서버 종료 중에도 다른 고루틴(예: Health Check)이 notificationSender에 접근할 수 있음
+	// - nil로 설정 시 동시 접근으로 인한 nil pointer panic 발생 위험
+	// - 메모리는 GC가 Service 객체 해제 시 자동으로 정리되므로 누수 없음
 	s.runningMu.Unlock()
 
 	applog.WithComponent("api.service").Info("API 서비스 중지됨")

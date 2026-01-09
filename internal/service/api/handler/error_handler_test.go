@@ -49,6 +49,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   response.ErrorResponse{Message: "페이지를 찾을 수 없습니다."},
+			expectLog:      "클라이언트 에러 발생",
 		},
 		{
 			name:           "404 Not Found_커스텀 메시지 무시",
@@ -56,6 +57,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusNotFound, "Custom Check"),
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   response.ErrorResponse{Message: "페이지를 찾을 수 없습니다."},
+			expectLog:      "클라이언트 에러 발생",
 		},
 		{
 			name:           "404 Not Found_ErrorResponse 타입 메시지 무시",
@@ -63,6 +65,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusNotFound, response.ErrorResponse{Message: "Detail Info"}),
 			expectedStatus: http.StatusNotFound,
 			expectedBody:   response.ErrorResponse{Message: "페이지를 찾을 수 없습니다."},
+			expectLog:      "클라이언트 에러 발생",
 		},
 		{
 			name:           "405 Method Not Allowed",
@@ -70,6 +73,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusMethodNotAllowed, "method not allowed"),
 			expectedStatus: http.StatusMethodNotAllowed,
 			expectedBody:   response.ErrorResponse{Message: "method not allowed"},
+			expectLog:      "클라이언트 에러 발생",
 		},
 		{
 			name:           "400 Bad Request_ErrorResponse 타입 메시지",
@@ -77,6 +81,15 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusBadRequest, response.ErrorResponse{Message: "잘못된 요청입니다"}),
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   response.ErrorResponse{Message: "잘못된 요청입니다"},
+			expectLog:      "클라이언트 에러 발생",
+		},
+		{
+			name:           "401 Unauthorized_인증 실패",
+			method:         http.MethodPost,
+			err:            echo.NewHTTPError(http.StatusUnauthorized, "인증이 필요합니다"),
+			expectedStatus: http.StatusUnauthorized,
+			expectedBody:   response.ErrorResponse{Message: "인증이 필요합니다"},
+			expectLog:      "클라이언트 에러 발생",
 		},
 		{
 			name:           "500 Internal Server Error_일반 에러",
@@ -84,7 +97,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            errors.New("database connection failed"),
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   response.ErrorResponse{Message: "내부 서버 오류가 발생했습니다."},
-			expectLog:      "내부 서버 오류 발생",
+			expectLog:      "서버 내부 오류 발생",
 		},
 		{
 			name:           "500 Internal Server Error_Echo 에러",
@@ -92,7 +105,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			err:            echo.NewHTTPError(http.StatusInternalServerError, "critical failure"),
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   response.ErrorResponse{Message: "critical failure"},
-			expectLog:      "내부 서버 오류 발생",
+			expectLog:      "서버 내부 오류 발생",
 		},
 		{
 			name:           "알 수 없는 메시지 타입_기본 메시지 유지",

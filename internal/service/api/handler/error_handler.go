@@ -30,13 +30,20 @@ func CustomHTTPErrorHandler(err error, c echo.Context) {
 		message = "페이지를 찾을 수 없습니다."
 	}
 
-	// 500 에러 발생 시 로깅 (디버깅 용도)
-	if code == http.StatusInternalServerError {
-		applog.WithComponentAndFields("api.error_handler", applog.Fields{
-			"path":   c.Request().URL.Path,
-			"method": c.Request().Method,
-			"error":  err,
-		}).Error("내부 서버 오류 발생")
+	// 에러 로깅 (보안 및 디버깅 용도)
+	fields := applog.Fields{
+		"path":        c.Request().URL.Path,
+		"method":      c.Request().Method,
+		"status_code": code,
+		"error":       err,
+	}
+
+	if code >= http.StatusInternalServerError {
+		// 5xx: 서버 에러 (내부 오류)
+		applog.WithComponentAndFields("api.error_handler", fields).Error("서버 내부 오류 발생")
+	} else if code >= http.StatusBadRequest {
+		// 4xx: 클라이언트 에러 (인증 실패, 잘못된 요청 등)
+		applog.WithComponentAndFields("api.error_handler", fields).Warn("클라이언트 에러 발생")
 	}
 
 	// 응답이 이미 전송되었는지 확인
