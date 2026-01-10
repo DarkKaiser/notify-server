@@ -1,4 +1,4 @@
-package handler
+package validator
 
 import (
 	"fmt"
@@ -16,9 +16,9 @@ var (
 	validateOnce sync.Once
 )
 
-// getValidator 초기화된 validator 인스턴스를 반환합니다.
+// Get 초기화된 validator 인스턴스를 반환합니다.
 // sync.Once를 사용하여 초기화가 정확히 한 번만 실행되도록 보장합니다.
-func getValidator() *validator.Validate {
+func Get() *validator.Validate {
 	validateOnce.Do(func() {
 		validate = validator.New()
 
@@ -36,10 +36,10 @@ func getValidator() *validator.Validate {
 	return validate
 }
 
-// ValidateRequest 구조체의 validation tag를 기반으로 검증을 수행합니다.
+// Struct 구조체의 validation tag를 기반으로 검증을 수행합니다.
 // 검증 실패 시 첫 번째 에러를 반환합니다.
-func ValidateRequest(req interface{}) error {
-	return getValidator().Struct(req)
+func Struct(s interface{}) error {
+	return Get().Struct(s)
 }
 
 // FormatValidationError validator 에러를 사용자 친화적인 한글 메시지로 변환합니다.
@@ -82,11 +82,34 @@ func formatFieldError(fieldErr validator.FieldError) string {
 			return fmt.Sprintf("%s는 최대 %s자까지 입력 가능합니다", fieldName, fieldErr.Param())
 		}
 		return fmt.Sprintf("%s는 최대 %s까지 입력 가능합니다", fieldName, fieldErr.Param())
+	case "len":
+		if fieldErr.Type().Kind().String() == "string" {
+			return fmt.Sprintf("%s는 %s자여야 합니다", fieldName, fieldErr.Param())
+		}
+		return fmt.Sprintf("%s는 갯수가 %s개여야 합니다", fieldName, fieldErr.Param())
+	case "lte":
+		if fieldErr.Type().Kind().String() == "string" {
+			return fmt.Sprintf("%s는 최대 %s자까지 입력 가능합니다", fieldName, fieldErr.Param())
+		}
+		return fmt.Sprintf("%s는 %s 이하이어야 합니다", fieldName, fieldErr.Param())
+	case "gte":
+		if fieldErr.Type().Kind().String() == "string" {
+			return fmt.Sprintf("%s는 최소 %s자 이상이어야 합니다", fieldName, fieldErr.Param())
+		}
+		return fmt.Sprintf("%s는 %s 이상이어야 합니다", fieldName, fieldErr.Param())
 	case "email":
 		return fmt.Sprintf("%s는 올바른 이메일 형식이어야 합니다", fieldName)
 	case "url":
 		return fmt.Sprintf("%s는 올바른 URL 형식이어야 합니다", fieldName)
+	case "uuid":
+		return fmt.Sprintf("%s는 올바른 UUID 형식이어야 합니다", fieldName)
+	case "alphanum":
+		return fmt.Sprintf("%s는 영문자와 숫자만 입력 가능합니다", fieldName)
+	case "oneof":
+		return fmt.Sprintf("%s는 허용된 값 중 하나여야 합니다 [%s]", fieldName, fieldErr.Param())
+	case "boolean":
+		return fmt.Sprintf("%s는 true 또는 false 값이어야 합니다", fieldName)
 	default:
-		return fmt.Sprintf("%s 검증 실패: %s", fieldName, fieldErr.Tag())
+		return fmt.Sprintf("%s 값 검증 실패 (%s)", fieldName, fieldErr.Tag())
 	}
 }

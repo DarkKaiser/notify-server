@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/darkkaiser/notify-server/internal/pkg/validator"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	commonhandler "github.com/darkkaiser/notify-server/internal/service/api/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
@@ -41,9 +42,9 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	}
 
 	// 2. 입력 검증
-	if err := commonhandler.ValidateRequest(req); err != nil {
+	if err := validator.Struct(req); err != nil {
 		h.log(c).WithField("error", err).Warn("입력 검증 실패")
-		return commonhandler.NewBadRequestError(commonhandler.FormatValidationError(err))
+		return commonhandler.NewBadRequestError(validator.FormatValidationError(err))
 	}
 
 	appKey := c.QueryParam(constants.QueryParamAppKey)
