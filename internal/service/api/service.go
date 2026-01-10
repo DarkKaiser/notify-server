@@ -100,9 +100,9 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 		return nil
 	}
 
-	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
-
 	s.running = true
+
+	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
 	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작됨")
 

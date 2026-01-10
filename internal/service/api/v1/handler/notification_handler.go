@@ -16,7 +16,20 @@ import (
 // @Description 이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
 // @Description 설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.
 // @Description
+// @Description ## 인증 방식
+// @Description - **권장**: X-App-Key 헤더로 전달
+// @Description - **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)
+// @Description
 // @Description ## 사용 예시 (로컬 환경)
+// @Description ### 헤더 방식 (권장)
+// @Description ```bash
+// @Description curl -X POST "http://localhost:2443/api/v1/notifications" \
+// @Description   -H "Content-Type: application/json" \
+// @Description   -H "X-App-Key: your-app-key" \
+// @Description   -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
+// @Description ```
+// @Description
+// @Description ### 쿼리 파라미터 방식 (레거시)
 // @Description ```bash
 // @Description curl -X POST "http://localhost:2443/api/v1/notifications?app_key=your-app-key" \
 // @Description   -H "Content-Type: application/json" \
@@ -25,7 +38,8 @@ import (
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Param app_key query string true "Application Key (인증용)" example(your-app-key-here)
+// @Param X-App-Key header string false "Application Key (인증용, 권장)" example(your-app-key-here)
+// @Param app_key query string false "Application Key (인증용, 레거시)" example(your-app-key-here)
 // @Param message body request.NotificationRequest true "알림 메시지 정보"
 // @Success 200 {object} response.SuccessResponse "성공"
 // @Failure 400 {object} response.ErrorResponse "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)"
@@ -47,20 +61,31 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		return httputil.NewBadRequestError(validator.FormatValidationError(err))
 	}
 
-	appKey := c.QueryParam(constants.QueryParamAppKey)
+	// 3. App Key 추출 (헤더 우선, 쿼리 파라미터 폴백)
+	appKey := c.Request().Header.Get(constants.HeaderAppKey)
+	if appKey == "" {
+		// 헤더에 없으면 쿼리 파라미터 확인 (레거시 지원)
+		appKey = c.QueryParam(constants.QueryParamAppKey)
+
+		// 레거시 방식 사용 시 경고 로그
+		if appKey != "" {
+			h.log(c).WithField("application_id", req.ApplicationID).Warn("쿼리 파라미터로 app_key 전달됨 (deprecated, X-App-Key 헤더 사용 권장)")
+		}
+	}
+
 	if appKey == "" {
 		h.log(c).WithField("application_id", req.ApplicationID).Warn("app_key가 비어있음")
 		return httputil.NewBadRequestError(constants.ErrMsgAppKeyRequired)
 	}
 
-	// 3. 인증
+	// 4. 인증
 	app, err := h.applicationManager.Authenticate(req.ApplicationID, appKey)
 	if err != nil {
 		h.log(c).WithField("application_id", req.ApplicationID).Warn("인증 실패")
 		return err
 	}
 
-	// 4. 비즈니스 로직
+	// 5. 비즈니스 로직
 	h.log(c).WithFields(applog.Fields{
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
@@ -69,7 +94,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 	h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 
-	// 5. 성공 응답
+	// 6. 성공 응답
 	return httputil.NewSuccessResponse(c)
 }
 
