@@ -143,7 +143,7 @@ func TestV1API_Integration(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:   "Service Failure (Legacy 200)",
+			name:   "Service Failure (503 Service Unavailable)",
 			method: http.MethodPost,
 			path:   "/api/v1/notifications",
 			appKey: "test-app-key",
@@ -152,7 +152,12 @@ func TestV1API_Integration(t *testing.T) {
 				Message:       "fail test",
 			},
 			shouldFail:     true,
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusServiceUnavailable,
+			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				var errorResp response.ErrorResponse
+				json.Unmarshal(rec.Body.Bytes(), &errorResp)
+				assert.NotEmpty(t, errorResp.Message)
+			},
 		},
 		{
 			name:   "Legacy Endpoint with Deprecated Headers",
