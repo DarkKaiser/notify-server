@@ -1,4 +1,4 @@
-package handler
+package httputil
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 // Error Handler Tests
 // =============================================================================
 
-// TestCustomHTTPErrorHandler_Comprehensive는 커스텀 HTTP 에러 핸들러의 모든 동작을 검증합니다.
+// TestErrorHandler_Comprehensive는 커스텀 HTTP 에러 핸들러의 모든 동작을 검증합니다.
 //
 // 주요 검증 항목:
 //   - 다양한 에러 타입 처리 (echo.HTTPError, 일반 error)
@@ -27,7 +27,7 @@ import (
 //   - 500 Internal Server Error 로깅
 //   - HEAD 요청 처리 (Body 없음)
 //   - 이미 응답이 커밋된 경우 처리
-func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
+func TestErrorHandler_Comprehensive(t *testing.T) {
 	// 로거 캡처 설정
 	buf := new(bytes.Buffer)
 	setupTestLogger(buf)
@@ -147,7 +147,7 @@ func TestCustomHTTPErrorHandler_Comprehensive(t *testing.T) {
 			}
 
 			// 테스트 실행
-			CustomHTTPErrorHandler(tt.err, c)
+			ErrorHandler(tt.err, c)
 
 			// 응답 검증
 			assert.Equal(t, tt.expectedStatus, rec.Code)

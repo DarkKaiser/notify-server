@@ -3,7 +3,7 @@ package handler
 import (
 	"github.com/darkkaiser/notify-server/internal/pkg/validator"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	commonhandler "github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -38,19 +38,19 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
 		h.log(c).WithField("error", err).Warn("요청 바인딩 실패")
-		return commonhandler.NewBadRequestError("잘못된 요청 형식입니다")
+		return httputil.NewBadRequestError("잘못된 요청 형식입니다")
 	}
 
 	// 2. 입력 검증
 	if err := validator.Struct(req); err != nil {
 		h.log(c).WithField("error", err).Warn("입력 검증 실패")
-		return commonhandler.NewBadRequestError(validator.FormatValidationError(err))
+		return httputil.NewBadRequestError(validator.FormatValidationError(err))
 	}
 
 	appKey := c.QueryParam(constants.QueryParamAppKey)
 	if appKey == "" {
 		h.log(c).WithField("application_id", req.ApplicationID).Warn("app_key가 비어있음")
-		return commonhandler.NewBadRequestError(constants.ErrMsgAppKeyRequired)
+		return httputil.NewBadRequestError(constants.ErrMsgAppKeyRequired)
 	}
 
 	// 3. 인증
@@ -70,7 +70,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 
 	// 5. 성공 응답
-	return commonhandler.NewSuccessResponse(c)
+	return httputil.NewSuccessResponse(c)
 }
 
 // log는 공통 로깅 필드가 설정된 로거 엔트리를 반환합니다.

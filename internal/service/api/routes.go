@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
@@ -38,5 +39,5 @@ func setupSwaggerRoutes(e *echo.Echo) {
 
 // setupErrorHandler 커스텀 HTTP 에러 핸들러를 설정합니다.
 func setupErrorHandler(e *echo.Echo) {
-	e.HTTPErrorHandler = handler.CustomHTTPErrorHandler
+	e.HTTPErrorHandler = httputil.ErrorHandler
 }

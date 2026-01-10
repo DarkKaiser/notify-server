@@ -5,7 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -56,7 +56,7 @@ func NewApplicationManager(appConfig *config.AppConfig) *ApplicationManager {
 func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain.Application, error) {
 	app, ok := m.applications[applicationID]
 	if !ok {
-		return nil, handler.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
 	}
 
 	if app.AppKey != appKey {
@@ -65,7 +65,7 @@ func (m *ApplicationManager) Authenticate(applicationID, appKey string) (*domain
 			"received_app_key": strutil.Mask(appKey),
 		}).Warn("APP_KEY 불일치")
 
-		return nil, handler.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
 	}
 
 	return app, nil

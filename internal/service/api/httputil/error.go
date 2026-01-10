@@ -1,4 +1,4 @@
-package handler
+package httputil
 
 import (
 	"net/http"
@@ -9,9 +9,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// CustomHTTPErrorHandler 커스텀 HTTP 에러 핸들러입니다.
+// ErrorHandler 커스텀 HTTP 에러 핸들러입니다.
 // 모든 HTTP 에러를 표준 ErrorResponse 형식으로 반환합니다.
-func CustomHTTPErrorHandler(err error, c echo.Context) {
+func ErrorHandler(err error, c echo.Context) {
 	code := http.StatusInternalServerError
 	message := constants.ErrMsgInternalServer
 
