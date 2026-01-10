@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/infra"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -68,7 +68,7 @@ func TestHealthCheckHandler_Table(t *testing.T) {
 			if assert.NoError(t, h.HealthCheckHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 
-				var healthResp response.HealthResponse
+				var healthResp infra.HealthResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedStatus, healthResp.Status)
@@ -111,7 +111,7 @@ func TestVersionHandler_Table(t *testing.T) {
 			if assert.NoError(t, h.VersionHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 
-				var versionResp response.VersionResponse
+				var versionResp infra.VersionResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.buildInfo.Version, versionResp.Version)

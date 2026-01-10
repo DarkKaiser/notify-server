@@ -7,7 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/infra"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -65,16 +65,16 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
 	// 의존성 상태 체크
-	deps := make(map[string]response.DependencyStatus)
+	deps := make(map[string]infra.DependencyStatus)
 
 	// NotificationService 상태 체크
 	if h.notificationSender != nil {
-		deps[dependencyNotificationService] = response.DependencyStatus{
+		deps[dependencyNotificationService] = infra.DependencyStatus{
 			Status:  statusHealthy,
 			Message: "정상 작동 중",
 		}
 	} else {
-		deps[dependencyNotificationService] = response.DependencyStatus{
+		deps[dependencyNotificationService] = infra.DependencyStatus{
 			Status:  statusUnhealthy,
 			Message: "서비스가 초기화되지 않음",
 		}
@@ -89,7 +89,7 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, response.HealthResponse{
+	return c.JSON(http.StatusOK, infra.HealthResponse{
 		Status:       overallStatus,
 		Uptime:       uptime,
 		Dependencies: deps,
@@ -112,7 +112,7 @@ func (h *SystemHandler) VersionHandler(c echo.Context) error {
 		"endpoint": "/version",
 	}).Debug("버전 정보 요청")
 
-	return c.JSON(http.StatusOK, response.VersionResponse{
+	return c.JSON(http.StatusOK, infra.VersionResponse{
 		Version:     h.buildInfo.Version,
 		BuildDate:   h.buildInfo.BuildDate,
 		BuildNumber: h.buildInfo.BuildNumber,

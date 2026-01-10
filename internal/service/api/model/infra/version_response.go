@@ -1,4 +1,4 @@
-package response
+package infra
 
 // VersionResponse 서버 버전 정보 응답 모델
 type VersionResponse struct {

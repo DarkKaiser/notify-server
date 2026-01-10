@@ -9,10 +9,10 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/testutil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

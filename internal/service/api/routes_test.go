@@ -8,7 +8,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/infra"
+	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 			path:           "/health",
 			expectedStatus: http.StatusOK,
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var healthResp response.HealthResponse
+				var healthResp infra.HealthResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 				require.NoError(t, err)
 				assert.NotEmpty(t, healthResp.Status)
@@ -50,7 +51,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 			path:           "/version",
 			expectedStatus: http.StatusOK,
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var versionResp response.VersionResponse
+				var versionResp infra.VersionResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
 				require.NoError(t, err)
 				assert.Equal(t, "test-version", versionResp.Version)
