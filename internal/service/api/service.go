@@ -14,7 +14,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
@@ -86,7 +87,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent("api.service").Info("API 서비스 시작중...")
+	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작중...")
 
 	if s.notificationSender == nil {
 		defer serviceStopWG.Done()
@@ -95,15 +96,15 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent("api.service").Warn("API 서비스가 이미 시작됨!!!")
+		applog.WithComponent(constants.ComponentService).Warn("API 서비스가 이미 시작됨!!!")
 		return nil
 	}
 
-	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
-
 	s.running = true
 
-	applog.WithComponent("api.service").Info("API 서비스 시작됨")
+	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
+
+	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작됨")
 
 	return nil
 }
@@ -127,7 +128,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 // setupServer Echo 서버 및 라우트를 설정합니다.
 //
 // 다음 순서로 서버를 구성합니다:
-//  1. ApplicationManager 생성 (API 인증 관리)
+//  1. Authenticator 생성 (API 인증 관리)
 //  2. Handler 생성 (System, v1 API)
 //  3. Echo 서버 생성 (미들웨어 포함)
 //  4. 라우트 등록 (전역, v1)
@@ -135,12 +136,12 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 // Returns:
 //   - 설정이 완료된 Echo 인스턴스
 func (s *Service) setupServer() *echo.Echo {
-	// ApplicationManager 생성
-	applicationManager := apiauth.NewApplicationManager(s.appConfig)
+	// Authenticator 생성
+	authenticator := apiauth.NewAuthenticator(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
-	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
+	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
+	v1Handler := v1handler.NewHandler(authenticator, s.notificationSender)
 
 	// Echo 서버 생성
 	e := NewHTTPServer(HTTPServerConfig{
@@ -169,7 +170,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	defer close(done)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
-	applog.WithComponentAndFields("api.service", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"port": port,
 	}).Debug("API 서비스 > http 서버 시작")
 
@@ -198,13 +199,13 @@ func (s *Service) handleServerError(err error) {
 
 	// 정상적인 서버 종료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent("api.service").Info("API 서비스 > http 서버 중지됨")
+		applog.WithComponent(constants.ComponentService).Info("API 서비스 > http 서버 중지됨")
 		return
 	}
 
 	// 예상치 못한 에러 발생
 	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
-	applog.WithComponentAndFields("api.service", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
 	}).Error(message)
@@ -229,14 +230,14 @@ func (s *Service) handleServerError(err error) {
 func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
 	<-serviceStopCtx.Done()
 
-	applog.WithComponent("api.service").Info("API 서비스 중지중...")
+	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지중...")
 
 	// 웹서버 종료
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		applog.WithComponentAndFields("api.service", applog.Fields{
+		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 			"error": err,
 		}).Error("서버 종료 중 오류 발생")
 	}
@@ -246,8 +247,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	// 상태 정리
 	s.runningMu.Lock()
 	s.running = false
-	s.notificationSender = nil
+	// 주의: notificationSender는 의도적으로 nil로 설정하지 않음
+	// - 서버 종료 중에도 다른 고루틴(예: Health Check)이 notificationSender에 접근할 수 있음
+	// - nil로 설정 시 동시 접근으로 인한 nil pointer panic 발생 위험
+	// - 메모리는 GC가 Service 객체 해제 시 자동으로 정리되므로 누수 없음
 	s.runningMu.Unlock()
 
-	applog.WithComponent("api.service").Info("API 서비스 중지됨")
+	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지됨")
 }

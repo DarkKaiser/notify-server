@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	systemhandler "github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 		BuildDate:   "2025-12-05",
 		BuildNumber: "1",
 	}
-	systemHandler := handler.NewSystemHandler(nil, buildInfo)
+	systemHandler := systemhandler.NewHandler(nil, buildInfo)
 	SetupRoutes(e, systemHandler)
 
 	tests := []struct {
@@ -37,7 +38,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 			path:           "/health",
 			expectedStatus: http.StatusOK,
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var healthResp response.HealthResponse
+				var healthResp system.HealthResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 				require.NoError(t, err)
 				assert.NotEmpty(t, healthResp.Status)
@@ -50,7 +51,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 			path:           "/version",
 			expectedStatus: http.StatusOK,
 			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var versionResp response.VersionResponse
+				var versionResp system.VersionResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
 				require.NoError(t, err)
 				assert.Equal(t, "test-version", versionResp.Version)
@@ -114,7 +115,7 @@ func TestGlobalRoutes_TableDriven(t *testing.T) {
 
 func TestSetupRoutes_VerifyRegistration(t *testing.T) {
 	e := echo.New()
-	handler := handler.NewSystemHandler(nil, version.Info{})
+	handler := systemhandler.NewHandler(nil, version.Info{})
 	SetupRoutes(e, handler)
 
 	expected := map[string]string{

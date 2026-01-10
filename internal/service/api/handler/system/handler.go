@@ -1,4 +1,7 @@
-package handler
+// Package system 시스템 관련 HTTP 요청 핸들러를 제공합니다.
+//
+// 이 패키지는 시스템 헬스체크, 버전 정보 등 시스템 수준의 엔드포인트를 처리합니다.
+package system
 
 import (
 	"net/http"
@@ -6,7 +9,8 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -21,8 +25,8 @@ const (
 	dependencyNotificationService = "notification_service"
 )
 
-// SystemHandler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
-type SystemHandler struct {
+// Handler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
+type Handler struct {
 	notificationSender notification.Sender
 
 	buildInfo version.Info
@@ -30,9 +34,9 @@ type SystemHandler struct {
 	serverStartTime time.Time
 }
 
-// NewSystemHandler SystemHandler 인스턴스를 생성합니다.
-func NewSystemHandler(notificationSender notification.Sender, buildInfo version.Info) *SystemHandler {
-	return &SystemHandler{
+// NewHandler Handler 인스턴스를 생성합니다.
+func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
+	return &Handler{
 		notificationSender: notificationSender,
 
 		buildInfo: buildInfo,
@@ -56,24 +60,24 @@ func NewSystemHandler(notificationSender notification.Sender, buildInfo version.
 // @Success 200 {object} response.HealthResponse "서버 정상"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
-func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
-	applog.WithComponentAndFields("api.handler", applog.Fields{
+func (h *Handler) HealthCheckHandler(c echo.Context) error {
+	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 		"endpoint": "/health",
 	}).Debug("헬스체크 요청")
 
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
 	// 의존성 상태 체크
-	deps := make(map[string]response.DependencyStatus)
+	deps := make(map[string]system.DependencyStatus)
 
 	// NotificationService 상태 체크
 	if h.notificationSender != nil {
-		deps[dependencyNotificationService] = response.DependencyStatus{
+		deps[dependencyNotificationService] = system.DependencyStatus{
 			Status:  statusHealthy,
 			Message: "정상 작동 중",
 		}
 	} else {
-		deps[dependencyNotificationService] = response.DependencyStatus{
+		deps[dependencyNotificationService] = system.DependencyStatus{
 			Status:  statusUnhealthy,
 			Message: "서비스가 초기화되지 않음",
 		}
@@ -88,7 +92,7 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, response.HealthResponse{
+	return c.JSON(http.StatusOK, system.HealthResponse{
 		Status:       overallStatus,
 		Uptime:       uptime,
 		Dependencies: deps,
@@ -106,12 +110,12 @@ func (h *SystemHandler) HealthCheckHandler(c echo.Context) error {
 // @Success 200 {object} response.VersionResponse "버전 정보"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
-func (h *SystemHandler) VersionHandler(c echo.Context) error {
-	applog.WithComponentAndFields("api.handler", applog.Fields{
+func (h *Handler) VersionHandler(c echo.Context) error {
+	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 		"endpoint": "/version",
 	}).Debug("버전 정보 요청")
 
-	return c.JSON(http.StatusOK, response.VersionResponse{
+	return c.JSON(http.StatusOK, system.VersionResponse{
 		Version:     h.buildInfo.Version,
 		BuildDate:   h.buildInfo.BuildDate,
 		BuildNumber: h.buildInfo.BuildNumber,

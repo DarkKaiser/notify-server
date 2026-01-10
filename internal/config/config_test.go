@@ -325,7 +325,7 @@ func TestLoad_Integration(t *testing.T) {
 				if tt.errType != apperrors.Unknown {
 					var appErr *apperrors.AppError
 					if errors.As(err, &appErr) {
-						assert.Equal(t, tt.errType, appErr.Type)
+						assert.True(t, apperrors.Is(err, tt.errType))
 					}
 				}
 				assert.Nil(t, cfg)

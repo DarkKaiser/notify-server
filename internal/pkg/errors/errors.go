@@ -25,129 +25,170 @@
 // 에러 체인 탐색:
 //
 //	rootErr := errors.RootCause(err)  // 최상위 원인 에러 반환
-//	errType := errors.GetType(err)    // 에러 타입 추출
+//
+// # ErrorType 선택 가이드
+//
+// 각 ErrorType은 에러의 성격과 원인에 따라 구분됩니다.
+// 적절한 타입을 선택하면 에러 처리 로직을 명확하게 구성할 수 있습니다.
+//
+// Unknown:
+//   - 분류할 수 없는 에러 (기본값, 사용 지양)
+//   - 외부 라이브러리 에러를 AppError로 변환할 수 없을 때
+//
+// Internal:
+//   - 애플리케이션 내부 로직 오류 (버그로 간주)
+//   - nil 포인터 참조, 예상하지 못한 상태, 로직 오류 등
+//   - 예: "예상치 못한 nil 값", "잘못된 상태 전이"
+//
+// System:
+//   - 시스템 또는 인프라 수준의 장애
+//   - 디스크 I/O, 네트워크, 데이터베이스 연결 등
+//   - 예: "파일 읽기 실패", "DB 연결 실패"
+//
+// Unauthorized:
+//   - 인증 실패 (사용자 신원 확인 실패)
+//   - 로그인 필요, 토큰 만료, 잘못된 자격증명 등
+//   - 예: "로그인이 필요합니다", "토큰이 만료되었습니다"
+//
+// Forbidden:
+//   - 권한 부족 (인증은 성공했지만 접근 권한 없음)
+//   - 예: "관리자 권한이 필요합니다", "이 리소스에 접근할 수 없습니다"
+//
+// InvalidInput:
+//   - 사용자 입력값 검증 실패
+//   - 유효성 검사 실패, 잘못된 형식, 필수 값 누락 등
+//   - 예: "이메일 형식이 올바르지 않습니다", "필수 항목이 누락되었습니다"
+//
+// Conflict:
+//   - 리소스 충돌 또는 상태 불일치
+//   - 중복 생성, 동시성 문제, 버전 충돌 등
+//   - 예: "이미 존재하는 사용자입니다", "리소스가 이미 수정되었습니다"
+//
+// NotFound:
+//   - 요청한 리소스를 찾을 수 없음
+//   - 예: "사용자를 찾을 수 없습니다", "페이지가 존재하지 않습니다"
+//
+// ExecutionFailed:
+//   - 비즈니스 로직 또는 외부 프로세스 실행 실패
+//   - 웹 스크래핑 실패, 외부 API 호출 실패, 작업 실행 오류 등
+//   - 예: "페이지 파싱 실패", "외부 API 호출 실패"
+//
+// Timeout:
+//   - 작업 시간 초과
+//   - HTTP 요청 타임아웃, 작업 처리 시간 초과 등
+//   - 예: "요청 시간이 초과되었습니다"
+//
+// Unavailable:
+//   - 서비스 일시적 사용 불가
+//   - 서비스 점검, 과부하, 일시적 장애 등
+//   - 예: "서비스가 일시적으로 사용 불가능합니다"
+//
+// # Wrap 시 타입 선택 원칙
+//
+// 1. 원인 에러가 AppError인 경우:
+//   - 컨텍스트만 추가하고 동일한 타입 유지 (일반적)
+//   - 또는 더 상위 추상화 레벨의 타입으로 변경
+//   - 예: NotFound를 Wrap하여 Internal로 변경 (드물게 사용)
+//
+// 2. 원인 에러가 외부 라이브러리 에러인 경우:
+//   - 에러의 성격에 맞는 적절한 타입 선택
+//   - 예: sql.ErrNoRows → NotFound
+//   - 예: context.DeadlineExceeded → Timeout
+//   - 예: net.Error → System
+//   - 예: json.UnmarshalError → InvalidInput
+//
+// 3. 타입 선택이 애매한 경우:
+//   - 에러가 발생한 계층(layer)을 고려
+//   - 사용자 입력 계층: InvalidInput
+//   - 비즈니스 로직 계층: ExecutionFailed, Conflict 등
+//   - 인프라 계층: System, Timeout, Unavailable
 package errors
-
-//go:generate stringer -type=ErrorType
 
 import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
-// ErrorType 에러의 종류를 나타내는 타입
-type ErrorType int
-
-// 에러 타입 상수
-//
-// 각 에러 타입은 특정 상황에서 사용되며, 에러 처리 로직에서 타입별로 다른 처리를 할 수 있습니다.
-const (
-	// Unknown 알 수 없는 에러 (기본값)
-	// 사용 시나리오: 에러 타입을 특정할 수 없거나, AppError가 아닌 표준 에러인 경우
-	Unknown ErrorType = iota
-
-	// Internal 내부 처리 오류
-	// 사용 시나리오:
-	//   - 예상치 못한 내부 로직 오류
-	//   - 복구 불가능한 상태
-	//   - 프로그래밍 오류 (버그)
-	Internal
-
-	// System 시스템 레벨 오류
-	// 사용 시나리오:
-	//   - 파일 시스템 오류 (읽기/쓰기 실패)
-	//   - 네트워크 오류
-	//   - 외부 시스템 연동 실패
-	//   - 리소스 부족 (메모리, 디스크)
-	System
-
-	// Unauthorized 인증 실패
-	// 사용 시나리오:
-	//   - 인증 토큰이 없거나 만료됨
-	//   - 잘못된 자격 증명
-	//   - API 키가 유효하지 않음
-	Unauthorized
-
-	// Forbidden 권한 없음
-	// 사용 시나리오:
-	//   - 인증은 되었으나 해당 리소스에 접근 권한이 없음
-	//   - 역할 기반 접근 제어(RBAC) 위반
-	Forbidden
-
-	// InvalidInput 잘못된 입력값
-	// 사용 시나리오:
-	//   - 유효성 검사 실패 (예: 잘못된 이메일 형식, 범위 초과)
-	//   - JSON 파싱 실패
-	//   - 필수 파라미터 누락
-	//   - 잘못된 설정 값
-	InvalidInput
-
-	// Conflict 리소스 충돌 (이미 존재함)
-	// 사용 시나리오:
-	//   - 중복된 ID로 생성 시도
-	//   - 데이터 무결성 위반
-	Conflict
-
-	// NotFound 리소스를 찾을 수 없음
-	// 사용 시나리오:
-	//   - 파일이 존재하지 않음
-	//   - 데이터베이스 레코드가 없음
-	//   - API 엔드포인트가 존재하지 않음
-	//   - 설정에서 참조하는 ID가 없음
-	NotFound
-
-	// ExecutionFailed 비즈니스 로직이나 작업 실행 과정에서 실패가 발생했을 때 사용합니다.
-	// 사용 시나리오:
-	//   - 크롤링/스크래핑 작업 수행 실패 (파싱 에러, 타임아웃 등)
-	//   - 외부 커맨드 또는 프로세스 실행 실패
-	ExecutionFailed
-
-	// Timeout 작업 수행 시간 초과
-	// 사용 시나리오:
-	//   - 외부 API 응답 지연
-	//   - DB 쿼리 타임아웃
-	//   - 컨텍스트 데드라인 초과
-	Timeout
-
-	// Unavailable 일시적인 서비스 사용 불가
-	// 사용 시나리오:
-	//   - 외부 시스템(스크래핑 대상) 장애
-	//   - 트래픽 폭주로 인한 차단
-	Unavailable
-)
-
-// String ErrorType을 문자열로 반환합니다.
-// 이 메서드는 stringer 도구에 의해 자동 생성됩니다.
-// 수동으로 수정하지 마세요. 대신 `go generate ./...` 를 실행하세요.
-
-// AppError 애플리케이션 전용 에러 구조체
+// AppError 애플리케이션에서 발생하는 모든 에러를 표준화하여 표현하는 구조체입니다.
 type AppError struct {
-	Type    ErrorType // 에러 종류
-	Message string    // 사용자에게 보여줄 메시지
-	Cause   error     // 원인 에러 (Wrapping)
+	errType ErrorType    // 에러의 종류
+	message string       // 사용자에게 보여줄 메시지
+	cause   error        // 이 에러가 발생하게 된 근본 원인 (에러 체이닝)
+	stack   []StackFrame // 에러 발생 시점의 함수 호출 스택 정보
 }
 
-func (e *AppError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("[%s] %s: %v", e.Type, e.Message, e.Cause)
+// Type 에러의 타입을 반환합니다.
+func (e *AppError) Type() ErrorType {
+	return e.errType
+}
+
+// Message 에러 메시지를 반환합니다.
+func (e *AppError) Message() string {
+	return e.message
+}
+
+// Stack 스택 트레이스를 반환합니다.
+func (e *AppError) Stack() []StackFrame {
+	if e.stack == nil {
+		return nil
 	}
-	return fmt.Sprintf("[%s] %s", e.Type, e.Message)
+	return e.stack
+}
+
+// Error 표준 errors.Error 인터페이스를 구현합니다.
+func (e *AppError) Error() string {
+	if e.cause != nil {
+		return fmt.Sprintf("[%s] %s: %v", e.errType, e.message, e.cause)
+	}
+	return fmt.Sprintf("[%s] %s", e.errType, e.message)
+}
+
+// Unwrap 표준 errors.Unwrap 인터페이스를 구현합니다.
+func (e *AppError) Unwrap() error {
+	return e.cause
 }
 
 // Format fmt.Formatter 인터페이스를 구현합니다.
-// %+v 사용 시 에러 체인과 타입 정보를 상세히 출력합니다.
+// %+v 사용 시 에러 체인과 스택 트레이스를 상세히 출력합니다.
 func (e *AppError) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			fmt.Fprintf(s, "[%s] %s", e.Type, e.Message)
-			if e.Cause != nil {
+			// 에러 타입과 메시지
+			fmt.Fprintf(s, "[%s] %s", e.errType, e.message)
+
+			// 스택 트레이스 출력 정책:
+			// 스택 중복 출력을 방지하기 위해 다음 조건에서만 스택을 출력합니다.
+			//
+			// 1. Root 에러인 경우 (cause가 nil)
+			// 2. 외부 에러(표준 error 등)를 감싼 경우 (cause가 AppError가 아님)
+			//
+			// 즉, AppError가 다른 AppError를 감싸고 있는 체인의 중간 단계에서는
+			// 스택을 출력하지 않고, 체인의 가장 끝(Root) 또는 외부 에러와의 경계에서만 출력합니다.
+			var target *AppError
+			if e.cause == nil || !errors.As(e.cause, &target) {
+				if len(e.stack) > 0 {
+					fmt.Fprint(s, "\nStack trace:")
+					for _, frame := range e.stack {
+						// 함수명에서 패키지 경로 간소화
+						funcName := frame.Function
+						if idx := strings.LastIndex(funcName, "/"); idx != -1 {
+							funcName = funcName[idx+1:]
+						}
+						fmt.Fprintf(s, "\n\t%s:%d %s", frame.File, frame.Line, funcName)
+					}
+				}
+			}
+
+			// Cause 출력
+			if e.cause != nil {
 				fmt.Fprint(s, "\nCaused by:\n")
-				if formatter, ok := e.Cause.(fmt.Formatter); ok {
+				if formatter, ok := e.cause.(fmt.Formatter); ok {
 					formatter.Format(s, verb)
 				} else {
-					fmt.Fprintf(s, "\t%v", e.Cause)
+					fmt.Fprintf(s, "\t%v", e.cause)
 				}
 			}
 			return
@@ -163,76 +204,71 @@ func (e *AppError) Format(s fmt.State, verb rune) {
 // New 새로운 에러를 생성합니다.
 func New(errType ErrorType, message string) error {
 	return &AppError{
-		Type:    errType,
-		Message: message,
+		errType: errType,
+		message: message,
+		stack:   captureStack(defaultCallerSkip),
 	}
 }
 
 // Newf 포맷 문자열을 사용하여 새로운 에러를 생성합니다.
-func Newf(errType ErrorType, format string, args ...interface{}) error {
-	return New(errType, fmt.Sprintf(format, args...))
+func Newf(errType ErrorType, format string, args ...any) error {
+	return &AppError{
+		errType: errType,
+		message: fmt.Sprintf(format, args...),
+		stack:   captureStack(defaultCallerSkip),
+	}
 }
 
 // Wrap 기존 에러를 감싸서 새로운 에러를 생성합니다.
-// err이 nil인 경우 nil을 반환합니다.
 func Wrap(err error, errType ErrorType, message string) error {
 	if err == nil {
 		return nil
 	}
 	return &AppError{
-		Type:    errType,
-		Message: message,
-		Cause:   err,
+		errType: errType,
+		message: message,
+		cause:   err,
+		stack:   captureStack(defaultCallerSkip),
 	}
 }
 
 // Wrapf 포맷 문자열을 사용하여 기존 에러를 감쌉니다.
-// err이 nil인 경우 nil을 반환합니다.
-func Wrapf(err error, errType ErrorType, format string, args ...interface{}) error {
+func Wrapf(err error, errType ErrorType, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
-	return Wrap(err, errType, fmt.Sprintf(format, args...))
+	return &AppError{
+		errType: errType,
+		message: fmt.Sprintf(format, args...),
+		cause:   err,
+		stack:   captureStack(defaultCallerSkip),
+	}
 }
 
-// Unwrap 표준 errors.Unwrap 인터페이스를 구현합니다.
-func (e *AppError) Unwrap() error {
-	return e.Cause
-}
-
-// Is 에러 타입이 일치하는지 확인합니다.
-// 에러 체인 전체를 탐색하여 지정된 타입이 존재하는지 검사합니다.
+// Is 에러 체인에 특정 ErrorType이 포함되어 있는지 확인합니다.
 func Is(err error, errType ErrorType) bool {
 	for err != nil {
-		var appErr *AppError
-		if errors.As(err, &appErr) && appErr.Type == errType {
-			return true
+		if appErr, ok := err.(*AppError); ok {
+			if appErr.errType == errType {
+				return true
+			}
 		}
 		err = errors.Unwrap(err)
 	}
 	return false
 }
 
-// As 표준 errors.As 함수를 래핑합니다.
-func As(err error, target interface{}) bool {
+// As 에러 체인에서 특정 타입의 에러를 찾아 대상 변수에 할당합니다.
+func As(err error, target any) bool {
 	return errors.As(err, target)
 }
 
-// Cause 원인 에러를 반환합니다.
-func Cause(err error) error {
-	var appErr *AppError
-	if errors.As(err, &appErr) {
-		return appErr.Cause
-	}
-	return nil
-}
-
-// RootCause 에러 체인의 최상위 원인 에러를 반환합니다.
-// 중첩된 에러를 재귀적으로 unwrap하여 가장 근본적인 원인을 찾습니다.
+// RootCause 에러가 발생한 가장 근본적인 원인 에러를 찾습니다.
 func RootCause(err error) error {
 	if err == nil {
 		return nil
 	}
+
 	for {
 		unwrapped := errors.Unwrap(err)
 		if unwrapped == nil {
@@ -242,15 +278,40 @@ func RootCause(err error) error {
 	}
 }
 
-// GetType 에러 타입을 반환합니다. AppError가 아니거나 nil이면 ErrUnknown을 반환합니다.
-func GetType(err error) ErrorType {
-	if err == nil {
-		return Unknown
+// UnderlyingType 에러 체인에서 가장 안쪽에 있는 AppError의 ErrorType을 반환합니다.
+//
+// 이 함수는 여러 겹으로 래핑된 에러의 근본적인(underlying) 타입을 찾습니다.
+// 에러 체인 전체를 순회하면서 가장 안쪽(Root에 가까운)에 위치한 AppError를 찾아
+// 그 타입을 반환합니다. 외부 라이브러리 에러(sql.ErrNoRows, context.DeadlineExceeded 등)를
+// AppError로 래핑한 경우에도 의도한 ErrorType을 올바르게 반환합니다.
+//
+// 주요 사용 사례:
+//   - HTTP 응답 코드 결정 시 에러의 근본 성격 파악
+//   - 로깅 레벨 결정 시 에러의 본질적 타입 확인
+//   - 여러 단계로 래핑된 에러의 원래 분류 확인
+//
+// 반환값:
+//   - 체인에 AppError가 하나라도 존재하는 경우: 가장 안쪽 AppError의 ErrorType
+//   - 체인에 AppError가 없거나 err이 nil인 경우: Unknown
+//
+// 사용 예시:
+//
+//	// 예시 1: AppError 체인
+//	err := Wrap(New(NotFound, "user not found"), Internal, "query failed")
+//	underlyingType := UnderlyingType(err)  // NotFound 반환
+//
+//	// 예시 2: 외부 에러 래핑
+//	err := Wrap(sql.ErrNoRows, NotFound, "user not found")
+//	underlyingType := UnderlyingType(err)  // NotFound 반환 (외부 에러도 올바르게 분류)
+func UnderlyingType(err error) ErrorType {
+	var lastAppErrorType ErrorType = Unknown
+
+	for err != nil {
+		if appErr, ok := err.(*AppError); ok {
+			lastAppErrorType = appErr.errType
+		}
+		err = errors.Unwrap(err)
 	}
 
-	var appErr *AppError
-	if errors.As(err, &appErr) {
-		return appErr.Type
-	}
-	return Unknown
+	return lastAppErrorType
 }

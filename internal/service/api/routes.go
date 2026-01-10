@@ -1,7 +1,8 @@
 package api
 
 import (
-	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
@@ -12,13 +13,13 @@ import (
 //   - System 엔드포인트: /health, /version (인증 불필요)
 //   - Swagger UI: /swagger/*
 //   - 커스텀 HTTP 에러 핸들러 (404, 500 등)
-func SetupRoutes(e *echo.Echo, h *handler.SystemHandler) {
+func SetupRoutes(e *echo.Echo, h *system.Handler) {
 	setupSystemRoutes(e, h)
 	setupSwaggerRoutes(e)
 	setupErrorHandler(e)
 }
 
-func setupSystemRoutes(e *echo.Echo, h *handler.SystemHandler) {
+func setupSystemRoutes(e *echo.Echo, h *system.Handler) {
 	// System 엔드포인트 (인증 불필요)
 	e.GET("/health", h.HealthCheckHandler)
 	e.GET("/version", h.VersionHandler)
@@ -38,5 +39,5 @@ func setupSwaggerRoutes(e *echo.Echo) {
 
 // setupErrorHandler 커스텀 HTTP 에러 핸들러를 설정합니다.
 func setupErrorHandler(e *echo.Echo) {
-	e.HTTPErrorHandler = handler.CustomHTTPErrorHandler
+	e.HTTPErrorHandler = httputil.ErrorHandler
 }

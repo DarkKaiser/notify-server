@@ -21,7 +21,7 @@ import (
 type Handler struct {
 	// applicationManager 애플리케이션 인증을 담당하는 매니저
 	// API 요청 시 app_key를 검증하여 등록된 애플리케이션인지 확인합니다.
-	applicationManager *auth.ApplicationManager
+	authenticator *auth.Authenticator
 
 	// notificationSender 알림 메시지 발송을 담당하는 인터페이스
 	// 텔레그램 등의 메신저로 메시지를 전송합니다.
@@ -36,9 +36,9 @@ type Handler struct {
 //
 // 반환값:
 //   - 초기화된 Handler 인스턴스
-func NewHandler(applicationManager *auth.ApplicationManager, notificationSender notification.Sender) *Handler {
+func NewHandler(authenticator *auth.Authenticator, notificationSender notification.Sender) *Handler {
 	return &Handler{
-		applicationManager: applicationManager,
+		authenticator: authenticator,
 
 		notificationSender: notificationSender,
 	}
