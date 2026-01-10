@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"sync"
 
@@ -9,7 +12,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
 // Authenticator 애플리케이션 인증을 담당하는 인증자입니다.
@@ -21,6 +23,10 @@ import (
 //
 // Authenticator는 API 버전(v1, v2 등)과 무관하게 모든 핸들러에서 재사용 가능하며,
 // 애플리케이션 인증이 필요한 모든 엔드포인트에서 공통으로 사용됩니다.
+//
+// 보안:
+//   - App Key는 SHA-256 해시로 저장되어 메모리 덤프 공격을 방어합니다.
+//   - Constant-Time 비교를 사용하여 타이밍 공격을 방어합니다.
 //
 // 동시성 안전성:
 //   - sync.RWMutex를 사용하여 동시성 안전을 보장합니다.
@@ -38,28 +44,43 @@ import (
 type Authenticator struct {
 	mu           sync.RWMutex
 	applications map[string]*domain.Application
+	appKeyHashes map[string]string // App Key SHA-256 해시 (보안)
 }
 
 // NewAuthenticator 설정에서 애플리케이션을 로드하여 Authenticator를 생성합니다.
+//
+// 보안:
+//   - App Key는 SHA-256으로 해시되어 저장됩니다.
+//   - 원본 App Key는 메모리에 저장되지 않습니다.
 func NewAuthenticator(appConfig *config.AppConfig) *Authenticator {
 	applications := make(map[string]*domain.Application)
+	appKeyHashes := make(map[string]string)
+
 	for _, application := range appConfig.NotifyAPI.Applications {
 		applications[application.ID] = &domain.Application{
 			ID:                application.ID,
 			Title:             application.Title,
 			Description:       application.Description,
 			DefaultNotifierID: application.DefaultNotifierID,
-			AppKey:            application.AppKey,
 		}
+
+		// App Key를 SHA-256으로 해시하여 저장 (보안)
+		hash := sha256.Sum256([]byte(application.AppKey))
+		appKeyHashes[application.ID] = hex.EncodeToString(hash[:])
 	}
 
 	return &Authenticator{
 		applications: applications,
+		appKeyHashes: appKeyHashes,
 	}
 }
 
 // Authenticate 애플리케이션을 찾고 인증을 수행합니다.
 // 성공 시 Application 객체를 반환하고, 실패 시 적절한 HTTP 에러를 반환합니다.
+//
+// 보안:
+//   - Constant-Time 비교를 사용하여 타이밍 공격을 방어합니다.
+//   - 입력받은 App Key를 SHA-256으로 해시하여 저장된 해시와 비교합니다.
 //
 // 이 메서드는 동시성 안전하며, 여러 고루틴에서 동시에 호출 가능합니다.
 func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Application, error) {
@@ -71,10 +92,15 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
 	}
 
-	if app.AppKey != appKey {
+	// 입력받은 App Key를 SHA-256으로 해시
+	inputHash := sha256.Sum256([]byte(appKey))
+	inputHashStr := hex.EncodeToString(inputHash[:])
+
+	// Constant-Time 비교 (타이밍 공격 방어)
+	storedHash := a.appKeyHashes[applicationID]
+	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHashStr)) != 1 {
 		applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
-			"application_id":   applicationID,
-			"received_app_key": strutil.Mask(appKey),
+			"application_id": applicationID,
 		}).Warn("APP_KEY 불일치")
 
 		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))

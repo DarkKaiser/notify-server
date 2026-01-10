@@ -54,7 +54,7 @@ func TestNewAuthenticator_Table(t *testing.T) {
 				assert.Equal(t, "Test Application", app.Title)
 				assert.Equal(t, "Test Description", app.Description)
 				assert.Equal(t, "test-notifier", app.DefaultNotifierID)
-				assert.Equal(t, "test-key", app.AppKey)
+				// AppKey는 보안을 위해 Application 구조체에 저장되지 않음
 			},
 		},
 		{
@@ -123,7 +123,7 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 			checkApp: func(t *testing.T, app *domain.Application) {
 				assert.Equal(t, "test-app", app.ID)
 				assert.Equal(t, "Test App", app.Title)
-				assert.Equal(t, "valid-key", app.AppKey)
+				// AppKey는 보안을 위해 Application 구조체에 저장되지 않음
 			},
 		},
 		{
