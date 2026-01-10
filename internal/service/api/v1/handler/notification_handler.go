@@ -81,14 +81,23 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		return err
 	}
 
-	// 5. 비즈니스 로직
+	// 5. 알림 전송 (비동기)
+	// 큐가 가득 차거나 시스템이 혼잡한 경우 실패할 수 있으며, 이 경우 503 에러를 반환합니다.
+	ok := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
+	if !ok {
+		h.log(c).WithFields(applog.Fields{
+			"application_id": req.ApplicationID,
+			"notifier_id":    app.DefaultNotifierID,
+		}).Error("알림 메시지 큐 적재 실패 (서비스 혼잡 또는 종료 중)")
+
+		return httputil.NewServiceUnavailableError("현재 알림 서비스가 혼잡하여 요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요.")
+	}
+
 	h.log(c).WithFields(applog.Fields{
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
 	}).Info("알림 메시지 게시 요청 성공")
-
-	h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 
 	// 6. 성공 응답
 	return httputil.NewSuccessResponse(c)

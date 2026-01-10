@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -88,6 +89,7 @@ type mockNotifierHandler struct {
 	id           NotifierID
 	supportsHTML bool
 	notifyCalls  []mockNotifyCall
+	mu           sync.Mutex // notifyCalls 동시성 보호
 }
 
 // mockNotifyCall은 Notify 메서드 호출 기록을 저장합니다.
@@ -102,7 +104,10 @@ func (m *mockNotifierHandler) ID() NotifierID {
 }
 
 // Notify는 알림 메시지를 전송하고 호출 기록을 저장합니다.
+// 동시성 안전을 위해 mutex로 보호됩니다.
 func (m *mockNotifierHandler) Notify(taskCtx task.TaskContext, message string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, mockNotifyCall{
 		message: message,
 		taskCtx: taskCtx,

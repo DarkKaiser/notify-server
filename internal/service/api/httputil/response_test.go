@@ -9,133 +9,159 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestNewHTTPError_Table(t *testing.T) {
+// =============================================================================
+// Error Response Tests
+// =============================================================================
+
+// TestErrorResponses는 모든 에러 응답 헬퍼 함수를 검증합니다.
+//
+// 검증 항목:
+//   - 올바른 HTTP 상태 코드 반환
+//   - ErrorResponse 구조체로 래핑
+//   - 메시지 정확성 (빈 문자열 포함)
+func TestErrorResponses(t *testing.T) {
 	tests := []struct {
 		name           string
-		ctor           func(string) error
+		createError    func(string) error
 		message        string
 		expectedStatus int
-		expectSubset   bool // for Unauthorized with dynamic message which might change slightly
 	}{
 		{
-			name:           "BadRequest",
-			ctor:           NewBadRequestError,
+			name:           "BadRequest with message",
+			createError:    NewBadRequestError,
 			message:        "잘못된 요청입니다",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:           "BadRequest Empty",
-			ctor:           NewBadRequestError,
+			name:           "BadRequest with empty message",
+			createError:    NewBadRequestError,
 			message:        "",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "Unauthorized",
-			ctor:           NewUnauthorizedError,
+			createError:    NewUnauthorizedError,
 			message:        "인증이 필요합니다",
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "Unauthorized With AppID",
-			ctor:           NewUnauthorizedError,
-			message:        "접근이 허용되지 않은 application_id(test-app)입니다",
-			expectedStatus: http.StatusUnauthorized,
-			expectSubset:   true,
-		},
-		{
 			name:           "NotFound",
-			ctor:           NewNotFoundError,
+			createError:    NewNotFoundError,
 			message:        "리소스를 찾을 수 없습니다",
 			expectedStatus: http.StatusNotFound,
 		},
 		{
-			name:           "InternalServerError",
-			ctor:           NewInternalServerError,
-			message:        "서버 내부 오류가 발생했습니다",
-			expectedStatus: http.StatusInternalServerError,
-		},
-		{
 			name:           "TooManyRequests",
-			ctor:           NewTooManyRequestsError,
+			createError:    NewTooManyRequestsError,
 			message:        "요청이 너무 많습니다",
 			expectedStatus: http.StatusTooManyRequests,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.ctor(tt.message)
-			assert.Error(t, err)
-
-			httpErr, ok := err.(*echo.HTTPError)
-			assert.True(t, ok)
-			assert.Equal(t, tt.expectedStatus, httpErr.Code)
-
-			errResp, ok := httpErr.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-
-			if tt.expectSubset {
-				assert.Contains(t, errResp.Message, "application_id")
-			} else {
-				assert.Equal(t, tt.message, errResp.Message)
-			}
-		})
-	}
-}
-
-func TestNewSuccessResponse_Table(t *testing.T) {
-	tests := []struct {
-		name         string
-		setupContext func() (echo.Context, *httptest.ResponseRecorder)
-	}{
 		{
-			name: "Success Response",
-			setupContext: func() (echo.Context, *httptest.ResponseRecorder) {
-				e := echo.New()
-				req := httptest.NewRequest(http.MethodGet, "/", nil)
-				rec := httptest.NewRecorder()
-				return e.NewContext(req, rec), rec
-			},
+			name:           "InternalServerError",
+			createError:    NewInternalServerError,
+			message:        "서버 내부 오류",
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "ServiceUnavailable",
+			createError:    NewServiceUnavailableError,
+			message:        "서비스 이용 불가",
+			expectedStatus: http.StatusServiceUnavailable,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, rec := tt.setupContext()
-			err := NewSuccessResponse(c)
+			// 에러 생성
+			err := tt.createError(tt.message)
 
-			assert.NoError(t, err)
-			assert.Equal(t, http.StatusOK, rec.Code)
-			assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+			// 에러가 반환되는지 확인
+			require.Error(t, err)
 
-			var resp response.SuccessResponse
-			json.Unmarshal(rec.Body.Bytes(), &resp)
-			assert.Equal(t, 0, resp.ResultCode)
+			// echo.HTTPError 타입 확인
+			httpErr, ok := err.(*echo.HTTPError)
+			require.True(t, ok, "Error should be *echo.HTTPError")
+
+			// 상태 코드 확인
+			assert.Equal(t, tt.expectedStatus, httpErr.Code)
+
+			// ErrorResponse 구조체 확인
+			errResp, ok := httpErr.Message.(response.ErrorResponse)
+			require.True(t, ok, "Message should be response.ErrorResponse")
+
+			// 메시지 확인
+			assert.Equal(t, tt.message, errResp.Message)
 		})
 	}
 }
 
-func TestResponseHelpers_Integration_Table(t *testing.T) {
-	// Simple integration check to ensure all helpers produce echo.HTTPError wrapping ExpectedResponse
-	helpers := []struct {
-		name string
-		err  error
-	}{
-		{"BadRequest", NewBadRequestError("bad")},
-		{"Unauthorized", NewUnauthorizedError("unauth")},
-		{"NotFound", NewNotFoundError("404")},
-		{"Internal", NewInternalServerError("500")},
-		{"TooManyRequests", NewTooManyRequestsError("too many")},
-	}
+// =============================================================================
+// Success Response Tests
+// =============================================================================
 
-	for _, h := range helpers {
-		t.Run(h.name, func(t *testing.T) {
-			httpErr, ok := h.err.(*echo.HTTPError)
-			assert.True(t, ok)
-			_, ok = httpErr.Message.(response.ErrorResponse)
-			assert.True(t, ok)
-		})
-	}
+// TestNewSuccessResponse는 성공 응답 생성을 검증합니다.
+//
+// 검증 항목:
+//   - 200 OK 상태 코드
+//   - application/json Content-Type
+//   - ResultCode가 0인 SuccessResponse
+func TestNewSuccessResponse(t *testing.T) {
+	// Echo 컨텍스트 설정
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// 성공 응답 생성
+	err := NewSuccessResponse(c)
+
+	// 에러가 없어야 함
+	assert.NoError(t, err)
+
+	// HTTP 상태 코드 확인
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// Content-Type 확인
+	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+
+	// 응답 본문 파싱
+	var resp response.SuccessResponse
+	err = json.Unmarshal(rec.Body.Bytes(), &resp)
+	require.NoError(t, err, "Response body should be valid JSON")
+
+	// ResultCode 확인
+	assert.Equal(t, 0, resp.ResultCode)
+}
+
+// =============================================================================
+// Edge Case Tests
+// =============================================================================
+
+// TestErrorResponses_LongMessage는 긴 메시지 처리를 검증합니다.
+func TestErrorResponses_LongMessage(t *testing.T) {
+	longMessage := string(make([]byte, 10000)) // 10KB 메시지
+
+	err := NewBadRequestError(longMessage)
+	require.Error(t, err)
+
+	httpErr := err.(*echo.HTTPError)
+	errResp := httpErr.Message.(response.ErrorResponse)
+
+	assert.Equal(t, longMessage, errResp.Message)
+}
+
+// TestErrorResponses_SpecialCharacters는 특수 문자 처리를 검증합니다.
+func TestErrorResponses_SpecialCharacters(t *testing.T) {
+	specialChars := "특수문자: <>&\"'\n\t\r"
+
+	err := NewUnauthorizedError(specialChars)
+	require.Error(t, err)
+
+	httpErr := err.(*echo.HTTPError)
+	errResp := httpErr.Message.(response.ErrorResponse)
+
+	assert.Equal(t, specialChars, errResp.Message)
 }

@@ -167,14 +167,15 @@ func (s *Service) NotifyWithTitle(notifierID string, title string, message strin
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
 func (s *Service) NotifyDefault(message string) bool {
 	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	if s.defaultNotifier == nil {
+		s.runningMu.Unlock()
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 		return false
 	}
+	notifier := s.defaultNotifier
+	s.runningMu.Unlock()
 
-	return s.defaultNotifier.Notify(nil, message)
+	return notifier.Notify(nil, message)
 }
 
 // NotifyDefaultWithError 시스템 기본 알림 채널로 "에러" 알림 메시지를 발송합니다.
@@ -188,14 +189,15 @@ func (s *Service) NotifyDefault(message string) bool {
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
 func (s *Service) NotifyDefaultWithError(message string) bool {
 	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	if s.defaultNotifier == nil {
+		s.runningMu.Unlock()
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 에러 메시지를 전송할 수 없습니다")
 		return false
 	}
+	notifier := s.defaultNotifier
+	s.runningMu.Unlock()
 
-	return s.defaultNotifier.Notify(task.NewTaskContext().WithError(), message)
+	return notifier.Notify(task.NewTaskContext().WithError(), message)
 }
 
 // Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
@@ -209,10 +211,12 @@ func (s *Service) NotifyDefaultWithError(message string) bool {
 // 반환값:
 //   - bool: 발송 요청이 성공적으로 큐에 등록되었는지 여부 (실제 전송 성공 여부는 아님)
 func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message string) bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	var targetNotifier NotifierHandler
+	var defaultNotifier NotifierHandler
 
+	s.runningMu.Lock()
 	if !s.running {
+		s.runningMu.Unlock()
 		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": notifierID,
 		}).Warn("Notification 서비스가 실행 중이 아니어서 메시지를 전송할 수 없습니다")
@@ -222,8 +226,15 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 	id := NotifierID(notifierID)
 	for _, h := range s.notifiers {
 		if h.ID() == id {
-			return h.Notify(taskCtx, message)
+			targetNotifier = h
+			break
 		}
+	}
+	defaultNotifier = s.defaultNotifier
+	s.runningMu.Unlock()
+
+	if targetNotifier != nil {
+		return targetNotifier.Notify(taskCtx, message)
 	}
 
 	m := fmt.Sprintf("알 수 없는 Notifier('%s')입니다. 알림메시지 발송이 실패하였습니다.(Message:%s)", notifierID, message)
@@ -232,7 +243,9 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		"notifier_id": notifierID,
 	}).Error(m)
 
-	s.defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
+	if defaultNotifier != nil {
+		defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
+	}
 
 	return false
 }

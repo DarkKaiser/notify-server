@@ -28,6 +28,13 @@ func NewNotFoundError(message string) error {
 	})
 }
 
+// NewTooManyRequestsError 429 Too Many Requests 에러를 생성합니다
+func NewTooManyRequestsError(message string) error {
+	return echo.NewHTTPError(http.StatusTooManyRequests, response.ErrorResponse{
+		Message: message,
+	})
+}
+
 // NewInternalServerError 500 Internal Server Error 에러를 생성합니다
 func NewInternalServerError(message string) error {
 	return echo.NewHTTPError(http.StatusInternalServerError, response.ErrorResponse{
@@ -35,9 +42,9 @@ func NewInternalServerError(message string) error {
 	})
 }
 
-// NewTooManyRequestsError 429 Too Many Requests 에러를 생성합니다
-func NewTooManyRequestsError(message string) error {
-	return echo.NewHTTPError(http.StatusTooManyRequests, response.ErrorResponse{
+// NewServiceUnavailableError 503 Service Unavailable 에러를 생성합니다
+func NewServiceUnavailableError(message string) error {
+	return echo.NewHTTPError(http.StatusServiceUnavailable, response.ErrorResponse{
 		Message: message,
 	})
 }

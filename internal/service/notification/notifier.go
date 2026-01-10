@@ -56,12 +56,20 @@ func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded b
 		return false
 	}
 
-	n.requestC <- &notifyRequest{
+	// 채널이 가득 찬 경우 대기하지 않고 즉시 false 반환
+	select {
+	case n.requestC <- &notifyRequest{
 		taskCtx: taskCtx,
 		message: message,
-	}
+	}:
+		return true
+	default:
+		applog.WithComponentAndFields("notification.service", applog.Fields{
+			"notifier_id": n.ID(),
+		}).Warn("알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop)")
 
-	return true
+		return false
+	}
 }
 
 func (n *notifier) SupportsHTML() bool {

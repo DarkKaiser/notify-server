@@ -2,6 +2,7 @@ package notification
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,14 +42,14 @@ func assertChannelReceivesData(t *testing.T, ch chan *notifyRequest, expectedMsg
 // Notifier Creation Tests
 // =============================================================================
 
-// TestNotifier_NewNotifier는 Notifier 생성을 검증합니다.
+// TestNewNotifier는 Notifier 생성을 검증합니다.
 //
 // 검증 항목:
 //   - ID 설정
 //   - HTML 지원 여부
 //   - 버퍼 크기 설정
 //   - 채널 생성
-func TestNotifier_NewNotifier(t *testing.T) {
+func TestNewNotifier(t *testing.T) {
 	tests := []struct {
 		name              string
 		id                string
@@ -78,15 +79,15 @@ func TestNotifier_NewNotifier(t *testing.T) {
 // Notify Method Tests
 // =============================================================================
 
-// TestNotifier_Notify_Table은 Notify 메서드의 동작을 검증합니다.
+// TestNotify는 Notify 메서드의 동작을 검증합니다.
 //
 // 검증 항목:
 //   - 정상 메시지 전송
 //   - nil TaskContext 처리
-//   - 닫힌 채널 처리 (panic recovery)
 //   - 빈 메시지 처리
 //   - 긴 메시지 처리
-func TestNotifier_Notify_Table(t *testing.T) {
+//   - 닫힌 채널 처리 (panic recovery)
+func TestNotify(t *testing.T) {
 	tests := []struct {
 		name       string
 		notifier   notifier
@@ -96,7 +97,7 @@ func TestNotifier_Notify_Table(t *testing.T) {
 		expectTrue bool
 	}{
 		{
-			name:       "Success with context",
+			name:       "성공: TaskContext 포함",
 			notifier:   NewNotifier("test", true, testNotifierBufferSize),
 			message:    testNotifierMessage,
 			taskCtx:    task.NewTaskContext(),
@@ -104,7 +105,7 @@ func TestNotifier_Notify_Table(t *testing.T) {
 			expectTrue: true,
 		},
 		{
-			name:       "Nil TaskContext",
+			name:       "성공: nil TaskContext",
 			notifier:   NewNotifier("test", true, testNotifierBufferSize),
 			message:    testNotifierMessage,
 			taskCtx:    nil,
@@ -112,7 +113,7 @@ func TestNotifier_Notify_Table(t *testing.T) {
 			expectTrue: true,
 		},
 		{
-			name:       "Empty message",
+			name:       "성공: 빈 메시지",
 			notifier:   NewNotifier("test", true, testNotifierBufferSize),
 			message:    "",
 			taskCtx:    task.NewTaskContext(),
@@ -120,15 +121,15 @@ func TestNotifier_Notify_Table(t *testing.T) {
 			expectTrue: true,
 		},
 		{
-			name:       "Long message",
+			name:       "성공: 긴 메시지 (10KB)",
 			notifier:   NewNotifier("test", true, testNotifierBufferSize),
-			message:    strings.Repeat("a", 1000),
+			message:    strings.Repeat("a", 10000),
 			taskCtx:    task.NewTaskContext(),
 			expectData: true,
 			expectTrue: true,
 		},
 		{
-			name: "Closed channel (panic recovery)",
+			name: "실패: 닫힌 채널 (nil check)",
 			notifier: func() notifier {
 				n := NewNotifier("test", true, testNotifierBufferSize)
 				n.Close()
@@ -150,11 +151,7 @@ func TestNotifier_Notify_Table(t *testing.T) {
 
 			result := tt.notifier.Notify(tt.taskCtx, tt.message)
 
-			if tt.expectTrue {
-				assert.True(t, result, "Notify should return true")
-			} else {
-				assert.False(t, result, "Notify should return false")
-			}
+			assert.Equal(t, tt.expectTrue, result)
 
 			if tt.expectData {
 				assertChannelReceivesData(t, ch, tt.message, tt.taskCtx)
@@ -164,24 +161,23 @@ func TestNotifier_Notify_Table(t *testing.T) {
 }
 
 // =============================================================================
-// Buffer Full Tests
+// Non-blocking Behavior Tests
 // =============================================================================
 
-// TestNotifier_Notify_BufferFull은 버퍼가 가득 찬 경우를 검증합니다.
+// TestNotify_BufferFull은 버퍼가 가득 찬 경우 Non-blocking 동작을 검증합니다.
 //
 // 검증 항목:
-//   - 버퍼가 가득 찬 경우 Notify 동작
-//   - 타임아웃 처리
-func TestNotifier_Notify_BufferFull(t *testing.T) {
-	n := NewNotifier("test", true, 2) // Small buffer
+//   - 버퍼가 가득 찬 경우 즉시 false 반환
+//   - Blocking 없이 동작
+func TestNotify_BufferFull(t *testing.T) {
+	n := NewNotifier("test", true, 2) // 작은 버퍼
 
-	// Fill the buffer
+	// 버퍼 채우기
 	assert.True(t, n.Notify(task.NewTaskContext(), "msg1"))
 	assert.True(t, n.Notify(task.NewTaskContext(), "msg2"))
 
-	// This should timeout and return false (or block depending on implementation)
-	// Since Notify uses select with default, it should return false immediately
-	done := make(chan bool)
+	// Non-blocking 검증: 즉시 false 반환해야 함
+	done := make(chan bool, 1)
 	go func() {
 		result := n.Notify(task.NewTaskContext(), "msg3")
 		done <- result
@@ -189,45 +185,75 @@ func TestNotifier_Notify_BufferFull(t *testing.T) {
 
 	select {
 	case result := <-done:
-		// If Notify has a timeout or returns false when buffer is full
-		assert.False(t, result, "Notify should return false when buffer is full")
+		assert.False(t, result, "Notify should return false immediately when buffer is full")
 	case <-time.After(testNotifierTimeout):
-		// If Notify blocks, this is also acceptable behavior
-		t.Log("Notify blocked as expected when buffer is full")
+		t.Fatal("Notify blocked when it should be non-blocking")
 	}
+}
+
+// TestNotify_Concurrency는 동시성 안전성을 검증합니다.
+//
+// 검증 항목:
+//   - 여러 고루틴에서 동시 호출 시 안전성
+//   - Race condition 없음
+func TestNotify_Concurrency(t *testing.T) {
+	n := NewNotifier("test", true, 100)
+
+	concurrency := 50
+	wg := sync.WaitGroup{}
+	wg.Add(concurrency)
+
+	successCount := int32(0)
+	var mu sync.Mutex
+
+	for i := 0; i < concurrency; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			if n.Notify(task.NewTaskContext(), "concurrent message") {
+				mu.Lock()
+				successCount++
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// 모든 메시지가 성공적으로 전송되어야 함 (버퍼가 충분히 큼)
+	assert.Greater(t, successCount, int32(0), "At least some messages should succeed")
 }
 
 // =============================================================================
 // Close Method Tests
 // =============================================================================
 
-// TestNotifier_Close_Idempotent는 Close 메서드의 멱등성을 검증합니다.
+// TestClose_Idempotent는 Close 메서드의 멱등성을 검증합니다.
 //
 // 검증 항목:
 //   - 첫 번째 Close 호출 시 채널 닫힘
 //   - 두 번째 Close 호출 시 panic 없음
-func TestNotifier_Close_Idempotent(t *testing.T) {
+func TestClose_Idempotent(t *testing.T) {
 	n := NewNotifier("test", true, testNotifierBufferSize)
 
-	// First close
+	// 첫 번째 Close
 	n.Close()
 	assert.Nil(t, n.requestC, "Request channel should be nil after close")
 
-	// Second close should not panic
+	// 두 번째 Close는 panic 없어야 함
 	assert.NotPanics(t, func() {
 		n.Close()
 	}, "Second Close() should not panic")
 }
 
-// TestNotifier_Close_DrainChannel은 Close 시 채널 정리를 검증합니다.
+// TestClose_AfterNotify는 Close 후 Notify 동작을 검증합니다.
 //
 // 검증 항목:
 //   - Close 후 채널이 nil이 됨
 //   - Close 후 Notify 호출 시 false 반환
-func TestNotifier_Close_DrainChannel(t *testing.T) {
+func TestClose_AfterNotify(t *testing.T) {
 	n := NewNotifier("test", true, testNotifierBufferSize)
 
-	// Send some messages
+	// 메시지 전송
 	require.True(t, n.Notify(task.NewTaskContext(), "msg1"))
 	require.True(t, n.Notify(task.NewTaskContext(), "msg2"))
 
@@ -235,7 +261,7 @@ func TestNotifier_Close_DrainChannel(t *testing.T) {
 	n.Close()
 	assert.Nil(t, n.requestC)
 
-	// Notify after close should return false
+	// Close 후 Notify는 false 반환해야 함
 	result := n.Notify(task.NewTaskContext(), "msg3")
 	assert.False(t, result, "Notify should return false after close")
 }

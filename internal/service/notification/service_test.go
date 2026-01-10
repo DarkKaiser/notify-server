@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -83,12 +84,8 @@ func assertNotifyNotCalled(t *testing.T, mock *mockNotifierHandler) {
 // Service Initialization Tests
 // =============================================================================
 
-// TestNotificationService_NewService는 Service 생성을 검증합니다.
-//
-// 검증 항목:
-//   - Service 인스턴스 생성
-//   - 필드 초기화 (appConfig, executor, running, notifiersStopWG)
-func TestNotificationService_NewService(t *testing.T) {
+// TestNewService는 Service 생성을 검증합니다.
+func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &MockExecutor{}
 	service := NewService(appConfig, mockExecutor)
@@ -98,18 +95,15 @@ func TestNotificationService_NewService(t *testing.T) {
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
 	assert.NotNil(t, service.notifiersStopWG)
+	assert.NotNil(t, service.notifierFactory)
 }
 
 // =============================================================================
 // HTML Support Tests
 // =============================================================================
 
-// TestNotificationService_SupportsHTML은 HTML 지원 여부 확인을 검증합니다.
-//
-// 검증 항목:
-//   - 존재하는 Notifier의 HTML 지원 여부
-//   - 존재하지 않는 Notifier의 처리
-func TestNotificationService_SupportsHTML(t *testing.T) {
+// TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
+func TestSupportsHTML(t *testing.T) {
 	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
 	service := &Service{notifiers: []NotifierHandler{mockNotifier}}
 
@@ -118,8 +112,8 @@ func TestNotificationService_SupportsHTML(t *testing.T) {
 		notifierID string
 		want       bool
 	}{
-		{"Existing notifier supporting HTML", "test", true},
-		{"Non-existent notifier", "unknown", false},
+		{"존재하는 Notifier (HTML 지원)", "test", true},
+		{"존재하지 않는 Notifier", "unknown", false},
 	}
 
 	for _, tt := range tests {
@@ -133,13 +127,8 @@ func TestNotificationService_SupportsHTML(t *testing.T) {
 // Notification Sending Tests
 // =============================================================================
 
-// TestNotificationService_Notify_Table은 알림 발송 기능을 검증합니다.
-//
-// 검증 항목:
-//   - 정상 메시지 발송
-//   - 에러 메시지 발송
-//   - 존재하지 않는 Notifier 처리 (기본 Notifier로 폴백)
-func TestNotificationService_Notify_Table(t *testing.T) {
+// TestServiceNotify는 Service의 Notify 메서드를 검증합니다.
+func TestServiceNotify(t *testing.T) {
 	tests := []struct {
 		name           string
 		notifierID     string
@@ -150,7 +139,7 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 		expectedErrCtx bool
 	}{
 		{
-			name:          "Success normal message",
+			name:          "성공: 일반 메시지",
 			notifierID:    testNotifierID,
 			message:       "test msg",
 			isError:       false,
@@ -158,7 +147,7 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 			expectedMsg:   "test msg",
 		},
 		{
-			name:           "Success error message",
+			name:           "성공: 에러 메시지",
 			notifierID:     testNotifierID,
 			message:        "error msg",
 			isError:        true,
@@ -167,7 +156,7 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 			expectedErrCtx: true,
 		},
 		{
-			name:           "Unknown notifier (fallback to default)",
+			name:           "실패: 존재하지 않는 Notifier (기본 Notifier로 폴백)",
 			notifierID:     "unknown",
 			message:        "msg",
 			expectSuccess:  false,
@@ -196,55 +185,84 @@ func TestNotificationService_Notify_Table(t *testing.T) {
 	}
 }
 
-// TestNotificationService_NotifyMethods_Table은 다양한 알림 메서드를 검증합니다.
-//
-// 검증 항목:
-//   - NotifyDefault
-//   - NotifyDefaultWithError
-//   - NotifyWithTaskContext
-func TestNotificationService_NotifyMethods_Table(t *testing.T) {
+// TestNotifyWithTitle는 NotifyWithTitle 메서드를 검증합니다.
+func TestNotifyWithTitle(t *testing.T) {
 	tests := []struct {
-		name            string
-		method          string // "Default", "DefaultError", "WithContext"
-		targetID        string // Used for WithContext
-		message         string
-		expectSuccess   bool
-		isError         bool // Added missing isError field
-		expectedCall    bool // on the targeted notifier
-		expectedDefCall bool // on default notifier (fallback or direct)
+		name          string
+		title         string
+		message       string
+		errorOccurred bool
+		expectSuccess bool
 	}{
 		{
-			name:            "NotifyDefault Success",
+			name:          "성공: 일반 알림",
+			title:         "Test Title",
+			message:       "Test Message",
+			errorOccurred: false,
+			expectSuccess: true,
+		},
+		{
+			name:          "성공: 에러 알림",
+			title:         "Error Title",
+			message:       "Error Message",
+			errorOccurred: true,
+			expectSuccess: true,
+		},
+		{
+			name:          "성공: 빈 제목",
+			title:         "",
+			message:       "Message",
+			errorOccurred: false,
+			expectSuccess: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
+				notifierID:   testNotifierID,
+				supportsHTML: true,
+				running:      true,
+			})
+
+			result := service.NotifyWithTitle(testNotifierID, tt.title, tt.message, tt.errorOccurred)
+
+			assert.Equal(t, tt.expectSuccess, result)
+			require.Len(t, mockNotifier.notifyCalls, 1)
+			assert.Equal(t, tt.message, mockNotifier.notifyCalls[0].message)
+
+			// TaskContext 검증
+			ctx := mockNotifier.notifyCalls[0].taskCtx
+			require.NotNil(t, ctx)
+			if tt.errorOccurred {
+				assert.True(t, ctx.IsErrorOccurred())
+			}
+		})
+	}
+}
+
+// TestNotifyDefault는 기본 알림 메서드들을 검증합니다.
+func TestNotifyDefault(t *testing.T) {
+	tests := []struct {
+		name            string
+		method          string // "Default", "DefaultError"
+		message         string
+		expectSuccess   bool
+		expectedDefCall bool
+	}{
+		{
+			name:            "NotifyDefault 성공",
 			method:          "Default",
 			message:         "msg",
 			expectSuccess:   true,
 			expectedDefCall: true,
 		},
 		{
-			name:            "NotifyWithErrorToDefault Success",
+			name:            "NotifyDefaultWithError 성공",
 			method:          "DefaultError",
 			message:         "errorMsg",
 			expectSuccess:   true,
-			isError:         true, // Should be true for NotifyDefaultWithError
-			expectedCall:    true,
 			expectedDefCall: true,
-		},
-		{
-			name:            "NotifyWithTaskContext Success",
-			method:          "WithContext",
-			targetID:        defaultNotifierID,
-			message:         "ctx msg",
-			expectSuccess:   true,
-			expectedDefCall: true,
-		},
-		{
-			name:            "NotifyWithTaskContext Unknown Notifier",
-			method:          "WithContext",
-			targetID:        "unknown",
-			message:         "fail msg",
-			expectSuccess:   false,
-			expectedCall:    false,
-			expectedDefCall: true, // Should fall back to default for error
 		},
 	}
 
@@ -262,20 +280,14 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 				result = service.NotifyDefault(tt.message)
 			case "DefaultError":
 				result = service.NotifyDefaultWithError(tt.message)
-			case "WithContext":
-				result = service.Notify(task.NewTaskContext(), tt.targetID, tt.message)
 			}
 
 			assert.Equal(t, tt.expectSuccess, result)
 
 			if tt.expectedDefCall {
-				require.NotEmpty(t, mockNotifier.notifyCalls, "Expected at least one notify call")
+				require.NotEmpty(t, mockNotifier.notifyCalls)
 				lastCall := mockNotifier.notifyCalls[len(mockNotifier.notifyCalls)-1]
-				if !tt.expectSuccess && tt.method == "WithContext" {
-					assert.Contains(t, lastCall.message, "알 수 없는 Notifier")
-				} else {
-					assert.Equal(t, tt.message, lastCall.message)
-				}
+				assert.Equal(t, tt.message, lastCall.message)
 			} else {
 				assertNotifyNotCalled(t, mockNotifier)
 			}
@@ -283,12 +295,38 @@ func TestNotificationService_NotifyMethods_Table(t *testing.T) {
 	}
 }
 
-// TestNotificationService_MultipleNotifiers는 여러 Notifier 처리를 검증합니다.
-//
-// 검증 항목:
-//   - 특정 Notifier로 메시지 발송
-//   - 다른 Notifier는 호출되지 않음
-func TestNotificationService_MultipleNotifiers(t *testing.T) {
+// TestNotify_NotRunning은 서비스가 실행 중이 아닐 때의 동작을 검증합니다.
+func TestNotify_NotRunning(t *testing.T) {
+	service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
+		notifierID:   testNotifierID,
+		supportsHTML: true,
+		running:      false, // 실행 중이 아님
+	})
+
+	result := service.Notify(task.NewTaskContext(), testNotifierID, "test")
+
+	assert.False(t, result)
+	assertNotifyNotCalled(t, mockNotifier)
+}
+
+// TestNotifyDefault_NilNotifier는 defaultNotifier가 nil일 때의 동작을 검증합니다.
+func TestNotifyDefault_NilNotifier(t *testing.T) {
+	service := &Service{
+		defaultNotifier: nil,
+		running:         true,
+	}
+
+	result := service.NotifyDefault("test")
+
+	assert.False(t, result)
+}
+
+// =============================================================================
+// Multiple Notifiers Tests
+// =============================================================================
+
+// TestMultipleNotifiers는 여러 Notifier 처리를 검증합니다.
+func TestMultipleNotifiers(t *testing.T) {
 	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTML: true}
 	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
 
@@ -297,7 +335,7 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 		running:   true,
 	}
 
-	// Notify n2
+	// n2로 전송
 	result := service.Notify(task.NewTaskContext(), "n2", "msg")
 	assert.True(t, result)
 	assertNotifyNotCalled(t, mockNotifier1)
@@ -305,25 +343,68 @@ func TestNotificationService_MultipleNotifiers(t *testing.T) {
 }
 
 // =============================================================================
+// Concurrency Tests
+// =============================================================================
+
+// TestConcurrencyStress는 고부하 상황에서의 동시성 안전성을 검증합니다.
+func TestConcurrencyStress(t *testing.T) {
+	mockNotifier := &mockNotifierHandler{
+		id:           testNotifierID,
+		supportsHTML: true,
+	}
+
+	service := &Service{
+		appConfig: &config.AppConfig{
+			Notifier: config.NotifierConfig{
+				DefaultNotifierID: testNotifierID,
+			},
+		},
+		notifiers:       []NotifierHandler{mockNotifier},
+		defaultNotifier: mockNotifier,
+		running:         true,
+	}
+
+	concurrency := 100
+	wg := sync.WaitGroup{}
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			service.NotifyWithTitle(testNotifierID, "title", "stress test", false)
+			service.NotifyDefault("default stress")
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 성공
+	case <-time.After(5 * time.Second):
+		t.Fatal("Deadlock 감지 또는 타임아웃 발생")
+	}
+
+	assert.Greater(t, len(mockNotifier.notifyCalls), 0)
+}
+
+// =============================================================================
 // Service Lifecycle Tests
 // =============================================================================
 
-// TestNotificationService_StartAndRun은 Service 생명주기를 검증합니다.
-//
-// 검증 항목:
-//   - Service 시작
-//   - 알림 발송 동작
-//   - Service 종료
-func TestNotificationService_StartAndRun(t *testing.T) {
-	// Consolidating Start/Run tests
-	t.Run("Lifecycle", func(t *testing.T) {
+// TestStartAndRun은 Service 생명주기를 검증합니다.
+func TestStartAndRun(t *testing.T) {
+	t.Run("정상 시작 및 종료", func(t *testing.T) {
 		service, _, mockNotifier := setupMockService()
 		mockNotifier.id = "default"
 
 		cfg := &config.AppConfig{}
 		cfg.Notifier.DefaultNotifierID = "default"
 
-		// Mock factory
 		mockFactory := &mockNotifierFactory{
 			createNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 				return []NotifierHandler{mockNotifier}, nil
@@ -336,15 +417,12 @@ func TestNotificationService_StartAndRun(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		// Start
 		err := service.Start(ctx, wg)
 		assert.NoError(t, err)
 		assert.True(t, service.running)
 
-		// Verify working
 		assert.True(t, service.NotifyDefault("test"))
 
-		// Shutdown
 		cancel()
 		wg.Wait()
 
@@ -357,13 +435,8 @@ func TestNotificationService_StartAndRun(t *testing.T) {
 // Service Start Error Tests
 // =============================================================================
 
-// TestNotificationService_StartErrors는 Service 시작 시 에러 처리를 검증합니다.
-//
-// 검증 항목:
-//   - Executor가 nil일 때
-//   - Factory에서 에러 반환
-//   - 기본 Notifier를 찾을 수 없을 때
-func TestNotificationService_StartErrors(t *testing.T) {
+// TestStartErrors는 Service 시작 시 에러 처리를 검증합니다.
+func TestStartErrors(t *testing.T) {
 	tests := []struct {
 		name          string
 		cfgSetup      func(*config.AppConfig)
@@ -372,12 +445,12 @@ func TestNotificationService_StartErrors(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name:          "Executor Nil",
+			name:          "Executor가 nil",
 			executorNil:   true,
 			errorContains: "Executor 객체가 초기화되지 않았습니다",
 		},
 		{
-			name: "Factory return error",
+			name: "Factory에서 에러 반환",
 			factorySetup: func(m *mockNotifierFactory) {
 				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return nil, errors.New("factory error")
@@ -386,7 +459,7 @@ func TestNotificationService_StartErrors(t *testing.T) {
 			errorContains: "Notifier 초기화 중 에러가 발생했습니다",
 		},
 		{
-			name: "Missing Default Notifier",
+			name: "기본 Notifier를 찾을 수 없음",
 			cfgSetup: func(c *config.AppConfig) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
@@ -419,7 +492,6 @@ func TestNotificationService_StartErrors(t *testing.T) {
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				// Default success factory if not specified but needed
 				factory.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 					return []NotifierHandler{}, nil
 				}
@@ -431,19 +503,8 @@ func TestNotificationService_StartErrors(t *testing.T) {
 			wg.Add(1)
 
 			err := service.Start(ctx, wg)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.errorContains)
-
-			// If start failed, we might need to manually decrement wg if the service didn't launch the goroutine
-			// In Start() implementation, if it fails before go routine, wg is not touched (or should not be)
-			// But the test case added 1. Start() is supposed to run goroutine which calls done.
-			// If Start returns error, it means goroutine wasn't started usually.
-			// So we don't wait for wg in error cases here.
 		})
 	}
 }
-
-// =============================================================================
-// Mock Implementations
-// =============================================================================
-// Moved to mock_test.go: mockNotifierHandler, mockExecutor (already there), mockNotifierFactory
