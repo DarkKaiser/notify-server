@@ -56,6 +56,12 @@ func TestNewHTTPError_Table(t *testing.T) {
 			message:        "서버 내부 오류가 발생했습니다",
 			expectedStatus: http.StatusInternalServerError,
 		},
+		{
+			name:           "TooManyRequests",
+			ctor:           NewTooManyRequestsError,
+			message:        "요청이 너무 많습니다",
+			expectedStatus: http.StatusTooManyRequests,
+		},
 	}
 
 	for _, tt := range tests {
@@ -121,6 +127,7 @@ func TestResponseHelpers_Integration_Table(t *testing.T) {
 		{"Unauthorized", NewUnauthorizedError("unauth")},
 		{"NotFound", NewNotFoundError("404")},
 		{"Internal", NewInternalServerError("500")},
+		{"TooManyRequests", NewTooManyRequestsError("too many")},
 	}
 
 	for _, h := range helpers {

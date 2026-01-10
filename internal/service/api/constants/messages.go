@@ -14,4 +14,7 @@ const (
 	// ErrMsgAppKeyRequired app_key 파라미터가 누락되었을 때의 에러 메시지입니다.
 	// 헤더(X-App-Key) 또는 쿼리 파라미터(app_key) 두 가지 방식을 모두 안내합니다.
 	ErrMsgAppKeyRequired = "app_key는 필수입니다 (X-App-Key 헤더 또는 app_key 쿼리 파라미터)"
+
+	// ErrMsgTooManyRequests 429 Too Many Requests 에러 메시지입니다.
+	ErrMsgTooManyRequests = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
 )

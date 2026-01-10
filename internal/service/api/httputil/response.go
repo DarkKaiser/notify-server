@@ -35,6 +35,13 @@ func NewInternalServerError(message string) error {
 	})
 }
 
+// NewTooManyRequestsError 429 Too Many Requests 에러를 생성합니다
+func NewTooManyRequestsError(message string) error {
+	return echo.NewHTTPError(http.StatusTooManyRequests, response.ErrorResponse{
+		Message: message,
+	})
+}
+
 // NewSuccessResponse 표준화된 성공 응답을 생성합니다
 func NewSuccessResponse(c echo.Context) error {
 	return c.JSON(http.StatusOK, response.SuccessResponse{

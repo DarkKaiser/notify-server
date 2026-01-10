@@ -32,17 +32,23 @@ type HTTPServerConfig struct {
 //     - 로깅 및 디버깅 시 요청 추적에 사용
 //     - 로깅 미들웨어보다 먼저 적용되어야 로그에 request_id 포함 가능
 //
-//  3. HTTPLogger - HTTP 요청/응답 로깅
+//  3. RateLimiting - IP 기반 요청 제한
+//     - IP 주소별로 초당 요청 수 제한 (기본: 20 req/s, 버스트: 40)
+//     - Brute Force 공격 방어 및 서버 리소스 보호
+//     - 제한 초과 시 429 Too Many Requests 응답
+//     - 로깅 전에 적용하여 과도한 로그 생성 방지
+//
+//  4. HTTPLogger - HTTP 요청/응답 로깅
 //     - 모든 HTTP 요청과 응답 정보를 구조화된 로그로 기록
 //     - 민감 정보(app_key, password 등)는 자동으로 마스킹
 //     - 요청 처리 시간, 상태 코드, IP 주소 등 기록
 //
-//  4. CORS - Cross-Origin Resource Sharing
+//  5. CORS - Cross-Origin Resource Sharing
 //     - 허용된 Origin에서의 크로스 도메인 요청 처리
 //     - Preflight 요청(OPTIONS) 자동 응답
 //     - 프로덕션 환경에서는 특정 도메인만 허용 권장
 //
-//  5. Secure - 보안 헤더 설정
+//  6. Secure - 보안 헤더 설정
 //     - X-XSS-Protection, X-Content-Type-Options 등 보안 헤더 자동 추가
 //     - XSS, 클릭재킹 등의 공격 방어
 //     - 가장 마지막에 적용되어 모든 응답에 보안 헤더 추가
@@ -61,12 +67,13 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	// 미들웨어 적용 (권장 순서)
 	e.Use(appmiddleware.PanicRecovery())                   // 1. Panic 복구
 	e.Use(middleware.RequestID())                          // 2. Request ID
-	e.Use(appmiddleware.HTTPLogger())                      // 3. HTTP 로깅
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 4. CORS 설정
+	e.Use(appmiddleware.RateLimiting(20, 40))              // 3. Rate Limiting (초당 20, 버스트 40)
+	e.Use(appmiddleware.HTTPLogger())                      // 4. HTTP 로깅
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 5. CORS 설정
 		AllowOrigins: cfg.AllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
-	e.Use(middleware.Secure()) // 5. 보안 헤더
+	e.Use(middleware.Secure()) // 6. 보안 헤더
 
 	return e
 }
