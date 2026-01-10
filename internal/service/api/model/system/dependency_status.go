@@ -1,4 +1,4 @@
-package infra
+package system
 
 // DependencyStatus 의존성 상태 모델
 type DependencyStatus struct {

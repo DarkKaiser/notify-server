@@ -15,7 +15,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/handler"
+	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
@@ -140,7 +140,7 @@ func (s *Service) setupServer() *echo.Echo {
 	applicationManager := apiauth.NewApplicationManager(s.appConfig)
 
 	// Handler 생성
-	systemHandler := handler.NewSystemHandler(s.notificationSender, s.buildInfo)
+	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
 	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
 
 	// Echo 서버 생성

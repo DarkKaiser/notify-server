@@ -1,4 +1,4 @@
-package handler
+package system
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/infra"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
@@ -58,17 +58,17 @@ func TestHealthCheckHandler_Table(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			var h *SystemHandler
+			var h *Handler
 			if tt.useNilService {
-				h = NewSystemHandler(nil, version.Info{})
+				h = NewHandler(nil, version.Info{})
 			} else {
-				h = NewSystemHandler(tt.mockService, version.Info{})
+				h = NewHandler(tt.mockService, version.Info{})
 			}
 
 			if assert.NoError(t, h.HealthCheckHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 
-				var healthResp infra.HealthResponse
+				var healthResp system.HealthResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedStatus, healthResp.Status)
@@ -106,12 +106,12 @@ func TestVersionHandler_Table(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			h := NewSystemHandler(&MockNotificationSender{}, tt.buildInfo)
+			h := NewHandler(&MockNotificationSender{}, tt.buildInfo)
 
 			if assert.NoError(t, h.VersionHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 
-				var versionResp infra.VersionResponse
+				var versionResp system.VersionResponse
 				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.buildInfo.Version, versionResp.Version)

@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )

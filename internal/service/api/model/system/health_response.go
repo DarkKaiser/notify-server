@@ -1,4 +1,4 @@
-package infra
+package system
 
 // HealthResponse 서버 상태 응답 모델
 type HealthResponse struct {
