@@ -5,7 +5,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/testutil"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,10 +65,10 @@ func TestNewHandler_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockService := &testutil.MockNotificationSender{}
+			MockService := &mocks.MockNotificationSender{}
 			appManager := auth.NewApplicationManager(tt.appConfig)
 
-			h := NewHandler(appManager, mockService)
+			h := NewHandler(appManager, MockService)
 
 			require.NotNil(t, h, "Handler should not be nil")
 			require.NotNil(t, h.applicationManager, "ApplicationManager should not be nil")

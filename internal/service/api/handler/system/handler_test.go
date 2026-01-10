@@ -8,36 +8,22 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-// MockNotificationSender는 테스트용 NotificationService입니다.
-type MockNotificationSender struct{}
-
-func (m *MockNotificationSender) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) bool {
-	return true
-}
-
-func (m *MockNotificationSender) NotifyDefault(message string) bool {
-	return true
-}
-
-func (m *MockNotificationSender) NotifyDefaultWithError(message string) bool {
-	return true
-}
-
 func TestHealthCheckHandler_Table(t *testing.T) {
 	tests := []struct {
 		name              string
-		mockService       *MockNotificationSender
+		mockService       *mocks.MockNotificationSender
 		useNilService     bool
 		expectedStatus    string
 		expectedDepStatus string
 	}{
 		{
 			name:              "Healthy",
-			mockService:       &MockNotificationSender{},
+			mockService:       &mocks.MockNotificationSender{},
 			useNilService:     false,
 			expectedStatus:    "healthy",
 			expectedDepStatus: "healthy",
@@ -106,7 +92,7 @@ func TestVersionHandler_Table(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
-			h := NewHandler(&MockNotificationSender{}, tt.buildInfo)
+			h := NewHandler(&mocks.MockNotificationSender{}, tt.buildInfo)
 
 			if assert.NoError(t, h.VersionHandler(c)) {
 				assert.Equal(t, http.StatusOK, rec.Code)

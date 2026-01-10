@@ -10,9 +10,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
-	"github.com/darkkaiser/notify-server/internal/service/api/testutil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,7 +38,7 @@ func TestSetupRoutes_Table(t *testing.T) {
 	e := echo.New()
 	appConfig := createTestAppConfig()
 	applicationManager := apiauth.NewApplicationManager(appConfig)
-	mockService := &testutil.MockNotificationSender{}
+	mockService := &mocks.MockNotificationSender{}
 	h := handler.NewHandler(applicationManager, mockService)
 	SetupRoutes(e, h)
 
@@ -183,7 +183,7 @@ func TestNotificationsEndpoint_Integration_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Per-test Setup
 			e := echo.New()
-			mockService := &testutil.MockNotificationSender{ShouldFail: tt.shouldFail}
+			mockService := &mocks.MockNotificationSender{ShouldFail: tt.shouldFail}
 			h := handler.NewHandler(applicationManager, mockService)
 			SetupRoutes(e, h)
 
