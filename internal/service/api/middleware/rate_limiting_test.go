@@ -12,10 +12,27 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
+
+// TestNewIPRateLimiter_WhiteBox 내부 구조체가 올바르게 초기화되는지 검증합니다.
+func TestNewIPRateLimiter_WhiteBox(t *testing.T) {
+	t.Parallel()
+
+	rps := 10
+	burst := 20
+	limiter := newIPRateLimiter(rps, burst)
+
+	assert.NotNil(t, limiter.limiters)
+	assert.Equal(t, rate.Limit(rps), limiter.rate)
+	assert.Equal(t, burst, limiter.burst)
+	assert.Equal(t, 0, len(limiter.limiters))
+}
 
 // TestRateLimiting_InputValidation 입력 검증을 테스트합니다.
 func TestRateLimiting_InputValidation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name              string
 		requestsPerSecond int
@@ -23,51 +40,18 @@ func TestRateLimiting_InputValidation(t *testing.T) {
 		expectPanic       bool
 		expectedMessage   string
 	}{
-		{
-			name:              "Valid Positive Values",
-			requestsPerSecond: 10,
-			burst:             20,
-			expectPanic:       false,
-		},
-		{
-			name:              "Zero RequestsPerSecond",
-			requestsPerSecond: 0,
-			burst:             20,
-			expectPanic:       true,
-			expectedMessage:   "[RateLimiting] requestsPerSecond는 양수여야 합니다",
-		},
-		{
-			name:              "Negative RequestsPerSecond",
-			requestsPerSecond: -10,
-			burst:             20,
-			expectPanic:       true,
-			expectedMessage:   "[RateLimiting] requestsPerSecond는 양수여야 합니다",
-		},
-		{
-			name:              "Zero Burst",
-			requestsPerSecond: 10,
-			burst:             0,
-			expectPanic:       true,
-			expectedMessage:   "[RateLimiting] burst는 양수여야 합니다",
-		},
-		{
-			name:              "Negative Burst",
-			requestsPerSecond: 10,
-			burst:             -20,
-			expectPanic:       true,
-			expectedMessage:   "[RateLimiting] burst는 양수여야 합니다",
-		},
-		{
-			name:              "Both Zero",
-			requestsPerSecond: 0,
-			burst:             0,
-			expectPanic:       true,
-			expectedMessage:   "[RateLimiting] requestsPerSecond는 양수여야 합니다",
-		},
+		{"Valid Positive Values", 10, 20, false, ""},
+		{"Zero RequestsPerSecond", 0, 20, true, "[RateLimiting] requestsPerSecond는 양수여야 합니다"},
+		{"Negative RequestsPerSecond", -10, 20, true, "[RateLimiting] requestsPerSecond는 양수여야 합니다"},
+		{"Zero Burst", 10, 0, true, "[RateLimiting] burst는 양수여야 합니다"},
+		{"Negative Burst", 10, -20, true, "[RateLimiting] burst는 양수여야 합니다"},
+		{"Both Zero", 0, 0, true, "[RateLimiting] requestsPerSecond는 양수여야 합니다"},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if tt.expectPanic {
 				assert.PanicsWithValue(t, tt.expectedMessage, func() {
 					RateLimiting(tt.requestsPerSecond, tt.burst)
@@ -81,359 +65,236 @@ func TestRateLimiting_InputValidation(t *testing.T) {
 	}
 }
 
-// TestRateLimiting_BasicOperation Rate Limiting 미들웨어의 기본 동작을 검증합니다.
-func TestRateLimiting_BasicOperation(t *testing.T) {
+// TestRateLimiting_Scenarios 다양한 시나리오에 대한 통합 테스트입니다.
+func TestRateLimiting_Scenarios(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name              string
-		requestsPerSecond int
-		burst             int
-		requestCount      int
-		expectedAllowed   int
-		expectedBlocked   int
+		name       string
+		rps        int
+		burst      int
+		operations func(*testing.T, echo.HandlerFunc)
 	}{
 		{
-			name:              "Within Limit",
-			requestsPerSecond: 10,
-			burst:             20,
-			requestCount:      15,
-			expectedAllowed:   15,
-			expectedBlocked:   0,
+			name:  "Basic Allowance and Blocking",
+			rps:   10,
+			burst: 20,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// 1. 버스트 내 요청 허용
+				for i := 0; i < 20; i++ {
+					assertRequest(t, h, "1.1.1.1", http.StatusOK)
+				}
+				// 2. 버스트 초과 요청 차단
+				assertRequest(t, h, "1.1.1.1", http.StatusTooManyRequests)
+			},
 		},
 		{
-			name:              "Exceed Limit",
-			requestsPerSecond: 5,
-			burst:             10,
-			requestCount:      20,
-			expectedAllowed:   10, // 버스트만큼 허용
-			expectedBlocked:   10,
+			name:  "IP Isolation",
+			rps:   1,
+			burst: 1,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// IP A 소진
+				assertRequest(t, h, "1.1.1.1", http.StatusOK)
+				assertRequest(t, h, "1.1.1.1", http.StatusTooManyRequests)
+
+				// IP B는 영향 없어야 함
+				assertRequest(t, h, "2.2.2.2", http.StatusOK)
+				assertRequest(t, h, "2.2.2.2", http.StatusTooManyRequests)
+			},
 		},
 		{
-			name:              "Exact Burst",
-			requestsPerSecond: 10,
-			burst:             5,
-			requestCount:      5,
-			expectedAllowed:   5,
-			expectedBlocked:   0,
+			name:  "Different Paths Share Limit per IP",
+			rps:   1,
+			burst: 1,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// 경로 A 요청으로 제한 소진
+				assertRequestpath(t, h, "1.1.1.1", "/path/a", http.StatusOK)
+
+				// 경로 B 요청도 차단되어야 함 (IP 기준이므로)
+				assertRequestpath(t, h, "1.1.1.1", "/path/b", http.StatusTooManyRequests)
+			},
 		},
-	}
+		{
+			name:  "Response Headers and Body",
+			rps:   1,
+			burst: 1,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// 정상 응답
+				assertRequest(t, h, "1.1.1.1", http.StatusOK)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup
-			e := echo.New()
-			middleware := RateLimiting(tt.requestsPerSecond, tt.burst)
-
-			handler := func(c echo.Context) error {
-				return c.String(http.StatusOK, "success")
-			}
-
-			h := middleware(handler)
-
-			allowed := 0
-			blocked := 0
-
-			// Execute
-			for i := 0; i < tt.requestCount; i++ {
-				req := httptest.NewRequest(http.MethodGet, "/test", nil)
-				req.Header.Set("X-Real-IP", "192.168.1.1")
+				// 차단 응답 검증
+				e := echo.New()
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req.Header.Set("X-Real-IP", "1.1.1.1")
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
 
 				err := h(c)
 
-				if err != nil {
-					blocked++
-					// 429 에러 확인
-					httpErr, ok := err.(*echo.HTTPError)
-					assert.True(t, ok)
-					assert.Equal(t, http.StatusTooManyRequests, httpErr.Code)
-				} else {
-					allowed++
-					assert.Equal(t, http.StatusOK, rec.Code)
-				}
+				// 에러 타입 및 코드 검증
+				require.Error(t, err)
+				httpErr, ok := err.(*echo.HTTPError)
+				require.True(t, ok)
+				assert.Equal(t, http.StatusTooManyRequests, httpErr.Code)
+				assert.Contains(t, fmt.Sprintf("%v", httpErr.Message), constants.ErrMsgTooManyRequests)
+
+				// 헤더 검증
+				assert.Equal(t, "1", rec.Header().Get("Retry-After"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// 목 핸들러
+			mockHandler := func(c echo.Context) error {
+				return c.String(http.StatusOK, "ok")
 			}
 
-			// Verify
-			assert.Equal(t, tt.expectedAllowed, allowed, "Allowed requests count mismatch")
-			assert.Equal(t, tt.expectedBlocked, blocked, "Blocked requests count mismatch")
+			middleware := RateLimiting(tt.rps, tt.burst)
+			h := middleware(mockHandler)
+
+			tt.operations(t, h)
 		})
 	}
 }
 
-// TestRateLimiting_IPIsolation 서로 다른 IP는 독립적인 Rate Limit을 가지는지 검증합니다.
-func TestRateLimiting_IPIsolation(t *testing.T) {
-	// Setup
-	e := echo.New()
-	middleware := RateLimiting(5, 10)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
+// TestRateLimiting_Recovery 시간 경과 후 복구 테스트
+func TestRateLimiting_Recovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Short 모드에서는 시간 의존 테스트 스킵")
 	}
+	t.Parallel()
 
-	h := middleware(handler)
-
-	// IP1에서 10개 요청 (버스트 소진)
-	for i := 0; i < 10; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		err := h(c)
-		assert.NoError(t, err)
-	}
-
-	// IP1에서 추가 요청 (차단되어야 함)
-	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req1.Header.Set("X-Real-IP", "192.168.1.1")
-	rec1 := httptest.NewRecorder()
-	c1 := e.NewContext(req1, rec1)
-
-	err1 := h(c1)
-	assert.Error(t, err1)
-	httpErr1, ok := err1.(*echo.HTTPError)
-	require.True(t, ok)
-	assert.Equal(t, http.StatusTooManyRequests, httpErr1.Code)
-
-	// IP2에서 요청 (허용되어야 함 - 독립적인 제한)
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req2.Header.Set("X-Real-IP", "192.168.1.2")
-	rec2 := httptest.NewRecorder()
-	c2 := e.NewContext(req2, rec2)
-
-	err2 := h(c2)
-	assert.NoError(t, err2)
-	assert.Equal(t, http.StatusOK, rec2.Code)
-}
-
-// TestRateLimiting_RetryAfterHeader Retry-After 헤더가 올바르게 설정되는지 검증합니다.
-func TestRateLimiting_RetryAfterHeader(t *testing.T) {
-	// Setup
-	e := echo.New()
-	middleware := RateLimiting(1, 2)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
+	rps := 10
+	burst := 5
+	middleware := RateLimiting(rps, burst)
+	h := middleware(func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	// 버스트 소진
-	for i := 0; i < 2; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-		h(c)
+	for i := 0; i < burst; i++ {
+		assertRequest(t, h, "1.1.1.1", http.StatusOK)
 	}
 
-	// 제한 초과 요청
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-Real-IP", "192.168.1.1")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	// 차단 확인
+	assertRequest(t, h, "1.1.1.1", http.StatusTooManyRequests)
 
-	err := h(c)
+	// 1초 대기 (충전)
+	time.Sleep(1 * time.Second)
 
-	// Verify
-	assert.Error(t, err)
-	assert.Equal(t, "1", rec.Header().Get("Retry-After"), "Retry-After header should be set to 1")
+	// 복구 확인
+	assertRequest(t, h, "1.1.1.1", http.StatusOK)
 }
 
-// TestRateLimiting_Concurrency 동시성 안전성을 검증합니다.
+// TestRateLimiting_Concurrency 동시성 테스트
 func TestRateLimiting_Concurrency(t *testing.T) {
-	// Setup
+	t.Parallel()
+
 	e := echo.New()
 	middleware := RateLimiting(100, 200)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
-
-	// 여러 고루틴에서 동시에 요청
-	const goroutines = 10
-	const requestsPerGoroutine = 20
+	h := middleware(func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
+	workers := 10
+	requests := 50
 
-	for g := 0; g < goroutines; g++ {
-		go func(goroutineID int) {
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(id int) {
 			defer wg.Done()
-
-			ip := fmt.Sprintf("192.168.1.%d", goroutineID)
-
-			for i := 0; i < requestsPerGoroutine; i++ {
-				req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			ip := fmt.Sprintf("192.168.0.%d", id)
+			for j := 0; j < requests; j++ {
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				req.Header.Set("X-Real-IP", ip)
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
-
-				h(c) // 에러 무시 (동시성 안전성만 확인)
+				_ = h(c)
 			}
-		}(g)
+		}(i)
 	}
-
 	wg.Wait()
-	// Race detector로 실행 시 문제 없으면 통과
 }
 
-// TestRateLimiting_BurstAllowance 버스트 허용량이 올바르게 동작하는지 검증합니다.
-func TestRateLimiting_BurstAllowance(t *testing.T) {
-	// Setup
+// TestRateLimiting_MaxIPLimit 최대 IP 추적 수 제한 검증
+func TestRateLimiting_MaxIPLimit(t *testing.T) {
+	t.Parallel()
+
+	// 테스트용으로 작은 limiter 생성
+	limiter := newIPRateLimiter(1, 1)
+
+	// 최대 개수 + @ 만큼 IP 생성하여 접근
+	// 실제 상수는 10,000이지만 테스트에서는 해당 로직을 트리거하기 위해
+	// 화이트박스 테스트로 직접 limiters 맵에 접근을 할 순 없으므로
+	// 실제 10,000개를 채우거나, 코드를 수정해야 함.
+	// 하지만 여기선 통합 테스트 레벨이므로 10,001개를 루프 돌리는 것이 맞음 (Go 테스트는 빠름)
+
+	const overloadCount = maxIPRateLimiters + 100
+
+	// 병렬로 채우기 (속도 개선)
+	var wg sync.WaitGroup
+	workerCount := 10
+	ipsPerWorker := overloadCount / workerCount
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			start := workerID * ipsPerWorker
+			end := start + ipsPerWorker
+			for i := start; i < end; i++ {
+				ip := fmt.Sprintf("ip-%d", i)
+				_ = limiter.getLimiter(ip)
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	// 검증
+	limiter.mu.RLock()
+	size := len(limiter.limiters)
+	limiter.mu.RUnlock()
+
+	// 사이즈는 maxIPRateLimiters 이하이어야 함
+	assert.LessOrEqual(t, size, maxIPRateLimiters,
+		"Memory leak detected: map size %d exceeds max %d", size, maxIPRateLimiters)
+}
+
+// --- Helpers ---
+
+func assertRequest(t *testing.T, h echo.HandlerFunc, ip string, expectedStatus int) {
+	t.Helper()
+	assertRequestpath(t, h, ip, "/", expectedStatus)
+}
+
+func assertRequestpath(t *testing.T, h echo.HandlerFunc, ip string, path string, expectedStatus int) {
+	t.Helper()
+
 	e := echo.New()
-	requestsPerSecond := 10
-	burst := 30
-	middleware := RateLimiting(requestsPerSecond, burst)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
-
-	// 버스트만큼 즉시 요청 가능
-	for i := 0; i < burst; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		err := h(c)
-		assert.NoError(t, err, "Request %d should be allowed (within burst)", i+1)
-	}
-
-	// 버스트 초과 시 차단
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-Real-IP", "192.168.1.1")
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("X-Real-IP", ip)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := h(c)
-	assert.Error(t, err, "Request beyond burst should be blocked")
-}
 
-// TestRateLimiting_Recovery 시간 경과 후 Rate Limit이 복구되는지 검증합니다.
-func TestRateLimiting_Recovery(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping time-dependent test in short mode")
-	}
-
-	// Setup
-	e := echo.New()
-	requestsPerSecond := 10
-	burst := 5
-	middleware := RateLimiting(requestsPerSecond, burst)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
-
-	// 버스트 소진
-	for i := 0; i < burst; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.Header.Set("X-Real-IP", "192.168.1.1")
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-		h(c)
-	}
-
-	// 제한 초과 확인
-	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req1.Header.Set("X-Real-IP", "192.168.1.1")
-	rec1 := httptest.NewRecorder()
-	c1 := e.NewContext(req1, rec1)
-
-	err1 := h(c1)
-	assert.Error(t, err1, "Should be blocked immediately after burst")
-
-	// 1초 대기 (10 requests/sec이므로 10개 토큰 충전)
-	time.Sleep(1 * time.Second)
-
-	// 다시 요청 가능
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req2.Header.Set("X-Real-IP", "192.168.1.1")
-	rec2 := httptest.NewRecorder()
-	c2 := e.NewContext(req2, rec2)
-
-	err2 := h(c2)
-	assert.NoError(t, err2, "Should be allowed after recovery period")
-}
-
-// TestRateLimiting_ErrorMessage 에러 메시지가 올바른지 검증합니다.
-func TestRateLimiting_ErrorMessage(t *testing.T) {
-	// Setup
-	e := echo.New()
-	middleware := RateLimiting(1, 1)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
-
-	// 버스트 소진
-	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req1.Header.Set("X-Real-IP", "192.168.1.1")
-	rec1 := httptest.NewRecorder()
-	c1 := e.NewContext(req1, rec1)
-	h(c1)
-
-	// 제한 초과 요청
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req2.Header.Set("X-Real-IP", "192.168.1.1")
-	rec2 := httptest.NewRecorder()
-	c2 := e.NewContext(req2, rec2)
-
-	err := h(c2)
-
-	// Verify
-	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
-	require.True(t, ok)
-
-	assert.Equal(t, http.StatusTooManyRequests, httpErr.Code)
-	assert.Contains(t, fmt.Sprintf("%v", httpErr.Message), constants.ErrMsgTooManyRequests)
-}
-
-// TestRateLimiting_DifferentPaths 다양한 경로에서 동일한 IP는 동일한 제한을 받는지 검증합니다.
-func TestRateLimiting_DifferentPaths(t *testing.T) {
-	// Setup
-	e := echo.New()
-	middleware := RateLimiting(5, 10)
-
-	handler := func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	}
-
-	h := middleware(handler)
-
-	// 다양한 경로로 요청 (동일 IP)
-	paths := []string{"/api/v1/test", "/api/v1/users", "/health", "/version"}
-
-	totalRequests := 0
-	for _, path := range paths {
-		for i := 0; i < 3; i++ {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req.Header.Set("X-Real-IP", "192.168.1.1")
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-
-			h(c)
-			totalRequests++
+	if expectedStatus >= 400 {
+		if err != nil {
+			he, ok := err.(*echo.HTTPError)
+			if ok {
+				assert.Equal(t, expectedStatus, he.Code)
+			} else {
+				assert.Fail(t, "expected echo.HTTPError")
+			}
+		} else {
+			// 핸들러가 에러를 리턴하지 않고 직접 write한 경우 (미들웨어 특성에 따라 다름)
+			// 여기 구현에서는 429 시 error를 리턴함.
+			assert.Equal(t, expectedStatus, rec.Code)
 		}
+	} else {
+		assert.NoError(t, err)
+		assert.Equal(t, expectedStatus, rec.Code)
 	}
-
-	// 버스트 초과 확인 (12개 요청, 버스트 10)
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-Real-IP", "192.168.1.1")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	err := h(c)
-	assert.Error(t, err, "Should be blocked after exceeding burst across different paths")
 }

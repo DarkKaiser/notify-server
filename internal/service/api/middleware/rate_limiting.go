@@ -10,6 +10,12 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	// maxIPRateLimiters 추적 가능한 최대 IP 개수
+	// 이 제한을 통해 메모리 무제한 증가를 방지하고 DoS 공격으로부터 보호합니다.
+	maxIPRateLimiters = 10000
+)
+
 // ipRateLimiter IP 주소별로 Rate Limiter를 관리하는 구조체입니다.
 //
 // 이 구조체는 다음과 같은 역할을 수행합니다:
@@ -23,11 +29,9 @@ import (
 //   - 쓰기 작업(새 Limiter 생성)은 Lock으로 보호
 //
 // 메모리 관리:
-//   - IP 주소는 한 번 추가되면 서버 재시작 전까지 메모리에 유지됨
-//   - 현재 프로젝트 규모에서는 문제없으나, 대규모 트래픽 환경에서는 다음 개선 고려:
-//   - 최대 IP 개수 제한 (예: 10,000개)
-//   - LRU 캐시 사용으로 오래된 IP 자동 제거
-//   - 주기적인 정리 작업 (예: 1시간 미사용 IP 제거)
+//   - 최대 10,000개의 IP 주소를 추적 (maxIPRateLimiters)
+//   - 제한 초과 시 맵에서 랜덤하게 하나를 제거 (Go Map 순회 특성 활용)
+//   - 이를 통해 메모리 상한선을 보장하고 IP Spoofing 공격으로부터 보호
 type ipRateLimiter struct {
 	mu       sync.RWMutex
 	limiters map[string]*rate.Limiter
@@ -73,6 +77,15 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 	limiter, exists = i.limiters[ip]
 	if exists {
 		return limiter
+	}
+
+	// 메모리 보호: 최대 개수 체크
+	if len(i.limiters) >= maxIPRateLimiters {
+		// Go Map 순회는 랜덤이므로 간이 LRU 효과
+		for oldIP := range i.limiters {
+			delete(i.limiters, oldIP)
+			break // 하나만 제거
+		}
 	}
 
 	// 새 Limiter 생성
