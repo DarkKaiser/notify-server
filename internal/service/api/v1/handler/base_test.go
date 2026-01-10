@@ -66,15 +66,15 @@ func TestNewHandler_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			MockService := &mocks.MockNotificationSender{}
-			appManager := auth.NewApplicationManager(tt.appConfig)
+			appManager := auth.NewAuthenticator(tt.appConfig)
 
 			h := NewHandler(appManager, MockService)
 
 			require.NotNil(t, h, "Handler should not be nil")
-			require.NotNil(t, h.applicationManager, "ApplicationManager should not be nil")
+			require.NotNil(t, h.authenticator, "Authenticator should not be nil")
 
-			// ApplicationManager stores apps in unexported field, so we rely on NewHandler success
-			// In auth package test we verified ApplicationManager behavior.
+			// Authenticator stores apps in unexported field, so we rely on NewHandler success
+			// In auth package test we verified Authenticator behavior.
 			// Here we just verify Handler creation integration.
 			// Ideally we shouldn't poke internal structure too much, relying on auth tests for counting logic.
 			// But for confidence we can do a quick check via casting if we were inside same package,

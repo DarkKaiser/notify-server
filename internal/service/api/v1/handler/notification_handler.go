@@ -51,13 +51,11 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 1. 요청 바인딩
 	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
-		h.log(c).WithField("error", err).Warn("요청 바인딩 실패")
 		return httputil.NewBadRequestError("잘못된 요청 형식입니다")
 	}
 
 	// 2. 입력 검증
 	if err := validator.Struct(req); err != nil {
-		h.log(c).WithField("error", err).Warn("입력 검증 실패")
 		return httputil.NewBadRequestError(validator.FormatValidationError(err))
 	}
 
@@ -74,14 +72,12 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	}
 
 	if appKey == "" {
-		h.log(c).WithField("application_id", req.ApplicationID).Warn("app_key가 비어있음")
 		return httputil.NewBadRequestError(constants.ErrMsgAppKeyRequired)
 	}
 
 	// 4. 인증
-	app, err := h.applicationManager.Authenticate(req.ApplicationID, appKey)
+	app, err := h.authenticator.Authenticate(req.ApplicationID, appKey)
 	if err != nil {
-		h.log(c).WithField("application_id", req.ApplicationID).Warn("인증 실패")
 		return err
 	}
 

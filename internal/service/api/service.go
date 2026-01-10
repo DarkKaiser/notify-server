@@ -128,7 +128,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 // setupServer Echo 서버 및 라우트를 설정합니다.
 //
 // 다음 순서로 서버를 구성합니다:
-//  1. ApplicationManager 생성 (API 인증 관리)
+//  1. Authenticator 생성 (API 인증 관리)
 //  2. Handler 생성 (System, v1 API)
 //  3. Echo 서버 생성 (미들웨어 포함)
 //  4. 라우트 등록 (전역, v1)
@@ -136,12 +136,12 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 // Returns:
 //   - 설정이 완료된 Echo 인스턴스
 func (s *Service) setupServer() *echo.Echo {
-	// ApplicationManager 생성
-	applicationManager := apiauth.NewApplicationManager(s.appConfig)
+	// Authenticator 생성
+	authenticator := apiauth.NewAuthenticator(s.appConfig)
 
 	// Handler 생성
 	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
-	v1Handler := v1handler.NewHandler(applicationManager, s.notificationSender)
+	v1Handler := v1handler.NewHandler(authenticator, s.notificationSender)
 
 	// Echo 서버 생성
 	e := NewHTTPServer(HTTPServerConfig{

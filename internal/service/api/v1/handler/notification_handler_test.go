@@ -38,7 +38,7 @@ func setupTestHandler(t *testing.T) (*Handler, *mocks.MockNotificationSender) {
 			},
 		},
 	}
-	appManager := auth.NewApplicationManager(appConfig)
+	appManager := auth.NewAuthenticator(appConfig)
 	handler := NewHandler(appManager, mockService)
 
 	return handler, mockService
