@@ -20,7 +20,25 @@ definitions:
     - application_id
     - message
     type: object
-  response.DependencyStatus:
+  response.ErrorResponse:
+    properties:
+      message:
+        description: |-
+          오류에 대한 상세 메시지입니다.
+          발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.
+        example: APP_KEY가 유효하지 않습니다.(ID:my-app)
+        type: string
+    type: object
+  response.SuccessResponse:
+    properties:
+      result_code:
+        description: |-
+          처리 결과 코드입니다.
+          0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.
+        example: 0
+        type: integer
+    type: object
+  system.DependencyStatus:
     properties:
       latency_ms:
         description: 응답 시간 (밀리초, 선택적)
@@ -35,20 +53,11 @@ definitions:
         example: healthy
         type: string
     type: object
-  response.ErrorResponse:
-    properties:
-      message:
-        description: |-
-          오류에 대한 상세 메시지입니다.
-          발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.
-        example: APP_KEY가 유효하지 않습니다.(ID:my-app)
-        type: string
-    type: object
-  response.HealthResponse:
+  system.HealthResponse:
     properties:
       dependencies:
         additionalProperties:
-          $ref: '#/definitions/response.DependencyStatus'
+          $ref: '#/definitions/system.DependencyStatus'
         description: 의존성 상태 (선택적)
         type: object
       status:
@@ -60,16 +69,7 @@ definitions:
         example: 3600
         type: integer
     type: object
-  response.SuccessResponse:
-    properties:
-      result_code:
-        description: |-
-          처리 결과 코드입니다.
-          0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.
-        example: 0
-        type: integer
-    type: object
-  response.VersionResponse:
+  system.VersionResponse:
     properties:
       build_date:
         description: 빌드 날짜 (UTC)
@@ -140,16 +140,30 @@ paths:
         이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
         설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.
 
+        ## 인증 방식
+        - **권장**: X-App-Key 헤더로 전달
+        - **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)
+
         ## 사용 예시 (로컬 환경)
+        ### 헤더 방식 (권장)
+        ```bash
+        curl -X POST "http://localhost:2443/api/v1/notifications" -H "Content-Type: application/json" -H "X-App-Key: your-app-key" -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
+        ```
+
+        ### 쿼리 파라미터 방식 (레거시)
         ```bash
         curl -X POST "http://localhost:2443/api/v1/notifications?app_key=your-app-key" -H "Content-Type: application/json" -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
         ```
       parameters:
-      - description: Application Key (인증용)
+      - description: Application Key (인증용, 권장)
+        example: your-app-key-here
+        in: header
+        name: X-App-Key
+        type: string
+      - description: Application Key (인증용, 레거시)
         example: your-app-key-here
         in: query
         name: app_key
-        required: true
         type: string
       - description: 알림 메시지 정보
         in: body
@@ -198,7 +212,7 @@ paths:
         "200":
           description: 서버 정상
           schema:
-            $ref: '#/definitions/response.HealthResponse'
+            $ref: '#/definitions/system.HealthResponse'
         "500":
           description: 서버 내부 오류
           schema:
@@ -219,7 +233,7 @@ paths:
         "200":
           description: 버전 정보
           schema:
-            $ref: '#/definitions/response.VersionResponse'
+            $ref: '#/definitions/system.VersionResponse'
         "500":
           description: 서버 내부 오류
           schema:

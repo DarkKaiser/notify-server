@@ -31,7 +31,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 사용 예시 (로컬 환경)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
+                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 인증 방식\n- **권장**: X-App-Key 헤더로 전달\n- **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)\n\n## 사용 예시 (로컬 환경)\n### 헤더 방식 (권장)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications\" -H \"Content-Type: application/json\" -H \"X-App-Key: your-app-key\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `\n\n### 쿼리 파라미터 방식 (레거시)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
                 "consumes": [
                     "application/json"
                 ],
@@ -46,10 +46,16 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "example": "your-app-key-here",
-                        "description": "Application Key (인증용)",
+                        "description": "Application Key (인증용, 권장)",
+                        "name": "X-App-Key",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "example": "your-app-key-here",
+                        "description": "Application Key (인증용, 레거시)",
                         "name": "app_key",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     },
                     {
                         "description": "알림 메시지 정보",
@@ -103,7 +109,7 @@ const docTemplate = `{
                     "200": {
                         "description": "서버 정상",
                         "schema": {
-                            "$ref": "#/definitions/response.HealthResponse"
+                            "$ref": "#/definitions/system.HealthResponse"
                         }
                     },
                     "500": {
@@ -129,7 +135,7 @@ const docTemplate = `{
                     "200": {
                         "description": "버전 정보",
                         "schema": {
-                            "$ref": "#/definitions/response.VersionResponse"
+                            "$ref": "#/definitions/system.VersionResponse"
                         }
                     },
                     "500": {
@@ -169,7 +175,27 @@ const docTemplate = `{
                 }
             }
         },
-        "response.DependencyStatus": {
+        "response.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "오류에 대한 상세 메시지입니다.\n발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.",
+                    "type": "string",
+                    "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
+                }
+            }
+        },
+        "response.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "result_code": {
+                    "description": "처리 결과 코드입니다.\n0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.",
+                    "type": "integer",
+                    "example": 0
+                }
+            }
+        },
+        "system.DependencyStatus": {
             "type": "object",
             "properties": {
                 "latency_ms": {
@@ -189,24 +215,14 @@ const docTemplate = `{
                 }
             }
         },
-        "response.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "description": "오류에 대한 상세 메시지입니다.\n발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.",
-                    "type": "string",
-                    "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
-                }
-            }
-        },
-        "response.HealthResponse": {
+        "system.HealthResponse": {
             "type": "object",
             "properties": {
                 "dependencies": {
                     "description": "의존성 상태 (선택적)",
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/response.DependencyStatus"
+                        "$ref": "#/definitions/system.DependencyStatus"
                     }
                 },
                 "status": {
@@ -221,17 +237,7 @@ const docTemplate = `{
                 }
             }
         },
-        "response.SuccessResponse": {
-            "type": "object",
-            "properties": {
-                "result_code": {
-                    "description": "처리 결과 코드입니다.\n0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.",
-                    "type": "integer",
-                    "example": 0
-                }
-            }
-        },
-        "response.VersionResponse": {
+        "system.VersionResponse": {
             "type": "object",
             "properties": {
                 "build_date": {

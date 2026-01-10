@@ -57,7 +57,7 @@ func NewHandler(notificationSender notification.Sender, buildInfo version.Info) 
 // @Description - dependencies: 의존성 서비스 상태 (notification_service 등)
 // @Tags System
 // @Produce json
-// @Success 200 {object} response.HealthResponse "서버 정상"
+// @Success 200 {object} system.HealthResponse "서버 정상"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
@@ -107,7 +107,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Description 이 정보는 디버깅 및 버전 확인에 유용합니다.
 // @Tags System
 // @Produce json
-// @Success 200 {object} response.VersionResponse "버전 정보"
+// @Success 200 {object} system.VersionResponse "버전 정보"
 // @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
