@@ -42,16 +42,19 @@ import (
 //	}
 //	// app 사용
 type Authenticator struct {
-	mu           sync.RWMutex
-	applications map[string]*domain.Application
-	appKeyHashes map[string]string // App Key SHA-256 해시 (보안)
+	mu           sync.RWMutex                   // 동시성 제어
+	applications map[string]*domain.Application // 애플리케이션 정보
+	appKeyHashes map[string]string              // App Key SHA-256 해시 (보안)
 }
 
-// NewAuthenticator 설정에서 애플리케이션을 로드하여 Authenticator를 생성합니다.
+// NewAuthenticator 설정 파일에서 애플리케이션 정보를 로드하여 인증자를 생성합니다.
+//
+// 이 함수는 설정된 모든 애플리케이션의 ID, 제목, 설명, 기본 Notifier ID를 메모리에 로드하고,
+// App Key는 SHA-256 해시로 변환하여 별도로 저장합니다.
 //
 // 보안:
 //   - App Key는 SHA-256으로 해시되어 저장됩니다.
-//   - 원본 App Key는 메모리에 저장되지 않습니다.
+//   - 원본 App Key는 메모리에 저장되지 않아 메모리 덤프 공격을 방어합니다.
 func NewAuthenticator(appConfig *config.AppConfig) *Authenticator {
 	applications := make(map[string]*domain.Application)
 	appKeyHashes := make(map[string]string)
@@ -75,8 +78,16 @@ func NewAuthenticator(appConfig *config.AppConfig) *Authenticator {
 	}
 }
 
-// Authenticate 애플리케이션을 찾고 인증을 수행합니다.
-// 성공 시 Application 객체를 반환하고, 실패 시 적절한 HTTP 에러를 반환합니다.
+// Authenticate 애플리케이션 ID와 App Key를 검증하여 인증을 수행합니다.
+//
+// 인증 과정:
+//  1. Application ID로 등록된 애플리케이션 조회
+//  2. 입력받은 App Key를 SHA-256으로 해시 변환
+//  3. 저장된 해시와 Constant-Time 비교
+//
+// 반환값:
+//   - 성공: 인증된 Application 객체
+//   - 실패: 401 Unauthorized 에러 (ID 없음 또는 Key 불일치)
 //
 // 보안:
 //   - Constant-Time 비교를 사용하여 타이밍 공격을 방어합니다.
@@ -89,7 +100,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 
 	app, ok := a.applications[applicationID]
 	if !ok {
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("접근이 허용되지 않은 application_id(%s)입니다", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", applicationID))
 	}
 
 	// 입력받은 App Key를 SHA-256으로 해시
@@ -101,9 +112,10 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHashStr)) != 1 {
 		applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 			"application_id": applicationID,
-		}).Warn("APP_KEY 불일치")
+			"app_title":      app.Title,
+		}).Warn("인증 실패: App Key 불일치")
 
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다.(application_id:%s)", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", applicationID))
 	}
 
 	return app, nil
