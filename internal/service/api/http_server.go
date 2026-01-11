@@ -9,12 +9,14 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// HTTPServerConfig 서버 생성 시 필요한 설정을 정의합니다.
+// HTTPServerConfig HTTP 서버 생성에 필요한 설정을 정의합니다.
 type HTTPServerConfig struct {
-	// Debug는 Echo의 디버그 모드 활성화 여부를 설정합니다.
+	// Debug Echo 프레임워크의 디버그 모드 활성화 여부
 	Debug bool
-	// AllowOrigins는 CORS에서 허용할 Origin 목록을 설정합니다.
-	// 프로덕션 환경에서는 특정 도메인만 허용하도록 설정해야 합니다.
+
+	// AllowOrigins CORS에서 허용할 Origin 목록
+	// 개발 환경: ["*"] 또는 ["http://localhost:3000"]
+	// 프로덕션 환경: 특정 도메인만 명시 (예: ["https://example.com"])
 	AllowOrigins []string
 }
 
@@ -60,8 +62,8 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	e.Debug = cfg.Debug
 	e.HideBanner = true
 
-	// echo에서 출력되는 로그를 Logger로 출력되도록 한다.
-	// echo Logger의 인터페이스를 래핑한 객체를 이용하여 Logger로 보낸다.
+	// Echo 프레임워크의 내부 로그를 애플리케이션 로거로 통합합니다.
+	// 이를 통해 모든 로그가 동일한 형식과 출력 대상을 사용하게 됩니다.
 	e.Logger = appmiddleware.Logger{Logger: applog.StandardLogger()}
 
 	// 미들웨어 적용 (권장 순서)
