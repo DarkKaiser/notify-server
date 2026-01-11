@@ -23,6 +23,11 @@ func SetFormatter(formatter Formatter) {
 	logrus.SetFormatter(formatter)
 }
 
+// SetLevel 전역 로거의 레벨을 설정합니다.
+func SetLevel(level Level) {
+	logrus.SetLevel(level)
+}
+
 // WithField 단일 키-값 쌍을 로그 컨텍스트에 추가합니다.
 func WithField(key string, value interface{}) *Entry {
 	return logrus.WithField(key, value)

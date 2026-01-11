@@ -49,7 +49,7 @@ func NewServiceUnavailableError(message string) error {
 	})
 }
 
-// NewSuccessResponse 표준화된 성공 응답을 생성합니다
+// NewSuccessResponse 표준 성공 응답(200 OK)을 JSON 형식으로 반환합니다.
 func NewSuccessResponse(c echo.Context) error {
 	return c.JSON(http.StatusOK, response.SuccessResponse{
 		ResultCode: 0,

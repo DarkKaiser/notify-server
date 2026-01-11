@@ -4,13 +4,16 @@ import (
 	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
 
-// ErrorHandler 커스텀 HTTP 에러 핸들러입니다.
-// 모든 HTTP 에러를 표준 ErrorResponse 형식으로 반환합니다.
+// ErrorHandler Echo 프레임워크의 전역 에러 핸들러입니다.
+//
+// 모든 HTTP 에러를 가로채서 표준 ErrorResponse JSON 형식으로 변환하여 반환합니다.
+// 에러 발생 시 적절한 로그 레벨(Error/Warn)로 상세 정보를 기록합니다.
 func ErrorHandler(err error, c echo.Context) {
 	code := http.StatusInternalServerError
 	message := constants.ErrMsgInternalServer
@@ -25,8 +28,7 @@ func ErrorHandler(err error, c echo.Context) {
 		}
 	}
 
-	// HTTP 상태 코드가 404 (찾을 수 없음)인 경우 사용자에게 더 친숙한 한국어 메시지로 변경하여 반환합니다.
-	// 주의: 모든 404 에러에 대해 일괄적으로 메시지를 변경합니다.
+	// 404 에러는 사용자 친화적인 한국어 메시지로 통일
 	if code == http.StatusNotFound {
 		message = constants.ErrMsgNotFound
 	}
@@ -37,28 +39,37 @@ func ErrorHandler(err error, c echo.Context) {
 		"method":      c.Request().Method,
 		"status_code": code,
 		"error":       err,
+		"remote_ip":   c.RealIP(),
+		"request_id":  c.Response().Header().Get(echo.HeaderXRequestID),
+	}
+
+	// 인증된 애플리케이션 정보 추가 (있는 경우)
+	if app := c.Get(constants.ContextKeyApplication); app != nil {
+		if application, ok := app.(*domain.Application); ok {
+			fields["application_id"] = application.ID
+		}
 	}
 
 	if code >= http.StatusInternalServerError {
-		// 5xx: 서버 에러 (내부 오류)
-		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Error("서버 내부 오류 발생")
+		// 5xx: 서버 내부 오류 - 즉시 조치 필요
+		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Error("HTTP 5xx: 서버 내부 오류")
 	} else if code >= http.StatusBadRequest {
-		// 4xx: 클라이언트 에러 (인증 실패, 잘못된 요청 등)
-		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Warn("클라이언트 에러 발생")
+		// 4xx: 클라이언트 요청 오류 - 정상적인 거부 응답
+		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Warn("HTTP 4xx: 클라이언트 요청 오류")
 	}
 
-	// 응답이 이미 전송되었는지 확인
+	// 이중 응답 방지: 이미 응답이 전송된 경우 추가 응답 시도하지 않음
 	if c.Response().Committed {
 		return
 	}
 
-	// HEAD 요청은 본문 없이 응답
+	// HEAD 요청 처리: HTTP 명세에 따라 헤더만 반환하고 본문은 생략
 	if c.Request().Method == http.MethodHead {
 		c.NoContent(code)
 		return
 	}
 
-	// 표준 ErrorResponse 형식으로 JSON 응답
+	// 일반 요청: 표준 ErrorResponse JSON 형식으로 응답
 	c.JSON(code, response.ErrorResponse{
 		Message: message,
 	})

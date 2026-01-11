@@ -1,6 +1,6 @@
-// Package system 시스템 관련 HTTP 요청 핸들러를 제공합니다.
+// Package system 시스템 엔드포인트 핸들러를 제공합니다.
 //
-// 이 패키지는 시스템 헬스체크, 버전 정보 등 시스템 수준의 엔드포인트를 처리합니다.
+// 헬스체크, 버전 정보 등 인증이 필요 없는 시스템 수준의 API를 처리합니다.
 package system
 
 import (
@@ -17,15 +17,15 @@ import (
 )
 
 const (
-	// Health Check 상태 상수
+	// 헬스체크 상태값
 	statusHealthy   = "healthy"
 	statusUnhealthy = "unhealthy"
 
-	// 의존성 서비스 키
+	// 의존성 서비스 식별자
 	dependencyNotificationService = "notification_service"
 )
 
-// Handler 시스템 관련 요청(헬스체크, 버전 등)을 처리하는 핸들러입니다.
+// Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
 	notificationSender notification.Sender
 
@@ -46,31 +46,31 @@ func NewHandler(notificationSender notification.Sender, buildInfo version.Info) 
 }
 
 // HealthCheckHandler godoc
-// @Summary 서버 상태 확인
-// @Description 서버가 정상적으로 동작하는지 확인합니다.
+// @Summary 서버 헬스체크
+// @Description 서버와 외부 의존성의 상태를 확인합니다.
+// @Description 인증 없이 호출 가능하며, 모니터링 시스템에서 사용됩니다.
 // @Description
-// @Description 이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.
-// @Description
-// @Description ## 응답 필드
+// @Description 응답 필드:
 // @Description - status: 전체 서버 상태 (healthy, unhealthy)
-// @Description - uptime: 서버 가동 시간 (초)
-// @Description - dependencies: 의존성 서비스 상태 (notification_service 등)
+// @Description - uptime: 서버 가동 시간(초)
+// @Description - dependencies: 외부 의존성별 상태 (notification_service 등)
 // @Tags System
 // @Produce json
-// @Success 200 {object} system.HealthResponse "서버 정상"
-// @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
+// @Success 200 {object} system.HealthResponse "헬스체크 결과"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
-		"endpoint": "/health",
-	}).Debug("헬스체크 요청")
+		"endpoint":  "/health",
+		"method":    c.Request().Method,
+		"remote_ip": c.RealIP(),
+	}).Debug("헬스체크 조회")
 
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
-	// 의존성 상태 체크
+	// 외부 의존성 상태 수집
 	deps := make(map[string]system.DependencyStatus)
 
-	// NotificationService 상태 체크
+	// Notification 서비스 상태 확인
 	if h.notificationSender != nil {
 		deps[dependencyNotificationService] = system.DependencyStatus{
 			Status:  statusHealthy,
@@ -83,17 +83,17 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 		}
 	}
 
-	// 전체 상태 결정
-	overallStatus := statusHealthy
+	// 하나라도 unhealthy면 전체 상태를 unhealthy로 설정
+	serverStatus := statusHealthy
 	for _, dep := range deps {
 		if dep.Status != statusHealthy {
-			overallStatus = statusUnhealthy
+			serverStatus = statusUnhealthy
 			break
 		}
 	}
 
 	return c.JSON(http.StatusOK, system.HealthResponse{
-		Status:       overallStatus,
+		Status:       serverStatus,
 		Uptime:       uptime,
 		Dependencies: deps,
 	})
@@ -101,19 +101,18 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 
 // VersionHandler godoc
 // @Summary 서버 버전 정보
-// @Description 서버의 빌드 정보를 반환합니다.
-// @Description
-// @Description Git 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전 등의 정보를 제공합니다.
-// @Description 이 정보는 디버깅 및 버전 확인에 유용합니다.
+// @Description 서버의 Git 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전을 반환합니다.
+// @Description 디버깅 및 배포 버전 확인에 사용됩니다.
 // @Tags System
 // @Produce json
 // @Success 200 {object} system.VersionResponse "버전 정보"
-// @Failure 500 {object} response.ErrorResponse "서버 내부 오류"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
 	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
-		"endpoint": "/version",
-	}).Debug("버전 정보 요청")
+		"endpoint":  "/version",
+		"method":    c.Request().Method,
+		"remote_ip": c.RealIP(),
+	}).Debug("버전 정보 조회")
 
 	return c.JSON(http.StatusOK, system.VersionResponse{
 		Version:     h.buildInfo.Version,
