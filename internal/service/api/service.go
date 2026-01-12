@@ -149,7 +149,7 @@ func (s *Service) setupServer() *echo.Echo {
 	e := NewHTTPServer(HTTPServerConfig{
 		Debug:          s.appConfig.Debug,
 		AllowOrigins:   s.appConfig.NotifyAPI.CORS.AllowOrigins,
-		RequestTimeout: constants.DefaultRequestTimeout,
+		RequestTimeout: constants.RequestTimeout,
 	})
 
 	// 4. 라우트 등록
@@ -158,8 +158,8 @@ func (s *Service) setupServer() *echo.Echo {
 
 	// 5. HTTP 서버 보안 설정 강화
 	// ReadHeaderTimeout을 설정하여 Slowloris DoS 공격을 방어합니다.
-	// 악의적인 클라이언트가 헤더를 매우 느리게 전송하여 연결을 고갈시키는 것을 방지하기 위해 10초로 제한합니다.
-	e.Server.ReadHeaderTimeout = 10 * time.Second
+	// 악의적인 클라이언트가 헤더를 매우 느리게 전송하여 연결을 고갈시키는 것을 방지합니다.
+	e.Server.ReadHeaderTimeout = constants.ReadHeaderTimeout
 
 	return e
 }

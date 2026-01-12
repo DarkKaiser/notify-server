@@ -81,14 +81,14 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	// 타임아웃 미설정 시 기본값(60초)을 적용하여 무한 대기를 방지합니다.
 	timeout := cfg.RequestTimeout
 	if timeout == 0 {
-		timeout = constants.DefaultRequestTimeout
+		timeout = constants.RequestTimeout
 	}
 
 	// 미들웨어 적용 (권장 순서)
 	e.Use(appmiddleware.PanicRecovery())                         // 1. Panic 복구
 	e.Use(middleware.RequestID())                                // 2. Request ID
 	e.Use(appmiddleware.RateLimiting(20, 40))                    // 3. Rate Limiting (초당 20, 버스트 40)
-	e.Use(middleware.BodyLimit("2M"))                            // 4. Body Limit (최대 2MB)
+	e.Use(middleware.BodyLimit(constants.MaxBodySize))           // 4. Body Limit (최대 2MB)
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{ // 5. Timeout
 		Timeout: timeout,
 	}))
