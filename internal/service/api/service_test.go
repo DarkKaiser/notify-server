@@ -90,7 +90,7 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, mockSender, service.notificationSender)
 	assert.Equal(t, buildInfo, service.buildInfo)
 
-	// 내부 상태 확인 (Reflection 없이 공개된 필드/메서드 동작으로 추론하거나 package 내부 테스트의 이점 활용)
+	// 내부 상태 확인
 	service.runningMu.Lock()
 	assert.False(t, service.running, "서비스는 생성 직후 실행 중이지 않아야 합니다")
 	service.runningMu.Unlock()
@@ -100,7 +100,7 @@ func TestNewService(t *testing.T) {
 // Server Setup Tests
 // =============================================================================
 
-// TestService_setupServer는 Echo 서버 설정을 검증합니다.
+// TestService_setupServer는 Echo 서버 설정 및 보안 구성을 검증합니다.
 func TestService_setupServer(t *testing.T) {
 	service, _, _, _, _ := setupServiceHelper(t)
 
@@ -112,8 +112,10 @@ func TestService_setupServer(t *testing.T) {
 	assert.NotNil(t, e.Router())
 	assert.True(t, e.Debug, "Config의 Debug가 true이면 Echo Debug도 true여야 함")
 
-	// 2. 미들웨어 및 설정 검증
-	// (구체적인 미들웨어 체인은 통합 테스트에서 검증하는 것이 좋음)
+	// 2. 보안 설정 검증 (ReadHeaderTimeout)
+	// Slowloris 공격 방어를 위한 ReadHeaderTimeout 설정 확인
+	require.NotNil(t, e.Server, "http.Server 객체가 Echo 인스턴스에 설정되어야 합니다")
+	assert.Equal(t, 10*time.Second, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout은 반드시 10초로 설정되어야 합니다")
 
 	// 3. 주요 라우트 등록 확인
 	routes := e.Routes()
@@ -161,7 +163,6 @@ func TestNotifyAPIService_StartTLS_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. HTTPS 요청 테스트
-	// 자체 서명 인증서이므로 InsecureSkipVerify 설정 필요
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -188,8 +189,7 @@ func TestNotifyAPIService_StartTLS_Failure(t *testing.T) {
 	err := service.Start(ctx, wg)
 	require.NoError(t, err, "비동기 시작은 에러를 반환하지 않아야 함")
 
-	// 서버가 에러로 인해 종료될 때까지 대기 (WaitGroup 완료 대기)
-	// handleServerError -> NotifyDefaultWithError -> return -> close(done) -> waitForShutdown -> cleanup -> wg.Done
+	// 서버가 에러로 인해 종료될 때까지 대기
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -205,7 +205,7 @@ func TestNotifyAPIService_StartTLS_Failure(t *testing.T) {
 
 	// 알림 전송 여부 확인
 	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
-	notifyCalled := mockSender.WasNotifyDefaultCalled() // Thread-Safe Getter 사용
+	notifyCalled := mockSender.WasNotifyDefaultCalled()
 
 	assert.True(t, notifyCalled, "서버 시작 실패 시 관리자 알림이 전송되어야 합니다")
 }
@@ -257,6 +257,7 @@ func TestService_handleServerError(t *testing.T) {
 // Lifecycle & Concurrency Tests
 // =============================================================================
 
+// TestNotifyAPIService_Lifecycle 서비스의 정상적인 시작과 Graceful Shutdown을 검증합니다.
 func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
 
@@ -299,6 +300,7 @@ func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	assert.False(t, isRunning)
 }
 
+// TestNotifyAPIService_DuplicateStart 중복 실행 요청 시 처리를 검증합니다.
 func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
 
@@ -315,15 +317,12 @@ func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 	err = service.Start(ctx, wg)
 	assert.NoError(t, err)
 
-	// WaitGroup 카운트가 맞지 않으면 나중에 Wait에서 행(hang)이 걸릴 수 있음.
-	// Start 메서드는 running 상태면 defer wg.Done()을 호출하므로,
-	// 호출자가 wg.Add(1)을 했다면 짝이 맞음.
-
 	service.runningMu.Lock()
 	assert.True(t, service.running)
 	service.runningMu.Unlock()
 }
 
+// TestNotifyAPIService_NilDependencies 필수 의존성 누락 시 처리를 검증합니다.
 func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig, nil, version.Info{})
@@ -337,12 +336,10 @@ func TestNotifyAPIService_NilDependencies(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "NotificationSender")
 
-	// 에러 반환 시에는 비동기 루프가 시작되지 않으므로 wg.Done이 즉시 호출되어야 함 (Start 메서드 내부에서 처리)
-	// 그러나 현재 구현상 Start가 에러 반환 시 defer wg.Done()이 호출됨.
-	// 즉시 Wait 가능해야 함.
 	wg.Wait()
 }
 
+// TestService_ContextCancellation_BeforeStart 시작 전 이미 취소된 컨텍스트 처리 검증
 func TestService_ContextCancellation_BeforeStart(t *testing.T) {
 	service, _, wg, ctx, cancel := setupServiceHelper(t)
 
@@ -353,7 +350,7 @@ func TestService_ContextCancellation_BeforeStart(t *testing.T) {
 	err := service.Start(ctx, wg)
 	require.NoError(t, err)
 
-	// 이미 취소된 컨텍스트로 시작하면 waitForShutdown에서 즉시 select case <-ctx.Done(): 분기 진입 -> shutdown -> cleanup
+	// 즉시 종료되어야 함
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -368,6 +365,7 @@ func TestService_ContextCancellation_BeforeStart(t *testing.T) {
 	}
 }
 
+// TestService_StartupFailure_PortConflict 포트 충돌 등 서버 시작 실패 시 처리를 검증합니다.
 func TestService_StartupFailure_PortConflict(t *testing.T) {
 	// 1. 포트 선점
 	listener, err := net.Listen("tcp", ":0")
@@ -384,7 +382,7 @@ func TestService_StartupFailure_PortConflict(t *testing.T) {
 	err = service.Start(ctx, wg)
 	require.NoError(t, err)
 
-	// 3. 종료 대기
+	// 3. 종료 대기 (서버 시작 실패로 인해 즉시 종료되어야 함)
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -403,6 +401,7 @@ func TestService_StartupFailure_PortConflict(t *testing.T) {
 	service.runningMu.Unlock()
 }
 
+// TestService_ConcurrentStart 동시에 여러 시작 요청이 올 때의 스레드 안전성을 검증합니다.
 func TestService_ConcurrentStart(t *testing.T) {
 	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
 
