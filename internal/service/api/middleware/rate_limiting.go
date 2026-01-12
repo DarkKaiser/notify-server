@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
@@ -11,27 +12,21 @@ import (
 )
 
 const (
-	// maxIPRateLimiters 추적 가능한 최대 IP 개수
-	// 이 제한을 통해 메모리 무제한 증가를 방지하고 DoS 공격으로부터 보호합니다.
+	// maxIPRateLimiters 추적 가능한 최대 IP 개수 (메모리 보호 및 DoS 방지)
 	maxIPRateLimiters = 10000
 )
 
-// ipRateLimiter IP 주소별로 Rate Limiter를 관리하는 구조체입니다.
+// ipRateLimiter IP 주소별 Rate Limiter를 관리하는 구조체입니다.
 //
-// 이 구조체는 다음과 같은 역할을 수행합니다:
-//   - IP 주소별로 독립적인 rate.Limiter 인스턴스 관리
-//   - 동시성 안전한 Limiter 접근 (sync.RWMutex 사용)
-//   - Token Bucket 알고리즘 기반 Rate Limiting
+// Token Bucket 알고리즘을 사용하여 IP별로 독립적인 요청 제한을 적용합니다.
 //
 // 동시성 안전성:
-//   - sync.RWMutex를 사용하여 여러 고루틴에서 안전하게 접근 가능
-//   - 읽기 작업(getLimiter)은 RLock으로 최적화
-//   - 쓰기 작업(새 Limiter 생성)은 Lock으로 보호
+//   - sync.RWMutex로 여러 고루틴에서 안전하게 접근 가능
+//   - 읽기 작업은 RLock, 쓰기 작업은 Lock으로 최적화
 //
 // 메모리 관리:
-//   - 최대 10,000개의 IP 주소를 추적 (maxIPRateLimiters)
-//   - 제한 초과 시 맵에서 랜덤하게 하나를 제거 (Go Map 순회 특성 활용)
-//   - 이를 통해 메모리 상한선을 보장하고 IP Spoofing 공격으로부터 보호
+//   - 최대 10,000개 IP 추적 (maxIPRateLimiters)
+//   - 제한 초과 시 맵에서 랜덤하게 하나 제거 (Go Map 순회 특성 활용)
 type ipRateLimiter struct {
 	mu       sync.RWMutex
 	limiters map[string]*rate.Limiter
@@ -42,11 +37,8 @@ type ipRateLimiter struct {
 // newIPRateLimiter 새로운 IP 기반 Rate Limiter를 생성합니다.
 //
 // Parameters:
-//   - requestsPerSecond: 초당 허용할 요청 수 (예: 20 = 초당 20개 요청)
-//   - burst: 버스트 허용량 (예: 40 = 최대 40개 토큰 저장)
-//
-// Returns:
-//   - 초기화된 ipRateLimiter 인스턴스
+//   - requestsPerSecond: 초당 허용 요청 수 (예: 20)
+//   - burst: 버스트 허용량 (예: 40)
 func newIPRateLimiter(requestsPerSecond int, burst int) *ipRateLimiter {
 	return &ipRateLimiter{
 		limiters: make(map[string]*rate.Limiter),
@@ -55,12 +47,11 @@ func newIPRateLimiter(requestsPerSecond int, burst int) *ipRateLimiter {
 	}
 }
 
-// getLimiter 특정 IP 주소에 대한 Rate Limiter를 반환합니다.
-// IP에 대한 Limiter가 없으면 새로 생성합니다.
+// getLimiter 특정 IP의 Rate Limiter를 반환합니다. 없으면 새로 생성합니다.
 //
-// 이 메서드는 동시성 안전하며, 여러 고루틴에서 동시에 호출 가능합니다.
+// 동시성 안전하며, Double-Checked Locking 패턴을 사용하여 성능을 최적화합니다.
 func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
-	// 먼저 읽기 락으로 확인 (성능 최적화)
+	// 1. 읽기 락으로 먼저 확인 (성능 최적화)
 	i.mu.RLock()
 	limiter, exists := i.limiters[ip]
 	i.mu.RUnlock()
@@ -69,7 +60,7 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 		return limiter
 	}
 
-	// 없으면 쓰기 락으로 생성
+	// 2. 쓰기 락으로 생성
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
@@ -79,16 +70,16 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 		return limiter
 	}
 
-	// 메모리 보호: 최대 개수 체크
+	// 3. 메모리 보호: 최대 개수 초과 시 하나 제거
 	if len(i.limiters) >= maxIPRateLimiters {
 		// Go Map 순회는 랜덤이므로 간이 LRU 효과
 		for oldIP := range i.limiters {
 			delete(i.limiters, oldIP)
-			break // 하나만 제거
+			break
 		}
 	}
 
-	// 새 Limiter 생성
+	// 4. 새 Limiter 생성 및 저장
 	limiter = rate.NewLimiter(i.rate, i.burst)
 	i.limiters[ip] = limiter
 
@@ -97,21 +88,17 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 
 // RateLimiting IP 기반 Rate Limiting 미들웨어를 반환합니다.
 //
-// 이 미들웨어는 다음과 같은 기능을 제공합니다:
-//   - IP 주소별로 독립적인 요청 제한
-//   - Token Bucket 알고리즘 사용 (golang.org/x/time/rate)
-//   - 제한 초과 시 429 Too Many Requests 응답
-//   - Retry-After 헤더 제공 (1초 권장)
+// Token Bucket 알고리즘을 사용하여 IP별로 요청 속도를 제한합니다.
+// 제한 초과 시 HTTP 429 (Too Many Requests)를 반환하고 Retry-After 헤더를 포함합니다.
 //
 // Parameters:
-//   - requestsPerSecond: 초당 허용할 요청 수 (예: 20, 양수여야 함)
-//   - burst: 버스트 허용량 (예: 40, 양수여야 함)
+//   - requestsPerSecond: 초당 허용 요청 수 (양수, 예: 20)
+//   - burst: 버스트 허용량 (양수, 예: 40)
 //
 // Token Bucket 알고리즘:
 //   - Rate: 초당 토큰 생성 속도 (requestsPerSecond)
 //   - Burst: 버킷 크기 (burst), 최대 저장 가능한 토큰 수
-//   - 요청마다 토큰 1개 소비
-//   - 토큰 부족 시 요청 거부 (429 응답)
+//   - 요청마다 토큰 1개 소비, 부족 시 요청 거부
 //
 // 사용 예시:
 //
@@ -119,49 +106,46 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 //	e.Use(middleware.RateLimiting(20, 40)) // 초당 20 요청, 버스트 40
 //
 // 주의사항:
-//   - 메모리 기반 저장소 사용 (서버 재시작 시 초기화)
+//   - 메모리 기반 저장소 (서버 재시작 시 초기화)
 //   - 다중 서버 환경에서는 서버별로 독립적인 제한 적용
-//   - 장기 실행 시 IP 개수에 비례하여 메모리 사용량 증가 가능
 //
 // Panics:
-//   - requestsPerSecond가 0 이하인 경우
-//   - burst가 0 이하인 경우
+//   - requestsPerSecond 또는 burst가 0 이하인 경우
 func RateLimiting(requestsPerSecond int, burst int) echo.MiddlewareFunc {
-	// 입력 검증
 	if requestsPerSecond <= 0 {
-		panic("[RateLimiting] requestsPerSecond는 양수여야 합니다")
+		panic("RateLimiting: requestsPerSecond는 양수여야 합니다 (현재값: " + fmt.Sprint(requestsPerSecond) + ")")
 	}
 	if burst <= 0 {
-		panic("[RateLimiting] burst는 양수여야 합니다")
+		panic("RateLimiting: burst는 양수여야 합니다 (현재값: " + fmt.Sprint(burst) + ")")
 	}
 
 	limiter := newIPRateLimiter(requestsPerSecond, burst)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// 클라이언트 IP 추출
+			// 1. 클라이언트 IP 추출
 			ip := c.RealIP()
 
-			// IP별 Limiter 가져오기
+			// 2. IP별 Limiter 가져오기
 			ipLimiter := limiter.getLimiter(ip)
 
-			// Rate Limit 확인
+			// 3. Rate Limit 확인
 			if !ipLimiter.Allow() {
 				// 제한 초과 로깅
 				applog.WithComponentAndFields(constants.ComponentMiddleware, applog.Fields{
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
-				}).Warn("Rate limit 초과")
+				}).Warn("요청 속도 제한 초과")
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
-				c.Response().Header().Set("Retry-After", "1")
+				c.Response().Header().Set(constants.HeaderRetryAfter, constants.RetryAfterSeconds)
 
-				// 429 Too Many Requests 응답
+				// HTTP 429 응답
 				return httputil.NewTooManyRequestsError(constants.ErrMsgTooManyRequests)
 			}
 
-			// 다음 핸들러 실행
+			// 4. 다음 핸들러 실행
 			return next(c)
 		}
 	}

@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	// shutdownTimeout 서버 종료 시 대기 시간
+	// shutdownTimeout Graceful Shutdown 시 최대 대기 시간 (5초)
 	shutdownTimeout = 5 * time.Second
 )
 
@@ -32,10 +32,14 @@ const (
 //
 // 이 서비스는 다음과 같은 역할을 수행합니다:
 //   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
+//   - 미들웨어 체인 설정 (PanicRecovery, RequestID, RateLimiting, HTTPLogger, CORS, Secure)
+//   - 인증 관리 (Authenticator 생성 및 API 엔드포인트 보호)
 //   - API 엔드포인트 라우팅 설정 (Health Check, Version, 알림 메시지 전송 등)
 //   - Swagger UI 제공
+//   - 커스텀 HTTP 에러 핸들러 설정
 //   - 서비스 상태 관리 (시작/중지)
 //   - Graceful Shutdown 지원 (5초 타임아웃)
+//   - 서버 에러 처리 및 알림 전송 (예상치 못한 에러 발생 시)
 //
 // 서비스는 고루틴으로 실행되며, context를 통해 종료 신호를 받습니다.
 // Start() 메서드로 시작하고, context 취소로 종료됩니다.
@@ -51,9 +55,6 @@ type Service struct {
 }
 
 // NewService Service 인스턴스를 생성합니다.
-//
-// Returns:
-//   - 초기화된 Service 인스턴스
 func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
 	return &Service{
 		appConfig: appConfig,
@@ -70,17 +71,20 @@ func NewService(appConfig *config.AppConfig, notificationSender notification.Sen
 // Start API 서비스를 시작합니다.
 //
 // 서비스는 별도의 고루틴에서 실행되며, 다음 작업을 수행합니다:
-//  1. Echo 서버 설정 (미들웨어, 라우트)
-//  2. HTTP/HTTPS 서버 시작
-//  3. Shutdown 신호 대기
-//  4. Graceful Shutdown 처리
+//  1. 서비스 상태 검증 (notificationSender nil 체크, 중복 실행 방지)
+//  2. Echo 서버 설정 (Authenticator, Handler, 미들웨어, 라우트)
+//  3. HTTP/HTTPS 서버 시작 (별도 고루틴)
+//  4. Shutdown 신호 대기
+//  5. Graceful Shutdown 처리 (5초 타임아웃)
+//  6. 서버 에러 처리 및 알림 전송 (예상치 못한 에러 발생 시)
+//  7. 서비스 상태 정리 (running 플래그 초기화)
 //
 // Parameters:
-//   - serviceStopCtx: 종료 신호를 받기 위한 Context (cancel 호출 시 종료)
-//   - serviceStopWG: 서비스 종료 대기를 위한 WaitGroup
+//   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
+//   - serviceStopWG: 서비스 종료 완료를 알리기 위한 WaitGroup
 //
 // Returns:
-//   - error: notificationService가 nil이거나 이미 실행 중인 경우 에러 반환
+//   - error: notificationSender가 nil이거나 서비스가 이미 실행 중인 경우
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
 func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
@@ -125,45 +129,42 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 	s.waitForShutdown(serviceStopCtx, e, httpServerDone)
 }
 
-// setupServer Echo 서버 및 라우트를 설정합니다.
+// setupServer Echo 서버 인스턴스를 생성하고 모든 설정을 완료합니다.
 //
 // 다음 순서로 서버를 구성합니다:
-//  1. Authenticator 생성 (API 인증 관리)
-//  2. Handler 생성 (System, v1 API)
-//  3. Echo 서버 생성 (미들웨어 포함)
-//  4. 라우트 등록 (전역, v1)
-//
-// Returns:
-//   - 설정이 완료된 Echo 인스턴스
+//  1. Authenticator 생성 (애플리케이션 인증 관리, App Key 해시 저장)
+//  2. Handler 생성 (System 핸들러, v1 API 핸들러)
+//  3. Echo 서버 생성 (미들웨어 체인, CORS 설정 포함)
+//  4. 라우트 등록 (전역 라우트, v1 API 라우트)
 func (s *Service) setupServer() *echo.Echo {
-	// Authenticator 생성
+	// 1. Authenticator 생성
 	authenticator := apiauth.NewAuthenticator(s.appConfig)
 
-	// Handler 생성
+	// 2. Handler 생성
 	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
-	v1Handler := v1handler.NewHandler(authenticator, s.notificationSender)
+	v1Handler := v1handler.NewHandler(s.notificationSender)
 
-	// Echo 서버 생성
+	// 3. Echo 서버 생성 (미들웨어 체인 포함)
 	e := NewHTTPServer(HTTPServerConfig{
 		Debug:        s.appConfig.Debug,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
-	// 라우트 설정
+	// 4. 라우트 등록
 	SetupRoutes(e, systemHandler)
-	v1.SetupRoutes(e, v1Handler)
+	v1.SetupRoutes(e, v1Handler, authenticator)
 
 	return e
 }
 
-// startHTTPServer HTTP 서버를 시작합니다.
+// startHTTPServer HTTP/HTTPS 서버를 시작합니다.
 //
-// 설정에 따라 HTTP 또는 HTTPS 서버를 시작합니다.
-// 서버가 종료되면 done 채널을 닫아 대기 중인 고루틴에 신호를 보냅니다.
+// 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 done 채널을 닫아
+// 대기 중인 고루틴에 신호를 보냅니다.
 //
 // Parameters:
-//   - e: Echo 인스턴스
-//   - done: 서버 종료 신호를 보내기 위한 채널
+//   - e: Echo 서버 인스턴스
+//   - done: 서버 종료 완료 신호 채널
 //
 // Note: 이 함수는 블로킹되며, 서버가 종료될 때까지 반환되지 않습니다.
 func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
@@ -188,22 +189,25 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	s.handleServerError(err)
 }
 
-// handleServerError 서버 에러를 처리합니다.
-// 정상 종료(http.ErrServerClosed)는 Info 레벨로 로깅하고,
-// 그 외의 에러는 Error 레벨로 로깅하며 텔레그램 알림을 전송합니다.
+// handleServerError HTTP 서버 시작 중 발생한 에러를 처리합니다.
+//
+// 에러 처리 방식:
+//   - nil: 처리하지 않음 (정상 종료)
+//   - http.ErrServerClosed: Info 레벨 로깅 (Graceful Shutdown)
+//   - 그 외: Error 레벨 로깅 + 텔레그램 알림 전송 (예상치 못한 에러)
 func (s *Service) handleServerError(err error) {
-	// 에러가 없으면 처리하지 않음 (정상 종료)
+	// nil: 정상 종료, 처리 불필요
 	if err == nil {
 		return
 	}
 
-	// 정상적인 서버 종료
+	// http.ErrServerClosed: Graceful Shutdown 완료
 	if errors.Is(err, http.ErrServerClosed) {
 		applog.WithComponent(constants.ComponentService).Info("API 서비스 > http 서버 중지됨")
 		return
 	}
 
-	// 예상치 못한 에러 발생
+	// 예상치 못한 에러: 로깅 및 알림 전송
 	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
 	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
@@ -213,18 +217,18 @@ func (s *Service) handleServerError(err error) {
 	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", message, err))
 }
 
-// waitForShutdown Shutdown 신호를 대기하고 Graceful Shutdown을 처리합니다.
+// waitForShutdown 종료 신호를 대기하고 Graceful Shutdown을 수행합니다.
 //
-// 다음 순서로 종료를 처리합니다:
+// 종료 처리 순서:
 //  1. Context 취소 신호 대기 (블로킹)
-//  2. Echo 서버에 Shutdown 신호 전송 (5초 타임아웃)
+//  2. Echo 서버 Shutdown 호출 (5초 타임아웃)
 //  3. HTTP 서버 완전 종료 대기
-//  4. 서비스 상태 정리 (running = false)
+//  4. 서비스 상태 정리 (running 플래그 초기화)
 //
 // Parameters:
 //   - serviceStopCtx: 종료 신호를 받기 위한 Context
-//   - e: Echo 인스턴스
-//   - httpServerDone: HTTP 서버 종료 완료 신호를 받기 위한 채널
+//   - e: Echo 서버 인스턴스
+//   - httpServerDone: HTTP 서버 종료 완료 신호 채널
 //
 // Note: 이 함수는 서비스가 완전히 종료될 때까지 블로킹됩니다.
 func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
@@ -232,7 +236,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 
 	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지중...")
 
-	// 웹서버 종료
+	// Graceful Shutdown 시작 (5초 타임아웃)
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
@@ -248,9 +252,9 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	s.runningMu.Lock()
 	s.running = false
 	// 주의: notificationSender는 의도적으로 nil로 설정하지 않음
-	// - 서버 종료 중에도 다른 고루틴(예: Health Check)이 notificationSender에 접근할 수 있음
-	// - nil로 설정 시 동시 접근으로 인한 nil pointer panic 발생 위험
-	// - 메모리는 GC가 Service 객체 해제 시 자동으로 정리되므로 누수 없음
+	// - 종료 중에도 다른 고루틴(Health Check 등)이 접근 가능
+	// - nil 설정 시 동시 접근으로 인한 panic 위험
+	// - 메모리는 GC가 Service 객체 해제 시 자동 정리
 	s.runningMu.Unlock()
 
 	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지됨")
