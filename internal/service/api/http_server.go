@@ -74,6 +74,12 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	e.Debug = cfg.Debug
 	e.HideBanner = true
 
+	// 보안 및 리소스 관리를 위한 HTTP 서버 타임아웃 설정
+	e.Server.ReadTimeout = constants.DefaultReadTimeout             // 요청 본문 읽기 제한
+	e.Server.ReadHeaderTimeout = constants.DefaultReadHeaderTimeout // 요청 헤더 읽기 제한
+	e.Server.WriteTimeout = constants.DefaultWriteTimeout           // 응답 쓰기 제한
+	e.Server.IdleTimeout = constants.DefaultIdleTimeout             // Keep-Alive 연결 유휴 제한
+
 	// Echo 프레임워크의 내부 로그를 애플리케이션 로거로 통합합니다.
 	// 이를 통해 모든 로그가 동일한 형식과 출력 대상을 사용하게 됩니다.
 	e.Logger = appmiddleware.Logger{Logger: applog.StandardLogger()}

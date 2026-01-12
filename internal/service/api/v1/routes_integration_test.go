@@ -42,225 +42,263 @@ func createTestAppConfig() *config.AppConfig {
 	}
 }
 
-// TestV1API_Integration v1 API의 전체 동작 흐름을 검증하는 통합 테스트입니다.
-func TestV1API_Integration(t *testing.T) {
-	// 공통 설정
-	appConfig := createTestAppConfig()
-	authenticator := apiauth.NewAuthenticator(appConfig)
+// =============================================================================
+// Integration Tests - Success Scenarios
+// =============================================================================
 
-	// 테스트 케이스 정의
+// TestV1API_Success_Notification 유효한 알림 전송 요청이 성공하는지 검증합니다.
+func TestV1API_Success_Notification(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+
 	tests := []struct {
 		name           string
-		method         string
-		path           string
-		contentType    string
-		appKeyQuery    string
-		appKeyHeader   string
-		body           interface{}
-		shouldFail     bool // Mock Server가 실패하도록 설정할지 여부
-		expectedStatus int
-		verifyResponse func(*testing.T, *httptest.ResponseRecorder)
+		appKeyLocation string // "header" or "query"
+		body           request.NotificationRequest
 	}{
-		// ---------------------------------------------------------------------
-		// 정상 케이스
-		// ---------------------------------------------------------------------
 		{
-			name:         "성공: 유효한 요청 (Header Auth)",
-			method:       http.MethodPost,
-			path:         "/api/v1/notifications",
-			contentType:  echo.MIMEApplicationJSON,
-			appKeyHeader: "test-app-key",
+			name:           "Header 인증",
+			appKeyLocation: "header",
 			body: request.NotificationRequest{
 				ApplicationID: "test-app",
-				Message:       "정상 메시지입니다.",
-			},
-			expectedStatus: http.StatusOK,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var resp response.SuccessResponse
-				err := json.Unmarshal(rec.Body.Bytes(), &resp)
-				require.NoError(t, err)
-				assert.Equal(t, 0, resp.ResultCode)
+				Message:       "정상 메시지 (Header Auth)",
 			},
 		},
 		{
-			name:        "성공: 유효한 요청 (Query Auth)",
-			method:      http.MethodPost,
-			path:        "/api/v1/notifications",
-			contentType: echo.MIMEApplicationJSON,
-			appKeyQuery: "test-app-key",
+			name:           "Query 인증",
+			appKeyLocation: "query",
 			body: request.NotificationRequest{
 				ApplicationID: "test-app",
-				Message:       "쿼리 파라미터 인증 테스트",
-			},
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:         "성공: 레거시 엔드포인트 요청 (Deprecated 헤더 확인)",
-			method:       http.MethodPost,
-			path:         "/api/v1/notice/message",
-			contentType:  echo.MIMEApplicationJSON,
-			appKeyHeader: "test-app-key",
-			body: request.NotificationRequest{
-				ApplicationID: "test-app",
-				Message:       "레거시 요청",
-			},
-			expectedStatus: http.StatusOK,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				// Deprecated 관련 헤더 검증
-				assert.Contains(t, rec.Header().Get("Warning"), "299")
-				assert.Equal(t, "true", rec.Header().Get("X-API-Deprecated"))
-				assert.Equal(t, "/api/v1/notifications", rec.Header().Get("X-API-Deprecated-Replacement"))
+				Message:       "정상 메시지 (Query Auth)",
 			},
 		},
 		{
-			name:         "성공: ErrorOccurred 필드 포함",
-			method:       http.MethodPost,
-			path:         "/api/v1/notifications",
-			contentType:  echo.MIMEApplicationJSON,
-			appKeyHeader: "test-app-key",
+			name:           "ErrorOccurred 필드 포함",
+			appKeyLocation: "header",
 			body: request.NotificationRequest{
 				ApplicationID: "test-app",
-				Message:       "에러 발생 상황 알림",
+				Message:       "에러 발생 알림",
 				ErrorOccurred: true,
 			},
-			expectedStatus: http.StatusOK,
-		},
-
-		// ---------------------------------------------------------------------
-		// 인증 실패 케이스
-		// ---------------------------------------------------------------------
-		{
-			name:           "실패: AppKey 누락",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			body:           request.NotificationRequest{ApplicationID: "test-app", Message: "Test"},
-			expectedStatus: http.StatusBadRequest, // 클라이언트 에러 (키 누락)
-		},
-		{
-			name:           "실패: 잘못된 AppKey",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "invalid-key",
-			body:           request.NotificationRequest{ApplicationID: "test-app", Message: "Test"},
-			expectedStatus: http.StatusUnauthorized, // 인증 실패
-		},
-		{
-			name:           "실패: 잘못된 ApplicationID (AppKey와 불일치)",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "test-app-key",                                                             // test-app용 키
-			body:           request.NotificationRequest{ApplicationID: "another-app", Message: "Test"}, // another-app 요청
-			expectedStatus: http.StatusUnauthorized,
-		},
-
-		// ---------------------------------------------------------------------
-		// 요청 검증 실패 케이스
-		// ---------------------------------------------------------------------
-		{
-			name:           "실패: ApplicationID 필드 누락",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "test-app-key",
-			body:           request.NotificationRequest{Message: "Test"},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "실패: Message 필드 누락",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "test-app-key",
-			body:           request.NotificationRequest{ApplicationID: "test-app", Message: ""},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "실패: 잘못된 JSON 형식",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "test-app-key",
-			body:           "INVALID JSON...",
-			expectedStatus: http.StatusBadRequest,
-		},
-		// ---------------------------------------------------------------------
-		// 기타 실패 케이스
-		// ---------------------------------------------------------------------
-		{
-			name:           "실패: Content-Type 불일치",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMETextPlain,
-			appKeyHeader:   "test-app-key",
-			body:           "plain text body",
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "실패: 지원하지 않는 HTTP 메서드",
-			method:         http.MethodGet,
-			path:           "/api/v1/notifications",
-			expectedStatus: http.StatusMethodNotAllowed,
-		},
-		{
-			name:           "실패: 내부 서비스 오류 (503)",
-			method:         http.MethodPost,
-			path:           "/api/v1/notifications",
-			contentType:    echo.MIMEApplicationJSON,
-			appKeyHeader:   "test-app-key",
-			body:           request.NotificationRequest{ApplicationID: "test-app", Message: "Fail"},
-			shouldFail:     true, // Mock Sender 실패 설정
-			expectedStatus: http.StatusServiceUnavailable,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Per-test Setup
-			e := echo.New()
-			mockSender := &mocks.MockNotificationSender{ShouldFail: tt.shouldFail}
+			// Mock 설정
+			mockSender := &mocks.MockNotificationSender{ShouldFail: false}
 			h := handler.NewHandler(mockSender)
 			SetupRoutes(e, h, authenticator)
 
-			// Request Body 생성
-			var bodyBytes []byte
-			if str, ok := tt.body.(string); ok {
-				bodyBytes = []byte(str)
+			req := createJSONRequest(t, http.MethodPost, "/api/v1/notifications", tt.body)
+
+			// 인증 키 설정
+			testAppKey := "test-app-key"
+			if tt.appKeyLocation == "header" {
+				req.Header.Set("X-App-Key", testAppKey)
 			} else {
-				jsonBytes, _ := json.Marshal(tt.body)
-				bodyBytes = jsonBytes
+				q := req.URL.Query()
+				q.Add("app_key", testAppKey)
+				req.URL.RawQuery = q.Encode()
 			}
 
-			// Request 생성
-			reqPath := tt.path
-			if tt.appKeyQuery != "" {
-				reqPath += "?app_key=" + tt.appKeyQuery
-			}
-			req := httptest.NewRequest(tt.method, reqPath, bytes.NewReader(bodyBytes))
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
 
-			// Header 설정
-			if tt.contentType != "" {
-				req.Header.Set(echo.HeaderContentType, tt.contentType)
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			var resp response.SuccessResponse
+			err := json.Unmarshal(rec.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, 0, resp.ResultCode)
+		})
+	}
+}
+
+// TestV1API_Success_LegacyEndpoint 레거시 엔드포인트(/api/v1/notice/message)의 동작과 Deprecated 헤더를 검증합니다.
+func TestV1API_Success_LegacyEndpoint(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+	mockSender := &mocks.MockNotificationSender{}
+	h := handler.NewHandler(mockSender)
+	SetupRoutes(e, h, authenticator)
+
+	body := request.NotificationRequest{
+		ApplicationID: "test-app",
+		Message:       "레거시 요청 테스트",
+	}
+	req := createJSONRequest(t, http.MethodPost, "/api/v1/notice/message", body)
+	req.Header.Set("X-App-Key", "test-app-key")
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// Status OK 확인
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	// Deprecated 헤더 검증
+	assert.Contains(t, rec.Header().Get("Warning"), "299", "Warning 헤더에 299 코드가 포함되어야 함")
+	assert.Equal(t, "true", rec.Header().Get("X-API-Deprecated"), "X-API-Deprecated 헤더가 true여야 함")
+	assert.Equal(t, "/api/v1/notifications", rec.Header().Get("X-API-Deprecated-Replacement"), "대체 API 경로가 올바르지 않음")
+}
+
+// =============================================================================
+// Integration Tests - Failure Scenarios
+// =============================================================================
+
+// TestV1API_Failure_Authentication 인증 실패 시나리오를 검증합니다.
+func TestV1API_Failure_Authentication(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+	h := handler.NewHandler(&mocks.MockNotificationSender{})
+	SetupRoutes(e, h, authenticator)
+
+	tests := []struct {
+		name         string
+		appKeyHeader string
+		appID        string
+		expectStatus int
+	}{
+		{"AppKey 누락", "", "test-app", http.StatusBadRequest},
+		{"잘못된 AppKey", "invalid-key", "test-app", http.StatusUnauthorized},
+		{"ApplicationID 불일치", "test-app-key", "another-app", http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := request.NotificationRequest{
+				ApplicationID: tt.appID,
+				Message:       "Auth Test",
 			}
+			req := createJSONRequest(t, http.MethodPost, "/api/v1/notifications", body)
 			if tt.appKeyHeader != "" {
 				req.Header.Set("X-App-Key", tt.appKeyHeader)
 			}
 
 			rec := httptest.NewRecorder()
-
-			// Execute
 			e.ServeHTTP(rec, req)
 
-			// Verify
-			assert.Equal(t, tt.expectedStatus, rec.Code, "HTTP 상태 코드가 기대값과 다릅니다")
-
-			if tt.verifyResponse != nil {
-				tt.verifyResponse(t, rec)
-			}
+			assert.Equal(t, tt.expectStatus, rec.Code)
 		})
 	}
+}
+
+// TestV1API_Failure_Validation 요청 데이터 검증 및 Content-Type 검증 실패를 테스트합니다.
+func TestV1API_Failure_Validation(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+	h := handler.NewHandler(&mocks.MockNotificationSender{})
+	SetupRoutes(e, h, authenticator)
+
+	tests := []struct {
+		name        string
+		contentType string
+		body        interface{}
+		validAuth   bool
+	}{
+		{
+			name:        "ApplicationID 누락",
+			contentType: echo.MIMEApplicationJSON,
+			body:        request.NotificationRequest{Message: "Msg Only"},
+			validAuth:   true,
+		},
+		{
+			name:        "Message 누락",
+			contentType: echo.MIMEApplicationJSON,
+			body:        request.NotificationRequest{ApplicationID: "test-app"},
+			validAuth:   true,
+		},
+		{
+			name:        "잘못된 JSON 형식",
+			contentType: echo.MIMEApplicationJSON,
+			body:        "INVALID_JSON_{{",
+			validAuth:   true,
+		},
+		{
+			name:        "Content-Type 불일치 (Text)",
+			contentType: echo.MIMETextPlain,
+			body:        "Plain Text",
+			validAuth:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req *http.Request
+			if str, ok := tt.body.(string); ok {
+				req = httptest.NewRequest(http.MethodPost, "/api/v1/notifications", bytes.NewReader([]byte(str)))
+			} else {
+				jsonBytes, _ := json.Marshal(tt.body)
+				req = httptest.NewRequest(http.MethodPost, "/api/v1/notifications", bytes.NewReader(jsonBytes))
+			}
+
+			if tt.contentType != "" {
+				req.Header.Set(echo.HeaderContentType, tt.contentType)
+			}
+			if tt.validAuth {
+				req.Header.Set("X-App-Key", "test-app-key")
+			}
+
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			// 검증 실패는 400 Bad Request
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
+}
+
+// TestV1API_Failure_MethodNotAllowed 지원하지 않는 메서드 요청 시 처리를 검증합니다.
+func TestV1API_Failure_MethodNotAllowed(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+	h := handler.NewHandler(&mocks.MockNotificationSender{})
+	SetupRoutes(e, h, authenticator)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+// TestV1API_Failure_InternalError 내부 로직(Sender) 실패 시 503 처리를 검증합니다.
+func TestV1API_Failure_InternalError(t *testing.T) {
+	e, _, authenticator := setupIntegrationTest(t)
+
+	// Mock Sender 강제 실패 설정
+	mockSender := &mocks.MockNotificationSender{ShouldFail: true}
+	h := handler.NewHandler(mockSender)
+	SetupRoutes(e, h, authenticator)
+
+	body := request.NotificationRequest{
+		ApplicationID: "test-app",
+		Message:       "This should fail",
+	}
+	req := createJSONRequest(t, http.MethodPost, "/api/v1/notifications", body)
+	req.Header.Set("X-App-Key", "test-app-key")
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+func setupIntegrationTest(t *testing.T) (*echo.Echo, *config.AppConfig, *apiauth.Authenticator) {
+	t.Helper()
+	appConfig := createTestAppConfig()
+	authenticator := apiauth.NewAuthenticator(appConfig)
+	e := echo.New()
+	return e, appConfig, authenticator
+}
+
+func createJSONRequest(t *testing.T, method, path string, body interface{}) *http.Request {
+	t.Helper()
+	jsonBytes, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(method, path, bytes.NewReader(jsonBytes))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	return req
 }
 
 // TestV1API_ConcurrentRequests 동시 요청 처리 능력을 검증합니다.

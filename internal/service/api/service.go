@@ -136,7 +136,6 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 //  2. Handler 생성 (System 핸들러, v1 API 핸들러)
 //  3. Echo 서버 생성 (미들웨어 체인, CORS 설정 포함)
 //  4. 라우트 등록 (전역 라우트, v1 API 라우트)
-//  5. HTTP 서버 보안 설정 (Slowloris 방어)
 func (s *Service) setupServer() *echo.Echo {
 	// 1. Authenticator 생성
 	authenticator := apiauth.NewAuthenticator(s.appConfig)
@@ -155,11 +154,6 @@ func (s *Service) setupServer() *echo.Echo {
 	// 4. 라우트 등록
 	SetupRoutes(e, systemHandler)
 	v1.SetupRoutes(e, v1Handler, authenticator)
-
-	// 5. HTTP 서버 보안 설정 강화
-	// ReadHeaderTimeout을 설정하여 Slowloris DoS 공격을 방어합니다.
-	// 악의적인 클라이언트가 헤더를 매우 느리게 전송하여 연결을 고갈시키는 것을 방지합니다.
-	e.Server.ReadHeaderTimeout = constants.DefaultReadHeaderTimeout
 
 	return e
 }

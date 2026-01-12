@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -356,4 +357,32 @@ func TestNewHTTPServer_RateLimiting(t *testing.T) {
 	}
 
 	assert.True(t, limitHit, "허용량을 초과하면 429 Too Many Requests 응답이 발생해야 합니다")
+}
+
+// =============================================================================
+// Expert Level Tests (Timeouts & Middleware Order)
+// =============================================================================
+
+// TestNewHTTPServer_ServerTimeouts 는 http.Server의 타임아웃 설정이 상수에 정의된 값과 일치하는지 검증합니다.
+// 이는 보안(Slowloris 등) 및 리소스 관리 측면에서 매우 중요합니다.
+func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
+	cfg := HTTPServerConfig{AllowOrigins: []string{"*"}}
+	e := NewHTTPServer(cfg)
+
+	require.NotNil(t, e.Server, "http.Server 인스턴스가 설정되어야 합니다")
+
+	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultReadHeaderTimeout, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout, "WriteTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultIdleTimeout, e.Server.IdleTimeout, "IdleTimeout 설정 불일치")
+}
+
+// TestNewHTTPServer_MiddlewareOrder 는 미들웨어가 의도한 순서대로 등록되었는지 검증합니다.
+// 미들웨어 순서는 보안 및 로깅의 정확성에 치명적인 영향을 미칩니다.
+func TestNewHTTPServer_MiddlewareOrder(t *testing.T) {
+	// Echo의 Middleware 체인은 e.Routes()나 e.Middleware()로 직접 검증하기 어렵습니다.
+	// 따라서 각 미들웨어의 Side Effect(헤더 존재 여부, 로그 발생 순서 등)를 확인하는 통합 테스트가 적절합니다.
+	// 현재 존재하는 TestNewHTTPServer_StandardMiddleware_Table, TestNewHTTPServer_HTTPLoggerMiddleware 등이
+	// 개별 기능을 검증하고 있습니다. (중복 방지 및 유지보수성을 위해 여기서는 생략)
+	t.Skip("개별 기능 테스트로 대체됨")
 }

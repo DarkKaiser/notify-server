@@ -13,6 +13,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -112,10 +113,14 @@ func TestService_setupServer(t *testing.T) {
 	assert.NotNil(t, e.Router())
 	assert.True(t, e.Debug, "Config의 Debug가 true이면 Echo Debug도 true여야 함")
 
-	// 2. 보안 설정 검증 (ReadHeaderTimeout)
-	// Slowloris 공격 방어를 위한 ReadHeaderTimeout 설정 확인
+	// 2. 보안 설정 및 타임아웃 검증
+	// Slowloris 공격 방어 및 리소스 누수 방지를 위한 타임아웃 설정 확인
 	require.NotNil(t, e.Server, "http.Server 객체가 Echo 인스턴스에 설정되어야 합니다")
-	assert.Equal(t, 10*time.Second, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout은 반드시 10초로 설정되어야 합니다")
+
+	assert.Equal(t, constants.DefaultReadHeaderTimeout, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout, "WriteTimeout 설정 불일치")
+	assert.Equal(t, constants.DefaultIdleTimeout, e.Server.IdleTimeout, "IdleTimeout 설정 불일치")
 
 	// 3. 주요 라우트 등록 확인
 	routes := e.Routes()

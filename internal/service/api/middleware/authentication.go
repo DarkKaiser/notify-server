@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
@@ -39,6 +40,7 @@ import (
 // 인증 실패 시:
 //   - 400 Bad Request: App Key/Application ID 누락, 빈 Body, 잘못된 JSON
 //   - 401 Unauthorized: 미등록 Application ID 또는 잘못된 App Key
+//   - 413 Request Entity Too Large: 요청 크기가 제한을 초과함 (BodyLimit)
 //
 // 사용 예시:
 //
@@ -78,6 +80,20 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 				// 헤더가 없으면 Body 파싱 (레거시 호환)
 				bodyBytes, err := io.ReadAll(c.Request().Body)
 				if err != nil {
+					// 413 Request Entity Too Large 처리
+					//
+					// BodyLimit 미들웨어 또는 http.MaxBytesReader에 의해 요청 본문 크기가 제한된 경우,
+					// 읽기 시도 시 아래 두 가지 유형의 에러가 발생할 수 있습니다.
+					// 1. http.MaxBytesError: 표준 라이브러리의 MaxBytesReader가 반환하는 에러
+					// 2. echo.HTTPError(413): Echo 프레임워크가 래핑하여 반환하는 에러
+					//
+					// 이들을 포착하여 클라이언트에게 명확한 표준 413 에러 응답으로 정규화합니다.
+					if _, ok := err.(*http.MaxBytesError); ok {
+						return echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+					}
+					if he, ok := err.(*echo.HTTPError); ok && he.Code == http.StatusRequestEntityTooLarge {
+						return echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+					}
 					return httputil.NewBadRequestError(constants.ErrMsgBodyReadFailed)
 				}
 				c.Request().Body.Close()

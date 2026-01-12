@@ -33,7 +33,7 @@ import (
 //   - POST /api/v1/notice/message - 알림 메시지 전송 (레거시, deprecated)
 //
 // 미들웨어 적용:
-//   - 모든 엔드포인트: RequireAuthentication (app_key 검증)
+//   - 모든 엔드포인트: RequireAuthentication (인증), ValidateContentType (JSON 검증)
 //   - 레거시 엔드포인트: DeprecatedEndpoint (경고 헤더 추가)
 //
 // 레거시 엔드포인트 응답 헤더:
@@ -47,9 +47,16 @@ func SetupRoutes(e *echo.Echo, h *handler.Handler, authenticator *auth.Authentic
 	// 2. 인증 미들웨어 생성 (app_key 검증)
 	authMiddleware := middleware.RequireAuthentication(authenticator)
 
-	// 3. 권장 엔드포인트 등록 (인증 미들웨어 적용)
-	v1Group.POST("/notifications", h.PublishNotificationHandler, authMiddleware)
+	// 3. 권장 엔드포인트 등록 (인증 미들웨어 적용 + Content-Type 검증)
+	v1Group.POST("/notifications", h.PublishNotificationHandler,
+		authMiddleware,
+		middleware.ValidateContentType(echo.MIMEApplicationJSON),
+	)
 
-	// 4. 레거시 엔드포인트 등록 (인증 + deprecated 경고 미들웨어 적용)
-	v1Group.POST("/notice/message", h.PublishNotificationHandler, authMiddleware, middleware.DeprecatedEndpoint("/api/v1/notifications"))
+	// 4. 레거시 엔드포인트 등록 (인증 + deprecated 경고 미들웨어 적용 + Content-Type 검증)
+	v1Group.POST("/notice/message", h.PublishNotificationHandler,
+		authMiddleware,
+		middleware.DeprecatedEndpoint("/api/v1/notifications"),
+		middleware.ValidateContentType(echo.MIMEApplicationJSON),
+	)
 }
