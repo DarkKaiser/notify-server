@@ -90,6 +90,7 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 		name           string
 		appKeyHeader   string
 		appKeyQuery    string
+		appIDHeader    string // New: X-Application-Id 헤더 테스트용
 		body           []byte
 		expectedCode   int
 		expectErrorStr string
@@ -113,6 +114,29 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 			body:         validBodyBytes,
 			expectedCode: http.StatusOK,
 		},
+		{
+			name:         "성공: X-Application-Id 헤더 인증 (Hybrid - Body 파싱 생략)",
+			appKeyHeader: "test-key-123",
+			appIDHeader:  "test-app",             // Body 파싱 없이 헤더로 인증
+			body:         []byte("invalid-json"), // Body가 잘못되어도 인증은 성공해야 함
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:         "성공: 헤더/Body ID 불일치 시 헤더 우선 (우선순위 검증)",
+			appKeyHeader: "test-key-123",
+			appIDHeader:  "test-app",                               // Header: test-app (Target)
+			body:         createRequestBody("another-app").Bytes(), // Body: another-app
+			expectedCode: http.StatusOK,
+			// 검증 로직에서 test-app으로 인증되었는지 확인 필요 (createAuthSuccessHandler가 수행)
+		},
+		{
+			name:         "성공: X-Application-Id 헤더가 비어있는 경우 Body 폴백",
+			appKeyHeader: "test-key-123",
+			appIDHeader:  "", // 헤더 있음(빈 값) -> Body 파싱 수행
+			body:         validBodyBytes,
+			expectedCode: http.StatusOK,
+		},
+
 		{
 			name:           "실패: App Key 누락",
 			body:           validBodyBytes,
@@ -178,6 +202,9 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			if tt.appKeyHeader != "" {
 				req.Header.Set(constants.HeaderXAppKey, tt.appKeyHeader)
+			}
+			if tt.appIDHeader != "" {
+				req.Header.Set(constants.HeaderXApplicationID, tt.appIDHeader)
 			}
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)

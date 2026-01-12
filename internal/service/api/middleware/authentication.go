@@ -16,13 +16,21 @@ import (
 //
 // 처리 과정:
 //  1. App Key 추출 (X-App-Key 헤더 우선, app_key 쿼리 파라미터 폴백)
-//  2. Request Body에서 application_id 추출
+//  2. Application ID 추출 (X-Application-Id 헤더 우선, Body 폴백)
 //  3. Authenticator를 통한 인증 처리
 //  4. 인증된 Application 객체를 Context에 저장
 //
 // App Key 추출 우선순위:
 //  1. X-App-Key 헤더 (권장)
 //  2. app_key 쿼리 파라미터 (레거시, deprecated)
+//
+// Application ID 추출 우선순위:
+//  1. X-Application-Id 헤더 (권장)
+//     - HTTP Body는 스트림(Stream)이므로, 미들웨어에서 읽으면 소모되어 사라집니다.
+//     - 이를 복구하려면 전체 데이터를 메모리에 복사하고 다시 채워넣는 고비용 작업(I/O + 메모리 할당)이 필요합니다.
+//     - 헤더를 사용하면 이러한 "Double Parsing"과 "Stream Restoration" 비용을 "0"으로 만들 수 있습니다.
+//  2. Request Body (레거시, 호환성 유지)
+//     - 헤더가 없는 경우에만 불가피하게 Body를 파싱합니다.
 //
 // 인증 성공 시:
 //   - Application 객체를 Context에 저장 (키: ContextKeyApplication)
@@ -61,34 +69,42 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 				return httputil.NewBadRequestError(constants.ErrMsgAppKeyRequired)
 			}
 
-			// 2. Request Body 읽기 및 복원
-			bodyBytes, err := io.ReadAll(c.Request().Body)
-			if err != nil {
-				return httputil.NewBadRequestError(constants.ErrMsgBodyReadFailed)
-			}
-			c.Request().Body.Close()
+			// 2. Application ID 추출
+			// 우선순위 1: X-Application-Id 헤더 (권장, 성능 최적화, GET 지원)
+			// 우선순위 2: Request Body (레거시, 호환성 유지)
+			applicationID := c.Request().Header.Get(constants.HeaderXApplicationID)
 
-			if len(bodyBytes) == 0 {
-				return httputil.NewBadRequestError(constants.ErrMsgEmptyBody)
+			if applicationID == "" {
+				// 헤더가 없으면 Body 파싱 (레거시 호환)
+				bodyBytes, err := io.ReadAll(c.Request().Body)
+				if err != nil {
+					return httputil.NewBadRequestError(constants.ErrMsgBodyReadFailed)
+				}
+				c.Request().Body.Close()
+
+				if len(bodyBytes) == 0 {
+					return httputil.NewBadRequestError(constants.ErrMsgEmptyBody)
+				}
+
+				// Body 복원 (다음 핸들러에서 사용 가능하도록)
+				c.Request().Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+				var authRequest struct {
+					ApplicationID string `json:"application_id"`
+				}
+				if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
+					return httputil.NewBadRequestError(constants.ErrMsgInvalidJSON)
+				}
+
+				applicationID = authRequest.ApplicationID
 			}
 
-			// Body 복원 (다음 핸들러에서 사용 가능하도록)
-			c.Request().Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-			// 3. application_id 추출
-			var authRequest struct {
-				ApplicationID string `json:"application_id"`
-			}
-			if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
-				return httputil.NewBadRequestError(constants.ErrMsgInvalidJSON)
-			}
-
-			if authRequest.ApplicationID == "" {
+			if applicationID == "" {
 				return httputil.NewBadRequestError(constants.ErrMsgApplicationIDRequired)
 			}
 
-			// 4. 인증 처리
-			app, err := authenticator.Authenticate(authRequest.ApplicationID, appKey)
+			// 3. 인증 처리
+			app, err := authenticator.Authenticate(applicationID, appKey)
 			if err != nil {
 				return err
 			}

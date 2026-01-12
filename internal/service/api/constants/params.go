@@ -13,6 +13,10 @@ const (
 	// HeaderXAppKey 애플리케이션 인증용 HTTP 헤더 키 (권장 방식)
 	HeaderXAppKey = "X-App-Key"
 
+	// HeaderXApplicationID 애플리케이션 식별용 HTTP 헤더 키 (성능 최적화 및 GET 요청용)
+	// 이 헤더가 존재하면 Body 파싱을 건너뛰고 헤더 값으로 인증합니다.
+	HeaderXApplicationID = "X-Application-Id"
+
 	// === Deprecated 엔드포인트 ===
 
 	// HeaderWarning RFC 7234 표준 Warning 헤더 (deprecated 엔드포인트 경고용)
