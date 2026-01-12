@@ -12,6 +12,7 @@ import (
 	systemhandler "github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,8 @@ func TestSetupRoutes_Integration_Table(t *testing.T) {
 		BuildNumber: "1",
 		GoVersion:   "go1.21",
 	}
-	systemHandler := systemhandler.NewHandler(nil, buildInfo)
+	mockSender := mocks.NewMockNotificationSender()
+	systemHandler := systemhandler.NewHandler(mockSender, buildInfo)
 	SetupRoutes(e, systemHandler)
 
 	tests := []struct {
@@ -113,7 +115,8 @@ func TestSetupRoutes_Integration_Table(t *testing.T) {
 // TestSetupRoutes_Registration 은 각 엔드포인트가 정확한 경로와 메서드로 등록되었는지 검증합니다.
 func TestSetupRoutes_Registration(t *testing.T) {
 	e := echo.New()
-	handler := systemhandler.NewHandler(nil, version.Info{})
+	mockSender := mocks.NewMockNotificationSender()
+	handler := systemhandler.NewHandler(mockSender, version.Info{})
 	SetupRoutes(e, handler)
 
 	expectedRoutes := map[string]string{
@@ -138,7 +141,8 @@ func TestSetupRoutes_Registration(t *testing.T) {
 // TestSetupRoutes_ErrorHandler 은 커스텀 에러 핸들러가 올바르게 설정되었는지 검증합니다.
 func TestSetupRoutes_ErrorHandler(t *testing.T) {
 	e := echo.New()
-	handler := systemhandler.NewHandler(nil, version.Info{})
+	mockSender := mocks.NewMockNotificationSender()
+	handler := systemhandler.NewHandler(mockSender, version.Info{})
 
 	// 설정 전 기본 핸들러 확인 (Echo 기본 핸들러는 exported 되지 않으므로 비교는 어려우나, 설정 후 변경됨을 확인)
 	originalHandler := e.HTTPErrorHandler

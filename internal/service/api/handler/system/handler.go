@@ -36,6 +36,10 @@ type Handler struct {
 
 // NewHandler Handler 인스턴스를 생성합니다.
 func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
+	if notificationSender == nil {
+		panic("NotificationSender는 필수입니다")
+	}
+
 	return &Handler{
 		notificationSender: notificationSender,
 

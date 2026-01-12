@@ -40,6 +40,10 @@ type Handler struct {
 // Returns:
 //   - 초기화된 Handler 포인터
 func NewHandler(notificationSender notification.Sender) *Handler {
+	if notificationSender == nil {
+		panic("NotificationSender는 필수입니다")
+	}
+
 	return &Handler{
 		notificationSender: notificationSender,
 	}

@@ -12,7 +12,6 @@ import (
 
 	_ "github.com/darkkaiser/notify-server/docs"
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
@@ -56,6 +55,13 @@ type Service struct {
 
 // NewService Service 인스턴스를 생성합니다.
 func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
+	if appConfig == nil {
+		panic("AppConfig는 필수입니다")
+	}
+	if notificationSender == nil {
+		panic("NotificationSender는 필수입니다")
+	}
+
 	return &Service{
 		appConfig: appConfig,
 
@@ -92,11 +98,6 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	defer s.runningMu.Unlock()
 
 	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작중...")
-
-	if s.notificationSender == nil {
-		defer serviceStopWG.Done()
-		return apperrors.New(apperrors.Internal, "NotificationSender 객체가 초기화되지 않았습니다")
-	}
 
 	if s.running {
 		defer serviceStopWG.Done()
