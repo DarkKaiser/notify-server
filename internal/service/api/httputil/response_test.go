@@ -110,6 +110,10 @@ func TestErrorResponses(t *testing.T) {
 
 			// 메시지 확인
 			assert.Equal(t, tt.message, errResp.Message, "에러 메시지가 일치해야 합니다")
+
+			// ResultCode 확인
+			// API 응답의 ResultCode가 HTTP 상태 코드와 동일한지 검증합니다.
+			assert.Equal(t, tt.expectedStatus, errResp.ResultCode, "ResultCode는 HTTP 상태 코드와 일치해야 합니다")
 		})
 	}
 }

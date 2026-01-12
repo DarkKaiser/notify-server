@@ -71,6 +71,7 @@ func ErrorHandler(err error, c echo.Context) {
 
 	// 일반 요청: 표준 ErrorResponse JSON 형식으로 응답
 	c.JSON(code, response.ErrorResponse{
-		Message: message,
+		ResultCode: code,
+		Message:    message,
 	})
 }

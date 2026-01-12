@@ -203,6 +203,10 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 					t.Fatalf("Failed to decode response body: %v", err)
 				}
 				assert.Equal(t, expected.Message, actual.Message, "응답 메시지가 일치해야 합니다")
+
+				// 추가: ResultCode 검증
+				// ErrorHandler는 Status Code를 ResultCode로 설정해야 함
+				assert.Equal(t, tt.expectedStatus, actual.ResultCode, "ResultCode는 HTTP 상태 코드와 일치해야 합니다")
 			} else {
 				// Body가 비어있어야 하는 경우 (Head 요청 or Committed)
 				assert.Empty(t, rec.Body.String(), "응답 본문이 비어있어야 합니다")

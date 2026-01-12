@@ -80,11 +80,6 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 큐 포화 또는 시스템 종료 시 false 반환 → 503 에러 응답
 	ok := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 	if !ok {
-		h.log(c).WithFields(applog.Fields{
-			"application_id": req.ApplicationID,
-			"notifier_id":    app.DefaultNotifierID,
-		}).Error("알림 큐 적재 실패: 서비스 혼잡 또는 시스템 종료 중")
-
 		return httputil.NewServiceUnavailableError("알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
 	}
 
