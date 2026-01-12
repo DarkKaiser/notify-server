@@ -178,7 +178,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "잘못된 요청 형식")
+				assert.Contains(t, errResp.Message, "요청 본문을 파싱할 수 없습니다")
 			},
 		},
 
@@ -195,8 +195,8 @@ func TestPublishNotificationHandler(t *testing.T) {
 			mockFail:       true,
 			expectedStatus: http.StatusServiceUnavailable,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "현재 알림 서비스가 혼잡")
-				assert.Contains(t, errResp.Message, "다시 시도")
+				assert.Contains(t, errResp.Message, "알림 서비스를 일시적으로 사용할 수 없습니다")
+				assert.Contains(t, errResp.Message, "잠시 후 다시 시도해주세요")
 			},
 		},
 	}

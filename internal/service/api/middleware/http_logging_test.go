@@ -175,7 +175,7 @@ func TestHTTPLogger(t *testing.T) {
 			require.True(t, found, "HTTP 요청 로그를 찾을 수 없습니다")
 
 			// 공통 필드 검증
-			assert.Equal(t, "HTTP request", logEntry["msg"])
+			assert.Equal(t, "HTTP 요청", logEntry["msg"])
 			assert.NotEmpty(t, logEntry["time_rfc3339"])
 			assert.NotEmpty(t, logEntry["latency"])
 

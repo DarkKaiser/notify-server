@@ -61,7 +61,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodGet,
 			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
 			expectedStatus: http.StatusNotFound,
-			expectedBody:   response.ErrorResponse{Message: "페이지를 찾을 수 없습니다."},
+			expectedBody:   response.ErrorResponse{Message: "요청한 리소스를 찾을 수 없습니다"},
 			expectedLog: &LogEntry{
 				Level:      "warning",
 				Message:    "HTTP 4xx: 클라이언트 요청 오류",
@@ -73,7 +73,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:          http.MethodGet,
 			err:             echo.NewHTTPError(http.StatusNotFound, "Custom Check"),
 			expectedStatus:  http.StatusNotFound,
-			expectedBody:    response.ErrorResponse{Message: "페이지를 찾을 수 없습니다."},
+			expectedBody:    response.ErrorResponse{Message: "요청한 리소스를 찾을 수 없습니다"},
 			expectedLogPart: "클라이언트 요청 오류",
 		},
 		{
@@ -114,7 +114,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodGet,
 			err:            errors.New("database connection failed"),
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   response.ErrorResponse{Message: "내부 서버 오류가 발생했습니다."},
+			expectedBody:   response.ErrorResponse{Message: "내부 서버 오류가 발생했습니다"},
 			expectedLog: &LogEntry{
 				Level:      "error",
 				Message:    "HTTP 5xx: 서버 내부 오류",

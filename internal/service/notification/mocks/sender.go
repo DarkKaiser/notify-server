@@ -147,3 +147,11 @@ func (m *MockNotificationSender) GetSupportsHTMLCallCount() int {
 
 	return len(m.SupportsHTMLCalls)
 }
+
+// WasNotifyDefaultCalled NotifyDefault (또는 WithError)가 호출되었는지 반환합니다.
+func (m *MockNotificationSender) WasNotifyDefaultCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.NotifyDefaultCalled
+}

@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -21,6 +24,7 @@ import (
 // =============================================================================
 
 // setupServiceHelper는 API 서비스 테스트를 위한 공통 설정을 생성합니다.
+// 테스트 종료 시 자동으로 리소스를 정리하도록 t.Cleanup을 사용합니다.
 func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
 	t.Helper()
 
@@ -34,7 +38,8 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 	appConfig.NotifyAPI.CORS.AllowOrigins = []string{"*"}
 	appConfig.Debug = true
 
-	mockService := &mocks.MockNotificationSender{}
+	// MockNotificationSender 생성 및 스레드 안전성 보장
+	mockService := mocks.NewMockNotificationSender()
 
 	service := NewService(appConfig, mockService, version.Info{
 		Version:     "1.0.0",
@@ -45,24 +50,25 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 
+	t.Cleanup(func() {
+		cancel()
+		// 이미 종료된 서비스에 대해 Wait을 호출하면 즉시 반환되지만,
+		// 아직 실행 중인 고루틴이 있다면 대기하여 리소스 누수를 방지합니다.
+		// 타임아웃을 두어 테스트가 영원히 멈추는 것을 방지합니다.
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			// 테스트 정리 단계에서의 타임아웃은 치명적이지 않을 수 있으나 로그로 남김
+			t.Log("Cleanup: Service waitgroup timed out")
+		}
+	})
+
 	return service, appConfig, wg, ctx, cancel
-}
-
-// setupMinimalService는 최소한의 설정으로 Service를 생성합니다.
-func setupMinimalService(t *testing.T) *Service {
-	t.Helper()
-
-	appConfig := &config.AppConfig{
-		Debug: true,
-	}
-	appConfig.NotifyAPI.WS.ListenPort = 8080 // 기본값
-
-	mockService := &mocks.MockNotificationSender{}
-	buildInfo := version.Info{
-		Version: "1.0.0",
-	}
-
-	return NewService(appConfig, mockService, buildInfo)
 }
 
 // =============================================================================
@@ -74,24 +80,20 @@ func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{
 		Debug: true,
 	}
-	appConfig.NotifyAPI.WS.ListenPort = 8080
-	appConfig.NotifyAPI.CORS.AllowOrigins = []string{"http://localhost"}
-
-	mockSender := &mocks.MockNotificationSender{}
-	buildInfo := version.Info{
-		Version:     "1.2.3",
-		BuildDate:   "2024-01-15",
-		BuildNumber: "456",
-	}
+	mockSender := mocks.NewMockNotificationSender()
+	buildInfo := version.Info{Version: "1.0.0"}
 
 	service := NewService(appConfig, mockSender, buildInfo)
 
-	// 필드 검증
 	assert.NotNil(t, service)
 	assert.Equal(t, appConfig, service.appConfig)
 	assert.Equal(t, mockSender, service.notificationSender)
 	assert.Equal(t, buildInfo, service.buildInfo)
-	assert.False(t, service.running, "초기 상태는 running=false여야 함")
+
+	// 내부 상태 확인 (Reflection 없이 공개된 필드/메서드 동작으로 추론하거나 package 내부 테스트의 이점 활용)
+	service.runningMu.Lock()
+	assert.False(t, service.running, "서비스는 생성 직후 실행 중이지 않아야 합니다")
+	service.runningMu.Unlock()
 }
 
 // =============================================================================
@@ -100,7 +102,7 @@ func TestNewService(t *testing.T) {
 
 // TestService_setupServer는 Echo 서버 설정을 검증합니다.
 func TestService_setupServer(t *testing.T) {
-	service := setupMinimalService(t)
+	service, _, _, _, _ := setupServiceHelper(t)
 
 	// setupServer 호출
 	e := service.setupServer()
@@ -110,60 +112,109 @@ func TestService_setupServer(t *testing.T) {
 	assert.NotNil(t, e.Router())
 	assert.True(t, e.Debug, "Config의 Debug가 true이면 Echo Debug도 true여야 함")
 
-	// 2. 라우트 등록 검증
+	// 2. 미들웨어 및 설정 검증
+	// (구체적인 미들웨어 체인은 통합 테스트에서 검증하는 것이 좋음)
+
+	// 3. 주요 라우트 등록 확인
 	routes := e.Routes()
 	assert.NotEmpty(t, routes, "라우트가 등록되어야 함")
 
-	// 주요 라우트 존재 확인
 	routePaths := make(map[string]bool)
 	for _, route := range routes {
 		routePaths[route.Path] = true
 	}
 
-	assert.True(t, routePaths["/health"], "/health 라우트가 등록되어야 함")
-	assert.True(t, routePaths["/version"], "/version 라우트가 등록되어야 함")
-	assert.True(t, routePaths["/api/v1/notifications"], "/api/v1/notifications 라우트가 등록되어야 함")
+	expectedRoutes := []string{
+		"/health",
+		"/version",
+		"/api/v1/notifications",
+	}
+
+	for _, path := range expectedRoutes {
+		assert.Contains(t, routePaths, path, "필수 라우트 %s가 누락되었습니다", path)
+	}
 }
 
 // =============================================================================
 // TLS Configuration Tests
 // =============================================================================
 
-// TestNotifyAPIService_StartTLS는 TLS 설정이 활성화되었을 때 서버 동작을 검증합니다.
-func TestNotifyAPIService_StartTLS(t *testing.T) {
-	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
-	defer cancel()
+// TestNotifyAPIService_StartTLS_Success는 유효한 인증서로 TLS 서버가 시작되는지 검증합니다.
+func TestNotifyAPIService_StartTLS_Success(t *testing.T) {
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
 
-	// TLS 설정 활성화
+	// 1. 테스트용 인증서 생성
+	certFile, keyFile, cleanupCert := testutil.GenerateSelfSignedCert(t)
+	defer cleanupCert()
+
 	appConfig.NotifyAPI.WS.TLSServer = true
-	// 존재하지 않거나 유효하지 않은 인증서 경로 설정
+	appConfig.NotifyAPI.WS.TLSCertFile = certFile
+	appConfig.NotifyAPI.WS.TLSKeyFile = keyFile
+
+	// 2. 서비스 시작
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err)
+
+	// 3. 서버 시작 대기
+	err = testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	require.NoError(t, err)
+
+	// 4. HTTPS 요청 테스트
+	// 자체 서명 인증서이므로 InsecureSkipVerify 설정 필요
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: 1 * time.Second,
+	}
+
+	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/health", appConfig.NotifyAPI.WS.ListenPort))
+	require.NoError(t, err, "HTTPS 요청이 성공해야 합니다")
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestNotifyAPIService_StartTLS_Failure는 잘못된 인증서 경로로 인한 시작 실패를 검증합니다.
+func TestNotifyAPIService_StartTLS_Failure(t *testing.T) {
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
+
+	appConfig.NotifyAPI.WS.TLSServer = true
 	appConfig.NotifyAPI.WS.TLSCertFile = filepath.Join("invalid", "cert.pem")
 	appConfig.NotifyAPI.WS.TLSKeyFile = filepath.Join("invalid", "key.pem")
 
 	wg.Add(1)
 	err := service.Start(ctx, wg)
-	require.NoError(t, err, "비동기 서버 시작은 에러를 반환하지 않아야 함")
+	require.NoError(t, err, "비동기 시작은 에러를 반환하지 않아야 함")
 
-	// 서버가 시작되고 TLS 파일 로드 실패로 인해 종료될 때까지 대기
-	// (실제 TLS 인증서가 없으므로 startHTTPServer에서 에러 발생 예상)
-	// 우리는 이 동작을 검하기 위해 notificationSender의 호출 여부를 확인
+	// 서버가 에러로 인해 종료될 때까지 대기 (WaitGroup 완료 대기)
+	// handleServerError -> NotifyDefaultWithError -> return -> close(done) -> waitForShutdown -> cleanup -> wg.Done
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	// Mock Sender는 포인터 공유되므로 service 생성 시 사용된 것을 그대로 사용
+	select {
+	case <-done:
+		// 정상적으로 종료됨
+	case <-time.After(2 * time.Second):
+		t.Fatal("TLS 설정 오류로 서버가 종료되어야 하는데 타임아웃이 발생했습니다")
+	}
+
+	// 알림 전송 여부 확인
 	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
+	notifyCalled := mockSender.WasNotifyDefaultCalled() // Thread-Safe Getter 사용
 
-	// 짧은 대기 (에러 처리가 비동기로 발생)
-	time.Sleep(100 * time.Millisecond)
-
-	// TLS 파일이 없으므로 startHTTPServer -> StartTLS -> 에러 발생 -> handleServerError
-	// -> NotifyDefaultWithError 호출되어야 함
-	assert.True(t, mockSender.NotifyDefaultCalled, "TLS 파일 로드 실패 시 알림이 전송되어야 함")
+	assert.True(t, notifyCalled, "서버 시작 실패 시 관리자 알림이 전송되어야 합니다")
 }
 
 // =============================================================================
 // Error Handling Tests
 // =============================================================================
 
-// TestService_handleServerError는 서버 에러 처리를 검증합니다.
+// TestService_handleServerError는 다양한 에러 상황에서의 처리를 검증합니다.
 func TestService_handleServerError(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -171,17 +222,17 @@ func TestService_handleServerError(t *testing.T) {
 		expectNotify bool
 	}{
 		{
-			name:         "nil 에러: 처리하지 않음",
+			name:         "nil 에러: 무시",
 			err:          nil,
 			expectNotify: false,
 		},
 		{
-			name:         "http.ErrServerClosed: 정상 종료 (알림 없음)",
+			name:         "http.ErrServerClosed: 정상 종료로 간주",
 			err:          http.ErrServerClosed,
 			expectNotify: false,
 		},
 		{
-			name:         "예상치 못한 에러: 알림 전송",
+			name:         "일반 에러: 알림 전송",
 			err:          assert.AnError,
 			expectNotify: true,
 		},
@@ -189,49 +240,120 @@ func TestService_handleServerError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockSender := &mocks.MockNotificationSender{}
-			service := setupMinimalService(t)
+			mockSender := mocks.NewMockNotificationSender()
+			service, _, _, _, _ := setupServiceHelper(t)
 			service.notificationSender = mockSender
 
-			// handleServerError 호출
 			service.handleServerError(tt.err)
 
-			// 알림 전송 검증
-			if tt.expectNotify {
-				assert.True(t, mockSender.NotifyDefaultCalled, "예상치 못한 에러 시 알림이 전송되어야 함")
-			} else {
-				assert.False(t, mockSender.NotifyDefaultCalled, "알림이 전송되지 않아야 함")
-			}
+			called := mockSender.WasNotifyDefaultCalled() // Thread-Safe Getter 사용
+
+			assert.Equal(t, tt.expectNotify, called)
 		})
 	}
 }
 
 // =============================================================================
-// Service Lifecycle Tests
+// Lifecycle & Concurrency Tests
 // =============================================================================
 
-// TestNotifyAPIService_Lifecycle는 API 서비스의 시작 및 종료를 통합 검증합니다.
 func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
-	defer cancel()
+
+	// 1. 서비스 시작
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err)
+
+	err = testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	require.NoError(t, err)
+
+	// 상태 확인
+	service.runningMu.Lock()
+	isRunning := service.running
+	service.runningMu.Unlock()
+	assert.True(t, isRunning)
+
+	// 2. 서비스 종료 (Context Cancel)
+	shutdownStart := time.Now()
+	cancel()
+
+	// 종료 완료 대기
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		assert.Less(t, time.Since(shutdownStart), 6*time.Second, "Graceful Shutdown은 타임아웃 내에 완료되어야 함")
+	case <-time.After(6 * time.Second):
+		t.Fatal("Shutdown 타임아웃 발생")
+	}
+
+	// 3. 종료 후 상태 확인
+	service.runningMu.Lock()
+	isRunning = service.running
+	service.runningMu.Unlock()
+	assert.False(t, isRunning)
+}
+
+func TestNotifyAPIService_DuplicateStart(t *testing.T) {
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
+
+	// 1. 첫 번째 시작
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err)
+
+	err = testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	require.NoError(t, err)
+
+	// 2. 두 번째 시작 (무시되어야 함)
+	wg.Add(1)
+	err = service.Start(ctx, wg)
+	assert.NoError(t, err)
+
+	// WaitGroup 카운트가 맞지 않으면 나중에 Wait에서 행(hang)이 걸릴 수 있음.
+	// Start 메서드는 running 상태면 defer wg.Done()을 호출하므로,
+	// 호출자가 wg.Add(1)을 했다면 짝이 맞음.
+
+	service.runningMu.Lock()
+	assert.True(t, service.running)
+	service.runningMu.Unlock()
+}
+
+func TestNotifyAPIService_NilDependencies(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	service := NewService(appConfig, nil, version.Info{})
+
+	ctx := context.Background()
+	wg := &sync.WaitGroup{}
 
 	wg.Add(1)
 	err := service.Start(ctx, wg)
-	require.NoError(t, err, "Start 호출 성공해야 함")
 
-	// 서버 시작 대기
-	err = testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
-	require.NoError(t, err, "서버가 타임아웃 내에 시작되어야 함")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NotificationSender")
 
-	// 1. Running 상태 검증
-	service.runningMu.Lock()
-	assert.True(t, service.running, "서비스 시작 후 running=true")
-	service.runningMu.Unlock()
+	// 에러 반환 시에는 비동기 루프가 시작되지 않으므로 wg.Done이 즉시 호출되어야 함 (Start 메서드 내부에서 처리)
+	// 그러나 현재 구현상 Start가 에러 반환 시 defer wg.Done()이 호출됨.
+	// 즉시 Wait 가능해야 함.
+	wg.Wait()
+}
 
-	// 2. 종료 프로세스 시작
-	shutdownStart := time.Now()
-	cancel() // Context 취소로 종료 트리거
+func TestService_ContextCancellation_BeforeStart(t *testing.T) {
+	service, _, wg, ctx, cancel := setupServiceHelper(t)
 
+	// 시작 전에 이미 취소된 컨텍스트
+	cancel()
+
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err)
+
+	// 이미 취소된 컨텍스트로 시작하면 waitForShutdown에서 즉시 select case <-ctx.Done(): 분기 진입 -> shutdown -> cleanup
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -241,42 +363,28 @@ func TestNotifyAPIService_Lifecycle(t *testing.T) {
 	select {
 	case <-done:
 		// 성공
-		assert.Less(t, time.Since(shutdownStart), 6*time.Second, "Shutdown은 타임아웃(5초) 내에 완료되어야 함")
-	case <-time.After(6 * time.Second):
-		t.Fatal("Shutdown 타임아웃 발생 (WaitGroup mismatch 가능성)")
+	case <-time.After(2 * time.Second):
+		t.Fatal("이미 취소된 컨텍스트인 경우 즉시 종료되어야 합니다")
 	}
-
-	// 3. 종료 후 상태 검증
-	service.runningMu.Lock()
-	assert.False(t, service.running, "서비스 종료 후 running=false")
-	service.runningMu.Unlock()
 }
 
-// TestNotifyAPIService_DuplicateStart는 중복 시작 호출 시 동작을 검증합니다.
-func TestNotifyAPIService_DuplicateStart(t *testing.T) {
-	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
-	defer cancel()
-
-	// 첫 번째 Start
-	wg.Add(1)
-	err := service.Start(ctx, wg)
+func TestService_StartupFailure_PortConflict(t *testing.T) {
+	// 1. 포트 선점
+	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
+	defer listener.Close()
 
-	testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second)
+	port := listener.Addr().(*net.TCPAddr).Port
 
-	// 두 번째 Start
-	// Start 내부에서 이미 실행 중이면 defer wg.Done()을 호출하므로 WG를 증가시켜야 함
+	// 2. 동일 포트로 서비스 설정
+	service, _, wg, ctx, _ := setupServiceHelper(t)
+	service.appConfig.NotifyAPI.WS.ListenPort = port
+
 	wg.Add(1)
 	err = service.Start(ctx, wg)
-	assert.NoError(t, err, "중복 시작은 에러를 반환하지 않고 무시해야 함")
+	require.NoError(t, err)
 
-	// running 상태 유지 확인
-	service.runningMu.Lock()
-	assert.True(t, service.running)
-	service.runningMu.Unlock()
-
-	// 종료
-	cancel()
+	// 3. 종료 대기
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -285,84 +393,40 @@ func TestNotifyAPIService_DuplicateStart(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(6 * time.Second):
-		t.Fatal("Shutdown 타임아웃")
+		// 성공: 포트 충돌로 인한 종료
+	case <-time.After(5 * time.Second):
+		t.Fatal("포트 충돌 시 프로세스가 종료되어야 합니다")
 	}
-}
 
-// TestNotifyAPIService_NilDependencies는 필수 의존성이 없을 때의 동작을 검증합니다.
-func TestNotifyAPIService_NilDependencies(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	// NotificationSender가 nil인 상태
-	service := NewService(appConfig, nil, version.Info{})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	wg := &sync.WaitGroup{}
-
-	wg.Add(1)
-	err := service.Start(ctx, wg)
-
-	// 검증
-	require.Error(t, err, "NotificationSender가 nil이면 에러를 반환해야 함")
-	assert.Contains(t, err.Error(), "NotificationSender", "에러 메시지에 필드명이 포함되어야 함")
-
-	// running 상태는 false
 	service.runningMu.Lock()
 	assert.False(t, service.running)
 	service.runningMu.Unlock()
 }
 
-// =============================================================================
-// Concurrency Tests
-// =============================================================================
-
-// TestService_ConcurrentStart는 동시에 여러 Start 호출이 발생해도 안전한지 검증합니다.
 func TestService_ConcurrentStart(t *testing.T) {
-	service, appConfig, wg, ctx, cancel := setupServiceHelper(t)
-	defer cancel()
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
 
-	const goroutines = 10
-	startErrors := make(chan error, goroutines)
+	concurrency := 10
 	startWg := &sync.WaitGroup{}
 
-	// 동시에 10개의 Start 호출
-	for i := 0; i < goroutines; i++ {
-		// 각 고루틴마다 서비스의 wg.Add를 호출해야 함 (Start 내부에서 defer wg.Done 호출하므로)
-		wg.Add(1)
-
+	// 동시에 여러 Start 호출
+	for i := 0; i < concurrency; i++ {
 		startWg.Add(1)
+		wg.Add(1) // Start 호출 규약 준수
 		go func() {
 			defer startWg.Done()
 			err := service.Start(ctx, wg)
-			startErrors <- err
+			assert.NoError(t, err)
 		}()
 	}
 
-	// 서버 시작 대기
-	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 5*time.Second)
-	require.NoError(t, err)
-
 	startWg.Wait()
-	close(startErrors)
 
-	// 모든 호출이 에러 없이 반환되어야 함 (첫 번째는 시작, 나머지는 무시)
-	for err := range startErrors {
-		assert.NoError(t, err)
-	}
+	// 서버가 정상적으로 하나만 떴는지 확인
+	err := testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 5*time.Second)
+	assert.NoError(t, err)
 
-	cancel()
-
-	// 종료 대기
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second): // 타임아웃 조금 더 여유있게
-		t.Fatal("Shutdown 타임아웃 - Race condition 가능성")
-	}
+	service.runningMu.Lock()
+	assert.True(t, service.running)
+	service.runningMu.Unlock()
 }

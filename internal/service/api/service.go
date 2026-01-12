@@ -146,8 +146,9 @@ func (s *Service) setupServer() *echo.Echo {
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)
 	e := NewHTTPServer(HTTPServerConfig{
-		Debug:        s.appConfig.Debug,
-		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
+		Debug:          s.appConfig.Debug,
+		AllowOrigins:   s.appConfig.NotifyAPI.CORS.AllowOrigins,
+		RequestTimeout: constants.DefaultRequestTimeout,
 	})
 
 	// 4. 라우트 등록
@@ -220,7 +221,7 @@ func (s *Service) handleServerError(err error) {
 // waitForShutdown 종료 신호를 대기하고 Graceful Shutdown을 수행합니다.
 //
 // 종료 처리 순서:
-//  1. Context 취소 신호 대기 (블로킹)
+//  1. 종료 신호 대기 (정상 종료 또는 서버 조기 종료)
 //  2. Echo 서버 Shutdown 호출 (5초 타임아웃)
 //  3. HTTP 서버 완전 종료 대기
 //  4. 서비스 상태 정리 (running 플래그 초기화)
@@ -232,9 +233,19 @@ func (s *Service) handleServerError(err error) {
 //
 // Note: 이 함수는 서비스가 완전히 종료될 때까지 블로킹됩니다.
 func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
-	<-serviceStopCtx.Done()
+	select {
+	case <-serviceStopCtx.Done():
+		// 정상적인 종료 신호 수신
+		applog.WithComponent(constants.ComponentService).Info("API 서비스 중지중...")
+	case <-httpServerDone:
+		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
+		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리
+		applog.WithComponent(constants.ComponentService).Error("API 서비스가 예기치 않게 종료되었습니다")
 
-	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지중...")
+		s.cleanup()
+
+		return
+	}
 
 	// Graceful Shutdown 시작 (5초 타임아웃)
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -248,7 +259,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 
 	<-httpServerDone
 
-	// 상태 정리
+	s.cleanup()
+}
+
+// cleanup 서비스 종료 후 상태를 정리합니다.
+func (s *Service) cleanup() {
 	s.runningMu.Lock()
 	s.running = false
 	// 주의: notificationSender는 의도적으로 nil로 설정하지 않음

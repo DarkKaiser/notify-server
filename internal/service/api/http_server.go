@@ -2,7 +2,9 @@ package api
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	appmiddleware "github.com/darkkaiser/notify-server/internal/service/api/middleware"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -18,6 +20,10 @@ type HTTPServerConfig struct {
 	// 개발 환경: ["*"] 또는 ["http://localhost:3000"]
 	// 프로덕션 환경: 특정 도메인만 명시 (예: ["https://example.com"])
 	AllowOrigins []string
+
+	// RequestTimeout 각 HTTP 요청의 최대 처리 시간 (기본값: 60초)
+	// 타임아웃 초과 시 컨텍스트를 취소하고 503 응답을 반환하여 리소스 고갈을 방지합니다.
+	RequestTimeout time.Duration
 }
 
 // NewHTTPServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
@@ -40,17 +46,23 @@ type HTTPServerConfig struct {
 //     - 제한 초과 시 429 Too Many Requests 응답
 //     - 로깅 전에 적용하여 과도한 로그 생성 방지
 //
-//  4. HTTPLogger - HTTP 요청/응답 로깅
+//  4. BodyLimit - 요청 본문 크기 제한 (기본: 2MB, 초과 시 413 응답)
+//     - 대용량 요청으로 인한 메모리 고갈 및 DoS 공격 방지
+//
+//  5. Timeout - 요청 처리 시간 제한 (기본: 60초, 초과 시 503 응답)
+//     - 장시간 지연 요청의 리소스 점유 방지
+//
+//  6. HTTPLogger - HTTP 요청/응답 로깅
 //     - 모든 HTTP 요청과 응답 정보를 구조화된 로그로 기록
 //     - 민감 정보(app_key, password 등)는 자동으로 마스킹
 //     - 요청 처리 시간, 상태 코드, IP 주소 등 기록
 //
-//  5. CORS - Cross-Origin Resource Sharing
+//  7. CORS - Cross-Origin Resource Sharing
 //     - 허용된 Origin에서의 크로스 도메인 요청 처리
 //     - Preflight 요청(OPTIONS) 자동 응답
 //     - 프로덕션 환경에서는 특정 도메인만 허용 권장
 //
-//  6. Secure - 보안 헤더 설정
+//  8. Secure - 보안 헤더 설정
 //     - X-XSS-Protection, X-Content-Type-Options 등 보안 헤더 자동 추가
 //     - XSS, 클릭재킹 등의 공격 방어
 //     - 가장 마지막에 적용되어 모든 응답에 보안 헤더 추가
@@ -66,16 +78,26 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	// 이를 통해 모든 로그가 동일한 형식과 출력 대상을 사용하게 됩니다.
 	e.Logger = appmiddleware.Logger{Logger: applog.StandardLogger()}
 
+	// 타임아웃 미설정 시 기본값(60초)을 적용하여 무한 대기를 방지합니다.
+	timeout := cfg.RequestTimeout
+	if timeout == 0 {
+		timeout = constants.DefaultRequestTimeout
+	}
+
 	// 미들웨어 적용 (권장 순서)
-	e.Use(appmiddleware.PanicRecovery())                   // 1. Panic 복구
-	e.Use(middleware.RequestID())                          // 2. Request ID
-	e.Use(appmiddleware.RateLimiting(20, 40))              // 3. Rate Limiting (초당 20, 버스트 40)
-	e.Use(appmiddleware.HTTPLogger())                      // 4. HTTP 로깅
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 5. CORS 설정
+	e.Use(appmiddleware.PanicRecovery())                         // 1. Panic 복구
+	e.Use(middleware.RequestID())                                // 2. Request ID
+	e.Use(appmiddleware.RateLimiting(20, 40))                    // 3. Rate Limiting (초당 20, 버스트 40)
+	e.Use(middleware.BodyLimit("2M"))                            // 4. Body Limit (최대 2MB)
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{ // 5. Timeout
+		Timeout: timeout,
+	}))
+	e.Use(appmiddleware.HTTPLogger())                      // 6. HTTP 로깅
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{ // 7. CORS 설정
 		AllowOrigins: cfg.AllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
-	e.Use(middleware.Secure()) // 6. 보안 헤더
+	e.Use(middleware.Secure()) // 8. 보안 헤더
 
 	return e
 }
