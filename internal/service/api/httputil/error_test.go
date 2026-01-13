@@ -69,11 +69,11 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			},
 		},
 		{
-			name:            "404 Not Found_커스텀 메시지 무시",
+			name:            "404 Not Found_커스텀 메시지 유지",
 			method:          http.MethodGet,
 			err:             echo.NewHTTPError(http.StatusNotFound, "Custom Check"),
 			expectedStatus:  http.StatusNotFound,
-			expectedBody:    response.ErrorResponse{Message: "요청한 리소스를 찾을 수 없습니다"},
+			expectedBody:    response.ErrorResponse{Message: "Custom Check"},
 			expectedLogPart: "클라이언트 요청 오류",
 		},
 		{

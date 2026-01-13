@@ -29,8 +29,12 @@ func ErrorHandler(err error, c echo.Context) {
 	}
 
 	// 404 에러는 사용자 친화적인 한국어 메시지로 통일
+	// 단, 비즈니스 로직에서 설정한 구체적인 에러 메시지가 있다면 보존합니다.
 	if code == http.StatusNotFound {
-		message = constants.ErrMsgNotFound
+		// 기본 404 메시지이거나 빈 메시지인 경우에만 덮어씀
+		if message == "Not Found" || message == "" {
+			message = constants.ErrMsgNotFound
+		}
 	}
 
 	// 에러 로깅 (보안 및 디버깅 용도)

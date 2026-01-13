@@ -75,7 +75,13 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 	// 3. 인증된 Application 정보 추출
 	// 미들웨어에서 이미 검증된 Application 객체를 Context에서 가져옴
-	app := c.Get(constants.ContextKeyApplication).(*domain.Application)
+	app, ok := c.Get(constants.ContextKeyApplication).(*domain.Application)
+	if !ok {
+		// 심각한 서버 에러: 미들웨어 설정 오류 또는 컨텍스트 손상
+		h.log(c).Error(constants.LogMsgInternalAuthContextError)
+
+		return httputil.NewInternalServerError(constants.ErrMsgInternalServer)
+	}
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
 	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답
@@ -110,6 +116,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 // 공통 필드(component, endpoint)가 자동으로 포함된 로거 엔트리를 반환하여 일관된 로그 형식을 유지합니다.
 func (h *Handler) log(c echo.Context) *applog.Entry {
 	return applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
-		"endpoint": c.Path(),
+		"endpoint":   c.Path(),
+		"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
 	})
 }
