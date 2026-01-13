@@ -56,69 +56,17 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// 1. App Key 추출 (헤더 우선, 쿼리 파라미터 폴백)
-			appKey := c.Request().Header.Get(constants.HeaderXAppKey)
-			if appKey == "" {
-				appKey = c.QueryParam(constants.QueryParamAppKey)
-
-				// 레거시 방식 사용 시 경고 로그
-				if appKey != "" {
-					applog.WithComponentAndFields(constants.ComponentMiddlewareAuthentication, applog.Fields{
-						"method":    c.Request().Method,
-						"path":      c.Path(),
-						"remote_ip": c.RealIP(),
-					}).Warn(constants.LogMsgAuthAppKeyInQuery)
-				}
-			}
-
+			// 1. App Key 추출
+			appKey := extractAppKey(c)
 			if appKey == "" {
 				return httputil.NewBadRequestError(constants.ErrMsgAuthAppKeyRequired)
 			}
 
 			// 2. Application ID 추출
-			// 우선순위 1: X-Application-Id 헤더 (권장, 성능 최적화, GET 지원)
-			// 우선순위 2: Request Body (레거시, 호환성 유지)
-			applicationID := c.Request().Header.Get(constants.HeaderXApplicationID)
-
-			if applicationID == "" {
-				// 헤더가 없으면 Body 파싱 (레거시 호환)
-				bodyBytes, err := io.ReadAll(c.Request().Body)
-				if err != nil {
-					// 413 Request Entity Too Large 처리
-					//
-					// BodyLimit 미들웨어 또는 http.MaxBytesReader에 의해 요청 본문 크기가 제한된 경우,
-					// 읽기 시도 시 아래 두 가지 유형의 에러가 발생할 수 있습니다.
-					// 1. http.MaxBytesError: 표준 라이브러리의 MaxBytesReader가 반환하는 에러
-					// 2. echo.HTTPError(413): Echo 프레임워크가 래핑하여 반환하는 에러
-					//
-					// 이들을 포착하여 클라이언트에게 명확한 표준 413 에러 응답으로 정규화합니다.
-					if _, ok := err.(*http.MaxBytesError); ok {
-						return echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
-					}
-					if he, ok := err.(*echo.HTTPError); ok && he.Code == http.StatusRequestEntityTooLarge {
-						return echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
-					}
-					return httputil.NewBadRequestError(constants.ErrMsgBadRequestBodyReadFailed)
-				}
-				c.Request().Body.Close()
-
-				if len(bodyBytes) == 0 {
-					return httputil.NewBadRequestError(constants.ErrMsgBadRequestEmptyBody)
-				}
-
-				// Body 복원 (다음 핸들러에서 사용 가능하도록)
-				c.Request().Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-				var authRequest struct {
-					ApplicationID string `json:"application_id"`
-				}
-				if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
-					return httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidJSON)
-				}
-
-				applicationID = authRequest.ApplicationID
+			applicationID, err := extractApplicationID(c)
+			if err != nil {
+				return err
 			}
-
 			if applicationID == "" {
 				return httputil.NewBadRequestError(constants.ErrMsgAuthApplicationIDRequired)
 			}
@@ -129,11 +77,84 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 				return err
 			}
 
-			// 5. Context에 인증된 Application 저장
+			// 4. Context에 인증된 Application 저장
 			auth.SetApplication(c, app)
 
-			// 6. 다음 핸들러로 전달
+			// 5. 다음 핸들러로 전달
 			return next(c)
 		}
 	}
+}
+
+// extractAppKey App Key를 추출합니다.
+//
+// 우선순위:
+//  1. X-App-Key 헤더 (권장)
+//  2. app_key 쿼리 파라미터 (레거시) - 사용 시 경고 로그 출력
+func extractAppKey(c echo.Context) string {
+	appKey := c.Request().Header.Get(constants.HeaderXAppKey)
+	if appKey == "" {
+		appKey = c.QueryParam(constants.QueryParamAppKey)
+
+		// 레거시 방식 사용 시 경고 로그
+		if appKey != "" {
+			applog.WithComponentAndFields(constants.ComponentMiddlewareAuthentication, applog.Fields{
+				"method":    c.Request().Method,
+				"path":      c.Path(),
+				"remote_ip": c.RealIP(),
+			}).Warn(constants.LogMsgAuthAppKeyInQuery)
+		}
+	}
+	return appKey
+}
+
+// extractApplicationID Application ID를 추출합니다.
+//
+// 우선순위:
+//  1. X-Application-Id 헤더 (권장)
+//  2. Request Body (레거시, 호환성 유지) - Body 파싱 및 복원 비용 발생
+func extractApplicationID(c echo.Context) (string, error) {
+	// 우선순위 1: X-Application-Id 헤더
+	applicationID := c.Request().Header.Get(constants.HeaderXApplicationID)
+	if applicationID != "" {
+		return applicationID, nil
+	}
+
+	// 우선순위 2: Request Body (레거시, 호환성 유지)
+	// 헤더가 없는 경우에만 불가피하게 Body를 파싱합니다.
+	bodyBytes, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		// 413 Request Entity Too Large 처리
+		//
+		// BodyLimit 미들웨어 또는 http.MaxBytesReader에 의해 요청 본문 크기가 제한된 경우,
+		// 읽기 시도 시 아래 두 가지 유형의 에러가 발생할 수 있습니다.
+		// 1. http.MaxBytesError: 표준 라이브러리의 MaxBytesReader가 반환하는 에러
+		// 2. echo.HTTPError(413): Echo 프레임워크가 래핑하여 반환하는 에러
+		//
+		// 이들을 포착하여 클라이언트에게 명확한 표준 413 에러 응답으로 정규화합니다.
+		if _, ok := err.(*http.MaxBytesError); ok {
+			return "", echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+		}
+		if he, ok := err.(*echo.HTTPError); ok && he.Code == http.StatusRequestEntityTooLarge {
+			return "", echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+		}
+		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestBodyReadFailed)
+	}
+	c.Request().Body.Close()
+
+	if len(bodyBytes) == 0 {
+		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestEmptyBody)
+	}
+
+	// Body 복원 (다음 핸들러에서 사용 가능하도록)
+	c.Request().Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	var authRequest struct {
+		ApplicationID string `json:"application_id"`
+	}
+	if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
+		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidJSON)
+	}
+
+	return authRequest.ApplicationID, nil
 }

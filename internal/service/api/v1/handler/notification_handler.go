@@ -65,6 +65,11 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 1. HTTP 요청 바인딩
 	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
+		// 바인딩 실패 시 상세 원인 로깅 (디버깅 용도)
+		h.log(c).WithFields(applog.Fields{
+			"error": err,
+		}).Warn(constants.LogMsgRequestBodyBindError)
+
 		return httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidBody)
 	}
 

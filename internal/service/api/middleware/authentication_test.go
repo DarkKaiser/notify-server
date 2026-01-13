@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,20 +11,26 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// Helper Functions
+// Setup Helpers
 // =============================================================================
 
-// setupAuthenticator 테스트를 위한 가짜 Authenticator를 생성합니다.
+func setupTestContext(method, target string, body io.Reader) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	req := httptest.NewRequest(method, target, body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	return c, rec
+}
+
 func setupAuthenticator(t *testing.T) *auth.Authenticator {
 	t.Helper()
 	cfg := &config.AppConfig{
@@ -38,232 +45,285 @@ func setupAuthenticator(t *testing.T) *auth.Authenticator {
 			},
 		},
 	}
-	authenticator := auth.NewAuthenticator(cfg)
-	require.NotNil(t, authenticator)
-	return authenticator
+	return auth.NewAuthenticator(cfg)
 }
 
-func setupEcho(t *testing.T) *echo.Echo {
-	t.Helper()
-	e := echo.New()
-	// 로그 레벨 조정 (테스트 중 노이즈 제거)
+func init() {
+	// 테스트 중 로그 노이즈 억제 (필요시 레벨 조정)
 	applog.SetLevel(applog.FatalLevel)
-	t.Cleanup(func() {
-		applog.SetLevel(applog.InfoLevel)
-	})
-	return e
 }
 
 // =============================================================================
-// Test Cases
+// Unit Tests: Helper Functions
 // =============================================================================
 
-// TestRequireAuthentication_Priority_AppKey 는 App Key 추출 우선순위를 검증합니다.
-// Header(권장)가 Query Param(레거시)보다 우선해야 합니다.
-func TestRequireAuthentication_Priority_AppKey(t *testing.T) {
-	authenticator := setupAuthenticator(t)
-	e := setupEcho(t)
+func Test_extractAppKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		setupReq func(req *http.Request)
+		want     string
+	}{
+		{
+			name: "Header 우선 (권장)",
+			setupReq: func(req *http.Request) {
+				req.Header.Set(constants.HeaderXAppKey, "header-key")
+				req.URL.RawQuery = "app_key=query-key"
+			},
+			want: "header-key",
+		},
+		{
+			name: "Query Parameter 폴백 (레거시)",
+			setupReq: func(req *http.Request) {
+				req.URL.RawQuery = "app_key=query-key"
+			},
+			want: "query-key",
+		},
+		{
+			name: "Key 없음",
+			setupReq: func(req *http.Request) {
+			},
+			want: "",
+		},
+	}
 
-	// 시나리오: Header에는 유효한 키, Query에는 잘못된 키 제공
-	// Header가 우선하므로 인증 성공해야 함
-	req := httptest.NewRequest(http.MethodPost, "/?app_key=invalid-key", nil)
-	req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-	req.Header.Set(constants.HeaderXApplicationID, "test-app")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := setupTestContext(http.MethodGet, "/", nil)
+			tt.setupReq(c.Request())
 
+			got := extractAppKey(c)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_extractApplicationID(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupReq      func(c echo.Context)
+		wantID        string
+		wantErr       bool
+		errCheck      func(error) bool
+		bodyLimitSize string // 옵션: BodyLimit 미들웨어 테스트용
+	}{
+		{
+			name: "Header 우선 (권장)",
+			setupReq: func(c echo.Context) {
+				c.Request().Header.Set(constants.HeaderXApplicationID, "header-id")
+				c.Request().Body = io.NopCloser(strings.NewReader(`{"application_id":"body-id"}`))
+			},
+			wantID:  "header-id",
+			wantErr: false,
+		},
+		{
+			name: "Body 폴백 (레거시)",
+			setupReq: func(c echo.Context) {
+				c.Request().Body = io.NopCloser(strings.NewReader(`{"application_id":"body-id"}`))
+			},
+			wantID:  "body-id",
+			wantErr: false,
+		},
+		{
+			name: "Body 비어있음",
+			setupReq: func(c echo.Context) {
+				c.Request().Body = io.NopCloser(strings.NewReader(``))
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				he, ok := err.(*echo.HTTPError)
+				if !ok || he.Code != http.StatusBadRequest {
+					return false
+				}
+				msg := ""
+				if s, ok := he.Message.(string); ok {
+					msg = s
+				} else if resp, ok := he.Message.(response.ErrorResponse); ok {
+					msg = resp.Message
+				}
+				return assert.Contains(t, msg, constants.ErrMsgBadRequestEmptyBody)
+			},
+		},
+		{
+			name: "잘못된 JSON",
+			setupReq: func(c echo.Context) {
+				c.Request().Body = io.NopCloser(strings.NewReader(`{invalid-json`))
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				he, ok := err.(*echo.HTTPError)
+				if !ok || he.Code != http.StatusBadRequest {
+					return false
+				}
+				msg := ""
+				if s, ok := he.Message.(string); ok {
+					msg = s
+				} else if resp, ok := he.Message.(response.ErrorResponse); ok {
+					msg = resp.Message
+				}
+				return assert.Contains(t, msg, constants.ErrMsgBadRequestInvalidJSON)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := setupTestContext(http.MethodPost, "/", nil)
+			tt.setupReq(c)
+
+			id, err := extractApplicationID(c)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errCheck != nil {
+					assert.True(t, tt.errCheck(err), "Error check failed: %v", err)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantID, id)
+			}
+		})
+	}
+}
+
+// Test_extractApplicationID_BodyLimit 은 BodyLimit 초과 시 동작을 별도로 검증합니다.
+// BodyLimit은 미들웨어 체인에서 동작하므로 MaxBytesReader 에러를 시뮬레이션해야 합니다.
+func Test_extractApplicationID_BodyLimit(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("too-large-body"))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	mw := RequireAuthentication(authenticator)
-	h := mw(func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	})
+	// 강제로 MaxBytesReader 적용 (1바이트 제한)
+	c.Request().Body = http.MaxBytesReader(rec, c.Request().Body, 1)
 
-	err := h(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
+	_, err := extractApplicationID(c)
+
+	require.Error(t, err)
+	he, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, he.Code)
 }
 
-// TestRequireAuthentication_Priority_AppID 는 Application ID 추출 우선순위를 검증합니다.
-// Header(권장)가 Body(레거시)보다 우선해야 합니다.
-func TestRequireAuthentication_Priority_AppID(t *testing.T) {
+// =============================================================================
+// Integration Tests: RequireAuthentication Middleware
+// =============================================================================
+
+func TestRequireAuthentication(t *testing.T) {
 	authenticator := setupAuthenticator(t)
-	e := setupEcho(t)
-
-	// 시나리오: Header에는 유효한 ID, Body에는 잘못된 ID 제공
-	// Header가 우선하므로 인증 성공해야 함
-	body := `{"application_id":"invalid-app"}` // Body ID는 무시되어야 함
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-	req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-	req.Header.Set(constants.HeaderXApplicationID, "test-app")
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	mw := RequireAuthentication(authenticator)
-	h := mw(func(c echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	})
-
-	err := h(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-// TestRequireAuthentication_BodyRestoration 은 Body 파싱 후 Body가 복원되어
-// 다음 핸들러에서 읽을 수 있는지 검증합니다. (Double Parsing 문제 해결 확인)
-func TestRequireAuthentication_BodyRestoration(t *testing.T) {
-	authenticator := setupAuthenticator(t)
-	e := setupEcho(t)
-
-	// Body를 통해 Application ID 전달 (레거시 방식)
-	requestBodyContent := `{"application_id":"test-app", "data":"payload"}`
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(requestBodyContent))
-	req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-	// 헤더 ID 누락 -> Body 파싱 유도
-
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	mw := RequireAuthentication(authenticator)
-	h := mw(func(c echo.Context) error {
-		// 미들웨어 통과 후 핸들러에서 Body 다시 읽기 시도
-		bodyBytes, err := io.ReadAll(c.Request().Body)
-		if err != nil {
-			return err
-		}
-		// 원본 Body와 일치하는지 확인
-		if string(bodyBytes) != requestBodyContent {
-			return echo.NewHTTPError(http.StatusInternalServerError, "Body not restored")
-		}
-		return c.String(http.StatusOK, "success")
-	})
-
-	err := h(c)
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-// TestRequireAuthentication_Scenarios 는 다양한 성공/실패 시나리오를 검증합니다.
-func TestRequireAuthentication_Scenarios(t *testing.T) {
-	authenticator := setupAuthenticator(t)
-	e := setupEcho(t)
 
 	tests := []struct {
 		name           string
-		setupRequest   func(req *http.Request)
+		setupReq       func(req *http.Request)
 		expectedStatus int
-		expectedMsg    string // 에러 메시지 일부 검증 (선택적)
+		expectedMsg    string
 	}{
+		// ---------------------------------------------------------------------
 		// 성공 케이스
+		// ---------------------------------------------------------------------
 		{
-			name: "Success_HeaderAuth",
-			setupRequest: func(req *http.Request) {
+			name: "성공: Header 인증 (권장)",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
 				req.Header.Set(constants.HeaderXApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "Success_LegacyBodyAuth",
-			setupRequest: func(req *http.Request) {
+			name: "성공: Body ID + Header Key (레거시 혼합)",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				// No Header ID
 				req.Body = io.NopCloser(strings.NewReader(`{"application_id":"test-app"}`))
 			},
 			expectedStatus: http.StatusOK,
 		},
-
-		// 실패 케이스 - 400 Bad Request
 		{
-			name: "Fail_MissingAppKey",
-			setupRequest: func(req *http.Request) {
+			name: "성공: Query Key + Header ID (레거시 혼합)",
+			setupReq: func(req *http.Request) {
+				req.URL.RawQuery = "app_key=valid-app-key"
+				req.Header.Set(constants.HeaderXApplicationID, "test-app")
+			},
+			expectedStatus: http.StatusOK,
+		},
+
+		// ---------------------------------------------------------------------
+		// 실패 케이스 (입력 누락)
+		// ---------------------------------------------------------------------
+		{
+			name: "실패: App Key 누락",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedMsg:    constants.ErrMsgAuthAppKeyRequired,
 		},
 		{
-			name: "Fail_MissingAppID_HeaderAndBody",
-			setupRequest: func(req *http.Request) {
+			name: "실패: Application ID 누락 (Header & Body)",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				req.Body = io.NopCloser(strings.NewReader(`{}`)) // Empty JSON, no ID
-			},
-			expectedStatus: http.StatusBadRequest, // ID 누락 (JSON 파싱 성공했으나 ID 없음)
-			// 현재 구현상 JSON 언마샬 후 ID가 빈 문자열이면 ErrMsgApplicationIDRequired 반환
-			expectedMsg: constants.ErrMsgAuthApplicationIDRequired,
-		},
-		{
-			name: "Fail_EmptyBody_WhenHeaderMissing",
-			setupRequest: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				req.Body = io.NopCloser(strings.NewReader("")) // Empty Body
+				req.Body = io.NopCloser(strings.NewReader(`{}`)) // ID 필드 없음
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedMsg:    constants.ErrMsgBadRequestEmptyBody,
-		},
-		{
-			name: "Fail_InvalidJSON",
-			setupRequest: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				req.Body = io.NopCloser(strings.NewReader(`{invalid-json`))
-			},
-			expectedStatus: http.StatusBadRequest,
-			expectedMsg:    constants.ErrMsgBadRequestInvalidJSON,
+			expectedMsg:    constants.ErrMsgAuthApplicationIDRequired,
 		},
 
-		// 실패 케이스 - 401 Unauthorized
+		// ---------------------------------------------------------------------
+		// 실패 케이스 (인증 실패)
+		// ---------------------------------------------------------------------
 		{
-			name: "Fail_InvalidAppKey",
-			setupRequest: func(req *http.Request) {
+			name: "실패: 잘못된 App Key",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXAppKey, "invalid-key")
 				req.Header.Set(constants.HeaderXApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusUnauthorized,
+			expectedMsg:    "유효하지 않습니다", // 메시지 일부 검증
 		},
 		{
-			name: "Fail_UnknownAppID",
-			setupRequest: func(req *http.Request) {
+			name: "실패: 등록되지 않은 App ID",
+			setupReq: func(req *http.Request) {
 				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
 				req.Header.Set(constants.HeaderXApplicationID, "unknown-app")
 			},
 			expectedStatus: http.StatusUnauthorized,
+			expectedMsg:    "등록되지 않은 application_id",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
 			req := httptest.NewRequest(http.MethodPost, "/", nil)
-			tt.setupRequest(req)
-
+			tt.setupReq(req)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
+			// 미들웨어 실행
 			mw := RequireAuthentication(authenticator)
-			h := mw(func(c echo.Context) error {
+			handler := mw(func(c echo.Context) error {
 				return c.String(http.StatusOK, "success")
 			})
 
-			err := h(c)
+			err := handler(c)
 
 			if tt.expectedStatus == http.StatusOK {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
-				// 에러 핸들링
+				// Echo HTTPError 검증
 				var he *echo.HTTPError
 				if assert.ErrorAs(t, err, &he) {
 					assert.Equal(t, tt.expectedStatus, he.Code)
 					if tt.expectedMsg != "" {
-						// he.Message는 string일 수도 있고 response.ErrorResponse일 수도 있음
-						if msg, ok := he.Message.(string); ok {
-							assert.Contains(t, msg, tt.expectedMsg)
-						} else if resp, ok := he.Message.(response.ErrorResponse); ok {
-							assert.Contains(t, resp.Message, tt.expectedMsg)
+						// ErrorResponse 또는 string 메시지 처리
+						msg := ""
+						if s, ok := he.Message.(string); ok {
+							msg = s
+						} else if resp, ok := he.Message.(error); ok { // response.ErrorResponse가 될 수도 있음 (구조체 정의 확인 필요)
+							msg = resp.Error()
 						} else {
-							// Fallback
-							assert.Contains(t, he.Message, tt.expectedMsg)
+							msg = fmt.Sprintf("%v", he.Message)
 						}
+						assert.Contains(t, msg, tt.expectedMsg)
 					}
 				}
 			}
@@ -271,45 +331,30 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 	}
 }
 
-// TestRequireAuthentication_BodyTooLarge 는 BodyLimit 초과 시 413 에러 처리를 검증합니다.
-func TestRequireAuthentication_BodyTooLarge(t *testing.T) {
+// TestRequireAuthentication_BodyRestoration 은 Body 파싱 후 Body가 올바르게 복원되어
+// 후속 핸들러에서 다시 읽을 수 있는지 검증합니다.
+func TestRequireAuthentication_BodyRestoration(t *testing.T) {
 	authenticator := setupAuthenticator(t)
-	e := setupEcho(t)
-	e.HTTPErrorHandler = httputil.ErrorHandler // 커스텀 에러 핸들러 연결 (선택사항, 테스트 직접 검증 시 불필요할 수 있음)
+	expectedBody := `{"application_id":"test-app", "payload":"data"}`
 
-	// BodyLimit 미들웨어 설정 (10 바이트 제한)
-	e.Use(middleware.BodyLimit("10B"))
+	c, _ := setupTestContext(http.MethodPost, "/", strings.NewReader(expectedBody))
+	c.Request().Header.Set(constants.HeaderXAppKey, "valid-app-key")
+	// Header ID 누락 -> Body 파싱 유도
 
-	// 10바이트 초과 데이터, Content-Length 조작으로 초기 검사 우회 -> io.ReadAll에서 에러 유발
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"id":"test-app", "data":"too-large"}`))
-	req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-	req.Header.Del("Content-Length") // Content-Length 기반 1차 차단 우회
-	req.ContentLength = -1
-
-	// Application ID 헤더 누락 -> Body 파싱 시도
-
-	rec := httptest.NewRecorder()
-
-	// 미들웨어 체인 구성
-	// BodyLimit -> RequireAuthentication -> Handler
-	handler := func(c echo.Context) error {
+	mw := RequireAuthentication(authenticator)
+	handler := mw(func(c echo.Context) error {
+		// 핸들러에서 Body 다시 읽기
+		bodyBytes, err := io.ReadAll(c.Request().Body)
+		require.NoError(t, err)
+		assert.Equal(t, expectedBody, string(bodyBytes), "Body가 복원되어야 합니다")
 		return c.String(http.StatusOK, "success")
-	}
-	// 주의: BodyLimit은 전역 또는 Route 레벨로 적용됨. 여기서는 수동 체이닝
-	// e.ServeHTTP를 사용하면 등록된 미들웨어가 적용됨
+	})
 
-	// 413 에러가 RequireAuthentication 내부의 io.ReadAll에서 발생하는지 확인하기 위해
-	// e.ServeHTTP 대신 직접 핸들러 체인을 구성하거나 e.POST에 등록하여 호출
-	e.POST("/", handler, RequireAuthentication(authenticator))
-
-	e.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-	// 메시지 내용 검증은 구현에 따라 다를 수 있으나, 상수값 포함 확인
-	assert.Contains(t, rec.Body.String(), constants.ErrMsgRequestEntityTooLarge)
+	err := handler(c)
+	assert.NoError(t, err)
 }
 
-func TestRequireAuthentication_Panic_Nil(t *testing.T) {
+func TestRequireAuthentication_Panic(t *testing.T) {
 	assert.PanicsWithValue(t, constants.PanicMsgAuthenticatorRequired, func() {
 		RequireAuthentication(nil)
 	})
