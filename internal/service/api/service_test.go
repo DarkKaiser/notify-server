@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -184,6 +185,11 @@ func TestService_Start_TLS(t *testing.T) {
 		require.NoError(t, err, "HTTPS 요청이 성공해야 합니다")
 		defer resp.Body.Close()
 
+		if resp.StatusCode != http.StatusOK {
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(resp.Body)
+			t.Logf("Response Body: %s", buf.String())
+		}
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 

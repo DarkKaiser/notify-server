@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	appmiddleware "github.com/darkkaiser/notify-server/internal/service/api/middleware"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -83,6 +84,9 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	// Echo 프레임워크의 내부 로그를 애플리케이션 로거로 통합합니다.
 	// 이를 통해 모든 로그가 동일한 형식과 출력 대상을 사용하게 됩니다.
 	e.Logger = appmiddleware.Logger{Logger: applog.StandardLogger()}
+
+	// 전역 HTTP 에러 핸들러 설정
+	e.HTTPErrorHandler = httputil.ErrorHandler
 
 	// 타임아웃 미설정 시 기본값(60초)을 적용하여 무한 대기를 방지합니다.
 	timeout := cfg.RequestTimeout

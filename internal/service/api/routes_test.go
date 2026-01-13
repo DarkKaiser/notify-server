@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
-	"runtime"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	systemhandler "github.com/darkkaiser/notify-server/internal/service/api/handler/system"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
@@ -136,41 +133,4 @@ func TestSetupRoutes_Registration(t *testing.T) {
 		}
 		assert.True(t, found, "라우트 %s %s 가 등록되어야 합니다", method, path)
 	}
-}
-
-// TestSetupRoutes_ErrorHandler 은 커스텀 에러 핸들러가 올바르게 설정되었는지 검증합니다.
-func TestSetupRoutes_ErrorHandler(t *testing.T) {
-	e := echo.New()
-	mockSender := mocks.NewMockNotificationSender()
-	handler := systemhandler.NewHandler(mockSender, version.Info{})
-
-	// 설정 전 기본 핸들러 확인 (Echo 기본 핸들러는 exported 되지 않으므로 비교는 어려우나, 설정 후 변경됨을 확인)
-	originalHandler := e.HTTPErrorHandler
-
-	SetupRoutes(e, handler)
-
-	// 설정 후 핸들러 확인
-	currentHandler := e.HTTPErrorHandler
-
-	// 1. 핸들러가 변경되었는지 확인
-	// 함수 포인터 값을 비교 (Testify assert.NotEqual 은 함수 비교 불가할 수 있으므로 reflect 사용)
-	funcName1 := runtime.FuncForPC(reflect.ValueOf(originalHandler).Pointer()).Name()
-	funcName2 := runtime.FuncForPC(reflect.ValueOf(currentHandler).Pointer()).Name()
-	funcNameTarget := runtime.FuncForPC(reflect.ValueOf(httputil.ErrorHandler).Pointer()).Name()
-
-	assert.NotEqual(t, funcName1, funcName2, "에러 핸들러가 변경되어야 합니다")
-	assert.Equal(t, funcNameTarget, funcName2, "httputil.ErrorHandler로 설정되어야 합니다")
-
-	// 2. 실제 동작 검증 (500 에러 발생 시)
-	// 임의의 경로에서 핸들러가 에러를 리턴하도록 설정할 수는 없으나,
-	// e.HTTPErrorHandler를 직접 호출하여 검증 가능
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	err := echo.NewHTTPError(http.StatusInternalServerError, "test error")
-
-	currentHandler(err, c)
-
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json", "커스텀 핸들러는 JSON 응답을 반환해야 합니다")
 }

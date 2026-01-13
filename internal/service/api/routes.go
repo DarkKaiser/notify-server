@@ -2,7 +2,6 @@ package api
 
 import (
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
@@ -16,7 +15,6 @@ import (
 func SetupRoutes(e *echo.Echo, h *system.Handler) {
 	setupSystemRoutes(e, h)
 	setupSwaggerRoutes(e)
-	setupErrorHandler(e)
 }
 
 func setupSystemRoutes(e *echo.Echo, h *system.Handler) {
@@ -35,9 +33,4 @@ func setupSwaggerRoutes(e *echo.Echo) {
 		// 문서 로드 시 태그(Tag) 목록만 펼침 상태로 표시 ("list", "full", "none")
 		echoSwagger.DocExpansion("list"),
 	))
-}
-
-// setupErrorHandler 표준화된 HTTP 에러 응답 핸들러를 설정합니다.
-func setupErrorHandler(e *echo.Echo) {
-	e.HTTPErrorHandler = httputil.ErrorHandler
 }

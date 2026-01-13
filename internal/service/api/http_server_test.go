@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -82,6 +85,36 @@ func TestNewHTTPServer_Configuration_Table(t *testing.T) {
 			require.NotNil(t, e.Logger, "Logger가 설정되어야 합니다")
 		})
 	}
+}
+
+// TestNewHTTPServer_ErrorHandler 는 ErrorHandler가 올바르게 설정되었는지 검증합니다.
+func TestNewHTTPServer_ErrorHandler(t *testing.T) {
+	cfg := HTTPServerConfig{
+		Debug: true,
+	}
+	e := NewHTTPServer(cfg)
+
+	// 1. 핸들러 설정 확인
+	currentHandler := e.HTTPErrorHandler
+
+	// 함수 포인터 비교
+	funcNameCurrent := runtime.FuncForPC(reflect.ValueOf(currentHandler).Pointer()).Name()
+	funcNameTarget := runtime.FuncForPC(reflect.ValueOf(httputil.ErrorHandler).Pointer()).Name()
+
+	assert.Equal(t, funcNameTarget, funcNameCurrent, "httputil.ErrorHandler로 설정되어야 합니다")
+
+	// 2. 실제 동작 검증
+	// NewHTTPServer는 미들웨어가 이미 등록된 Echo 인스턴스를 반환하므로,
+	// 실제 요청을 통해 검증하는 것이 가장 정확하지만, 여기서는 ErrorHandler 자체의 동작을 단위 테스트처럼 검증합니다.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	err := echo.NewHTTPError(http.StatusInternalServerError, "test error")
+
+	currentHandler(err, c)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json", "JSON 응답을 반환해야 합니다")
 }
 
 // =============================================================================
