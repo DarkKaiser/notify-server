@@ -51,7 +51,7 @@ import (
 //   - authenticator가 nil인 경우
 func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFunc {
 	if authenticator == nil {
-		panic("RequireAuthentication: Authenticator가 nil입니다")
+		panic(constants.PanicMsgAuthenticatorRequired)
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -63,12 +63,16 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 
 				// 레거시 방식 사용 시 경고 로그
 				if appKey != "" {
-					applog.WithComponent(constants.ComponentMiddleware).Warn("레거시 방식으로 App Key 전달됨 (쿼리 파라미터)")
+					applog.WithComponentAndFields(constants.ComponentMiddlewareAuthentication, applog.Fields{
+						"method":    c.Request().Method,
+						"path":      c.Path(),
+						"remote_ip": c.RealIP(),
+					}).Warn(constants.LogMsgAuthAppKeyInQuery)
 				}
 			}
 
 			if appKey == "" {
-				return httputil.NewBadRequestError(constants.ErrMsgAppKeyRequired)
+				return httputil.NewBadRequestError(constants.ErrMsgAuthAppKeyRequired)
 			}
 
 			// 2. Application ID 추출
@@ -94,12 +98,12 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 					if he, ok := err.(*echo.HTTPError); ok && he.Code == http.StatusRequestEntityTooLarge {
 						return echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
 					}
-					return httputil.NewBadRequestError(constants.ErrMsgBodyReadFailed)
+					return httputil.NewBadRequestError(constants.ErrMsgBadRequestBodyReadFailed)
 				}
 				c.Request().Body.Close()
 
 				if len(bodyBytes) == 0 {
-					return httputil.NewBadRequestError(constants.ErrMsgEmptyBody)
+					return httputil.NewBadRequestError(constants.ErrMsgBadRequestEmptyBody)
 				}
 
 				// Body 복원 (다음 핸들러에서 사용 가능하도록)
@@ -109,14 +113,14 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 					ApplicationID string `json:"application_id"`
 				}
 				if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
-					return httputil.NewBadRequestError(constants.ErrMsgInvalidJSON)
+					return httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidJSON)
 				}
 
 				applicationID = authRequest.ApplicationID
 			}
 
 			if applicationID == "" {
-				return httputil.NewBadRequestError(constants.ErrMsgApplicationIDRequired)
+				return httputil.NewBadRequestError(constants.ErrMsgAuthApplicationIDRequired)
 			}
 
 			// 3. 인증 처리

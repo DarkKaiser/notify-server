@@ -44,19 +44,19 @@ func TestDeprecatedEndpoint_InputValidation_Table(t *testing.T) {
 			name:            "실패: 빈 경로",
 			newEndpoint:     "",
 			expectPanic:     true,
-			expectedMessage: "DeprecatedEndpoint: 대체 엔드포인트 경로가 비어있습니다",
+			expectedMessage: constants.PanicMsgDeprecatedEndpointEmpty,
 		},
 		{
 			name:            "실패: 슬래시 미포함 경로",
 			newEndpoint:     "api/v1/notifications",
 			expectPanic:     true,
-			expectedMessage: "DeprecatedEndpoint: 대체 엔드포인트 경로는 '/'로 시작해야 합니다",
+			expectedMessage: "대체 엔드포인트 경로는 '/'로 시작해야 합니다",
 		},
 		{
 			name:            "실패: 상대 경로",
 			newEndpoint:     "../api/v1/notifications",
 			expectPanic:     true,
-			expectedMessage: "DeprecatedEndpoint: 대체 엔드포인트 경로는 '/'로 시작해야 합니다",
+			expectedMessage: "대체 엔드포인트 경로는 '/'로 시작해야 합니다",
 		},
 	}
 
@@ -191,9 +191,9 @@ func TestDeprecatedEndpoint_LogVerification(t *testing.T) {
 	assert.NoError(t, err, "JSON 로그 파싱 실패")
 
 	// 1. 공통 필드 검증
-	assert.Equal(t, "api.middleware", logEntry["component"])
+	assert.Equal(t, "api.middleware.deprecated", logEntry["component"])
 	assert.Equal(t, "warning", logEntry["level"])
-	assert.Equal(t, "Deprecated API 엔드포인트 사용됨", logEntry["msg"])
+	assert.Equal(t, constants.LogMsgDeprecatedEndpointUsed, logEntry["msg"])
 
 	// 2. 상세 필드 검증
 	assert.Equal(t, "/old/api", logEntry["deprecated_endpoint"])

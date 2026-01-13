@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
@@ -31,10 +32,10 @@ import (
 //   - newEndpoint가 빈 문자열이거나 '/'로 시작하지 않는 경우
 func DeprecatedEndpoint(newEndpoint string) echo.MiddlewareFunc {
 	if newEndpoint == "" {
-		panic("DeprecatedEndpoint: 대체 엔드포인트 경로가 비어있습니다")
+		panic(constants.PanicMsgDeprecatedEndpointEmpty)
 	}
 	if !strings.HasPrefix(newEndpoint, "/") {
-		panic("DeprecatedEndpoint: 대체 엔드포인트 경로는 '/'로 시작해야 합니다 (현재값: " + newEndpoint + ")")
+		panic(fmt.Sprintf(constants.PanicMsgDeprecatedEndpointInvalidPrefix, newEndpoint))
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -46,13 +47,13 @@ func DeprecatedEndpoint(newEndpoint string) echo.MiddlewareFunc {
 			c.Response().Header().Set(constants.HeaderXAPIDeprecatedReplacement, newEndpoint)
 
 			// 2. Deprecated 엔드포인트 사용 로그 기록
-			applog.WithComponentAndFields(constants.ComponentMiddleware, applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentMiddlewareDeprecated, applog.Fields{
 				"deprecated_endpoint": c.Path(),
 				"replacement":         newEndpoint,
 				"method":              c.Request().Method,
 				"remote_ip":           c.RealIP(),
 				"user_agent":          c.Request().UserAgent(),
-			}).Warn("Deprecated API 엔드포인트 사용됨")
+			}).Warn(constants.LogMsgDeprecatedEndpointUsed)
 
 			return next(c)
 		}

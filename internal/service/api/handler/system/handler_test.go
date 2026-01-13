@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -82,12 +83,21 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		err = json.Unmarshal(rec.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
-		assert.Equal(t, statusHealthy, resp.Status)
-		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상이어야 함
+		// Define expected response using constants
+		expectedResponse := system.HealthResponse{
+			Status: constants.HealthStatusHealthy,
+			// Uptime은 동적으로 변하므로 직접 비교하지 않고 0 이상인지 확인
+			Dependencies: map[string]system.DependencyStatus{
+				constants.DependencyNotificationService: {
+					Status:  constants.HealthStatusHealthy,
+					Message: constants.MsgDepStatusHealthy,
+				},
+			},
+		}
 
-		// 의존성 상태 확인
-		require.Contains(t, resp.Dependencies, dependencyNotificationService)
-		assert.Equal(t, statusHealthy, resp.Dependencies[dependencyNotificationService].Status)
+		assert.Equal(t, expectedResponse.Status, resp.Status)
+		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상이어야 함
+		assert.Equal(t, expectedResponse.Dependencies, resp.Dependencies)
 	})
 
 	t.Run("성공: 의존성이 비정상일 때 Unhealthy 반환", func(t *testing.T) {
@@ -114,13 +124,23 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		err = json.Unmarshal(rec.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
-		// 전체 상태 Unhealthy 확인
-		assert.Equal(t, statusUnhealthy, resp.Status, "의존성이 누락되었으므로 전체 상태는 Unhealthy여야 함")
+		// Define expected response using constants
+		expectedResponse := system.HealthResponse{
+			Status: constants.HealthStatusUnhealthy,
+			Uptime: 0, // Uptime은 동적으로 변하므로 직접 비교하지 않고 0 이상인지 확인
+			Dependencies: map[string]system.DependencyStatus{
+				constants.DependencyNotificationService: {
+					Status:  constants.HealthStatusUnhealthy,
+					Message: constants.MsgDepStatusNotInitialized,
+				},
+			},
+		}
 
+		// 전체 상태 Unhealthy 확인
+		assert.Equal(t, expectedResponse.Status, resp.Status, "의존성이 누락되었으므로 전체 상태는 Unhealthy여야 함")
+		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상이어야 함
 		// 의존성별 상태 확인
-		require.Contains(t, resp.Dependencies, dependencyNotificationService)
-		assert.Equal(t, statusUnhealthy, resp.Dependencies[dependencyNotificationService].Status)
-		assert.Equal(t, "서비스가 초기화되지 않음", resp.Dependencies[dependencyNotificationService].Message)
+		assert.Equal(t, expectedResponse.Dependencies, resp.Dependencies)
 	})
 }
 

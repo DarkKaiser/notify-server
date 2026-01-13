@@ -16,15 +16,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const (
-	// 헬스체크 상태값
-	statusHealthy   = "healthy"
-	statusUnhealthy = "unhealthy"
-
-	// 의존성 서비스 식별자
-	dependencyNotificationService = "notification_service"
-)
-
 // Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
 	notificationSender notification.Sender
@@ -37,7 +28,7 @@ type Handler struct {
 // NewHandler Handler 인스턴스를 생성합니다.
 func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
 	if notificationSender == nil {
-		panic("NotificationSender는 필수입니다")
+		panic(constants.PanicMsgNotificationSenderRequired)
 	}
 
 	return &Handler{
@@ -67,7 +58,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 		"endpoint":  "/health",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug("헬스체크 조회")
+	}).Debug(constants.LogMsgHealthCheck)
 
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
@@ -76,22 +67,22 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 
 	// Notification 서비스 상태 확인
 	if h.notificationSender != nil {
-		deps[dependencyNotificationService] = system.DependencyStatus{
-			Status:  statusHealthy,
-			Message: "정상 작동 중",
+		deps[constants.DependencyNotificationService] = system.DependencyStatus{
+			Status:  constants.HealthStatusHealthy,
+			Message: constants.MsgDepStatusHealthy,
 		}
 	} else {
-		deps[dependencyNotificationService] = system.DependencyStatus{
-			Status:  statusUnhealthy,
-			Message: "서비스가 초기화되지 않음",
+		deps[constants.DependencyNotificationService] = system.DependencyStatus{
+			Status:  constants.HealthStatusUnhealthy,
+			Message: constants.MsgDepStatusNotInitialized,
 		}
 	}
 
 	// 하나라도 unhealthy면 전체 상태를 unhealthy로 설정
-	serverStatus := statusHealthy
+	serverStatus := constants.HealthStatusHealthy
 	for _, dep := range deps {
-		if dep.Status != statusHealthy {
-			serverStatus = statusUnhealthy
+		if dep.Status != constants.HealthStatusHealthy {
+			serverStatus = constants.HealthStatusUnhealthy
 			break
 		}
 	}
@@ -116,7 +107,7 @@ func (h *Handler) VersionHandler(c echo.Context) error {
 		"endpoint":  "/version",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug("버전 정보 조회")
+	}).Debug(constants.LogMsgVersionInfo)
 
 	return c.JSON(http.StatusOK, system.VersionResponse{
 		Version:     h.buildInfo.Version,

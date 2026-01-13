@@ -127,7 +127,7 @@ func TestPanicRecovery_Table(t *testing.T) {
 			assert.NoError(t, err, "JSON 로그 파싱 실패")
 
 			// 공통 필드 검증
-			assert.Equal(t, "api.middleware", logEntry["component"])
+			assert.Equal(t, "api.middleware.panic_recovery", logEntry["component"])
 			assert.Equal(t, "error", logEntry["level"])
 
 			// 케이스별 상세 검증

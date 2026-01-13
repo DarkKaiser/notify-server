@@ -102,7 +102,7 @@ func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 
 		// 추적 정보
 		"request_id": res.Header().Get(echo.HeaderXRequestID),
-	}).Info("HTTP 요청")
+	}).Info(constants.LogMsgHTTPRequest)
 
 	return nil
 }

@@ -113,7 +113,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 		applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
 			"application_id": applicationID,
 			"app_title":      app.Title,
-		}).Warn("인증 실패: App Key 불일치")
+		}).Warn(constants.LogMsgAuthFailedAppKeyMismatch)
 
 		return nil, httputil.NewUnauthorizedError(fmt.Sprintf(constants.ErrMsgUnauthorizedInvalidAppKey, applicationID))
 	}

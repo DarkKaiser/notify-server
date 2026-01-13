@@ -20,7 +20,7 @@ type Sender interface {
 	//   - errorOccurred: 오류 발생 여부 (true일 경우 오류 상황으로 처리되어 시각적 강조 등이 적용될 수 있음)
 	//
 	// 반환값:
-	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotifierNotFound 등)
+	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
 	NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error
 
 	// NotifyDefault 시스템에 설정된 기본 알림 채널로 일반 메시지를 발송합니다.

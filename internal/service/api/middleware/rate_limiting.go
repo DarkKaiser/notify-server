@@ -113,10 +113,10 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 //   - requestsPerSecond 또는 burst가 0 이하인 경우
 func RateLimiting(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 	if requestsPerSecond <= 0 {
-		panic("RateLimiting: requestsPerSecond는 양수여야 합니다 (현재값: " + fmt.Sprint(requestsPerSecond) + ")")
+		panic(fmt.Sprintf(constants.PanicMsgRateLimitRequestsPerSecondInvalid, requestsPerSecond))
 	}
 	if burst <= 0 {
-		panic("RateLimiting: burst는 양수여야 합니다 (현재값: " + fmt.Sprint(burst) + ")")
+		panic(fmt.Sprintf(constants.PanicMsgRateLimitBurstInvalid, burst))
 	}
 
 	limiter := newIPRateLimiter(requestsPerSecond, burst)
@@ -132,11 +132,11 @@ func RateLimiting(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 			// 3. Rate Limit 확인
 			if !ipLimiter.Allow() {
 				// 제한 초과 로깅
-				applog.WithComponentAndFields(constants.ComponentMiddleware, applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentMiddlewareRateLimit, applog.Fields{
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
-				}).Warn("요청 속도 제한 초과")
+				}).Warn(constants.LogMsgRateLimitExceeded)
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
 				c.Response().Header().Set(constants.HeaderRetryAfter, constants.RetryAfterSeconds)

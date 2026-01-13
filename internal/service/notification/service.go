@@ -149,7 +149,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 //   - errorOccurred: 오류 발생 여부 (true일 경우 오류 상황으로 처리되어 시각적 강조 등이 적용될 수 있음)
 //
 // 반환값:
-//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotifierNotFound 등)
+//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
 func (s *Service) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error {
 	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
@@ -269,7 +269,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
 	}
 
-	return ErrNotifierNotFound
+	return ErrNotFoundNotifier
 }
 
 // SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.

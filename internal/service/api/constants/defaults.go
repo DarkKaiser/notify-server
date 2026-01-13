@@ -11,8 +11,8 @@ const (
 	// DefaultReadTimeout 요청 본문 읽기 최대 시간 (30초)
 	DefaultReadTimeout = 30 * time.Second
 
-	// DefaultWriteTimeout 응답 쓰기 최대 시간 (30초)
-	DefaultWriteTimeout = 30 * time.Second
+	// DefaultWriteTimeout 응답 쓰기 최대 시간 (65초)
+	DefaultWriteTimeout = 65 * time.Second
 
 	// DefaultIdleTimeout Keep-Alive 연결 유휴 최대 시간 (120초)
 	DefaultIdleTimeout = 120 * time.Second

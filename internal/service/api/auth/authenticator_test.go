@@ -201,7 +201,7 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 				require.NoError(t, err, "로그 파싱 실패")
 
 				assert.Equal(t, "warning", logEntry.Level)
-				assert.Equal(t, "인증 실패: App Key 불일치", logEntry.Message)
+				assert.Equal(t, "인증 실패: 제공된 App Key가 올바르지 않습니다", logEntry.Message)
 				assert.Equal(t, "test-app", logEntry.ApplicationID)
 				assert.Equal(t, "테스트 앱", logEntry.AppTitle)
 			},
@@ -218,7 +218,7 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 			},
 			checkLog: func(t *testing.T, logBuf *bytes.Buffer) {
 				// 빈 키도 불일치로 간주되므로 로그가 남아야 함
-				assert.Contains(t, logBuf.String(), "App Key 불일치")
+				assert.Contains(t, logBuf.String(), "제공된 App Key가 올바르지 않습니다")
 			},
 		},
 	}

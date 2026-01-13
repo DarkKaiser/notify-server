@@ -84,7 +84,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		if err == notification.ErrServiceStopped {
 			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)
 		}
-		if err == notification.ErrNotifierNotFound {
+		if err == notification.ErrNotFoundNotifier {
 			return httputil.NewNotFoundError(constants.ErrMsgNotFoundNotifier)
 		}
 
@@ -99,7 +99,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
-	}).Info("알림 큐 적재 성공")
+	}).Info(constants.LogMsgNotificationQueued)
 
 	// 6. 성공 응답 반환
 	return httputil.NewSuccessResponse(c)

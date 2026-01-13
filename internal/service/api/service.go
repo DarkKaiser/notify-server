@@ -56,10 +56,10 @@ type Service struct {
 // NewService Service 인스턴스를 생성합니다.
 func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
 	if appConfig == nil {
-		panic("AppConfig는 필수입니다")
+		panic(constants.PanicMsgAppConfigRequired)
 	}
 	if notificationSender == nil {
-		panic("NotificationSender는 필수입니다")
+		panic(constants.PanicMsgNotificationSenderRequired)
 	}
 
 	return &Service{
@@ -97,11 +97,11 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작중...")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarting)
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(constants.ComponentService).Warn("API 서비스가 이미 시작됨!!!")
+		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceAlreadyStarted)
 		return nil
 	}
 
@@ -109,7 +109,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
-	applog.WithComponent(constants.ComponentService).Info("API 서비스 시작됨")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarted)
 
 	return nil
 }
@@ -175,7 +175,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	port := s.appConfig.NotifyAPI.WS.ListenPort
 	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"port": port,
-	}).Debug("API 서비스 > http 서버 시작")
+	}).Debug(constants.LogMsgServiceHTTPServerStarting)
 
 	var err error
 	if s.appConfig.NotifyAPI.WS.TLSServer {
@@ -205,12 +205,12 @@ func (s *Service) handleServerError(err error) {
 
 	// http.ErrServerClosed: Graceful Shutdown 완료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent(constants.ComponentService).Info("API 서비스 > http 서버 중지됨")
+		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceHTTPServerStopped)
 		return
 	}
 
 	// 예상치 못한 에러: 로깅 및 알림 전송
-	message := "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
+	message := constants.LogMsgServiceHTTPServerFatalError
 	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
@@ -237,11 +237,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	select {
 	case <-serviceStopCtx.Done():
 		// 정상적인 종료 신호 수신
-		applog.WithComponent(constants.ComponentService).Info("API 서비스 중지중...")
+		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopping)
 	case <-httpServerDone:
 		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
 		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리
-		applog.WithComponent(constants.ComponentService).Error("API 서비스가 예기치 않게 종료되었습니다")
+		applog.WithComponent(constants.ComponentService).Error(constants.LogMsgServiceUnexpectedExit)
 
 		s.cleanup()
 
@@ -255,7 +255,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	if err := e.Shutdown(ctx); err != nil {
 		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 			"error": err,
-		}).Error("서버 종료 중 오류 발생")
+		}).Error(constants.LogMsgServiceHTTPServerShutdownError)
 	}
 
 	<-httpServerDone
@@ -273,5 +273,5 @@ func (s *Service) cleanup() {
 	// - 메모리는 GC가 Service 객체 해제 시 자동 정리
 	s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info("API 서비스 중지됨")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopped)
 }

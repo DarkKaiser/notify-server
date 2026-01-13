@@ -200,7 +200,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusServiceUnavailable,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				// "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요."
-				assert.Equal(t, "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요.", errResp.Message)
+				assert.Equal(t, "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요", errResp.Message)
 			},
 		},
 		{
@@ -211,11 +211,11 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			mockFail:       true,
-			failError:      notification.ErrNotifierNotFound,
+			failError:      notification.ErrNotFoundNotifier,
 			expectedStatus: http.StatusNotFound,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				// "등록되지 않은 알림 채널입니다. 설정을 확인해 주세요."
-				assert.Equal(t, "등록되지 않은 알림 채널입니다. 설정을 확인해 주세요.", errResp.Message)
+				assert.Equal(t, "등록되지 않은 알림 채널입니다. 설정을 확인해 주세요", errResp.Message)
 			},
 		},
 		{
@@ -230,7 +230,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				// "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
-				assert.Equal(t, "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.", errResp.Message)
+				assert.Equal(t, "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요", errResp.Message)
 			},
 		},
 	}

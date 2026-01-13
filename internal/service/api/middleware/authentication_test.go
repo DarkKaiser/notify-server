@@ -181,7 +181,7 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 				req.Header.Set(constants.HeaderXApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedMsg:    constants.ErrMsgAppKeyRequired,
+			expectedMsg:    constants.ErrMsgAuthAppKeyRequired,
 		},
 		{
 			name: "Fail_MissingAppID_HeaderAndBody",
@@ -191,7 +191,7 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest, // ID 누락 (JSON 파싱 성공했으나 ID 없음)
 			// 현재 구현상 JSON 언마샬 후 ID가 빈 문자열이면 ErrMsgApplicationIDRequired 반환
-			expectedMsg: constants.ErrMsgApplicationIDRequired,
+			expectedMsg: constants.ErrMsgAuthApplicationIDRequired,
 		},
 		{
 			name: "Fail_EmptyBody_WhenHeaderMissing",
@@ -200,7 +200,7 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 				req.Body = io.NopCloser(strings.NewReader("")) // Empty Body
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedMsg:    constants.ErrMsgEmptyBody,
+			expectedMsg:    constants.ErrMsgBadRequestEmptyBody,
 		},
 		{
 			name: "Fail_InvalidJSON",
@@ -209,7 +209,7 @@ func TestRequireAuthentication_Scenarios(t *testing.T) {
 				req.Body = io.NopCloser(strings.NewReader(`{invalid-json`))
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedMsg:    constants.ErrMsgInvalidJSON,
+			expectedMsg:    constants.ErrMsgBadRequestInvalidJSON,
 		},
 
 		// 실패 케이스 - 401 Unauthorized
@@ -310,7 +310,7 @@ func TestRequireAuthentication_BodyTooLarge(t *testing.T) {
 }
 
 func TestRequireAuthentication_Panic_Nil(t *testing.T) {
-	assert.PanicsWithValue(t, "RequireAuthentication: Authenticator가 nil입니다", func() {
+	assert.PanicsWithValue(t, constants.PanicMsgAuthenticatorRequired, func() {
 		RequireAuthentication(nil)
 	})
 }
