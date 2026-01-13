@@ -128,6 +128,7 @@ func TestErrorResponses(t *testing.T) {
 //   - 200 OK 상태 코드
 //   - application/json Content-Type
 //   - ResultCode가 0인 SuccessResponse
+//   - Message 필드가 "성공"인지 확인
 func TestNewSuccessResponse(t *testing.T) {
 	// Echo 컨텍스트 설정
 	e := echo.New()
@@ -154,4 +155,7 @@ func TestNewSuccessResponse(t *testing.T) {
 
 	// ResultCode 확인
 	assert.Equal(t, 0, resp.ResultCode, "ResultCode는 0이어야 합니다")
+
+	// Message 확인
+	assert.Equal(t, "성공", resp.Message, "Message는 '성공'이어야 합니다")
 }
