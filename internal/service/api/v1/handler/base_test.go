@@ -3,83 +3,29 @@ package handler
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// =============================================================================
-// Handler Tests
-// =============================================================================
+func TestNewHandler(t *testing.T) {
+	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
+		// Setup
+		mockSender := mocks.NewMockNotificationSender()
 
-// TestNewHandler_Table은 Handler 생성을 검증합니다.
-//
-// 검증 항목:
-//   - 단일 애플리케이션 설정
-//   - 다중 애플리케이션 설정
-//   - 빈 애플리케이션 목록 처리
-func TestNewHandler_Table(t *testing.T) {
-	tests := []struct {
-		name         string
-		appConfig    *config.AppConfig
-		expectedApps int
-	}{
-		{
-			name: "Single Application",
-			appConfig: &config.AppConfig{
-				NotifyAPI: config.NotifyAPIConfig{
-					Applications: []config.ApplicationConfig{
-						{
-							ID:                "test-app",
-							Title:             "Test Application",
-							Description:       "Test Description",
-							DefaultNotifierID: "test-notifier",
-							AppKey:            "test-key",
-						},
-					},
-				},
-			},
-			expectedApps: 1,
-		},
-		{
-			name: "Multiple Applications",
-			appConfig: &config.AppConfig{
-				NotifyAPI: config.NotifyAPIConfig{
-					Applications: []config.ApplicationConfig{
-						{ID: "app1", AppKey: "key1"},
-						{ID: "app2", AppKey: "key2"},
-					},
-				},
-			},
-			expectedApps: 2,
-		},
-		{
-			name: "Empty Application List",
-			appConfig: &config.AppConfig{
-				NotifyAPI: config.NotifyAPIConfig{},
-			},
-			expectedApps: 0,
-		},
-	}
+		// Execute
+		h := NewHandler(mockSender)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			MockService := &mocks.MockNotificationSender{}
-			appManager := auth.NewAuthenticator(tt.appConfig)
+		// Verify
+		require.NotNil(t, h, "생성된 핸들러는 nil이 아니어야 합니다")
+		assert.Equal(t, mockSender, h.notificationSender, "주입된 NotificationSender가 일치해야 합니다")
+	})
 
-			h := NewHandler(appManager, MockService)
-
-			require.NotNil(t, h, "Handler should not be nil")
-			require.NotNil(t, h.authenticator, "Authenticator should not be nil")
-
-			// Authenticator stores apps in unexported field, so we rely on NewHandler success
-			// In auth package test we verified Authenticator behavior.
-			// Here we just verify Handler creation integration.
-			// Ideally we shouldn't poke internal structure too much, relying on auth tests for counting logic.
-			// But for confidence we can do a quick check via casting if we were inside same package,
-			// but appManager logic is tested in auth package.
-			// So "expectedApps" check here is implicit via appManager creation success.
+	t.Run("실패: NotificationSender가 nil인 경우 Panic", func(t *testing.T) {
+		// Verify
+		assert.PanicsWithValue(t, "NotificationSender는 필수입니다", func() {
+			// Execute
+			NewHandler(nil)
 		})
-	}
+	})
 }

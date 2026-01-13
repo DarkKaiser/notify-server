@@ -1,7 +1,3 @@
-// Package middleware HTTP 요청/응답 로깅을 위한 미들웨어를 제공합니다.
-//
-// 이 패키지는 Echo 프레임워크와 통합되어 모든 HTTP 요청과 응답을 구조화된 로그로 기록합니다.
-// 민감한 쿼리 파라미터는 자동으로 마스킹되어 보안을 유지합니다.
 package middleware
 
 import (
@@ -20,29 +16,13 @@ const (
 	defaultBytesIn = "0"
 )
 
-// HTTPLogger HTTP 요청/응답 정보를 로깅하는 미들웨어를 반환합니다.
+// HTTPLogger HTTP 요청/응답을 구조화된 로그로 기록하는 미들웨어를 반환합니다.
 //
-// 이 미들웨어는 다음 정보를 구조화된 로그로 기록합니다:
-//   - 요청 정보: IP, 메서드, URI, User-Agent 등
-//   - 응답 정보: 상태 코드, 응답 크기
-//   - 성능 정보: 요청 처리 시간
-//   - 민감 정보: 쿼리 파라미터의 민감 정보는 자동으로 마스킹됨
-//
-// 로그 필드:
-//   - time_rfc3339: 요청 완료 시각 (RFC3339 형식)
-//   - remote_ip: 클라이언트 IP 주소
-//   - host: 요청 호스트
-//   - uri: 요청 URI (민감 정보 마스킹됨)
-//   - method: HTTP 메서드 (GET, POST 등)
-//   - path: URL 경로
-//   - referer: Referer 헤더
-//   - user_agent: User-Agent 헤더
-//   - status: HTTP 응답 상태 코드
-//   - latency: 요청 처리 시간 (마이크로초)
-//   - latency_human: 요청 처리 시간 (사람이 읽기 쉬운 형식)
-//   - bytes_in: 요청 본문 크기 (바이트)
-//   - bytes_out: 응답 본문 크기 (바이트)
-//   - request_id: 요청 ID (X-Request-ID 헤더)
+// 기록되는 정보:
+//   - 요청: IP, 메서드, URI, User-Agent, Content-Length
+//   - 응답: 상태 코드, 응답 크기, Request ID
+//   - 성능: 처리 시간 (마이크로초 및 사람이 읽기 쉬운 형식)
+//   - 보안: 민감한 쿼리 파라미터 자동 마스킹 (app_key, password 등)
 //
 // 사용 예시:
 //
@@ -52,20 +32,20 @@ func HTTPLogger() echo.MiddlewareFunc {
 	return httpLogger
 }
 
-// httpLogger 실제 로깅 미들웨어 함수입니다.
+// httpLogger Echo 미들웨어 함수를 생성합니다.
 func httpLogger(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		return httpLoggerHandler(c, next)
 	}
 }
 
-// httpLoggerHandler HTTP 요청/응답 정보를 로깅하는 미들웨어 핸들러입니다.
+// httpLoggerHandler HTTP 요청/응답을 로깅하는 핵심 핸들러입니다.
 //
-// 이 함수는 다음 순서로 동작합니다:
+// 처리 흐름:
 //  1. 요청 시작 시간 기록
-//  2. 다음 핸들러 실행 (에러 발생 시 Echo의 에러 핸들러로 전달)
-//  3. 요청 완료 시간 기록 및 레이턴시 계산
-//  4. 요청/응답 정보를 구조화된 로그로 기록
+//  2. 다음 핸들러 실행 (에러는 Echo 에러 핸들러로 전달)
+//  3. 레이턴시 계산 및 민감 정보 마스킹
+//  4. 구조화된 로그 기록 (JSON 형식)
 func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 	req := c.Request()
 	res := c.Response()
@@ -96,34 +76,47 @@ func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 
 	// 구조화된 로그 기록
 	applog.WithFields(applog.Fields{
-		"time_rfc3339":  stop.Format(time.RFC3339),
-		"remote_ip":     c.RealIP(),
-		"host":          req.Host,
-		"uri":           uri,
-		"method":        req.Method,
-		"path":          path,
-		"referer":       req.Referer(),
-		"user_agent":    req.UserAgent(),
-		"status":        res.Status,
+		// 시간 정보
+		"time_rfc3339": stop.Format(time.RFC3339),
+
+		// 요청 정보
+		"method":   req.Method,
+		"path":     path,
+		"uri":      uri,
+		"host":     req.Host,
+		"protocol": req.Proto,
+
+		// 클라이언트 정보
+		"remote_ip":  c.RealIP(),
+		"user_agent": req.UserAgent(),
+		"referer":    req.Referer(),
+
+		// 응답 정보
+		"status":    res.Status,
+		"bytes_in":  bytesIn,
+		"bytes_out": strconv.FormatInt(res.Size, 10),
+
+		// 성능 정보
 		"latency":       strconv.FormatInt(latency.Nanoseconds()/1000, 10),
 		"latency_human": latency.String(),
-		"bytes_in":      bytesIn,
-		"bytes_out":     strconv.FormatInt(res.Size, 10),
-		"request_id":    res.Header().Get(echo.HeaderXRequestID),
-	}).Info("HTTP request")
+
+		// 추적 정보
+		"request_id": res.Header().Get(echo.HeaderXRequestID),
+	}).Info(constants.LogMsgHTTPRequest)
 
 	return nil
 }
 
-// maskSensitiveQueryParams URI의 민감 정보를 마스킹합니다.
+// maskSensitiveQueryParams URI의 민감한 쿼리 파라미터를 마스킹합니다.
 //
-// sensitiveQueryParams 목록에 있는 쿼리 파라미터의 값을 strutils.Mask로 대체합니다.
-// URI 파싱에 실패한 경우, 원본 URI를 그대로 반환하여 로깅이 중단되지 않도록 합니다.
+// constants.SensitiveQueryParams에 정의된 파라미터(app_key, password 등)의
+// 값을 strutil.Mask로 마스킹합니다. URI 파싱 실패 시 원본을 반환하여
+// 로깅이 중단되지 않도록 합니다.
 //
 // 예시:
 //
 //	입력: "/api/v1/test?app_key=secret123&id=100"
-//	출력: "/api/v1/test?app_key=secr***123&id=100"
+//	출력: "/api/v1/test?app_key=secr***&id=100"
 func maskSensitiveQueryParams(uri string) string {
 	u, err := url.Parse(uri)
 	if err != nil {

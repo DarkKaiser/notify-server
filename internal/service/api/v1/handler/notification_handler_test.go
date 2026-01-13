@@ -2,16 +2,19 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/api/auth"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -27,57 +30,37 @@ func setupTestHandler(t *testing.T) (*Handler, *mocks.MockNotificationSender) {
 	t.Helper()
 
 	mockService := &mocks.MockNotificationSender{}
-	appConfig := &config.AppConfig{
-		NotifyAPI: config.NotifyAPIConfig{
-			Applications: []config.ApplicationConfig{
-				{
-					ID:                "test-app",
-					Title:             "Test App",
-					DefaultNotifierID: "test-notifier",
-					AppKey:            "valid-key",
-				},
-			},
-		},
-	}
-	authenticator := auth.NewAuthenticator(appConfig)
-	handler := NewHandler(authenticator, mockService)
+	handler := NewHandler(mockService)
 
 	return handler, mockService
 }
 
 // createTestRequest 테스트용 HTTP 요청을 생성합니다.
-func createTestRequest(t *testing.T, method, url string, appKey string, useHeader bool, body interface{}) (*httptest.ResponseRecorder, echo.Context) {
+// 인증은 미들웨어에서 처리되므로, Context에 Application을 미리 설정합니다.
+func createTestRequest(t *testing.T, method, url string, body interface{}, app *domain.Application) (*httptest.ResponseRecorder, echo.Context) {
 	t.Helper()
 
 	e := echo.New()
 
-	var bodyStr string
+	var bodyBytes []byte
 	if s, ok := body.(string); ok {
-		bodyStr = s
+		bodyBytes = []byte(s)
 	} else if body != nil {
-		b, _ := json.Marshal(body)
-		bodyStr = string(b)
+		b, err := json.Marshal(body)
+		require.NoError(t, err, "Body marshaling failed")
+		bodyBytes = b
 	}
 
-	// URL에 쿼리 파라미터 추가
-	if !useHeader && appKey != "" {
-		if strings.Contains(url, "?") {
-			url += "&app_key=" + appKey
-		} else {
-			url += "?app_key=" + appKey
-		}
-	}
-
-	req := httptest.NewRequest(method, url, strings.NewReader(bodyStr))
+	req := httptest.NewRequest(method, url, strings.NewReader(string(bodyBytes)))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-
-	// 헤더 방식인 경우 X-App-Key 헤더 설정
-	if useHeader && appKey != "" {
-		req.Header.Set(constants.HeaderAppKey, appKey)
-	}
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+
+	// Context에 인증된 Application 설정 (미들웨어가 이미 처리했다고 가정)
+	if app != nil {
+		c.Set(constants.ContextKeyApplication, app)
+	}
 
 	return rec, c
 }
@@ -88,36 +71,45 @@ func createTestRequest(t *testing.T, method, url string, appKey string, useHeade
 
 // TestPublishNotificationHandler는 알림 게시 핸들러를 검증합니다.
 //
-// 검증 항목:
-//   - 성공 케이스 (헤더/쿼리 파라미터 방식)
-//   - 인증 실패 (잘못된 App Key, 미등록 App ID)
-//   - 입력 검증 실패 (필수 필드 누락, 길이 초과)
-//   - 바인딩 실패 (잘못된 JSON)
-//   - 서비스 실패 (503 에러)
+// 검증 범위:
+//   - 정상적인 알림 전송 (성공 응답)
+//   - ErrorOccurred 필드 처리
+//   - 필수 필드 누락 검증 (ApplicationID, Message)
+//   - 메시지 길이 제한 검증 (최소 1자, 최대 4096자)
+//   - JSON 바인딩 오류 처리
+//   - 서비스 혼잡(503) 시 에러 처리
 func TestPublishNotificationHandler(t *testing.T) {
+	// 공통 테스트 데이터
+	testApp := &domain.Application{
+		ID:                "test-app",
+		Title:             "Test App",
+		DefaultNotifierID: "test-notifier",
+	}
+
 	tests := []struct {
 		name              string
-		appKey            string
-		useHeader         bool
 		reqBody           interface{}
+		app               *domain.Application
 		mockFail          bool
+		failError         error // 실패 시 반환할 에러
 		expectedStatus    int
 		verifyErrResponse func(*testing.T, response.ErrorResponse)
 		verifyMock        func(*testing.T, *mocks.MockNotificationSender)
 	}{
-		// ===== 성공 케이스 =====
+		// ---------------------------------------------------------------------
+		// 성공 케이스
+		// ---------------------------------------------------------------------
 		{
-			name:      "성공: 헤더 방식 인증",
-			appKey:    "valid-key",
-			useHeader: true,
+			name: "성공: 정상적인 알림 전송",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "Test Message",
 				ErrorOccurred: false,
 			},
+			app:            testApp,
 			expectedStatus: http.StatusOK,
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				assert.True(t, m.NotifyCalled)
+				assert.True(t, m.NotifyCalled, "NotifyWithTitle이 호출되어야 합니다")
 				assert.Equal(t, "test-notifier", m.LastNotifierID)
 				assert.Equal(t, "Test App", m.LastTitle)
 				assert.Equal(t, "Test Message", m.LastMessage)
@@ -125,93 +117,84 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:      "성공: 쿼리 파라미터 방식 인증 (레거시)",
-			appKey:    "valid-key",
-			useHeader: false,
-			reqBody: request.NotificationRequest{
-				ApplicationID: "test-app",
-				Message:       "Test Message",
-			},
-			expectedStatus: http.StatusOK,
-			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				assert.True(t, m.NotifyCalled)
-			},
-		},
-		{
-			name:      "성공: ErrorOccurred=true",
-			appKey:    "valid-key",
-			useHeader: true,
+			name: "성공: ErrorOccurred=true 설정",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "Error Message",
 				ErrorOccurred: true,
 			},
+			app:            testApp,
 			expectedStatus: http.StatusOK,
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				assert.True(t, m.LastErrorOccurred)
+				assert.True(t, m.LastErrorOccurred, "에러 발생 플래그가 전달되어야 합니다")
+			},
+		},
+		{
+			name: "성공: Message 최소 길이 (1자)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "a",
+				ErrorOccurred: false,
+			},
+			app:            testApp,
+			expectedStatus: http.StatusOK,
+			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
+				assert.True(t, m.NotifyCalled)
+				assert.Equal(t, 1, len(m.LastMessage))
+			},
+		},
+		{
+			name: "성공: Message 최대 길이 (4096자)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       strings.Repeat("a", 4096),
+			},
+			app:            testApp,
+			expectedStatus: http.StatusOK,
+			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
+				assert.True(t, m.NotifyCalled)
+				assert.Equal(t, 4096, len(m.LastMessage))
 			},
 		},
 
-		// ===== 인증 실패 =====
+		// ---------------------------------------------------------------------
+		// 입력 검증 실패
+		// ---------------------------------------------------------------------
 		{
-			name:   "실패: 잘못된 App Key",
-			appKey: "invalid-key",
-			reqBody: request.NotificationRequest{
-				ApplicationID: "test-app",
-				Message:       "Test Message",
-			},
-			expectedStatus: http.StatusUnauthorized,
-			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "app_key가 유효하지 않습니다")
-			},
-		},
-		{
-			name:   "실패: 미등록 Application ID",
-			appKey: "valid-key",
-			reqBody: request.NotificationRequest{
-				ApplicationID: "unknown-app",
-				Message:       "Test Message",
-			},
-			expectedStatus: http.StatusUnauthorized,
-			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "접근이 허용되지 않은 application_id")
-			},
-		},
-		{
-			name:   "실패: App Key 누락",
-			appKey: "",
-			reqBody: request.NotificationRequest{
-				ApplicationID: "test-app",
-				Message:       "Test Message",
-			},
-			expectedStatus: http.StatusBadRequest,
-			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "app_key")
-				assert.Contains(t, errResp.Message, "필수")
-			},
-		},
-
-		// ===== 입력 검증 실패 =====
-		{
-			name:   "실패: Application ID 누락",
-			appKey: "valid-key",
+			name: "실패: Application ID 누락",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "",
 				Message:       "Test Message",
 			},
+			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				// 검증 라이브러리 메시지는 상수가 아니므로 부분 일치 확인
 				assert.Contains(t, errResp.Message, "애플리케이션 ID")
 				assert.Contains(t, errResp.Message, "필수")
 			},
 		},
 		{
-			name:   "실패: Message 누락",
-			appKey: "valid-key",
+			name: "실패: Application ID 불일치 (인증 정보와 다름)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "diff-app",
+				Message:       "Test Mismatch",
+			},
+			app:            testApp, // ID: "test-app"
+			expectedStatus: http.StatusBadRequest,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				// ErrMsgBadRequestAppIdMismatch = "요청 본문의 application_id와 인증된 애플리케이션이 일치하지 않습니다 (요청: %s, 인증: %s)"
+				expectedMsg := fmt.Sprintf(constants.ErrMsgBadRequestAppIdMismatch, "diff-app", "test-app")
+				assert.Equal(t, expectedMsg, errResp.Message)
+			},
+		},
+		{
+			name: "실패: Message 누락",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "",
 			},
+			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				assert.Contains(t, errResp.Message, "메시지")
@@ -219,70 +202,119 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 		},
 		{
-			name:   "실패: Message 길이 초과 (4097자)",
-			appKey: "valid-key",
+			name: "실패: Message 길이 초과 (4097자)",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       strings.Repeat("a", 4097),
 			},
+			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				assert.Contains(t, errResp.Message, "메시지")
-				assert.Contains(t, errResp.Message, "최대")
 				assert.Contains(t, errResp.Message, "4096")
 			},
 		},
 
-		// ===== 바인딩 실패 =====
+		// ---------------------------------------------------------------------
+		// 바인딩 실패
+		// ---------------------------------------------------------------------
 		{
 			name:           "실패: 잘못된 JSON 형식",
-			appKey:         "valid-key",
 			reqBody:        "invalid-json",
+			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "잘못된 요청 형식")
+				assert.Contains(t, errResp.Message, constants.ErrMsgBadRequestInvalidBody)
 			},
 		},
 
-		// ===== 서비스 실패 =====
+		// ---------------------------------------------------------------------
+		// 서비스 실패
+		// ---------------------------------------------------------------------
 		{
-			name:   "실패: 알림 서비스 혼잡 (503)",
-			appKey: "valid-key",
+			name: "실패: 알림 서비스 중지 (503)",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "Fail Message",
 			},
+			app:            testApp,
 			mockFail:       true,
+			failError:      notification.ErrServiceStopped,
 			expectedStatus: http.StatusServiceUnavailable,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "현재 알림 서비스가 혼잡")
-				assert.Contains(t, errResp.Message, "다시 시도")
+				assert.Equal(t, constants.ErrMsgServiceUnavailable, errResp.Message)
+			},
+		},
+		{
+			name: "실패: 알림 채널 미등록 (404)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Fail Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      notification.ErrNotFoundNotifier,
+			expectedStatus: http.StatusNotFound,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Equal(t, constants.ErrMsgNotFoundNotifier, errResp.Message)
+			},
+		},
+		{
+			name: "실패: 기타 내부 오류 (500)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Fail Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      errors.New("generic error"), // 임의의 에러
+			expectedStatus: http.StatusInternalServerError,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Equal(t, constants.ErrMsgInternalServerInterrupted, errResp.Message)
+			},
+		},
+		{
+			name: "실패: 큐 가득 참 (503)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Queue Full Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      apperrors.New(apperrors.Unavailable, "Queue Full"), // Unavailable 타입 에러
+			expectedStatus: http.StatusServiceUnavailable,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				assert.Equal(t, constants.ErrMsgServiceUnavailableOverloaded, errResp.Message)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup
 			handler, mockService := setupTestHandler(t)
 			mockService.Reset()
 			mockService.ShouldFail = tt.mockFail
+			mockService.FailError = tt.failError
 
-			rec, c := createTestRequest(t, http.MethodPost, "/", tt.appKey, tt.useHeader, tt.reqBody)
+			rec, c := createTestRequest(t, http.MethodPost, "/", tt.reqBody, tt.app)
 
+			// Execute
 			err := handler.PublishNotificationHandler(c)
 
+			// Verify
 			if tt.expectedStatus == http.StatusOK {
 				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
 				require.Error(t, err)
 				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok, "Error should be *echo.HTTPError")
+				require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 합니다")
 				assert.Equal(t, tt.expectedStatus, httpErr.Code)
 
 				if tt.verifyErrResponse != nil {
 					errResp, ok := httpErr.Message.(response.ErrorResponse)
-					require.True(t, ok, "Message should be response.ErrorResponse")
+					require.True(t, ok, "에러 메시지는 response.ErrorResponse 타입이어야 합니다")
 					tt.verifyErrResponse(t, errResp)
 				}
 			}
@@ -298,17 +330,25 @@ func TestPublishNotificationHandler(t *testing.T) {
 // Helper Function Tests
 // =============================================================================
 
-// TestHandler_log는 log() 헬퍼 함수를 검증합니다.
-func TestHandler_log(t *testing.T) {
-	handler, _ := setupTestHandler(t)
+// Note: TestHandler_log removed as it tests internal implementation details.
 
+// TestPublishNotificationHandler_Panic_MissingContext는 Context에 Application이 없을 때 패닉이 발생하는지 검증합니다.
+// 이 테스트는 미들웨어(RequireAuthentication)와 핸들러 간의 계약(Contract)을 보장합니다.
+func TestPublishNotificationHandler_Panic_MissingContext(t *testing.T) {
+	// Setup
+	handler, _ := setupTestHandler(t)
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", nil)
+
+	// 유효한 요청 데이터지만, Context에 Application 설정 누락
+	reqBody := `{"application_id":"test-app","message":"test"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetPath("/api/v1/notifications")
 
-	logEntry := handler.log(c)
-
-	assert.NotNil(t, logEntry, "log() should return a non-nil entry")
+	// Verify Panic
+	assert.Panics(t, func() {
+		// Execute (Should Panic)
+		_ = handler.PublishNotificationHandler(c)
+	}, "Context에 Application 정보가 없으면 패닉이 발생해야 합니다")
 }

@@ -20,12 +20,12 @@ import (
 
 type mockNotificationSender struct{}
 
-func (m *mockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) bool {
-	return true
+func (m *mockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) error {
+	return nil
 }
 
-func (m *mockNotificationSender) NotifyDefault(message string) bool {
-	return true
+func (m *mockNotificationSender) NotifyDefault(message string) error {
+	return nil
 }
 
 func (m *mockNotificationSender) SupportsHTML(notifierID string) bool {

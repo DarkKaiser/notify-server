@@ -1,24 +1,53 @@
 package constants
 
-// API 요청 시 URL 쿼리 스트링으로 전달되는 파라미터 키 상수입니다.
+// URL 쿼리 파라미터 키 상수입니다.
 const (
-	// QueryParamAppKey 애플리케이션 인증에 사용되는 쿼리 파라미터 키입니다.
+	// QueryParamAppKey 애플리케이션 인증용 쿼리 파라미터 키
 	QueryParamAppKey = "app_key"
 )
 
-// API 요청 및 응답에 사용되는 HTTP 헤더 키 상수입니다.
+// HTTP 헤더 키 상수입니다.
 const (
-	// HeaderAppKey 애플리케이션 인증에 사용되는 HTTP 헤더 키입니다.
-	// 향후 쿼리 파라미터 대신 헤더 기반 인증으로 전환 시 사용됩니다.
-	HeaderAppKey = "X-App-Key"
+	// ------------------------------------------------------------------------------------------------
+	// 인증
+	// ------------------------------------------------------------------------------------------------
 
-	// HeaderWarning RFC 7234 표준 Warning 헤더입니다.
-	// deprecated 엔드포인트에서 경고 메시지를 전달할 때 사용됩니다.
+	// HeaderXAppKey 애플리케이션 인증용 HTTP 헤더 키 (권장 방식)
+	HeaderXAppKey = "X-App-Key"
+
+	// HeaderXApplicationID 애플리케이션 식별용 HTTP 헤더 키 (성능 최적화 및 GET 요청용)
+	// 이 헤더가 존재하면 Body 파싱을 건너뛰고 헤더 값으로 인증합니다.
+	HeaderXApplicationID = "X-Application-Id"
+
+	// ------------------------------------------------------------------------------------------------
+	// Deprecated 엔드포인트
+	// ------------------------------------------------------------------------------------------------
+
+	// HeaderWarning RFC 7234 표준 Warning 헤더 (deprecated 엔드포인트 경고용)
 	HeaderWarning = "Warning"
 
-	// HeaderXAPIDeprecated deprecated 상태를 나타내는 커스텀 헤더입니다.
+	// HeaderXAPIDeprecated deprecated 상태 표시용 커스텀 헤더
 	HeaderXAPIDeprecated = "X-API-Deprecated"
 
-	// HeaderXAPIDeprecatedReplacement 대체 엔드포인트를 나타내는 커스텀 헤더입니다.
+	// HeaderXAPIDeprecatedReplacement 대체 엔드포인트 표시용 커스텀 헤더
 	HeaderXAPIDeprecatedReplacement = "X-API-Deprecated-Replacement"
+
+	// ------------------------------------------------------------------------------------------------
+	// Rate Limiting
+	// ------------------------------------------------------------------------------------------------
+
+	// HeaderRetryAfter RFC 7231 표준 Retry-After 헤더 (Rate Limiting 재시도 대기 시간)
+	HeaderRetryAfter = "Retry-After"
+)
+
+// HTTP 헤더 값 상수입니다.
+const (
+	// RetryAfterSeconds Rate Limiting 초과 시 권장 재시도 대기 시간 (초)
+	RetryAfterSeconds = "1"
+)
+
+// Context 키 상수입니다.
+const (
+	// ContextKeyApplication 인증된 Application 객체 저장용 Context 키
+	ContextKeyApplication = "authenticated_application"
 )

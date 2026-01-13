@@ -7,12 +7,13 @@ import (
 	"github.com/labstack/gommon/log"
 )
 
-// Logger Echo의 log.Logger 인터페이스를 구현하는 Logger 어댑터입니다.
-// 이 어댑터 패턴을 통해 Echo 프레임워크가 Logger를 사용하여 로깅할 수 있도록 합니다.
+// Logger Echo의 log.Logger 인터페이스를 구현하는 어댑터입니다.
 //
-// Echo는 자체 Logger 인터페이스(github.com/labstack/gommon/log.Logger)를 정의하고 있으며,
-// 이 인터페이스의 모든 메서드를 구현해야 Echo와 통합할 수 있습니다.
-// 아래의 메서드들은 대부분 Logger의 해당 메서드로 단순 위임하는 보일러플레이트 코드입니다.
+// 이 어댑터는 애플리케이션의 로거(applog.Logger)를 Echo 프레임워크의
+// 로거 인터페이스(github.com/labstack/gommon/log.Logger)에 연결합니다.
+//
+// Echo는 자체 Logger 인터페이스를 요구하므로, 이 어댑터를 통해
+// 애플리케이션 전체에서 일관된 로깅 시스템을 사용할 수 있습니다.
 type Logger struct {
 	*applog.Logger
 }
@@ -22,19 +23,22 @@ func (l Logger) Output() io.Writer {
 	return l.Logger.Out
 }
 
+// SetOutput 로그 출력 대상을 설정합니다.
 func (l Logger) SetOutput(w io.Writer) {
 	l.Logger.SetOutput(w)
 }
 
+// Prefix Echo의 Prefix 기능은 사용하지 않으므로 빈 문자열을 반환합니다.
 func (l Logger) Prefix() string {
 	return ""
 }
 
+// SetPrefix Echo의 Prefix 기능은 사용하지 않으므로 무시합니다.
 func (l Logger) SetPrefix(string) {
-	// Echo의 Prefix 기능은 사용하지 않음
+	// 의도적으로 비워둠
 }
 
-// Level Logger의 로그 레벨을 Echo의 로그 레벨로 변환합니다.
+// Level 애플리케이션 로그 레벨을 Echo 로그 레벨로 변환합니다.
 func (l Logger) Level() log.Lvl {
 	switch l.Logger.Level {
 	case applog.DebugLevel:
@@ -45,18 +49,15 @@ func (l Logger) Level() log.Lvl {
 		return log.ERROR
 	case applog.InfoLevel:
 		return log.INFO
-	case applog.PanicLevel:
+	case applog.PanicLevel, applog.FatalLevel, applog.TraceLevel:
 		// Echo에 대응하는 레벨이 없으므로 OFF 반환
-	case applog.FatalLevel:
-		// Echo에 대응하는 레벨이 없으므로 OFF 반환
-	case applog.TraceLevel:
-		// Echo에 대응하는 레벨이 없으므로 OFF 반환
+		return log.OFF
 	}
 
 	return log.OFF
 }
 
-// SetLevel Echo의 로그 레벨을 Logger의 로그 레벨로 변환하여 설정합니다.
+// SetLevel Echo 로그 레벨을 애플리케이션 로그 레벨로 변환하여 설정합니다.
 func (l Logger) SetLevel(lvl log.Lvl) {
 	switch lvl {
 	case log.DEBUG:
@@ -68,16 +69,17 @@ func (l Logger) SetLevel(lvl log.Lvl) {
 	case log.INFO:
 		l.Logger.SetLevel(applog.InfoLevel)
 	case log.OFF:
-		// log.OFF는 Logger에 대응하는 레벨이 없으므로 무시
+		// OFF는 대응하는 레벨이 없으므로 무시
 	}
 }
 
+// SetHeader Echo의 Header 기능은 사용하지 않으므로 무시합니다.
 func (l Logger) SetHeader(string) {
-	// Echo의 Header 기능은 사용하지 않음
+	// 의도적으로 비워둠
 }
 
 // 아래 메서드들은 Echo의 Logger 인터페이스 요구사항을 충족하기 위해
-// Logger의 해당 메서드로 단순 위임합니다.
+// 애플리케이션 로거의 해당 메서드로 위임합니다.
 
 func (l Logger) Print(i ...interface{}) {
 	l.Logger.Print(i...)

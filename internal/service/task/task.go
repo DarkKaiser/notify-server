@@ -240,11 +240,11 @@ func (t *Task) handleExecutionResult(taskCtx TaskContext, notificationSender Not
 	}
 }
 
-func (t *Task) notify(taskCtx TaskContext, notificationSender NotificationSender, message string) bool {
+func (t *Task) notify(taskCtx TaskContext, notificationSender NotificationSender, message string) error {
 	return notificationSender.Notify(taskCtx, t.GetNotifierID(), message)
 }
 
-func (t *Task) notifyError(taskCtx TaskContext, notificationSender NotificationSender, message string) bool {
+func (t *Task) notifyError(taskCtx TaskContext, notificationSender NotificationSender, message string) error {
 	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), message)
 }
 
