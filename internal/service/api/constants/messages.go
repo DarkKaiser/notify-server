@@ -49,4 +49,8 @@ const (
 
 	ErrMsgAuthAppKeyRequired        = "app_key는 필수입니다 (X-App-Key 헤더 또는 app_key 쿼리 파라미터)"
 	ErrMsgAuthApplicationIDRequired = "application_id는 필수입니다"
+
+	// 내부 인증 로직 에러
+	ErrMsgAuthApplicationMissingInContext = "Context에서 애플리케이션 정보를 찾을 수 없습니다"
+	ErrMsgAuthApplicationTypeMismatch     = "Context에 저장된 애플리케이션 정보의 타입이 올바르지 않습니다"
 )

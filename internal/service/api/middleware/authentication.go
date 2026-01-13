@@ -130,7 +130,7 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 			}
 
 			// 5. Context에 인증된 Application 저장
-			c.Set(constants.ContextKeyApplication, app)
+			auth.SetApplication(c, app)
 
 			// 6. 다음 핸들러로 전달
 			return next(c)

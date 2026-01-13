@@ -2,9 +2,9 @@ package handler
 
 import (
 	"github.com/darkkaiser/notify-server/internal/pkg/validator"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -75,13 +75,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 	// 3. 인증된 Application 정보 추출
 	// 미들웨어에서 이미 검증된 Application 객체를 Context에서 가져옴
-	app, ok := c.Get(constants.ContextKeyApplication).(*domain.Application)
-	if !ok {
-		// 심각한 서버 에러: 미들웨어 설정 오류 또는 컨텍스트 손상
-		h.log(c).Error(constants.LogMsgInternalAuthContextError)
-
-		return httputil.NewInternalServerError(constants.ErrMsgInternalServer)
-	}
+	app := auth.MustGetApplication(c)
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
 	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답
