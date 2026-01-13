@@ -18,6 +18,7 @@ const (
 	ErrMsgBadRequestInvalidBody    = "요청 본문을 파싱할 수 없습니다. JSON 형식을 확인해주세요"
 	ErrMsgBadRequestEmptyBody      = "요청 본문이 비어있습니다"
 	ErrMsgBadRequestBodyReadFailed = "요청 본문을 읽을 수 없습니다"
+	ErrMsgBadRequestAppIdMismatch  = "요청 본문의 application_id와 인증된 애플리케이션이 일치하지 않습니다 (요청: %s, 인증: %s)"
 
 	// 401 Unauthorized
 	ErrMsgUnauthorizedInvalidAppKey         = "app_key가 유효하지 않습니다 (application_id: %s)"

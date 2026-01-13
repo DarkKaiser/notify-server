@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/validator"
@@ -84,6 +85,17 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 3. 인증된 Application 정보 추출
 	// 미들웨어에서 이미 검증된 Application 객체를 Context에서 가져옴
 	app := auth.MustGetApplication(c)
+
+	// 3-1. Application ID 일치 여부 검증 (보안)
+	// 인증된 App(헤더/쿼리)과 요청 본문의 App ID가 다르면 거부합니다.
+	if req.ApplicationID != app.ID {
+		h.log(c).WithFields(applog.Fields{
+			"req_application_id":  req.ApplicationID,
+			"auth_application_id": app.ID,
+		}).Warn(constants.LogMsgAuthReqAppIdMismatch)
+
+		return httputil.NewBadRequestError(fmt.Sprintf(constants.ErrMsgBadRequestAppIdMismatch, req.ApplicationID, app.ID))
+	}
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
 	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답

@@ -33,6 +33,7 @@ const (
 
 	LogMsgAuthAppKeyInQuery        = "보안 경고: 쿼리 파라미터로 App Key 전달됨 (헤더 사용 권장)"
 	LogMsgAuthFailedAppKeyMismatch = "인증 실패: 제공된 App Key가 올바르지 않습니다"
+	LogMsgAuthReqAppIdMismatch     = "인증 실패: 요청 본문의 application_id와 인증된 애플리케이션이 일치하지 않습니다"
 
 	LogMsgRateLimitExceeded      = "API 요청 속도 제한 초과 (차단됨)"
 	LogMsgUnsupportedContentType = "지원하지 않는 Content-Type 형식 요청"
