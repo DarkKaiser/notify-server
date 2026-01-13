@@ -145,6 +145,20 @@ func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
 	return m.SupportsHTMLReturnValue
 }
 
+// Health 서비스의 건강 상태를 확인합니다.
+func (m *MockNotificationSender) Health() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.ShouldFail {
+		if m.FailError != nil {
+			return m.FailError
+		}
+		return &MockError{Message: "mock failure"}
+	}
+	return nil
+}
+
 // Reset 상태를 초기화합니다.
 func (m *MockNotificationSender) Reset() {
 	m.mu.Lock()

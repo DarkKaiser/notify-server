@@ -272,6 +272,18 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 	return ErrNotFoundNotifier
 }
 
+// Health 서비스의 건강 상태를 확인합니다.
+func (s *Service) Health() error {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+
+	if !s.running {
+		return ErrServiceStopped
+	}
+
+	return nil
+}
+
 // SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
 func (s *Service) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()

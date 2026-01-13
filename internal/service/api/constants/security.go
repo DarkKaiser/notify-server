@@ -4,9 +4,9 @@ import "time"
 
 // 보안 관련 상수입니다.
 const (
-	// DefaultMaxBodySize 요청 본문의 최대 크기 (2MB)
+	// DefaultMaxBodySize 요청 본문의 최대 크기 (128KB)
 	// DoS 공격 방지 및 메모리 보호를 위해 제한합니다.
-	DefaultMaxBodySize = "2M"
+	DefaultMaxBodySize = "128K"
 
 	// DefaultReadHeaderTimeout HTTP 헤더 읽기 최대 대기 시간 (10초)
 	// Slowloris DoS 공격을 방어하기 위해 헤더를 매우 느리게 전송하는

@@ -43,6 +43,13 @@ type Sender interface {
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 	NotifyDefaultWithError(message string) error
+
+	// Health 서비스의 건강 상태를 확인합니다.
+	// 서비스가 정상적으로 실행 중인지(Running 상태) 검사합니다.
+	//
+	// 반환값:
+	//   - error: 서비스가 정상 동작 중이면 nil, 그렇지 않으면 에러 반환 (예: ErrServiceStopped)
+	Health() error
 }
 
 // NotifierHandler 개별 알림 채널(예: Telegram, Slack) 구현을 위한 인터페이스입니다.

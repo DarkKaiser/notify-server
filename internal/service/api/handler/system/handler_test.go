@@ -2,6 +2,7 @@ package system
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -18,14 +19,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
 // setupSystemHandlerTest 테스트에 필요한 Handler와 의존성을 설정합니다.
+// 테스트 격리를 위해 매번 새로운 인스턴스를 생성합니다.
 func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSender, *echo.Echo) {
 	t.Helper()
 
 	// 로그 레벨 조정 (테스트 중 불필요한 로그 방지)
+	originalLevel := applog.StandardLogger().Level
 	applog.SetLevel(applog.FatalLevel)
+
 	t.Cleanup(func() {
-		applog.SetLevel(applog.InfoLevel)
+		applog.SetLevel(originalLevel)
 	})
 
 	mockSender := mocks.NewMockNotificationSender()
@@ -40,6 +48,10 @@ func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSend
 
 	return h, mockSender, e
 }
+
+// =============================================================================
+// Constructor Tests
+// =============================================================================
 
 func TestNewHandler(t *testing.T) {
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
@@ -58,51 +70,80 @@ func TestNewHandler(t *testing.T) {
 	t.Run("실패: NotificationSender가 nil인 경우 Panic", func(t *testing.T) {
 		buildInfo := version.Info{Version: "1.0.0"}
 
-		assert.PanicsWithValue(t, "NotificationSender는 필수입니다", func() {
+		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
 			NewHandler(nil, buildInfo)
 		})
 	})
 }
 
+// =============================================================================
+// Health Check Tests
+// =============================================================================
+
 func TestHandler_HealthCheckHandler(t *testing.T) {
-	t.Run("성공: 모든 의존성이 정상일 때 Healthy 반환", func(t *testing.T) {
-		h, _, e := setupSystemHandlerTest(t)
+	// 공통 검증 로직 Helper
+	assertHealthResponse := func(t *testing.T, rec *httptest.ResponseRecorder, expectedStatus string, expectedDeps map[string]system.DependencyStatus) {
+		t.Helper()
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var resp system.HealthResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, expectedStatus, resp.Status)
+		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상
+		assert.Equal(t, expectedDeps, resp.Dependencies)
+	}
+
+	t.Run("성공: 모든 시스템 정상 (Healthy)", func(t *testing.T) {
+		h, mockSender, e := setupSystemHandlerTest(t)
+
+		// Mock 설정: Health() 성공 (nil 반환)
+		mockSender.ShouldFail = false
 
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// 핸들러 실행
 		err := h.HealthCheckHandler(c)
-
-		// 검증
 		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var resp system.HealthResponse
-		err = json.Unmarshal(rec.Body.Bytes(), &resp)
-		require.NoError(t, err)
-
-		// Define expected response using constants
-		expectedResponse := system.HealthResponse{
-			Status: constants.HealthStatusHealthy,
-			// Uptime은 동적으로 변하므로 직접 비교하지 않고 0 이상인지 확인
-			Dependencies: map[string]system.DependencyStatus{
-				constants.DependencyNotificationService: {
-					Status:  constants.HealthStatusHealthy,
-					Message: constants.MsgDepStatusHealthy,
-				},
+		expectedDeps := map[string]system.DependencyStatus{
+			constants.DependencyNotificationService: {
+				Status:  constants.HealthStatusHealthy,
+				Message: constants.MsgDepStatusHealthy,
 			},
 		}
-
-		assert.Equal(t, expectedResponse.Status, resp.Status)
-		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상이어야 함
-		assert.Equal(t, expectedResponse.Dependencies, resp.Dependencies)
+		assertHealthResponse(t, rec, constants.HealthStatusHealthy, expectedDeps)
 	})
 
-	t.Run("성공: 의존성이 비정상일 때 Unhealthy 반환", func(t *testing.T) {
-		// 의도적으로 nil sender를 주입하여 unhealthy 상태 시뮬레이션
-		// (NewHandler는 panic을 일으키므로 구조체 직접 생성)
+	t.Run("실패: Notification 서비스 장애 (Unhealthy - Deep Check)", func(t *testing.T) {
+		h, mockSender, e := setupSystemHandlerTest(t)
+
+		// Mock 설정: Health() 실패 시뮬레이션
+		mockSender.ShouldFail = true
+		mockSender.FailError = errors.New("service stopped")
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.HealthCheckHandler(c)
+		assert.NoError(t, err)
+
+		expectedDeps := map[string]system.DependencyStatus{
+			constants.DependencyNotificationService: {
+				Status:  constants.HealthStatusUnhealthy,
+				Message: "service stopped",
+			},
+		}
+		// 하나라도 Unhealthy면 전체 상태도 Unhealthy
+		assertHealthResponse(t, rec, constants.HealthStatusUnhealthy, expectedDeps)
+	})
+
+	t.Run("실패: Notification Sender 미초기화 (Unhealthy - Safety Check)", func(t *testing.T) {
+		// NewHandler를 우회하여 강제로 nil 의존성 주입
 		h := &Handler{
 			notificationSender: nil,
 			serverStartTime:    time.Now(),
@@ -113,36 +154,22 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// 핸들러 실행
 		err := h.HealthCheckHandler(c)
-
-		// 검증 - 상태 코드는 200 OK (비즈니스 로직상 Unhealthy라도 응답 자체는 성공)
 		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
 
-		var resp system.HealthResponse
-		err = json.Unmarshal(rec.Body.Bytes(), &resp)
-		require.NoError(t, err)
-
-		// Define expected response using constants
-		expectedResponse := system.HealthResponse{
-			Status: constants.HealthStatusUnhealthy,
-			Uptime: 0, // Uptime은 동적으로 변하므로 직접 비교하지 않고 0 이상인지 확인
-			Dependencies: map[string]system.DependencyStatus{
-				constants.DependencyNotificationService: {
-					Status:  constants.HealthStatusUnhealthy,
-					Message: constants.MsgDepStatusNotInitialized,
-				},
+		expectedDeps := map[string]system.DependencyStatus{
+			constants.DependencyNotificationService: {
+				Status:  constants.HealthStatusUnhealthy,
+				Message: constants.MsgDepStatusNotInitialized,
 			},
 		}
-
-		// 전체 상태 Unhealthy 확인
-		assert.Equal(t, expectedResponse.Status, resp.Status, "의존성이 누락되었으므로 전체 상태는 Unhealthy여야 함")
-		assert.GreaterOrEqual(t, resp.Uptime, int64(0)) // Uptime은 0 이상이어야 함
-		// 의존성별 상태 확인
-		assert.Equal(t, expectedResponse.Dependencies, resp.Dependencies)
+		assertHealthResponse(t, rec, constants.HealthStatusUnhealthy, expectedDeps)
 	})
 }
+
+// =============================================================================
+// Version Info Tests
+// =============================================================================
 
 func TestHandler_VersionHandler(t *testing.T) {
 	t.Run("성공: 버전 정보 반환", func(t *testing.T) {
@@ -152,10 +179,7 @@ func TestHandler_VersionHandler(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// 핸들러 실행
 		err := h.VersionHandler(c)
-
-		// 검증
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 

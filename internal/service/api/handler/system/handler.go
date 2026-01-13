@@ -67,9 +67,16 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 
 	// Notification 서비스 상태 확인
 	if h.notificationSender != nil {
-		deps[constants.DependencyNotificationService] = system.DependencyStatus{
-			Status:  constants.HealthStatusHealthy,
-			Message: constants.MsgDepStatusHealthy,
+		if err := h.notificationSender.Health(); err != nil {
+			deps[constants.DependencyNotificationService] = system.DependencyStatus{
+				Status:  constants.HealthStatusUnhealthy,
+				Message: err.Error(),
+			}
+		} else {
+			deps[constants.DependencyNotificationService] = system.DependencyStatus{
+				Status:  constants.HealthStatusHealthy,
+				Message: constants.MsgDepStatusHealthy,
+			}
 		}
 	} else {
 		deps[constants.DependencyNotificationService] = system.DependencyStatus{

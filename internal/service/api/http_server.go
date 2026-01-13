@@ -14,17 +14,27 @@ import (
 
 // HTTPServerConfig HTTP 서버 생성에 필요한 설정을 정의합니다.
 type HTTPServerConfig struct {
-	// Debug Echo 프레임워크의 디버그 모드 활성화 여부
+	// Debug Echo 프레임워크의 상세 로깅 및 디버그 모드 활성화 여부
+	// 활성화 시 상세한 에러 메시지와 스택 트레이스가 응답에 포함될 수 있으므로,
+	// 운영(Production) 환경에서는 보안상 반드시 비활성화(false)해야 합니다.
 	Debug bool
 
-	// AllowOrigins CORS에서 허용할 Origin 목록
-	// 개발 환경: ["*"] 또는 ["http://localhost:3000"]
-	// 프로덕션 환경: 특정 도메인만 명시 (예: ["https://example.com"])
-	AllowOrigins []string
+	// EnableHSTS HSTS(HTTP Strict Transport Security) 보안 헤더 활성화 여부
+	// 이 설정이 활성화되면 브라우저에게 "앞으로 일정 기간 동안은 무조건 HTTPS로만 접속하라"고 지시하여,
+	// 프로토콜 다운그레이드 공격(SSL Stripping) 및 쿠키 하이재킹과 같은 중간자 공격(MITM)을 원천 차단합니다.
+	// TLS(HTTPS) 환경에서는 반드시 활성화(true)하는 것이 강력히 권장됩니다.
+	EnableHSTS bool
 
-	// RequestTimeout 각 HTTP 요청의 최대 처리 시간 (기본값: 60초)
-	// 타임아웃 초과 시 컨텍스트를 취소하고 503 응답을 반환하여 리소스 고갈을 방지합니다.
+	// RequestTimeout 각 HTTP 요청의 최대 허용 시간
+	// 이 시간이 초과되면 Context가 취소되고 503 Service Unavailable 응답이 반환됩니다.
+	// 장기 실행 요청(Long-running request)으로 인한 고루틴 누수 및 리소스 고갈(Resource Exhaustion)을 방지하는 핵심 안전장치입니다.
 	RequestTimeout time.Duration
+
+	// AllowOrigins CORS(Cross-Origin Resource Sharing) 정책에서 허용할 도메인 목록
+	// - 개발 환경: ["*"] (모든 출처 허용) 또는 ["http://localhost:3000"]
+	// - 운영 환경: ["https://example.com"]과 같이 신뢰할 수 있는 특정 도메인만 명시해야 합니다.
+	// 무분별한 허용은 악의적인 웹사이트가 사용자의 브라우저를 통해 API를 호출하는 보안 위협을 초래할 수 있습니다.
+	AllowOrigins []string
 }
 
 // NewHTTPServer 설정된 미들웨어를 포함한 Echo 인스턴스를 생성합니다.
@@ -117,7 +127,7 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 	e.Use(appmiddleware.HTTPLogger())
 	// 5. Rate Limiting
 	e.Use(appmiddleware.RateLimiting(constants.DefaultRateLimitPerSecond, constants.DefaultRateLimitBurst))
-	// 6. Body Limit (최대 2MB)
+	// 6. Body Limit
 	e.Use(middleware.BodyLimit(constants.DefaultMaxBodySize))
 	// 7. Timeout
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
@@ -129,7 +139,19 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 		AllowMethods: []string{http.MethodGet, http.MethodPut, http.MethodPost, http.MethodDelete},
 	}))
 	// 9. 보안 헤더 (XSS Protection 등)
-	e.Use(middleware.Secure())
+	if cfg.EnableHSTS {
+		// HSTS 활성화 (1년, 서브도메인 포함)
+		e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+			XSSProtection:         "1; mode=block",
+			ContentTypeNosniff:    "nosniff",
+			XFrameOptions:         "SAMEORIGIN",
+			HSTSMaxAge:            31536000, // 1년
+			HSTSExcludeSubdomains: false,
+		}))
+	} else {
+		// 기본 보안 헤더 (HSTS 제외)
+		e.Use(middleware.Secure())
+	}
 
 	return e
 }
