@@ -1,4 +1,4 @@
-package notification
+package notifier
 
 import (
 	"errors"
@@ -40,9 +40,13 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []NotifierConfigProcessor{
-				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
-					return &mockNotifierHandler{id: id}, nil
-				}),
+				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
+					var handlers []NotifierHandler
+					for _, t := range cfg.Notifier.Telegrams {
+						handlers = append(handlers, &mockNotifierHandler{id: NotifierID(t.ID)})
+					}
+					return handlers, nil
+				},
 			},
 			expectHandlers: 2,
 			expectError:    false,
@@ -55,9 +59,9 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []NotifierConfigProcessor{
-				NewTelegramConfigProcessor(func(id NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (NotifierHandler, error) {
-					return &mockNotifierHandler{id: id}, nil
-				}),
+				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
+					return []NotifierHandler{}, nil
+				},
 			},
 			expectHandlers: 0,
 			expectError:    false,

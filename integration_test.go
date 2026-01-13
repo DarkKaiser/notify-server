@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 )
@@ -18,18 +19,18 @@ import (
 // TestServicesIntegration은 전체 서비스의 통합을 테스트합니다.
 // mockIntegrationNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
 type mockIntegrationNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error)
-	processors          []notification.NotifierConfigProcessor
+	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error)
+	processors          []notifier.NotifierConfigProcessor
 }
 
-func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error) {
+func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 	if m.createNotifiersFunc != nil {
 		return m.createNotifiersFunc(cfg, executor)
 	}
 	return nil, nil
 }
 
-func (m *mockIntegrationNotifierFactory) RegisterProcessor(processor notification.NotifierConfigProcessor) {
+func (m *mockIntegrationNotifierFactory) RegisterProcessor(processor notifier.NotifierConfigProcessor) {
 	m.processors = append(m.processors, processor)
 }
 
@@ -40,14 +41,14 @@ func TestServicesIntegration(t *testing.T) {
 
 		// 서비스 생성
 		taskService := task.NewService(appConfig)
-		notificationService := notification.NewService(appConfig, taskService)
+		notificationService := notification.NewService(appConfig, taskService, nil) // Factory needs to be set later or use proper constructor
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error) {
-				return []notification.NotifierHandler{
+			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				return []notifier.NotifierHandler{
 					&mockNotifierHandler{
-						id:           notification.NotifierID("test-notifier"),
+						id:           notifier.NotifierID("test-notifier"),
 						supportsHTML: true,
 					},
 				}, nil
@@ -90,14 +91,16 @@ func TestServicesIntegration(t *testing.T) {
 	t.Run("서비스 중복 시작 방지", func(t *testing.T) {
 		appConfig := createTestConfig()
 		taskService := task.NewService(appConfig)
-		notificationService := notification.NewService(appConfig, taskService)
+
+		// Use nil factory for initialization, will set later
+		notificationService := notification.NewService(appConfig, taskService, nil)
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error) {
-				return []notification.NotifierHandler{
+			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				return []notifier.NotifierHandler{
 					&mockNotifierHandler{
-						id:           notification.NotifierID("test-notifier"),
+						id:           notifier.NotifierID("test-notifier"),
 						supportsHTML: true,
 					},
 				}, nil
@@ -220,20 +223,31 @@ func TestServiceLifecycle(t *testing.T) {
 		appConfig := createTestConfig()
 
 		taskService := task.NewService(appConfig)
-		notificationService := notification.NewService(appConfig, taskService)
+		// Assuming NewService now requires 3 arguments or I updated the calls in previous chunks.
+		// Actually looking at previous chunks, I updated specific usages.
+		// Here NewService is called again. I should update it.
+		// NOTE: NewService signature in service.go is NewService(appConfig, taskService, notifierFactory).
+		// In previous chunks I used nil for factory or passed it.
+		// Let's create a factory first or pass nil if safe (SetNotifierFactory handles it).
+		// But wait, NewService stores the factory. If I pass nil, I must call SetNotifierFactory before Start.
 
-		// Mock factory
-		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error) {
-				return []notification.NotifierHandler{
+		notifierFactory := &mockIntegrationNotifierFactory{
+			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				return []notifier.NotifierHandler{
 					&mockNotifierHandler{
-						id:           notification.NotifierID("test-notifier"),
+						id:           notifier.NotifierID("test-notifier"),
 						supportsHTML: true,
 					},
 				}, nil
 			},
 		}
-		notificationService.SetNotifierFactory(mockFactory)
+
+		notificationService := notification.NewService(appConfig, taskService, notifierFactory)
+
+		// Mock factory was already passed in NewService, so SetNotifierFactory might be redundant but safe.
+		// However, let's stick to the pattern in the test.
+		// The test creates service then sets factory. But NewService now REQUIRES factory.
+		// So I must provide it at creation.
 
 		taskService.SetNotificationSender(notificationService)
 
@@ -307,20 +321,20 @@ func TestServiceIntegration(t *testing.T) {
 		appConfig := createTestConfigWithNotifier()
 
 		mockTaskRunner := &mockExecutor{}
-		notificationService := notification.NewService(appConfig, mockTaskRunner)
 
 		// Mock factory
 		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notification.NotifierHandler, error) {
-				return []notification.NotifierHandler{
+			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				return []notifier.NotifierHandler{
 					&mockNotifierHandler{
-						id:           notification.NotifierID("default-notifier"),
+						id:           notifier.NotifierID("default-notifier"),
 						supportsHTML: true,
 					},
 				}, nil
 			},
 		}
-		notificationService.SetNotifierFactory(mockFactory)
+
+		notificationService := notification.NewService(appConfig, mockTaskRunner, mockFactory)
 
 		// 서비스가 정상적으로 생성되었는지 확인
 		assert.NotNil(t, notificationService, "Notification Service가 생성되어야 합니다")
@@ -466,11 +480,11 @@ func (m *mockExecutor) CancelTask(instanceID task.InstanceID) error {
 
 // mockNotifierHandler는 테스트용 NotifierHandler 구현체입니다.
 type mockNotifierHandler struct {
-	id           notification.NotifierID
+	id           notifier.NotifierID
 	supportsHTML bool
 }
 
-func (m *mockNotifierHandler) ID() notification.NotifierID {
+func (m *mockNotifierHandler) ID() notifier.NotifierID {
 	return m.id
 }
 

@@ -1,9 +1,10 @@
-package notification
+package telegram
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -73,9 +74,9 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 		RunBy:         task.RunByUser,
 	}); err != nil {
 		// 실행 실패 알림 발송
-		n.requestC <- &notifyRequest{
-			taskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError(),
-			message: msgTaskExecutionFailed,
+		n.RequestC <- &notifier.NotifyRequest{
+			TaskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError(),
+			Message: msgTaskExecutionFailed,
 		}
 	}
 }
@@ -109,9 +110,9 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 		// Executor에 취소 요청
 		if err := executor.CancelTask(task.InstanceID(instanceID)); err != nil {
 			// 취소 실패 시 알림
-			n.requestC <- &notifyRequest{
-				taskCtx: task.NewTaskContext().WithError(),
-				message: fmt.Sprintf(msgTaskCancelFailed, instanceID),
+			n.RequestC <- &notifier.NotifyRequest{
+				TaskCtx: task.NewTaskContext().WithError(),
+				Message: fmt.Sprintf(msgTaskCancelFailed, instanceID),
 			}
 		}
 	} else {
@@ -121,12 +122,12 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 }
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
-func (n *telegramNotifier) handleNotifyRequest(req *notifyRequest) {
-	message := req.message
+func (n *telegramNotifier) handleNotifyRequest(req *notifier.NotifyRequest) {
+	message := req.Message
 
 	// 작업 실행과 관련된 컨텍스트 정보(작업명, 경과시간 등)가 있다면 메시지에 덧붙입니다.
-	if req.taskCtx != nil {
-		message = n.enrichMessageWithContext(req.taskCtx, message)
+	if req.TaskCtx != nil {
+		message = n.enrichMessageWithContext(req.TaskCtx, message)
 	}
 
 	// 최종 메시지 전송

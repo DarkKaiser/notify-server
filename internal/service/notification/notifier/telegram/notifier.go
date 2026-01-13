@@ -1,8 +1,9 @@
-package notification
+package telegram
 
 import (
 	"context"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -52,7 +53,7 @@ func (w *telegramBotAPIClient) GetSelf() tgbotapi.User {
 
 // telegramNotifier 텔레그램 알림 발송 및 봇 상호작용을 처리하는 Notifier
 type telegramNotifier struct {
-	notifier
+	notifier.BaseNotifier
 
 	chatID int64
 
@@ -96,7 +97,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			n.handleCommand(n.executor, update.Message)
 
 		// 2. 내부 시스템으로부터 발송할 알림 요청 수신
-		case notifyRequest := <-n.requestC:
+		case notifyRequest := <-n.RequestC:
 			n.handleNotifyRequest(notifyRequest)
 
 		// 3. 서비스 종료 시그널 수신

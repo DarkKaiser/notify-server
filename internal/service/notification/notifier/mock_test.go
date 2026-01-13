@@ -1,11 +1,10 @@
-package notification
+package notifier
 
 import (
 	"context"
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/mock"
 )
@@ -42,7 +41,7 @@ func (m *MockExecutor) CancelTask(instanceID task.InstanceID) error {
 // 이 Mock은 알림 전송 동작을 테스트하는 데 사용되며,
 // 실제 알림 전송 없이 호출 기록을 추적합니다.
 type mockNotifierHandler struct {
-	id           notifier.NotifierID
+	id           NotifierID
 	supportsHTML bool
 	notifyCalls  []mockNotifyCall
 	mu           sync.Mutex // notifyCalls 동시성 보호
@@ -55,7 +54,7 @@ type mockNotifyCall struct {
 }
 
 // ID는 Notifier의 고유 식별자를 반환합니다.
-func (m *mockNotifierHandler) ID() notifier.NotifierID {
+func (m *mockNotifierHandler) ID() NotifierID {
 	return m.id
 }
 
@@ -89,16 +88,16 @@ func (m *mockNotifierHandler) SupportsHTML() bool {
 //
 // 이 Mock은 Notifier 생성 로직을 테스트하는 데 사용됩니다.
 type mockNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error)
+	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error)
 }
 
 // CreateNotifiers는 설정에 따라 Notifier 목록을 생성합니다.
-func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+func (m *mockNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
 	if m.createNotifiersFunc != nil {
 		return m.createNotifiersFunc(cfg, executor)
 	}
-	return []notifier.NotifierHandler{}, nil
+	return []NotifierHandler{}, nil
 }
 
 // RegisterProcessor는 Notifier 설정 프로세서를 등록합니다.
-func (m *mockNotifierFactory) RegisterProcessor(processor notifier.NotifierConfigProcessor) {}
+func (m *mockNotifierFactory) RegisterProcessor(processor NotifierConfigProcessor) {}

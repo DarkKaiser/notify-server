@@ -1,4 +1,4 @@
-package notification
+package notifier
 
 import (
 	"github.com/darkkaiser/notify-server/internal/config"

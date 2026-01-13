@@ -17,7 +17,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
@@ -45,7 +45,7 @@ const (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notificationSender notification.Sender
+	notificationSender notifier.Sender
 
 	buildInfo version.Info
 
@@ -54,7 +54,7 @@ type Service struct {
 }
 
 // NewService Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender notifier.Sender, buildInfo version.Info) *Service {
 	if appConfig == nil {
 		panic(constants.PanicMsgAppConfigRequired)
 	}

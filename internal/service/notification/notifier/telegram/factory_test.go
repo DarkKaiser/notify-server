@@ -1,4 +1,4 @@
-package notification
+package telegram
 
 import (
 	"testing"
@@ -13,11 +13,7 @@ import (
 // Telegram Bot API Client Tests
 // =============================================================================
 
-// TestTelegramBotAPIClient_GetSelf는 Telegram Bot API Client의 GetSelf 메서드를 검증합니다.
-//
-// 검증 항목:
-//   - Bot 정보 조회
-//   - User ID, UserName, FirstName, LastName 반환
+// TestTelegramBotAPIClient_GetSelf verifies GetSelf method.
 func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 	t.Run("GetSelf function verification", func(t *testing.T) {
 		mockBotAPI := &tgbotapi.BotAPI{
@@ -43,12 +39,7 @@ func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 // Telegram Notifier Factory Tests
 // =============================================================================
 
-// TestNewTelegramNotifierWithBot_Table은 Telegram Notifier 생성을 검증합니다.
-//
-// 검증 항목:
-//   - 기본 설정으로 Notifier 생성
-//   - Task 설정이 있는 경우 명령어 등록
-//   - 비활성화된 Task 명령어 무시
+// TestNewTelegramNotifierWithBot_Table verifies Notifier creation.
 func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 	tests := []struct {
 		name                 string

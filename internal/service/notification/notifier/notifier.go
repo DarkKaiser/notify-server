@@ -1,44 +1,44 @@
-package notification
+package notifier
 
 import (
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
-// notifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
-type notifyRequest struct {
-	taskCtx task.TaskContext
-	message string
+// NotifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
+type NotifyRequest struct {
+	TaskCtx task.TaskContext
+	Message string
 }
 
-// notifier NotifierHandler의 기본 구현체입니다.
+// BaseNotifier NotifierHandler의 기본 구현체입니다.
 // 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
-type notifier struct {
+type BaseNotifier struct {
 	id NotifierID
 
 	supportsHTML bool
 
-	requestC chan *notifyRequest
+	RequestC chan *NotifyRequest
 }
 
-// NewNotifier Notifier를 생성하고 초기화합니다.
-func NewNotifier(id NotifierID, supportsHTML bool, bufferSize int) notifier {
-	return notifier{
+// NewBaseNotifier BaseNotifier를 생성하고 초기화합니다.
+func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int) BaseNotifier {
+	return BaseNotifier{
 		id: id,
 
 		supportsHTML: supportsHTML,
 
-		requestC: make(chan *notifyRequest, bufferSize),
+		RequestC: make(chan *NotifyRequest, bufferSize),
 	}
 }
 
-func (n *notifier) ID() NotifierID {
+func (n *BaseNotifier) ID() NotifierID {
 	return n.id
 }
 
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded bool) {
+func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeeded bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			succeeded = false
@@ -52,15 +52,15 @@ func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded b
 	}()
 
 	// 채널이 닫혔거나 초기화되지 않은 경우
-	if n.requestC == nil {
+	if n.RequestC == nil {
 		return false
 	}
 
 	// 채널이 가득 찬 경우 대기하지 않고 즉시 false 반환
 	select {
-	case n.requestC <- &notifyRequest{
-		taskCtx: taskCtx,
-		message: message,
+	case n.RequestC <- &NotifyRequest{
+		TaskCtx: taskCtx,
+		Message: message,
 	}:
 		return true
 	default:
@@ -72,14 +72,14 @@ func (n *notifier) Notify(taskCtx task.TaskContext, message string) (succeeded b
 	}
 }
 
-func (n *notifier) SupportsHTML() bool {
+func (n *BaseNotifier) SupportsHTML() bool {
 	return n.supportsHTML
 }
 
 // Close 알림 채널을 닫고 리소스를 정리합니다.
-func (n *notifier) Close() {
-	if n.requestC != nil {
-		close(n.requestC)
-		n.requestC = nil
+func (n *BaseNotifier) Close() {
+	if n.RequestC != nil {
+		close(n.RequestC)
+		n.RequestC = nil
 	}
 }

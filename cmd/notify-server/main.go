@@ -15,6 +15,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier/telegram"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/kurly"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/lotto"
@@ -157,10 +159,21 @@ func run() error {
 	// [참고: 순환 의존성 해결]
 	// Task와 Notification은 서로를 필요로 하는 관계입니다. (Task -> Notification, Notification -> Task)
 	// 이를 해결하기 위해 생성자 주입(Constructor Injection)과 세터 주입(Setter Injection)을 혼용하여 연결을 완성합니다.
+
+	// Task Service 생성
 	taskService := task.NewService(appConfig)
-	notificationService := notification.NewService(appConfig, taskService)
+
+	// Notification Factory 생성 및 Processor 등록
+	notifierFactory := notifier.NewNotifierFactory()
+	notifierFactory.RegisterProcessor(telegram.NewConfigProcessor(telegram.NewNotifier))
+
+	// Notification Service 생성
+	notificationService := notification.NewService(appConfig, taskService, notifierFactory)
+
+	// API Service 생성
 	apiService := api.NewService(appConfig, notificationService, buildInfo)
 
+	// Task Service에 Notification Service 주입 (순환 참조 해결)
 	taskService.SetNotificationSender(notificationService)
 
 	// 8. 서비스 생명주기 관리 컨텍스트 설정

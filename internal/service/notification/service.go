@@ -7,6 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -14,10 +15,10 @@ import (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notifiers       []NotifierHandler
-	defaultNotifier NotifierHandler
+	notifiers       []notifier.NotifierHandler
+	defaultNotifier notifier.NotifierHandler
 
-	notifierFactory NotifierFactory
+	notifierFactory notifier.NotifierFactory
 
 	// notifiersStopWG 모든 하위 Notifier의 종료를 대기하는 WaitGroup
 	notifiersStopWG *sync.WaitGroup
@@ -28,7 +29,7 @@ type Service struct {
 	runningMu sync.Mutex
 }
 
-func NewService(appConfig *config.AppConfig, executor task.Executor) *Service {
+func NewService(appConfig *config.AppConfig, executor task.Executor, factory notifier.NotifierFactory) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
@@ -42,15 +43,12 @@ func NewService(appConfig *config.AppConfig, executor task.Executor) *Service {
 		runningMu: sync.Mutex{},
 	}
 
-	// Factory 생성 및 Processor 등록
-	factory := NewNotifierFactory()
-	factory.RegisterProcessor(NewTelegramConfigProcessor(newTelegramNotifier))
 	service.notifierFactory = factory
 
 	return service
 }
 
-func (s *Service) SetNotifierFactory(factory NotifierFactory) {
+func (s *Service) SetNotifierFactory(factory notifier.NotifierFactory) {
 	s.notifierFactory = factory
 }
 
@@ -79,7 +77,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 		return apperrors.Wrap(err, apperrors.Internal, "Notifier 초기화 중 에러가 발생했습니다")
 	}
 
-	defaultNotifierID := NotifierID(s.appConfig.Notifier.DefaultNotifierID)
+	defaultNotifierID := notifier.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
 	for _, h := range notifiers {
 		s.notifiers = append(s.notifiers, h)
@@ -90,7 +88,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 		s.notifiersStopWG.Add(1)
 
-		go func(handler NotifierHandler) {
+		go func(handler notifier.NotifierHandler) {
 			defer s.notifiersStopWG.Done()
 			handler.Run(serviceStopCtx)
 		}(h)
@@ -174,7 +172,7 @@ func (s *Service) NotifyDefault(message string) error {
 
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 
-		return ErrServiceStopped
+		return notifier.ErrServiceStopped
 	}
 
 	notifier := s.defaultNotifier
@@ -203,7 +201,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 
-		return ErrServiceStopped
+		return notifier.ErrServiceStopped
 	}
 
 	notifier := s.defaultNotifier
@@ -236,13 +234,13 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 			"notifier_id": notifierID,
 		}).Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 
-		return ErrServiceStopped
+		return notifier.ErrServiceStopped
 	}
 
-	var targetNotifier NotifierHandler
+	var targetNotifier notifier.NotifierHandler
 	var defaultNotifier = s.defaultNotifier
 
-	id := NotifierID(notifierID)
+	id := notifier.NotifierID(notifierID)
 	for _, h := range s.notifiers {
 		if h.ID() == id {
 			targetNotifier = h
@@ -269,7 +267,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
 	}
 
-	return ErrNotFoundNotifier
+	return notifier.ErrNotFoundNotifier
 }
 
 // Health 서비스의 건강 상태를 확인합니다.
@@ -278,7 +276,7 @@ func (s *Service) Health() error {
 	defer s.runningMu.Unlock()
 
 	if !s.running {
-		return ErrServiceStopped
+		return notifier.ErrServiceStopped
 	}
 
 	return nil
@@ -289,7 +287,7 @@ func (s *Service) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	id := NotifierID(notifierID)
+	id := notifier.NotifierID(notifierID)
 	for _, h := range s.notifiers {
 		if h.ID() == id {
 			return h.SupportsHTML()

@@ -8,10 +8,14 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Sender Compliance Check
+var _ notifier.Sender = (*Service)(nil)
 
 // =============================================================================
 // Test Constants
@@ -29,7 +33,7 @@ const (
 
 // mockServiceOptions는 setupMockServiceWithOptions의 옵션입니다.
 type mockServiceOptions struct {
-	notifierID   NotifierID
+	notifierID   notifier.NotifierID
 	supportsHTML bool
 	running      bool
 }
@@ -52,8 +56,10 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *MockExecut
 		supportsHTML: opts.supportsHTML,
 	}
 
-	service := NewService(appConfig, mockExecutor)
-	service.notifiers = []NotifierHandler{mockNotifier}
+	mockFactory := &mockNotifierFactory{}
+
+	service := NewService(appConfig, mockExecutor, mockFactory)
+	service.notifiers = []notifier.NotifierHandler{mockNotifier}
 	service.defaultNotifier = mockNotifier
 	service.running = opts.running
 
@@ -88,7 +94,8 @@ func assertNotifyNotCalled(t *testing.T, mock *mockNotifierHandler) {
 func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &MockExecutor{}
-	service := NewService(appConfig, mockExecutor)
+	mockFactory := &mockNotifierFactory{}
+	service := NewService(appConfig, mockExecutor, mockFactory)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, appConfig, service.appConfig)
@@ -105,7 +112,7 @@ func TestNewService(t *testing.T) {
 // TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
 func TestSupportsHTML(t *testing.T) {
 	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
-	service := &Service{notifiers: []NotifierHandler{mockNotifier}}
+	service := &Service{notifiers: []notifier.NotifierHandler{mockNotifier}}
 
 	tests := []struct {
 		name       string
@@ -161,7 +168,7 @@ func TestServiceNotify(t *testing.T) {
 			notifierID:     "unknown",
 			message:        "msg",
 			expectError:    true,
-			expectedErrStr: ErrNotFoundNotifier.Error(),
+			expectedErrStr: notifier.ErrNotFoundNotifier.Error(),
 			expectedMsg:    "등록되지 않은 Notifier ID('unknown')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: msg",
 			expectedErrCtx: true,
 		},
@@ -325,7 +332,7 @@ func TestNotify_NotRunning(t *testing.T) {
 	err := service.Notify(task.NewTaskContext(), testNotifierID, "test")
 
 	assert.Error(t, err)
-	assert.Equal(t, ErrServiceStopped, err)
+	assert.Equal(t, notifier.ErrServiceStopped, err)
 	assertNotifyNotCalled(t, mockNotifier)
 }
 
@@ -339,7 +346,7 @@ func TestNotifyDefault_NilNotifier(t *testing.T) {
 	err := service.NotifyDefault("test")
 
 	assert.Error(t, err)
-	assert.Equal(t, ErrServiceStopped, err)
+	assert.Equal(t, notifier.ErrServiceStopped, err)
 }
 
 // =============================================================================
@@ -352,7 +359,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
 
 	service := &Service{
-		notifiers: []NotifierHandler{mockNotifier1, mockNotifier2},
+		notifiers: []notifier.NotifierHandler{mockNotifier1, mockNotifier2},
 		running:   true,
 	}
 
@@ -380,7 +387,7 @@ func TestConcurrencyStress(t *testing.T) {
 				DefaultNotifierID: testNotifierID,
 			},
 		},
-		notifiers:       []NotifierHandler{mockNotifier},
+		notifiers:       []notifier.NotifierHandler{mockNotifier},
 		defaultNotifier: mockNotifier,
 		running:         true,
 	}
@@ -427,8 +434,8 @@ func TestStartAndRun(t *testing.T) {
 		cfg.Notifier.DefaultNotifierID = "default"
 
 		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-				return []NotifierHandler{mockNotifier}, nil
+			createNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				return []notifier.NotifierHandler{mockNotifier}, nil
 			},
 		}
 		service.SetNotifierFactory(mockFactory)
@@ -451,7 +458,7 @@ func TestStartAndRun(t *testing.T) {
 		assert.False(t, service.running)
 		err = service.NotifyDefault("fail")
 		assert.Error(t, err)
-		assert.Equal(t, ErrServiceStopped, err)
+		assert.Equal(t, notifier.ErrServiceStopped, err)
 	})
 }
 
@@ -476,7 +483,7 @@ func TestStartErrors(t *testing.T) {
 		{
 			name: "Factory에서 에러 반환",
 			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
+				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("factory error")
 				}
 			},
@@ -488,8 +495,8 @@ func TestStartErrors(t *testing.T) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					return []NotifierHandler{
+				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					return []notifier.NotifierHandler{
 						&mockNotifierHandler{id: "other"},
 					}, nil
 				}
@@ -510,17 +517,16 @@ func TestStartErrors(t *testing.T) {
 				executor = nil
 			}
 
-			service := NewService(cfg, executor)
-
 			factory := &mockNotifierFactory{}
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				factory.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					return []NotifierHandler{}, nil
+				factory.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					return []notifier.NotifierHandler{}, nil
 				}
 			}
-			service.SetNotifierFactory(factory)
+
+			service := NewService(cfg, executor, factory)
 
 			ctx := context.Background()
 			wg := &sync.WaitGroup{}

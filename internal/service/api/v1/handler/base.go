@@ -13,7 +13,7 @@ package handler
 
 import (
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 )
 
 // Handler v1 API 요청을 처리하는 핸들러입니다.
@@ -30,7 +30,7 @@ import (
 // Application 객체를 Context에서 추출하여 사용합니다.
 type Handler struct {
 	// notificationSender 알림 메시지 발송을 담당하는 인터페이스
-	notificationSender notification.Sender
+	notificationSender notifier.Sender
 }
 
 // NewHandler Handler 인스턴스를 생성합니다.
@@ -40,7 +40,7 @@ type Handler struct {
 //
 // Returns:
 //   - 초기화된 Handler 포인터
-func NewHandler(notificationSender notification.Sender) *Handler {
+func NewHandler(notificationSender notifier.Sender) *Handler {
 	if notificationSender == nil {
 		panic(constants.PanicMsgNotificationSenderRequired)
 	}
