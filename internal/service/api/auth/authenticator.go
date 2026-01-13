@@ -100,7 +100,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 
 	app, ok := a.applications[applicationID]
 	if !ok {
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf(constants.ErrMsgUnauthorizedNotFoundApplicationID, applicationID))
 	}
 
 	// 입력받은 App Key를 SHA-256으로 해시
@@ -115,7 +115,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 			"app_title":      app.Title,
 		}).Warn("인증 실패: App Key 불일치")
 
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", applicationID))
+		return nil, httputil.NewUnauthorizedError(fmt.Sprintf(constants.ErrMsgUnauthorizedInvalidAppKey, applicationID))
 	}
 
 	return app, nil

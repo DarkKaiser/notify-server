@@ -1,6 +1,6 @@
 package request
 
-// NotificationRequest 알림 메시지 게시 요청
+// NotificationRequest 알림 메시지 발송 요청
 type NotificationRequest struct {
 	// 인증에 사용할 애플리케이션 식별자
 	ApplicationID string `json:"application_id" form:"application_id" query:"application_id" validate:"required" korean:"애플리케이션 ID" example:"my-app"`

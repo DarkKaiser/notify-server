@@ -28,22 +28,14 @@ type MockTestifyNotificationSender struct {
 	mock.Mock
 }
 
-func (m *MockTestifyNotificationSender) NotifyDefault(message string) bool {
+func (m *MockTestifyNotificationSender) NotifyDefault(message string) error {
 	args := m.Called(message)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) bool {
+func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
-	// Return default true if return value not specified, or use args.Bool(0) if strict.
-	// For most tests, we just want to verify call, return value matters less unless logic depends on it.
-	// However, mock.Called returns Arguments, if I don't setup return, it might panic if accessing index 0?
-	// Actually testify/mock returns zero values if not specified? No, it panics if expectation doesn't match return values count.
-	// But usually we set .Return(true) etc.
-	if len(args) > 0 {
-		return args.Bool(0)
-	}
-	return true
+	return args.Error(0)
 }
 
 func (m *MockTestifyNotificationSender) SupportsHTML(notifierID string) bool {
@@ -85,16 +77,16 @@ func NewMockNotificationSender() *MockNotificationSender {
 }
 
 // NotifyDefault 기본 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) NotifyDefault(message string) bool {
+func (m *MockNotificationSender) NotifyDefault(message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.NotifyDefaultCalls = append(m.NotifyDefaultCalls, message)
-	return true
+	return nil
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) bool {
+func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -104,7 +96,7 @@ func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, 
 		TaskContext: taskCtx,
 	})
 	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
-	return true
+	return nil
 }
 
 // SupportsHTML HTML 메시지 지원 여부를 반환합니다 (Mock).

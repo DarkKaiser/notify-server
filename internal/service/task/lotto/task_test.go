@@ -232,7 +232,7 @@ func TestTask_Run(t *testing.T) {
 
 		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
 			return assert.Contains(t, msg, "당첨 확률이 높은 당첨번호 목록")
-		})).Return(true)
+		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan tasksvc.InstanceID, 1)
@@ -255,7 +255,7 @@ func TestTask_Run(t *testing.T) {
 			return true
 		}), mock.Anything, mock.MatchedBy(func(msg string) bool {
 			return assert.Contains(t, msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
-		})).Return(true)
+		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan tasksvc.InstanceID, 1)
@@ -275,14 +275,14 @@ type MockNotificationSender struct {
 	mock.Mock
 }
 
-func (m *MockNotificationSender) NotifyDefault(message string) bool {
+func (m *MockNotificationSender) NotifyDefault(message string) error {
 	args := m.Called(message)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
-func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) bool {
+func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
-	return args.Bool(0)
+	return args.Error(0)
 }
 
 func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {

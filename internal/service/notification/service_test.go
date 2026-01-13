@@ -134,24 +134,25 @@ func TestServiceNotify(t *testing.T) {
 		notifierID     string
 		message        string
 		isError        bool
-		expectSuccess  bool
+		expectError    bool
+		expectedErrStr string
 		expectedMsg    string
 		expectedErrCtx bool
 	}{
 		{
-			name:          "성공: 일반 메시지",
-			notifierID:    testNotifierID,
-			message:       "test msg",
-			isError:       false,
-			expectSuccess: true,
-			expectedMsg:   "test msg",
+			name:        "성공: 일반 메시지",
+			notifierID:  testNotifierID,
+			message:     "test msg",
+			isError:     false,
+			expectError: false,
+			expectedMsg: "test msg",
 		},
 		{
 			name:           "성공: 에러 메시지",
 			notifierID:     testNotifierID,
 			message:        "error msg",
 			isError:        true,
-			expectSuccess:  true,
+			expectError:    false,
 			expectedMsg:    "error msg",
 			expectedErrCtx: true,
 		},
@@ -159,8 +160,9 @@ func TestServiceNotify(t *testing.T) {
 			name:           "실패: 존재하지 않는 Notifier (기본 Notifier로 폴백)",
 			notifierID:     "unknown",
 			message:        "msg",
-			expectSuccess:  false,
-			expectedMsg:    "알 수 없는 Notifier('unknown')입니다. 알림메시지 발송이 실패하였습니다.(Message:msg)",
+			expectError:    true,
+			expectedErrStr: ErrNotifierNotFound.Error(),
+			expectedMsg:    "등록되지 않은 Notifier ID('unknown')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: msg",
 			expectedErrCtx: true,
 		},
 	}
@@ -173,9 +175,17 @@ func TestServiceNotify(t *testing.T) {
 				running:      true,
 			})
 
-			result := service.NotifyWithTitle(tt.notifierID, "title", tt.message, tt.isError)
+			err := service.NotifyWithTitle(tt.notifierID, "title", tt.message, tt.isError)
 
-			assert.Equal(t, tt.expectSuccess, result)
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.expectedErrStr != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+
 			if tt.expectedErrCtx {
 				assertNotifyCalledWithContext(t, mockNotifier, tt.expectedMsg)
 			} else if tt.expectedMsg != "" {
@@ -192,28 +202,28 @@ func TestNotifyWithTitle(t *testing.T) {
 		title         string
 		message       string
 		errorOccurred bool
-		expectSuccess bool
+		expectError   bool
 	}{
 		{
 			name:          "성공: 일반 알림",
 			title:         "Test Title",
 			message:       "Test Message",
 			errorOccurred: false,
-			expectSuccess: true,
+			expectError:   false,
 		},
 		{
 			name:          "성공: 에러 알림",
 			title:         "Error Title",
 			message:       "Error Message",
 			errorOccurred: true,
-			expectSuccess: true,
+			expectError:   false,
 		},
 		{
 			name:          "성공: 빈 제목",
 			title:         "",
 			message:       "Message",
 			errorOccurred: false,
-			expectSuccess: true,
+			expectError:   false,
 		},
 	}
 
@@ -225,9 +235,14 @@ func TestNotifyWithTitle(t *testing.T) {
 				running:      true,
 			})
 
-			result := service.NotifyWithTitle(testNotifierID, tt.title, tt.message, tt.errorOccurred)
+			err := service.NotifyWithTitle(testNotifierID, tt.title, tt.message, tt.errorOccurred)
 
-			assert.Equal(t, tt.expectSuccess, result)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
 			require.Len(t, mockNotifier.notifyCalls, 1)
 			assert.Equal(t, tt.message, mockNotifier.notifyCalls[0].message)
 
@@ -247,21 +262,21 @@ func TestNotifyDefault(t *testing.T) {
 		name            string
 		method          string // "Default", "DefaultError"
 		message         string
-		expectSuccess   bool
+		expectError     bool
 		expectedDefCall bool
 	}{
 		{
 			name:            "NotifyDefault 성공",
 			method:          "Default",
 			message:         "msg",
-			expectSuccess:   true,
+			expectError:     false,
 			expectedDefCall: true,
 		},
 		{
 			name:            "NotifyDefaultWithError 성공",
 			method:          "DefaultError",
 			message:         "errorMsg",
-			expectSuccess:   true,
+			expectError:     false,
 			expectedDefCall: true,
 		},
 	}
@@ -274,15 +289,19 @@ func TestNotifyDefault(t *testing.T) {
 				running:      true,
 			})
 
-			var result bool
+			var err error
 			switch tt.method {
 			case "Default":
-				result = service.NotifyDefault(tt.message)
+				err = service.NotifyDefault(tt.message)
 			case "DefaultError":
-				result = service.NotifyDefaultWithError(tt.message)
+				err = service.NotifyDefaultWithError(tt.message)
 			}
 
-			assert.Equal(t, tt.expectSuccess, result)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 
 			if tt.expectedDefCall {
 				require.NotEmpty(t, mockNotifier.notifyCalls)
@@ -303,9 +322,10 @@ func TestNotify_NotRunning(t *testing.T) {
 		running:      false, // 실행 중이 아님
 	})
 
-	result := service.Notify(task.NewTaskContext(), testNotifierID, "test")
+	err := service.Notify(task.NewTaskContext(), testNotifierID, "test")
 
-	assert.False(t, result)
+	assert.Error(t, err)
+	assert.Equal(t, ErrServiceStopped, err)
 	assertNotifyNotCalled(t, mockNotifier)
 }
 
@@ -316,9 +336,10 @@ func TestNotifyDefault_NilNotifier(t *testing.T) {
 		running:         true,
 	}
 
-	result := service.NotifyDefault("test")
+	err := service.NotifyDefault("test")
 
-	assert.False(t, result)
+	assert.Error(t, err)
+	assert.Equal(t, ErrServiceStopped, err)
 }
 
 // =============================================================================
@@ -336,8 +357,8 @@ func TestMultipleNotifiers(t *testing.T) {
 	}
 
 	// n2로 전송
-	result := service.Notify(task.NewTaskContext(), "n2", "msg")
-	assert.True(t, result)
+	err := service.Notify(task.NewTaskContext(), "n2", "msg")
+	assert.NoError(t, err)
 	assertNotifyNotCalled(t, mockNotifier1)
 	require.Len(t, mockNotifier2.notifyCalls, 1)
 }
@@ -421,13 +442,16 @@ func TestStartAndRun(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, service.running)
 
-		assert.True(t, service.NotifyDefault("test"))
+		err = service.NotifyDefault("test")
+		assert.NoError(t, err)
 
 		cancel()
 		wg.Wait()
 
 		assert.False(t, service.running)
-		assert.False(t, service.NotifyDefault("fail"))
+		err = service.NotifyDefault("fail")
+		assert.Error(t, err)
+		assert.Equal(t, ErrServiceStopped, err)
 	})
 }
 

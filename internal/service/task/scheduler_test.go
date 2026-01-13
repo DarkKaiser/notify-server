@@ -247,7 +247,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					return msg != "" && assert.Contains(nil, msg, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") // nil passed to assert helper which is weird but works for Contains if t is not needed or we check bool
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
-				}).Return().Once()
+				}).Return(nil).Once()
 			},
 		},
 	}
@@ -316,7 +316,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 
 	mockSend.On("Notify", mock.Anything, "N1", mock.MatchedBy(func(msg string) bool {
 		return assert.Contains(t, msg, "Cron 스케줄 파싱 실패")
-	})).Return().Once()
+	})).Return(nil).Once()
 
 	s.Start(cfg, mockExe, mockSend)
 	defer s.Stop()

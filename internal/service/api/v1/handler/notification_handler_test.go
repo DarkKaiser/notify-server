@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -87,6 +89,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 		reqBody           interface{}
 		app               *domain.Application
 		mockFail          bool
+		failError         error // 실패 시 반환할 에러
 		expectedStatus    int
 		verifyErrResponse func(*testing.T, response.ErrorResponse)
 		verifyMock        func(*testing.T, *mocks.MockNotificationSender)
@@ -186,17 +189,48 @@ func TestPublishNotificationHandler(t *testing.T) {
 		// 서비스 실패
 		// ---------------------------------------------------------------------
 		{
-			name: "실패: 알림 서비스 혼잡 (503)",
+			name: "실패: 알림 서비스 중지 (503)",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "Fail Message",
 			},
 			app:            testApp,
 			mockFail:       true,
+			failError:      notification.ErrServiceStopped,
 			expectedStatus: http.StatusServiceUnavailable,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
-				assert.Contains(t, errResp.Message, "알림 서비스를 일시적으로 사용할 수 없습니다")
-				assert.Contains(t, errResp.Message, "잠시 후 다시 시도해주세요")
+				// "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요."
+				assert.Equal(t, "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요.", errResp.Message)
+			},
+		},
+		{
+			name: "실패: 알림 채널 미등록 (404)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Fail Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      notification.ErrNotifierNotFound,
+			expectedStatus: http.StatusNotFound,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				// "등록되지 않은 알림 채널입니다. 설정을 확인해 주세요."
+				assert.Equal(t, "등록되지 않은 알림 채널입니다. 설정을 확인해 주세요.", errResp.Message)
+			},
+		},
+		{
+			name: "실패: 기타 내부 오류 (500)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Fail Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      errors.New("generic error"), // 임의의 에러
+			expectedStatus: http.StatusInternalServerError,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				// "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
+				assert.Equal(t, "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.", errResp.Message)
 			},
 		},
 	}
@@ -207,6 +241,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			handler, mockService := setupTestHandler(t)
 			mockService.Reset()
 			mockService.ShouldFail = tt.mockFail
+			mockService.FailError = tt.failError
 
 			rec, c := createTestRequest(t, http.MethodPost, "/", tt.reqBody, tt.app)
 

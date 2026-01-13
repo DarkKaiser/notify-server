@@ -6,12 +6,13 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
 
 // PublishNotificationHandler godoc
-// @Summary 알림 메시지 게시
+// @Summary 알림 메시지 발송
 // @Description 외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.
 // @Description
 // @Description 이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.
@@ -64,7 +65,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 1. HTTP 요청 바인딩
 	req := new(request.NotificationRequest)
 	if err := c.Bind(req); err != nil {
-		return httputil.NewBadRequestError("요청 본문을 파싱할 수 없습니다. JSON 형식을 확인해주세요.")
+		return httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidBody)
 	}
 
 	// 2. 요청 데이터 유효성 검증
@@ -77,10 +78,20 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	app := c.Get(constants.ContextKeyApplication).(*domain.Application)
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
-	// 큐 포화 또는 시스템 종료 시 false 반환 → 503 에러 응답
-	ok := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
-	if !ok {
-		return httputil.NewServiceUnavailableError("알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답
+	err := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
+	if err != nil {
+		if err == notification.ErrServiceStopped {
+			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)
+		}
+		if err == notification.ErrNotifierNotFound {
+			return httputil.NewNotFoundError(constants.ErrMsgNotFoundNotifier)
+		}
+
+		h.log(c).Error(err)
+
+		// 그 외 에러는 500 처리
+		return httputil.NewInternalServerError(constants.ErrMsgInternalServerInterrupted)
 	}
 
 	// 5. 성공 로그 기록
