@@ -182,7 +182,7 @@ func (s *Service) NotifyDefault(message string) error {
 	s.runningMu.Unlock()
 
 	if ok := notifier.Notify(nil, message); !ok {
-		return apperrors.New(apperrors.Internal, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 	s.runningMu.Unlock()
 
 	if ok := notifier.Notify(task.NewTaskContext().WithError(), message); !ok {
-		return apperrors.New(apperrors.Internal, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
 	}
 	return nil
 }
@@ -254,7 +254,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 
 	if targetNotifier != nil {
 		if ok := targetNotifier.Notify(taskCtx, message); !ok {
-			return apperrors.New(apperrors.Internal, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+			return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
 		}
 		return nil
 	}

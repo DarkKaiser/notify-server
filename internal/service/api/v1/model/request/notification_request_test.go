@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var validate = validator.New()
-
+// TestNotificationRequest_Validation NotificationRequest 구조체의 유효성 검사 규칙을 테스트합니다.
 func TestNotificationRequest_Validation(t *testing.T) {
+	validate := validator.New()
+
 	// 4097자를 생성 (최대 길이 4096 초과 테스트용)
 	longMessage := strings.Repeat("a", 4097)
 
@@ -32,19 +33,19 @@ func TestNotificationRequest_Validation(t *testing.T) {
 				ErrorOccurred: false,
 			},
 			wantErr:     false,
-			description: "정상적인 요청은 유효성 검사를 통과해야 합니다.",
+			description: "모든 필수 필드가 존재하고 제약조건을 만족하면 유효성 검사를 통과해야 합니다.",
 		},
 		{
-			name: "Valid Request with Max Length Message",
+			name: "Valid Request - Max Length Message",
 			input: &NotificationRequest{
 				ApplicationID: "app-123",
 				Message:       strings.Repeat("a", 4096),
 			},
 			wantErr:     false,
-			description: "메시지 길이가 정확히 4096자인 경우 유효성 검사를 통과해야 합니다.",
+			description: "메시지 길이가 정확히 4096자인 경우(최대 허용치) 유효성 검사를 통과해야 합니다.",
 		},
 		{
-			name: "Missing ApplicationID",
+			name: "Invalid Request - Missing ApplicationID",
 			input: &NotificationRequest{
 				ApplicationID: "",
 				Message:       "Valid message",
@@ -52,10 +53,10 @@ func TestNotificationRequest_Validation(t *testing.T) {
 			wantErr:     true,
 			errTag:      "required",
 			errField:    "ApplicationID",
-			description: "ApplicationID가 없으면 validation 에러가 발생해야 합니다.",
+			description: "ApplicationID가 빈 문자열이면 required 에러가 발생해야 합니다.",
 		},
 		{
-			name: "Missing Message",
+			name: "Invalid Request - Missing Message",
 			input: &NotificationRequest{
 				ApplicationID: "app-123",
 				Message:       "",
@@ -63,10 +64,10 @@ func TestNotificationRequest_Validation(t *testing.T) {
 			wantErr:     true,
 			errTag:      "required",
 			errField:    "Message",
-			description: "Message가 없으면 validation 에러가 발생해야 합니다.",
+			description: "Message가 빈 문자열이면 required 에러가 발생해야 합니다.",
 		},
 		{
-			name: "Message Too Long",
+			name: "Invalid Request - Message Too Long",
 			input: &NotificationRequest{
 				ApplicationID: "app-123",
 				Message:       longMessage,
@@ -74,7 +75,7 @@ func TestNotificationRequest_Validation(t *testing.T) {
 			wantErr:     true,
 			errTag:      "max",
 			errField:    "Message",
-			description: "Message가 4096자를 초과하면 validation 에러가 발생해야 합니다.",
+			description: "Message가 4096자를 초과하면 max 에러가 발생해야 합니다.",
 		},
 	}
 
@@ -89,7 +90,7 @@ func TestNotificationRequest_Validation(t *testing.T) {
 				validationErrors, ok := err.(validator.ValidationErrors)
 				require.True(t, ok, "에러는 validator.ValidationErrors 타입이어야 합니다")
 
-				// 첫 번째 에러 확인
+				// 기대하는 필드와 태그에 대한 에러가 포함되어 있는지 확인
 				found := false
 				for _, fieldError := range validationErrors {
 					if fieldError.Field() == tt.errField && fieldError.Tag() == tt.errTag {
@@ -99,21 +100,23 @@ func TestNotificationRequest_Validation(t *testing.T) {
 				}
 				assert.True(t, found, "기대하는 필드(%s)에서 태그(%s) 에러가 발생해야 합니다. 실제 에러: %v", tt.errField, tt.errTag, validationErrors)
 			} else {
-				assert.NoError(t, err, "에러가 발생하지 않아야 합니다")
+				assert.NoError(t, err, "정상적인 요청에 대해서는 에러가 발생하지 않아야 합니다")
 			}
 		})
 	}
 }
 
+// TestNotificationRequest_JSON JSON 언마샬링 동작을 테스트합니다.
 func TestNotificationRequest_JSON(t *testing.T) {
 	tests := []struct {
-		name     string
-		jsonBody string
-		expected *NotificationRequest
-		wantErr  bool
+		name        string
+		jsonBody    string
+		expected    *NotificationRequest
+		wantErr     bool
+		description string
 	}{
 		{
-			name: "Full JSON",
+			name: "Success - Full Fields",
 			jsonBody: `{
 				"application_id": "test-app",
 				"message": "test message",
@@ -124,10 +127,11 @@ func TestNotificationRequest_JSON(t *testing.T) {
 				Message:       "test message",
 				ErrorOccurred: true,
 			},
-			wantErr: false,
+			wantErr:     false,
+			description: "모든 필드가 포함된 정상적인 JSON 요청을 파싱할 수 있어야 합니다.",
 		},
 		{
-			name: "Optional Field ErrorOccurred Missing (Default False)",
+			name: "Success - Optional Field Omitted",
 			jsonBody: `{
 				"application_id": "test-app",
 				"message": "test message"
@@ -135,15 +139,53 @@ func TestNotificationRequest_JSON(t *testing.T) {
 			expected: &NotificationRequest{
 				ApplicationID: "test-app",
 				Message:       "test message",
-				ErrorOccurred: false,
+				ErrorOccurred: false, // 기본값 false
 			},
-			wantErr: false,
+			wantErr:     false,
+			description: "선택적 필드(error_occurred)가 누락되면 제로 값(false)으로 설정되어야 합니다.",
 		},
 		{
-			name:     "Invalid JSON",
-			jsonBody: `{"application_id": "broken-json...`,
-			expected: nil,
-			wantErr:  true,
+			name: "Success - Extra Fields Ignored",
+			jsonBody: `{
+				"application_id": "test-app",
+				"message": "test message",
+				"unknown_field": "some value"
+			}`,
+			expected: &NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "test message",
+				ErrorOccurred: false,
+			},
+			wantErr:     false,
+			description: "정의되지 않은 필드가 포함되어도 무시하고 정상적으로 파싱해야 합니다.",
+		},
+		{
+			name:        "Failure - Invalid JSON Format",
+			jsonBody:    `{"application_id": "broken-json...`,
+			expected:    nil,
+			wantErr:     true,
+			description: "JSON 형식이 잘못된 경우 언마샬링 에러가 발생해야 합니다.",
+		},
+		{
+			name: "Failure - Type Mismatch (Message)",
+			jsonBody: `{
+				"application_id": "test-app",
+				"message": 12345
+			}`,
+			expected:    nil,
+			wantErr:     true,
+			description: "문자열 필드(message)에 숫자가 전달되면 타입 에러가 발생해야 합니다.",
+		},
+		{
+			name: "Failure - Type Mismatch (ErrorOccurred)",
+			jsonBody: `{
+				"application_id": "test-app",
+				"message": "msg",
+				"error_occurred": "not-a-bool"
+			}`,
+			expected:    nil,
+			wantErr:     true,
+			description: "불리언 필드(error_occurred)에 문자열이 전달되면 타입 에러가 발생해야 합니다.",
 		},
 	}
 
@@ -153,10 +195,10 @@ func TestNotificationRequest_JSON(t *testing.T) {
 			err := json.Unmarshal([]byte(tt.jsonBody), &req)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				assert.Error(t, err, "에러가 발생해야 합니다: %s", tt.description)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, &req)
+				assert.NoError(t, err, "에러가 발생하지 않아야 합니다: %s", tt.description)
+				assert.Equal(t, tt.expected, &req, "파싱된 구조체가 기대값과 일치해야 합니다")
 			}
 		})
 	}

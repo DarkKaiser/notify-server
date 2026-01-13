@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"errors"
+
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/validator"
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
@@ -86,11 +89,20 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답
 	err := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 	if err != nil {
-		if err == notification.ErrServiceStopped {
+		// 1. 서비스 중지 (503 Service Unavailable)
+		if errors.Is(err, notification.ErrServiceStopped) {
 			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)
 		}
-		if err == notification.ErrNotFoundNotifier {
+
+		// 2. Notifier 찾을 수 없음 (404 Not Found)
+		if errors.Is(err, notification.ErrNotFoundNotifier) {
 			return httputil.NewNotFoundError(constants.ErrMsgNotFoundNotifier)
+		}
+
+		// 3. 큐 가득 참 등 일시적 불가 (503 Service Unavailable)
+		var appErr *apperrors.AppError
+		if errors.As(err, &appErr) && appErr.Type() == apperrors.Unavailable {
+			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailableOverloaded)
 		}
 
 		h.log(c).Error(err)

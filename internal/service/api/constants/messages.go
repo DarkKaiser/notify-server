@@ -41,7 +41,8 @@ const (
 	ErrMsgInternalServerInterrupted = "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요"
 
 	// 503 Service Unavailable
-	ErrMsgServiceUnavailable = "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요"
+	ErrMsgServiceUnavailable           = "서비스가 점검 중이거나 종료되었습니다. 관리자에게 문의해 주세요"
+	ErrMsgServiceUnavailableOverloaded = "일시적인 과부하로 알림을 처리할 수 없습니다. 잠시 후 다시 시도해주세요"
 
 	// ------------------------------------------------------------------------------------------------
 	// 인증 에러

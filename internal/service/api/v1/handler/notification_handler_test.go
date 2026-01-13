@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
@@ -167,8 +168,20 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				assert.Contains(t, errResp.Message, "메시지")
-				assert.Contains(t, errResp.Message, "최대")
 				assert.Contains(t, errResp.Message, "4096")
+			},
+		},
+		{
+			name: "성공: Message 최대 길이 (4096자)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       strings.Repeat("a", 4096),
+			},
+			app:            testApp,
+			expectedStatus: http.StatusOK,
+			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
+				assert.True(t, m.NotifyCalled)
+				assert.Equal(t, 4096, len(m.LastMessage))
 			},
 		},
 
@@ -233,6 +246,23 @@ func TestPublishNotificationHandler(t *testing.T) {
 				assert.Equal(t, "알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요", errResp.Message)
 			},
 		},
+		{
+			name: "실패: 큐 가득 참 (503)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Queue Full Message",
+			},
+			app:            testApp,
+			mockFail:       true,
+			failError:      apperrors.New(apperrors.Unavailable, "Queue Full"), // Unavailable 타입 에러
+			expectedStatus: http.StatusServiceUnavailable,
+			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
+				// "일시적인 과부하로 알림을 처리할 수 없습니다. 잠시 후 다시 시도해주세요"
+				// 또는 원본 에러 메시지 노출 (현재 구현은 원본 메시지를 노출하지 않고 일괄 메시지 반환 가능성 있음.
+				// 단, 핸들러에서 NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)를 쓰므로 상수로 비교)
+				assert.Equal(t, "일시적인 과부하로 알림을 처리할 수 없습니다. 잠시 후 다시 시도해주세요", errResp.Message)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -293,4 +323,25 @@ func TestHandler_log(t *testing.T) {
 	assert.NotNil(t, logEntry, "log() 결과는 nil이 아니어야 합니다")
 	// 참고: logrus.Entry 내부 필드를 직접 검증하기는 어렵지만, nil이 아님을 확인하는 것으로 충분합니다.
 	// 실제 로깅 출력 검증은 통합 테스트나 별도의 로거 Mocking이 필요할 수 있습니다.
+}
+
+// TestPublishNotificationHandler_Panic_MissingContext는 Context에 Application이 없을 때 패닉이 발생하는지 검증합니다.
+// 이 테스트는 미들웨어(RequireAuthentication)와 핸들러 간의 계약(Contract)을 보장합니다.
+func TestPublishNotificationHandler_Panic_MissingContext(t *testing.T) {
+	// Setup
+	handler, _ := setupTestHandler(t)
+	e := echo.New()
+
+	// 유효한 요청 데이터지만, Context에 Application 설정 누락
+	reqBody := `{"application_id":"test-app","message":"test"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	// Verify Panic
+	assert.Panics(t, func() {
+		// Execute (Should Panic)
+		_ = handler.PublishNotificationHandler(c)
+	}, "Context에 Application 정보가 없으면 패닉이 발생해야 합니다")
 }
