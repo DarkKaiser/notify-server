@@ -36,4 +36,9 @@ const (
 	// TelegramCommandTimeout 텔레그램 봇 명령어 처리 시 최대 허용 시간입니다.
 	// 외부 API 호출 지연 등으로 인한 고루틴 무한 대기(Leak)를 방지하기 위해 사용됩니다.
 	TelegramCommandTimeout = 10 * time.Second
+
+	// TelegramSendTimeout 텔레그램 API로 메시지를 실제 전송할 때 사용하는 타임아웃입니다.
+	// Rate Limit 대기 시간 등을 고려하여 충분히 길게(30s) 설정합니다.
+	// 기존 DefaultNotifyTimeout(5s)은 큐잉 대기 시간으로만 사용합니다.
+	TelegramSendTimeout = 30 * time.Second
 )

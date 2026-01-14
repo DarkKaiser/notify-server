@@ -357,6 +357,12 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		// 전송 전 컨텍스트 확인
 		select {
 		case <-ctx.Done():
+			if ctx.Err() == context.DeadlineExceeded {
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"error":       ctx.Err(),
+				}).Error("알림 메시지 발송 시간 초과 (Timeout)")
+			}
 			return
 		default:
 		}
@@ -437,6 +443,12 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		// 안전한 대기: 컨텍스트 취소 시 즉시 반환
 		select {
 		case <-ctx.Done():
+			if ctx.Err() == context.DeadlineExceeded {
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"error":       ctx.Err(),
+				}).Error("알림 메시지 재시도 대기 중 시간 초과 (Timeout)")
+			}
 			return
 		case <-time.After(waitDuration):
 			// 재시도 대기 완료, 다음 루프 진행
