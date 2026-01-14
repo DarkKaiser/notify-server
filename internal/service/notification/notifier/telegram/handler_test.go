@@ -111,6 +111,35 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 			},
 			waitForCalls: 1,
 		},
+		{
+			name:    "With Long Message (Auto Splitting)",
+			message: strings.Repeat("A", 4000) + "\n" + strings.Repeat("B", 1000), // Total > 4096. "A"*4000 + "\n" + "B"*1000
+			// Actual behavior with limit 3900:
+			// Chunk 1: "A"*3900 (limit applied)
+			// Chunk 2: "A"*100 + "\n" + "B"*1000 (remaining 'A's + newline + 'B's)
+			taskCtx: task.NewTaskContext(),
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(2) // Expecting 2 calls
+				// First call (Chunk A - Truncated at 3900)
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.HasPrefix(msg.Text, "AAAA") && len(msg.Text) == 3900
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil).Once()
+
+				// Second call (Remainder A + Chunk B)
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					// "A"*100 + "\n" + "B"*1000 = 100 + 1 + 1000 = 1101
+					expectedPrefix := strings.Repeat("A", 100) + "\n" + "BBBB"
+					return ok && strings.HasPrefix(msg.Text, expectedPrefix) && len(msg.Text) == 1101
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil).Once()
+			},
+			waitForCalls: 2,
+		},
 	}
 
 	for _, tt := range tests {
