@@ -21,7 +21,7 @@ type Service struct {
 	notifierFactory notifier.NotifierFactory
 
 	// notifiersStopWG 모든 하위 Notifier의 종료를 대기하는 WaitGroup
-	notifiersStopWG *sync.WaitGroup
+	notifiersStopWG sync.WaitGroup
 
 	executor task.Executor
 
@@ -36,7 +36,8 @@ func NewService(appConfig *config.AppConfig, executor task.Executor, factory not
 		notifiersMap:    make(map[notifier.NotifierID]notifier.NotifierHandler),
 		defaultNotifier: nil,
 
-		notifiersStopWG: &sync.WaitGroup{},
+		// sync.WaitGroup의 Zero Value는 사용 가능한 상태이므로 별도 초기화가 필요 없습니다.
+		notifiersStopWG: sync.WaitGroup{},
 
 		executor: executor,
 
