@@ -66,12 +66,8 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 
 // findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
 func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, bool) {
-	for _, botCommand := range n.botCommands {
-		if command == botCommand.command {
-			return botCommand, true
-		}
-	}
-	return telegramBotCommand{}, false
+	botCommand, exists := n.botCommandsByCommand[command]
+	return botCommand, exists
 }
 
 // executeCommand 주어진 봇 명령어를 Executor를 통해 실행합니다.
@@ -187,10 +183,10 @@ func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string)
 	commandID := taskCtx.GetCommandID()
 
 	if !taskID.IsEmpty() && !commandID.IsEmpty() {
-		for _, botCommand := range n.botCommands {
-			if botCommand.taskID == taskID && botCommand.commandID == commandID {
-				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.commandTitle), message)
-			}
+		// O(1) Map 조회로 성능 개선
+		key := fmt.Sprintf("%s_%s", taskID, commandID)
+		if botCommand, exists := n.botCommandsByTaskAndCommand[key]; exists {
+			return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.commandTitle), message)
 		}
 	}
 

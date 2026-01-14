@@ -238,8 +238,8 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		return notifier.ErrServiceStopped
 	}
 
-	var defaultNotifier = s.defaultNotifier
 	targetNotifier := s.notifiersMap[notifier.NotifierID(notifierID)]
+	defaultNotifier := s.defaultNotifier
 
 	s.runningMu.Unlock()
 

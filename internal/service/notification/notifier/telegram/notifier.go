@@ -72,6 +72,12 @@ type telegramNotifier struct {
 	handlerSemaphore chan struct{}
 
 	botCommands []telegramBotCommand
+
+	// botCommandsByCommand command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
+	botCommandsByCommand map[string]telegramBotCommand
+
+	// botCommandsByTaskAndCommand "taskID_commandID" 키로 빠르게 조회하기 위한 Map (O(1) 조회)
+	botCommandsByTaskAndCommand map[string]telegramBotCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
