@@ -553,3 +553,173 @@ func TestStartErrors(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// Improvement Tests (Merged from service_improvement_test.go)
+// =============================================================================
+
+// localMockFactory for creating duplicate notifiers in tests
+type localMockFactory struct {
+	handlers []notifier.NotifierHandler
+}
+
+func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+	return m.handlers, nil
+}
+
+func TestService_Start_DuplicateID(t *testing.T) {
+	// Setup
+	cfg := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "test-notifier",
+		},
+	}
+	executor := &taskmocks.MockExecutor{}
+
+	// Create 2 notifiers with SAME ID
+	h1 := &notificationmocks.MockNotifierHandler{IDValue: "duplicate-id"} // Changed to notificationmocks
+	h2 := &notificationmocks.MockNotifierHandler{IDValue: "duplicate-id"} // Changed to notificationmocks
+
+	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h1, h2}}
+
+	service := NewService(cfg, executor, mf) // Changed to NewService
+
+	// Action
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	// Verify
+	err := service.Start(ctx, wg)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "중복된 Notifier ID")
+	assert.Contains(t, err.Error(), "duplicate-id")
+}
+
+// controllableMockHandler to control Notify return value
+type controllableMockHandler struct {
+	notificationmocks.MockNotifierHandler // Changed to notificationmocks
+	notifyResult                          bool
+}
+
+func (m *controllableMockHandler) Notify(taskCtx task.TaskContext, message string) bool {
+	return m.notifyResult
+}
+
+func TestService_Notify_StoppedNotifier(t *testing.T) {
+	// Setup
+	cfg := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "test-notifier",
+		},
+	}
+	executor := &taskmocks.MockExecutor{}
+
+	// Setup a notifier with closed Done channel and Notify returning false
+	closedCh := make(chan struct{})
+	close(closedCh)
+
+	h := &controllableMockHandler{
+		MockNotifierHandler: notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
+			IDValue:     "test-notifier",
+			DoneChannel: closedCh,
+		},
+		notifyResult: false, // Simulate full queue/failure
+	}
+
+	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h}}
+	service := NewService(cfg, executor, mf) // Changed to NewService
+
+	// Start service
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	// Start normally
+	err := service.Start(ctx, wg)
+	assert.NoError(t, err)
+
+	// Action
+	notifyErr := service.Notify(nil, "test-notifier", "hello")
+
+	// Assert
+	// Should return ErrServiceStopped because Done() is closed
+	assert.ErrorIs(t, notifyErr, notifier.ErrServiceStopped)
+
+	// Cleanup
+	cancel()
+	wg.Wait()
+}
+
+// =============================================================================
+// Panic Recovery Tests (Merged from service_panic_test.go)
+// =============================================================================
+
+// PanicMockNotifierHandler Run 메서드에서 패닉을 발생시키는 Mock Notifier
+type PanicMockNotifierHandler struct {
+	notificationmocks.MockNotifierHandler // Changed to notificationmocks
+	PanicOnRun                            bool
+}
+
+func (m *PanicMockNotifierHandler) Run(ctx context.Context) {
+	if m.PanicOnRun {
+		panic("Simulated Panic in Notifier Run")
+	}
+	m.MockNotifierHandler.Run(ctx)
+}
+
+func TestService_Start_PanicRecovery(t *testing.T) {
+	// Setup
+	cfg := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "normal_notifier",
+		},
+	}
+	executor := &taskmocks.MockExecutor{}
+
+	// 패닉을 발생시키는 Notifier와 정상적인 Notifier 준비
+	panicNotifier := &PanicMockNotifierHandler{
+		MockNotifierHandler: notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
+			IDValue: "panic_notifier",
+		},
+		PanicOnRun: true,
+	}
+	normalNotifier := &notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
+		IDValue: "normal_notifier",
+	}
+
+	factory := &notificationmocks.MockNotifierFactory{ // Changed to notificationmocks
+		CreateNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{panicNotifier, normalNotifier}, nil
+		},
+	}
+
+	service := NewService(cfg, executor, factory) // Changed to NewService
+
+	// Test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Service Termination WaitGroup (Service Start uses this to signal service stop)
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	// Start Service
+	err := service.Start(ctx, serviceStopWG)
+	assert.NoError(t, err)
+
+	// service.Start launches goroutines for notifiers.
+	// One of them will panic immediately.
+	// We wait a bit to ensure panic happens and is recovered.
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify Service is still running
+	assert.NoError(t, service.Health())
+
+	// Terminate Service
+	cancel()
+	serviceStopWG.Wait()
+}

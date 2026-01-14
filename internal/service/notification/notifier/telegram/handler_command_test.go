@@ -137,8 +137,57 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			cancel()
 			wg.Wait()
 
+			// Assertions
 			mockBot.AssertExpectations(t)
 			mockExecutor.AssertExpectations(t)
 		})
 	}
+}
+
+// =============================================================================
+// Command Regression Tests
+// =============================================================================
+
+func TestTelegramNotifier_Regressions_Command(t *testing.T) {
+	// Regression Test for: "Cancel 명령어 파싱 오류 수정"
+	// Ensure that /cancel_task_1_inst_1 is parsed correctly as InstanceID="task_1_inst_1"
+	t.Run("Fix: handleCancelCommand supports underscores in InstanceID", func(t *testing.T) {
+		mockExec := new(taskmocks.MockExecutor)
+		n := &telegramNotifier{}
+
+		ctx := context.Background()
+		commandWithUnderscores := "/cancel_task_1_instance_123"
+		expectedInstanceID := "task_1_instance_123"
+
+		mockExec.On("CancelTask", task.InstanceID(expectedInstanceID)).Return(nil).Once()
+
+		n.handleCancelCommand(ctx, mockExec, commandWithUnderscores)
+
+		mockExec.AssertExpectations(t)
+	})
+
+	t.Run("Fix: handleCancelCommand fails gracefully for bad format", func(t *testing.T) {
+		mockExec := new(taskmocks.MockExecutor)
+		// We need a mockBot here because it sends a message on error
+		mockBot := &MockTelegramBot{}
+		n := &telegramNotifier{
+			botAPI: mockBot,
+			chatID: 12345,
+		}
+
+		ctx := context.Background()
+		// Only one part
+		badCommand := "/cancel"
+
+		mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+			msg, ok := c.(tgbotapi.MessageConfig)
+			return ok && strings.Contains(msg.Text, "잘못된 취소 명령어 형식")
+		})).Return(tgbotapi.Message{}, nil).Once()
+
+		// Should NOT call CancelTask
+		n.handleCancelCommand(ctx, mockExec, badCommand)
+
+		mockExec.AssertExpectations(t)
+		mockBot.AssertExpectations(t)
+	})
 }

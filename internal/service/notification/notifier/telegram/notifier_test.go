@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -258,5 +259,131 @@ func TestTelegramNotifier_Run_Drain(t *testing.T) {
 	wg.Wait()
 
 	// Assertions
+	mockBot.AssertExpectations(t)
+}
+
+// TestTelegramNotifier_Run_ChannelClosed_Fix checks loop exit on closed channel.
+func TestTelegramNotifier_Run_ChannelClosed_Fix(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	mockBot := &MockTelegramBot{}
+	mockExecutor := &taskmocks.MockExecutor{}
+
+	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, 11111, appConfig, mockExecutor)
+	require.NoError(t, err)
+	n := nHandler.(*telegramNotifier)
+
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "TestBot"})
+	updatesChan := make(chan tgbotapi.Update)
+	mockBot.updatesChan = updatesChan
+	mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(updatesChan))
+	mockBot.On("StopReceivingUpdates").Return()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runResult := make(chan struct{})
+	go func() {
+		n.Run(ctx)
+		close(runResult)
+	}()
+
+	close(updatesChan)
+
+	select {
+	case <-runResult:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run loop did not exit")
+	}
+}
+
+// TestRunSender_GracefulShutdown_InFlightMessage checks message delivery on shutdown.
+func TestRunSender_GracefulShutdown_InFlightMessage(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	mockBot := &MockTelegramBot{}
+	mockExecutor := &taskmocks.MockExecutor{}
+
+	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, 12345, appConfig, mockExecutor)
+	require.NoError(t, err)
+	n := nHandler.(*telegramNotifier)
+
+	msg := "In-Flight Message"
+	var wgSender sync.WaitGroup
+	wgSender.Add(1)
+	sendCalled := make(chan struct{})
+
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		close(sendCalled)
+	}).Return(tgbotapi.Message{}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer wgSender.Done()
+		n.runSender(ctx)
+	}()
+
+	n.RequestC <- &notifier.NotifyRequest{Message: msg}
+	time.Sleep(1 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-sendCalled:
+	case <-time.After(1 * time.Second):
+		t.Fatal("In-flight message lost")
+	}
+
+	n.Close()
+	wgSender.Wait()
+	mockBot.AssertExpectations(t)
+}
+
+// TestTelegramNotifier_Concurrency checks correct concurrent processing.
+func TestTelegramNotifier_Concurrency(t *testing.T) {
+	mockBot := &MockTelegramBot{}
+	updateC := make(chan tgbotapi.Update, 100)
+
+	mockBot.updatesChan = updateC
+	mockBot.On("GetUpdatesChan", mock.AnythingOfType("tgbotapi.UpdateConfig")).Return(tgbotapi.UpdatesChannel(updateC))
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
+	mockBot.On("StopReceivingUpdates").Return()
+
+	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Run(func(args mock.Arguments) {
+		time.Sleep(100 * time.Millisecond)
+	})
+
+	n := &telegramNotifier{
+		BaseNotifier: notifier.NewBaseNotifier("test", true, 10, time.Second),
+		botAPI:       mockBot,
+		chatID:       12345,
+		botCommands: []telegramBotCommand{
+			{command: "help"},
+		},
+		handlerSemaphore: make(chan struct{}, 100),
+	}
+	n.RequestC = make(chan *notifier.NotifyRequest, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n.Run(ctx)
+	}()
+
+	for i := 0; i < 5; i++ {
+		n.RequestC <- &notifier.NotifyRequest{Message: "Slow Message"}
+	}
+
+	cmdUpdate := tgbotapi.Update{
+		Message: &tgbotapi.Message{
+			Chat: &tgbotapi.Chat{ID: 12345},
+			Text: "/help",
+		},
+	}
+	updateC <- cmdUpdate
+
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+	wg.Wait()
+
 	mockBot.AssertExpectations(t)
 }
