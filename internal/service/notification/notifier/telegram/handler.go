@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -86,7 +87,9 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 
 // sendUnknownCommandMessage 알 수 없는 명령어 메시지를 전송합니다.
 func (n *telegramNotifier) sendUnknownCommandMessage(input string) {
-	message := fmt.Sprintf(msgUnknownCommand, input, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+	// 텔레그램은 HTML 모드로 동작하므로, 사용자 입력값에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
+	escapedInput := html.EscapeString(input)
+	message := fmt.Sprintf(msgUnknownCommand, escapedInput, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
 	n.sendMessage(message)
 }
 
@@ -119,14 +122,16 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 			}
 		}
 	} else {
-		message := fmt.Sprintf(msgInvalidCancelCommandFormat, command, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
+		escapedCommand := html.EscapeString(command)
+		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedCommand, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
 		n.sendMessage(message)
 	}
 }
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
 func (n *telegramNotifier) handleNotifyRequest(req *notifier.NotifyRequest) {
-	message := req.Message
+	// 텔레그램은 HTML 모드로 동작하므로, 메시지 내용에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
+	message := html.EscapeString(req.Message)
 
 	// 작업 실행과 관련된 컨텍스트 정보(작업명, 경과시간 등)가 있다면 메시지에 덧붙입니다.
 	if req.TaskCtx != nil {
@@ -157,7 +162,7 @@ func (n *telegramNotifier) enrichMessageWithContext(taskCtx task.TaskContext, me
 // appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
 func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string) string {
 	if title := taskCtx.GetTitle(); len(title) > 0 {
-		return fmt.Sprintf(msgContextTitle, title, message)
+		return fmt.Sprintf(msgContextTitle, html.EscapeString(title), message)
 	}
 
 	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
@@ -167,7 +172,7 @@ func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string)
 	if !taskID.IsEmpty() && !commandID.IsEmpty() {
 		for _, botCommand := range n.botCommands {
 			if botCommand.taskID == taskID && botCommand.commandID == commandID {
-				return fmt.Sprintf(msgContextTitle, botCommand.commandTitle, message)
+				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.commandTitle), message)
 			}
 		}
 	}

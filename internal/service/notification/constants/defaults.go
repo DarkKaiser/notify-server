@@ -12,4 +12,7 @@ const (
 
 	// DefaultRateBurst 텔레그램 API Rate Limit 버스트 기본값 (순간 최대 허용 요청 수)
 	DefaultRateBurst = 5
+
+	// DefaultHTTPClientTimeout 텔레그램 API 클라이언트의 HTTP 요청 타임아웃 기본값
+	DefaultHTTPClientTimeout = 30 * time.Second
 )

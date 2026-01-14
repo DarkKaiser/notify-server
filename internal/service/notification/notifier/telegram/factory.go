@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
@@ -43,7 +44,13 @@ func NewNotifier(id notifier.NotifierID, botToken string, chatID int64, appConfi
 		"chat_id":     chatID,
 	}).Debug("텔레그램 봇 초기화 시도")
 
-	botAPI, err := tgbotapi.NewBotAPI(botToken)
+	// 텔레그램 봇 API 클라이언트 초기화 (Timeout 설정 포함)
+	// 기본 http.Client는 Timeout이 없어 네트워크 지연 시 고루틴이 무한 대기할 수 있습니다.
+	client := &http.Client{
+		Timeout: constants.DefaultHTTPClientTimeout,
+	}
+
+	botAPI, err := tgbotapi.NewBotAPIWithClient(botToken, tgbotapi.APIEndpoint, client)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 초기화 실패 (토큰을 확인해주세요)")
 	}
