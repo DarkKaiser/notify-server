@@ -27,7 +27,7 @@ type Service struct {
 	executor task.Executor
 
 	running   bool
-	runningMu sync.Mutex
+	runningMu sync.RWMutex
 }
 
 func NewService(appConfig *config.AppConfig, executor task.Executor, factory notifier.NotifierFactory) *Service {
@@ -43,7 +43,7 @@ func NewService(appConfig *config.AppConfig, executor task.Executor, factory not
 		executor: executor,
 
 		running:   false,
-		runningMu: sync.Mutex{},
+		runningMu: sync.RWMutex{},
 	}
 
 	service.notifierFactory = factory
@@ -175,9 +175,9 @@ func (s *Service) NotifyWithTitle(notifierID types.NotifierID, title string, mes
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 func (s *Service) NotifyDefault(message string) error {
-	s.runningMu.Lock()
+	s.runningMu.RLock()
 	if s.defaultNotifier == nil {
-		s.runningMu.Unlock()
+		s.runningMu.RUnlock()
 
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 
@@ -186,7 +186,7 @@ func (s *Service) NotifyDefault(message string) error {
 
 	notifier := s.defaultNotifier
 
-	s.runningMu.Unlock()
+	s.runningMu.RUnlock()
 
 	if ok := notifier.Notify(nil, message); !ok {
 		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
@@ -204,9 +204,9 @@ func (s *Service) NotifyDefault(message string) error {
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 func (s *Service) NotifyDefaultWithError(message string) error {
-	s.runningMu.Lock()
+	s.runningMu.RLock()
 	if s.defaultNotifier == nil {
-		s.runningMu.Unlock()
+		s.runningMu.RUnlock()
 
 		applog.WithComponent("notification.service").Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
 
@@ -215,7 +215,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 
 	notifier := s.defaultNotifier
 
-	s.runningMu.Unlock()
+	s.runningMu.RUnlock()
 
 	if ok := notifier.Notify(task.NewTaskContext().WithError(), message); !ok {
 		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
@@ -235,9 +235,9 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, message string) error {
-	s.runningMu.Lock()
+	s.runningMu.RLock()
 	if !s.running {
-		s.runningMu.Unlock()
+		s.runningMu.RUnlock()
 
 		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": notifierID,
@@ -249,7 +249,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 	targetNotifier := s.notifiersMap[notifierID]
 	defaultNotifier := s.defaultNotifier
 
-	s.runningMu.Unlock()
+	s.runningMu.RUnlock()
 
 	if targetNotifier != nil {
 		if ok := targetNotifier.Notify(taskCtx, message); !ok {
@@ -273,8 +273,8 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 
 // Health 서비스의 건강 상태를 확인합니다.
 func (s *Service) Health() error {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	s.runningMu.RLock()
+	defer s.runningMu.RUnlock()
 
 	if !s.running {
 		return notifier.ErrServiceStopped
@@ -285,8 +285,8 @@ func (s *Service) Health() error {
 
 // SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
 func (s *Service) SupportsHTML(notifierID types.NotifierID) bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	s.runningMu.RLock()
+	defer s.runningMu.RUnlock()
 
 	if h, exists := s.notifiersMap[notifierID]; exists {
 		return h.SupportsHTML()

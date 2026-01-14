@@ -216,10 +216,18 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 						}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
 						break Loop
 					}
-					n.handleNotifyRequest(drainCtx, notifyRequest)
-					// Drain 중에도 Panic Recovery가 필요하지만,
-					// handleNotifyRequest 호출 자체가 단순하여(HTML escape 등) 빈도 낮음.
-					// 하지만 일관성을 위해 고려할 수 있으나, 여기서는 간결함을 유지.
+					// Drain 중에도 Panic Recovery가 필요합니다.
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								applog.WithComponentAndFields("notification.telegram", applog.Fields{
+									"notifier_id": n.ID(),
+									"panic":       r,
+								}).Error("Shutdown Drain 중 패닉 발생 (Recovered)")
+							}
+						}()
+						n.handleNotifyRequest(drainCtx, notifyRequest)
+					}()
 				default:
 					// 채널이 비었으면 루프 탈출
 					break Loop

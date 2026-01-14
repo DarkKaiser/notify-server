@@ -107,7 +107,7 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, appConfig, service.appConfig)
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
-	assert.NotNil(t, service.notifiersStopWG)
+	// assert.NotNil(t, service.notifiersStopWG) // sync.WaitGroup is a struct, not a pointer, so it's never nil. Checking it causes lock copy lint.
 	assert.NotNil(t, service.notifierFactory)
 }
 
