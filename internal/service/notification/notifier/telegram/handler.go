@@ -122,7 +122,9 @@ func (n *telegramNotifier) sendHelpCommandMessage(ctx context.Context) {
 // handleCancelCommand 작업 취소 요청 처리
 func (n *telegramNotifier) handleCancelCommand(ctx context.Context, executor task.Executor, command string) {
 	// 취소명령 형식 : /cancel_nnnn (구분자로 분리)
-	commandSplit := strings.Split(command, telegramBotCommandSeparator)
+	// strings.SplitN을 사용하여 명령어와 인자 두 부분으로만 나눕니다.
+	// 이를 통해 InstanceID에 구분자(_)가 포함되어 있어도 정상적으로 파싱할 수 있습니다.
+	commandSplit := strings.SplitN(command, telegramBotCommandSeparator, 2)
 
 	// 올바른 형식인지 확인 (2부분으로 나뉘어야 함)
 	if len(commandSplit) == 2 {
@@ -173,8 +175,10 @@ func (n *telegramNotifier) enrichMessageWithContext(taskCtx task.TaskContext, me
 // appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
 func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string) string {
 	if title := taskCtx.GetTitle(); len(title) > 0 {
-		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 문제를 방지하기 위해 Truncate 처리
-		safeTitle := truncateString(html.EscapeString(title), titleTruncateLength)
+		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 등의 문제를 방지하기 위해 Truncate 처리
+		// 중요: Truncate를 먼저 수행한 후 이스케이프해야 안전합니다.
+		// 이스케이프된 문자열을 자르면 '&lt;' 따위가 잘려서 '&l' 처럼 되어 HTML 파싱 에러를 유발할 수 있습니다.
+		safeTitle := html.EscapeString(truncateString(title, titleTruncateLength))
 		return fmt.Sprintf(msgContextTitle, safeTitle, message)
 	}
 

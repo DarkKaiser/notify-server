@@ -60,12 +60,15 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	}()
 
 	n.mu.RLock()
-	defer n.mu.RUnlock()
-
 	// 이미 종료되었거나 채널이 닫힌 경우
 	if n.closed || n.RequestC == nil {
+		n.mu.RUnlock()
 		return false
 	}
+	// 채널 참조를 로컬 변수로 복사하여 락 해제 후에도 안전하게 접근
+	requestC := n.RequestC
+	timeout := n.notifyTimeout
+	n.mu.RUnlock()
 
 	req := &NotifyRequest{
 		TaskCtx: taskCtx,
@@ -73,10 +76,13 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	}
 
 	// 채널이 가득 찬 경우 설정된 Timeout만큼 대기 (Backpressure)
+	// 중요: 락을 해제한 상태에서 채널 전송을 시도합니다.
+	// 이를 통해 채널이 가득 차서 대기하는 동안에도 Close()가 호출되면
+	// 즉시 채널이 닫히고 panic recover를 통해 안전하게 종료될 수 있습니다.
 	select {
-	case n.RequestC <- req:
+	case requestC <- req:
 		return true
-	case <-time.After(n.notifyTimeout):
+	case <-time.After(timeout):
 		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
 		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": n.ID(),
