@@ -15,7 +15,7 @@ import (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notifiers       []notifier.NotifierHandler
+	notifiersMap    map[notifier.NotifierID]notifier.NotifierHandler
 	defaultNotifier notifier.NotifierHandler
 
 	notifierFactory notifier.NotifierFactory
@@ -33,6 +33,7 @@ func NewService(appConfig *config.AppConfig, executor task.Executor, factory not
 	service := &Service{
 		appConfig: appConfig,
 
+		notifiersMap:    make(map[notifier.NotifierID]notifier.NotifierHandler),
 		defaultNotifier: nil,
 
 		notifiersStopWG: &sync.WaitGroup{},
@@ -80,7 +81,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	defaultNotifierID := notifier.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
 	for _, h := range notifiers {
-		s.notifiers = append(s.notifiers, h)
+		s.notifiersMap[h.ID()] = h
 
 		if h.ID() == defaultNotifierID {
 			s.defaultNotifier = h
@@ -129,7 +130,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 	s.runningMu.Lock()
 	s.running = false
 	s.executor = nil
-	s.notifiers = nil
+	s.notifiersMap = nil
 	s.defaultNotifier = nil
 	s.runningMu.Unlock()
 
@@ -237,16 +238,8 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		return notifier.ErrServiceStopped
 	}
 
-	var targetNotifier notifier.NotifierHandler
 	var defaultNotifier = s.defaultNotifier
-
-	id := notifier.NotifierID(notifierID)
-	for _, h := range s.notifiers {
-		if h.ID() == id {
-			targetNotifier = h
-			break
-		}
-	}
+	targetNotifier := s.notifiersMap[notifier.NotifierID(notifierID)]
 
 	s.runningMu.Unlock()
 
@@ -287,12 +280,8 @@ func (s *Service) SupportsHTML(notifierID string) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	id := notifier.NotifierID(notifierID)
-	for _, h := range s.notifiers {
-		if h.ID() == id {
-			return h.SupportsHTML()
-		}
+	if h, exists := s.notifiersMap[notifier.NotifierID(notifierID)]; exists {
+		return h.SupportsHTML()
 	}
-
 	return false
 }

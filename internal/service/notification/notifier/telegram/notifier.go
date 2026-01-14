@@ -175,8 +175,9 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
 			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
 			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
-			// 무한 대기(Hang)를 방지하기 위해 5초의 타임아웃을 설정합니다.
-			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			// 무한 대기(Hang)를 방지하기 위해 60초의 타임아웃을 설정합니다.
+			// (버퍼 1000개, 초당 20~30개 처리 가정 시 최소 30~50초 소요됨)
+			drainCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
 			for notifyRequest := range n.RequestC {

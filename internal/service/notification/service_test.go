@@ -62,7 +62,9 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 	mockFactory := &notificationmocks.MockNotifierFactory{}
 
 	service := NewService(appConfig, mockExecutor, mockFactory)
-	service.notifiers = []notifier.NotifierHandler{mockNotifier}
+	service.notifiersMap = map[notifier.NotifierID]notifier.NotifierHandler{
+		mockNotifier.IDValue: mockNotifier,
+	}
 	service.defaultNotifier = mockNotifier
 	service.running = opts.running
 
@@ -115,7 +117,11 @@ func TestNewService(t *testing.T) {
 // TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
 func TestSupportsHTML(t *testing.T) {
 	mockNotifier := &notificationmocks.MockNotifierHandler{IDValue: "test", SupportsHTMLValue: true}
-	service := &Service{notifiers: []notifier.NotifierHandler{mockNotifier}}
+	service := &Service{
+		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+			mockNotifier.IDValue: mockNotifier,
+		},
+	}
 
 	tests := []struct {
 		name       string
@@ -362,8 +368,11 @@ func TestMultipleNotifiers(t *testing.T) {
 	mockNotifier2 := &notificationmocks.MockNotifierHandler{IDValue: "n2", SupportsHTMLValue: false}
 
 	service := &Service{
-		notifiers: []notifier.NotifierHandler{mockNotifier1, mockNotifier2},
-		running:   true,
+		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+			mockNotifier1.IDValue: mockNotifier1,
+			mockNotifier2.IDValue: mockNotifier2,
+		},
+		running: true,
 	}
 
 	// n2로 전송
@@ -390,7 +399,9 @@ func TestConcurrencyStress(t *testing.T) {
 				DefaultNotifierID: testNotifierID,
 			},
 		},
-		notifiers:       []notifier.NotifierHandler{mockNotifier},
+		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+			mockNotifier.IDValue: mockNotifier,
+		},
 		defaultNotifier: mockNotifier,
 		running:         true,
 	}
