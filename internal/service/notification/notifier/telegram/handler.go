@@ -29,9 +29,14 @@ const (
 
 // handleCommand 사용자 텔레그램 명령어 처리
 func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbotapi.Message) {
+	// 모든 명령어 처리에 대해 10초의 타임아웃을 설정합니다.
+	// 이를 통해 외부 API 호출(텔레그램 전송) 지연 등으로 인한 고루틴 무한 대기(Leak)를 방지합니다.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
-		n.sendUnknownCommandMessage(context.TODO(), message.Text)
+		n.sendUnknownCommandMessage(ctx, message.Text)
 		return
 	}
 
@@ -39,13 +44,13 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 
 	// '/help' 명령어 처리
 	if command == telegramBotCommandHelp {
-		n.sendHelpCommandMessage(context.TODO())
+		n.sendHelpCommandMessage(ctx)
 		return
 	}
 
 	// '/cancel_{ID}' 명령어 처리 (작업 취소)
 	if strings.HasPrefix(command, fmt.Sprintf("%s%s", telegramBotCommandCancel, telegramBotCommandSeparator)) {
-		n.handleCancelCommand(executor, command)
+		n.handleCancelCommand(ctx, executor, command)
 		return
 	}
 
@@ -56,7 +61,7 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 	}
 
 	// 매칭되는 명령어가 없는 경우
-	n.sendUnknownCommandMessage(context.TODO(), message.Text)
+	n.sendUnknownCommandMessage(ctx, message.Text)
 }
 
 // findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
@@ -84,7 +89,13 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 		// Receiver Loop Hang 방지: 대기열이 가득 차면 실패 알림은 과감히 생략(Drop) 하거나, 별도 고루틴으로 처리
 		// 여기서는 Notify 메서드(Non-blocking/Timeout)를 사용하여 안전하게 처리합니다.
 		taskCtx := task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError()
-		n.Notify(taskCtx, msgTaskExecutionFailed)
+		if !n.Notify(taskCtx, msgTaskExecutionFailed) {
+			// Notify 실패 시(큐 가득 참 등) 로그 남김
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				"notifier_id": n.ID(),
+				"command":     botCommand.command,
+			}).Warn("실행 실패 메시지 알림 전송 실패")
+		}
 	}
 }
 
@@ -109,7 +120,7 @@ func (n *telegramNotifier) sendHelpCommandMessage(ctx context.Context) {
 }
 
 // handleCancelCommand 작업 취소 요청 처리
-func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command string) {
+func (n *telegramNotifier) handleCancelCommand(ctx context.Context, executor task.Executor, command string) {
 	// 취소명령 형식 : /cancel_nnnn (구분자로 분리)
 	commandSplit := strings.Split(command, telegramBotCommandSeparator)
 
@@ -124,7 +135,7 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 	} else {
 		escapedCommand := html.EscapeString(command)
 		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedCommand, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
-		n.sendMessage(context.TODO(), message)
+		n.sendMessage(ctx, message)
 	}
 }
 

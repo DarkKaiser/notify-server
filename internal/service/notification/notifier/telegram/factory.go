@@ -72,6 +72,9 @@ func newTelegramNotifierWithBot(id notifier.NotifierID, botAPI telegramBotAPI, c
 		limiter:    rate.NewLimiter(rate.Limit(constants.DefaultRateLimit), constants.DefaultRateBurst),
 
 		executor: executor,
+
+		// 최대 100개의 동시 명령어를 처리할 수 있도록 설정
+		handlerSemaphore: make(chan struct{}, 100),
 	}
 
 	// 봇 명령어 목록을 초기화합니다.

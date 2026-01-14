@@ -68,6 +68,9 @@ type telegramNotifier struct {
 	retryDelay time.Duration
 	limiter    *rate.Limiter
 
+	// handlerSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
+	handlerSemaphore chan struct{}
+
 	botCommands []telegramBotCommand
 }
 
@@ -115,7 +118,26 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			// 수신된 명령어를 처리 핸들러로 위임
 			// 명령어 처리 중 네트워크 지연(예: 메시지 발송)이 발생해도
 			// Receiver 루프가 차단되지 않도록 고루틴으로 실행합니다.
-			go n.handleCommand(n.executor, update.Message)
+			//
+			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
+			select {
+			case n.handlerSemaphore <- struct{}{}:
+				go func(msg *tgbotapi.Message) {
+					defer func() { <-n.handlerSemaphore }()
+					n.handleCommand(n.executor, msg)
+				}(update.Message)
+			case <-notificationStopCtx.Done():
+				// 컨텍스트 종료 시 루프 탈출
+				return
+			default:
+				// 세마포어가 가득 찬 경우 (Backpressure)
+				// 과도한 부하 상황이므로 로그를 남기고 메시지를 처리하지 않음 (Drop)
+				// 사용자가 다시 시도하도록 유도하거나, 단순히 무시하여 서버 안정성을 확보함.
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"chat_id":     n.chatID,
+				}).Warn("봇 명령어 처리량이 한계에 도달하여 요청을 처리할 수 없습니다 (Drop)")
+			}
 
 		case <-notificationStopCtx.Done():
 			// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.

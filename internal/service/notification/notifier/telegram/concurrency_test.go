@@ -34,6 +34,7 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 				command: "help",
 			},
 		},
+		handlerSemaphore: make(chan struct{}, 100), // Initialize semaphore
 	}
 	// Override channel for test control if needed, but NewBaseNotifier already made one.
 	// If we need a specific buffer size distinct from NewBaseNotifier(..., 10), we can set it here.
