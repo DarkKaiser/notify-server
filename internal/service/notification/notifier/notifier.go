@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -64,7 +65,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields("notification.service", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifier, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
 			}).Error("알림 전송 요청 중 치명적인 오류(Panic)가 발생하여 복구되었습니다")
@@ -92,7 +93,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 		return false
 	case <-timer.C:
 		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
-		applog.WithComponentAndFields("notification.service", applog.Fields{
+		applog.WithComponentAndFields(constants.ComponentNotifier, applog.Fields{
 			"notifier_id": n.ID(),
 		}).Warn("알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop - Timeout)")
 

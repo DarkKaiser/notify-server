@@ -90,7 +90,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 	// 메시지 수신 채널 획득
 	updateC := n.botAPI.GetUpdatesChan(config)
 
-	applog.WithComponentAndFields("notification.telegram", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id":  n.ID(),
 		"bot_username": n.botAPI.GetSelf().UserName,
 		"chat_id":      n.chatID,
@@ -122,7 +122,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 
 		n.botAPI = nil
 
-		applog.WithComponentAndFields("notification.telegram", applog.Fields{
+		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 		}).Debug("Telegram Notifier의 작업이 중지됨")
@@ -135,7 +135,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		// 1. 텔레그램 봇 서버로부터 새로운 메시지 수신
 		case update, ok := <-updateC:
 			if !ok {
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
 				}).Error("텔레그램 업데이트 채널이 닫혔습니다. 수신 루프를 종료합니다.")
@@ -173,7 +173,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				// 세마포어가 가득 찬 경우 (Backpressure)
 				// 과도한 부하 상황이므로 로그를 남기고 메시지를 처리하지 않음 (Drop)
 				// 사용자가 다시 시도하도록 유도하거나, 단순히 무시하여 서버 안정성을 확보함.
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
 				}).Warn("봇 명령어 처리량이 한계에 도달하여 요청을 처리할 수 없습니다 (Drop)")
@@ -192,7 +192,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 	// 루프 자체에서 예기치 않은 패닉이 발생해도 로그를 남기고 종료하여, 문제 원인을 파악할 수 있게 합니다.
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
 			}).Error("runSender 루프가 치명적인 패닉으로 종료되었습니다")
@@ -211,7 +211,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						applog.WithComponentAndFields("notification.telegram", applog.Fields{
+						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 							"notifier_id": n.ID(),
 							"panic":       r,
 						}).Error("알림 메시지 발송 중 패닉 발생 (Recovered)")
@@ -255,7 +255,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 				case notifyRequest := <-n.RequestC:
 					// 이미 타임아웃이 발생했다면 더 이상 시도하지 않고 루프 탈출
 					if drainCtx.Err() != nil {
-						applog.WithComponentAndFields("notification.telegram", applog.Fields{
+						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 							"notifier_id": n.ID(),
 						}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
 						break Loop
@@ -264,7 +264,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
-								applog.WithComponentAndFields("notification.telegram", applog.Fields{
+								applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 									"notifier_id": n.ID(),
 									"panic":       r,
 								}).Error("Shutdown Drain 중 패닉 발생 (Recovered)")

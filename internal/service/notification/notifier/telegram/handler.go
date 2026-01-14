@@ -38,7 +38,7 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor task.Exec
 
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
 			}).Error("봇 명령어 처리 중 패닉 발생 (Recovered)")
@@ -98,7 +98,7 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 		taskCtx := task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError()
 		if !n.Notify(taskCtx, msgTaskExecutionFailed) {
 			// Notify 실패 시(큐 가득 참 등) 로그 남김
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"command":     botCommand.command,
 			}).Warn("실행 실패 메시지 알림 전송 실패")
@@ -342,7 +342,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 	// 컨텍스트가 취소되면 Wait는 즉시 에러를 반환합니다.
 	if n.limiter != nil {
 		if err := n.limiter.Wait(ctx); err != nil {
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
 			}).Debug("RateLimiter 대기 중 컨텍스트 취소됨 (전송 중단)")
@@ -358,7 +358,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.DeadlineExceeded {
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
 				}).Error("알림 메시지 발송 시간 초과 (Timeout)")
@@ -370,7 +370,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		_, err = n.botAPI.Send(messageConfig)
 		if err == nil {
 			// 성공 시 루프 탈출
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"attempt":     i + 1,
@@ -381,7 +381,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		}
 
 		// 실패 시 로그 남기고 대기
-		applog.WithComponentAndFields("notification.telegram", applog.Fields{
+		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"attempt":     i + 1,
@@ -405,7 +405,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			// 429 Too Many Requests는 재시도 대상
 			if errCode == 429 {
 				if retryAfter > 0 {
-					applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 						"notifier_id": n.ID(),
 						"retry_after": retryAfter,
 					}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
@@ -416,7 +416,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				// HTML 모드였고, 파싱 에러(Bad Request)로 의심된다면 Plain Text로 재시도
 				// 단, 한 번만 Fallback 시도 (재귀 호출 방지)
 				if useHTML && errCode == 400 {
-					applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 						"notifier_id": n.ID(),
 						"error":       err,
 					}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
@@ -426,7 +426,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				}
 
 				// 그 외 400번대 에러이거나 이미 Plain Text였다면 중단
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       err,
 					"code":        errCode,
@@ -444,7 +444,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.DeadlineExceeded {
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
 				}).Error("알림 메시지 재시도 대기 중 시간 초과 (Timeout)")
@@ -456,7 +456,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 	}
 
 	// 모든 재시도 실패 시 에러 로그
-	applog.WithComponentAndFields("notification.telegram", applog.Fields{
+	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id": n.ID(),
 		"chat_id":     n.chatID,
 		"error":       err,

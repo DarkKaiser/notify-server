@@ -4,9 +4,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 )
+
+// Interface Compliance Check
+var _ notifier.NotifierHandler = (*MockNotifierHandler)(nil)
 
 // MockNotifierHandler는 NotifierHandler 인터페이스의 Mock 구현체입니다.
 //
