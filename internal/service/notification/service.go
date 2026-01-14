@@ -123,12 +123,18 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 
 	applog.WithComponent("notification.service").Info("Notification 서비스 중지중...")
 
-	// 등록된 모든 Notifier의 고루틴 작업이 완료(종료)될 때까지 대기합니다.
+	// 1. 새로운 요청 수락 중단
+	// Notifier가 여전히 동작 중이더라도, 서비스 차원에서 더 이상의 요청은 받지 않아야 합니다.
+	s.runningMu.Lock()
+	s.running = false
+	s.runningMu.Unlock()
+
+	// 2. 등록된 모든 Notifier의 고루틴 작업이 완료(종료)될 때까지 대기합니다.
 	// 각 Notifier의 Run 메서드에서 defer s.notifiersStopWG.Done()이 호출되어야 합니다.
 	s.notifiersStopWG.Wait()
 
+	// 3. 리소스 정리
 	s.runningMu.Lock()
-	s.running = false
 	s.executor = nil
 	s.notifiersMap = nil
 	s.defaultNotifier = nil

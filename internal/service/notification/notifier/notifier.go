@@ -21,8 +21,9 @@ type BaseNotifier struct {
 
 	supportsHTML bool
 
-	mu     sync.RWMutex // 채널 및 상태 보호를 위한 Mutex
-	closed bool         // Notifier 종료 여부
+	mu     sync.RWMutex  // 채널 및 상태 보호를 위한 Mutex
+	closed bool          // Notifier 종료 여부
+	done   chan struct{} // 종료 신호 전파 채널
 
 	notifyTimeout time.Duration
 	RequestC      chan *NotifyRequest
@@ -37,6 +38,7 @@ func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int, notifyTim
 
 		notifyTimeout: notifyTimeout,
 		RequestC:      make(chan *NotifyRequest, bufferSize),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -47,18 +49,6 @@ func (n *BaseNotifier) ID() NotifierID {
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
 func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeeded bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			succeeded = false
-
-			applog.WithComponentAndFields("notification.service", applog.Fields{
-				"notifier_id":    n.ID(),
-				"message_length": len(message),
-				"panic":          r,
-			}).Error("알림메시지 발송중에 panic 발생")
-		}
-	}()
-
 	n.mu.RLock()
 	// 이미 종료되었거나 채널이 닫힌 경우
 	if n.closed || n.RequestC == nil {
@@ -67,6 +57,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	}
 	// 채널 참조를 로컬 변수로 복사하여 락 해제 후에도 안전하게 접근
 	requestC := n.RequestC
+	done := n.done
 	timeout := n.notifyTimeout
 	n.mu.RUnlock()
 
@@ -78,10 +69,13 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	// 채널이 가득 찬 경우 설정된 Timeout만큼 대기 (Backpressure)
 	// 중요: 락을 해제한 상태에서 채널 전송을 시도합니다.
 	// 이를 통해 채널이 가득 차서 대기하는 동안에도 Close()가 호출되면
-	// 즉시 채널이 닫히고 panic recover를 통해 안전하게 종료될 수 있습니다.
+	// done 채널이 닫히고 select를 통해 즉시 종료될 수 있습니다.
 	select {
 	case requestC <- req:
 		return true
+	case <-done:
+		// 전송 대기 중 Notifier가 종료된 경우
+		return false
 	case <-time.After(timeout):
 		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
 		applog.WithComponentAndFields("notification.service", applog.Fields{
@@ -103,6 +97,12 @@ func (n *BaseNotifier) Close() {
 
 	if !n.closed {
 		n.closed = true
+
+		// 종료 신호 전파: Notify 메서드에서 대기 중인 모든 고루틴을 깨웁니다.
+		if n.done != nil {
+			close(n.done)
+		}
+
 		if n.RequestC != nil {
 			close(n.RequestC)
 			// 주의: 채널을 nil로 설정하지 않음.
