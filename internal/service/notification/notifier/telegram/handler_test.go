@@ -87,6 +87,30 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 			},
 			waitForCalls: 1,
 		},
+		{
+			name:    "With Long Title (Truncated)",
+			message: "Message with long title",
+			taskCtx: task.NewTaskContext().
+				WithTitle(strings.Repeat("가", 300)), // 300 unicode chars > 200 limit
+			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
+				wg.Add(1)
+				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					// Check if title contains "..." indicating truncation
+					// And check length is not excessively long (approx 200 chars + overhead)
+					// "가" is 3 bytes, so 200 "가" is 600 bytes.
+					// We just check if it contains "..." and does NOT contain 300 "가"s.
+					hasEllipsis := strings.Contains(msg.Text, "...")
+					fullTitle := strings.Repeat("가", 300)
+					hasFullTitle := strings.Contains(msg.Text, fullTitle)
+
+					return ok && hasEllipsis && !hasFullTitle
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil)
+			},
+			waitForCalls: 1,
+		},
 	}
 
 	for _, tt := range tests {

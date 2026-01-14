@@ -15,4 +15,7 @@ const (
 
 	// DefaultHTTPClientTimeout 텔레그램 API 클라이언트의 HTTP 요청 타임아웃 기본값
 	DefaultHTTPClientTimeout = 30 * time.Second
+
+	// DefaultNotifyTimeout 알림 발송 요청 시 대기열이 가득 찼을 때 대기하는 최대 시간 (Backpressure)
+	DefaultNotifyTimeout = 5 * time.Second
 )

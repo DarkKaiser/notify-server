@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"sync"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -23,17 +24,19 @@ type BaseNotifier struct {
 	mu     sync.RWMutex // 채널 및 상태 보호를 위한 Mutex
 	closed bool         // Notifier 종료 여부
 
-	RequestC chan *NotifyRequest
+	notifyTimeout time.Duration
+	RequestC      chan *NotifyRequest
 }
 
 // NewBaseNotifier BaseNotifier를 생성하고 초기화합니다.
-func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int) BaseNotifier {
+func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int, notifyTimeout time.Duration) BaseNotifier {
 	return BaseNotifier{
 		id: id,
 
 		supportsHTML: supportsHTML,
 
-		RequestC: make(chan *NotifyRequest, bufferSize),
+		notifyTimeout: notifyTimeout,
+		RequestC:      make(chan *NotifyRequest, bufferSize),
 	}
 }
 
@@ -64,17 +67,20 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 		return false
 	}
 
-	// 채널이 가득 찬 경우 대기하지 않고 즉시 false 반환
-	select {
-	case n.RequestC <- &NotifyRequest{
+	req := &NotifyRequest{
 		TaskCtx: taskCtx,
 		Message: message,
-	}:
+	}
+
+	// 채널이 가득 찬 경우 설정된 Timeout만큼 대기 (Backpressure)
+	select {
+	case n.RequestC <- req:
 		return true
-	default:
+	case <-time.After(n.notifyTimeout):
+		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
 		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": n.ID(),
-		}).Warn("알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop)")
+		}).Warn("알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop - Timeout)")
 
 		return false
 	}

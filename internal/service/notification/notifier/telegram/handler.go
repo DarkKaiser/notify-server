@@ -15,6 +15,9 @@ import (
 )
 
 const (
+	// titleTruncateLength 제목이 너무 길 경우 텔레그램 메시지 분할 시 HTML 태그 깨짐 방지를 위해 자를 길이
+	titleTruncateLength = 200
+
 	msgUnknownCommand             = "'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요."
 	msgInvalidCancelCommandFormat = "'%s'는 잘못된 취소 명령어 형식입니다.\n올바른 형식: '%s%s%s[작업인스턴스ID]'"
 	msgTaskExecutionFailed        = "사용자가 요청한 작업의 실행 요청이 실패하였습니다."
@@ -162,7 +165,9 @@ func (n *telegramNotifier) enrichMessageWithContext(taskCtx task.TaskContext, me
 // appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
 func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string) string {
 	if title := taskCtx.GetTitle(); len(title) > 0 {
-		return fmt.Sprintf(msgContextTitle, html.EscapeString(title), message)
+		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 문제를 방지하기 위해 Truncate 처리
+		safeTitle := truncateString(html.EscapeString(title), titleTruncateLength)
+		return fmt.Sprintf(msgContextTitle, safeTitle, message)
 	}
 
 	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
@@ -356,4 +361,17 @@ func safeSplit(s string, limit int) (chunk, remainder string) {
 	}
 
 	return s[:splitIndex], s[splitIndex:]
+}
+
+// truncateString 문자열을 지정된 rune 길이로 자르고 "..."을 붙입니다.
+func truncateString(s string, limit int) string {
+	if utf8.RuneCountInString(s) <= limit {
+		return s
+	}
+
+	runes := []rune(s)
+	if len(runes) > limit {
+		return string(runes[:limit]) + "..."
+	}
+	return s
 }
