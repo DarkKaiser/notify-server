@@ -2,6 +2,9 @@ package telegram
 
 import (
 	"context"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -59,9 +62,12 @@ type telegramNotifier struct {
 
 	botAPI telegramBotAPI
 
-	botCommands []telegramBotCommand
-
 	executor task.Executor
+
+	retryDelay time.Duration
+	limiter    *rate.Limiter
+
+	botCommands []telegramBotCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프

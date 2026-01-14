@@ -5,12 +5,14 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/iancoleman/strcase"
+	"golang.org/x/time/rate"
 )
 
 type telegramNotifierCreatorFunc func(id notifier.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error)
@@ -58,6 +60,9 @@ func newTelegramNotifierWithBot(id notifier.NotifierID, botAPI telegramBotAPI, c
 		chatID: chatID,
 
 		botAPI: botAPI,
+
+		retryDelay: constants.DefaultRetryDelay,
+		limiter:    rate.NewLimiter(rate.Limit(constants.DefaultRateLimit), constants.DefaultRateBurst),
 
 		executor: executor,
 	}

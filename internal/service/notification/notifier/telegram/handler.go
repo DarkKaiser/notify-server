@@ -1,8 +1,10 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -282,16 +284,43 @@ func (n *telegramNotifier) sendSingleMessage(message string) {
 	messageConfig := tgbotapi.NewMessage(n.chatID, message)
 	messageConfig.ParseMode = tgbotapi.ModeHTML
 
-	if _, err := n.botAPI.Send(messageConfig); err != nil {
-		applog.WithComponentAndFields("notification.telegram", applog.Fields{
-			"notifier_id": n.ID(),
-			"chat_id":     n.chatID,
-			"error":       err,
-		}).Error("알림메시지 발송 실패")
-	} else {
-		applog.WithComponentAndFields("notification.telegram", applog.Fields{
-			"notifier_id": n.ID(),
-			"chat_id":     n.chatID,
-		}).Info("알림메시지 발송 성공")
+	// 텔레그램 API Rate Limit 준수를 위해 발송 속도를 제어합니다.
+	// 지정된 속도(Limit)를 초과하면 토큰이 확보될 때까지 대기합니다.
+	if n.limiter != nil {
+		_ = n.limiter.Wait(context.Background())
 	}
+
+	const maxRetries = 3
+
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		if _, err = n.botAPI.Send(messageConfig); err == nil {
+			// 성공 시 루프 탈출
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				"notifier_id": n.ID(),
+				"chat_id":     n.chatID,
+				"attempt":     i + 1,
+			}).Info("알림메시지 발송 성공")
+
+			return
+		}
+
+		// 실패 시 로그 남기고 대기
+		applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
+			"attempt":     i + 1,
+			"error":       err,
+		}).Warn("알림메시지 발송 실패, 재시도 대기중...")
+
+		time.Sleep(n.retryDelay)
+	}
+
+	// 모든 재시도 실패 시 에러 로그
+	applog.WithComponentAndFields("notification.telegram", applog.Fields{
+		"notifier_id": n.ID(),
+		"chat_id":     n.chatID,
+		"error":       err,
+		"max_retries": maxRetries,
+	}).Error("알림메시지 발송 최종 실패")
 }

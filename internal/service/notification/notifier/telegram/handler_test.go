@@ -48,7 +48,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 			message: "Fail Message",
 			taskCtx: task.NewTaskContext(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
-				wg.Add(1)
+				wg.Add(3)
 				m.On("Send", mock.Anything).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, errors.New("network error"))

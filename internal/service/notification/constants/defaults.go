@@ -1,0 +1,15 @@
+package constants
+
+import "time"
+
+const (
+	// DefaultRetryDelay 알림 발송 실패 시 재시도 대기 시간의 기본값입니다.
+	DefaultRetryDelay = 1 * time.Second
+
+	// DefaultRateLimit 텔레그램 API Rate Limit 기본값 (초당 허용 요청 수)
+	// 공식 문서는 채팅방당 초당 1회, 전역 초당 30회를 권장합니다.
+	DefaultRateLimit = 1
+
+	// DefaultRateBurst 텔레그램 API Rate Limit 버스트 기본값 (순간 최대 허용 요청 수)
+	DefaultRateBurst = 5
+)

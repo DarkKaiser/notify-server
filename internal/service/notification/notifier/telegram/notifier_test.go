@@ -13,6 +13,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 // =============================================================================
@@ -41,6 +42,8 @@ func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNoti
 
 	notifierHandler := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
 	notifier := notifierHandler.(*telegramNotifier)
+	notifier.retryDelay = 1 * time.Millisecond
+	notifier.limiter = rate.NewLimiter(rate.Inf, 0)
 
 	// Common expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: testTelegramBotUsername})
