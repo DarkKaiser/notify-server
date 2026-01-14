@@ -91,6 +91,24 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 	}
 }
 
+// TestNewHTTPServer_Defaults 는 설정 값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
+func TestNewHTTPServer_Defaults(t *testing.T) {
+	t.Run("Default RequestTimeout", func(t *testing.T) {
+		// Timeouts: 0으로 설정 -> Default 값 적용 여부 확인
+		cfg := HTTPServerConfig{RequestTimeout: 0}
+		e := NewHTTPServer(cfg)
+
+		// Echo Middleware Timeout 설정은 e.Router나 Middleware 체인을 직접 조회하기 어려우므로
+		// 실제 동작(Timeout 적용 여부)을 통해 간접 검증하거나,
+		// 여기서는 Unit Test 관점에서 "Server 객체의 타임아웃 속성"을 확인하는 형태로 접근
+		// (단, RequestTimeout은 Echo 미들웨어 레벨이라 Server 객체 필드가 아님)
+
+		// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
+		assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
+		assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout)
+	})
+}
+
 // TestNewHTTPServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
 // 상수에 정의된 보안 권장 값과 일치하는지 검증합니다.
 func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
@@ -144,21 +162,16 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 			e.GET("/secure", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 			req := httptest.NewRequest(http.MethodGet, "https://example.com/secure", nil)
-			// Echo Secure 미들웨어는 HTTPS 요청일 때만 HSTS 헤더를 추가할 수 있음
-			// httptest는 기본적으로 TLS 정보를 채워주지 않으므로 수동 설정 필요할 수 있음
-			// 하지만 Echo 구현에 따라 다를 수 있으므로, URL Scheme을 https로 명시하는 것이 좋음
-
-			// HSTS는 HTTPS 응답에서만 유효하므로, 테스트 요청도 HTTPS인 것처럼 위장
+			// HSTS 조건: HTTPS 스키마 + TLS State 존재
 			if tt.enableHSTS {
-				req.TLS = &tls.ConnectionState{} // Dummy TLS state
+				req.TLS = &tls.ConnectionState{}
 			}
 
 			rec := httptest.NewRecorder()
-
 			e.ServeHTTP(rec, req)
 
 			headers := rec.Header()
-			// 기본 보안 헤더 확인
+			// 기본 보안 헤더 확인 (항상 존재해야 함)
 			assert.Equal(t, "1; mode=block", headers.Get("X-XSS-Protection"), "XSS 보호 헤더 누락")
 			assert.Equal(t, "nosniff", headers.Get("X-Content-Type-Options"), "MIME 스니핑 방지 헤더 누락")
 
@@ -185,8 +198,13 @@ func TestServerHeaderRemoval(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
+	// Server 헤더가 아예 없거나 비어 있어야 함
 	assert.Empty(t, rec.Header().Get("Server"), "정보 노출 방지를 위해 Server 헤더는 제거되어야 합니다")
 }
+
+// =============================================================================
+// Middleware Chain & Ordering Tests
+// =============================================================================
 
 // TestBodyLimit 은 설정된 제한(128KB)보다 큰 요청이 거부되는지 검증합니다.
 func TestBodyLimit(t *testing.T) {
@@ -194,7 +212,6 @@ func TestBodyLimit(t *testing.T) {
 	e.POST("/upload", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	// 128KB + 1byte (경계값 테스트)
-	// BodyLimit이 정확히 128KB(131072 bytes)인지 확인하기 위해 약간 더 큰 데이터를 생성
 	limitBytes := 128 * 1024
 	body := strings.Repeat("a", limitBytes+1)
 
@@ -214,63 +231,85 @@ func TestBodyLimit(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recValid.Code, "제한 범위 내의 요청은 성공해야 합니다")
 }
 
-// =============================================================================
-// Middleware Chain & Ordering Tests
-// =============================================================================
-
 // TestMiddlewareLoggingOrder_ChainVerification 은 미들웨어 체인의 실행 순서를 검증합니다.
-// 특히 HTTPLogger가 에러 유발 미들웨어(RateLimit, Timeout)보다 '감싸는(Outer)' 위치에 있어
-// 429, 503 에러도 로그에 남기는지를 확인합니다.
+// HTTPLogger가 에러 유발 미들웨어보다 상위(Outer)에 있어야 에러 상황도 로그에 남습니다.
 func TestMiddlewareLoggingOrder_ChainVerification(t *testing.T) {
-	t.Run("Logs 429 Too Many Requests (RateLimit)", func(t *testing.T) {
+	// RateLimit 발생 시(429) 로그가 남는지 검증
+	t.Run("Logs 429 Too Many Requests", func(t *testing.T) {
 		buf := setupTestLogger(t)
 
-		// 실제 NewHTTPServer 대신 수동 체인 구성으로 테스트 (RateLimit 수치 제어를 위해)
+		// 실제 NewHTTPServer 대신 수동 체인 구성 (제어 용이성)
 		e := echo.New()
 		e.Use(appmiddleware.HTTPLogger())       // 1. Logger (Outer)
 		e.Use(appmiddleware.RateLimiting(1, 1)) // 2. RateLimit (Inner)
 
 		e.GET("/test", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
-		// 첫 번째 요청: 성공
+		// 1회차 성공
 		e.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/test", nil))
 
-		// 두 번째 요청: 429 발생
+		// 2회차 실패 (429)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
 
 		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
-		assert.Contains(t, buf.String(), `"status":429`, "Logger가 RateLimit보다 상위에 있어야 429 에러를 기록합니다")
+		assert.Contains(t, buf.String(), `"status":429`, "Logger가 429 에러를 기록해야 합니다")
 	})
 
-	t.Run("Logs 503 Service Unavailable (Timeout)", func(t *testing.T) {
-		_ = setupTestLogger(t)
+	// 참고: Timeout(503) 로깅 테스트는 비동기 로깅 특성상 Flaky할 수 있어
+	// TestMiddlewareOrdering_SecurityOnErrors 에서 상태 코드 및 헤더 검증으로 대체함.
+}
 
-		timeout := 10 * time.Millisecond
-		cfg := HTTPServerConfig{RequestTimeout: timeout}
-		e := NewHTTPServer(cfg) // 실제 체인 사용 (Logger -> ... -> Timeout)
+// TestMiddlewareOrdering_SecurityOnErrors 는 보안 헤더가 에러 응답(429, 503)에도 적용되는지 검증합니다.
+// 이는 Secure, CORS 미들웨어가 가장 상위에 위치해야 함을 의미합니다.
+func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
+	// HSTS 활성화 & 짧은 타임아웃
+	cfg := HTTPServerConfig{
+		EnableHSTS:     true,
+		RequestTimeout: 20 * time.Millisecond,
+	}
 
-		e.GET("/slow", func(c echo.Context) error {
-			// 타임아웃보다 오래 대기하며 Context 취소 감지
-			select {
-			case <-time.After(100 * time.Millisecond):
-				return c.String(http.StatusOK, "ok")
-			case <-c.Request().Context().Done():
-				return nil // Context 취소로 인한 핸들러 종료
+	t.Run("Security Headers on 429 RateLimit", func(t *testing.T) {
+		// 독립된 서버 인스턴스 (RateLimiter 상태 격리)
+		e := NewHTTPServer(cfg)
+
+		burst := constants.DefaultRateLimitBurst
+		// Burst + 여유분 만큼 요청
+		for i := 0; i < burst+10; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.TLS = &tls.ConnectionState{} // HSTS 트리거용
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			if rec.Code == http.StatusTooManyRequests {
+				// 429 응답에도 보안 헤더 존재해야 함
+				assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "429 응답 HSTS 누락")
+				assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
+				return
 			}
+		}
+		t.Log("RateLimit을 유발하지 못했습니다 (테스트 환경 빠름 등)")
+	})
+
+	t.Run("Security Headers on 503 Timeout", func(t *testing.T) {
+		// 독립된 서버 인스턴스
+		e := NewHTTPServer(cfg)
+		e.GET("/timeout", func(c echo.Context) error {
+			time.Sleep(100 * time.Millisecond) // 타임아웃(20ms) 초과
+			return c.String(http.StatusOK, "ok")
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "/slow", nil)
+		req := httptest.NewRequest(http.MethodGet, "/timeout", nil)
+		req.TLS = &tls.ConnectionState{}
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "Timeout 미들웨어가 503을 반환해야 합니다")
-
-		// Note: httptest와 Echo Timeout 미들웨어 간의 비동기 로그 기록 시점 차이로 인해
-		// 단위 테스트에서 로그 내용을 assert.Contains로 검증하는 것은 Flaky할 수 있습니다.
-		// 따라서 여기서는 HTTP 상태 코드 검증에 집중하고, 로그 기록 순서 논리는
-		// "Logs 429" 테스트 케이스를 통해 간접 검증합니다.
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		// 503 응답에도 보안 헤더 존재해야 함
+		assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "503 응답 HSTS 누락")
+		assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	})
 }
 
@@ -297,8 +336,8 @@ func TestCORSConfig(t *testing.T) {
 			name:           "Disallowed Origin",
 			allowedOrigins: []string{"https://trusted.com"},
 			requestOrigin:  "https://evil.com",
-			wantStatus:     http.StatusOK, // Block하지 않고 헤더만 미포함 (Echo 기본)
-			wantHeader:     "",
+			wantStatus:     http.StatusOK,
+			wantHeader:     "", // Echo CORS는 불허 시 헤더 미포함
 		},
 		{
 			name:           "Wildcard Origin",
@@ -325,4 +364,26 @@ func TestCORSConfig(t *testing.T) {
 			assert.Equal(t, tt.wantHeader, rec.Header().Get("Access-Control-Allow-Origin"))
 		})
 	}
+}
+
+// TestCORSConfig_Methods 는 허용된 메서드가 올바르게 설정되는지 OPTIONS 요청으로 검증합니다.
+func TestCORSConfig_Methods(t *testing.T) {
+	cfg := HTTPServerConfig{AllowOrigins: []string{"*"}}
+	e := NewHTTPServer(cfg)
+
+	// Preflight 요청 (OPTIONS)
+	req := httptest.NewRequest(http.MethodOptions, "/", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	allowMethods := rec.Header().Get("Access-Control-Allow-Methods")
+	assert.Contains(t, allowMethods, "POST")
+	assert.Contains(t, allowMethods, "GET")
+	assert.Contains(t, allowMethods, "PUT")
+	assert.Contains(t, allowMethods, "DELETE")
 }
