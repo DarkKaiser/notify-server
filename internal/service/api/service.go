@@ -147,10 +147,9 @@ func (s *Service) setupServer() *echo.Echo {
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)
 	e := NewHTTPServer(HTTPServerConfig{
-		Debug:          s.appConfig.Debug,
-		EnableHSTS:     s.appConfig.NotifyAPI.WS.TLSServer,
-		RequestTimeout: constants.DefaultRequestTimeout,
-		AllowOrigins:   s.appConfig.NotifyAPI.CORS.AllowOrigins,
+		Debug:        s.appConfig.Debug,
+		EnableHSTS:   s.appConfig.NotifyAPI.WS.TLSServer,
+		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
 	// 4. 라우트 등록

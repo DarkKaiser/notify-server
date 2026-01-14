@@ -51,58 +51,61 @@ func httpLoggerHandler(c echo.Context, next echo.HandlerFunc) error {
 	res := c.Response()
 	start := time.Now()
 
+	// defer를 사용하여 패닉 발생 시에도 로그가 기록되도록 보장
+	defer func() {
+		stop := time.Now()
+		latency := stop.Sub(start)
+
+		// 경로 정규화
+		path := req.URL.Path
+		if path == "" {
+			path = "/"
+		}
+
+		// Content-Length 헤더 가져오기
+		bytesIn := req.Header.Get(echo.HeaderContentLength)
+		if bytesIn == "" {
+			bytesIn = defaultBytesIn
+		}
+
+		// 민감 정보 마스킹
+		uri := maskSensitiveQueryParams(req.RequestURI)
+
+		// 구조화된 로그 기록
+		applog.WithFields(applog.Fields{
+			// 시간 정보
+			"time_rfc3339": stop.Format(time.RFC3339),
+
+			// 요청 정보
+			"method":   req.Method,
+			"path":     path,
+			"uri":      uri,
+			"host":     req.Host,
+			"protocol": req.Proto,
+
+			// 클라이언트 정보
+			"remote_ip":  c.RealIP(),
+			"user_agent": req.UserAgent(),
+			"referer":    req.Referer(),
+
+			// 응답 정보
+			"status":    res.Status,
+			"bytes_in":  bytesIn,
+			"bytes_out": strconv.FormatInt(res.Size, 10),
+
+			// 성능 정보
+			"latency":       strconv.FormatInt(latency.Nanoseconds()/1000, 10),
+			"latency_human": latency.String(),
+
+			// 추적 정보
+			"request_id": res.Header().Get(echo.HeaderXRequestID),
+		}).Info(constants.LogMsgHTTPRequest)
+	}()
+
 	// 핸들러 실행
 	if err := next(c); err != nil {
 		c.Error(err)
 	}
-
-	stop := time.Now()
-	latency := stop.Sub(start)
-
-	// 경로 정규화
-	path := req.URL.Path
-	if path == "" {
-		path = "/"
-	}
-
-	// Content-Length 헤더 가져오기
-	bytesIn := req.Header.Get(echo.HeaderContentLength)
-	if bytesIn == "" {
-		bytesIn = defaultBytesIn
-	}
-
-	// 민감 정보 마스킹
-	uri := maskSensitiveQueryParams(req.RequestURI)
-
-	// 구조화된 로그 기록
-	applog.WithFields(applog.Fields{
-		// 시간 정보
-		"time_rfc3339": stop.Format(time.RFC3339),
-
-		// 요청 정보
-		"method":   req.Method,
-		"path":     path,
-		"uri":      uri,
-		"host":     req.Host,
-		"protocol": req.Proto,
-
-		// 클라이언트 정보
-		"remote_ip":  c.RealIP(),
-		"user_agent": req.UserAgent(),
-		"referer":    req.Referer(),
-
-		// 응답 정보
-		"status":    res.Status,
-		"bytes_in":  bytesIn,
-		"bytes_out": strconv.FormatInt(res.Size, 10),
-
-		// 성능 정보
-		"latency":       strconv.FormatInt(latency.Nanoseconds()/1000, 10),
-		"latency_human": latency.String(),
-
-		// 추적 정보
-		"request_id": res.Header().Get(echo.HeaderXRequestID),
-	}).Info(constants.LogMsgHTTPRequest)
 
 	return nil
 }

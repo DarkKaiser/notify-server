@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
@@ -93,20 +92,10 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 
 // TestNewHTTPServer_Defaults 는 설정 값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
 func TestNewHTTPServer_Defaults(t *testing.T) {
-	t.Run("Default RequestTimeout", func(t *testing.T) {
-		// Timeouts: 0으로 설정 -> Default 값 적용 여부 확인
-		cfg := HTTPServerConfig{RequestTimeout: 0}
-		e := NewHTTPServer(cfg)
-
-		// Echo Middleware Timeout 설정은 e.Router나 Middleware 체인을 직접 조회하기 어려우므로
-		// 실제 동작(Timeout 적용 여부)을 통해 간접 검증하거나,
-		// 여기서는 Unit Test 관점에서 "Server 객체의 타임아웃 속성"을 확인하는 형태로 접근
-		// (단, RequestTimeout은 Echo 미들웨어 레벨이라 Server 객체 필드가 아님)
-
-		// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
-		assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
-		assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout)
-	})
+	// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
+	e := NewHTTPServer(HTTPServerConfig{})
+	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
+	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout)
 }
 
 // TestNewHTTPServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
@@ -265,8 +254,7 @@ func TestMiddlewareLoggingOrder_ChainVerification(t *testing.T) {
 func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
 	// HSTS 활성화 & 짧은 타임아웃
 	cfg := HTTPServerConfig{
-		EnableHSTS:     true,
-		RequestTimeout: 20 * time.Millisecond,
+		EnableHSTS: true,
 	}
 
 	t.Run("Security Headers on 429 RateLimit", func(t *testing.T) {
@@ -292,25 +280,6 @@ func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
 		t.Log("RateLimit을 유발하지 못했습니다 (테스트 환경 빠름 등)")
 	})
 
-	t.Run("Security Headers on 503 Timeout", func(t *testing.T) {
-		// 독립된 서버 인스턴스
-		e := NewHTTPServer(cfg)
-		e.GET("/timeout", func(c echo.Context) error {
-			time.Sleep(100 * time.Millisecond) // 타임아웃(20ms) 초과
-			return c.String(http.StatusOK, "ok")
-		})
-
-		req := httptest.NewRequest(http.MethodGet, "/timeout", nil)
-		req.TLS = &tls.ConnectionState{}
-		rec := httptest.NewRecorder()
-
-		e.ServeHTTP(rec, req)
-
-		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-		// 503 응답에도 보안 헤더 존재해야 함
-		assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "503 응답 HSTS 누락")
-		assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
-	})
 }
 
 // =============================================================================
@@ -380,10 +349,34 @@ func TestCORSConfig_Methods(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-
 	allowMethods := rec.Header().Get("Access-Control-Allow-Methods")
 	assert.Contains(t, allowMethods, "POST")
 	assert.Contains(t, allowMethods, "GET")
 	assert.Contains(t, allowMethods, "PUT")
 	assert.Contains(t, allowMethods, "DELETE")
+}
+
+// TestNewHTTPServer_PanicLogging 은 Panic 발생 시 HTTPLogger가 500 Status를 기록하는지 검증합니다.
+// (Middleware 순서가 HTTPLogger -> PanicRecovery 순이어야 함)
+func TestNewHTTPServer_PanicLogging(t *testing.T) {
+	buf := setupTestLogger(t)
+	e := NewHTTPServer(HTTPServerConfig{})
+
+	// Panic을 유발하는 핸들러 등록
+	e.GET("/panic", func(c echo.Context) error {
+		panic("intentional panic")
+	})
+
+	// 요청 수행 (Recover 미들웨어가 있으므로 테스트 프로세스는 죽지 않음)
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// 응답 검증 (500 Internal Server Error)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	// 로그 검증
+	// "status": 500 이 로그에 포함되어야 함
+	assert.Contains(t, buf.String(), `"status":500`, "Panic 발생 시 Access Log에는 500 Status가 기록되어야 합니다")
+	assert.Contains(t, buf.String(), "intentional panic", "Panic 메시지가 어떤 형태로든 기록되어야 합니다 (PanicRecovery 로그)")
 }
