@@ -93,6 +93,17 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 		go func(handler notifier.NotifierHandler) {
 			defer s.notifiersStopWG.Done()
+
+			// 개별 Notifier의 Panic이 서비스 전체로 전파되지 않도록 격리
+			defer func() {
+				if r := recover(); r != nil {
+					applog.WithComponentAndFields("notification.service", applog.Fields{
+						"notifier_id": handler.ID(),
+						"panic":       r,
+					}).Error("Notifier 실행 중 치명적인 오류(Panic)가 발생하여 복구되었습니다")
+				}
+			}()
+
 			handler.Run(serviceStopCtx)
 		}(h)
 

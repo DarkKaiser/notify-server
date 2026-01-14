@@ -89,6 +89,14 @@ func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chat
 				continue
 			}
 
+			// TaskID나 CommandID가 비어있으면 유효하지 않은 명령어가 생성되므로 에러 처리
+			if t.ID == "" || c.ID == "" {
+				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
+					"텔레그램 명령어 생성 실패: TaskID 또는 CommandID는 비어있을 수 없습니다. (Task:'%s', Command:'%s')",
+					t.ID, c.ID,
+				))
+			}
+
 			// 명령어 문자열 생성: taskID와 commandID를 SnakeCase로 변환하여 조합 (예: myTask, run -> my_task_run)
 			command := fmt.Sprintf("%s_%s", strcase.ToSnake(t.ID), strcase.ToSnake(c.ID))
 
