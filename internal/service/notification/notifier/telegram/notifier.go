@@ -186,7 +186,13 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 						}).Error("알림 메시지 발송 중 패닉 발생 (Recovered)")
 					}
 				}()
-				n.handleNotifyRequest(ctx, notifyRequest)
+
+				// 메시지 전송 시 독립적인 컨텍스트 사용 (Graceful Shutdown 시 In-Flight 메시지 유실 방지)
+				// 메인 ctx가 취소되더라도, 이미 꺼낸 메시지는 끝까지 전송을 시도해야 합니다.
+				sendCtx, cancel := context.WithTimeout(context.Background(), constants.DefaultNotifyTimeout)
+				defer cancel()
+
+				n.handleNotifyRequest(sendCtx, notifyRequest)
 			}()
 
 			// 서비스 종료 시그널 수신
