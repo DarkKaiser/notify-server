@@ -41,7 +41,7 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor task.Exec
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
-			}).Error("봇 명령어 처리 중 패닉 발생 (Recovered)")
+			}).Error(constants.LogMsgTelegramCommandPanicRecovered)
 		}
 	}()
 

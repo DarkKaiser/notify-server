@@ -195,7 +195,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
-			}).Error("runSender 루프가 치명적인 패닉으로 종료되었습니다")
+			}).Error(constants.LogMsgTelegramSenderPanicRecovered)
 		}
 	}()
 
@@ -214,7 +214,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 							"notifier_id": n.ID(),
 							"panic":       r,
-						}).Error("알림 메시지 발송 중 패닉 발생 (Recovered)")
+						}).Error(constants.LogMsgTelegramNotifyPanicRecovered)
 					}
 				}()
 
@@ -267,7 +267,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 								applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 									"notifier_id": n.ID(),
 									"panic":       r,
-								}).Error("Shutdown Drain 중 패닉 발생 (Recovered)")
+								}).Error(constants.LogMsgTelegramDrainPanicRecovered)
 							}
 						}()
 						n.handleNotifyRequest(drainCtx, notifyRequest)

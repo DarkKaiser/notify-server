@@ -68,7 +68,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 			applog.WithComponentAndFields(constants.ComponentNotifier, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
-			}).Error("알림 전송 요청 중 치명적인 오류(Panic)가 발생하여 복구되었습니다")
+			}).Error(constants.LogMsgNotifierPanicRecovered)
 			succeeded = false
 		}
 	}()

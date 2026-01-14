@@ -111,7 +111,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 					applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 						"notifier_id": handler.ID(),
 						"panic":       r,
-					}).Error("Notifier 실행 중 치명적인 오류(Panic)가 발생하여 복구되었습니다")
+					}).Error(constants.LogMsgNotificationServicePanicRecovered)
 				}
 			}()
 
