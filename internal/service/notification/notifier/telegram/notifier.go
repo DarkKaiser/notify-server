@@ -111,7 +111,15 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 	for {
 		select {
 		// 1. 텔레그램 봇 서버로부터 새로운 메시지 수신
-		case update := <-updateC:
+		case update, ok := <-updateC:
+			if !ok {
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"chat_id":     n.chatID,
+				}).Error("텔레그램 업데이트 채널이 닫혔습니다. 수신 루프를 종료합니다.")
+				return
+			}
+
 			// 메시지가 없는 업데이트는 무시
 			if update.Message == nil {
 				continue

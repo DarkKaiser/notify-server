@@ -373,10 +373,14 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 
 		// 4xx 에러(Client Error)인 경우 재시도해도 실패할 것이 확실하므로 중단
 		var errCode int
+		var retryAfter int
+
 		if apiErr, ok := err.(tgbotapi.Error); ok {
 			errCode = apiErr.Code
+			retryAfter = apiErr.ResponseParameters.RetryAfter
 		} else if apiErrPtr, ok := err.(*tgbotapi.Error); ok {
 			errCode = apiErrPtr.Code
+			retryAfter = apiErrPtr.ResponseParameters.RetryAfter
 		}
 
 		if errCode >= 400 && errCode < 500 {
@@ -393,13 +397,25 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 				}).Error("치명적인 API 오류 발생, 재시도 중단")
 				return
 			}
+
+			if retryAfter > 0 {
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"retry_after": retryAfter,
+				}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
+			}
+		}
+
+		waitDuration := n.retryDelay
+		if retryAfter > 0 {
+			waitDuration = time.Duration(retryAfter) * time.Second
 		}
 
 		// 안전한 대기: 컨텍스트 취소 시 즉시 반환
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(n.retryDelay):
+		case <-time.After(waitDuration):
 			// 재시도 대기 완료, 다음 루프 진행
 		}
 	}
