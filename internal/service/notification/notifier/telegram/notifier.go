@@ -179,6 +179,17 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 
 // runSender 알림 발송 요청을 처리하는 작업 루프 (Worker)
 func (n *telegramNotifier) runSender(ctx context.Context) {
+	// Goroutine 최상위 Panic Recovery
+	// 루프 자체에서 예기치 않은 패닉이 발생해도 로그를 남기고 종료하여, 문제 원인을 파악할 수 있게 합니다.
+	defer func() {
+		if r := recover(); r != nil {
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				"notifier_id": n.ID(),
+				"panic":       r,
+			}).Error("runSender 루프가 치명적인 패닉으로 종료되었습니다")
+		}
+	}()
+
 	for {
 		select {
 		// 내부 시스템으로부터 발송할 알림 요청 수신

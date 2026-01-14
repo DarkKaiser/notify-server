@@ -14,7 +14,8 @@ const (
 	DefaultRateBurst = 5
 
 	// DefaultHTTPClientTimeout 텔레그램 API 클라이언트의 HTTP 요청 타임아웃 기본값
-	DefaultHTTPClientTimeout = 30 * time.Second
+	// Long Polling 타임아웃(60s)보다 넉넉하게 설정하여, 클라이언트가 먼저 연결을 끊는 문제를 방지합니다.
+	DefaultHTTPClientTimeout = 70 * time.Second
 
 	// DefaultNotifyTimeout 알림 발송 요청 시 대기열이 가득 찼을 때 대기하는 최대 시간 (Backpressure)
 	DefaultNotifyTimeout = 5 * time.Second

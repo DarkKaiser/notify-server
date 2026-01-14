@@ -8,6 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -123,4 +124,81 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 			require.Equal(t, tt.expectedCalls, callCount, "Call count mismatch")
 		})
 	}
+}
+
+// TestTelegramNotifier_PanicRecovery tests that the notifier recovers from panics
+// and continues to process subsequent messages.
+// TestTelegramNotifier_PanicRecovery tests that the notifier recovers from panics
+// and continues to process subsequent messages.
+// TestTelegramNotifier_PanicRecovery tests that the notifier recovers from panics
+// and continues to process subsequent messages.
+func TestTelegramNotifier_PanicRecovery(t *testing.T) {
+	// Manual Setup to avoid conflicting expectations from setupTelegramTest
+	appConfig := &config.AppConfig{}
+	mockBot := &MockTelegramBot{}
+	mockExecutor := &taskmocks.MockExecutor{}
+
+	// Create Notifier manually
+	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
+	require.NoError(t, err)
+	notifier := notifierHandler.(*telegramNotifier)
+	notifier.retryDelay = 1 * time.Millisecond
+	notifier.limiter = rate.NewLimiter(rate.Inf, 0)
+
+	// Setup Expectations
+	initDone := make(chan struct{})
+	mockBot.On("GetSelf").Run(func(args mock.Arguments) {
+		close(initDone)
+	}).Return(tgbotapi.User{UserName: testTelegramBotUsername}).Once()
+
+	// Return a valid channel so Run doesn't block on nil channel if that's what happens
+	updatesCh := make(chan tgbotapi.Update, 1)
+	mockBot.On("GetUpdatesChan", mock.Anything).Return(tgbotapi.UpdatesChannel(updatesCh)).Once()
+
+	// StopReceivingUpdates will be called when context is cancelled
+	mockBot.On("StopReceivingUpdates").Return().Maybe()
+
+	// Run notifier
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	runTelegramNotifier(ctx, notifier, &wg)
+
+	// Wait for Run to initialize and call GetSelf
+	select {
+	case <-initDone:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for GetSelf")
+	}
+
+	// Give a tiny bit more time for Run to enter the select loop after GetSelf returns
+	time.Sleep(10 * time.Millisecond)
+
+	// 1. Trigger Panic
+	// Temporarily set botAPI to nil to cause panic in sendSingleMessage
+	originalBotAPI := notifier.botAPI
+	notifier.botAPI = nil
+
+	// Act 1: Send message that will cause panic
+	notifier.Notify(task.NewTaskContext(), "Panic Message")
+
+	// Wait a bit to ensure panic handling
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. Recovery & Resume
+	// Restore botAPI
+	notifier.botAPI = originalBotAPI
+
+	// Setup Mock for success
+	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
+
+	// Act 2: Send normal message
+	success := notifier.Notify(task.NewTaskContext(), "Normal Message")
+	require.True(t, success, "Notify should succeed")
+
+	// Wait for processing
+	time.Sleep(100 * time.Millisecond)
+
+	mockBot.AssertExpectations(t)
 }
