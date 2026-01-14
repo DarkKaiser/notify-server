@@ -25,12 +25,12 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 		waitDuration  time.Duration
 	}{
 		{
-			name: "400 Bad Request - Should NOT Retry",
+			name: "400 Bad Request - Should Retry (Fallback to PlainText)",
 			mockError: &tgbotapi.Error{
 				Code:    400,
 				Message: "Bad Request",
 			},
-			expectedCalls: 1,
+			expectedCalls: 2, // 1st: HTML (fail), 2nd: PlainText (fail) -> Stop
 			waitDuration:  500 * time.Millisecond,
 		},
 		{

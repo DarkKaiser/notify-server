@@ -325,8 +325,16 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 // sendSingleMessage 단일 메시지 전송
 // 컨텍스트 취소(종료 시그널)를 감지하면 즉시 중단합니다.
 func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) {
+	n.sendSingleMessageInternal(ctx, message, true)
+}
+
+func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, message string, useHTML bool) {
 	messageConfig := tgbotapi.NewMessage(n.chatID, message)
-	messageConfig.ParseMode = tgbotapi.ModeHTML
+	if useHTML {
+		messageConfig.ParseMode = tgbotapi.ModeHTML
+	} else {
+		messageConfig.ParseMode = "" // Plain Text
+	}
 
 	// 텔레그램 API Rate Limit 준수를 위해 발송 속도를 제어합니다.
 	// 지정된 속도(Limit)를 초과하면 토큰이 확보될 때까지 대기합니다.
@@ -352,12 +360,14 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 		default:
 		}
 
-		if _, err = n.botAPI.Send(messageConfig); err == nil {
+		_, err = n.botAPI.Send(messageConfig)
+		if err == nil {
 			// 성공 시 루프 탈출
 			applog.WithComponentAndFields("notification.telegram", applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"attempt":     i + 1,
+				"mode":        parseModeToString(messageConfig.ParseMode),
 			}).Info("알림메시지 발송 성공")
 
 			return
@@ -369,9 +379,10 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 			"chat_id":     n.chatID,
 			"attempt":     i + 1,
 			"error":       err,
-		}).Warn("알림메시지 발송 실패, 재시도 대기중...")
+			"mode":        parseModeToString(messageConfig.ParseMode),
+		}).Warn("알림메시지 발송 실패")
 
-		// 4xx 에러(Client Error)인 경우 재시도해도 실패할 것이 확실하므로 중단
+		// 4xx 에러(Client Error)인 경우
 		var errCode int
 		var retryAfter int
 
@@ -384,25 +395,36 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 		}
 
 		if errCode >= 400 && errCode < 500 {
-			// Rate Limit (429) 에러는 라이브러리/tgbotapi가 처리해주지 않는 경우 재시도 해야하나,
-			// tgbotapi Error 구조체에는 RetryAfter가 포함되어 있음.
-			// 429 Too Many Requests는 400번대지만 일시적 오류일 수 있음.
-			// 그러나 위에서 n.limiter를 사용하므로 429 발생 가능성은 낮음.
-			// 일반적인 400(Bad Request), 401(Unauthorized) 등은 즉시 중단.
-			if errCode != 429 {
+			// 429 Too Many Requests는 재시도 대상
+			if errCode == 429 {
+				if retryAfter > 0 {
+					applog.WithComponentAndFields("notification.telegram", applog.Fields{
+						"notifier_id": n.ID(),
+						"retry_after": retryAfter,
+					}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
+				}
+				// 429일 경우 아래의 재시도 로직으로 계속 진행
+			} else {
+				// 429가 아닌 400번대 에러 (예: Bad Request)
+				// HTML 모드였고, 파싱 에러(Bad Request)로 의심된다면 Plain Text로 재시도
+				// 단, 한 번만 Fallback 시도 (재귀 호출 방지)
+				if useHTML && errCode == 400 {
+					applog.WithComponentAndFields("notification.telegram", applog.Fields{
+						"notifier_id": n.ID(),
+						"error":       err,
+					}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
+
+					n.sendSingleMessageInternal(ctx, message, false)
+					return // Fallback 호출 후 현재 루프 종료
+				}
+
+				// 그 외 400번대 에러이거나 이미 Plain Text였다면 중단
 				applog.WithComponentAndFields("notification.telegram", applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       err,
 					"code":        errCode,
 				}).Error("치명적인 API 오류 발생, 재시도 중단")
 				return
-			}
-
-			if retryAfter > 0 {
-				applog.WithComponentAndFields("notification.telegram", applog.Fields{
-					"notifier_id": n.ID(),
-					"retry_after": retryAfter,
-				}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
 			}
 		}
 
@@ -427,6 +449,13 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 		"error":       err,
 		"max_retries": maxRetries,
 	}).Error("알림메시지 발송 최종 실패")
+}
+
+func parseModeToString(mode string) string {
+	if mode == tgbotapi.ModeHTML {
+		return "HTML"
+	}
+	return "PlainText"
 }
 
 // safeSplit UTF-8 문자열을 지정된 바이트 길이(limit) 내에서 안전하게 자릅니다.

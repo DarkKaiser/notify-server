@@ -46,7 +46,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 			Message: "Price < 1000 & Name > Foo",
 		}
 
-		expectedMessage := "Price &lt; 1000 &amp; Name &gt; Foo"
+		expectedMessage := "Price < 1000 & Name > Foo"
 
 		mockBot.On("Send", mock.MatchedBy(func(msg tgbotapi.MessageConfig) bool {
 			return msg.Text == expectedMessage

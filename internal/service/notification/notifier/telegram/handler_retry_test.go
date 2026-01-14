@@ -64,9 +64,10 @@ func TestTelegramNotifier_RetryAfter_Compliance(t *testing.T) {
 	require.GreaterOrEqual(t, elapsed.Seconds(), float64(retryAfterSeconds), "Retry-After 시간만큼 대기하지 않았습니다.")
 }
 
-// TestTelegramNotifier_400_NoRetry
-// 400 Bad Request 에러 발생 시 재시도하지 않고 즉시 중단되는지 검증
-func TestTelegramNotifier_400_NoRetry(t *testing.T) {
+// TestTelegramNotifier_400_FallbackRetry
+// 400 Bad Request 에러 발생 시, HTML 파싱 에러로 간주하고 Plain Text로 1회 재시도(Fallback)하는지 검증
+// Fallback도 실패하면 즉시 중단되어야 함 (무한 루프 방지)
+func TestTelegramNotifier_400_FallbackRetry(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	n := &telegramNotifier{
 		botAPI:     mockBot,
@@ -80,17 +81,25 @@ func TestTelegramNotifier_400_NoRetry(t *testing.T) {
 		Message: "Bad Request",
 	}
 
-	// 한 번만 호출되고 끝나야 함
-	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, apiErr).Once()
+	// 1. 첫 번째 호출 (HTML 모드) -> 400 에러
+	mockBot.On("Send", mock.MatchedBy(func(msg tgbotapi.MessageConfig) bool {
+		return msg.ParseMode == tgbotapi.ModeHTML
+	})).Return(tgbotapi.Message{}, apiErr).Once()
+
+	// 2. 두 번째 호출 (Fallback: Plain Text 모드) -> 여전히 400 에러
+	mockBot.On("Send", mock.MatchedBy(func(msg tgbotapi.MessageConfig) bool {
+		return msg.ParseMode == ""
+	})).Return(tgbotapi.Message{}, apiErr).Once()
 
 	start := time.Now()
+	// Default uses HTML=true
 	n.sendSingleMessage(ctx, "Test Message")
 	elapsed := time.Since(start)
 
 	mockBot.AssertExpectations(t)
 
-	// 재시도 대기(100ms) 없이 즉시 리턴해야 함
-	require.Less(t, elapsed.Milliseconds(), int64(50), "400 에러임에도 재시도 대기 시간이 소요되었습니다.")
+	// 재시도 대기(100ms) 없이 즉시 리턴해야 함 (Fallback은 즉시 실행되므로)
+	require.Less(t, elapsed.Milliseconds(), int64(50), "Fallback 로직은 대기 시간 없이 즉시 실행되어야 합니다.")
 }
 
 var ctx = context.Background()
