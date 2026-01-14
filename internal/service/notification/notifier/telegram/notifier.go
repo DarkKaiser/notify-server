@@ -144,13 +144,17 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			if !ok {
 				return // 채널이 닫히면 종료
 			}
-			n.handleNotifyRequest(notifyRequest)
+			n.handleNotifyRequest(ctx, notifyRequest)
 
 			// 서비스 종료 시그널 수신
 		case <-ctx.Done():
 			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
+			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
+			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
+			// 하지만 여기서는 종료 과정이므로 간단히 Background Context를 사용하여 최대한 발송을 시도합니다.
+			drainCtx := context.Background()
 			for notifyRequest := range n.RequestC {
-				n.handleNotifyRequest(notifyRequest)
+				n.handleNotifyRequest(drainCtx, notifyRequest)
 			}
 			return
 		}

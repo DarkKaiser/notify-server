@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
@@ -51,7 +52,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 			return msg.Text == expectedMessage
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		n.handleNotifyRequest(req)
+		n.handleNotifyRequest(context.Background(), req)
 
 		mockBot.AssertExpectations(t)
 	})
@@ -75,7 +76,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 			return assert.Contains(t, msg.Text, expectedPartial)
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		n.handleNotifyRequest(req)
+		n.handleNotifyRequest(context.Background(), req)
 
 		mockBot.AssertExpectations(t)
 	})

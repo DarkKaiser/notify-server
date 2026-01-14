@@ -31,7 +31,7 @@ const (
 func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbotapi.Message) {
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
-		n.sendUnknownCommandMessage(message.Text)
+		n.sendUnknownCommandMessage(context.TODO(), message.Text)
 		return
 	}
 
@@ -39,7 +39,7 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 
 	// '/help' 명령어 처리
 	if command == telegramBotCommandHelp {
-		n.sendHelpCommandMessage()
+		n.sendHelpCommandMessage(context.TODO())
 		return
 	}
 
@@ -56,7 +56,7 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 	}
 
 	// 매칭되는 명령어가 없는 경우
-	n.sendUnknownCommandMessage(message.Text)
+	n.sendUnknownCommandMessage(context.TODO(), message.Text)
 }
 
 // findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
@@ -81,23 +81,23 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 		RunBy:         task.RunByUser,
 	}); err != nil {
 		// 실행 실패 알림 발송
-		n.RequestC <- &notifier.NotifyRequest{
-			TaskCtx: task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError(),
-			Message: msgTaskExecutionFailed,
-		}
+		// Receiver Loop Hang 방지: 대기열이 가득 차면 실패 알림은 과감히 생략(Drop) 하거나, 별도 고루틴으로 처리
+		// 여기서는 Notify 메서드(Non-blocking/Timeout)를 사용하여 안전하게 처리합니다.
+		taskCtx := task.NewTaskContext().WithTask(botCommand.taskID, botCommand.commandID).WithError()
+		n.Notify(taskCtx, msgTaskExecutionFailed)
 	}
 }
 
 // sendUnknownCommandMessage 알 수 없는 명령어 메시지를 전송합니다.
-func (n *telegramNotifier) sendUnknownCommandMessage(input string) {
+func (n *telegramNotifier) sendUnknownCommandMessage(ctx context.Context, input string) {
 	// 텔레그램은 HTML 모드로 동작하므로, 사용자 입력값에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
 	escapedInput := html.EscapeString(input)
 	message := fmt.Sprintf(msgUnknownCommand, escapedInput, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
-	n.sendMessage(message)
+	n.sendMessage(ctx, message)
 }
 
 // sendHelpCommandMessage 사용 가능한 명령어 목록을 도움말 메시지로 전송합니다.
-func (n *telegramNotifier) sendHelpCommandMessage() {
+func (n *telegramNotifier) sendHelpCommandMessage(ctx context.Context) {
 	message := "입력 가능한 명령어는 아래와 같습니다:\n\n"
 	for i, botCommand := range n.botCommands {
 		if i != 0 {
@@ -105,7 +105,7 @@ func (n *telegramNotifier) sendHelpCommandMessage() {
 		}
 		message += fmt.Sprintf("%s%s\n%s", telegramBotCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
 	}
-	n.sendMessage(message)
+	n.sendMessage(ctx, message)
 }
 
 // handleCancelCommand 작업 취소 요청 처리
@@ -118,21 +118,18 @@ func (n *telegramNotifier) handleCancelCommand(executor task.Executor, command s
 		instanceID := commandSplit[1]
 		// Executor에 취소 요청
 		if err := executor.CancelTask(task.InstanceID(instanceID)); err != nil {
-			// 취소 실패 시 알림
-			n.RequestC <- &notifier.NotifyRequest{
-				TaskCtx: task.NewTaskContext().WithError(),
-				Message: fmt.Sprintf(msgTaskCancelFailed, instanceID),
-			}
+			// 취소 실패 시 알림 (Receiver Hang 방지: Notify 사용)
+			n.Notify(task.NewTaskContext().WithError(), fmt.Sprintf(msgTaskCancelFailed, instanceID))
 		}
 	} else {
 		escapedCommand := html.EscapeString(command)
 		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedCommand, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
-		n.sendMessage(message)
+		n.sendMessage(context.TODO(), message)
 	}
 }
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
-func (n *telegramNotifier) handleNotifyRequest(req *notifier.NotifyRequest) {
+func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifier.NotifyRequest) {
 	// 텔레그램은 HTML 모드로 동작하므로, 메시지 내용에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
 	message := html.EscapeString(req.Message)
 
@@ -142,7 +139,7 @@ func (n *telegramNotifier) handleNotifyRequest(req *notifier.NotifyRequest) {
 	}
 
 	// 최종 메시지 전송
-	n.sendMessage(message)
+	n.sendMessage(ctx, message)
 }
 
 // enrichMessageWithContext TaskContext 정보를 메시지에 추가 (제목, 시간, 에러 등)
@@ -238,10 +235,11 @@ func formatElapsedTime(seconds int64) string {
 
 // sendMessage 텔레그램 메시지 전송
 // API 제한(4096자)을 초과하는 메시지는 자동으로 분할하여 전송합니다.
-func (n *telegramNotifier) sendMessage(message string) {
+// 컨텍스트가 취소되면 전송을 중단하고 즉시 반환합니다.
+func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 	// 메시지 길이가 제한 이내라면 한 번에 전송
 	if len(message) <= telegramMessageMaxLength {
-		n.sendSingleMessage(message)
+		n.sendSingleMessage(ctx, message)
 		return
 	}
 
@@ -249,6 +247,11 @@ func (n *telegramNotifier) sendMessage(message string) {
 	var messageChunk string
 	lines := strings.SplitSeq(message, "\n")
 	for line := range lines {
+		// 컨텍스트 취소 확인 (긴 루프 중간에 탈출)
+		if ctx.Err() != nil {
+			return
+		}
+
 		neededSpace := len(line)
 		if len(messageChunk) > 0 {
 			neededSpace += 1 // 줄바꿈 문자 공간
@@ -258,7 +261,7 @@ func (n *telegramNotifier) sendMessage(message string) {
 		if len(messageChunk)+neededSpace > telegramMessageMaxLength {
 			// 현재까지 모은 청크가 있다면 전송
 			if len(messageChunk) > 0 {
-				n.sendSingleMessage(messageChunk)
+				n.sendSingleMessage(ctx, messageChunk)
 				messageChunk = ""
 			}
 
@@ -267,8 +270,12 @@ func (n *telegramNotifier) sendMessage(message string) {
 			if len(line) > telegramMessageMaxLength {
 				currentLine := line
 				for len(currentLine) > telegramMessageMaxLength {
+					if ctx.Err() != nil {
+						return
+					}
+
 					chunk, remainder := safeSplit(currentLine, telegramMessageMaxLength)
-					n.sendSingleMessage(chunk)
+					n.sendSingleMessage(ctx, chunk)
 					currentLine = remainder
 				}
 				// 자르고 남은 뒷부분을 새로운 청크의 시작으로 설정
@@ -288,25 +295,40 @@ func (n *telegramNotifier) sendMessage(message string) {
 
 	// 마지막 남은 청크 전송
 	if len(messageChunk) > 0 {
-		n.sendSingleMessage(messageChunk)
+		n.sendSingleMessage(ctx, messageChunk)
 	}
 }
 
 // sendSingleMessage 단일 메시지 전송
-func (n *telegramNotifier) sendSingleMessage(message string) {
+// 컨텍스트 취소(종료 시그널)를 감지하면 즉시 중단합니다.
+func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) {
 	messageConfig := tgbotapi.NewMessage(n.chatID, message)
 	messageConfig.ParseMode = tgbotapi.ModeHTML
 
 	// 텔레그램 API Rate Limit 준수를 위해 발송 속도를 제어합니다.
 	// 지정된 속도(Limit)를 초과하면 토큰이 확보될 때까지 대기합니다.
+	// 컨텍스트가 취소되면 Wait는 즉시 에러를 반환합니다.
 	if n.limiter != nil {
-		_ = n.limiter.Wait(context.Background())
+		if err := n.limiter.Wait(ctx); err != nil {
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				"notifier_id": n.ID(),
+				"error":       err,
+			}).Debug("RateLimiter 대기 중 컨텍스트 취소됨 (전송 중단)")
+			return
+		}
 	}
 
 	const maxRetries = 3
 
 	var err error
 	for i := 0; i < maxRetries; i++ {
+		// 전송 전 컨텍스트 확인
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		if _, err = n.botAPI.Send(messageConfig); err == nil {
 			// 성공 시 루프 탈출
 			applog.WithComponentAndFields("notification.telegram", applog.Fields{
@@ -326,7 +348,13 @@ func (n *telegramNotifier) sendSingleMessage(message string) {
 			"error":       err,
 		}).Warn("알림메시지 발송 실패, 재시도 대기중...")
 
-		time.Sleep(n.retryDelay)
+		// 안전한 대기: 컨텍스트 취소 시 즉시 반환
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(n.retryDelay):
+			// 재시도 대기 완료, 다음 루프 진행
+		}
 	}
 
 	// 모든 재시도 실패 시 에러 로그
