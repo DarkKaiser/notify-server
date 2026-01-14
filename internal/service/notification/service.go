@@ -80,6 +80,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 		return apperrors.Wrap(err, apperrors.Internal, "Notifier 초기화 중 에러가 발생했습니다")
 	}
 
+	// 중복 ID 검사
+	seenIDs := make(map[types.NotifierID]bool)
+	for _, h := range notifiers {
+		if seenIDs[h.ID()] {
+			defer serviceStopWG.Done()
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 Notifier ID('%s')가 감지되었습니다. 설정을 확인해주세요.", h.ID()))
+		}
+		seenIDs[h.ID()] = true
+	}
+
 	defaultNotifierID := types.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
 	for _, h := range notifiers {
@@ -264,7 +274,14 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 
 	if targetNotifier != nil {
 		if ok := targetNotifier.Notify(taskCtx, message); !ok {
-			return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+			// Notifier가 이미 종료되었는지 확인
+			select {
+			case <-targetNotifier.Done():
+				return notifier.ErrServiceStopped
+			default:
+				// 종료되지 않았다면 큐가 가득 찬 것으로 간주
+				return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+			}
 		}
 		return nil
 	}

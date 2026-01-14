@@ -156,6 +156,7 @@ func (m *mockNotifierHandler) Notify(ctx task.TaskContext, msg string) bool {
 	m.calls = append(m.calls, msg)
 	return true
 }
+func (m *mockNotifierHandler) Done() <-chan struct{} { return nil }
 
 func (m *mockNotifierHandler) GetCalls() []string {
 	m.mu.Lock()

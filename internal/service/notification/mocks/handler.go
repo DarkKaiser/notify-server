@@ -17,6 +17,7 @@ type MockNotifierHandler struct {
 	SupportsHTMLValue bool
 	NotifyCalls       []MockNotifyCall
 	Mu                sync.Mutex // NotifyCalls 동시성 보호
+	DoneChannel       chan struct{}
 }
 
 // MockNotifyCall은 Notify 메서드 호출 기록을 저장합니다.
@@ -50,4 +51,13 @@ func (m *MockNotifierHandler) Run(notificationStopCtx context.Context) {
 // SupportsHTML은 HTML 형식 메시지 지원 여부를 반환합니다.
 func (m *MockNotifierHandler) SupportsHTML() bool {
 	return m.SupportsHTMLValue
+}
+
+// Done은 Notifier 종료 채널을 반환합니다.
+func (m *MockNotifierHandler) Done() <-chan struct{} {
+	if m.DoneChannel == nil {
+		// 기본적으로 닫혀있지 않은(종료되지 않은) 채널 반환
+		m.DoneChannel = make(chan struct{})
+	}
+	return m.DoneChannel
 }
