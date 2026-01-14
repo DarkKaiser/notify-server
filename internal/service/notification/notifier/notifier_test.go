@@ -1,4 +1,4 @@
-package notifier
+package notifier_test
 
 import (
 	"strings"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ const (
 // =============================================================================
 
 // assertChannelReceivesData verifies that channel receives expected data.
-func assertChannelReceivesData(t *testing.T, ch chan *NotifyRequest, expectedMsg string, expectedCtx task.TaskContext) {
+func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, expectedMsg string, expectedCtx task.TaskContext) {
 	t.Helper()
 	select {
 	case data := <-ch:
@@ -59,9 +60,9 @@ func TestNewBaseNotifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := NewBaseNotifier(NotifierID(tt.id), tt.supportsHTML, tt.bufferSize)
+			n := notifier.NewBaseNotifier(notifier.NotifierID(tt.id), tt.supportsHTML, tt.bufferSize)
 
-			assert.Equal(t, NotifierID(tt.id), n.ID())
+			assert.Equal(t, notifier.NotifierID(tt.id), n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			require.NotNil(t, n.RequestC, "Request channel should be created")
 			assert.Equal(t, tt.expectedBufferCap, cap(n.RequestC))
@@ -77,7 +78,7 @@ func TestNewBaseNotifier(t *testing.T) {
 func TestNotify(t *testing.T) {
 	tests := []struct {
 		name       string
-		Notifier   BaseNotifier
+		Notifier   notifier.BaseNotifier
 		message    string
 		taskCtx    task.TaskContext
 		expectData bool
@@ -85,7 +86,7 @@ func TestNotify(t *testing.T) {
 	}{
 		{
 			name:       "Success: With TaskContext",
-			Notifier:   NewBaseNotifier("test", true, testNotifierBufferSize),
+			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize),
 			message:    testNotifierMessage,
 			taskCtx:    task.NewTaskContext(),
 			expectData: true,
@@ -93,7 +94,7 @@ func TestNotify(t *testing.T) {
 		},
 		{
 			name:       "Success: nil TaskContext",
-			Notifier:   NewBaseNotifier("test", true, testNotifierBufferSize),
+			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize),
 			message:    testNotifierMessage,
 			taskCtx:    nil,
 			expectData: true,
@@ -101,7 +102,7 @@ func TestNotify(t *testing.T) {
 		},
 		{
 			name:       "Success: Empty Message",
-			Notifier:   NewBaseNotifier("test", true, testNotifierBufferSize),
+			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize),
 			message:    "",
 			taskCtx:    task.NewTaskContext(),
 			expectData: true,
@@ -109,7 +110,7 @@ func TestNotify(t *testing.T) {
 		},
 		{
 			name:       "Success: Long Message (10KB)",
-			Notifier:   NewBaseNotifier("test", true, testNotifierBufferSize),
+			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize),
 			message:    strings.Repeat("a", 10000),
 			taskCtx:    task.NewTaskContext(),
 			expectData: true,
@@ -117,8 +118,8 @@ func TestNotify(t *testing.T) {
 		},
 		{
 			name: "Failure: Closed Channel (nil check)",
-			Notifier: func() BaseNotifier {
-				n := NewBaseNotifier("test", true, testNotifierBufferSize)
+			Notifier: func() notifier.BaseNotifier {
+				n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize)
 				n.Close()
 				return n
 			}(),
@@ -131,7 +132,7 @@ func TestNotify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ch chan *NotifyRequest
+			var ch chan *notifier.NotifyRequest
 			if tt.Notifier.RequestC != nil {
 				ch = tt.Notifier.RequestC
 			}
@@ -153,7 +154,7 @@ func TestNotify(t *testing.T) {
 
 // TestNotify_BufferFull verifies non-blocking behavior when buffer is full.
 func TestNotify_BufferFull(t *testing.T) {
-	n := NewBaseNotifier("test", true, 2)
+	n := notifier.NewBaseNotifier("test", true, 2)
 
 	assert.True(t, n.Notify(task.NewTaskContext(), "msg1"))
 	assert.True(t, n.Notify(task.NewTaskContext(), "msg2"))
@@ -174,7 +175,7 @@ func TestNotify_BufferFull(t *testing.T) {
 
 // TestNotify_Concurrency verifies concurrency safety.
 func TestNotify_Concurrency(t *testing.T) {
-	n := NewBaseNotifier("test", true, 100)
+	n := notifier.NewBaseNotifier("test", true, 100)
 
 	concurrency := 50
 	wg := sync.WaitGroup{}
@@ -205,7 +206,7 @@ func TestNotify_Concurrency(t *testing.T) {
 
 // TestClose_Idempotent verifies Close is idempotent.
 func TestClose_Idempotent(t *testing.T) {
-	n := NewBaseNotifier("test", true, testNotifierBufferSize)
+	n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize)
 
 	n.Close()
 	assert.Nil(t, n.RequestC, "Request channel should be nil after close")
@@ -217,7 +218,7 @@ func TestClose_Idempotent(t *testing.T) {
 
 // TestClose_AfterNotify verifies behaviors after Close.
 func TestClose_AfterNotify(t *testing.T) {
-	n := NewBaseNotifier("test", true, testNotifierBufferSize)
+	n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize)
 
 	require.True(t, n.Notify(task.NewTaskContext(), "msg1"))
 	require.True(t, n.Notify(task.NewTaskContext(), "msg2"))

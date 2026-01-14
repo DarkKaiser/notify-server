@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 )
@@ -48,27 +47,4 @@ func (m *MockTelegramBot) StopReceivingUpdates() {
 func (m *MockTelegramBot) GetSelf() tgbotapi.User {
 	args := m.Called()
 	return args.Get(0).(tgbotapi.User)
-}
-
-// =============================================================================
-// Task Executor Mock
-// =============================================================================
-
-// MockExecutor는 task.Executor 인터페이스의 Mock 구현체입니다.
-//
-// 이 Mock은 Task 실행 및 취소 동작을 테스트하는 데 사용됩니다.
-type MockExecutor struct {
-	mock.Mock
-}
-
-// SubmitTask는 Task를 제출합니다.
-func (m *MockExecutor) SubmitTask(req *task.SubmitRequest) error {
-	args := m.Called(req)
-	return args.Error(0)
-}
-
-// CancelTask는 실행 중인 Task를 취소합니다.
-func (m *MockExecutor) CancelTask(instanceID task.InstanceID) error {
-	args := m.Called(instanceID)
-	return args.Error(0)
 }

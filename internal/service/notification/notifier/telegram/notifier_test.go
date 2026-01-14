@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
@@ -30,13 +31,13 @@ const (
 // =============================================================================
 
 // setupTelegramTest sets up common test objects.
-func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *MockExecutor) {
+func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *mocks.MockExecutor) {
 	t.Helper()
 
 	mockBot := &MockTelegramBot{
 		updatesChan: make(chan tgbotapi.Update, 1),
 	}
-	mockExecutor := &MockExecutor{}
+	mockExecutor := &mocks.MockExecutor{}
 
 	notifierHandler := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
 	notifier := notifierHandler.(*telegramNotifier)
@@ -107,7 +108,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 		name          string
 		commandText   string
 		setupMockBot  func(*MockTelegramBot, *sync.WaitGroup)
-		setupMockExec func(*MockExecutor, *sync.WaitGroup)
+		setupMockExec func(*mocks.MockExecutor, *sync.WaitGroup)
 	}{
 		{
 			name:        "Help Command",
@@ -125,7 +126,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 		{
 			name:        "Cancel Command",
 			commandText: "/cancel_1234",
-			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
+			setupMockExec: func(m *mocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("CancelTask", task.InstanceID("1234")).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -153,7 +154,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 		{
 			name:        "Task Command",
 			commandText: "/test_task_run",
-			setupMockExec: func(m *MockExecutor, wg *sync.WaitGroup) {
+			setupMockExec: func(m *mocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("SubmitTask", mock.MatchedBy(func(req *task.SubmitRequest) bool {
 					return req.TaskID == "test_task" &&

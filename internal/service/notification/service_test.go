@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +40,7 @@ type mockServiceOptions struct {
 }
 
 // setupMockService는 기본 설정으로 테스트용 Service와 Mock 객체를 생성합니다.
-func setupMockService() (*Service, *MockExecutor, *mockNotifierHandler) {
+func setupMockService() (*Service, *mocks.MockExecutor, *mocks.MockNotifierHandler) {
 	return setupMockServiceWithOptions(mockServiceOptions{
 		notifierID:   testNotifierID,
 		supportsHTML: true,
@@ -48,15 +49,15 @@ func setupMockService() (*Service, *MockExecutor, *mockNotifierHandler) {
 }
 
 // setupMockServiceWithOptions는 옵션을 받아 테스트용 Service와 Mock 객체를 생성합니다.
-func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *MockExecutor, *mockNotifierHandler) {
+func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *mocks.MockExecutor, *mocks.MockNotifierHandler) {
 	appConfig := &config.AppConfig{}
-	mockExecutor := &MockExecutor{}
-	mockNotifier := &mockNotifierHandler{
-		id:           opts.notifierID,
-		supportsHTML: opts.supportsHTML,
+	mockExecutor := &mocks.MockExecutor{}
+	mockNotifier := &mocks.MockNotifierHandler{
+		IDValue:           opts.notifierID,
+		SupportsHTMLValue: opts.supportsHTML,
 	}
 
-	mockFactory := &mockNotifierFactory{}
+	mockFactory := &mocks.MockNotifierFactory{}
 
 	service := NewService(appConfig, mockExecutor, mockFactory)
 	service.notifiers = []notifier.NotifierHandler{mockNotifier}
@@ -67,23 +68,23 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *MockExecut
 }
 
 // assertNotifyCalled는 mockNotifier가 정확히 한 번 호출되었고 메시지가 일치하는지 검증합니다.
-func assertNotifyCalled(t *testing.T, mock *mockNotifierHandler, expectedMsg string) {
+func assertNotifyCalled(t *testing.T, mock *mocks.MockNotifierHandler, expectedMsg string) {
 	t.Helper()
-	require.Len(t, mock.notifyCalls, 1, "Expected exactly one notify call")
-	assert.Equal(t, expectedMsg, mock.notifyCalls[0].message, "Message should match")
+	require.Len(t, mock.NotifyCalls, 1, "Expected exactly one notify call")
+	assert.Equal(t, expectedMsg, mock.NotifyCalls[0].Message, "Message should match")
 }
 
 // assertNotifyCalledWithContext는 mockNotifier가 호출되었고 TaskContext가 있는지 검증합니다.
-func assertNotifyCalledWithContext(t *testing.T, mock *mockNotifierHandler, expectedMsg string) {
+func assertNotifyCalledWithContext(t *testing.T, mock *mocks.MockNotifierHandler, expectedMsg string) {
 	t.Helper()
 	assertNotifyCalled(t, mock, expectedMsg)
-	assert.NotNil(t, mock.notifyCalls[0].taskCtx, "TaskContext should be present")
+	assert.NotNil(t, mock.NotifyCalls[0].TaskCtx, "TaskContext should be present")
 }
 
 // assertNotifyNotCalled는 mockNotifier가 호출되지 않았는지 검증합니다.
-func assertNotifyNotCalled(t *testing.T, mock *mockNotifierHandler) {
+func assertNotifyNotCalled(t *testing.T, mock *mocks.MockNotifierHandler) {
 	t.Helper()
-	assert.Empty(t, mock.notifyCalls, "Expected no notify calls")
+	assert.Empty(t, mock.NotifyCalls, "Expected no notify calls")
 }
 
 // =============================================================================
@@ -93,8 +94,8 @@ func assertNotifyNotCalled(t *testing.T, mock *mockNotifierHandler) {
 // TestNewService는 Service 생성을 검증합니다.
 func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	mockExecutor := &MockExecutor{}
-	mockFactory := &mockNotifierFactory{}
+	mockExecutor := &mocks.MockExecutor{}
+	mockFactory := &mocks.MockNotifierFactory{}
 	service := NewService(appConfig, mockExecutor, mockFactory)
 
 	assert.NotNil(t, service)
@@ -111,7 +112,7 @@ func TestNewService(t *testing.T) {
 
 // TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
 func TestSupportsHTML(t *testing.T) {
-	mockNotifier := &mockNotifierHandler{id: "test", supportsHTML: true}
+	mockNotifier := &mocks.MockNotifierHandler{IDValue: "test", SupportsHTMLValue: true}
 	service := &Service{notifiers: []notifier.NotifierHandler{mockNotifier}}
 
 	tests := []struct {
@@ -250,11 +251,11 @@ func TestNotifyWithTitle(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			require.Len(t, mockNotifier.notifyCalls, 1)
-			assert.Equal(t, tt.message, mockNotifier.notifyCalls[0].message)
+			require.Len(t, mockNotifier.NotifyCalls, 1)
+			assert.Equal(t, tt.message, mockNotifier.NotifyCalls[0].Message)
 
 			// TaskContext 검증
-			ctx := mockNotifier.notifyCalls[0].taskCtx
+			ctx := mockNotifier.NotifyCalls[0].TaskCtx
 			require.NotNil(t, ctx)
 			if tt.errorOccurred {
 				assert.True(t, ctx.IsErrorOccurred())
@@ -311,9 +312,9 @@ func TestNotifyDefault(t *testing.T) {
 			}
 
 			if tt.expectedDefCall {
-				require.NotEmpty(t, mockNotifier.notifyCalls)
-				lastCall := mockNotifier.notifyCalls[len(mockNotifier.notifyCalls)-1]
-				assert.Equal(t, tt.message, lastCall.message)
+				require.NotEmpty(t, mockNotifier.NotifyCalls)
+				lastCall := mockNotifier.NotifyCalls[len(mockNotifier.NotifyCalls)-1]
+				assert.Equal(t, tt.message, lastCall.Message)
 			} else {
 				assertNotifyNotCalled(t, mockNotifier)
 			}
@@ -355,8 +356,8 @@ func TestNotifyDefault_NilNotifier(t *testing.T) {
 
 // TestMultipleNotifiers는 여러 Notifier 처리를 검증합니다.
 func TestMultipleNotifiers(t *testing.T) {
-	mockNotifier1 := &mockNotifierHandler{id: "n1", supportsHTML: true}
-	mockNotifier2 := &mockNotifierHandler{id: "n2", supportsHTML: false}
+	mockNotifier1 := &mocks.MockNotifierHandler{IDValue: "n1", SupportsHTMLValue: true}
+	mockNotifier2 := &mocks.MockNotifierHandler{IDValue: "n2", SupportsHTMLValue: false}
 
 	service := &Service{
 		notifiers: []notifier.NotifierHandler{mockNotifier1, mockNotifier2},
@@ -367,7 +368,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	err := service.Notify(task.NewTaskContext(), "n2", "msg")
 	assert.NoError(t, err)
 	assertNotifyNotCalled(t, mockNotifier1)
-	require.Len(t, mockNotifier2.notifyCalls, 1)
+	require.Len(t, mockNotifier2.NotifyCalls, 1)
 }
 
 // =============================================================================
@@ -376,9 +377,9 @@ func TestMultipleNotifiers(t *testing.T) {
 
 // TestConcurrencyStress는 고부하 상황에서의 동시성 안전성을 검증합니다.
 func TestConcurrencyStress(t *testing.T) {
-	mockNotifier := &mockNotifierHandler{
-		id:           testNotifierID,
-		supportsHTML: true,
+	mockNotifier := &mocks.MockNotifierHandler{
+		IDValue:           testNotifierID,
+		SupportsHTMLValue: true,
 	}
 
 	service := &Service{
@@ -417,7 +418,7 @@ func TestConcurrencyStress(t *testing.T) {
 		t.Fatal("Deadlock 감지 또는 타임아웃 발생")
 	}
 
-	assert.Greater(t, len(mockNotifier.notifyCalls), 0)
+	assert.Greater(t, len(mockNotifier.NotifyCalls), 0)
 }
 
 // =============================================================================
@@ -428,13 +429,13 @@ func TestConcurrencyStress(t *testing.T) {
 func TestStartAndRun(t *testing.T) {
 	t.Run("정상 시작 및 종료", func(t *testing.T) {
 		service, _, mockNotifier := setupMockService()
-		mockNotifier.id = "default"
+		mockNotifier.IDValue = "default"
 
 		cfg := &config.AppConfig{}
 		cfg.Notifier.DefaultNotifierID = "default"
 
-		mockFactory := &mockNotifierFactory{
-			createNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+		mockFactory := &mocks.MockNotifierFactory{
+			CreateNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 				return []notifier.NotifierHandler{mockNotifier}, nil
 			},
 		}
@@ -471,7 +472,7 @@ func TestStartErrors(t *testing.T) {
 	tests := []struct {
 		name          string
 		cfgSetup      func(*config.AppConfig)
-		factorySetup  func(*mockNotifierFactory)
+		factorySetup  func(*mocks.MockNotifierFactory)
 		executorNil   bool
 		errorContains string
 	}{
@@ -482,8 +483,8 @@ func TestStartErrors(t *testing.T) {
 		},
 		{
 			name: "Factory에서 에러 반환",
-			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			factorySetup: func(m *mocks.MockNotifierFactory) {
+				m.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("factory error")
 				}
 			},
@@ -494,10 +495,10 @@ func TestStartErrors(t *testing.T) {
 			cfgSetup: func(c *config.AppConfig) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
-			factorySetup: func(m *mockNotifierFactory) {
-				m.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			factorySetup: func(m *mocks.MockNotifierFactory) {
+				m.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{
-						&mockNotifierHandler{id: "other"},
+						&mocks.MockNotifierHandler{IDValue: "other"},
 					}, nil
 				}
 			},
@@ -512,16 +513,16 @@ func TestStartErrors(t *testing.T) {
 				tt.cfgSetup(cfg)
 			}
 
-			var executor task.Executor = &MockExecutor{}
+			var executor task.Executor = &mocks.MockExecutor{}
 			if tt.executorNil {
 				executor = nil
 			}
 
-			factory := &mockNotifierFactory{}
+			factory := &mocks.MockNotifierFactory{}
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				factory.createNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				factory.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{}, nil
 				}
 			}

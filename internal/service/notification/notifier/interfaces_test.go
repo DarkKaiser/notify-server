@@ -1,8 +1,10 @@
-package notifier
+package notifier_test
 
 import (
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,11 +25,11 @@ var (
 	// _ Sender = (*Service)(nil) // Moved to notification package to avoid circular dependency
 
 	// NotifierHandler Implementation
-	_ NotifierHandler = (*mockNotifierHandler)(nil) // Test Mock도 인터페이스를 준수해야 함
+	_ notifier.NotifierHandler = (*mocks.MockNotifierHandler)(nil) // Test Mock도 인터페이스를 준수해야 함
 
 	// NotifierFactory Implementation
-	_ NotifierFactory = (*DefaultNotifierFactory)(nil)
-	_ NotifierFactory = (*mockNotifierFactory)(nil) // Test Mock
+	_ notifier.NotifierFactory = (*notifier.DefaultNotifierFactory)(nil)
+	_ notifier.NotifierFactory = (*mocks.MockNotifierFactory)(nil) // Test Mock
 )
 
 // =============================================================================
@@ -55,12 +57,12 @@ func TestInterfaces(t *testing.T) {
 			name string
 			impl interface{}
 		}{
-			{"mockNotifierHandler", &mockNotifierHandler{}},
+			{"mockNotifierHandler", &mocks.MockNotifierHandler{}},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				_, ok := tt.impl.(NotifierHandler)
+				_, ok := tt.impl.(notifier.NotifierHandler)
 				require.True(t, ok, "%s should implement NotifierHandler interface", tt.name)
 			})
 		}
@@ -71,13 +73,13 @@ func TestInterfaces(t *testing.T) {
 			name string
 			impl interface{}
 		}{
-			{"DefaultNotifierFactory", &DefaultNotifierFactory{}},
-			{"mockNotifierFactory", &mockNotifierFactory{}},
+			{"DefaultNotifierFactory", &notifier.DefaultNotifierFactory{}},
+			{"mockNotifierFactory", &mocks.MockNotifierFactory{}},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				_, ok := tt.impl.(NotifierFactory)
+				_, ok := tt.impl.(notifier.NotifierFactory)
 				require.True(t, ok, "%s should implement NotifierFactory interface", tt.name)
 			})
 		}
@@ -96,7 +98,7 @@ func TestSenderInterfaceMethods(t *testing.T) {
 
 // TestNotifierHandlerInterfaceMethods는 NotifierHandler 인터페이스의 메서드 존재를 검증합니다.
 func TestNotifierHandlerInterfaceMethods(t *testing.T) {
-	var handler NotifierHandler = &mockNotifierHandler{id: "test"}
+	var handler notifier.NotifierHandler = &mocks.MockNotifierHandler{IDValue: "test"}
 
 	// ID() 메서드 호출 가능 여부 확인
 	id := handler.ID()

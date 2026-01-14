@@ -1,10 +1,12 @@
-package notifier
+package notifier_test
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +27,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 	tests := []struct {
 		name           string
 		cfg            *config.AppConfig
-		registerProcs  []NotifierConfigProcessor
+		registerProcs  []notifier.NotifierConfigProcessor
 		expectHandlers int
 		expectError    bool
 	}{
@@ -39,11 +41,11 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 					},
 				},
 			},
-			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					var handlers []NotifierHandler
+			registerProcs: []notifier.NotifierConfigProcessor{
+				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					var handlers []notifier.NotifierHandler
 					for _, t := range cfg.Notifier.Telegrams {
-						handlers = append(handlers, &mockNotifierHandler{id: NotifierID(t.ID)})
+						handlers = append(handlers, &mocks.MockNotifierHandler{IDValue: notifier.NotifierID(t.ID)})
 					}
 					return handlers, nil
 				},
@@ -58,9 +60,9 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 					Telegrams: []config.TelegramConfig{},
 				},
 			},
-			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					return []NotifierHandler{}, nil
+			registerProcs: []notifier.NotifierConfigProcessor{
+				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					return []notifier.NotifierHandler{}, nil
 				},
 			},
 			expectHandlers: 0,
@@ -69,12 +71,12 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 		{
 			name: "Multiple Processors",
 			cfg:  &config.AppConfig{},
-			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					return []NotifierHandler{&mockNotifierHandler{id: "h1"}}, nil
+			registerProcs: []notifier.NotifierConfigProcessor{
+				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					return []notifier.NotifierHandler{&mocks.MockNotifierHandler{IDValue: "h1"}}, nil
 				},
-				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
-					return []NotifierHandler{&mockNotifierHandler{id: "h2"}}, nil
+				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+					return []notifier.NotifierHandler{&mocks.MockNotifierHandler{IDValue: "h2"}}, nil
 				},
 			},
 			expectHandlers: 2, // 1 + 1
@@ -83,8 +85,8 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 		{
 			name: "Processor Error",
 			cfg:  &config.AppConfig{},
-			registerProcs: []NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]NotifierHandler, error) {
+			registerProcs: []notifier.NotifierConfigProcessor{
+				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("processor error")
 				},
 			},
@@ -95,14 +97,14 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			factory := NewNotifierFactory()
+			factory := notifier.NewNotifierFactory()
 			require.NotNil(t, factory, "Factory should not be nil")
 
 			for _, proc := range tt.registerProcs {
 				factory.RegisterProcessor(proc)
 			}
 
-			mockExecutor := &MockExecutor{}
+			mockExecutor := &mocks.MockExecutor{}
 			handlers, err := factory.CreateNotifiers(tt.cfg, mockExecutor)
 
 			if tt.expectError {
