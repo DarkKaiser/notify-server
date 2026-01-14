@@ -113,7 +113,9 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			}
 
 			// 수신된 명령어를 처리 핸들러로 위임
-			n.handleCommand(n.executor, update.Message)
+			// 명령어 처리 중 네트워크 지연(예: 메시지 발송)이 발생해도
+			// Receiver 루프가 차단되지 않도록 고루틴으로 실행합니다.
+			go n.handleCommand(n.executor, update.Message)
 
 		case <-notificationStopCtx.Done():
 			// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
@@ -151,9 +153,18 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
 			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
 			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
-			// 하지만 여기서는 종료 과정이므로 간단히 Background Context를 사용하여 최대한 발송을 시도합니다.
-			drainCtx := context.Background()
+			// 무한 대기(Hang)를 방지하기 위해 5초의 타임아웃을 설정합니다.
+			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
 			for notifyRequest := range n.RequestC {
+				// 이미 타임아웃이 발생했다면 더 이상 시도하지 않고 루프 탈출
+				if drainCtx.Err() != nil {
+					applog.WithComponentAndFields("notification.telegram", applog.Fields{
+						"notifier_id": n.ID(),
+					}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
+					break
+				}
 				n.handleNotifyRequest(drainCtx, notifyRequest)
 			}
 			return
