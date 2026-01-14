@@ -31,4 +31,8 @@ const (
 	// TelegramCommandConcurrency 텔레그램 봇 명령어의 최대 동시 처리 개수입니다.
 	// 너무 높으면 시스템 리소스에 부담을 줄 수 있고, 너무 낮으면 사용자 반응이 지연될 수 있습니다.
 	TelegramCommandConcurrency = 100
+
+	// TelegramCommandTimeout 텔레그램 봇 명령어 처리 시 최대 허용 시간입니다.
+	// 외부 API 호출 지연 등으로 인한 고루틴 무한 대기(Leak)를 방지하기 위해 사용됩니다.
+	TelegramCommandTimeout = 10 * time.Second
 )

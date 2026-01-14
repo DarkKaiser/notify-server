@@ -71,13 +71,16 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	// 중요: 락을 해제한 상태에서 채널 전송을 시도합니다.
 	// 이를 통해 채널이 가득 차서 대기하는 동안에도 Close()가 호출되면
 	// done 채널이 닫히고 select를 통해 즉시 종료될 수 있습니다.
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case requestC <- req:
 		return true
 	case <-done:
 		// 전송 대기 중 Notifier가 종료된 경우
 		return false
-	case <-time.After(timeout):
+	case <-timer.C:
 		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
 		applog.WithComponentAndFields("notification.service", applog.Fields{
 			"notifier_id": n.ID(),

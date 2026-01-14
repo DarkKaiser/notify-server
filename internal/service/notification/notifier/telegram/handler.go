@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -31,7 +32,7 @@ const (
 func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbotapi.Message) {
 	// 모든 명령어 처리에 대해 10초의 타임아웃을 설정합니다.
 	// 이를 통해 외부 API 호출(텔레그램 전송) 지연 등으로 인한 고루틴 무한 대기(Leak)를 방지합니다.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.TelegramCommandTimeout)
 	defer cancel()
 
 	defer func() {
