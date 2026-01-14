@@ -11,14 +11,14 @@ import (
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
 
 // Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
-	notificationSender notifier.Sender
+	notificationSender notification.Sender
 
 	buildInfo version.Info
 
@@ -26,7 +26,7 @@ type Handler struct {
 }
 
 // NewHandler Handler 인스턴스를 생성합니다.
-func NewHandler(notificationSender notifier.Sender, buildInfo version.Info) *Handler {
+func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
 	if notificationSender == nil {
 		panic(constants.PanicMsgNotificationSenderRequired)
 	}

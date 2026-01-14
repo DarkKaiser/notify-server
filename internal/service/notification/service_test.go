@@ -18,7 +18,7 @@ import (
 )
 
 // Sender Compliance Check
-var _ notifier.Sender = (*Service)(nil)
+var _ Sender = (*Service)(nil)
 
 // =============================================================================
 // Test Constants

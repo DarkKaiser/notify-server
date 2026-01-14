@@ -14,6 +14,35 @@ import (
 )
 
 // =============================================================================
+// Interface Compliance Checks
+// =============================================================================
+
+// NotifierFactory Implementation
+var _ notifier.NotifierFactory = (*notifier.DefaultNotifierFactory)(nil)
+var _ notifier.NotifierFactory = (*notificationmocks.MockNotifierFactory)(nil) // Test Mock
+
+// =============================================================================
+// Compile-Time Verification Test
+// =============================================================================
+
+func TestNotifierFactoryInterface(t *testing.T) {
+	tests := []struct {
+		name string
+		impl interface{}
+	}{
+		{"DefaultNotifierFactory", &notifier.DefaultNotifierFactory{}},
+		{"mockNotifierFactory", &notificationmocks.MockNotifierFactory{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ok := tt.impl.(notifier.NotifierFactory)
+			require.True(t, ok, "%s should implement NotifierFactory interface", tt.name)
+		})
+	}
+}
+
+// =============================================================================
 // Notifier Factory Tests
 // =============================================================================
 
