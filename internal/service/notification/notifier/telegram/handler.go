@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
@@ -252,14 +253,16 @@ func (n *telegramNotifier) sendMessage(message string) {
 			}
 
 			// 현재 라인 자체가 최대 길이보다 길다면 강제로 자름 (Chunking)
+			// 중요: 한글 등 멀티바이트 문자가 깨지지 않도록 Safe Split 수행
 			if len(line) > telegramMessageMaxLength {
-				for len(line) > telegramMessageMaxLength {
-					chunk := line[:telegramMessageMaxLength]
+				currentLine := line
+				for len(currentLine) > telegramMessageMaxLength {
+					chunk, remainder := safeSplit(currentLine, telegramMessageMaxLength)
 					n.sendSingleMessage(chunk)
-					line = line[telegramMessageMaxLength:]
+					currentLine = remainder
 				}
 				// 자르고 남은 뒷부분을 새로운 청크의 시작으로 설정
-				messageChunk = line
+				messageChunk = currentLine
 			} else {
 				// 현재 라인은 최대 길이 이내이므로 새로운 청크로 설정
 				messageChunk = line
@@ -323,4 +326,29 @@ func (n *telegramNotifier) sendSingleMessage(message string) {
 		"error":       err,
 		"max_retries": maxRetries,
 	}).Error("알림메시지 발송 최종 실패")
+}
+
+// safeSplit UTF-8 문자열을 지정된 바이트 길이(limit) 내에서 안전하게 자릅니다.
+// 문자가 깨지지 않도록 가장 마지막 유효한 룬 경계에서 자릅니다.
+func safeSplit(s string, limit int) (chunk, remainder string) {
+	if len(s) <= limit {
+		return s, ""
+	}
+
+	// limit 위치에서 자를 때 해당 위치가 문자의 중간이라면,
+	// 앞쪽으로 이동하여 온전한 글자까지만 포함합니다.
+	// utf8.RuneStart 함수는 해당 바이트가 룬의 시작 바이트인지 확인합니다.
+	splitIndex := limit
+	for splitIndex > 0 && !utf8.RuneStart(s[splitIndex]) {
+		splitIndex--
+	}
+
+	// 만약 splitIndex가 0까지 갔다면(매우 드문 경우지만),
+	// limit 이후의 첫 번째 룬 시작점을 찾거나, 포기하고 limit로 자릅니다.
+	// 그러나 limit가 충분히 크다면(예: 3900), 이런 경우는 발생하지 않아야 합니다.
+	if splitIndex == 0 {
+		return s[:limit], s[limit:]
+	}
+
+	return s[:splitIndex], s[splitIndex:]
 }

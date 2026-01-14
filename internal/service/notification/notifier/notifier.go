@@ -1,6 +1,8 @@
 package notifier
 
 import (
+	"sync"
+
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -17,6 +19,9 @@ type BaseNotifier struct {
 	id NotifierID
 
 	supportsHTML bool
+
+	mu     sync.RWMutex // 채널 및 상태 보호를 위한 Mutex
+	closed bool         // Notifier 종료 여부
 
 	RequestC chan *NotifyRequest
 }
@@ -51,8 +56,11 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 		}
 	}()
 
-	// 채널이 닫혔거나 초기화되지 않은 경우
-	if n.RequestC == nil {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	// 이미 종료되었거나 채널이 닫힌 경우
+	if n.closed || n.RequestC == nil {
 		return false
 	}
 
@@ -78,8 +86,15 @@ func (n *BaseNotifier) SupportsHTML() bool {
 
 // Close 알림 채널을 닫고 리소스를 정리합니다.
 func (n *BaseNotifier) Close() {
-	if n.RequestC != nil {
-		close(n.RequestC)
-		n.RequestC = nil
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if !n.closed {
+		n.closed = true
+		if n.RequestC != nil {
+			close(n.RequestC)
+			// 주의: 채널을 nil로 설정하지 않음.
+			// Drain 로직에서 닫힌 채널을 range로 순회해야 할 수 있기 때문.
+		}
 	}
 }

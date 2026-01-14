@@ -209,7 +209,7 @@ func TestClose_Idempotent(t *testing.T) {
 	n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize)
 
 	n.Close()
-	assert.Nil(t, n.RequestC, "Request channel should be nil after close")
+	assert.False(t, n.Notify(task.NewTaskContext(), "test"), "Notify should return false after close")
 
 	assert.NotPanics(t, func() {
 		n.Close()
@@ -224,7 +224,8 @@ func TestClose_AfterNotify(t *testing.T) {
 	require.True(t, n.Notify(task.NewTaskContext(), "msg2"))
 
 	n.Close()
-	assert.Nil(t, n.RequestC)
+	// Channel should not be nil (for Drain), but Notify should fail
+	assert.NotNil(t, n.RequestC)
 
 	result := n.Notify(task.NewTaskContext(), "msg3")
 	assert.False(t, result, "Notify should return false after close")
