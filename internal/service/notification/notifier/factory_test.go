@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,7 +46,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
 					var handlers []notifier.NotifierHandler
 					for _, t := range cfg.Notifier.Telegrams {
-						handlers = append(handlers, &mocks.MockNotifierHandler{IDValue: notifier.NotifierID(t.ID)})
+						handlers = append(handlers, &notificationmocks.MockNotifierHandler{IDValue: notifier.NotifierID(t.ID)})
 					}
 					return handlers, nil
 				},
@@ -73,10 +74,10 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			cfg:  &config.AppConfig{},
 			registerProcs: []notifier.NotifierConfigProcessor{
 				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{&mocks.MockNotifierHandler{IDValue: "h1"}}, nil
+					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h1"}}, nil
 				},
 				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{&mocks.MockNotifierHandler{IDValue: "h2"}}, nil
+					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h2"}}, nil
 				},
 			},
 			expectHandlers: 2, // 1 + 1
@@ -104,7 +105,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				factory.RegisterProcessor(proc)
 			}
 
-			mockExecutor := &mocks.MockExecutor{}
+			mockExecutor := &taskmocks.MockExecutor{}
 			handlers, err := factory.CreateNotifiers(tt.cfg, mockExecutor)
 
 			if tt.expectError {

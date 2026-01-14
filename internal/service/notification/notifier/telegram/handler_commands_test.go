@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -45,7 +45,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 		commandText   string
 		expectAction  bool
 		setupMockBot  func(*MockTelegramBot, *sync.WaitGroup)
-		setupMockExec func(*mocks.MockExecutor, *sync.WaitGroup)
+		setupMockExec func(*taskmocks.MockExecutor, *sync.WaitGroup)
 	}{
 		{
 			name:         "Unknown Command",
@@ -79,7 +79,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			name:         "Task Run Command",
 			commandText:  "/task_1_run",
 			expectAction: true,
-			setupMockExec: func(m *mocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMockExec: func(m *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1) // Expect run call
 				m.On("SubmitTask", mock.MatchedBy(func(req *task.SubmitRequest) bool {
 					return req.TaskID == "task1" && req.CommandID == "run"

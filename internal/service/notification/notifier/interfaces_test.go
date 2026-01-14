@@ -3,7 +3,7 @@ package notifier_test
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,11 +25,11 @@ var (
 	// _ Sender = (*Service)(nil) // Moved to notification package to avoid circular dependency
 
 	// NotifierHandler Implementation
-	_ notifier.NotifierHandler = (*mocks.MockNotifierHandler)(nil) // Test Mock도 인터페이스를 준수해야 함
+	_ notifier.NotifierHandler = (*notificationmocks.MockNotifierHandler)(nil) // Test Mock도 인터페이스를 준수해야 함
 
 	// NotifierFactory Implementation
 	_ notifier.NotifierFactory = (*notifier.DefaultNotifierFactory)(nil)
-	_ notifier.NotifierFactory = (*mocks.MockNotifierFactory)(nil) // Test Mock
+	_ notifier.NotifierFactory = (*notificationmocks.MockNotifierFactory)(nil) // Test Mock
 )
 
 // =============================================================================
@@ -57,7 +57,7 @@ func TestInterfaces(t *testing.T) {
 			name string
 			impl interface{}
 		}{
-			{"mockNotifierHandler", &mocks.MockNotifierHandler{}},
+			{"mockNotifierHandler", &notificationmocks.MockNotifierHandler{}},
 		}
 
 		for _, tt := range tests {
@@ -74,7 +74,7 @@ func TestInterfaces(t *testing.T) {
 			impl interface{}
 		}{
 			{"DefaultNotifierFactory", &notifier.DefaultNotifierFactory{}},
-			{"mockNotifierFactory", &mocks.MockNotifierFactory{}},
+			{"mockNotifierFactory", &notificationmocks.MockNotifierFactory{}},
 		}
 
 		for _, tt := range tests {
@@ -98,7 +98,7 @@ func TestSenderInterfaceMethods(t *testing.T) {
 
 // TestNotifierHandlerInterfaceMethods는 NotifierHandler 인터페이스의 메서드 존재를 검증합니다.
 func TestNotifierHandlerInterfaceMethods(t *testing.T) {
-	var handler notifier.NotifierHandler = &mocks.MockNotifierHandler{IDValue: "test"}
+	var handler notifier.NotifierHandler = &notificationmocks.MockNotifierHandler{IDValue: "test"}
 
 	// ID() 메서드 호출 가능 여부 확인
 	id := handler.ID()

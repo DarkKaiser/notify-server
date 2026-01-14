@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,7 +109,7 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			}
 			chatID := int64(12345)
 
-			mockExecutor := &mocks.MockExecutor{}
+			mockExecutor := &taskmocks.MockExecutor{}
 			n := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
 
 			notifier, ok := n.(*telegramNotifier)
