@@ -29,10 +29,11 @@ const (
 )
 
 // handleCommand 사용자 텔레그램 명령어 처리
-func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbotapi.Message) {
+func (n *telegramNotifier) handleCommand(ctx context.Context, executor task.Executor, message *tgbotapi.Message) {
 	// 모든 명령어 처리에 대해 10초의 타임아웃을 설정합니다.
 	// 이를 통해 외부 API 호출(텔레그램 전송) 지연 등으로 인한 고루틴 무한 대기(Leak)를 방지합니다.
-	ctx, cancel := context.WithTimeout(context.Background(), constants.TelegramCommandTimeout)
+	// 부모 컨텍스트(notificationStopCtx)를 상속받아 서비스 종료 시 즉시 취소되도록 합니다.
+	ctx, cancel := context.WithTimeout(ctx, constants.TelegramCommandTimeout)
 	defer cancel()
 
 	defer func() {

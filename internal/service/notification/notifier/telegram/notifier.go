@@ -137,9 +137,12 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
 			select {
 			case n.handlerSemaphore <- struct{}{}:
+				// Handler 고루틴도 WaitGroup에 추가하여 종료 시 안전하게 대기
+				wg.Add(1)
 				go func(msg *tgbotapi.Message) {
+					defer wg.Done()
 					defer func() { <-n.handlerSemaphore }()
-					n.handleCommand(n.executor, msg)
+					n.handleCommand(notificationStopCtx, n.executor, msg)
 				}(update.Message)
 			case <-notificationStopCtx.Done():
 				// 컨텍스트 종료 시 루프 탈출
