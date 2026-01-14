@@ -20,6 +20,6 @@ const (
 	DefaultNotifyTimeout = 5 * time.Second
 
 	// TelegramNotifierBufferSize 텔레그램 Notifier의 내부 버퍼 크기
-	// Rate Limit(1 TPS)와 Shutdown Timeout(60s)을 고려하여, 종료 시 유실 없이 모두 처리할 수 있는 크기(50)로 설정합니다.
-	TelegramNotifierBufferSize = 50
+	// Rate Limit(1 TPS)와 Shutdown Timeout(60s)을 고려하여, 종료 시 유실 없이 모두 처리할 수 있는 크기(30)로 설정합니다.
+	TelegramNotifierBufferSize = 30
 )

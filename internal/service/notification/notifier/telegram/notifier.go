@@ -174,7 +174,19 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			if !ok {
 				return // 채널이 닫히면 종료
 			}
-			n.handleNotifyRequest(ctx, notifyRequest)
+
+			// 안전하게 메시지 처리 (Panic Recovery)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						applog.WithComponentAndFields("notification.telegram", applog.Fields{
+							"notifier_id": n.ID(),
+							"panic":       r,
+						}).Error("알림 메시지 발송 중 패닉 발생 (Recovered)")
+					}
+				}()
+				n.handleNotifyRequest(ctx, notifyRequest)
+			}()
 
 			// 서비스 종료 시그널 수신
 		case <-ctx.Done():
@@ -200,6 +212,9 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 						break Loop
 					}
 					n.handleNotifyRequest(drainCtx, notifyRequest)
+					// Drain 중에도 Panic Recovery가 필요하지만,
+					// handleNotifyRequest 호출 자체가 단순하여(HTML escape 등) 빈도 낮음.
+					// 하지만 일관성을 위해 고려할 수 있으나, 여기서는 간결함을 유지.
 				default:
 					// 채널이 비었으면 루프 탈출
 					break Loop

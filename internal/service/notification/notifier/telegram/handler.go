@@ -34,6 +34,15 @@ func (n *telegramNotifier) handleCommand(executor task.Executor, message *tgbota
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	defer func() {
+		if r := recover(); r != nil {
+			applog.WithComponentAndFields("notification.telegram", applog.Fields{
+				"notifier_id": n.ID(),
+				"panic":       r,
+			}).Error("봇 명령어 처리 중 패닉 발생 (Recovered)")
+		}
+	}()
+
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
 	if message.Text[:1] != telegramBotCommandInitialCharacter {
 		n.sendUnknownCommandMessage(ctx, message.Text)
@@ -358,6 +367,30 @@ func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string
 			"attempt":     i + 1,
 			"error":       err,
 		}).Warn("알림메시지 발송 실패, 재시도 대기중...")
+
+		// 4xx 에러(Client Error)인 경우 재시도해도 실패할 것이 확실하므로 중단
+		var errCode int
+		if apiErr, ok := err.(tgbotapi.Error); ok {
+			errCode = apiErr.Code
+		} else if apiErrPtr, ok := err.(*tgbotapi.Error); ok {
+			errCode = apiErrPtr.Code
+		}
+
+		if errCode >= 400 && errCode < 500 {
+			// Rate Limit (429) 에러는 라이브러리/tgbotapi가 처리해주지 않는 경우 재시도 해야하나,
+			// tgbotapi Error 구조체에는 RetryAfter가 포함되어 있음.
+			// 429 Too Many Requests는 400번대지만 일시적 오류일 수 있음.
+			// 그러나 위에서 n.limiter를 사용하므로 429 발생 가능성은 낮음.
+			// 일반적인 400(Bad Request), 401(Unauthorized) 등은 즉시 중단.
+			if errCode != 429 {
+				applog.WithComponentAndFields("notification.telegram", applog.Fields{
+					"notifier_id": n.ID(),
+					"error":       err,
+					"code":        errCode,
+				}).Error("치명적인 API 오류 발생, 재시도 중단")
+				return
+			}
+		}
 
 		// 안전한 대기: 컨텍스트 취소 시 즉시 반환
 		select {
