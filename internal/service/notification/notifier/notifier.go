@@ -104,10 +104,9 @@ func (n *BaseNotifier) Close() {
 			close(n.done)
 		}
 
-		if n.RequestC != nil {
-			close(n.RequestC)
-			// 주의: 채널을 nil로 설정하지 않음.
-			// Drain 로직에서 닫힌 채널을 range로 순회해야 할 수 있기 때문.
-		}
+		// RequestC는 닫지 않습니다.
+		// 채널을 닫으면 Notify()에서 경쟁 상태로 인한 패닉이 발생할 수 있습니다.
+		// GC가 참조되지 않는 채널을 자동으로 정리하므로 누수 문제는 없습니다.
+		// 컨슈머는 done 채널이나 Context 종료를 감지하여 루프를 탈출해야 합니다.
 	}
 }

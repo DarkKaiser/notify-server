@@ -186,15 +186,24 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			drainCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
-			for notifyRequest := range n.RequestC {
-				// 이미 타임아웃이 발생했다면 더 이상 시도하지 않고 루프 탈출
-				if drainCtx.Err() != nil {
-					applog.WithComponentAndFields("notification.telegram", applog.Fields{
-						"notifier_id": n.ID(),
-					}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
-					break
+			// 큐에 남은 미처리 요청을 비동기적으로 처리 (Non-blocking Drain)
+			// RequestC가 닫히지 않으므로 range를 사용할 수 없음.
+		Loop:
+			for {
+				select {
+				case notifyRequest := <-n.RequestC:
+					// 이미 타임아웃이 발생했다면 더 이상 시도하지 않고 루프 탈출
+					if drainCtx.Err() != nil {
+						applog.WithComponentAndFields("notification.telegram", applog.Fields{
+							"notifier_id": n.ID(),
+						}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
+						break Loop
+					}
+					n.handleNotifyRequest(drainCtx, notifyRequest)
+				default:
+					// 채널이 비었으면 루프 탈출
+					break Loop
 				}
-				n.handleNotifyRequest(drainCtx, notifyRequest)
 			}
 			return
 		}
