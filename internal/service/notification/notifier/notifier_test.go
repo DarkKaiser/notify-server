@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,9 +61,9 @@ func TestNewBaseNotifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := notifier.NewBaseNotifier(notifier.NotifierID(tt.id), tt.supportsHTML, tt.bufferSize, testNotifierTimeout)
+			n := notifier.NewBaseNotifier(types.NotifierID(tt.id), tt.supportsHTML, tt.bufferSize, testNotifierTimeout)
 
-			assert.Equal(t, notifier.NotifierID(tt.id), n.ID())
+			assert.Equal(t, types.NotifierID(tt.id), n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			require.NotNil(t, n.RequestC, "Request channel should be created")
 			assert.Equal(t, tt.expectedBufferCap, cap(n.RequestC))

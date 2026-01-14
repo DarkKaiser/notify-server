@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -17,7 +18,7 @@ type NotifyRequest struct {
 // BaseNotifier NotifierHandler의 기본 구현체입니다.
 // 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
 type BaseNotifier struct {
-	id NotifierID
+	id types.NotifierID
 
 	supportsHTML bool
 
@@ -30,7 +31,7 @@ type BaseNotifier struct {
 }
 
 // NewBaseNotifier BaseNotifier를 생성하고 초기화합니다.
-func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int, notifyTimeout time.Duration) BaseNotifier {
+func NewBaseNotifier(id types.NotifierID, supportsHTML bool, bufferSize int, notifyTimeout time.Duration) BaseNotifier {
 	return BaseNotifier{
 		id: id,
 
@@ -42,7 +43,7 @@ func NewBaseNotifier(id NotifierID, supportsHTML bool, bufferSize int, notifyTim
 	}
 }
 
-func (n *BaseNotifier) ID() NotifierID {
+func (n *BaseNotifier) ID() types.NotifierID {
 	return n.id
 }
 

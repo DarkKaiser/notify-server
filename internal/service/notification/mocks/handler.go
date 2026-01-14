@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 )
 
@@ -13,7 +13,7 @@ import (
 // 이 Mock은 알림 전송 동작을 테스트하는 데 사용되며,
 // 실제 알림 전송 없이 호출 기록을 추적합니다.
 type MockNotifierHandler struct {
-	IDValue           notifier.NotifierID
+	IDValue           types.NotifierID
 	SupportsHTMLValue bool
 	NotifyCalls       []MockNotifyCall
 	Mu                sync.Mutex // NotifyCalls 동시성 보호
@@ -26,7 +26,7 @@ type MockNotifyCall struct {
 }
 
 // ID는 Notifier의 고유 식별자를 반환합니다.
-func (m *MockNotifierHandler) ID() notifier.NotifierID {
+func (m *MockNotifierHandler) ID() types.NotifierID {
 	return m.IDValue
 }
 

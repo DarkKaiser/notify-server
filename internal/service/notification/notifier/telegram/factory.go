@@ -8,6 +8,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -16,7 +17,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type telegramNotifierCreatorFunc func(id notifier.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error)
+type telegramNotifierCreatorFunc func(id types.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error)
 
 // NewConfigProcessor 텔레그램 Notifier 설정을 처리하는 NotifierConfigProcessor를 생성하여 반환합니다.
 // 이 처리기는 애플리케이션 설정에 따라 텔레그램 Notifier 인스턴스들을 초기화합니다.
@@ -25,7 +26,7 @@ func NewConfigProcessor(creator telegramNotifierCreatorFunc) notifier.NotifierCo
 		var handlers []notifier.NotifierHandler
 
 		for _, telegram := range appConfig.Notifier.Telegrams {
-			h, err := creator(notifier.NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
+			h, err := creator(types.NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
 			if err != nil {
 				return nil, err
 			}
@@ -37,7 +38,7 @@ func NewConfigProcessor(creator telegramNotifierCreatorFunc) notifier.NotifierCo
 }
 
 // NewNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
-func NewNotifier(id notifier.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error) {
+func NewNotifier(id types.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error) {
 	applog.WithComponentAndFields("notification.telegram", applog.Fields{
 		"notifier_id": id,
 		"bot_token":   strutil.Mask(botToken),
@@ -60,7 +61,7 @@ func NewNotifier(id notifier.NotifierID, botToken string, chatID int64, appConfi
 }
 
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id notifier.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) notifier.NotifierHandler {
+func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) notifier.NotifierHandler {
 	notifier := &telegramNotifier{
 		BaseNotifier: notifier.NewBaseNotifier(id, true, 1000, constants.DefaultNotifyTimeout),
 

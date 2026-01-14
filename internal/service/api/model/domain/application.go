@@ -4,6 +4,8 @@
 // 런타임에서 사용되는 보안 필터링된 도메인 엔티티를 제공합니다.
 package domain
 
+import "github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 // Application 알림 API를 사용하는 클라이언트 애플리케이션을 나타내는 도메인 엔티티입니다.
 //
 // 이 구조체는 config.ApplicationConfig에서 보안 정보(AppKey)를 제거한
@@ -22,8 +24,8 @@ package domain
 //	app := c.Get(constants.ContextKeyApplication).(*domain.Application)
 //	notifierID := app.DefaultNotifierID
 type Application struct {
-	ID                string // 애플리케이션 식별자 (인증 키)
-	Title             string // 애플리케이션 이름
-	Description       string // 애플리케이션 설명
-	DefaultNotifierID string // 애플리케이션의 기본 알림 전송자 ID
+	ID                string           // 애플리케이션 식별자 (인증 키)
+	Title             string           // 애플리케이션 이름
+	Description       string           // 애플리케이션 설명
+	DefaultNotifierID types.NotifierID // 애플리케이션의 기본 알림 전송자 ID
 }

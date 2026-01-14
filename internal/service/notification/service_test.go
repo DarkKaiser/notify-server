@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
@@ -36,7 +37,7 @@ const (
 
 // mockServiceOptions는 setupMockServiceWithOptions의 옵션입니다.
 type mockServiceOptions struct {
-	notifierID   notifier.NotifierID
+	notifierID   types.NotifierID
 	supportsHTML bool
 	running      bool
 }
@@ -62,7 +63,7 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 	mockFactory := &notificationmocks.MockNotifierFactory{}
 
 	service := NewService(appConfig, mockExecutor, mockFactory)
-	service.notifiersMap = map[notifier.NotifierID]notifier.NotifierHandler{
+	service.notifiersMap = map[types.NotifierID]notifier.NotifierHandler{
 		mockNotifier.IDValue: mockNotifier,
 	}
 	service.defaultNotifier = mockNotifier
@@ -118,7 +119,7 @@ func TestNewService(t *testing.T) {
 func TestSupportsHTML(t *testing.T) {
 	mockNotifier := &notificationmocks.MockNotifierHandler{IDValue: "test", SupportsHTMLValue: true}
 	service := &Service{
-		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
 			mockNotifier.IDValue: mockNotifier,
 		},
 	}
@@ -134,7 +135,7 @@ func TestSupportsHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, service.SupportsHTML(tt.notifierID))
+			assert.Equal(t, tt.want, service.SupportsHTML(types.NotifierID(tt.notifierID)))
 		})
 	}
 }
@@ -191,7 +192,7 @@ func TestServiceNotify(t *testing.T) {
 				running:      true,
 			})
 
-			err := service.NotifyWithTitle(tt.notifierID, "title", tt.message, tt.isError)
+			err := service.NotifyWithTitle(types.NotifierID(tt.notifierID), "title", tt.message, tt.isError)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -251,7 +252,7 @@ func TestNotifyWithTitle(t *testing.T) {
 				running:      true,
 			})
 
-			err := service.NotifyWithTitle(testNotifierID, tt.title, tt.message, tt.errorOccurred)
+			err := service.NotifyWithTitle(types.NotifierID(testNotifierID), tt.title, tt.message, tt.errorOccurred)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -338,7 +339,7 @@ func TestNotify_NotRunning(t *testing.T) {
 		running:      false, // 실행 중이 아님
 	})
 
-	err := service.Notify(task.NewTaskContext(), testNotifierID, "test")
+	err := service.Notify(task.NewTaskContext(), types.NotifierID(testNotifierID), "test")
 
 	assert.Error(t, err)
 	assert.Equal(t, notifier.ErrServiceStopped, err)
@@ -368,7 +369,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	mockNotifier2 := &notificationmocks.MockNotifierHandler{IDValue: "n2", SupportsHTMLValue: false}
 
 	service := &Service{
-		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
 			mockNotifier1.IDValue: mockNotifier1,
 			mockNotifier2.IDValue: mockNotifier2,
 		},
@@ -376,7 +377,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	}
 
 	// n2로 전송
-	err := service.Notify(task.NewTaskContext(), "n2", "msg")
+	err := service.Notify(task.NewTaskContext(), types.NotifierID("n2"), "msg")
 	assert.NoError(t, err)
 	assertNotifyNotCalled(t, mockNotifier1)
 	require.Len(t, mockNotifier2.NotifyCalls, 1)
@@ -399,7 +400,7 @@ func TestConcurrencyStress(t *testing.T) {
 				DefaultNotifierID: testNotifierID,
 			},
 		},
-		notifiersMap: map[notifier.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
 			mockNotifier.IDValue: mockNotifier,
 		},
 		defaultNotifier: mockNotifier,
@@ -413,7 +414,7 @@ func TestConcurrencyStress(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func() {
 			defer wg.Done()
-			service.NotifyWithTitle(testNotifierID, "title", "stress test", false)
+			service.NotifyWithTitle(types.NotifierID(testNotifierID), "title", "stress test", false)
 			service.NotifyDefault("default stress")
 		}()
 	}

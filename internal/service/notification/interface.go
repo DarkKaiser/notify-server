@@ -1,5 +1,7 @@
 package notification
 
+import "github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 // Sender 알림 발송 기능을 제공하는 인터페이스입니다.
 // 외부 컴포넌트(API, 스케줄러 등)는 이 인터페이스를 통해 알림 서비스를 사용합니다.
 type Sender interface {
@@ -15,7 +17,7 @@ type Sender interface {
 	//
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
-	NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error
+	NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error
 
 	// NotifyDefault 시스템에 설정된 기본 알림 채널로 일반 메시지를 발송합니다.
 	// 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.

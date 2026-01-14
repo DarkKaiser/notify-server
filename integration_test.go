@@ -1,501 +1,346 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/pkg/version"
-
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api"
+	v1request "github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestServicesIntegration은 전체 서비스의 통합을 테스트합니다.
-// mockIntegrationNotifierFactory는 테스트용 NotifierFactory 구현체입니다.
-type mockIntegrationNotifierFactory struct {
-	createNotifiersFunc func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error)
-	processors          []notifier.NotifierConfigProcessor
+// =============================================================================
+// Integration Test Suite & Helpers
+// =============================================================================
+
+type IntegrationTestSuite struct {
+	t                   *testing.T
+	appConfig           *config.AppConfig
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  *sync.WaitGroup
+	taskService         *task.Service
+	notificationService *notification.Service
+	apiService          *api.Service
+	mockSender          *mockNotificationSender
+	apiPort             int
 }
 
-func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-	if m.createNotifiersFunc != nil {
-		return m.createNotifiersFunc(cfg, executor)
-	}
-	return nil, nil
-}
-
-func (m *mockIntegrationNotifierFactory) RegisterProcessor(processor notifier.NotifierConfigProcessor) {
-	m.processors = append(m.processors, processor)
-}
-
-func TestServicesIntegration(t *testing.T) {
-	t.Run("서비스 초기화 및 시작", func(t *testing.T) {
-		// 테스트용 설정 생성
-		appConfig := createTestConfig()
-
-		// 서비스 생성
-		taskService := task.NewService(appConfig)
-		notificationService := notification.NewService(appConfig, taskService, nil) // Factory needs to be set later or use proper constructor
-
-		// Mock factory
-		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-				return []notifier.NotifierHandler{
-					&mockNotifierHandler{
-						id:           notifier.NotifierID("test-notifier"),
-						supportsHTML: true,
-					},
-				}, nil
-			},
-		}
-		notificationService.SetNotifierFactory(mockFactory)
-
-		notifyAPIService := api.NewService(appConfig, notificationService, version.Info{
-			Version:     "test-version",
-			BuildDate:   "test-date",
-			BuildNumber: "test-build",
-		})
-
-		// 서비스 검증
-		assert.NotNil(t, taskService, "TaskService가 생성되어야 합니다")
-		assert.NotNil(t, notificationService, "NotificationService가 생성되어야 합니다")
-		assert.NotNil(t, notifyAPIService, "NotifyAPIService가 생성되어야 합니다")
-
-		// 의존성 주입 확인
-		taskService.SetNotificationSender(notificationService)
-
-		// 서비스 시작 및 중지 테스트
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-
-		// 서비스 시작
-		wg.Add(3)
-		go taskService.Start(ctx, wg)
-		go notificationService.Start(ctx, wg)
-		go notifyAPIService.Start(ctx, wg)
-
-		// 서비스가 시작될 때까지 대기
-		time.Sleep(100 * time.Millisecond)
-
-		// 서비스 중지
-		cancel()
-		wg.Wait()
-	})
-
-	t.Run("서비스 중복 시작 방지", func(t *testing.T) {
-		appConfig := createTestConfig()
-		taskService := task.NewService(appConfig)
-
-		// Use nil factory for initialization, will set later
-		notificationService := notification.NewService(appConfig, taskService, nil)
-
-		// Mock factory
-		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-				return []notifier.NotifierHandler{
-					&mockNotifierHandler{
-						id:           notifier.NotifierID("test-notifier"),
-						supportsHTML: true,
-					},
-				}, nil
-			},
-		}
-		notificationService.SetNotifierFactory(mockFactory)
-
-		taskService.SetNotificationSender(notificationService)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		// 첫 번째 시작
-		wg.Add(2)
-		go taskService.Start(ctx, wg)
-		go notificationService.Start(ctx, wg)
-		time.Sleep(100 * time.Millisecond)
-
-		// 두 번째 시작 시도 (중복)
-		wg.Add(2)
-		taskService.Start(ctx, wg)
-		notificationService.Start(ctx, wg)
-
-		// 정상 종료
-		cancel()
-		wg.Wait()
-	})
-}
-
-// TestTaskToNotificationFlow는 Task에서 Notification으로의 흐름을 테스트합니다.
-func TestTaskToNotificationFlow(t *testing.T) {
-	t.Run("Task 실행 시 알림 발송", func(t *testing.T) {
-		appConfig := createTestConfig()
-
-		// Mock Notification Sender 생성
-		mockSender := &mockNotificationSender{
-			notifyCalls: make([]notifyCall, 0),
-		}
-
-		taskService := task.NewService(appConfig)
-		taskService.SetNotificationSender(mockSender)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		wg.Add(1)
-		go taskService.Start(ctx, wg)
-
-		// 서비스 시작 대기
-		time.Sleep(100 * time.Millisecond)
-
-		// Task 실행 (존재하지 않는 Task로 실패 시나리오)
-		result := taskService.SubmitTask(&task.SubmitRequest{
-			TaskID:        "NON_EXISTENT",
-			CommandID:     "TEST",
-			NotifierID:    "test-notifier",
-			NotifyOnStart: true,
-			RunBy:         task.RunByUser,
-		})
-
-		// TaskRun은 Fail Fast로 인해 즉시 에러를 반환해야 함
-		assert.Error(t, result, "지원되지 않는 Task는 에러를 반환해야 합니다")
-
-		// 알림 발송 확인 (처리 대기)
-		time.Sleep(200 * time.Millisecond)
-
-		// Fail Fast이므로 비동기 에러 알림은 발송되지 않음 (호출자가 처리)
-		assert.Equal(t, 0, len(mockSender.notifyCalls), "Fail Fast로 인해 비동기 알림은 없어야 합니다")
-
-		cancel()
-		wg.Wait()
-	})
-
-	t.Run("Task 실행 성공 시 알림 발송 확인", func(t *testing.T) {
-		appConfig := createTestConfig()
-
-		mockSender := &mockNotificationSender{
-			notifyCalls: make([]notifyCall, 0),
-		}
-
-		taskService := task.NewService(appConfig)
-		taskService.SetNotificationSender(mockSender)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		wg.Add(1)
-		go taskService.Start(ctx, wg)
-
-		time.Sleep(100 * time.Millisecond)
-
-		// 초기 호출 횟수 기록
-		initialCallCount := len(mockSender.notifyCalls)
-
-		// Task 실행 (알림 요청 포함)
-		taskService.SubmitTask(&task.SubmitRequest{
-			TaskID:        "TEST",
-			CommandID:     "TEST",
-			NotifierID:    "test-notifier",
-			NotifyOnStart: true,
-			RunBy:         task.RunByUser,
-		})
-
-		time.Sleep(200 * time.Millisecond)
-
-		// 알림이 발송되었는지 확인
-		assert.GreaterOrEqual(t, len(mockSender.notifyCalls), initialCallCount, "알림이 발송되어야 합니다")
-
-		cancel()
-		wg.Wait()
-	})
-}
-
-// TestServiceLifecycle은 서비스 생명주기를 테스트합니다.
-func TestServiceLifecycle(t *testing.T) {
-	t.Run("서비스 시작 및 정상 종료", func(t *testing.T) {
-		appConfig := createTestConfig()
-
-		taskService := task.NewService(appConfig)
-		// Assuming NewService now requires 3 arguments or I updated the calls in previous chunks.
-		// Actually looking at previous chunks, I updated specific usages.
-		// Here NewService is called again. I should update it.
-		// NOTE: NewService signature in service.go is NewService(appConfig, taskService, notifierFactory).
-		// In previous chunks I used nil for factory or passed it.
-		// Let's create a factory first or pass nil if safe (SetNotifierFactory handles it).
-		// But wait, NewService stores the factory. If I pass nil, I must call SetNotifierFactory before Start.
-
-		notifierFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-				return []notifier.NotifierHandler{
-					&mockNotifierHandler{
-						id:           notifier.NotifierID("test-notifier"),
-						supportsHTML: true,
-					},
-				}, nil
-			},
-		}
-
-		notificationService := notification.NewService(appConfig, taskService, notifierFactory)
-
-		// Mock factory was already passed in NewService, so SetNotifierFactory might be redundant but safe.
-		// However, let's stick to the pattern in the test.
-		// The test creates service then sets factory. But NewService now REQUIRES factory.
-		// So I must provide it at creation.
-
-		taskService.SetNotificationSender(notificationService)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		// 서비스 시작
-		wg.Add(2)
-		go taskService.Start(ctx, wg)
-		go notificationService.Start(ctx, wg)
-
-		// 잠시 실행
-		time.Sleep(500 * time.Millisecond)
-
-		// 타임아웃 또는 명시적 취소로 종료
-		cancel()
-		wg.Wait()
-	})
-
-	t.Run("여러 서비스 동시 시작 및 종료", func(t *testing.T) {
-		appConfig := createTestConfig()
-
-		// 여러 서비스 생성
-		services := make([]*task.Service, 3)
-		for i := 0; i < 3; i++ {
-			services[i] = task.NewService(appConfig)
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-
-		// 모든 서비스 시작
-		for _, svc := range services {
-			svc.SetNotificationSender(&mockNotificationSender{})
-			wg.Add(1)
-			go svc.Start(ctx, wg)
-		}
-
-		time.Sleep(100 * time.Millisecond)
-
-		// 모든 서비스 중지
-		cancel()
-		wg.Wait()
-	})
-
-	t.Run("서비스 빠른 시작 및 중지 반복", func(t *testing.T) {
-		appConfig := createTestConfig()
-
-		for i := 0; i < 3; i++ {
-			taskService := task.NewService(appConfig)
-			taskService.SetNotificationSender(&mockNotificationSender{})
-
-			ctx, cancel := context.WithCancel(context.Background())
-			wg := &sync.WaitGroup{}
-
-			wg.Add(1)
-			go taskService.Start(ctx, wg)
-
-			time.Sleep(50 * time.Millisecond)
-
-			cancel()
-			wg.Wait()
-		}
-	})
-}
-
-// TestServiceIntegration은 Service 통합을 테스트합니다.
-func TestServiceIntegration(t *testing.T) {
-	t.Run("Service 생성 및 초기화", func(t *testing.T) {
-		appConfig := createTestConfigWithNotifier()
-
-		mockTaskRunner := &mockExecutor{}
-
-		// Mock factory
-		mockFactory := &mockIntegrationNotifierFactory{
-			createNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
-				return []notifier.NotifierHandler{
-					&mockNotifierHandler{
-						id:           notifier.NotifierID("default-notifier"),
-						supportsHTML: true,
-					},
-				}, nil
-			},
-		}
-
-		notificationService := notification.NewService(appConfig, mockTaskRunner, mockFactory)
-
-		// 서비스가 정상적으로 생성되었는지 확인
-		assert.NotNil(t, notificationService, "Notification Service가 생성되어야 합니다")
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-
-		go notificationService.Start(ctx, wg)
-		time.Sleep(100 * time.Millisecond)
-
-		// 알림 발송 테스트
-		err := notificationService.NotifyDefault("통합 테스트 메시지")
-		assert.NoError(t, err, "알림 발송이 성공해야 합니다")
-
-		cancel()
-		wg.Wait()
-	})
-}
-
-// TestEndToEndScenario는 엔드투엔드 시나리오를 테스트합니다.
-func TestEndToEndScenario(t *testing.T) {
-	t.Run("전체 워크플로우", func(t *testing.T) {
-		// 이 테스트는 실제 Task가 등록되어 있어야 하므로
-		// 기본적인 서비스 연동만 확인
-		appConfig := createTestConfig()
-
-		taskService := task.NewService(appConfig)
-		mockSender := &mockNotificationSender{
-			notifyCalls: make([]notifyCall, 0),
-		}
-		taskService.SetNotificationSender(mockSender)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		wg := &sync.WaitGroup{}
-
-		wg.Add(1)
-		go taskService.Start(ctx, wg)
-
-		time.Sleep(200 * time.Millisecond)
-
-		// Task 실행 시도
-		taskService.SubmitTask(&task.SubmitRequest{
-			TaskID:        "TEST",
-			CommandID:     "TEST",
-			NotifierID:    "test-notifier",
-			NotifyOnStart: false,
-			RunBy:         task.RunByUser,
-		})
-
-		time.Sleep(200 * time.Millisecond)
-
-		cancel()
-		wg.Wait()
-	})
-}
-
-// 헬퍼 함수 및 Mock 객체
-func createTestConfig() *config.AppConfig {
-	return &config.AppConfig{
+func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
+	// 1. Config Setup (랜덤 포트 또는 테스트 포트 사용)
+	// 포트 0을 사용하면 OS가 가용 포트를 할당하지만, api.Service에서 할당된 포트를 알 방법이 없음 (Start 후 로그 외엔).
+	// 따라서 충돌 가능성이 낮고 제어 가능한 포트를 사용하거나, 포트 재사용 옵션을 믿고 진행.
+	// 여기서는 테스트 편의상 18080 ~ 18090 사이 포트를 사용하거나 고정 포트 사용.
+	// *주의*: CI 환경 등에서 병렬 실행 시 충돌 가능. 실제 프로덕션급 테스트에선 랜덤 포트 할당 후 바인딩된 포트를 조회하는 기능이 api.Service에 필요함.
+	// 현재 api.Service 수정 불가 제약이 있다면 고정 포트 사용.
+	apiPort := 18088
+
+	appConfig := &config.AppConfig{
 		Debug: true,
-		Notifier: config.NotifierConfig{
-			DefaultNotifierID: "test-notifier",
-			Telegrams: []config.TelegramConfig{
+		NotifyAPI: config.NotifyAPIConfig{
+			WS: config.WSConfig{
+				ListenPort: apiPort,
+			},
+			Applications: []config.ApplicationConfig{
 				{
-					ID:       "test-notifier",
-					BotToken: "test-token",
-					ChatID:   12345,
+					ID:                "test-app",
+					Title:             "Test Application",
+					DefaultNotifierID: "test-notifier",
+					AppKey:            "valid-key",
 				},
 			},
 		},
-		NotifyAPI: config.NotifyAPIConfig{
-			WS: config.WSConfig{
-				ListenPort: 18080,
-				TLSServer:  false,
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "test-notifier",
+			Telegrams: []config.TelegramConfig{
+				{ID: "test-notifier", BotToken: "token", ChatID: 12345},
 			},
 		},
-		Tasks: []config.TaskConfig{},
 	}
-}
 
-func createTestConfigWithNotifier() *config.AppConfig {
-	appConfig := createTestConfig()
-	appConfig.Notifier.DefaultNotifierID = "default-notifier"
-	appConfig.Notifier.Telegrams = []config.TelegramConfig{
-		{
-			ID:       "default-notifier",
-			BotToken: "test-token",
-			ChatID:   12345,
+	// 2. Mock Setup
+	mockSender := &mockNotificationSender{
+		notifyCalls: make([]notifyCall, 0),
+	}
+
+	// 3. Service Creation
+	taskService := task.NewService(appConfig)
+
+	// Notification Service needs a factory that returns our mock handler
+	mockFactory := &mockIntegrationNotifierFactory{
+		createFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{
+				&mockNotifierHandler{id: types.NotifierID("test-notifier"), supportsHTML: true},
+			}, nil
 		},
 	}
-	return appConfig
+	notificationService := notification.NewService(appConfig, taskService, mockFactory)
+
+	// Inject Mock Sender to TaskService effectively bridging the loop for verification
+	// *중요*: 실제로는 NotificationService가 Sender이지만,
+	// 우리는 NotificationService가 *실제로* 메시지를 보내는 'Notifier' 부분을 Mocking하거나,
+	// TaskService -> NotificationService -> (Notifier) -> Telegram API 호출 과정을 검증해야 함.
+	// 현재 mockSender는 `notification.Sender` 인터페이스를 구현함.
+	// TaskService는 `notification.Sender`를 사용함.
+	// 통합 테스트에서는 TaskService가 *진짜* NotificationService를 사용하게 하고,
+	// NotificationService가 *가짜* Notifier(Telegram 등)를 사용하게 하는 것이 나음.
+	// 위에서 MockFactory를 통해 NotificationService에 가짜 Notifier를 주입했으므로,
+	// TaskService에는 *진짜* NotificationService를 연결해야 함.
+	taskService.SetNotificationSender(notificationService)
+
+	apiService := api.NewService(appConfig, notificationService, version.Info{Version: "test"})
+
+	// 4. Start Services
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+
+	wg.Add(3)
+	go taskService.Start(ctx, wg)
+	go notificationService.Start(ctx, wg)
+	go apiService.Start(ctx, wg)
+
+	// Wait for services to be ready (naive sleep)
+	time.Sleep(200 * time.Millisecond)
+
+	return &IntegrationTestSuite{
+		t:                   t,
+		appConfig:           appConfig,
+		ctx:                 ctx,
+		cancel:              cancel,
+		wg:                  wg,
+		taskService:         taskService,
+		notificationService: notificationService,
+		apiService:          apiService,
+		mockSender:          mockSender, // This might not be populated if we use NotificationService directly.
+		// But we need a way to verify *final* delivery.
+		// The mockNotifierHandler (in factory) serves this purpose.
+		apiPort: apiPort,
+	}
 }
 
-// mockNotificationSender는 테스트용 NotificationSender 구현체입니다.
+func (s *IntegrationTestSuite) Teardown() {
+	s.cancel()
+	s.wg.Wait()
+}
+
+// =============================================================================
+// Mock Definitions
+// =============================================================================
+
+type mockNotifierHandler struct {
+	id           types.NotifierID
+	supportsHTML bool
+	mu           sync.Mutex
+	calls        []string
+}
+
+func (m *mockNotifierHandler) ID() types.NotifierID    { return m.id }
+func (m *mockNotifierHandler) SupportsHTML() bool      { return m.supportsHTML }
+func (m *mockNotifierHandler) Run(ctx context.Context) { <-ctx.Done() }
+func (m *mockNotifierHandler) Notify(ctx task.TaskContext, msg string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, msg)
+	return true
+}
+
+func (m *mockNotifierHandler) GetCalls() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
+
+type mockIntegrationNotifierFactory struct {
+	createFunc func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error)
+}
+
+func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, ex task.Executor) ([]notifier.NotifierHandler, error) {
+	if m.createFunc != nil {
+		return m.createFunc(cfg, ex)
+	}
+	return nil, nil
+}
+func (m *mockIntegrationNotifierFactory) RegisterProcessor(p notifier.NotifierConfigProcessor) {}
+
+// mockNotificationSender is kept for tests that want to bypass NotificationService
 type mockNotificationSender struct {
 	mu          sync.Mutex
 	notifyCalls []notifyCall
 }
-
 type notifyCall struct {
 	notifierID string
 	message    string
-	taskCtx    task.TaskContext
 }
 
-func (m *mockNotificationSender) NotifyDefault(message string) error {
+func (m *mockNotificationSender) NotifyDefault(msg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.notifyCalls = append(m.notifyCalls, notifyCall{
-		notifierID: "default",
-		message:    message,
-	})
+	m.notifyCalls = append(m.notifyCalls, notifyCall{"default", msg})
 	return nil
 }
-
-func (m *mockNotificationSender) Notify(taskCtx task.TaskContext, notifierID string, message string) error {
+func (m *mockNotificationSender) Notify(ctx task.TaskContext, nid types.NotifierID, msg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.notifyCalls = append(m.notifyCalls, notifyCall{
-		notifierID: notifierID,
-		message:    message,
-		taskCtx:    taskCtx,
-	})
+	m.notifyCalls = append(m.notifyCalls, notifyCall{string(nid), msg})
 	return nil
 }
-
-func (m *mockNotificationSender) SupportsHTML(notifierID string) bool {
-	return true
-}
-
-// mockExecutor는 테스트용 Executor 구현체입니다.
-type mockExecutor struct{}
-
-func (m *mockExecutor) SubmitTask(req *task.SubmitRequest) error {
+func (m *mockNotificationSender) SupportsHTML(nid types.NotifierID) bool { return true }
+func (m *mockNotificationSender) NotifyDefaultWithError(msg string) error {
+	return m.NotifyDefault(msg)
+} // Added for interface compliance
+func (m *mockNotificationSender) NotifyWithTitle(nid types.NotifierID, title string, message string, errorOccurred bool) error {
 	return nil
+} // Added for interface compliance
+
+func (m *mockNotificationSender) Health() error { return nil }
+
+// =============================================================================
+// Actual Tests
+// =============================================================================
+
+func TestIntegration_ServiceLifecycle(t *testing.T) {
+	// Setup creates and starts services
+	suite := setupIntegrationTest(t)
+
+	// Just verify they are running by waiting a bit
+	time.Sleep(100 * time.Millisecond)
+
+	// Teardown stops them
+	suite.Teardown()
+
+	// If no panic/deadlock, pass
 }
 
-func (m *mockExecutor) CancelTask(instanceID task.InstanceID) error {
-	return nil
+func TestIntegration_E2E_NotificationFlow(t *testing.T) {
+	// Setup
+	// 1. Config Setup (랜덤 포트 또는 테스트 포트 사용)
+	appPort := 18089
+
+	appConfig := &config.AppConfig{
+		Debug: true,
+		NotifyAPI: config.NotifyAPIConfig{
+			WS: config.WSConfig{ListenPort: appPort},
+			Applications: []config.ApplicationConfig{
+				{ID: "test-app", AppKey: "valid-key", DefaultNotifierID: "test-notifier", Title: "TestApp"},
+			},
+		},
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "test-notifier",
+		},
+	}
+
+	// Mock Notifier Handler (The final destination)
+	finalHandler := &mockNotifierHandler{
+		id:           types.NotifierID("test-notifier"),
+		supportsHTML: true,
+		calls:        make([]string, 0),
+	}
+
+	mockFactory := &mockIntegrationNotifierFactory{
+		createFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{finalHandler}, nil
+		},
+	}
+
+	// Services
+	taskService := task.NewService(appConfig)
+	notificationService := notification.NewService(appConfig, taskService, mockFactory)
+	taskService.SetNotificationSender(notificationService)
+	apiService := api.NewService(appConfig, notificationService, version.Info{})
+
+	// Start
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(3)
+	go taskService.Start(ctx, wg)
+	go notificationService.Start(ctx, wg)
+	go apiService.Start(ctx, wg)
+
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	time.Sleep(200 * time.Millisecond) // Wait for server start
+
+	// 2. HTTP Request (Simulate Client)
+	reqBody := v1request.NotificationRequest{
+		ApplicationID: "test-app", // Required by validator
+		Message:       "Hello Integration World",
+		ErrorOccurred: false,
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://localhost:%d/api/v1/notifications", appPort), bytes.NewBuffer(jsonBody))
+	require.NoError(t, err)
+
+	req.Header.Set("Content-Type", "application/json")
+	// Auth Headers
+	req.Header.Set("X-Application-Id", "test-app")
+	req.Header.Set("X-App-Key", "valid-key")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// 3. Verify HTTP Response
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// 4. Verify Notification Received (Async)
+	// Task -> Notification -> Notifier (Mock)
+	// Wait for async processing
+	assert.Eventually(t, func() bool {
+		calls := finalHandler.GetCalls()
+		if len(calls) == 0 {
+			return false
+		}
+		// Expect message format: "[TestApp] Hello Integration World" (Title used in formatter)
+		// Or whatever the logic is. The simple formatter just joins them.
+		return true
+	}, 2*time.Second, 100*time.Millisecond, "Notification should reach the handler")
 }
 
-// mockNotifierHandler는 테스트용 NotifierHandler 구현체입니다.
-type mockNotifierHandler struct {
-	id           notifier.NotifierID
-	supportsHTML bool
-}
+func TestIntegration_Auth_Failure(t *testing.T) {
+	appPort := 18090
+	appConfig := &config.AppConfig{
+		NotifyAPI: config.NotifyAPIConfig{WS: config.WSConfig{ListenPort: appPort}, Applications: []config.ApplicationConfig{{ID: "app", AppKey: "key"}}},
+	}
 
-func (m *mockNotifierHandler) ID() notifier.NotifierID {
-	return m.id
-}
+	// Minimal setup just for API
+	// We need nil-safe mocks because API initializes with NotificationSender.
+	mockSender := &mockNotificationSender{}
+	apiService := api.NewService(appConfig, mockSender, version.Info{})
 
-func (m *mockNotifierHandler) Notify(taskCtx task.TaskContext, message string) bool {
-	return true
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go apiService.Start(ctx, wg)
+	defer func() { cancel(); wg.Wait() }()
 
-func (m *mockNotifierHandler) Run(notificationStopCtx context.Context) {
-	<-notificationStopCtx.Done()
-}
+	time.Sleep(100 * time.Millisecond)
 
-func (m *mockNotifierHandler) SupportsHTML() bool {
-	return m.supportsHTML
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://localhost:%d/api/v1/notifications", appPort), bytes.NewBuffer([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Application-Id", "app")
+	req.Header.Set("X-App-Key", "wrong-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

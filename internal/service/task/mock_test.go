@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -33,12 +34,12 @@ func (m *MockTestifyNotificationSender) NotifyDefault(message string) error {
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) error {
+func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) SupportsHTML(notifierID string) bool {
+func (m *MockTestifyNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
 	args := m.Called(notifierID)
 	if len(args) > 0 {
 		return args.Bool(0)
@@ -86,12 +87,12 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID:  notifierID,
+		NotifierID:  string(notifierID),
 		Message:     message,
 		TaskContext: taskCtx,
 	})
@@ -100,11 +101,11 @@ func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID string, 
 }
 
 // SupportsHTML HTML 메시지 지원 여부를 반환합니다 (Mock).
-func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
+func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
+	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
 	return m.SupportsHTMLReturnValue
 }
 

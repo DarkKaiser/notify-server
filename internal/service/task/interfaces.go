@@ -2,6 +2,8 @@ package task
 
 import (
 	"sync"
+
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 )
 
 // Handler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
@@ -15,7 +17,7 @@ type Handler interface {
 	GetInstanceID() InstanceID
 
 	// GetNotifierID 알림을 발송할 대상 Notifier의 ID를 반환합니다.
-	GetNotifierID() string
+	GetNotifierID() types.NotifierID
 
 	// Cancel 작업을 취소 요청합니다.
 	// 호출 즉시 IsCanceled()가 true를 반환해야 하며, 실행 중인 로직은 이를 감지하여 조기 종료해야 합니다.
@@ -70,7 +72,7 @@ type NotificationSender interface {
 	//
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-	Notify(taskCtx TaskContext, notifierID string, message string) error
+	Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error
 
 	// NotifyDefault 시스템에 설정된 기본 알림 채널로 일반 메시지를 발송합니다.
 	// 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.
@@ -91,5 +93,5 @@ type NotificationSender interface {
 	//
 	// 반환값:
 	//   - bool: HTML 포맷 지원 여부 (true: 지원함, false: 텍스트로만 처리됨)
-	SupportsHTML(notifierID string) bool
+	SupportsHTML(notifierID types.NotifierID) bool
 }

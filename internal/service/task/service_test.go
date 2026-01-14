@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +26,7 @@ type MockHandler struct {
 func (h *MockHandler) GetID() ID                            { return h.id }
 func (h *MockHandler) GetCommandID() CommandID              { return h.commandID }
 func (h *MockHandler) GetInstanceID() InstanceID            { return h.instanceID }
-func (h *MockHandler) GetNotifierID() string                { return "test-notifier" }
+func (h *MockHandler) GetNotifierID() types.NotifierID      { return types.NotifierID("test-notifier") }
 func (h *MockHandler) IsCanceled() bool                     { return h.canceled }
 func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
 func (h *MockHandler) SetStorage(storage TaskResultStorage) {}

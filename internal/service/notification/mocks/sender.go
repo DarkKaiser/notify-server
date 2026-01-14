@@ -3,6 +3,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 )
 
@@ -57,12 +58,12 @@ func NewMockNotificationSender() *MockNotificationSender {
 }
 
 // NotifyWithTitle 지정된 NotifierID로 제목이 포함된 알림 메시지를 발송합니다.
-func (m *MockNotificationSender) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error {
+func (m *MockNotificationSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.NotifyCalled = true
-	m.LastNotifierID = notifierID
+	m.LastNotifierID = string(notifierID)
 	m.LastTitle = title
 	m.LastMessage = message
 	m.LastErrorOccurred = errorOccurred
@@ -116,12 +117,12 @@ func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다.
-func (m *MockNotificationSender) Notify(taskCtx task.TaskContext, notifierID string, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID:  notifierID,
+		NotifierID:  string(notifierID),
 		Message:     message,
 		TaskContext: taskCtx,
 	})
@@ -137,11 +138,11 @@ func (m *MockNotificationSender) Notify(taskCtx task.TaskContext, notifierID str
 }
 
 // SupportsHTML HTML 메시지 지원 여부를 반환합니다.
-func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
+func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
+	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
 	return m.SupportsHTMLReturnValue
 }
 

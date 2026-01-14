@@ -8,6 +8,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -15,7 +16,7 @@ import (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notifiersMap    map[notifier.NotifierID]notifier.NotifierHandler
+	notifiersMap    map[types.NotifierID]notifier.NotifierHandler
 	defaultNotifier notifier.NotifierHandler
 
 	notifierFactory notifier.NotifierFactory
@@ -33,7 +34,7 @@ func NewService(appConfig *config.AppConfig, executor task.Executor, factory not
 	service := &Service{
 		appConfig: appConfig,
 
-		notifiersMap:    make(map[notifier.NotifierID]notifier.NotifierHandler),
+		notifiersMap:    make(map[types.NotifierID]notifier.NotifierHandler),
 		defaultNotifier: nil,
 
 		// sync.WaitGroup의 Zero Value는 사용 가능한 상태이므로 별도 초기화가 필요 없습니다.
@@ -79,7 +80,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 		return apperrors.Wrap(err, apperrors.Internal, "Notifier 초기화 중 에러가 발생했습니다")
 	}
 
-	defaultNotifierID := notifier.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
+	defaultNotifierID := types.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
 	for _, h := range notifiers {
 		s.notifiersMap[h.ID()] = h
@@ -156,7 +157,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 //
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
-func (s *Service) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error {
+func (s *Service) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
 	taskCtx := task.NewTaskContext().WithTitle(title)
 	if errorOccurred {
 		taskCtx = taskCtx.WithError()
@@ -233,7 +234,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 //
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message string) error {
+func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, message string) error {
 	s.runningMu.Lock()
 	if !s.running {
 		s.runningMu.Unlock()
@@ -245,7 +246,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID string, message st
 		return notifier.ErrServiceStopped
 	}
 
-	targetNotifier := s.notifiersMap[notifier.NotifierID(notifierID)]
+	targetNotifier := s.notifiersMap[notifierID]
 	defaultNotifier := s.defaultNotifier
 
 	s.runningMu.Unlock()
@@ -283,11 +284,11 @@ func (s *Service) Health() error {
 }
 
 // SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
-func (s *Service) SupportsHTML(notifierID string) bool {
+func (s *Service) SupportsHTML(notifierID types.NotifierID) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	if h, exists := s.notifiersMap[notifier.NotifierID(notifierID)]; exists {
+	if h, exists := s.notifiersMap[notifierID]; exists {
 		return h.SupportsHTML()
 	}
 	return false

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	appconfig "github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -280,12 +281,12 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 	return args.Error(0)
 }
 
-func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID string, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID types.NotifierID, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
 	return args.Error(0)
 }
 
-func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
+func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
 	args := m.Called(notifierID)
 	return args.Bool(0)
 }

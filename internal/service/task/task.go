@@ -7,6 +7,7 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -95,8 +96,8 @@ func (t *Task) GetInstanceID() InstanceID {
 	return t.instanceID
 }
 
-func (t *Task) GetNotifierID() string {
-	return t.notifierID
+func (t *Task) GetNotifierID() types.NotifierID {
+	return types.NotifierID(t.notifierID)
 }
 
 func (t *Task) Cancel() {
@@ -168,7 +169,7 @@ func (t *Task) Run(taskCtx TaskContext, notificationSender NotificationSender, t
 	}
 
 	// 2. 작업 실행
-	message, newSnapshot, err := t.execute(previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
+	message, newSnapshot, err := t.execute(previousSnapshot, notificationSender.SupportsHTML(types.NotifierID(t.notifierID)))
 
 	if t.IsCanceled() {
 		return

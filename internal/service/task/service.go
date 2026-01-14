@@ -8,6 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -183,7 +184,7 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 			"error":      err,
 		}).Error(ErrTaskNotSupported.Error())
 
-		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskNotSupported.Error())
+		go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), ErrTaskNotSupported.Error())
 
 		return
 	}
@@ -207,7 +208,7 @@ func (s *Service) checkConcurrencyLimit(req *SubmitRequest) bool {
 	for _, handler := range s.handlers {
 		if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && !handler.IsCanceled() {
 			req.TaskContext = req.TaskContext.WithInstanceID(handler.GetInstanceID(), handler.ElapsedTimeAfterRun())
-			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
+			go s.notificationSender.Notify(req.TaskContext, types.NotifierID(req.NotifierID), msgTaskAlreadyRunning)
 			return true
 		}
 	}
@@ -248,7 +249,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 				"error":      err,
 			}).Error(err)
 
-			go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
+			go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), err.Error())
 
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
@@ -278,7 +279,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		go h.Run(req.TaskContext, s.notificationSender, s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
-			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == RunByUser), req.NotifierID, msgTaskRunning)
+			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == RunByUser), types.NotifierID(req.NotifierID), msgTaskRunning)
 		}
 
 		// 성공적으로 실행했으므로 함수를 종료합니다.
@@ -291,7 +292,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		"command_id": req.CommandID,
 	}).Error("Task ID 생성 충돌이 반복되어 실행에 실패했습니다.")
 
-	go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).")
+	go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).")
 }
 
 func (s *Service) handleTaskDone(instanceID InstanceID) {

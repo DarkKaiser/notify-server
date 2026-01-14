@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/pkg/cronx"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/robfig/cron/v3"
@@ -122,7 +123,7 @@ func (s *scheduler) handleError(notificationSender NotificationSender, notifierI
 
 	notificationSender.Notify(
 		NewTaskContext().WithTask(taskID, commandID).WithError(),
-		notifierID,
+		types.NotifierID(notifierID),
 		message,
 	)
 }
