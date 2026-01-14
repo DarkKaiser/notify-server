@@ -109,16 +109,22 @@ func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chat
 
 	// botCommands 슬라이스를 기반으로 빠른 조회를 위한 Map 초기화
 	notifier.botCommandsByCommand = make(map[string]telegramBotCommand, len(notifier.botCommands))
-	notifier.botCommandsByTaskAndCommand = make(map[string]telegramBotCommand, len(notifier.botCommands))
+	// botCommandsByTaskAndCommand "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
+	notifier.botCommandsByTaskAndCommand = make(map[string]map[string]telegramBotCommand)
 
 	for _, botCommand := range notifier.botCommands {
 		// command 문자열로 조회 가능하도록 Map에 추가
 		notifier.botCommandsByCommand[botCommand.command] = botCommand
 
-		// taskID와 commandID가 있는 경우에만 "taskID_commandID" 키로 Map에 추가
+		// taskID와 commandID가 있는 경우에만 "taskID" -> "commandID" 구조로 Map에 추가
 		if !botCommand.taskID.IsEmpty() && !botCommand.commandID.IsEmpty() {
-			key := fmt.Sprintf("%s_%s", botCommand.taskID, botCommand.commandID)
-			notifier.botCommandsByTaskAndCommand[key] = botCommand
+			tID := string(botCommand.taskID)
+			cID := string(botCommand.commandID)
+
+			if _, exists := notifier.botCommandsByTaskAndCommand[tID]; !exists {
+				notifier.botCommandsByTaskAndCommand[tID] = make(map[string]telegramBotCommand)
+			}
+			notifier.botCommandsByTaskAndCommand[tID][cID] = botCommand
 		}
 	}
 

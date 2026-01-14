@@ -77,8 +77,8 @@ type telegramNotifier struct {
 	// botCommandsByCommand command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
 	botCommandsByCommand map[string]telegramBotCommand
 
-	// botCommandsByTaskAndCommand "taskID_commandID" 키로 빠르게 조회하기 위한 Map (O(1) 조회)
-	botCommandsByTaskAndCommand map[string]telegramBotCommand
+	// botCommandsByTaskAndCommand "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
+	botCommandsByTaskAndCommand map[string]map[string]telegramBotCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
@@ -191,6 +191,10 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 
 			// 서비스 종료 시그널 수신
 		case <-ctx.Done():
+			// BaseNotifier가 완전히 닫혀서 더 이상 새로운 요청을 받지 않을 때까지 대기
+			// 이를 통해 runSender가 종료된 후에 Notify가 호출되어 메시지가 유실되는 경쟁 상태를 방지합니다.
+			<-n.Done()
+
 			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
 			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
 			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.

@@ -113,3 +113,9 @@ func (n *BaseNotifier) Close() {
 		// 컨슈머는 done 채널이나 Context 종료를 감지하여 루프를 탈출해야 합니다.
 	}
 }
+
+// Done Notifier가 종료되었는지 확인할 수 있는 채널을 반환합니다.
+// 반환된 채널이 닫히면 Notifier가 종료(Close)된 상태임을 의미합니다.
+func (n *BaseNotifier) Done() <-chan struct{} {
+	return n.done
+}
