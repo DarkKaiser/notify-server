@@ -149,8 +149,9 @@ func (n *telegramNotifier) handleCancelCommand(ctx context.Context, executor tas
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
 func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifier.NotifyRequest) {
-	// 텔레그램은 HTML 모드로 동작하므로, 메시지 내용에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
-	message := html.EscapeString(req.Message)
+	// 텔레그램 Notifier는 SupportsHTML=true이므로, 사용자 메시지를 이스케이프하지 않고 그대로 허용합니다.
+	// 사용자는 <b>Bold</b> 등의 태그를 사용하여 메시지를 서식화할 수 있습니다.
+	message := req.Message
 
 	// 작업 실행과 관련된 컨텍스트 정보(작업명, 경과시간 등)가 있다면 메시지에 덧붙입니다.
 	if req.TaskCtx != nil {
