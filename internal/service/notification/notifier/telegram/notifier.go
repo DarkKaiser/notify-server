@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -85,6 +86,18 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		"chat_id":      n.chatID,
 	}).Debug("Telegram Notifier의 작업이 시작됨")
 
+	var wg sync.WaitGroup
+
+	// 1. 알림 발송을 전담하는 고루틴 시작 (Sender)
+	// 이를 통해 알림 전송 지연이 발생하더라도 봇 명령어 수신(Receiver)은 영향을 받지 않습니다.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n.runSender(notificationStopCtx)
+	}()
+
+	// 2. 텔레그램 메시지 수신 및 명령어 처리 (Receiver)
+	// 메인 루프에서는 봇 업데이트만 처리합니다.
 	for {
 		select {
 		// 1. 텔레그램 봇 서버로부터 새로운 메시지 수신
@@ -102,20 +115,13 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			// 수신된 명령어를 처리 핸들러로 위임
 			n.handleCommand(n.executor, update.Message)
 
-		// 2. 내부 시스템으로부터 발송할 알림 요청 수신
-		case notifyRequest := <-n.RequestC:
-			n.handleNotifyRequest(notifyRequest)
-
-		// 3. 서비스 종료 시그널 수신
 		case <-notificationStopCtx.Done():
 			// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
 			n.botAPI.StopReceivingUpdates()
 			n.Close()
 
-			// 채널에 남아있는 알림 요청을 모두 처리합니다 (Drain)
-			for notifyRequest := range n.RequestC {
-				n.handleNotifyRequest(notifyRequest)
-			}
+			// Sender 고루틴이 종료될 때까지 대기
+			wg.Wait()
 
 			n.botAPI = nil
 
@@ -124,6 +130,28 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				"chat_id":     n.chatID,
 			}).Debug("Telegram Notifier의 작업이 중지됨")
 
+			return
+		}
+	}
+}
+
+// runSender 알림 발송 요청을 처리하는 작업 루프 (Worker)
+func (n *telegramNotifier) runSender(ctx context.Context) {
+	for {
+		select {
+		// 내부 시스템으로부터 발송할 알림 요청 수신
+		case notifyRequest, ok := <-n.RequestC:
+			if !ok {
+				return // 채널이 닫히면 종료
+			}
+			n.handleNotifyRequest(notifyRequest)
+
+			// 서비스 종료 시그널 수신
+		case <-ctx.Done():
+			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
+			for notifyRequest := range n.RequestC {
+				n.handleNotifyRequest(notifyRequest)
+			}
 			return
 		}
 	}
