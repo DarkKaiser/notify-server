@@ -259,16 +259,20 @@ func formatElapsedTime(seconds int64) string {
 
 // sendMessage 텔레그램 메시지 전송
 // API 제한(4096자)을 초과하는 메시지는 자동으로 분할하여 전송합니다.
-// 컨텍스트가 취소되면 전송을 중단하고 즉시 반환합니다.
+// 컨텍스트가 취소되거나 전송 중 오류가 발생하면 즉시 중단하고 반환합니다.
 func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 	// 메시지 길이가 제한 이내라면 한 번에 전송
 	if len(message) <= telegramMessageMaxLength {
-		n.sendSingleMessage(ctx, message)
+		_ = n.sendSingleMessage(ctx, message)
 		return
 	}
 
 	// 제한을 초과하는 경우, 줄바꿈(\n) 단위로 메시지를 나눕니다.
-	var messageChunk string
+	var sb strings.Builder
+	// strings.Builder는 초기 용량을 설정할 수 없지만, 대략적인 크기를 알면 Grow를 쓸 수 있음.
+	// 여기서는 매번 Reset되므로 큰 의미는 없을 수 있으나, 빈번한 재할당을 줄이기 위해 사용.
+	sb.Grow(telegramMessageMaxLength)
+
 	lines := strings.SplitSeq(message, "\n")
 	for line := range lines {
 		// 컨텍스트 취소 확인 (긴 루프 중간에 탈출)
@@ -277,16 +281,18 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 		}
 
 		neededSpace := len(line)
-		if len(messageChunk) > 0 {
+		if sb.Len() > 0 {
 			neededSpace += 1 // 줄바꿈 문자 공간
 		}
 
 		// 현재 청크 + (줄바꿈) + 새 라인이 최대 길이를 넘으면
-		if len(messageChunk)+neededSpace > telegramMessageMaxLength {
+		if sb.Len()+neededSpace > telegramMessageMaxLength {
 			// 현재까지 모은 청크가 있다면 전송
-			if len(messageChunk) > 0 {
-				n.sendSingleMessage(ctx, messageChunk)
-				messageChunk = ""
+			if sb.Len() > 0 {
+				if err := n.sendSingleMessage(ctx, sb.String()); err != nil {
+					return // 전송 실패 시 중단
+				}
+				sb.Reset()
 			}
 
 			// 현재 라인 자체가 최대 길이보다 길다면 강제로 자름 (Chunking)
@@ -299,37 +305,39 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 					}
 
 					chunk, remainder := safeSplit(currentLine, telegramMessageMaxLength)
-					n.sendSingleMessage(ctx, chunk)
+					if err := n.sendSingleMessage(ctx, chunk); err != nil {
+						return // 전송 실패 시 중단
+					}
 					currentLine = remainder
 				}
 				// 자르고 남은 뒷부분을 새로운 청크의 시작으로 설정
-				messageChunk = currentLine
+				sb.WriteString(currentLine)
 			} else {
 				// 현재 라인은 최대 길이 이내이므로 새로운 청크로 설정
-				messageChunk = line
+				sb.WriteString(line)
 			}
 		} else {
 			// 청크에 라인 추가
-			if len(messageChunk) > 0 {
-				messageChunk += "\n"
+			if sb.Len() > 0 {
+				sb.WriteByte('\n')
 			}
-			messageChunk += line
+			sb.WriteString(line)
 		}
 	}
 
 	// 마지막 남은 청크 전송
-	if len(messageChunk) > 0 {
-		n.sendSingleMessage(ctx, messageChunk)
+	if sb.Len() > 0 {
+		_ = n.sendSingleMessage(ctx, sb.String())
 	}
 }
 
 // sendSingleMessage 단일 메시지 전송
 // 컨텍스트 취소(종료 시그널)를 감지하면 즉시 중단합니다.
-func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) {
-	n.sendSingleMessageInternal(ctx, message, true)
+func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) error {
+	return n.sendSingleMessageInternal(ctx, message, true)
 }
 
-func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, message string, useHTML bool) {
+func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, message string, useHTML bool) error {
 	messageConfig := tgbotapi.NewMessage(n.chatID, message)
 	if useHTML {
 		messageConfig.ParseMode = tgbotapi.ModeHTML
@@ -346,7 +354,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				"notifier_id": n.ID(),
 				"error":       err,
 			}).Debug("RateLimiter 대기 중 컨텍스트 취소됨 (전송 중단)")
-			return
+			return err
 		}
 	}
 
@@ -363,7 +371,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 					"error":       ctx.Err(),
 				}).Error("알림 메시지 발송 시간 초과 (Timeout)")
 			}
-			return
+			return ctx.Err()
 		default:
 		}
 
@@ -377,7 +385,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				"mode":        parseModeToString(messageConfig.ParseMode),
 			}).Info("알림메시지 발송 성공")
 
-			return
+			return nil
 		}
 
 		// 실패 시 로그 남기고 대기
@@ -421,8 +429,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 						"error":       err,
 					}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
 
-					n.sendSingleMessageInternal(ctx, message, false)
-					return // Fallback 호출 후 현재 루프 종료
+					return n.sendSingleMessageInternal(ctx, message, false) // Fallback 호출 후 결과 반환
 				}
 
 				// 그 외 400번대 에러이거나 이미 Plain Text였다면 중단
@@ -431,7 +438,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 					"error":       err,
 					"code":        errCode,
 				}).Error("치명적인 API 오류 발생, 재시도 중단")
-				return
+				return err
 			}
 		}
 
@@ -449,7 +456,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 					"error":       ctx.Err(),
 				}).Error("알림 메시지 재시도 대기 중 시간 초과 (Timeout)")
 			}
-			return
+			return ctx.Err()
 		case <-time.After(waitDuration):
 			// 재시도 대기 완료, 다음 루프 진행
 		}
@@ -462,6 +469,8 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		"error":       err,
 		"max_retries": maxRetries,
 	}).Error("알림메시지 발송 최종 실패")
+
+	return err
 }
 
 func parseModeToString(mode string) string {
