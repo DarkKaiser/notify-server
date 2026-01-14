@@ -106,6 +106,28 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		n.runSender(notificationStopCtx)
 	}()
 
+	// 중요: Run 메서드가 어떤 이유로든(정상 종료, 채널 닫힘, 패닉) 종료될 때
+	// Sender 고루틴도 함께 종료하고 대기해야 합니다.
+	defer func() {
+		// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
+		if n.botAPI != nil {
+			n.botAPI.StopReceivingUpdates()
+		}
+
+		// Notifier Close를 호출하여 Done 채널을 닫아 runSender를 깨웁니다.
+		n.Close()
+
+		// Sender 고루틴이 종료될 때까지 대기
+		wg.Wait()
+
+		n.botAPI = nil
+
+		applog.WithComponentAndFields("notification.telegram", applog.Fields{
+			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
+		}).Debug("Telegram Notifier의 작업이 중지됨")
+	}()
+
 	// 2. 텔레그램 메시지 수신 및 명령어 처리 (Receiver)
 	// 메인 루프에서는 봇 업데이트만 처리합니다.
 	for {
@@ -158,20 +180,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			}
 
 		case <-notificationStopCtx.Done():
-			// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
-			n.botAPI.StopReceivingUpdates()
-			n.Close()
-
-			// Sender 고루틴이 종료될 때까지 대기
-			wg.Wait()
-
-			n.botAPI = nil
-
-			applog.WithComponentAndFields("notification.telegram", applog.Fields{
-				"notifier_id": n.ID(),
-				"chat_id":     n.chatID,
-			}).Debug("Telegram Notifier의 작업이 중지됨")
-
+			// loop 탈출 -> defer 구문 실행 -> 정리
 			return
 		}
 	}
@@ -219,10 +228,16 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 
 			// 서비스 종료 시그널 수신
 		case <-ctx.Done():
-			// BaseNotifier가 완전히 닫혀서 더 이상 새로운 요청을 받지 않을 때까지 대기
-			// 이를 통해 runSender가 종료된 후에 Notify가 호출되어 메시지가 유실되는 경쟁 상태를 방지합니다.
-			<-n.Done()
+			// Do nothing here, wait for Done() signal or Drain logic below
 
+		// Notifier 자체 종료 시그널 수신 (Run 루프가 종료될 때)
+		// Receiver가 죽으면 Sender도 같이 죽어야 함 (Zombie 방지)
+		case <-n.Done():
+			// 아래 Drain 로직으로 진입
+		}
+
+		// 종료 조건 확인: Context가 취소되었거나, Notifier가 닫혔을 때
+		if ctx.Err() != nil || n.isClosed() {
 			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
 			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
 			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
@@ -263,5 +278,15 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			}
 			return
 		}
+	}
+}
+
+// isClosed Notifier가 닫혔는지 확인하는 헬퍼 메서드 (Lock-free check using Done channel)
+func (n *telegramNotifier) isClosed() bool {
+	select {
+	case <-n.Done():
+		return true
+	default:
+		return false
 	}
 }
