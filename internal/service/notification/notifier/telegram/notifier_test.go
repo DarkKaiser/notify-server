@@ -215,3 +215,47 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 		})
 	}
 }
+
+// TestTelegramNotifier_Run_Drain tests that the notifier processes remaining messages
+// after the context is cancelled (Graceful Shutdown).
+func TestTelegramNotifier_Run_Drain(t *testing.T) {
+	// Setup
+	appConfig := &config.AppConfig{}
+	notifier, mockBot, _ := setupTelegramTest(t, appConfig)
+	require.NotNil(t, notifier)
+	require.NotNil(t, mockBot)
+
+	// Disable rate limiter for test
+	notifier.limiter = rate.NewLimiter(rate.Inf, 0)
+	notifier.retryDelay = 1 * time.Millisecond
+
+	// Expectation: 5 messages will be sent
+	var wgSend sync.WaitGroup
+	wgSend.Add(5)
+
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		wgSend.Done()
+	}).Return(tgbotapi.Message{}, nil).Times(5)
+
+	// Run notifier
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	runTelegramNotifier(ctx, notifier, &wg)
+
+	// Act: Send 5 messages
+	taskCtx := task.NewTaskContext()
+	for i := 0; i < 5; i++ {
+		notifier.Notify(taskCtx, "Drain Message")
+	}
+
+	// Trigger Shutdown immediately
+	// Ensure initial message propagation
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	// Wait for shutdown and drain
+	wg.Wait()
+
+	// Assertions
+	mockBot.AssertExpectations(t)
+}

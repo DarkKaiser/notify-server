@@ -111,6 +111,12 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
 			n.botAPI.StopReceivingUpdates()
 			n.Close()
+
+			// 채널에 남아있는 알림 요청을 모두 처리합니다 (Drain)
+			for notifyRequest := range n.RequestC {
+				n.handleNotifyRequest(notifyRequest)
+			}
+
 			n.botAPI = nil
 
 			applog.WithComponentAndFields("notification.telegram", applog.Fields{
