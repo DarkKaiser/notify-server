@@ -63,7 +63,7 @@ func NewNotifier(id types.NotifierID, botToken string, chatID int64, appConfig *
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
 func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) notifier.NotifierHandler {
 	notifier := &telegramNotifier{
-		BaseNotifier: notifier.NewBaseNotifier(id, true, 1000, constants.DefaultNotifyTimeout),
+		BaseNotifier: notifier.NewBaseNotifier(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
 		chatID: chatID,
 

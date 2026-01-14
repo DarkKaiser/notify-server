@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -120,6 +121,9 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			if tt.expectedCommandCount > 0 {
 				assert.Equal(t, tt.expectedFirstCmd, notifier.botCommands[0].command)
 			}
+
+			// Buffer Size Verification
+			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC), "Buffer size should match the constant")
 		})
 	}
 }
