@@ -57,11 +57,11 @@ func NewNotifier(id types.NotifierID, botToken string, chatID int64, appConfig *
 	}
 	botAPI.Debug = appConfig.Debug
 
-	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, chatID, appConfig, executor), nil
+	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, chatID, appConfig, executor)
 }
 
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) notifier.NotifierHandler {
+func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor task.Executor) (notifier.NotifierHandler, error) {
 	notifier := &telegramNotifier{
 		BaseNotifier: notifier.NewBaseNotifier(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
@@ -78,6 +78,9 @@ func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chat
 		handlerSemaphore: make(chan struct{}, constants.TelegramCommandConcurrency),
 	}
 
+	// 명령어 중복 검사를 위한 임시 맵
+	registeredCommands := make(map[string]telegramBotCommand)
+
 	// 봇 명령어 목록을 초기화합니다.
 	for _, t := range appConfig.Tasks {
 		for _, c := range t.Commands {
@@ -87,16 +90,27 @@ func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chat
 			}
 
 			// 명령어 문자열 생성: taskID와 commandID를 SnakeCase로 변환하여 조합 (예: myTask, run -> my_task_run)
-			notifier.botCommands = append(notifier.botCommands,
-				telegramBotCommand{
-					command:            fmt.Sprintf("%s_%s", strcase.ToSnake(t.ID), strcase.ToSnake(c.ID)),
-					commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
-					commandDescription: c.Description,                            // 설명: 커맨드 설명
+			command := fmt.Sprintf("%s_%s", strcase.ToSnake(t.ID), strcase.ToSnake(c.ID))
 
-					taskID:    task.ID(t.ID),
-					commandID: task.CommandID(c.ID),
-				},
-			)
+			// 중복 명령어 검사 (Fail-Fast)
+			if existing, exists := registeredCommands[command]; exists {
+				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
+					"텔레그램 명령어 충돌이 감지되었습니다. 명령어: '/%s' (Task:'%s', Command:'%s')가 이미 등록된 (Task:'%s', Command:'%s')와 충돌합니다. TaskID 또는 CommandID를 변경해주세요.",
+					command, t.ID, c.ID, existing.taskID, existing.commandID,
+				))
+			}
+
+			newCommand := telegramBotCommand{
+				command:            command,
+				commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
+				commandDescription: c.Description,                            // 설명: 커맨드 설명
+
+				taskID:    task.ID(t.ID),
+				commandID: task.CommandID(c.ID),
+			}
+
+			notifier.botCommands = append(notifier.botCommands, newCommand)
+			registeredCommands[command] = newCommand
 		}
 	}
 	notifier.botCommands = append(notifier.botCommands,
@@ -128,5 +142,5 @@ func newTelegramNotifierWithBot(id types.NotifierID, botAPI telegramBotAPI, chat
 		}
 	}
 
-	return notifier
+	return notifier, nil
 }

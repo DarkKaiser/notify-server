@@ -111,7 +111,8 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			chatID := int64(12345)
 
 			mockExecutor := &taskmocks.MockExecutor{}
-			n := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
+			n, err := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
+			require.NoError(t, err)
 
 			notifier, ok := n.(*telegramNotifier)
 			require.True(t, ok, "Type assertion should succeed")

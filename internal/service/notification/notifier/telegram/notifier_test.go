@@ -40,7 +40,8 @@ func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNoti
 	}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	notifierHandler := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
+	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
+	require.NoError(t, err)
 	notifier := notifierHandler.(*telegramNotifier)
 	notifier.retryDelay = 1 * time.Millisecond
 	notifier.limiter = rate.NewLimiter(rate.Inf, 0)
