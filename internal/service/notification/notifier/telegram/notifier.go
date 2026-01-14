@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -195,7 +196,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
 			// 무한 대기(Hang)를 방지하기 위해 60초의 타임아웃을 설정합니다.
 			// (버퍼 1000개, 초당 20~30개 처리 가정 시 최소 30~50초 소요됨)
-			drainCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			drainCtx, cancel := context.WithTimeout(context.Background(), constants.TelegramShutdownTimeout)
 			defer cancel()
 
 			// 큐에 남은 미처리 요청을 비동기적으로 처리 (Non-blocking Drain)
