@@ -159,6 +159,22 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 
 	// 3. 리소스 정리
 	s.runningMu.Lock()
+
+	// 방어적 검증: 모든 Notifier가 정상 종료되었는지 확인
+	// notifiersStopWG.Wait()가 완료되었으므로 이론적으로는 모두 종료되었어야 하지만,
+	// 명시적으로 확인하여 비정상 상황을 조기에 감지합니다.
+	for id, handler := range s.notifiersMap {
+		select {
+		case <-handler.Done():
+			// 정상 종료됨
+		default:
+			// 아직 종료되지 않음 (비정상 상황)
+			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+				"notifier_id": id,
+			}).Warn("Notifier가 아직 종료되지 않았습니다 (비정상 상황)")
+		}
+	}
+
 	s.executor = nil
 	s.notifiersMap = nil
 	s.defaultNotifier = nil
@@ -294,7 +310,12 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 	}).Error(m)
 
 	if defaultNotifier != nil {
-		defaultNotifier.Notify(task.NewTaskContext().WithError(), m)
+		if !defaultNotifier.Notify(task.NewTaskContext().WithError(), m) {
+			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+				"notifier_id":         notifierID,
+				"default_notifier_id": defaultNotifier.ID(),
+			}).Warn("기본 Notifier로 에러 알림 전송 실패 (큐 가득 참 또는 종료됨)")
+		}
 	}
 
 	return notifier.ErrNotFoundNotifier

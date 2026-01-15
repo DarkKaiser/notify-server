@@ -117,8 +117,30 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		// Notifier Close를 호출하여 Done 채널을 닫아 runSender를 깨웁니다.
 		n.Close()
 
-		// Sender 고루틴이 종료될 때까지 대기
-		wg.Wait()
+		// Sender 고루틴이 종료될 때까지 대기 (타임아웃 적용)
+		// 비정상 상황에서 무한 대기를 방지하여 서비스 종료 시 Hang을 막습니다.
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		shutdownTimeout := constants.TelegramShutdownTimeout + 5*time.Second
+		select {
+		case <-done:
+			// 정상 종료
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				"notifier_id": n.ID(),
+				"chat_id":     n.chatID,
+			}).Debug("Sender 고루틴이 정상 종료됨")
+		case <-time.After(shutdownTimeout):
+			// 타임아웃 발생 - 강제 종료
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				"notifier_id": n.ID(),
+				"chat_id":     n.chatID,
+				"timeout":     shutdownTimeout,
+			}).Error("Sender 고루틴 종료 타임아웃 - 강제 종료")
+		}
 
 		n.botAPI = nil
 

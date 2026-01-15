@@ -235,6 +235,7 @@ func (n *telegramNotifier) appendElapsedTime(taskCtx task.TaskContext, message s
 }
 
 // formatElapsedTime 초 단위 시간을 읽기 쉬운 문자열로 변환 (예: 1시간 30분 10초)
+// 모든 값이 0일 때는 "0초"를 표시하고, 시간/분이 있을 때는 0초를 생략합니다.
 func formatElapsedTime(seconds int64) string {
 	s := seconds % 60
 	m := (seconds / 60) % 60
@@ -251,10 +252,12 @@ func formatElapsedTime(seconds int64) string {
 		fmt.Fprintf(&sb, "%d초 ", s)
 	}
 
-	if sb.Len() > 0 {
-		return fmt.Sprintf(msgElapsedTime, sb.String())
+	// 모든 값이 0인 경우 "0초" 표시
+	if sb.Len() == 0 {
+		sb.WriteString("0초 ")
 	}
-	return ""
+
+	return fmt.Sprintf(msgElapsedTime, sb.String())
 }
 
 // sendMessage 텔레그램 메시지 전송
@@ -331,6 +334,35 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 	}
 }
 
+// extractTelegramErrorCode 텔레그램 API 에러에서 에러 코드와 Retry-After 값을 추출합니다.
+func extractTelegramErrorCode(err error) (code int, retryAfter int) {
+	if apiErr, ok := err.(tgbotapi.Error); ok {
+		return apiErr.Code, apiErr.ResponseParameters.RetryAfter
+	}
+	if apiErrPtr, ok := err.(*tgbotapi.Error); ok {
+		return apiErrPtr.Code, apiErrPtr.ResponseParameters.RetryAfter
+	}
+	return 0, 0
+}
+
+// shouldRetryError 주어진 에러가 재시도 가능한지 판단합니다.
+// 429 (Too Many Requests)는 재시도 가능, 기타 4xx는 재시도 불가능.
+func shouldRetryError(errCode int) bool {
+	if errCode >= 400 && errCode < 500 {
+		return errCode == 429 // 429만 재시도 가능
+	}
+	return true // 5xx 등은 재시도 가능
+}
+
+// getRetryWaitDuration 재시도 대기 시간을 계산합니다.
+// Retry-After 헤더가 있으면 그 값을 사용하고, 없으면 기본 대기 시간을 사용합니다.
+func (n *telegramNotifier) getRetryWaitDuration(retryAfter int) time.Duration {
+	if retryAfter > 0 {
+		return time.Duration(retryAfter) * time.Second
+	}
+	return n.retryDelay
+}
+
 // sendSingleMessage 단일 메시지 전송
 // 컨텍스트 취소(종료 시그널)를 감지하면 즉시 중단합니다.
 func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) error {
@@ -359,9 +391,9 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 	}
 
 	const maxRetries = 3
+	var lastErr error
 
-	var err error
-	for i := 0; i < maxRetries; i++ {
+	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// 전송 전 컨텍스트 확인
 		select {
 		case <-ctx.Done():
@@ -375,79 +407,66 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		default:
 		}
 
-		_, err = n.botAPI.Send(messageConfig)
+		// 전송 시도
+		_, err := n.botAPI.Send(messageConfig)
 		if err == nil {
-			// 성공 시 루프 탈출
+			// 성공
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
-				"attempt":     i + 1,
+				"attempt":     attempt,
 				"mode":        parseModeToString(messageConfig.ParseMode),
 			}).Info("알림메시지 발송 성공")
-
 			return nil
 		}
 
-		// 실패 시 로그 남기고 대기
+		// 실패 로그
+		lastErr = err
 		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
-			"attempt":     i + 1,
+			"attempt":     attempt,
 			"error":       err,
 			"mode":        parseModeToString(messageConfig.ParseMode),
 		}).Warn("알림메시지 발송 실패")
 
-		// 4xx 에러(Client Error)인 경우
-		var errCode int
-		var retryAfter int
+		// 에러 분석
+		errCode, retryAfter := extractTelegramErrorCode(err)
 
-		if apiErr, ok := err.(tgbotapi.Error); ok {
-			errCode = apiErr.Code
-			retryAfter = apiErr.ResponseParameters.RetryAfter
-		} else if apiErrPtr, ok := err.(*tgbotapi.Error); ok {
-			errCode = apiErrPtr.Code
-			retryAfter = apiErrPtr.ResponseParameters.RetryAfter
+		// HTML 파싱 에러 시 Plain Text로 Fallback
+		if useHTML && errCode == 400 {
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				"notifier_id": n.ID(),
+				"error":       err,
+			}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
+			return n.sendSingleMessageInternal(ctx, message, false)
 		}
 
-		if errCode >= 400 && errCode < 500 {
-			// 429 Too Many Requests는 재시도 대상
-			if errCode == 429 {
-				if retryAfter > 0 {
-					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
-						"notifier_id": n.ID(),
-						"retry_after": retryAfter,
-					}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
-				}
-				// 429일 경우 아래의 재시도 로직으로 계속 진행
-			} else {
-				// 429가 아닌 400번대 에러 (예: Bad Request)
-				// HTML 모드였고, 파싱 에러(Bad Request)로 의심된다면 Plain Text로 재시도
-				// 단, 한 번만 Fallback 시도 (재귀 호출 방지)
-				if useHTML && errCode == 400 {
-					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
-						"notifier_id": n.ID(),
-						"error":       err,
-					}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
-
-					return n.sendSingleMessageInternal(ctx, message, false) // Fallback 호출 후 결과 반환
-				}
-
-				// 그 외 400번대 에러이거나 이미 Plain Text였다면 중단
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
-					"notifier_id": n.ID(),
-					"error":       err,
-					"code":        errCode,
-				}).Error("치명적인 API 오류 발생, 재시도 중단")
-				return err
-			}
+		// 재시도 가능 여부 판단
+		if !shouldRetryError(errCode) {
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				"notifier_id": n.ID(),
+				"error":       err,
+				"code":        errCode,
+			}).Error("치명적인 API 오류 발생, 재시도 중단")
+			return err
 		}
 
-		waitDuration := n.retryDelay
-		if retryAfter > 0 {
-			waitDuration = time.Duration(retryAfter) * time.Second
+		// 마지막 시도였으면 재시도 대기 없이 종료
+		if attempt >= maxRetries {
+			break
 		}
 
-		// 안전한 대기: 컨텍스트 취소 시 즉시 반환
+		// 429 에러 시 로그
+		if errCode == 429 && retryAfter > 0 {
+			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				"notifier_id": n.ID(),
+				"retry_after": retryAfter,
+			}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
+		}
+
+		// 재시도 대기
+		waitDuration := n.getRetryWaitDuration(retryAfter)
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.DeadlineExceeded {
@@ -458,19 +477,19 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			}
 			return ctx.Err()
 		case <-time.After(waitDuration):
-			// 재시도 대기 완료, 다음 루프 진행
+			// 재시도 대기 완료
 		}
 	}
 
-	// 모든 재시도 실패 시 에러 로그
+	// 최종 실패
 	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id": n.ID(),
 		"chat_id":     n.chatID,
-		"error":       err,
+		"error":       lastErr,
 		"max_retries": maxRetries,
 	}).Error("알림메시지 발송 최종 실패")
 
-	return err
+	return lastErr
 }
 
 func parseModeToString(mode string) string {
