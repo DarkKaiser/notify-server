@@ -355,3 +355,22 @@ func AnyContent(strs ...string) bool {
 	}
 	return false
 }
+
+// Truncate 원본 문자열을 limit 길이(Rune 단위)만큼 남기고 나머지는 제거합니다.
+// 문자열이 limit보다 길 경우, 잘린 뒷부분 대신 "..." 접미사가 붙습니다.
+// limit가 문자열 실제 길이보다 크거나 같으면 원본을 그대로 반환합니다.
+func Truncate(s string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+
+	if utf8.RuneCountInString(s) <= limit {
+		return s
+	}
+
+	runes := []rune(s)
+	if len(runes) > limit {
+		return string(runes[:limit]) + "..."
+	}
+	return s
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -186,7 +187,7 @@ func (n *telegramNotifier) appendTitle(taskCtx task.TaskContext, message string)
 		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 등의 문제를 방지하기 위해 Truncate 처리
 		// 중요: Truncate를 먼저 수행한 후 이스케이프해야 안전합니다.
 		// 이스케이프된 문자열을 자르면 '&lt;' 따위가 잘려서 '&l' 처럼 되어 HTML 파싱 에러를 유발할 수 있습니다.
-		safeTitle := html.EscapeString(truncateString(title, titleTruncateLength))
+		safeTitle := html.EscapeString(strutil.Truncate(title, titleTruncateLength))
 		return fmt.Sprintf(msgContextTitle, safeTitle, message)
 	}
 
@@ -522,17 +523,4 @@ func safeSplit(s string, limit int) (chunk, remainder string) {
 	}
 
 	return s[:splitIndex], s[splitIndex:]
-}
-
-// truncateString 문자열을 지정된 rune 길이로 자르고 "..."을 붙입니다.
-func truncateString(s string, limit int) string {
-	if utf8.RuneCountInString(s) <= limit {
-		return s
-	}
-
-	runes := []rune(s)
-	if len(runes) > limit {
-		return string(runes[:limit]) + "..."
-	}
-	return s
 }

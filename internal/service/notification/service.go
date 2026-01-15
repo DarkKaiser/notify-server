@@ -12,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
 type Service struct {
@@ -303,7 +304,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 		return nil
 	}
 
-	m := fmt.Sprintf(constants.LogMsgNotifierNotFoundRejected, notifierID, message)
+	m := fmt.Sprintf(constants.LogMsgNotifierNotFoundRejected, notifierID, strutil.Truncate(message, 100))
 
 	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"notifier_id": notifierID,
