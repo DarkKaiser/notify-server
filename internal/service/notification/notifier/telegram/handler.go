@@ -46,7 +46,7 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor task.Exec
 	}()
 
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
-	if message.Text[:1] != telegramBotCommandInitialCharacter {
+	if len(message.Text) == 0 || message.Text[:1] != telegramBotCommandInitialCharacter {
 		n.sendUnknownCommandMessage(ctx, message.Text)
 		return
 	}
@@ -101,7 +101,7 @@ func (n *telegramNotifier) executeCommand(executor task.Executor, botCommand tel
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"command":     botCommand.command,
-			}).Warn("실행 실패 메시지 알림 전송 실패")
+			}).Warn(constants.LogMsgTelegramCmdFailNotifyFail)
 		}
 	}
 }
@@ -385,7 +385,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
-			}).Debug("RateLimiter 대기 중 컨텍스트 취소됨 (전송 중단)")
+			}).Debug(constants.LogMsgTelegramRateLimitCancel)
 			return err
 		}
 	}
@@ -401,7 +401,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
-				}).Error("알림 메시지 발송 시간 초과 (Timeout)")
+				}).Error(constants.LogMsgTelegramSendTimeout)
 			}
 			return ctx.Err()
 		default:
@@ -416,7 +416,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				"chat_id":     n.chatID,
 				"attempt":     attempt,
 				"mode":        parseModeToString(messageConfig.ParseMode),
-			}).Info("알림메시지 발송 성공")
+			}).Info(constants.LogMsgTelegramSendSuccess)
 			return nil
 		}
 
@@ -428,7 +428,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			"attempt":     attempt,
 			"error":       err,
 			"mode":        parseModeToString(messageConfig.ParseMode),
-		}).Warn("알림메시지 발송 실패")
+		}).Warn(constants.LogMsgTelegramSendFail)
 
 		// 에러 분석
 		errCode, retryAfter := extractTelegramErrorCode(err)
@@ -438,7 +438,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
-			}).Warn("HTML 파싱 오류 감지, 일반 텍스트로 전환하여 재시도합니다 (Fallback)")
+			}).Warn(constants.LogMsgTelegramHTMLFallback)
 			return n.sendSingleMessageInternal(ctx, message, false)
 		}
 
@@ -448,7 +448,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				"notifier_id": n.ID(),
 				"error":       err,
 				"code":        errCode,
-			}).Error("치명적인 API 오류 발생, 재시도 중단")
+			}).Error(constants.LogMsgTelegramCriticalError)
 			return err
 		}
 
@@ -462,7 +462,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"retry_after": retryAfter,
-			}).Warn("Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다.")
+			}).Warn(constants.LogMsgTelegramRateLimitWait)
 		}
 
 		// 재시도 대기
@@ -473,7 +473,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
-				}).Error("알림 메시지 재시도 대기 중 시간 초과 (Timeout)")
+				}).Error(constants.LogMsgTelegramRetryTimeout)
 			}
 			return ctx.Err()
 		case <-time.After(waitDuration):
@@ -487,7 +487,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		"chat_id":     n.chatID,
 		"error":       lastErr,
 		"max_retries": maxRetries,
-	}).Error("알림메시지 발송 최종 실패")
+	}).Error(constants.LogMsgTelegramSendFinalFail)
 
 	return lastErr
 }

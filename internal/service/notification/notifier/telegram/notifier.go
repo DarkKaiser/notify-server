@@ -94,7 +94,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		"notifier_id":  n.ID(),
 		"bot_username": n.botAPI.GetSelf().UserName,
 		"chat_id":      n.chatID,
-	}).Debug("Telegram Notifier의 작업이 시작됨")
+	}).Debug(constants.LogMsgTelegramStarted)
 
 	var wg sync.WaitGroup
 
@@ -132,14 +132,14 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
-			}).Debug("Sender 고루틴이 정상 종료됨")
+			}).Debug(constants.LogMsgTelegramSenderStoppedNormal)
 		case <-time.After(shutdownTimeout):
 			// 타임아웃 발생 - 강제 종료
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"timeout":     shutdownTimeout,
-			}).Error("Sender 고루틴 종료 타임아웃 - 강제 종료")
+			}).Error(constants.LogMsgTelegramSenderTimeout)
 		}
 
 		n.botAPI = nil
@@ -147,7 +147,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
-		}).Debug("Telegram Notifier의 작업이 중지됨")
+		}).Debug(constants.LogMsgTelegramStopped)
 	}()
 
 	// 2. 텔레그램 메시지 수신 및 명령어 처리 (Receiver)
@@ -160,7 +160,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
-				}).Error("텔레그램 업데이트 채널이 닫혔습니다. 수신 루프를 종료합니다.")
+				}).Error(constants.LogMsgTelegramUpdateChanClosed)
 				return
 			}
 
@@ -198,7 +198,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
-				}).Warn("봇 명령어 처리량이 한계에 도달하여 요청을 처리할 수 없습니다 (Drop)")
+				}).Warn(constants.LogMsgTelegramCommandOverload)
 			}
 
 		case <-notificationStopCtx.Done():
@@ -273,16 +273,16 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			// RequestC가 닫히지 않으므로 range를 사용할 수 없음.
 		Loop:
 			for {
-				// 먼저 타임아웃 체크 - 메시지를 꺼내기 전에 확인하여 정확한 타임아웃 동작 보장
-				if drainCtx.Err() != nil {
-					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
-						"notifier_id": n.ID(),
-					}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
-					break Loop
-				}
-
 				select {
 				case notifyRequest := <-n.RequestC:
+					// 타임아웃 체크를 메시지 처리 전에 수행하여 타임아웃 발생 시 즉시 중단
+					if drainCtx.Err() != nil {
+						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+							"notifier_id": n.ID(),
+						}).Warn(constants.LogMsgTelegramDrainTimeout)
+						break Loop
+					}
+
 					// Drain 중에도 Panic Recovery가 필요합니다.
 					func() {
 						defer func() {

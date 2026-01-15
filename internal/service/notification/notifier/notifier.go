@@ -105,7 +105,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 		// Timeout이 지날 때까지 대기열에 빈 공간이 생기지 않으면 Drop
 		applog.WithComponentAndFields(constants.ComponentNotifier, applog.Fields{
 			"notifier_id": n.ID(),
-		}).Warn("알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop - Timeout)")
+		}).Warn(constants.LogMsgNotifierBufferFullDrop)
 
 		return false
 	}

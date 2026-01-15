@@ -61,7 +61,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info("Notification 서비스 시작중...")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarting)
 
 	if s.executor == nil {
 		defer serviceStopWG.Done()
@@ -70,7 +70,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(constants.ComponentService).Warn("Notification 서비스가 이미 시작됨!!!")
+		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceAlreadyStarted)
 		return nil
 	}
 
@@ -120,7 +120,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 			"notifier_id": h.ID(),
-		}).Debug("Notifier가 Notification 서비스에 등록됨")
+		}).Debug(constants.LogMsgNotifierRegistered)
 	}
 
 	// 2. 기본 Notifier 존재 여부 확인
@@ -134,7 +134,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	s.running = true
 
-	applog.WithComponent(constants.ComponentService).Info("Notification 서비스 시작됨")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarted)
 
 	return nil
 }
@@ -145,7 +145,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 
 	<-serviceStopCtx.Done()
 
-	applog.WithComponent(constants.ComponentService).Info("Notification 서비스 중지중...")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopping)
 
 	// 1. 새로운 요청 수락 중단
 	// Notifier가 여전히 동작 중이더라도, 서비스 차원에서 더 이상의 요청은 받지 않아야 합니다.
@@ -171,7 +171,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 			// 아직 종료되지 않음 (비정상 상황)
 			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 				"notifier_id": id,
-			}).Warn("Notifier가 아직 종료되지 않았습니다 (비정상 상황)")
+			}).Warn(constants.LogMsgNotifierNotStopped)
 		}
 	}
 
@@ -180,7 +180,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 	s.defaultNotifier = nil
 	s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info("Notification 서비스 중지됨")
+	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopCompleted)
 }
 
 // NotifyWithTitle 지정된 Notifier를 통해 제목이 포함된 알림 메시지를 발송합니다.
@@ -217,7 +217,7 @@ func (s *Service) NotifyDefault(message string) error {
 	if s.defaultNotifier == nil {
 		s.runningMu.RUnlock()
 
-		applog.WithComponent(constants.ComponentService).Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
+		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceStopped)
 
 		return notifier.ErrServiceStopped
 	}
@@ -246,7 +246,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 	if s.defaultNotifier == nil {
 		s.runningMu.RUnlock()
 
-		applog.WithComponent(constants.ComponentService).Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
+		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceStopped)
 
 		return notifier.ErrServiceStopped
 	}
@@ -279,7 +279,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 
 		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 			"notifier_id": notifierID,
-		}).Warn("Notification 서비스가 중지된 상태여서 메시지를 전송할 수 없습니다")
+		}).Warn(constants.LogMsgServiceStopped)
 
 		return notifier.ErrServiceStopped
 	}
@@ -303,7 +303,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 		return nil
 	}
 
-	m := fmt.Sprintf("등록되지 않은 Notifier ID('%s')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: %s", notifierID, message)
+	m := fmt.Sprintf(constants.LogMsgNotifierNotFoundRejected, notifierID, message)
 
 	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 		"notifier_id": notifierID,
@@ -314,7 +314,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 				"notifier_id":         notifierID,
 				"default_notifier_id": defaultNotifier.ID(),
-			}).Warn("기본 Notifier로 에러 알림 전송 실패 (큐 가득 참 또는 종료됨)")
+			}).Warn(constants.LogMsgDefaultNotifierFailed)
 		}
 	}
 
