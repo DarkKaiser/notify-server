@@ -20,6 +20,10 @@ import (
 // *Service가 Sender 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
 var _ Sender = (*Service)(nil)
 
+// HealthChecker Implementation Verification
+// *Service가 HealthChecker 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
+var _ HealthChecker = (*Service)(nil)
+
 // =============================================================================
 // Helper Types for Testing
 // =============================================================================
@@ -248,9 +252,9 @@ func TestSender_NotifyDefaultWithError(t *testing.T) {
 	assert.True(t, call.TaskCtx.IsErrorOccurred(), "Error flag should be true")
 }
 
-// TestSender_Health는 Sender.Health 메서드의 동작을 검증합니다.
+// TestHealthChecker_Health는 HealthChecker.Health 메서드의 동작을 검증합니다.
 // 서비스 실행 상태에 따른 반환값을 확인합니다.
-func TestSender_Health(t *testing.T) {
+func TestHealthChecker_Health(t *testing.T) {
 	tests := []struct {
 		name        string
 		running     bool
@@ -295,13 +299,13 @@ func TestSender_Health(t *testing.T) {
 	}
 }
 
-// TestSender_Mockability는 Sender 인터페이스가 Mocking 가능한지 시연합니다.
+// TestSender_Mockability는 Sender 및 HealthChecker 인터페이스가 Mocking 가능한지 시연합니다.
 // 이는 "Interface Code" 자체에 대한 테스트의 일환으로 볼 수 있습니다.
 type MockSender struct {
 	NotifyWithTitleFunc        func(notifierID types.NotifierID, title string, message string, errorOccurred bool) error
 	NotifyDefaultFunc          func(message string) error
 	NotifyDefaultWithErrorFunc func(message string) error
-	HealthFunc                 func() error
+	HealthFunc                 func() error // HealthChecker 구현
 }
 
 func (m *MockSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
@@ -329,7 +333,7 @@ func (m *MockSender) Health() error {
 	return nil
 }
 
-func TestSender_Mockability(t *testing.T) {
+func TestHealthChecker_Mockability(t *testing.T) {
 	// Arrange
 	mock := &MockSender{
 		HealthFunc: func() error {
@@ -338,8 +342,8 @@ func TestSender_Mockability(t *testing.T) {
 	}
 
 	// Act
-	var sender Sender = mock
-	err := sender.Health()
+	var healthChecker HealthChecker = mock
+	err := healthChecker.Health()
 
 	// Assert
 	assert.Error(t, err)

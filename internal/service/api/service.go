@@ -142,7 +142,11 @@ func (s *Service) setupServer() *echo.Echo {
 	authenticator := apiauth.NewAuthenticator(s.appConfig)
 
 	// 2. Handler 생성
-	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
+	var healthChecker notification.HealthChecker
+	if hc, ok := s.notificationSender.(notification.HealthChecker); ok {
+		healthChecker = hc
+	}
+	systemHandler := system.NewHandler(healthChecker, s.buildInfo) // healthChecker가 nil일 경우 NewHandler 내부에서 panic 발생
 	v1Handler := v1handler.NewHandler(s.notificationSender)
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)

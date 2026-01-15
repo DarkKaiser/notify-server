@@ -61,7 +61,7 @@ func TestNewHandler(t *testing.T) {
 		h := NewHandler(mockSender, buildInfo)
 
 		assert.NotNil(t, h)
-		assert.Equal(t, mockSender, h.notificationSender)
+		assert.Equal(t, mockSender, h.healthChecker)
 		assert.Equal(t, buildInfo, h.buildInfo)
 		assert.False(t, h.serverStartTime.IsZero(), "서버 시작 시간이 설정되어야 합니다")
 		assert.WithinDuration(t, time.Now(), h.serverStartTime, 1*time.Second, "서버 시작 시간은 현재 시간과 비슷해야 합니다")
@@ -70,7 +70,7 @@ func TestNewHandler(t *testing.T) {
 	t.Run("실패: NotificationSender가 nil인 경우 Panic", func(t *testing.T) {
 		buildInfo := version.Info{Version: "1.0.0"}
 
-		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
+		assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
 			NewHandler(nil, buildInfo)
 		})
 	})
@@ -145,8 +145,8 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	t.Run("실패: Notification Sender 미초기화 (Unhealthy - Safety Check)", func(t *testing.T) {
 		// NewHandler를 우회하여 강제로 nil 의존성 주입
 		h := &Handler{
-			notificationSender: nil,
-			serverStartTime:    time.Now(),
+			healthChecker:   nil,
+			serverStartTime: time.Now(),
 		}
 		e := echo.New()
 
@@ -157,13 +157,9 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		err := h.HealthCheckHandler(c)
 		assert.NoError(t, err)
 
-		expectedDeps := map[string]system.DependencyStatus{
-			constants.DependencyNotificationService: {
-				Status:  constants.HealthStatusUnhealthy,
-				Message: constants.MsgDepStatusNotInitialized,
-			},
-		}
-		assertHealthResponse(t, rec, constants.HealthStatusUnhealthy, expectedDeps)
+		assert.Panics(t, func() {
+			_ = h.HealthCheckHandler(c)
+		}, "healthChecker가 nil이면 panic이 발생해야 합니다")
 	})
 }
 

@@ -18,7 +18,7 @@ import (
 
 // Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
-	notificationSender notification.Sender
+	healthChecker notification.HealthChecker
 
 	buildInfo version.Info
 
@@ -26,13 +26,13 @@ type Handler struct {
 }
 
 // NewHandler Handler 인스턴스를 생성합니다.
-func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
-	if notificationSender == nil {
-		panic(constants.PanicMsgNotificationSenderRequired)
+func NewHandler(healthChecker notification.HealthChecker, buildInfo version.Info) *Handler {
+	if healthChecker == nil {
+		panic(constants.PanicMsgHealthCheckerRequired)
 	}
 
 	return &Handler{
-		notificationSender: notificationSender,
+		healthChecker: healthChecker,
 
 		buildInfo: buildInfo,
 
@@ -66,22 +66,15 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	deps := make(map[string]system.DependencyStatus)
 
 	// Notification 서비스 상태 확인
-	if h.notificationSender != nil {
-		if err := h.notificationSender.Health(); err != nil {
-			deps[constants.DependencyNotificationService] = system.DependencyStatus{
-				Status:  constants.HealthStatusUnhealthy,
-				Message: err.Error(),
-			}
-		} else {
-			deps[constants.DependencyNotificationService] = system.DependencyStatus{
-				Status:  constants.HealthStatusHealthy,
-				Message: constants.MsgDepStatusHealthy,
-			}
+	if err := h.healthChecker.Health(); err != nil {
+		deps[constants.DependencyNotificationService] = system.DependencyStatus{
+			Status:  constants.HealthStatusUnhealthy,
+			Message: err.Error(),
 		}
 	} else {
 		deps[constants.DependencyNotificationService] = system.DependencyStatus{
-			Status:  constants.HealthStatusUnhealthy,
-			Message: constants.MsgDepStatusNotInitialized,
+			Status:  constants.HealthStatusHealthy,
+			Message: constants.MsgDepStatusHealthy,
 		}
 	}
 
