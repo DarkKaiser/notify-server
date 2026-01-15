@@ -18,12 +18,15 @@ import (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notifiersMap    map[types.NotifierID]notifier.NotifierHandler
+	// notifiersMap 현재 서비스에서 관리 중인 모든 Notifier 인스턴스 맵 (ID -> 핸들러)
+	notifiersMap map[types.NotifierID]notifier.NotifierHandler
+	// defaultNotifier 알림 채널 미지정 시 사용되는 기본 Notifier 핸들러
 	defaultNotifier notifier.NotifierHandler
 
+	// notifierFactory 런타임에 동적으로 Notifier 인스턴스를 생성하고 초기화하는 팩토리
 	notifierFactory notifier.NotifierFactory
 
-	// notifiersStopWG 모든 하위 Notifier의 종료를 대기하는 WaitGroup
+	// notifiersStopWG 서비스 종료 시, 모든 하위 Notifier의 고루틴들이 안전하게 종료될 때까지 대기하는 동기화 객체
 	notifiersStopWG sync.WaitGroup
 
 	executor task.Executor
@@ -32,14 +35,16 @@ type Service struct {
 	runningMu sync.RWMutex
 }
 
-func NewService(appConfig *config.AppConfig, executor task.Executor, factory notifier.NotifierFactory) *Service {
+// NewService Notification 서비스를 생성합니다.
+func NewService(appConfig *config.AppConfig, factory notifier.NotifierFactory, executor task.Executor) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
 		notifiersMap:    make(map[types.NotifierID]notifier.NotifierHandler),
 		defaultNotifier: nil,
 
-		// sync.WaitGroup의 Zero Value는 사용 가능한 상태이므로 별도 초기화가 필요 없습니다.
+		notifierFactory: factory,
+
 		notifiersStopWG: sync.WaitGroup{},
 
 		executor: executor,
@@ -48,13 +53,7 @@ func NewService(appConfig *config.AppConfig, executor task.Executor, factory not
 		runningMu: sync.RWMutex{},
 	}
 
-	service.notifierFactory = factory
-
 	return service
-}
-
-func (s *Service) SetNotifierFactory(factory notifier.NotifierFactory) {
-	s.notifierFactory = factory
 }
 
 // Start 알림 서비스를 시작하여 등록된 Notifier들을 활성화합니다.
@@ -184,12 +183,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopCompleted)
 }
 
-// NotifyWithTitle 지정된 Notifier를 통해 제목이 포함된 알림 메시지를 발송합니다.
-// 일반 메시지뿐만 아니라 제목을 명시하여 알림의 맥락을 명확히 전달할 수 있습니다.
-// errorOccurred 플래그를 통해 해당 알림이 오류 상황에 대한 것인지 명시할 수 있습니다.
+// NotifyWithTitle 제목을 포함한 알림 메시지를 지정된 Notifier로 발송합니다.
+// 제목을 통해 알림의 맥락을 명확히 하고, errorOccurred 플래그로 오류 상황임을 시각적으로 강조할 수 있습니다.
 //
 // 파라미터:
-//   - notifierID: 메시지를 발송할 대상 Notifier의 고유 ID
+//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
 //   - title: 알림 메시지의 제목 (강조 표시 등에 활용)
 //   - message: 전송할 메시지 내용
 //   - errorOccurred: 오류 발생 여부 (true일 경우 오류 상황으로 처리되어 시각적 강조 등이 적용될 수 있음)
@@ -205,7 +203,7 @@ func (s *Service) NotifyWithTitle(notifierID types.NotifierID, title string, mes
 	return s.Notify(taskCtx, notifierID, message)
 }
 
-// NotifyDefault 시스템에 설정된 기본 알림 채널로 일반 메시지를 발송합니다.
+// NotifyDefault 시스템에 설정된 기본 알림 채널로 알림 메시지를 발송합니다.
 // 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.
 //
 // 파라미터:
@@ -268,7 +266,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 //
 // 파라미터:
 //   - taskCtx: 작업 실행 컨텍스트 정보
-//   - notifierID: 메시지를 발송할 대상 Notifier의 고유 ID
+//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
 //   - message: 전송할 메시지 내용
 //
 // 반환값:
@@ -322,7 +320,10 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 	return notifier.ErrNotFoundNotifier
 }
 
-// Health 서비스의 건강 상태를 확인합니다.
+// Health 서비스가 정상적으로 실행 중인지 확인합니다.
+//
+// 반환값:
+//   - error: 서비스가 정상 동작 중이면 nil, 그렇지 않으면 에러 반환 (예: ErrServiceStopped)
 func (s *Service) Health() error {
 	s.runningMu.RLock()
 	defer s.runningMu.RUnlock()
@@ -334,7 +335,7 @@ func (s *Service) Health() error {
 	return nil
 }
 
-// SupportsHTML 해당 Notifier가 HTML 포맷을 지원하는지 확인합니다.
+// SupportsHTML 지정된 ID의 Notifier가 HTML 형식을 지원하는지 여부를 반환합니다.
 func (s *Service) SupportsHTML(notifierID types.NotifierID) bool {
 	s.runningMu.RLock()
 	defer s.runningMu.RUnlock()

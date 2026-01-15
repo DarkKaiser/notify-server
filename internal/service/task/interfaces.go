@@ -67,14 +67,14 @@ type NotificationSender interface {
 	//
 	// 파라미터:
 	//   - taskCtx: 작업 실행 컨텍스트 정보
-	//   - notifierID: 메시지를 발송할 대상 Notifier의 고유 ID
+	//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
 	//   - message: 전송할 메시지 내용
 	//
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 	Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error
 
-	// NotifyDefault 시스템에 설정된 기본 알림 채널로 일반 메시지를 발송합니다.
+	// NotifyDefault 시스템에 설정된 기본 알림 채널로 알림 메시지를 발송합니다.
 	// 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.
 	//
 	// 파라미터:
@@ -84,9 +84,7 @@ type NotificationSender interface {
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
 	NotifyDefault(message string) error
 
-	// SupportsHTML 지정된 Notifier가 HTML 포맷의 메시지 본문을 지원하는지 확인합니다.
-	// 마크다운이나 텍스트 스타일링(굵게, 기울임, 링크 등)이 포함된 메시지를 전송하기 전에,
-	// 해당 Notifier가 이를 올바르게 렌더링할 수 있는지 검사하는 용도로 사용됩니다.
+	// SupportsHTML 지정된 ID의 Notifier가 HTML 형식을 지원하는지 여부를 반환합니다.
 	//
 	// 파라미터:
 	//   - notifierID: 지원 여부를 확인할 Notifier의 ID

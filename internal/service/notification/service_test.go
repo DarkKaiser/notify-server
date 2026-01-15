@@ -62,7 +62,7 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 
 	mockFactory := &notificationmocks.MockNotifierFactory{}
 
-	service := NewService(appConfig, mockExecutor, mockFactory)
+	service := NewService(appConfig, mockFactory, mockExecutor)
 	service.notifiersMap = map[types.NotifierID]notifier.NotifierHandler{
 		mockNotifier.IDValue: mockNotifier,
 	}
@@ -101,7 +101,7 @@ func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &taskmocks.MockExecutor{}
 	mockFactory := &notificationmocks.MockNotifierFactory{}
-	service := NewService(appConfig, mockExecutor, mockFactory)
+	service := NewService(appConfig, mockFactory, mockExecutor)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, appConfig, service.appConfig)
@@ -212,124 +212,9 @@ func TestServiceNotify(t *testing.T) {
 	}
 }
 
-// TestNotifyWithTitle는 NotifyWithTitle 메서드를 검증합니다.
-func TestNotifyWithTitle(t *testing.T) {
-	tests := []struct {
-		name          string
-		title         string
-		message       string
-		errorOccurred bool
-		expectError   bool
-	}{
-		{
-			name:          "성공: 일반 알림",
-			title:         "Test Title",
-			message:       "Test Message",
-			errorOccurred: false,
-			expectError:   false,
-		},
-		{
-			name:          "성공: 에러 알림",
-			title:         "Error Title",
-			message:       "Error Message",
-			errorOccurred: true,
-			expectError:   false,
-		},
-		{
-			name:          "성공: 빈 제목",
-			title:         "",
-			message:       "Message",
-			errorOccurred: false,
-			expectError:   false,
-		},
-	}
+// (TestNotifyWithTitle transferred to interface_test.go)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
-				notifierID:   testNotifierID,
-				supportsHTML: true,
-				running:      true,
-			})
-
-			err := service.NotifyWithTitle(types.NotifierID(testNotifierID), tt.title, tt.message, tt.errorOccurred)
-
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			require.Len(t, mockNotifier.NotifyCalls, 1)
-			assert.Equal(t, tt.message, mockNotifier.NotifyCalls[0].Message)
-
-			// TaskContext 검증
-			ctx := mockNotifier.NotifyCalls[0].TaskCtx
-			require.NotNil(t, ctx)
-			if tt.errorOccurred {
-				assert.True(t, ctx.IsErrorOccurred())
-			}
-		})
-	}
-}
-
-// TestNotifyDefault는 기본 알림 메서드들을 검증합니다.
-func TestNotifyDefault(t *testing.T) {
-	tests := []struct {
-		name            string
-		method          string // "Default", "DefaultError"
-		message         string
-		expectError     bool
-		expectedDefCall bool
-	}{
-		{
-			name:            "NotifyDefault 성공",
-			method:          "Default",
-			message:         "msg",
-			expectError:     false,
-			expectedDefCall: true,
-		},
-		{
-			name:            "NotifyDefaultWithError 성공",
-			method:          "DefaultError",
-			message:         "errorMsg",
-			expectError:     false,
-			expectedDefCall: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
-				notifierID:   defaultNotifierID,
-				supportsHTML: true,
-				running:      true,
-			})
-
-			var err error
-			switch tt.method {
-			case "Default":
-				err = service.NotifyDefault(tt.message)
-			case "DefaultError":
-				err = service.NotifyDefaultWithError(tt.message)
-			}
-
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			if tt.expectedDefCall {
-				require.NotEmpty(t, mockNotifier.NotifyCalls)
-				lastCall := mockNotifier.NotifyCalls[len(mockNotifier.NotifyCalls)-1]
-				assert.Equal(t, tt.message, lastCall.Message)
-			} else {
-				assertNotifyNotCalled(t, mockNotifier)
-			}
-		})
-	}
-}
+// (TestNotifyDefault transferred to interface_test.go)
 
 // TestNotify_NotRunning은 서비스가 실행 중이 아닐 때의 동작을 검증합니다.
 func TestNotify_NotRunning(t *testing.T) {
@@ -346,18 +231,7 @@ func TestNotify_NotRunning(t *testing.T) {
 	assertNotifyNotCalled(t, mockNotifier)
 }
 
-// TestNotifyDefault_NilNotifier는 defaultNotifier가 nil일 때의 동작을 검증합니다.
-func TestNotifyDefault_NilNotifier(t *testing.T) {
-	service := &Service{
-		defaultNotifier: nil,
-		running:         true,
-	}
-
-	err := service.NotifyDefault("test")
-
-	assert.Error(t, err)
-	assert.Equal(t, notifier.ErrServiceStopped, err)
-}
+// (TestNotifyDefault_NilNotifier transferred to interface_test.go)
 
 // =============================================================================
 // Multiple Notifiers Tests
@@ -453,8 +327,15 @@ func TestStartAndRun(t *testing.T) {
 				return []notifier.NotifierHandler{mockNotifier}, nil
 			},
 		}
-		service.SetNotifierFactory(mockFactory)
-		service.appConfig = cfg
+
+		// Re-create service with the specific mock factory for this test case
+		// Since setupMockService created a service with a default mock factory, we need to override it here.
+		// However, it's cleaner to just create a new service with the desired factory.
+		service = NewService(cfg, mockFactory, &taskmocks.MockExecutor{})      // Inject mockFactory directly
+		service.notifiersMap = map[types.NotifierID]notifier.NotifierHandler{} // Reset map if needed, though NewService does it.
+		// We need to re-apply the mock state if setupMockService did meaningful setup besides creation.
+		// setupMockService sets notifiersMap and defaultNotifier, but Start() will overwrite them using the Factory.
+		// So for TestStartAndRun, we mainly need the Factory to behave correctly.
 
 		ctx, cancel := context.WithCancel(context.Background())
 		wg := &sync.WaitGroup{}
@@ -541,7 +422,7 @@ func TestStartErrors(t *testing.T) {
 				}
 			}
 
-			service := NewService(cfg, executor, factory)
+			service := NewService(cfg, factory, executor)
 
 			ctx := context.Background()
 			wg := &sync.WaitGroup{}
@@ -582,7 +463,7 @@ func TestService_Start_DuplicateID(t *testing.T) {
 
 	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h1, h2}}
 
-	service := NewService(cfg, executor, mf) // Changed to NewService
+	service := NewService(cfg, mf, executor) // Changed to NewService
 
 	// Action
 	ctx, cancel := context.WithCancel(context.Background())
@@ -631,7 +512,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 	}
 
 	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h}}
-	service := NewService(cfg, executor, mf) // Changed to NewService
+	service := NewService(cfg, mf, executor) // Changed to NewService
 
 	// Start service
 	ctx, cancel := context.WithCancel(context.Background())
@@ -697,7 +578,7 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 		},
 	}
 
-	service := NewService(cfg, executor, factory) // Changed to NewService
+	service := NewService(cfg, factory, executor) // Changed to NewService
 
 	// Test
 	ctx, cancel := context.WithCancel(context.Background())

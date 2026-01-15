@@ -168,7 +168,7 @@ func run() error {
 	notifierFactory.RegisterProcessor(telegram.NewConfigProcessor(telegram.NewNotifier))
 
 	// Notification Service 생성
-	notificationService := notification.NewService(appConfig, taskService, notifierFactory)
+	notificationService := notification.NewService(appConfig, notifierFactory, taskService)
 
 	// API Service 생성
 	apiService := api.NewService(appConfig, notificationService, buildInfo)

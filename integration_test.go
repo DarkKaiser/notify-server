@@ -87,7 +87,7 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
 			}, nil
 		},
 	}
-	notificationService := notification.NewService(appConfig, taskService, mockFactory)
+	notificationService := notification.NewService(appConfig, mockFactory, taskService)
 
 	// Inject Mock Sender to TaskService effectively bridging the loop for verification
 	// *중요*: 실제로는 NotificationService가 Sender이지만,
@@ -258,7 +258,7 @@ func TestIntegration_E2E_NotificationFlow(t *testing.T) {
 
 	// Services
 	taskService := task.NewService(appConfig)
-	notificationService := notification.NewService(appConfig, taskService, mockFactory)
+	notificationService := notification.NewService(appConfig, mockFactory, taskService)
 	taskService.SetNotificationSender(notificationService)
 	apiService := api.NewService(appConfig, notificationService, version.Info{})
 

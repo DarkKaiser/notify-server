@@ -2,6 +2,7 @@ package constants
 
 import "time"
 
+// TODO: 미완료
 const (
 	// DefaultRetryDelay 알림 발송 실패 시 재시도 대기 시간의 기본값입니다.
 	DefaultRetryDelay = 1 * time.Second
