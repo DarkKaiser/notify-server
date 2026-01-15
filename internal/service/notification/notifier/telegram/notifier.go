@@ -273,15 +273,16 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			// RequestC가 닫히지 않으므로 range를 사용할 수 없음.
 		Loop:
 			for {
+				// 먼저 타임아웃 체크 - 메시지를 꺼내기 전에 확인하여 정확한 타임아웃 동작 보장
+				if drainCtx.Err() != nil {
+					applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+						"notifier_id": n.ID(),
+					}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
+					break Loop
+				}
+
 				select {
 				case notifyRequest := <-n.RequestC:
-					// 이미 타임아웃이 발생했다면 더 이상 시도하지 않고 루프 탈출
-					if drainCtx.Err() != nil {
-						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
-							"notifier_id": n.ID(),
-						}).Warn("Shutdown Drain 타임아웃 발생, 잔여 메시지 발송 중단")
-						break Loop
-					}
 					// Drain 중에도 Panic Recovery가 필요합니다.
 					func() {
 						defer func() {

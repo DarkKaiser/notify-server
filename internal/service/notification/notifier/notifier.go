@@ -83,7 +83,17 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	// 이를 통해 채널이 가득 차서 대기하는 동안에도 Close()가 호출되면
 	// done 채널이 닫히고 select를 통해 즉시 종료될 수 있습니다.
 	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	defer func() {
+		// Go 공식 문서 권장사항: timer.Stop()이 false를 반환하면 (타이머가 이미 만료됨)
+		// 채널을 드레인해야 합니다. 단, select에서 이미 읽었다면 채널은 비어있으므로
+		// non-blocking으로 시도하여 데드락을 방지합니다.
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+	}()
 
 	select {
 	case requestC <- req:
