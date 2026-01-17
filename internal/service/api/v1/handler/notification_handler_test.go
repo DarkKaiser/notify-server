@@ -15,8 +15,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -240,7 +240,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			mockFail:       true,
-			failError:      notifier.ErrServiceStopped,
+			failError:      notification.ErrServiceStopped,
 			expectedStatus: http.StatusServiceUnavailable,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				assert.Equal(t, constants.ErrMsgServiceUnavailable, errResp.Message)
@@ -254,7 +254,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			mockFail:       true,
-			failError:      notifier.ErrNotFoundNotifier,
+			failError:      notification.ErrNotFoundNotifier,
 			expectedStatus: http.StatusNotFound,
 			verifyErrResponse: func(t *testing.T, errResp response.ErrorResponse) {
 				assert.Equal(t, constants.ErrMsgNotFoundNotifier, errResp.Message)

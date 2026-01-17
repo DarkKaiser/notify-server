@@ -10,7 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
@@ -102,12 +102,12 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	err := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
 	if err != nil {
 		// 1. 서비스 중지 (503 Service Unavailable)
-		if errors.Is(err, notifier.ErrServiceStopped) {
+		if errors.Is(err, notification.ErrServiceStopped) {
 			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)
 		}
 
 		// 2. Notifier 찾을 수 없음 (404 Not Found)
-		if errors.Is(err, notifier.ErrNotFoundNotifier) {
+		if errors.Is(err, notification.ErrNotFoundNotifier) {
 			return httputil.NewNotFoundError(constants.ErrMsgNotFoundNotifier)
 		}
 

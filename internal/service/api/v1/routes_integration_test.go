@@ -14,8 +14,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -265,7 +265,7 @@ func TestV1API_Failure_InternalError(t *testing.T) {
 	// Mock Sender 강제 실패 설정
 	mockSender := &mocks.MockNotificationSender{
 		ShouldFail: true,
-		FailError:  notifier.ErrServiceStopped,
+		FailError:  notification.ErrServiceStopped,
 	}
 	h := handler.NewHandler(mockSender)
 	SetupRoutes(e, h, authenticator)
