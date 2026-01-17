@@ -165,7 +165,7 @@ func run() error {
 
 	// Notification Factory 생성 및 Processor 등록
 	notifierFactory := notifier.NewFactory()
-	notifierFactory.RegisterProcessor(telegram.NewConfigProcessor(telegram.NewNotifier))
+	notifierFactory.Register(telegram.NewFactory(telegram.NewNotifier))
 
 	// Notification Service 생성
 	notificationService := notification.NewService(appConfig, notifierFactory, taskService)

@@ -379,9 +379,7 @@ func TestStartErrors(t *testing.T) {
 		{
 			name: "Factory에서 에러 반환",
 			factorySetup: func(m *mocks.MockFactory) {
-				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return nil, errors.New("factory error")
-				}
+				m.WithCreateNotifiers(nil, errors.New("factory error"))
 			},
 			errorContains: "Notifier 초기화 중 에러가 발생했습니다",
 		},
@@ -391,17 +389,16 @@ func TestStartErrors(t *testing.T) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mocks.MockFactory) {
-				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{
-						&notificationmocks.MockNotifierHandler{IDValue: "other"},
-					}, nil
-				}
+				m.WithCreateNotifiers([]notifier.NotifierHandler{
+					&notificationmocks.MockNotifierHandler{IDValue: "other"},
+				}, nil)
 			},
 			errorContains: "기본 NotifierID('def')를 찾을 수 없습니다",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.AppConfig{}
 			if tt.cfgSetup != nil {
@@ -417,9 +414,7 @@ func TestStartErrors(t *testing.T) {
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				factory.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{}, nil
-				}
+				factory.WithCreateNotifiers([]notifier.NotifierHandler{}, nil)
 			}
 
 			service := NewService(cfg, factory, executor)
@@ -448,7 +443,7 @@ func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor contr
 	return m.handlers, nil
 }
 
-func (m *localMockFactory) RegisterProcessor(processor notifier.ConfigProcessor) {
+func (m *localMockFactory) Register(creator notifier.Creator) {
 	// No-op for this test mock
 }
 
@@ -710,14 +705,8 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 
 				// TaskContext Verification
 				require.NotNil(t, lastCall.TaskCtx)
-				if tCtx, ok := lastCall.TaskCtx.(contract.TaskContext); ok {
-					assert.Equal(t, tt.title, tCtx.GetTitle())
-					assert.Equal(t, tt.errorOccurred, tCtx.IsErrorOccurred())
-				} else {
-					// Fallback assertion if it's not a TaskContext (though it should be for NotifyWithTitle)
-					// Or fail the test
-					// assert.Fail(t, "TaskCtx is not contract.TaskContext")
-				}
+				assert.Equal(t, tt.title, lastCall.TaskCtx.GetTitle())
+				assert.Equal(t, tt.errorOccurred, lastCall.TaskCtx.IsErrorOccurred())
 			}
 		})
 	}
@@ -836,9 +825,7 @@ func TestSender_NotifyDefaultWithError(t *testing.T) {
 	call := mockNotifier.NotifyCalls[0]
 	assert.Equal(t, message, call.Message)
 	require.NotNil(t, call.TaskCtx)
-	if tCtx, ok := call.TaskCtx.(contract.TaskContext); ok {
-		assert.True(t, tCtx.IsErrorOccurred(), "Error flag should be true")
-	}
+	assert.True(t, call.TaskCtx.IsErrorOccurred(), "Error flag should be true")
 }
 
 // TestHealthChecker_Health는 HealthChecker.Health 메서드의 동작을 검증합니다.

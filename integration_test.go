@@ -16,6 +16,7 @@ import (
 	v1request "github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 
@@ -81,13 +82,9 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
 	taskService := task.NewService(appConfig)
 
 	// Notification Service needs a factory that returns our mock handler
-	mockFactory := &mockIntegrationNotifierFactory{
-		createFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-			return []notifier.NotifierHandler{
-				&mockNotifierHandler{id: contract.NotifierID("test-notifier"), supportsHTML: true},
-			}, nil
-		},
-	}
+	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.NotifierHandler{
+		&mockNotifierHandler{id: contract.NotifierID("test-notifier"), supportsHTML: true},
+	}, nil)
 	notificationService := notification.NewService(appConfig, mockFactory, taskService)
 
 	// Inject Mock Sender to TaskService effectively bridging the loop for verification
@@ -165,18 +162,6 @@ func (m *mockNotifierHandler) GetCalls() []string {
 	return m.calls
 }
 
-type mockIntegrationNotifierFactory struct {
-	createFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error)
-}
-
-func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, ex contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-	if m.createFunc != nil {
-		return m.createFunc(cfg, ex)
-	}
-	return nil, nil
-}
-func (m *mockIntegrationNotifierFactory) RegisterProcessor(p notifier.ConfigProcessor) {}
-
 // mockNotificationSender is kept for tests that want to bypass NotificationService
 type mockNotificationSender struct {
 	mu          sync.Mutex
@@ -251,11 +236,7 @@ func TestIntegration_E2E_NotificationFlow(t *testing.T) {
 		calls:        make([]string, 0),
 	}
 
-	mockFactory := &mockIntegrationNotifierFactory{
-		createFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-			return []notifier.NotifierHandler{finalHandler}, nil
-		},
-	}
+	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.NotifierHandler{finalHandler}, nil)
 
 	// Services
 	taskService := task.NewService(appConfig)
