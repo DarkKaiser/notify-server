@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,10 +29,12 @@ type MockHandler struct {
 func (h *MockHandler) GetID() contract.TaskID                 { return h.id }
 func (h *MockHandler) GetCommandID() contract.TaskCommandID   { return h.commandID }
 func (h *MockHandler) GetInstanceID() contract.TaskInstanceID { return h.instanceID }
-func (h *MockHandler) GetNotifierID() types.NotifierID        { return types.NotifierID("test-notifier") }
-func (h *MockHandler) IsCanceled() bool                       { return h.canceled }
-func (h *MockHandler) ElapsedTimeAfterRun() int64             { return 0 }
-func (h *MockHandler) SetStorage(storage TaskResultStorage)   {}
+func (h *MockHandler) GetNotifierID() contract.NotifierID {
+	return contract.NotifierID("test-notifier")
+}
+func (h *MockHandler) IsCanceled() bool                     { return h.canceled }
+func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
+func (h *MockHandler) SetStorage(storage TaskResultStorage) {}
 
 func (h *MockHandler) Run(ctx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
@@ -158,7 +160,7 @@ func TestService_TaskRun_Success(t *testing.T) {
 	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
-		NotifierID:    types.NotifierID("test-notifier"),
+		NotifierID:    contract.NotifierID("test-notifier"),
 		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
@@ -183,7 +185,7 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
-		NotifierID:    types.NotifierID("test-notifier"),
+		NotifierID:    contract.NotifierID("test-notifier"),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
 		TaskContext:   taskCtx,
@@ -221,7 +223,7 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		CommandID:     "UNSUPPORTED_COMMAND",
-		NotifierID:    types.NotifierID("test-notifier"),
+		NotifierID:    contract.NotifierID("test-notifier"),
 		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
@@ -264,7 +266,7 @@ func TestService_Concurrency(t *testing.T) {
 				service.Submit(&contract.TaskSubmitRequest{
 					TaskID:        "TEST_TASK",
 					CommandID:     "TEST_COMMAND",
-					NotifierID:    types.NotifierID("test-notifier"),
+					NotifierID:    contract.NotifierID("test-notifier"),
 					TaskContext:   contract.NewTaskContext(),
 					NotifyOnStart: false,
 					RunBy:         contract.TaskRunByUser,
@@ -303,7 +305,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 			service.Submit(&contract.TaskSubmitRequest{
 				TaskID:        "TEST_TASK",
 				CommandID:     "TEST_COMMAND",
-				NotifierID:    types.NotifierID("test-notifier"),
+				NotifierID:    contract.NotifierID("test-notifier"),
 				TaskContext:   contract.NewTaskContext(),
 				NotifyOnStart: false,
 				RunBy:         contract.TaskRunByUser,

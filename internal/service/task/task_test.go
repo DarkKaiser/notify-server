@@ -10,7 +10,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -24,7 +23,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	instID := contract.TaskInstanceID("inst_123")
 	notifier := "telegram"
 
-	task := NewBaseTask(taskID, cmdID, instID, types.NotifierID(notifier), contract.TaskRunByUser)
+	task := NewBaseTask(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser)
 	mockStorage := &MockTaskResultStorage{}
 	task.SetStorage(mockStorage)
 
@@ -32,7 +31,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	assert.Equal(t, taskID, task.GetID())
 	assert.Equal(t, cmdID, task.GetCommandID())
 	assert.Equal(t, instID, task.GetInstanceID())
-	assert.Equal(t, types.NotifierID(notifier), task.GetNotifierID())
+	assert.Equal(t, contract.NotifierID(notifier), task.GetNotifierID())
 	assert.Equal(t, contract.TaskRunByUser, task.GetRunBy())
 
 	// Cancel Test

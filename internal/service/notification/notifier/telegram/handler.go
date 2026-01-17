@@ -11,7 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -91,7 +91,7 @@ func (n *telegramNotifier) executeCommand(executor contract.TaskExecutor, botCom
 		TaskID:        botCommand.taskID,
 		CommandID:     botCommand.commandID,
 		TaskContext:   contract.NewTaskContext(),
-		NotifierID:    types.NotifierID(n.ID()),
+		NotifierID:    n.ID(),
 		NotifyOnStart: true,
 		RunBy:         contract.TaskRunByUser,
 	}); err != nil {

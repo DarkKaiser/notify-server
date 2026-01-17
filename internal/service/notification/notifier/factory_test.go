@@ -8,7 +8,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +76,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					var handlers []notifier.NotifierHandler
 					for _, t := range cfg.Notifier.Telegrams {
-						handlers = append(handlers, &notificationmocks.MockNotifierHandler{IDValue: types.NotifierID(t.ID)})
+						handlers = append(handlers, &notificationmocks.MockNotifierHandler{IDValue: contract.NotifierID(t.ID)})
 					}
 					return handlers, nil
 				},

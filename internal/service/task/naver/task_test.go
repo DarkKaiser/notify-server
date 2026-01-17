@@ -10,7 +10,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +21,7 @@ import (
 
 type mockNotificationSender struct{}
 
-func (m *mockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID types.NotifierID, message string) error {
+func (m *mockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID contract.NotifierID, message string) error {
 	return nil
 }
 
@@ -30,11 +29,11 @@ func (m *mockNotificationSender) NotifyDefault(message string) error {
 	return nil
 }
 
-func (m *mockNotificationSender) SupportsHTML(notifierTaskID types.NotifierID) bool {
+func (m *mockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID) bool {
 	return true
 }
 
-func (m *mockNotificationSender) NotifyWithTitle(notifierTaskID types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *mockNotificationSender) NotifyWithTitle(notifierTaskID contract.NotifierID, title string, message string, errorOccurred bool) error {
 	return nil
 }
 

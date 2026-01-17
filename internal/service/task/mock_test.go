@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -35,12 +34,12 @@ func (m *MockTestifyNotificationSender) NotifyDefault(message string) error {
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) Notify(taskCtx contract.TaskContext, notifierID types.NotifierID, message string) error {
+func (m *MockTestifyNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *MockTestifyNotificationSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
 	args := m.Called(notifierID, title, message, errorOccurred)
 	return args.Error(0)
 }
@@ -50,7 +49,7 @@ func (m *MockTestifyNotificationSender) NotifyDefaultWithError(message string) e
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
+func (m *MockTestifyNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
 	args := m.Called(notifierID)
 	if len(args) > 0 {
 		return args.Bool(0)
@@ -73,7 +72,7 @@ type MockNotificationSender struct {
 
 // NotifyCall Notify 호출 정보를 저장합니다.
 type NotifyCall struct {
-	NotifierID types.NotifierID
+	NotifierID contract.NotifierID
 	Message    string
 	TaskCtx    contract.TaskContext
 }
@@ -100,7 +99,7 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID types.NotifierID, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -114,7 +113,7 @@ func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID
 }
 
 // SupportsHTML HTML 메시지 지원 여부를 반환합니다 (Mock).
-func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
+func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -124,7 +123,7 @@ func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool 
 }
 
 // NotifyWithTitle 제목을 포함한 알림을 발송합니다 (Mock).
-func (m *MockNotificationSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *MockNotificationSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return nil

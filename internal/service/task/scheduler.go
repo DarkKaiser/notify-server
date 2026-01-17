@@ -6,7 +6,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/pkg/cronx"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/robfig/cron/v3"
@@ -59,18 +58,18 @@ func (s *scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSu
 					TaskID:        taskID,
 					CommandID:     commandID,
 					TaskContext:   contract.NewTaskContext(),
-					NotifierID:    types.NotifierID(defaultNotifierID),
+					NotifierID:    contract.NotifierID(defaultNotifierID),
 					NotifyOnStart: false,
 					RunBy:         contract.TaskRunByScheduler,
 				}); err != nil {
 					message := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
-					s.handleError(notificationSender, types.NotifierID(defaultNotifierID), taskID, commandID, message, err)
+					s.handleError(notificationSender, contract.NotifierID(defaultNotifierID), taskID, commandID, message, err)
 				}
 			})
 
 			if err != nil {
 				message := fmt.Sprintf("Cron 스케줄 파싱 실패 (TimeSpec: %s)", timeSpec)
-				s.handleError(notificationSender, types.NotifierID(defaultNotifierID), taskID, commandID, message, err)
+				s.handleError(notificationSender, contract.NotifierID(defaultNotifierID), taskID, commandID, message, err)
 				continue
 			}
 		}
@@ -109,7 +108,7 @@ func (s *scheduler) Stop() {
 
 // handleError 에러 로깅 및 알림 전송을 처리하는 헬퍼 메서드
 // 에러 발생 시 로그를 남기고, 설정된 Notifier를 통해 담당자에게 알림을 보냅니다.
-func (s *scheduler) handleError(notificationSender contract.NotificationSender, notifierID types.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
+func (s *scheduler) handleError(notificationSender contract.NotificationSender, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
 	fields := applog.Fields{
 		"task_id":    taskID,
 		"command_id": commandID,

@@ -12,7 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +37,7 @@ const (
 
 // mockServiceOptions는 setupMockServiceWithOptions의 옵션입니다.
 type mockServiceOptions struct {
-	notifierID   types.NotifierID
+	notifierID   contract.NotifierID
 	supportsHTML bool
 	running      bool
 }
@@ -63,7 +63,7 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 	mockFactory := &notificationmocks.MockNotifierFactory{}
 
 	service := NewService(appConfig, mockFactory, mockExecutor)
-	service.notifiersMap = map[types.NotifierID]notifier.NotifierHandler{
+	service.notifiersMap = map[contract.NotifierID]notifier.NotifierHandler{
 		mockNotifier.IDValue: mockNotifier,
 	}
 	service.defaultNotifier = mockNotifier
@@ -119,7 +119,7 @@ func TestNewService(t *testing.T) {
 func TestSupportsHTML(t *testing.T) {
 	mockNotifier := &notificationmocks.MockNotifierHandler{IDValue: "test", SupportsHTMLValue: true}
 	service := &Service{
-		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
 			mockNotifier.IDValue: mockNotifier,
 		},
 	}
@@ -135,7 +135,7 @@ func TestSupportsHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, service.SupportsHTML(types.NotifierID(tt.notifierID)))
+			assert.Equal(t, tt.want, service.SupportsHTML(contract.NotifierID(tt.notifierID)))
 		})
 	}
 }
@@ -192,7 +192,7 @@ func TestServiceNotify(t *testing.T) {
 				running:      true,
 			})
 
-			err := service.NotifyWithTitle(types.NotifierID(tt.notifierID), "title", tt.message, tt.isError)
+			err := service.NotifyWithTitle(contract.NotifierID(tt.notifierID), "title", tt.message, tt.isError)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -224,7 +224,7 @@ func TestNotify_NotRunning(t *testing.T) {
 		running:      false, // 실행 중이 아님
 	})
 
-	err := service.Notify(contract.NewTaskContext(), types.NotifierID(testNotifierID), "test")
+	err := service.Notify(contract.NewTaskContext(), contract.NotifierID(testNotifierID), "test")
 
 	assert.Error(t, err)
 	assert.Equal(t, notifier.ErrServiceStopped, err)
@@ -243,7 +243,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	mockNotifier2 := &notificationmocks.MockNotifierHandler{IDValue: "n2", SupportsHTMLValue: false}
 
 	service := &Service{
-		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
 			mockNotifier1.IDValue: mockNotifier1,
 			mockNotifier2.IDValue: mockNotifier2,
 		},
@@ -251,7 +251,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	}
 
 	// n2로 전송
-	err := service.Notify(contract.NewTaskContext(), types.NotifierID("n2"), "msg")
+	err := service.Notify(contract.NewTaskContext(), contract.NotifierID("n2"), "msg")
 	assert.NoError(t, err)
 	assertNotifyNotCalled(t, mockNotifier1)
 	require.Len(t, mockNotifier2.NotifyCalls, 1)
@@ -274,7 +274,7 @@ func TestConcurrencyStress(t *testing.T) {
 				DefaultNotifierID: testNotifierID,
 			},
 		},
-		notifiersMap: map[types.NotifierID]notifier.NotifierHandler{
+		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
 			mockNotifier.IDValue: mockNotifier,
 		},
 		defaultNotifier: mockNotifier,
@@ -288,7 +288,7 @@ func TestConcurrencyStress(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func() {
 			defer wg.Done()
-			service.NotifyWithTitle(types.NotifierID(testNotifierID), "title", "stress test", false)
+			service.NotifyWithTitle(contract.NotifierID(testNotifierID), "title", "stress test", false)
 			service.NotifyDefault("default stress")
 		}()
 	}
@@ -331,8 +331,8 @@ func TestStartAndRun(t *testing.T) {
 		// Re-create service with the specific mock factory for this test case
 		// Since setupMockService created a service with a default mock factory, we need to override it here.
 		// However, it's cleaner to just create a new service with the desired factory.
-		service = NewService(cfg, mockFactory, &taskmocks.MockExecutor{})      // Inject mockFactory directly
-		service.notifiersMap = map[types.NotifierID]notifier.NotifierHandler{} // Reset map if needed, though NewService does it.
+		service = NewService(cfg, mockFactory, &taskmocks.MockExecutor{})         // Inject mockFactory directly
+		service.notifiersMap = map[contract.NotifierID]notifier.NotifierHandler{} // Reset map if needed, though NewService does it.
 		// We need to re-apply the mock state if setupMockService did meaningful setup besides creation.
 		// setupMockService sets notifiersMap and defaultNotifier, but Start() will overwrite them using the Factory.
 		// So for TestStartAndRun, we mainly need the Factory to behave correctly.

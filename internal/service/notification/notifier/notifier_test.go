@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +42,7 @@ func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, ex
 
 // createBaseNotifier creates a pointer to BaseNotifier to avoid lock copy.
 func createBaseNotifier(id string, supportsHTML bool, bufferSize int, timeout time.Duration) *notifier.BaseNotifier {
-	n := notifier.NewBaseNotifier(types.NotifierID(id), supportsHTML, bufferSize, timeout)
+	n := notifier.NewBaseNotifier(contract.NotifierID(id), supportsHTML, bufferSize, timeout)
 	return &n
 }
 
@@ -67,9 +67,9 @@ func TestNewBaseNotifier(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			n := notifier.NewBaseNotifier(types.NotifierID(tt.id), tt.supportsHTML, tt.bufferSize, testNotifierTimeout)
+			n := notifier.NewBaseNotifier(contract.NotifierID(tt.id), tt.supportsHTML, tt.bufferSize, testNotifierTimeout)
 
-			assert.Equal(t, types.NotifierID(tt.id), n.ID())
+			assert.Equal(t, contract.NotifierID(tt.id), n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			require.NotNil(t, n.RequestC, "Request channel should be created")
 			assert.Equal(t, tt.expectedBufferCap, cap(n.RequestC))

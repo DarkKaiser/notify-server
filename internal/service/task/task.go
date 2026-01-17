@@ -8,7 +8,6 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -51,7 +50,7 @@ type Task struct {
 	instanceID contract.TaskInstanceID // 이번 작업 실행 인스턴스에 할당된 유일한 식별자(UUID 등)입니다.
 
 	// 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
-	notifierID types.NotifierID
+	notifierID contract.NotifierID
 
 	// 작업 취소 여부 플래그 (0: false, 1: true) - 원자적 접근 필요
 	canceled int32
@@ -74,7 +73,7 @@ type Task struct {
 
 // NewBaseTask Task 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Task 필드를 초기화해야 합니다.
-func NewBaseTask(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID types.NotifierID, runBy contract.TaskRunBy) Task {
+func NewBaseTask(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) Task {
 	return Task{
 		id:         id,
 		commandID:  commandID,
@@ -97,7 +96,7 @@ func (t *Task) GetInstanceID() contract.TaskInstanceID {
 	return t.instanceID
 }
 
-func (t *Task) GetNotifierID() types.NotifierID {
+func (t *Task) GetNotifierID() contract.NotifierID {
 	return t.notifierID
 }
 

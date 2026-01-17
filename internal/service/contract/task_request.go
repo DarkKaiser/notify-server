@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 )
 
 // TaskRunBy 작업의 실행 주체를 정의합니다.
@@ -62,7 +61,7 @@ type TaskSubmitRequest struct {
 
 	// NotifierID 알림을 전송할 대상 채널입니다. (선택)
 	// 지정하지 않을 경우(빈 값), 해당 Task 설정에 정의된 기본 Notifier가 사용됩니다.
-	NotifierID types.NotifierID
+	NotifierID NotifierID
 
 	// NotifyOnStart 작업이 시작될 때 알림을 발송할지 여부입니다.
 	// true일 경우, 작업 시작 시점에 "작업 시작" 알림이 전송됩니다.

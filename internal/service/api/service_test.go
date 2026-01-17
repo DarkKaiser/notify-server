@@ -15,7 +15,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	"github.com/darkkaiser/notify-server/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,17 +121,17 @@ func TestNewService_Panics(t *testing.T) {
 // mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
 type mockSenderWithoutHealth struct{}
 
-func (m *mockSenderWithoutHealth) Notify(ctx contract.TaskContext, notifierID types.NotifierID, message string) error {
+func (m *mockSenderWithoutHealth) Notify(ctx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	return nil
 }
-func (m *mockSenderWithoutHealth) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *mockSenderWithoutHealth) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
 	return nil
 }
 func (m *mockSenderWithoutHealth) NotifyDefault(message string) error { return nil }
 func (m *mockSenderWithoutHealth) NotifyDefaultWithError(message string) error {
 	return nil
 }
-func (m *mockSenderWithoutHealth) SupportsHTML(notifierID types.NotifierID) bool { return false }
+func (m *mockSenderWithoutHealth) SupportsHTML(notifierID contract.NotifierID) bool { return false }
 
 func TestNewService_Panic_InvalidSender_HealthCheckerMissing(t *testing.T) {
 	t.Parallel()

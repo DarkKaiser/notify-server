@@ -17,8 +17,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -84,7 +84,7 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
 	mockFactory := &mockIntegrationNotifierFactory{
 		createFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 			return []notifier.NotifierHandler{
-				&mockNotifierHandler{id: types.NotifierID("test-notifier"), supportsHTML: true},
+				&mockNotifierHandler{id: contract.NotifierID("test-notifier"), supportsHTML: true},
 			}, nil
 		},
 	}
@@ -142,13 +142,13 @@ func (s *IntegrationTestSuite) Teardown() {
 // =============================================================================
 
 type mockNotifierHandler struct {
-	id           types.NotifierID
+	id           contract.NotifierID
 	supportsHTML bool
 	mu           sync.Mutex
 	calls        []string
 }
 
-func (m *mockNotifierHandler) ID() types.NotifierID    { return m.id }
+func (m *mockNotifierHandler) ID() contract.NotifierID { return m.id }
 func (m *mockNotifierHandler) SupportsHTML() bool      { return m.supportsHTML }
 func (m *mockNotifierHandler) Run(ctx context.Context) { <-ctx.Done() }
 func (m *mockNotifierHandler) Notify(ctx contract.TaskContext, msg string) bool {
@@ -193,17 +193,17 @@ func (m *mockNotificationSender) NotifyDefault(msg string) error {
 	m.notifyCalls = append(m.notifyCalls, notifyCall{"default", msg})
 	return nil
 }
-func (m *mockNotificationSender) Notify(ctx contract.TaskContext, nid types.NotifierID, msg string) error {
+func (m *mockNotificationSender) Notify(ctx contract.TaskContext, nid contract.NotifierID, msg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, notifyCall{string(nid), msg})
 	return nil
 }
-func (m *mockNotificationSender) SupportsHTML(nid types.NotifierID) bool { return true }
+func (m *mockNotificationSender) SupportsHTML(nid contract.NotifierID) bool { return true }
 func (m *mockNotificationSender) NotifyDefaultWithError(msg string) error {
 	return m.NotifyDefault(msg)
 } // Added for interface compliance
-func (m *mockNotificationSender) NotifyWithTitle(nid types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *mockNotificationSender) NotifyWithTitle(nid contract.NotifierID, title string, message string, errorOccurred bool) error {
 	return nil
 } // Added for interface compliance
 
@@ -246,7 +246,7 @@ func TestIntegration_E2E_NotificationFlow(t *testing.T) {
 
 	// Mock Notifier Handler (The final destination)
 	finalHandler := &mockNotifierHandler{
-		id:           types.NotifierID("test-notifier"),
+		id:           contract.NotifierID("test-notifier"),
 		supportsHTML: true,
 		calls:        make([]string, 0),
 	}

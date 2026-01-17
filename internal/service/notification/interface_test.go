@@ -7,7 +7,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,11 +112,11 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			// Replace in service map only if ID matches testNotifierID,
 			// otherwise we leave it as is or handle unknown ID case.
 			if tt.notifierID == testNotifierID {
-				service.notifiersMap[types.NotifierID(testNotifierID)] = mockNotifier
+				service.notifiersMap[contract.NotifierID(testNotifierID)] = mockNotifier
 			}
 
 			// Act
-			err := service.NotifyWithTitle(types.NotifierID(tt.notifierID), tt.title, tt.message, tt.errorOccurred)
+			err := service.NotifyWithTitle(contract.NotifierID(tt.notifierID), tt.title, tt.message, tt.errorOccurred)
 
 			// Assert
 			if tt.expectError {
@@ -193,7 +193,7 @@ func TestSender_NotifyDefault(t *testing.T) {
 			}
 
 			opts := mockServiceOptions{
-				notifierID:   types.NotifierID(setupID),
+				notifierID:   contract.NotifierID(setupID),
 				supportsHTML: true,
 				running:      tt.running,
 			}
@@ -310,13 +310,13 @@ func TestHealthChecker_Health(t *testing.T) {
 // TestSender_Mockability는 Sender 및 HealthChecker 인터페이스가 Mocking 가능한지 시연합니다.
 // 이는 "Interface Code" 자체에 대한 테스트의 일환으로 볼 수 있습니다.
 type MockSender struct {
-	NotifyWithTitleFunc        func(notifierID types.NotifierID, title string, message string, errorOccurred bool) error
+	NotifyWithTitleFunc        func(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error
 	NotifyDefaultFunc          func(message string) error
 	NotifyDefaultWithErrorFunc func(message string) error
 	HealthFunc                 func() error // HealthChecker 구현
 }
 
-func (m *MockSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+func (m *MockSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
 	if m.NotifyWithTitleFunc != nil {
 		return m.NotifyWithTitleFunc(notifierID, title, message, errorOccurred)
 	}

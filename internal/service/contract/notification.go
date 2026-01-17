@@ -1,9 +1,5 @@
 package contract
 
-import (
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-)
-
 // NotificationSender 알림 발송 기능을 제공하는 인터페이스입니다.
 // API, Task와 같은 클라이언트는 이 인터페이스를 통해 알림 서비스를 사용합니다.
 type NotificationSender interface {
@@ -18,7 +14,7 @@ type NotificationSender interface {
 	//
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-	Notify(ctx TaskContext, notifierID types.NotifierID, message string) error
+	Notify(ctx TaskContext, notifierID NotifierID, message string) error
 
 	// NotifyWithTitle 지정된 Notifier를 통해 제목을 포함한 알림 메시지를 발송합니다.
 	// 제목을 명시하여 알림의 맥락을 명확히 전달할 수 있습니다.
@@ -32,7 +28,7 @@ type NotificationSender interface {
 	//
 	// 반환값:
 	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
-	NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error
+	NotifyWithTitle(notifierID NotifierID, title string, message string, errorOccurred bool) error
 
 	// NotifyDefault 시스템에 설정된 기본 Notifier를 통해 알림 메시지를 발송합니다.
 	//
@@ -61,7 +57,7 @@ type NotificationSender interface {
 	//
 	// 반환값:
 	//   - bool: HTML 포맷 지원 여부
-	SupportsHTML(notifierID types.NotifierID) bool
+	SupportsHTML(notifierID NotifierID) bool
 }
 
 // NotificationHealthChecker Notification 서비스의 상태를 확인하는 인터페이스입니다.

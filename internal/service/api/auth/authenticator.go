@@ -11,7 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -65,7 +65,7 @@ func NewAuthenticator(appConfig *config.AppConfig) *Authenticator {
 			ID:                application.ID,
 			Title:             application.Title,
 			Description:       application.Description,
-			DefaultNotifierID: types.NotifierID(application.DefaultNotifierID),
+			DefaultNotifierID: contract.NotifierID(application.DefaultNotifierID),
 		}
 
 		// App Key를 SHA-256으로 해시하여 저장 (보안)

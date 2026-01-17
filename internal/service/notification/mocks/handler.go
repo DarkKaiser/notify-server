@@ -6,7 +6,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 )
 
 // Interface Compliance Check
@@ -17,7 +16,7 @@ var _ notifier.NotifierHandler = (*MockNotifierHandler)(nil)
 // 이 Mock은 알림 전송 동작을 테스트하는 데 사용되며,
 // 실제 알림 전송 없이 호출 기록을 추적합니다.
 type MockNotifierHandler struct {
-	IDValue           types.NotifierID
+	IDValue           contract.NotifierID
 	SupportsHTMLValue bool
 	NotifyCalls       []MockNotifyCall
 	Mu                sync.Mutex // NotifyCalls 동시성 보호
@@ -31,7 +30,7 @@ type MockNotifyCall struct {
 }
 
 // ID는 Notifier의 고유 식별자를 반환합니다.
-func (m *MockNotifierHandler) ID() types.NotifierID {
+func (m *MockNotifierHandler) ID() contract.NotifierID {
 	return m.IDValue
 }
 

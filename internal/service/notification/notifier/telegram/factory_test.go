@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -178,7 +179,7 @@ func TestNewNotifier_CommandCollision(t *testing.T) {
 	}
 
 	// when
-	_, err := newTelegramNotifierWithBot(types.NotifierID("telegram-1"), mockBot, 12345, appConfig, mockExecutor)
+	_, err := newTelegramNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, 12345, appConfig, mockExecutor)
 
 	// then
 	assert.Error(t, err)

@@ -10,7 +10,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
+
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -79,7 +80,7 @@ func TestNewAuthenticator_Table(t *testing.T) {
 				assert.Equal(t, "test-app", app.ID)
 				assert.Equal(t, "Test Application", app.Title)
 				assert.Equal(t, "Test Description", app.Description)
-				assert.Equal(t, types.NotifierID("test-notifier"), app.DefaultNotifierID)
+				assert.Equal(t, contract.NotifierID("test-notifier"), app.DefaultNotifierID)
 				// 중요: AppKey는 보안을 위해 Application 구조체에 저장되지 않아야 함
 				// Application 구조체에 AppKey 필드가 없으므로 컴파일 레벨에서 보장되지만,
 				// 의도적으로 주석을 통해 확인.

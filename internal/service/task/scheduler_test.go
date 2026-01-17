@@ -7,7 +7,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -245,7 +245,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
 
-				send.On("Notify", mock.Anything, types.NotifierID("N2"), mock.MatchedBy(func(msg string) bool {
+				send.On("Notify", mock.Anything, contract.NotifierID("N2"), mock.MatchedBy(func(msg string) bool {
 					return msg != "" && assert.Contains(nil, msg, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") // nil passed to assert helper which is weird but works for Contains if t is not needed or we check bool
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -316,7 +316,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 		},
 	}
 
-	mockSend.On("Notify", mock.Anything, types.NotifierID("N1"), mock.MatchedBy(func(msg string) bool {
+	mockSend.On("Notify", mock.Anything, contract.NotifierID("N1"), mock.MatchedBy(func(msg string) bool {
 		return assert.Contains(t, msg, "Cron 스케줄 파싱 실패")
 	})).Return(nil).Once()
 

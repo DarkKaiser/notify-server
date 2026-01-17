@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 )
 
 // Handler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
@@ -18,7 +17,7 @@ type Handler interface {
 	GetInstanceID() contract.TaskInstanceID
 
 	// GetNotifierID 알림을 발송할 대상 Notifier의 ID를 반환합니다.
-	GetNotifierID() types.NotifierID
+	GetNotifierID() contract.NotifierID
 
 	// Cancel 작업을 취소 요청합니다.
 	// 호출 즉시 IsCanceled()가 true를 반환해야 하며, 실행 중인 로직은 이를 감지하여 조기 종료해야 합니다.
