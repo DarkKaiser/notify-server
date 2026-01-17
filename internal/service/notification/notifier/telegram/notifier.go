@@ -30,6 +30,8 @@ const (
 	telegramMessageMaxLength = 3900
 )
 
+var _ notifier.Notifier = (*telegramNotifier)(nil) // 인터페이스 준수 확인
+
 // telegramBotCommand 봇에서 실행 가능한 명령어 메타데이터
 type telegramBotCommand struct {
 	command            string
@@ -60,7 +62,7 @@ func (w *telegramBotAPIClient) GetSelf() tgbotapi.User {
 
 // telegramNotifier 텔레그램 알림 발송 및 봇 상호작용을 처리하는 Notifier
 type telegramNotifier struct {
-	notifier.BaseNotifier
+	notifier.Base
 
 	chatID int64
 

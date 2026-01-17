@@ -221,7 +221,7 @@ func (s *Service) NotifyDefault(message string) error {
 
 		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceStopped)
 
-		return notifier.ErrServiceStopped
+		return ErrServiceStopped
 	}
 
 	notifier := s.defaultNotifier
@@ -250,7 +250,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 
 		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceStopped)
 
-		return notifier.ErrServiceStopped
+		return ErrServiceStopped
 	}
 
 	notifier := s.defaultNotifier
@@ -283,7 +283,7 @@ func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.Notif
 			"notifier_id": notifierID,
 		}).Warn(constants.LogMsgServiceStopped)
 
-		return notifier.ErrServiceStopped
+		return ErrServiceStopped
 	}
 
 	targetNotifier := s.notifiersMap[notifierID]
@@ -296,7 +296,7 @@ func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.Notif
 			// Notifier가 이미 종료되었는지 확인
 			select {
 			case <-targetNotifier.Done():
-				return notifier.ErrServiceStopped
+				return ErrServiceStopped
 			default:
 				// 종료되지 않았다면 큐가 가득 찬 것으로 간주
 				return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
@@ -320,7 +320,7 @@ func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.Notif
 		}
 	}
 
-	return notifier.ErrNotFoundNotifier
+	return ErrNotFoundNotifier
 }
 
 // Health 서비스가 정상적으로 실행 중인지 확인합니다.
@@ -332,7 +332,7 @@ func (s *Service) Health() error {
 	defer s.runningMu.RUnlock()
 
 	if !s.running {
-		return notifier.ErrServiceStopped
+		return ErrServiceStopped
 	}
 
 	return nil

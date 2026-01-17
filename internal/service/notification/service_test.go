@@ -176,7 +176,7 @@ func TestServiceNotify(t *testing.T) {
 			notifierID:     "unknown",
 			message:        "msg",
 			expectError:    true,
-			expectedErrStr: notifier.ErrNotFoundNotifier.Error(),
+			expectedErrStr: ErrNotFoundNotifier.Error(),
 			expectedMsg:    "등록되지 않은 Notifier ID('unknown')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: msg",
 			expectedErrCtx: true,
 		},
@@ -225,7 +225,7 @@ func TestNotify_NotRunning(t *testing.T) {
 	err := service.Notify(contract.NewTaskContext(), contract.NotifierID(testNotifierID), "test")
 
 	assert.Error(t, err)
-	assert.Equal(t, notifier.ErrServiceStopped, err)
+	assert.Equal(t, ErrServiceStopped, err)
 	assertNotifyNotCalled(t, mockNotifier)
 }
 
@@ -350,7 +350,7 @@ func TestStartAndRun(t *testing.T) {
 		assert.False(t, service.running)
 		err = service.NotifyDefault("fail")
 		assert.Error(t, err)
-		assert.Equal(t, notifier.ErrServiceStopped, err)
+		assert.Equal(t, ErrServiceStopped, err)
 	})
 }
 
@@ -513,7 +513,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 
 	// Assert
 	// Depending on implementation, if notifier is closed, Service might return ErrServiceStopped
-	assert.ErrorIs(t, notifyErr, notifier.ErrServiceStopped)
+	assert.ErrorIs(t, notifyErr, ErrServiceStopped)
 
 	// Cleanup
 	cancel()
@@ -713,7 +713,7 @@ func TestSender_NotifyDefault(t *testing.T) {
 			defaultNotifier: "", // 미설정
 			running:         true,
 			expectError:     true,
-			errorIs:         notifier.ErrServiceStopped,
+			errorIs:         ErrServiceStopped,
 		},
 		{
 			name:            "실패: 메시지 전송 실패 (Queue Full 등)",
@@ -823,7 +823,7 @@ func TestHealthChecker_Health(t *testing.T) {
 			name:        "에러: 서비스 중지됨",
 			running:     false,
 			expectError: true,
-			errorIs:     notifier.ErrServiceStopped,
+			errorIs:     ErrServiceStopped,
 		},
 	}
 

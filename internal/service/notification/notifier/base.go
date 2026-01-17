@@ -18,9 +18,9 @@ type Request struct {
 	Message     string
 }
 
-// BaseNotifier Notifier의 기본 구현체입니다.
+// Base Notifier의 기본 구현체입니다.
 // 공통적인 알림 채널 처리 로직을 제공하며, 구체적인 구현체에 임베딩되어 사용됩니다.
-type BaseNotifier struct {
+type Base struct {
 	id contract.NotifierID
 
 	supportsHTML bool
@@ -33,9 +33,9 @@ type BaseNotifier struct {
 	RequestC      chan *Request
 }
 
-// NewBaseNotifier BaseNotifier를 생성하고 초기화합니다.
-func NewBaseNotifier(id contract.NotifierID, supportsHTML bool, bufferSize int, notifyTimeout time.Duration) BaseNotifier {
-	return BaseNotifier{
+// NewBase Base를 생성하고 초기화합니다.
+func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, notifyTimeout time.Duration) Base {
+	return Base{
 		id: id,
 
 		supportsHTML: supportsHTML,
@@ -46,13 +46,13 @@ func NewBaseNotifier(id contract.NotifierID, supportsHTML bool, bufferSize int, 
 	}
 }
 
-func (n *BaseNotifier) ID() contract.NotifierID {
+func (n *Base) ID() contract.NotifierID {
 	return n.id
 }
 
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *BaseNotifier) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
+func (n *Base) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
 	n.mu.RLock()
 	// 이미 종료되었거나 채널이 닫힌 경우
 	if n.closed || n.RequestC == nil {
@@ -113,12 +113,12 @@ func (n *BaseNotifier) Notify(taskCtx contract.TaskContext, message string) (ok 
 	}
 }
 
-func (n *BaseNotifier) SupportsHTML() bool {
+func (n *Base) SupportsHTML() bool {
 	return n.supportsHTML
 }
 
 // Close 알림 채널을 닫고 리소스를 정리합니다.
-func (n *BaseNotifier) Close() {
+func (n *Base) Close() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -139,6 +139,6 @@ func (n *BaseNotifier) Close() {
 
 // Done Notifier가 종료되었는지 확인할 수 있는 채널을 반환합니다.
 // 반환된 채널이 닫히면 Notifier가 종료(Close)된 상태임을 의미합니다.
-func (n *BaseNotifier) Done() <-chan struct{} {
+func (n *Base) Done() <-chan struct{} {
 	return n.done
 }

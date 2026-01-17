@@ -27,7 +27,7 @@ func TestFactory_Interfaces(t *testing.T) {
 	})
 
 	t.Run("Creator Compliance", func(t *testing.T) {
-		var _ notifier.Creator = notifier.FactoryFunc(nil)
+		var _ notifier.Creator = notifier.CreatorFunc(nil)
 		var _ notifier.Creator = notifier.NewFactory()
 	})
 }
@@ -43,7 +43,7 @@ func TestFactoryFunc_CreateNotifiers(t *testing.T) {
 	called := false
 	expectedNotifiers := []notifier.Notifier{notificationmocks.NewMockNotifier("test")}
 
-	adapter := notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+	adapter := notifier.CreatorFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		called = true
 		return expectedNotifiers, nil
 	})
@@ -74,9 +74,11 @@ func TestFactory_CreateNotifiers(t *testing.T) {
 	n1 := notificationmocks.NewMockNotifier("n1")
 	n2 := notificationmocks.NewMockNotifier("n2")
 
+	// CreatorFunc를 사용하여 간단하게 Mock 생성
+	// Helper to create a simple creator
 	// Helper to create a simple creator
 	createCreator := func(notifiers []notifier.Notifier, err error) notifier.Creator {
-		return notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
+		return notifier.CreatorFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 			return notifiers, err
 		})
 	}
@@ -182,7 +184,7 @@ func TestFactory_ArgumentPropagation(t *testing.T) {
 	f := notifier.NewFactory()
 	called := false
 
-	f.Register(notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+	f.Register(notifier.CreatorFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		called = true
 		assert.Equal(t, expectedConfig, cfg, "Config should be propagated")
 		assert.Equal(t, expectedExecutor, executor, "Executor should be propagated")
@@ -205,11 +207,11 @@ func TestFactory_ExecutionOrder(t *testing.T) {
 	var callOrder []string
 
 	// Register multiple creators
-	f.Register(notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
+	f.Register(notifier.CreatorFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 		callOrder = append(callOrder, "first")
 		return nil, nil
 	}))
-	f.Register(notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
+	f.Register(notifier.CreatorFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 		callOrder = append(callOrder, "second")
 		return nil, nil
 	}))
@@ -231,7 +233,7 @@ func ExampleFactory() {
 	f := notifier.NewFactory()
 
 	// 2. Creator 등록 (일반적으로 패키지 init이나 메인 설정 단계에서 수행)
-	f.Register(notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+	f.Register(notifier.CreatorFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		// 실제 구현에서는 여기서 설정(cfg)을 읽어 Notifier를 초기화합니다.
 		fmt.Println("Initializing Custom Notifier")
 		return []notifier.Notifier{}, nil // 예시를 위해 빈 목록 반환

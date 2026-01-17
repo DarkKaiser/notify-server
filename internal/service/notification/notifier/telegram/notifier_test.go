@@ -268,9 +268,9 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 	})
 
 	n := &telegramNotifier{
-		BaseNotifier: notifier.NewBaseNotifier("test", true, 10, time.Second),
-		botAPI:       mockBot,
-		chatID:       12345,
+		Base:   notifier.NewBase("test", true, 10, time.Second),
+		botAPI: mockBot,
+		chatID: 12345,
 		botCommands: []telegramBotCommand{
 			{command: "help"},
 		},

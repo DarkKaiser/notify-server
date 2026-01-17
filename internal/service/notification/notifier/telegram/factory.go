@@ -21,9 +21,9 @@ import (
 
 type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error)
 
-// NewFactory 텔레그램 Notifier 설정을 처리하는 FactoryFunc를 생성하여 반환합니다.
+// NewFactory 텔레그램 Notifier 설정을 처리하는 CreatorFunc를 생성하여 반환합니다.
 // 의존성 주입을 위해 생성자 함수를 인자로 받습니다.
-func NewFactory(creator telegramNotifierCreatorFunc) notifier.FactoryFunc {
+func NewFactory(creator telegramNotifierCreatorFunc) notifier.CreatorFunc {
 	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		var notifiers []notifier.Notifier
 
@@ -65,7 +65,7 @@ func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfi
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
 func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error) {
 	notifier := &telegramNotifier{
-		BaseNotifier: notifier.NewBaseNotifier(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
+		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
 		chatID: chatID,
 

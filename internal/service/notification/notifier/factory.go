@@ -10,11 +10,11 @@ type Creator interface {
 	CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
 }
 
-// FactoryFunc 설정 정보를 바탕으로 Notifier 목록을 생성하는 함수 타입입니다.
-type FactoryFunc func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
+// CreatorFunc 설정 정보를 바탕으로 Notifier 목록을 생성하는 함수 타입입니다.
+type CreatorFunc func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
 
 // CreateNotifiers 함수 f를 호출하여 Notifier 생성을 위임합니다.
-func (f FactoryFunc) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
+func (f CreatorFunc) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
 	return f(appConfig, executor)
 }
 
