@@ -8,142 +8,129 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // =============================================================================
-// Interface Compliance Checks
+// Interface Verification
 // =============================================================================
 
-// NotifierFactory Implementation
-var _ notifier.NotifierFactory = (*notifier.DefaultNotifierFactory)(nil)
-var _ notifier.NotifierFactory = (*notificationmocks.MockNotifierFactory)(nil) // Test Mock
+func TestFactory_InterfaceCompliance(t *testing.T) {
+	t.Run("NewFactory returns Factory interface", func(t *testing.T) {
+		f := notifier.NewFactory()
+		require.NotNil(t, f)
 
-// =============================================================================
-// Compile-Time Verification Test
-// =============================================================================
+		// Type verification (compile-time safety is already handled by return type,
+		// but this runtime check acts as a sanity check)
+		var _ notifier.Factory = f
+	})
 
-func TestNotifierFactoryInterface(t *testing.T) {
-	tests := []struct {
-		name string
-		impl interface{}
-	}{
-		{"DefaultNotifierFactory", &notifier.DefaultNotifierFactory{}},
-		{"mockNotifierFactory", &notificationmocks.MockNotifierFactory{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, ok := tt.impl.(notifier.NotifierFactory)
-			require.True(t, ok, "%s should implement NotifierFactory interface", tt.name)
-		})
-	}
+	t.Run("MockFactory implements Factory interface", func(t *testing.T) {
+		var _ notifier.Factory = (*notificationmocks.MockFactory)(nil)
+	})
 }
 
 // =============================================================================
-// Notifier Factory Tests
+// Functional Tests
 // =============================================================================
 
-// TestDefaultNotifierFactory_CreateNotifiers_Table은 DefaultNotifierFactory의 CreateNotifiers 메서드를 검증합니다.
-//
-// 검증 항목:
-//   - Telegram Notifier 생성 성공
-//   - 빈 설정 처리
-//   - 여러 프로세서 처리
-//   - 프로세서 에러 처리
-func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
-	tests := []struct {
-		name           string
-		cfg            *config.AppConfig
-		registerProcs  []notifier.NotifierConfigProcessor
-		expectHandlers int
-		expectError    bool
-	}{
-		{
-			name: "Success Telegram",
-			cfg: &config.AppConfig{
-				Notifier: config.NotifierConfig{
-					Telegrams: []config.TelegramConfig{
-						{ID: "t1", BotToken: "tok", ChatID: 1},
-						{ID: "t2", BotToken: "tok", ChatID: 2},
-					},
-				},
-			},
-			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					var handlers []notifier.NotifierHandler
-					for _, t := range cfg.Notifier.Telegrams {
-						handlers = append(handlers, &notificationmocks.MockNotifierHandler{IDValue: contract.NotifierID(t.ID)})
-					}
-					return handlers, nil
-				},
-			},
-			expectHandlers: 2,
-			expectError:    false,
-		},
-		{
-			name: "Empty Config",
-			cfg: &config.AppConfig{
-				Notifier: config.NotifierConfig{
-					Telegrams: []config.TelegramConfig{},
-				},
-			},
-			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{}, nil
-				},
-			},
-			expectHandlers: 0,
-			expectError:    false,
-		},
-		{
-			name: "Multiple Processors",
-			cfg:  &config.AppConfig{},
-			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h1"}}, nil
-				},
-				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h2"}}, nil
-				},
-			},
-			expectHandlers: 2, // 1 + 1
-			expectError:    false,
-		},
-		{
-			name: "Processor Error",
-			cfg:  &config.AppConfig{},
-			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-					return nil, errors.New("processor error")
-				},
-			},
-			expectHandlers: 0,
-			expectError:    true,
+func TestFactory_CreateNotifiers(t *testing.T) {
+	// Common Test Helpers
+	mockExecutor := &taskmocks.MockExecutor{}
+	testConfig := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: "default",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			factory := notifier.NewNotifierFactory()
-			require.NotNil(t, factory, "Factory should not be nil")
+	t.Run("Argument Propagation", func(t *testing.T) {
+		// 테스트 목적: CreateNotifiers에 전달된 config와 executor가 프로세서에게 정확히 전달되는지 확인
+		f := notifier.NewFactory()
 
-			for _, proc := range tt.registerProcs {
-				factory.RegisterProcessor(proc)
-			}
-
-			mockExecutor := &taskmocks.MockExecutor{}
-			handlers, err := factory.CreateNotifiers(tt.cfg, mockExecutor)
-
-			if tt.expectError {
-				require.Error(t, err, "Should return error")
-			} else {
-				require.NoError(t, err, "Should not return error")
-				assert.Len(t, handlers, tt.expectHandlers)
-			}
+		called := false
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			assert.Equal(t, testConfig, cfg, "Config should differ")
+			assert.Equal(t, mockExecutor, executor, "Executor should match")
+			called = true
+			return nil, nil // Return empty, no error
 		})
-	}
+
+		_, err := f.CreateNotifiers(testConfig, mockExecutor)
+		require.NoError(t, err)
+		assert.True(t, called, "Processor should have been called")
+	})
+
+	t.Run("Aggregation of Handlers", func(t *testing.T) {
+		// 테스트 목적: 여러 프로세서에서 생성된 핸들러들이 하나의 슬라이스로 잘 합쳐지는지 확인
+		f := notifier.NewFactory()
+
+		handler1 := &notificationmocks.MockNotifierHandler{IDValue: "h1"}
+		handler2 := &notificationmocks.MockNotifierHandler{IDValue: "h2"}
+
+		// Processor 1: returns [h1]
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{handler1}, nil
+		})
+
+		// Processor 2: returns [h2]
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{handler2}, nil
+		})
+
+		// Processor 3: returns empty (should not affect result)
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{}, nil
+		})
+
+		handlers, err := f.CreateNotifiers(testConfig, mockExecutor)
+		require.NoError(t, err)
+		require.Len(t, handlers, 2)
+		assert.Equal(t, handler1, handlers[0])
+		assert.Equal(t, handler2, handlers[1])
+	})
+
+	t.Run("Error Handling - Fail Fast", func(t *testing.T) {
+		// 테스트 목적: 프로세서 중 하나가 에러를 반환하면 즉시 중단하고 에러를 반환하는지 확인
+		f := notifier.NewFactory()
+		expectedErr := errors.New("processor failed")
+
+		// Processor 1: Success
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{}}, nil
+		})
+
+		// Processor 2: Error
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			return nil, expectedErr
+		})
+
+		// Processor 3: Should NOT be called
+		f.RegisterProcessor(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+			assert.Fail(t, "This processor should not be called after previous error")
+			return nil, nil
+		})
+
+		handlers, err := f.CreateNotifiers(testConfig, mockExecutor)
+		require.Error(t, err)
+		assert.Equal(t, expectedErr, err)
+		assert.Nil(t, handlers, "Handlers should be nil on error")
+	})
+}
+
+func TestFactory_RegisterProcessor_Safety(t *testing.T) {
+	t.Run("Registering nil processor is safe", func(t *testing.T) {
+		// 테스트 목적: nil 프로세서를 등록해도 패닉이 발생하지 않고 무시되는지 확인
+		f := notifier.NewFactory()
+
+		assert.NotPanics(t, func() {
+			f.RegisterProcessor(nil)
+		})
+
+		// Verify it functions normally afterwards
+		handlers, err := f.CreateNotifiers(&config.AppConfig{}, &taskmocks.MockExecutor{})
+		require.NoError(t, err)
+		assert.Empty(t, handlers)
+	})
 }

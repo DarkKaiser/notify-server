@@ -60,7 +60,7 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 		SupportsHTMLValue: opts.supportsHTML,
 	}
 
-	mockFactory := &notificationmocks.MockNotifierFactory{}
+	mockFactory := &notificationmocks.MockFactory{}
 
 	service := NewService(appConfig, mockFactory, mockExecutor)
 	service.notifiersMap = map[contract.NotifierID]notifier.NotifierHandler{
@@ -100,7 +100,7 @@ func assertNotifyNotCalled(t *testing.T, mock *notificationmocks.MockNotifierHan
 func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &taskmocks.MockExecutor{}
-	mockFactory := &notificationmocks.MockNotifierFactory{}
+	mockFactory := &notificationmocks.MockFactory{}
 	service := NewService(appConfig, mockFactory, mockExecutor)
 
 	assert.NotNil(t, service)
@@ -322,7 +322,7 @@ func TestStartAndRun(t *testing.T) {
 		cfg := &config.AppConfig{}
 		cfg.Notifier.DefaultNotifierID = "default"
 
-		mockFactory := &notificationmocks.MockNotifierFactory{
+		mockFactory := &notificationmocks.MockFactory{
 			CreateNotifiersFunc: func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 				return []notifier.NotifierHandler{mockNotifier}, nil
 			},
@@ -367,7 +367,7 @@ func TestStartErrors(t *testing.T) {
 	tests := []struct {
 		name          string
 		cfgSetup      func(*config.AppConfig)
-		factorySetup  func(*mocks.MockNotifierFactory)
+		factorySetup  func(*mocks.MockFactory)
 		executorNil   bool
 		errorContains string
 	}{
@@ -378,7 +378,7 @@ func TestStartErrors(t *testing.T) {
 		},
 		{
 			name: "Factory에서 에러 반환",
-			factorySetup: func(m *mocks.MockNotifierFactory) {
+			factorySetup: func(m *mocks.MockFactory) {
 				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("factory error")
 				}
@@ -390,7 +390,7 @@ func TestStartErrors(t *testing.T) {
 			cfgSetup: func(c *config.AppConfig) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
-			factorySetup: func(m *mocks.MockNotifierFactory) {
+			factorySetup: func(m *mocks.MockFactory) {
 				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{
 						&notificationmocks.MockNotifierHandler{IDValue: "other"},
@@ -413,7 +413,7 @@ func TestStartErrors(t *testing.T) {
 				executor = nil
 			}
 
-			factory := &notificationmocks.MockNotifierFactory{}
+			factory := &notificationmocks.MockFactory{}
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
@@ -446,6 +446,10 @@ type localMockFactory struct {
 
 func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 	return m.handlers, nil
+}
+
+func (m *localMockFactory) RegisterProcessor(processor notifier.ConfigProcessor) {
+	// No-op for this test mock
 }
 
 func TestService_Start_DuplicateID(t *testing.T) {
@@ -572,7 +576,7 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 		IDValue: "normal_notifier",
 	}
 
-	factory := &notificationmocks.MockNotifierFactory{ // Changed to notificationmocks
+	factory := &notificationmocks.MockFactory{ // Changed to notificationmocks
 		CreateNotifiersFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 			return []notifier.NotifierHandler{panicNotifier, normalNotifier}, nil
 		},

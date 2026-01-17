@@ -21,9 +21,9 @@ import (
 
 type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.NotifierHandler, error)
 
-// NewConfigProcessor 텔레그램 Notifier 설정을 처리하는 NotifierConfigProcessor를 생성하여 반환합니다.
-// 이 처리기는 애플리케이션 설정에 따라 텔레그램 Notifier 인스턴스들을 초기화합니다.
-func NewConfigProcessor(creator telegramNotifierCreatorFunc) notifier.NotifierConfigProcessor {
+// NewConfigProcessor 텔레그램 Notifier 설정을 처리하는 ConfigProcessor를 생성하여 반환합니다.
+// 의존성 주입을 위해 생성자 함수를 인자로 받습니다.
+func NewConfigProcessor(creator telegramNotifierCreatorFunc) notifier.ConfigProcessor {
 	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 		var handlers []notifier.NotifierHandler
 

@@ -5,37 +5,37 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
-// TODO 미완료
+// ConfigProcessor 설정 정보를 바탕으로 Notifier 목록을 생성하는 함수 타입입니다.
+type ConfigProcessor func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error)
 
-// NotifierFactory 알림 핸들러 생성을 담당하는 팩토리 인터페이스입니다.
-type NotifierFactory interface {
+// Factory Notifier 생성을 담당하는 팩토리 인터페이스입니다.
+type Factory interface {
+	RegisterProcessor(processor ConfigProcessor)
+
 	CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error)
 }
 
-// NotifierConfigProcessor 설정에서 특정 알림 타입(예: Telegram)을 생성하는 함수 타입입니다.
-type NotifierConfigProcessor func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error)
-
-// DefaultNotifierFactory 기본 NotifierFactory 구현체입니다.
-type DefaultNotifierFactory struct {
-	processors []NotifierConfigProcessor
+// defaultFactory Processor 패턴을 사용하여 Notifier를 생성하는 기본 Factory 구현체입니다.
+type defaultFactory struct {
+	processors []ConfigProcessor
 }
 
-// NewNotifierFactory 새로운 DefaultNotifierFactory를 생성합니다.
-func NewNotifierFactory() *DefaultNotifierFactory {
-	return &DefaultNotifierFactory{
-		processors: make([]NotifierConfigProcessor, 0),
+// NewFactory 새로운 Factory 인스턴스를 생성합니다.
+func NewFactory() Factory {
+	return &defaultFactory{
+		processors: make([]ConfigProcessor, 0),
 	}
 }
 
-// RegisterProcessor 새로운 설정 프로세서를 등록합니다.
-func (f *DefaultNotifierFactory) RegisterProcessor(processor NotifierConfigProcessor) {
+// RegisterProcessor Notifier 생성을 담당할 새로운 Processor를 등록합니다.
+func (f *defaultFactory) RegisterProcessor(processor ConfigProcessor) {
 	if processor != nil {
 		f.processors = append(f.processors, processor)
 	}
 }
 
-// CreateNotifiers 설정을 기반으로 활성화된 모든 Notifier를 생성하여 반환합니다.
-func (f *DefaultNotifierFactory) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error) {
+// CreateNotifiers 등록된 모든 Processor를 실행하여 사용 가능한 Notifier 목록을 생성합니다.
+func (f *defaultFactory) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error) {
 	var allHandlers []NotifierHandler
 
 	for _, processor := range f.processors {

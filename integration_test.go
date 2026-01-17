@@ -175,7 +175,7 @@ func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, 
 	}
 	return nil, nil
 }
-func (m *mockIntegrationNotifierFactory) RegisterProcessor(p notifier.NotifierConfigProcessor) {}
+func (m *mockIntegrationNotifierFactory) RegisterProcessor(p notifier.ConfigProcessor) {}
 
 // mockNotificationSender is kept for tests that want to bypass NotificationService
 type mockNotificationSender struct {

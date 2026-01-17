@@ -26,7 +26,7 @@ type Service struct {
 	defaultNotifier notifier.NotifierHandler
 
 	// notifierFactory 런타임에 동적으로 Notifier 인스턴스를 생성하고 초기화하는 팩토리
-	notifierFactory notifier.NotifierFactory
+	notifierFactory notifier.Factory
 
 	// notifiersStopWG 서비스 종료 시, 모든 하위 Notifier의 고루틴들이 안전하게 종료될 때까지 대기하는 동기화 객체
 	notifiersStopWG sync.WaitGroup
@@ -38,7 +38,7 @@ type Service struct {
 }
 
 // NewService Notification 서비스를 생성합니다.
-func NewService(appConfig *config.AppConfig, factory notifier.NotifierFactory, executor contract.TaskExecutor) *Service {
+func NewService(appConfig *config.AppConfig, factory notifier.Factory, executor contract.TaskExecutor) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
