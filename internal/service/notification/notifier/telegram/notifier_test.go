@@ -177,12 +177,14 @@ func TestRunSender_GracefulShutdown_InFlightMessage(t *testing.T) {
 	}).Return(tgbotapi.Message{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// TestRunSender_GracefulShutdown_InFlightMessage
+	// ...
 	go func() {
 		defer wgSender.Done()
 		n.runSender(ctx)
 	}()
 
-	n.RequestC <- &notifier.Request{Message: msg}
+	n.Notify(nil, msg)
 	time.Sleep(1 * time.Millisecond)
 	cancel()
 
@@ -286,7 +288,7 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 	}()
 
 	for i := 0; i < 5; i++ {
-		n.RequestC <- &notifier.Request{Message: "Slow Message"}
+		n.Notify(contract.NewTaskContext(), "Slow Message")
 	}
 
 	cmdUpdate := tgbotapi.Update{

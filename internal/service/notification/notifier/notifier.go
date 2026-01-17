@@ -16,19 +16,25 @@ type Notifier interface {
 	// Context가 취소되거나 내부에서 치명적인 에러가 발생하여 종료될 때까지 실행됩니다.
 	Run(ctx context.Context)
 
-	// Notify 알림 발송 요청을 내부 버퍼(Queue)에 등록하고 즉시 반환합니다(Non-blocking).
-	// 실제 전송은 Run() 메서드가 실행 중인 고루틴에서 비동기로 처리됩니다.
+	// Notify 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
 	//
-	// 반환값 (ok):
-	//   - true: 요청이 성공적으로 대기열에 등록됨.
-	//   - false: 대기열이 가득 찼거나, Notifier가 종료되어 더 이상 요청을 받을 수 없음.
+	// 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
+	//
+	// 파라미터:
+	//   - taskCtx: 알림과 연관된 작업 컨텍스트 (TaskID, Title 등)
+	//   - message: 전송할 알림 메시지 본문
+	//
+	// 반환값:
+	//   - ok: 요청이 성공적으로 큐에 등록되었으면 true, 실패(종료됨, 타임아웃 등)했으면 false
 	Notify(taskCtx contract.TaskContext, message string) (ok bool)
+
+	// Done Notifier의 종료 상태를 감지할 수 있는 읽기 전용 채널을 반환합니다.
+	//
+	// 반환된 채널이 닫혔다면, 해당 Notifier가 Close() 호출에 의해 종료되었음을 의미합니다.
+	// 주로 Select 구문 내에서 종료 시그널을 감지하여 고루틴을 안전하게 정리(Graceful Shutdown)하는 데 사용됩니다.
+	Done() <-chan struct{}
 
 	// SupportsHTML 알림 채널이 HTML 스타일의 메시지 포맷팅을 지원하는지 여부를 반환합니다.
 	// true인 경우, 메시지 내용에 <b>, <i>, <a href="..."> 등의 태그를 사용할 수 있습니다.
 	SupportsHTML() bool
-
-	// Done Notifier의 모든 작업이 완료되고 안전하게 종료되었는지 확인할 수 있는 신호 채널을 반환합니다.
-	// 반환된 채널이 닫히면, 더 이상 처리할 작업이 없고 리소스가 정리되었음을 의미합니다.
-	Done() <-chan struct{}
 }

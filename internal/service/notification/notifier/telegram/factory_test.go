@@ -126,7 +126,7 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			}
 
 			// Buffer Size Verification
-			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC), "Buffer size should match the constant")
+			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC()), "Buffer size should match the constant")
 		})
 	}
 }

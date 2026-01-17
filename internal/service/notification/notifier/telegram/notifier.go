@@ -228,7 +228,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 	for {
 		select {
 		// 내부 시스템으로부터 발송할 알림 요청 수신
-		case notifyRequest, ok := <-n.RequestC:
+		case notifyRequest, ok := <-n.RequestC():
 			if !ok {
 				return // 채널이 닫히면 종료
 			}
@@ -278,7 +278,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 		Loop:
 			for {
 				select {
-				case notifyRequest := <-n.RequestC:
+				case notifyRequest := <-n.RequestC():
 					// 타임아웃 체크를 메시지 처리 전에 수행하여 타임아웃 발생 시 즉시 중단
 					if drainCtx.Err() != nil {
 						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
