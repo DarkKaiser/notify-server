@@ -36,11 +36,11 @@ func (h *MockHandler) IsCanceled() bool                     { return h.canceled 
 func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
 func (h *MockHandler) SetStorage(storage TaskResultStorage) {}
 
-func (h *MockHandler) Run(ctx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
+func (h *MockHandler) Run(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
 	select {
-	case <-ctx.Done():
+	case <-taskCtx.Done():
 	case <-h.cancelC:
 	}
 

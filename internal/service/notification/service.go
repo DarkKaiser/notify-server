@@ -274,7 +274,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 //
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-func (s *Service) Notify(ctx contract.TaskContext, notifierID contract.NotifierID, message string) error {
+func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	s.runningMu.RLock()
 	if !s.running {
 		s.runningMu.RUnlock()
@@ -292,7 +292,7 @@ func (s *Service) Notify(ctx contract.TaskContext, notifierID contract.NotifierI
 	s.runningMu.RUnlock()
 
 	if targetNotifier != nil {
-		if ok := targetNotifier.Notify(ctx, message); !ok {
+		if ok := targetNotifier.Notify(taskCtx, message); !ok {
 			// Notifier가 이미 종료되었는지 확인
 			select {
 			case <-targetNotifier.Done():

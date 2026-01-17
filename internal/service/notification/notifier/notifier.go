@@ -16,14 +16,14 @@ type Notifier interface {
 
 	// Run Notifier의 메인 루프를 실행합니다.
 	// 메시지 큐를 소비하여 실제 발송 작업을 수행합니다.
-	Run(notificationStopCtx context.Context)
+	Run(ctx context.Context)
 
 	// Notify 알림 발송 요청을 처리합니다.
 	// 실제 발송은 비동기 큐를 통해 처리될 수 있습니다.
 	//
 	// 반환값:
 	//   - succeeded: 요청이 정상적으로 접수되었는지 여부
-	Notify(ctx contract.TaskContext, message string) (succeeded bool)
+	Notify(taskCtx contract.TaskContext, message string) (ok bool)
 
 	SupportsHTML() bool
 

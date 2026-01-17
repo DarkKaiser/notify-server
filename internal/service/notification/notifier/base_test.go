@@ -28,13 +28,13 @@ const (
 // =============================================================================
 
 // assertChannelReceivesData verifies that channel receives expected data.
-func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, expectedMsg string, expectedCtx contract.TaskContext) {
+func assertChannelReceivesData(t *testing.T, ch chan *notifier.Request, expectedMsg string, expectedCtx contract.TaskContext) {
 	t.Helper()
 	select {
 	case data := <-ch:
 		require.NotNil(t, data, "Received data should not be nil")
 		assert.Equal(t, expectedMsg, data.Message)
-		assert.Equal(t, expectedCtx, data.TaskCtx)
+		assert.Equal(t, expectedCtx, data.TaskContext)
 	case <-time.After(testNotifierTimeout):
 		t.Fatal("Timeout receiving data from channel")
 	}
@@ -139,7 +139,7 @@ func TestNotify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ch chan *notifier.NotifyRequest
+			var ch chan *notifier.Request
 			if tt.Notifier.RequestC != nil {
 				ch = tt.Notifier.RequestC
 			}

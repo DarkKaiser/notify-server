@@ -166,7 +166,7 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 	}).Return(tgbotapi.Message{}, nil)
 
 	// Direct call to handleNotifyRequest for focused test
-	n.handleNotifyRequest(context.Background(), &notifier.NotifyRequest{Message: htmlMessage})
+	n.handleNotifyRequest(context.Background(), &notifier.Request{Message: htmlMessage})
 
 	wg.Wait()
 	mockBot.AssertExpectations(t)
@@ -180,7 +180,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 	}
 
 	t.Run("Escapes Special Characters", func(t *testing.T) {
-		req := &notifier.NotifyRequest{Message: "Price < 1000 & Name > Foo"}
+		req := &notifier.Request{Message: "Price < 1000 & Name > Foo"}
 		expectedMessage := "Price < 1000 & Name > Foo" // Telegram API handles escaping if ParseMode is not set? OR we set it?
 		// Wait, in sender.go we see logic dealing with HTML. If ParseMode is HTML, we generally need escaping.
 		// However, looking at source `sender.go`, `sendSingleMessage` sets ModeHTML by default.
@@ -198,9 +198,9 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 	})
 
 	t.Run("Escapes Title in Context", func(t *testing.T) {
-		req := &notifier.NotifyRequest{
-			Message: "Body",
-			TaskCtx: contract.NewTaskContext().WithTitle("<Important>"),
+		req := &notifier.Request{
+			TaskContext: contract.NewTaskContext().WithTitle("<Important>"),
+			Message:     "Plain text message",
 		}
 
 		// Titles are escaped: <Important> -> &lt;Important&gt;

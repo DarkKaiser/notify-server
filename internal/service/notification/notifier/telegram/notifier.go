@@ -84,7 +84,7 @@ type telegramNotifier struct {
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
-func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
+func (n *telegramNotifier) Run(ctx context.Context) {
 	// 텔레그램 메시지 수신 설정
 	config := tgbotapi.NewUpdate(0)
 	config.Timeout = 60 // Long Polling 타임아웃 60초 설정
@@ -105,7 +105,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		n.runSender(notificationStopCtx)
+		n.runSender(ctx)
 	}()
 
 	// 중요: Run 메서드가 어떤 이유로든(정상 종료, 채널 닫힘, 패닉) 종료될 때
@@ -188,9 +188,9 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				go func(msg *tgbotapi.Message) {
 					defer wg.Done()
 					defer func() { <-n.notifierSemaphore }()
-					n.handleCommand(notificationStopCtx, n.executor, msg)
+					n.handleCommand(ctx, n.executor, msg)
 				}(update.Message)
-			case <-notificationStopCtx.Done():
+			case <-ctx.Done():
 				// 컨텍스트 종료 시 루프 탈출
 				return
 			default:
@@ -203,7 +203,7 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 				}).Warn(constants.LogMsgTelegramCommandOverload)
 			}
 
-		case <-notificationStopCtx.Done():
+		case <-ctx.Done():
 			// loop 탈출 -> defer 구문 실행 -> 정리
 			return
 		}

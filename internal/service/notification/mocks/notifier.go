@@ -31,14 +31,14 @@ type MockNotifier struct {
 	DoneChannel       chan struct{}
 
 	// Functional Options for Behavior Injection
-	NotifyFunc func(contract.TaskContext, string) bool
+	NotifyFunc func(taskCtx contract.TaskContext, message string) bool
 	RunFunc    func(context.Context)
 }
 
 // MockNotifyCall은 Notify 메서드 호출 기록을 저장합니다.
 type MockNotifyCall struct {
-	Message string
-	TaskCtx contract.TaskContext
+	Message     string
+	TaskContext contract.TaskContext
 }
 
 // WithID ID를 설정합니다 (Fluent API).
@@ -76,34 +76,34 @@ func (m *MockNotifier) ID() contract.NotifierID {
 
 // Notify는 알림 메시지를 전송하고 호출 기록을 저장합니다.
 // 동시성 안전을 위해 mutex로 보호됩니다.
-func (m *MockNotifier) Notify(ctx contract.TaskContext, message string) bool {
+func (m *MockNotifier) Notify(taskCtx contract.TaskContext, message string) bool {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
 	m.NotifyCalls = append(m.NotifyCalls, MockNotifyCall{
-		Message: message,
-		TaskCtx: ctx,
+		Message:     message,
+		TaskContext: taskCtx,
 	})
 
 	if m.NotifyFunc != nil {
-		return m.NotifyFunc(ctx, message)
+		return m.NotifyFunc(taskCtx, message)
 	}
 
 	return true
 }
 
 // Run은 Notifier를 실행하고 context가 종료될 때까지 대기합니다.
-func (m *MockNotifier) Run(notificationStopCtx context.Context) {
+func (m *MockNotifier) Run(ctx context.Context) {
 	m.Mu.Lock()
 	runFn := m.RunFunc
 	m.Mu.Unlock()
 
 	if runFn != nil {
-		runFn(notificationStopCtx)
+		runFn(ctx)
 		return
 	}
 
-	<-notificationStopCtx.Done()
+	<-ctx.Done()
 }
 
 // SupportsHTML은 HTML 형식 메시지 지원 여부를 반환합니다.

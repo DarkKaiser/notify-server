@@ -12,10 +12,10 @@ import (
 
 // TODO 미완료
 
-// NotifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
-type NotifyRequest struct {
-	TaskCtx contract.TaskContext
-	Message string
+// Request 내부 채널을 통해 전달되는 알림 데이터입니다.
+type Request struct {
+	TaskContext contract.TaskContext
+	Message     string
 }
 
 // BaseNotifier Notifier의 기본 구현체입니다.
@@ -30,7 +30,7 @@ type BaseNotifier struct {
 	done   chan struct{} // 종료 신호 전파 채널
 
 	notifyTimeout time.Duration
-	RequestC      chan *NotifyRequest
+	RequestC      chan *Request
 }
 
 // NewBaseNotifier BaseNotifier를 생성하고 초기화합니다.
@@ -41,7 +41,7 @@ func NewBaseNotifier(id contract.NotifierID, supportsHTML bool, bufferSize int, 
 		supportsHTML: supportsHTML,
 
 		notifyTimeout: notifyTimeout,
-		RequestC:      make(chan *NotifyRequest, bufferSize),
+		RequestC:      make(chan *Request, bufferSize),
 		done:          make(chan struct{}),
 	}
 }
@@ -52,7 +52,7 @@ func (n *BaseNotifier) ID() contract.NotifierID {
 
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *BaseNotifier) Notify(ctx contract.TaskContext, message string) (succeeded bool) {
+func (n *BaseNotifier) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
 	n.mu.RLock()
 	// 이미 종료되었거나 채널이 닫힌 경우
 	if n.closed || n.RequestC == nil {
@@ -71,13 +71,13 @@ func (n *BaseNotifier) Notify(ctx contract.TaskContext, message string) (succeed
 				"notifier_id": n.ID(),
 				"panic":       r,
 			}).Error(constants.LogMsgNotifierPanicRecovered)
-			succeeded = false
+			ok = false
 		}
 	}()
 
-	req := &NotifyRequest{
-		TaskCtx: ctx,
-		Message: message,
+	req := &Request{
+		TaskContext: taskCtx,
+		Message:     message,
 	}
 
 	// 채널이 가득 찬 경우 설정된 Timeout만큼 대기 (Backpressure)

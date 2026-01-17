@@ -81,7 +81,7 @@ func assertNotifyCalled(t *testing.T, mock *notificationmocks.MockNotifier, expe
 func assertNotifyCalledWithContext(t *testing.T, mock *notificationmocks.MockNotifier, expectedMsg string) {
 	t.Helper()
 	assertNotifyCalled(t, mock, expectedMsg)
-	assert.NotNil(t, mock.NotifyCalls[0].TaskCtx, "TaskContext should be present")
+	assert.NotNil(t, mock.NotifyCalls[0].TaskContext, "TaskContext should be present")
 }
 
 // assertNotifyNotCalled는 mockNotifier가 호출되지 않았는지 검증합니다.
@@ -490,7 +490,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 
 	// Use shared MockNotifier with functional injection
 	h := notificationmocks.NewMockNotifier("test-notifier").
-		WithNotifyFunc(func(ctx contract.TaskContext, msg string) bool {
+		WithNotifyFunc(func(taskCtx contract.TaskContext, msg string) bool {
 			return false // Simulate failure if called
 		})
 	// Manually set DoneChannel since we need to simulate it being closed externally
@@ -611,7 +611,7 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			expectError:   false,
 			expectedMsg:   "Something went wrong.",
 			setupMock: func(m *notificationmocks.MockNotifier) {
-				m.WithNotifyFunc(func(ctx contract.TaskContext, message string) bool {
+				m.WithNotifyFunc(func(taskCtx contract.TaskContext, message string) bool {
 					// We can just rely on the mock's default tracking if we return true?
 					// But we want to check `ctx.IsErrorOccurred()` dynamically inside the mock logic?
 					// Or just let it run and check later?
@@ -620,9 +620,9 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 					// This test setupMock was checking `ctx.IsErrorOccurred()`.
 					// Actually, the previous code:
 					/*
-					   m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
-					       m.MockNotifier.Notify(ctx, message) // Call base to record call
-					       return ctx.IsErrorOccurred() == true
+					   m.NotifyFunc = func(taskCtx contract.TaskContext, message string) bool {
+					       m.MockNotifier.Notify(taskCtx, message) // Call base to record call
+					       return taskCtx.IsErrorOccurred() == true
 					   }
 					*/
 					// The new `Notify` calls `NotifyFunc` arguments BUT also records call BEFORE calling it? No.
@@ -630,7 +630,7 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 					// `m.NotifyCalls = append(...)` then `if m.NotifyFunc != nil { return m.NotifyFunc(...) }`
 					// So call IS recorded automatically.
 					// We just need to return the correct bool result.
-					return ctx.IsErrorOccurred() == true
+					return taskCtx.IsErrorOccurred() == true
 				})
 			},
 		},
@@ -680,9 +680,9 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 				assert.Equal(t, tt.expectedMsg, lastCall.Message)
 
 				// TaskContext Verification
-				require.NotNil(t, lastCall.TaskCtx)
-				assert.Equal(t, tt.title, lastCall.TaskCtx.GetTitle())
-				assert.Equal(t, tt.errorOccurred, lastCall.TaskCtx.IsErrorOccurred())
+				require.NotNil(t, lastCall.TaskContext)
+				assert.Equal(t, tt.title, lastCall.TaskContext.GetTitle())
+				assert.Equal(t, tt.errorOccurred, lastCall.TaskContext.IsErrorOccurred())
 			}
 		})
 	}
@@ -801,8 +801,8 @@ func TestSender_NotifyDefaultWithError(t *testing.T) {
 
 	call := mockNotifier.NotifyCalls[0]
 	assert.Equal(t, message, call.Message)
-	require.NotNil(t, call.TaskCtx)
-	assert.True(t, call.TaskCtx.IsErrorOccurred(), "Error flag should be true")
+	require.NotNil(t, call.TaskContext)
+	assert.True(t, call.TaskContext.IsErrorOccurred(), "Error flag should be true")
 }
 
 // TestHealthChecker_Health는 HealthChecker.Health 메서드의 동작을 검증합니다.

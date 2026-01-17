@@ -82,7 +82,7 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
 	taskService := task.NewService(appConfig)
 
 	// Notification Service needs a factory that returns our mock handler
-	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.NotifierHandler{
+	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.Notifier{
 		&mockNotifierHandler{id: contract.NotifierID("test-notifier"), supportsHTML: true},
 	}, nil)
 	notificationService := notification.NewService(appConfig, mockFactory, taskService)
@@ -148,7 +148,7 @@ type mockNotifierHandler struct {
 func (m *mockNotifierHandler) ID() contract.NotifierID { return m.id }
 func (m *mockNotifierHandler) SupportsHTML() bool      { return m.supportsHTML }
 func (m *mockNotifierHandler) Run(ctx context.Context) { <-ctx.Done() }
-func (m *mockNotifierHandler) Notify(ctx contract.TaskContext, msg string) bool {
+func (m *mockNotifierHandler) Notify(taskCtx contract.TaskContext, msg string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls = append(m.calls, msg)
@@ -178,7 +178,7 @@ func (m *mockNotificationSender) NotifyDefault(msg string) error {
 	m.notifyCalls = append(m.notifyCalls, notifyCall{"default", msg})
 	return nil
 }
-func (m *mockNotificationSender) Notify(ctx contract.TaskContext, nid contract.NotifierID, msg string) error {
+func (m *mockNotificationSender) Notify(taskCtx contract.TaskContext, nid contract.NotifierID, msg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, notifyCall{string(nid), msg})
@@ -236,7 +236,7 @@ func TestIntegration_E2E_NotificationFlow(t *testing.T) {
 		calls:        make([]string, 0),
 	}
 
-	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.NotifierHandler{finalHandler}, nil)
+	mockFactory := (&notificationmocks.MockFactory{}).WithCreateNotifiers([]notifier.Notifier{finalHandler}, nil)
 
 	// Services
 	taskService := task.NewService(appConfig)

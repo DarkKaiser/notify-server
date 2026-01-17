@@ -32,14 +32,14 @@ const (
 )
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
-func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifier.NotifyRequest) {
+func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifier.Request) {
 	// 텔레그램 Notifier는 SupportsHTML=true이므로, 사용자 메시지를 이스케이프하지 않고 그대로 허용합니다.
 	// 사용자는 <b>Bold</b> 등의 태그를 사용하여 메시지를 서식화할 수 있습니다.
 	message := req.Message
 
 	// 작업 실행과 관련된 컨텍스트 정보(작업명, 경과시간 등)가 있다면 메시지에 덧붙입니다.
-	if req.TaskCtx != nil {
-		message = n.enrichMessageWithContext(req.TaskCtx, message)
+	if req.TaskContext != nil {
+		message = n.enrichMessageWithContext(req.TaskContext, message)
 	}
 
 	// 최종 메시지 전송
@@ -47,16 +47,16 @@ func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifie
 }
 
 // enrichMessageWithContext TaskContext 정보를 메시지에 추가 (제목, 시간, 에러 등)
-func (n *telegramNotifier) enrichMessageWithContext(ctx contract.TaskContext, message string) string {
+func (n *telegramNotifier) enrichMessageWithContext(taskCtx contract.TaskContext, message string) string {
 	// 1. 작업 제목 추가
-	message = n.appendTitle(ctx, message)
+	message = n.appendTitle(taskCtx, message)
 
 	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 및 경과 시간 추가
-	message = n.appendCancelCommand(ctx, message)
-	message = n.appendElapsedTime(ctx, message)
+	message = n.appendCancelCommand(taskCtx, message)
+	message = n.appendElapsedTime(taskCtx, message)
 
 	// 3. 오류 발생 시 강조 표시 추가
-	if ctx.IsErrorOccurred() {
+	if taskCtx.IsErrorOccurred() {
 		message = fmt.Sprintf(msgContextError, message)
 	}
 
@@ -64,8 +64,8 @@ func (n *telegramNotifier) enrichMessageWithContext(ctx contract.TaskContext, me
 }
 
 // appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
-func (n *telegramNotifier) appendTitle(ctx contract.TaskContext, message string) string {
-	if title := ctx.GetTitle(); len(title) > 0 {
+func (n *telegramNotifier) appendTitle(taskCtx contract.TaskContext, message string) string {
+	if title := taskCtx.GetTitle(); len(title) > 0 {
 		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 등의 문제를 방지하기 위해 Truncate 처리
 		// 중요: Truncate를 먼저 수행한 후 이스케이프해야 안전합니다.
 		// 이스케이프된 문자열을 자르면 '&lt;' 따위가 잘려서 '&l' 처럼 되어 HTML 파싱 에러를 유발할 수 있습니다.
@@ -74,8 +74,8 @@ func (n *telegramNotifier) appendTitle(ctx contract.TaskContext, message string)
 	}
 
 	// 제목이 없으면 ID를 기반으로 lookup하여 제목을 찾음
-	taskID := ctx.GetTaskID()
-	commandID := ctx.GetTaskCommandID()
+	taskID := taskCtx.GetTaskID()
+	commandID := taskCtx.GetTaskCommandID()
 
 	if !taskID.IsEmpty() && !commandID.IsEmpty() {
 		// O(1) Map 조회로 성능 개선 (중첩 맵 사용)
@@ -96,12 +96,12 @@ func (n *telegramNotifier) appendTitle(ctx contract.TaskContext, message string)
 // 취소할 수 있는 UX를 제공하기 위함입니다.
 //
 // 생성되는 명령어 형식: /cancel_{InstanceID} (예: /cancel_inst_12345)
-func (n *telegramNotifier) appendCancelCommand(ctx contract.TaskContext, message string) string {
-	if !ctx.IsCancelable() {
+func (n *telegramNotifier) appendCancelCommand(taskCtx contract.TaskContext, message string) string {
+	if !taskCtx.IsCancelable() {
 		return message
 	}
 
-	instanceID := ctx.GetTaskInstanceID()
+	instanceID := taskCtx.GetTaskInstanceID()
 	if instanceID.IsEmpty() {
 		return message
 	}
@@ -110,8 +110,8 @@ func (n *telegramNotifier) appendCancelCommand(ctx contract.TaskContext, message
 }
 
 // appendElapsedTime 실행 경과 시간을 메시지에 추가합니다.
-func (n *telegramNotifier) appendElapsedTime(ctx contract.TaskContext, message string) string {
-	if elapsedTimeAfterRun := ctx.GetElapsedTimeAfterRun(); elapsedTimeAfterRun > 0 {
+func (n *telegramNotifier) appendElapsedTime(taskCtx contract.TaskContext, message string) string {
+	if elapsedTimeAfterRun := taskCtx.GetElapsedTimeAfterRun(); elapsedTimeAfterRun > 0 {
 		return message + formatElapsedTime(elapsedTimeAfterRun)
 	}
 	return message

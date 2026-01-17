@@ -121,7 +121,7 @@ func TestNewService_Panics(t *testing.T) {
 // mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
 type mockSenderWithoutHealth struct{}
 
-func (m *mockSenderWithoutHealth) Notify(ctx contract.TaskContext, notifierID contract.NotifierID, message string) error {
+func (m *mockSenderWithoutHealth) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	return nil
 }
 func (m *mockSenderWithoutHealth) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {

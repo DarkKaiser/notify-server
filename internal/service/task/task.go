@@ -137,7 +137,7 @@ func (t *Task) SetStorage(storage TaskResultStorage) {
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
-func (t *Task) Run(ctx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
+func (t *Task) Run(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
 	// [Deep Panic Safety] defer는 역순(LIFO)으로 실행되므로, recover보다 늦게, taskStopWG.Done()보다 먼저 실행되도록 위치시킵니다.
@@ -153,17 +153,17 @@ func (t *Task) Run(ctx contract.TaskContext, notificationSender contract.Notific
 			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
-			t.handleExecutionResult(ctx, notificationSender, "", nil, err)
+			t.handleExecutionResult(taskCtx, notificationSender, "", nil, err)
 		}
 	}()
 
 	t.runTime = time.Now()
 
 	// 실행 주체가 사용자인 경우에만 취소 가능 상태로 설정합니다.
-	ctx = ctx.WithCancelable(t.GetRunBy() == contract.TaskRunByUser)
+	taskCtx = taskCtx.WithCancelable(t.GetRunBy() == contract.TaskRunByUser)
 
 	// 1. 사전 검증 및 데이터 준비
-	previousSnapshot, err := t.prepareExecution(ctx, notificationSender)
+	previousSnapshot, err := t.prepareExecution(taskCtx, notificationSender)
 	if err != nil {
 		return
 	}
@@ -176,15 +176,15 @@ func (t *Task) Run(ctx contract.TaskContext, notificationSender contract.Notific
 	}
 
 	// 3. 결과 처리
-	t.handleExecutionResult(ctx, notificationSender, message, newSnapshot, err)
+	t.handleExecutionResult(taskCtx, notificationSender, message, newSnapshot, err)
 }
 
 // prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
-func (t *Task) prepareExecution(ctx contract.TaskContext, notificationSender contract.NotificationSender) (interface{}, error) {
+func (t *Task) prepareExecution(taskCtx contract.TaskContext, notificationSender contract.NotificationSender) (interface{}, error) {
 	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx.WithCancelable(false), notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
 	}
 
@@ -196,14 +196,14 @@ func (t *Task) prepareExecution(ctx contract.TaskContext, notificationSender con
 	if snapshot == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
 		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx.WithCancelable(false), notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
 	}
 
 	if t.storage == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
 		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx.WithCancelable(false), notificationSender, message)
+		t.notifyError(taskCtx.WithCancelable(false), notificationSender, message)
 		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
 	}
 
@@ -211,16 +211,16 @@ func (t *Task) prepareExecution(ctx contract.TaskContext, notificationSender con
 	if err != nil {
 		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
 		t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
-		t.notify(ctx, notificationSender, message)
+		t.notify(taskCtx, notificationSender, message)
 	}
 
 	return snapshot, nil
 }
 
 // handleExecutionResult 작업 실행 결과를 처리합니다.
-func (t *Task) handleExecutionResult(ctx contract.TaskContext, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
+func (t *Task) handleExecutionResult(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
 	// 작업이 완료되었으므로, 결과 알림 메시지에는 취소 링크가 포함되지 않도록 상태를 변경합니다.
-	nonCancelableCtx := ctx.WithCancelable(false)
+	nonCancelableCtx := taskCtx.WithCancelable(false)
 
 	if err == nil {
 		if len(message) > 0 {
@@ -241,12 +241,12 @@ func (t *Task) handleExecutionResult(ctx contract.TaskContext, notificationSende
 	}
 }
 
-func (t *Task) notify(ctx contract.TaskContext, notificationSender contract.NotificationSender, message string) error {
-	return notificationSender.Notify(ctx, t.GetNotifierID(), message)
+func (t *Task) notify(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, message string) error {
+	return notificationSender.Notify(taskCtx, t.GetNotifierID(), message)
 }
 
-func (t *Task) notifyError(ctx contract.TaskContext, notificationSender contract.NotificationSender, message string) error {
-	return notificationSender.Notify(ctx.WithError(), t.GetNotifierID(), message)
+func (t *Task) notifyError(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, message string) error {
+	return notificationSender.Notify(taskCtx.WithError(), t.GetNotifierID(), message)
 }
 
 // LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
