@@ -17,6 +17,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// TODO 미완료
+
 type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.NotifierHandler, error)
 
 // NewConfigProcessor 텔레그램 Notifier 설정을 처리하는 NotifierConfigProcessor를 생성하여 반환합니다.

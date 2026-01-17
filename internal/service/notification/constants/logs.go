@@ -1,6 +1,8 @@
 package constants
 
-// TODO: 미완료
+// TODO 미완료
+
+// 로그 메시지 상수 정의
 const (
 	// LogMsgNotificationServicePanicRecovered 패닉 로그: 서비스 내 개별 Notifier 실행 중 패닉 발생
 	LogMsgNotificationServicePanicRecovered = "Notification 서비스 > 실행 중 패닉 복구됨"

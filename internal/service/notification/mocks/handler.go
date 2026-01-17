@@ -64,3 +64,13 @@ func (m *MockNotifierHandler) Done() <-chan struct{} {
 	}
 	return m.DoneChannel
 }
+
+// Reset 상태를 초기화합니다.
+func (m *MockNotifierHandler) Reset() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.NotifyCalls = nil
+	// DoneChannel은 닫힌 상태인지 열린 상태인지 모호할 수 있으므로,
+	// Reset 시 nil로 설정하여 다음 호출 시 새로 생성되게 함.
+	m.DoneChannel = nil
+}

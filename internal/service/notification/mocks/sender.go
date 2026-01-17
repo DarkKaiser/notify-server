@@ -8,10 +8,10 @@ import (
 
 // MockNotificationSender 테스트용 NotificationSender 구현체입니다.
 type MockNotificationSender struct {
-	mu sync.Mutex
+	Mu sync.Mutex
 
 	NotifyCalled      bool
-	LastNotifierID    string
+	LastNotifierID    contract.NotifierID
 	LastTitle         string
 	LastMessage       string
 	LastErrorOccurred bool
@@ -26,13 +26,14 @@ type MockNotificationSender struct {
 	NotifyDefaultCalls      []string
 	NotifyCalls             []NotifyCall
 	CapturedContexts        []contract.TaskContext
-	SupportsHTMLCalls       []string
+	SupportsHTMLCalls       []contract.NotifierID
 	SupportsHTMLReturnValue bool
+	HealthCalls             int
 }
 
 // NotifyCall Notify 호출 정보를 저장합니다.
 type NotifyCall struct {
-	NotifierID  string
+	NotifierID  contract.NotifierID
 	Message     string
 	TaskContext contract.TaskContext
 }
@@ -51,18 +52,18 @@ func NewMockNotificationSender() *MockNotificationSender {
 		NotifyDefaultCalls:      make([]string, 0),
 		NotifyCalls:             make([]NotifyCall, 0),
 		CapturedContexts:        make([]contract.TaskContext, 0),
-		SupportsHTMLCalls:       make([]string, 0),
+		SupportsHTMLCalls:       make([]contract.NotifierID, 0),
 		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
 	}
 }
 
 // NotifyWithTitle 지정된 NotifierID로 제목이 포함된 알림 메시지를 발송합니다.
 func (m *MockNotificationSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	m.NotifyCalled = true
-	m.LastNotifierID = string(notifierID)
+	m.LastNotifierID = notifierID
 	m.LastTitle = title
 	m.LastMessage = message
 	m.LastErrorOccurred = errorOccurred
@@ -78,8 +79,8 @@ func (m *MockNotificationSender) NotifyWithTitle(notifierID contract.NotifierID,
 
 // NotifyDefault 기본 알림을 전송합니다.
 func (m *MockNotificationSender) NotifyDefault(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	// api 패키지 사용성
 	m.NotifyDefaultCalled = true
@@ -99,8 +100,8 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 
 // NotifyDefaultWithError 시스템 기본 알림 채널로 "오류" 성격의 알림 메시지를 발송합니다.
 func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	m.NotifyDefaultCalled = true
 	m.LastMessage = message
@@ -117,11 +118,11 @@ func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다.
 func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID:  string(notifierID),
+		NotifierID:  notifierID,
 		Message:     message,
 		TaskContext: taskCtx,
 	})
@@ -138,17 +139,19 @@ func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID
 
 // SupportsHTML HTML 메시지 지원 여부를 반환합니다.
 func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
+	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
 	return m.SupportsHTMLReturnValue
 }
 
 // Health 서비스의 건강 상태를 확인합니다.
 func (m *MockNotificationSender) Health() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.HealthCalls++
 
 	if m.ShouldFail {
 		if m.FailError != nil {
@@ -161,8 +164,8 @@ func (m *MockNotificationSender) Health() error {
 
 // Reset 상태를 초기화합니다.
 func (m *MockNotificationSender) Reset() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	m.NotifyCalled = false
 	m.LastNotifierID = ""
@@ -175,37 +178,38 @@ func (m *MockNotificationSender) Reset() {
 
 	m.NotifyDefaultCalls = make([]string, 0)
 	m.NotifyCalls = make([]NotifyCall, 0)
-	m.SupportsHTMLCalls = make([]string, 0)
+	m.SupportsHTMLCalls = make([]contract.NotifierID, 0)
+	m.HealthCalls = 0
 }
 
 // GetNotifyDefaultCallCount NotifyDefault 호출 횟수를 반환합니다.
 func (m *MockNotificationSender) GetNotifyDefaultCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	return len(m.NotifyDefaultCalls)
 }
 
 // GetNotifyCallCount Notify 호출 횟수를 반환합니다.
 func (m *MockNotificationSender) GetNotifyCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	return len(m.NotifyCalls)
 }
 
 // GetSupportsHTMLCallCount SupportsHTML 호출 횟수를 반환합니다.
 func (m *MockNotificationSender) GetSupportsHTMLCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	return len(m.SupportsHTMLCalls)
 }
 
 // WasNotifyDefaultCalled NotifyDefault (또는 WithError)가 호출되었는지 반환합니다.
 func (m *MockNotificationSender) WasNotifyDefaultCalled() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 
 	return m.NotifyDefaultCalled
 }

@@ -5,6 +5,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
+// TODO 미완료
+
 // NotifierFactory 알림 핸들러 생성을 담당하는 팩토리 인터페이스입니다.
 type NotifierFactory interface {
 	CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]NotifierHandler, error)

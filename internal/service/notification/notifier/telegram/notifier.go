@@ -14,6 +14,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// TODO 미완료
+
 const (
 	// 텔레그램 봇 명령어 상수
 	// 봇과 사용자 간의 상호작용에 사용됩니다.

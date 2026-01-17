@@ -10,6 +10,8 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
+// TODO 미완료
+
 // NotifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
 type NotifyRequest struct {
 	TaskCtx contract.TaskContext

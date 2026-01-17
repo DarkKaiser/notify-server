@@ -2,6 +2,8 @@ package notifier
 
 import "errors"
 
+// TODO 미완료
+
 var (
 	// ErrServiceStopped 서비스가 중지되었거나, 초기화되지 않아 알림 요청을 처리할 수 없는 경우 반환됩니다.
 	ErrServiceStopped = errors.New("시스템 종료 절차가 진행 중이거나, 초기화되지 않아 알림을 보낼 수 없습니다")

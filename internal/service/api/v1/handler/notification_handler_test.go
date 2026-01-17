@@ -14,6 +14,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/labstack/echo/v4"
@@ -83,7 +84,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 	testApp := &domain.Application{
 		ID:                "test-app",
 		Title:             "Test App",
-		DefaultNotifierID: "test-notifier",
+		DefaultNotifierID: contract.NotifierID("test-notifier"),
 	}
 
 	tests := []struct {
@@ -110,7 +111,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
 				assert.True(t, m.NotifyCalled, "NotifyWithTitle이 호출되어야 합니다")
-				assert.Equal(t, "test-notifier", m.LastNotifierID)
+				assert.Equal(t, contract.NotifierID("test-notifier"), m.LastNotifierID)
 				assert.Equal(t, "Test App", m.LastTitle)
 				assert.Equal(t, "Test Message", m.LastMessage)
 				assert.False(t, m.LastErrorOccurred)

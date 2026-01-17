@@ -15,6 +15,8 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
+// TODO 미완료
+// Service 알림 발송 요청을 처리하는 핵심 서비스 구조체입니다.
 type Service struct {
 	appConfig *config.AppConfig
 
