@@ -12,8 +12,10 @@ type TaskRunBy int
 const (
 	// TaskRunByUnknown 초기화되지 않았거나 알 수 없는 상태입니다 (기본값).
 	TaskRunByUnknown TaskRunBy = iota
+
 	// TaskRunByUser 사용자의 요청에 의한 수동 실행입니다.
 	TaskRunByUser
+
 	// TaskRunByScheduler 스케줄러에 의한 자동 실행입니다.
 	TaskRunByScheduler
 )

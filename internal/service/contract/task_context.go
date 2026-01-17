@@ -16,10 +16,10 @@ const (
 	ctxKeyInstanceID ctxKey = "Task.InstanceID"
 	// ctxKeyTitle 알림 메시지의 제목을 저장하는 키입니다.
 	ctxKeyTitle ctxKey = "Title"
-	// ctxKeyCancelable 작업의 취소 가능 여부를 저장하는 키입니다.
-	ctxKeyCancelable ctxKey = "Cancelable"
 	// ctxKeyElapsedTimeAfterRun 작업 실행 후 경과 시간을 저장하는 키입니다.
 	ctxKeyElapsedTimeAfterRun ctxKey = "Task.ElapsedTimeAfterRun"
+	// ctxKeyCancelable 작업의 취소 가능 여부를 저장하는 키입니다.
+	ctxKeyCancelable ctxKey = "Cancelable"
 	// ctxKeyErrorOccurred 작업 실행 중 에러 발생 여부를 저장하는 키입니다.
 	ctxKeyErrorOccurred ctxKey = "ErrorOccurred"
 )
