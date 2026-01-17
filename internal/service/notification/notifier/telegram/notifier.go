@@ -71,8 +71,8 @@ type telegramNotifier struct {
 	retryDelay time.Duration
 	limiter    *rate.Limiter
 
-	// handlerSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
-	handlerSemaphore chan struct{}
+	// notifierSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
+	notifierSemaphore chan struct{}
 
 	botCommands []telegramBotCommand
 
@@ -182,12 +182,12 @@ func (n *telegramNotifier) Run(notificationStopCtx context.Context) {
 			//
 			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
 			select {
-			case n.handlerSemaphore <- struct{}{}:
+			case n.notifierSemaphore <- struct{}{}:
 				// Handler 고루틴도 WaitGroup에 추가하여 종료 시 안전하게 대기
 				wg.Add(1)
 				go func(msg *tgbotapi.Message) {
 					defer wg.Done()
-					defer func() { <-n.handlerSemaphore }()
+					defer func() { <-n.notifierSemaphore }()
 					n.handleCommand(notificationStopCtx, n.executor, msg)
 				}(update.Message)
 			case <-notificationStopCtx.Done():

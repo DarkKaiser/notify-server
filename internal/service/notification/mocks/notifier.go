@@ -9,21 +9,21 @@ import (
 )
 
 // Interface Compliance Check
-var _ notifier.NotifierHandler = (*MockNotifierHandler)(nil)
+var _ notifier.Notifier = (*MockNotifier)(nil)
 
-// NewMockNotifierHandler 새로운 Mock 객체를 생성합니다.
-func NewMockNotifierHandler(id contract.NotifierID) *MockNotifierHandler {
-	return &MockNotifierHandler{
+// NewMockNotifier 새로운 Mock 객체를 생성합니다.
+func NewMockNotifier(id contract.NotifierID) *MockNotifier {
+	return &MockNotifier{
 		IDValue:           id,
 		SupportsHTMLValue: true, // 기본값: HTML 지원
 	}
 }
 
-// MockNotifierHandler는 NotifierHandler 인터페이스의 Mock 구현체입니다.
+// MockNotifier는 Notifier 인터페이스의 Mock 구현체입니다.
 //
 // 이 Mock은 알림 전송 동작을 테스트하는 데 사용되며,
 // 실제 알림 전송 없이 호출 기록을 추적합니다.
-type MockNotifierHandler struct {
+type MockNotifier struct {
 	IDValue           contract.NotifierID
 	SupportsHTMLValue bool
 	NotifyCalls       []MockNotifyCall
@@ -42,19 +42,19 @@ type MockNotifyCall struct {
 }
 
 // WithID ID를 설정합니다 (Fluent API).
-func (m *MockNotifierHandler) WithID(id contract.NotifierID) *MockNotifierHandler {
+func (m *MockNotifier) WithID(id contract.NotifierID) *MockNotifier {
 	m.IDValue = id
 	return m
 }
 
 // WithSupportsHTML HTML 지원 여부를 설정합니다 (Fluent API).
-func (m *MockNotifierHandler) WithSupportsHTML(supported bool) *MockNotifierHandler {
+func (m *MockNotifier) WithSupportsHTML(supported bool) *MockNotifier {
 	m.SupportsHTMLValue = supported
 	return m
 }
 
 // WithNotifyFunc Notify 동작을 커스터마이징합니다 (Fluent API).
-func (m *MockNotifierHandler) WithNotifyFunc(fn func(contract.TaskContext, string) bool) *MockNotifierHandler {
+func (m *MockNotifier) WithNotifyFunc(fn func(contract.TaskContext, string) bool) *MockNotifier {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.NotifyFunc = fn
@@ -62,7 +62,7 @@ func (m *MockNotifierHandler) WithNotifyFunc(fn func(contract.TaskContext, strin
 }
 
 // WithRunFunc Run 동작을 커스터마이징합니다 (Fluent API).
-func (m *MockNotifierHandler) WithRunFunc(fn func(context.Context)) *MockNotifierHandler {
+func (m *MockNotifier) WithRunFunc(fn func(context.Context)) *MockNotifier {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.RunFunc = fn
@@ -70,13 +70,13 @@ func (m *MockNotifierHandler) WithRunFunc(fn func(context.Context)) *MockNotifie
 }
 
 // ID는 Notifier의 고유 식별자를 반환합니다.
-func (m *MockNotifierHandler) ID() contract.NotifierID {
+func (m *MockNotifier) ID() contract.NotifierID {
 	return m.IDValue
 }
 
 // Notify는 알림 메시지를 전송하고 호출 기록을 저장합니다.
 // 동시성 안전을 위해 mutex로 보호됩니다.
-func (m *MockNotifierHandler) Notify(ctx contract.TaskContext, message string) bool {
+func (m *MockNotifier) Notify(ctx contract.TaskContext, message string) bool {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
@@ -93,7 +93,7 @@ func (m *MockNotifierHandler) Notify(ctx contract.TaskContext, message string) b
 }
 
 // Run은 Notifier를 실행하고 context가 종료될 때까지 대기합니다.
-func (m *MockNotifierHandler) Run(notificationStopCtx context.Context) {
+func (m *MockNotifier) Run(notificationStopCtx context.Context) {
 	m.Mu.Lock()
 	runFn := m.RunFunc
 	m.Mu.Unlock()
@@ -107,12 +107,12 @@ func (m *MockNotifierHandler) Run(notificationStopCtx context.Context) {
 }
 
 // SupportsHTML은 HTML 형식 메시지 지원 여부를 반환합니다.
-func (m *MockNotifierHandler) SupportsHTML() bool {
+func (m *MockNotifier) SupportsHTML() bool {
 	return m.SupportsHTMLValue
 }
 
 // Done은 Notifier 종료 채널을 반환합니다.
-func (m *MockNotifierHandler) Done() <-chan struct{} {
+func (m *MockNotifier) Done() <-chan struct{} {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	if m.DoneChannel == nil {
@@ -123,7 +123,7 @@ func (m *MockNotifierHandler) Done() <-chan struct{} {
 }
 
 // Reset 상태를 초기화합니다.
-func (m *MockNotifierHandler) Reset() {
+func (m *MockNotifier) Reset() {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.NotifyCalls = nil

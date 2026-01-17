@@ -16,14 +16,15 @@ import (
 )
 
 // TODO 미완료
+
 // Service 알림 발송 요청을 처리하는 핵심 서비스 구조체입니다.
 type Service struct {
 	appConfig *config.AppConfig
 
 	// notifiersMap 현재 서비스에서 관리 중인 모든 Notifier 인스턴스 맵 (ID -> 핸들러)
-	notifiersMap map[contract.NotifierID]notifier.NotifierHandler
+	notifiersMap map[contract.NotifierID]notifier.Notifier
 	// defaultNotifier 알림 채널 미지정 시 사용되는 기본 Notifier 핸들러
-	defaultNotifier notifier.NotifierHandler
+	defaultNotifier notifier.Notifier
 
 	// notifierFactory 런타임에 동적으로 Notifier 인스턴스를 생성하고 초기화하는 팩토리
 	notifierFactory notifier.Factory
@@ -42,7 +43,7 @@ func NewService(appConfig *config.AppConfig, factory notifier.Factory, executor 
 	service := &Service{
 		appConfig: appConfig,
 
-		notifiersMap:    make(map[contract.NotifierID]notifier.NotifierHandler),
+		notifiersMap:    make(map[contract.NotifierID]notifier.Notifier),
 		defaultNotifier: nil,
 
 		notifierFactory: factory,
@@ -95,33 +96,33 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	defaultNotifierID := contract.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
 
-	for _, h := range notifiers {
-		s.notifiersMap[h.ID()] = h
+	for _, n := range notifiers {
+		s.notifiersMap[n.ID()] = n
 
-		if h.ID() == defaultNotifierID {
-			s.defaultNotifier = h
+		if n.ID() == defaultNotifierID {
+			s.defaultNotifier = n
 		}
 
 		s.notifiersStopWG.Add(1)
 
-		go func(handler notifier.NotifierHandler) {
+		go func(notifier notifier.Notifier) {
 			defer s.notifiersStopWG.Done()
 
 			// 개별 Notifier의 Panic이 서비스 전체로 전파되지 않도록 격리
 			defer func() {
 				if r := recover(); r != nil {
 					applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
-						"notifier_id": handler.ID(),
+						"notifier_id": notifier.ID(),
 						"panic":       r,
 					}).Error(constants.LogMsgNotificationServicePanicRecovered)
 				}
 			}()
 
-			handler.Run(serviceStopCtx)
-		}(h)
+			notifier.Run(serviceStopCtx)
+		}(n)
 
 		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
-			"notifier_id": h.ID(),
+			"notifier_id": n.ID(),
 		}).Debug(constants.LogMsgNotifierRegistered)
 	}
 
@@ -165,9 +166,9 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 	// 방어적 검증: 모든 Notifier가 정상 종료되었는지 확인
 	// notifiersStopWG.Wait()가 완료되었으므로 이론적으로는 모두 종료되었어야 하지만,
 	// 명시적으로 확인하여 비정상 상황을 조기에 감지합니다.
-	for id, handler := range s.notifiersMap {
+	for id, notifier := range s.notifiersMap {
 		select {
-		case <-handler.Done():
+		case <-notifier.Done():
 			// 정상 종료됨
 		default:
 			// 아직 종료되지 않음 (비정상 상황)
@@ -348,8 +349,8 @@ func (s *Service) SupportsHTML(notifierID contract.NotifierID) bool {
 	s.runningMu.RLock()
 	defer s.runningMu.RUnlock()
 
-	if h, exists := s.notifiersMap[notifierID]; exists {
-		return h.SupportsHTML()
+	if notifier, exists := s.notifiersMap[notifierID]; exists {
+		return notifier.SupportsHTML()
 	}
 	return false
 }

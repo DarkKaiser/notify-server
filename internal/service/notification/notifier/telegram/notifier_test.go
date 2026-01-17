@@ -357,7 +357,7 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 		botCommands: []telegramBotCommand{
 			{command: "help"},
 		},
-		handlerSemaphore: make(chan struct{}, 100),
+		notifierSemaphore: make(chan struct{}, 100),
 	}
 	n.RequestC = make(chan *notifier.NotifyRequest, 10)
 

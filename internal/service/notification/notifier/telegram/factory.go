@@ -19,28 +19,28 @@ import (
 
 // TODO 미완료
 
-type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.NotifierHandler, error)
+type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error)
 
 // NewFactory 텔레그램 Notifier 설정을 처리하는 FactoryFunc를 생성하여 반환합니다.
 // 의존성 주입을 위해 생성자 함수를 인자로 받습니다.
 func NewFactory(creator telegramNotifierCreatorFunc) notifier.FactoryFunc {
-	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-		var handlers []notifier.NotifierHandler
+	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+		var notifiers []notifier.Notifier
 
 		for _, telegram := range appConfig.Notifier.Telegrams {
-			h, err := creator(contract.NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
+			n, err := creator(contract.NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
 			if err != nil {
 				return nil, err
 			}
-			handlers = append(handlers, h)
+			notifiers = append(notifiers, n)
 		}
 
-		return handlers, nil
+		return notifiers, nil
 	}
 }
 
 // NewNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
-func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.NotifierHandler, error) {
+func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error) {
 	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id": id,
 		"bot_token":   strutil.Mask(botToken),
@@ -63,7 +63,7 @@ func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfi
 }
 
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.NotifierHandler, error) {
+func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error) {
 	notifier := &telegramNotifier{
 		BaseNotifier: notifier.NewBaseNotifier(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
@@ -77,7 +77,7 @@ func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, c
 		executor: executor,
 
 		// 최대 100개의 동시 명령어를 처리할 수 있도록 설정
-		handlerSemaphore: make(chan struct{}, constants.TelegramCommandConcurrency),
+		notifierSemaphore: make(chan struct{}, constants.TelegramCommandConcurrency),
 	}
 
 	// 명령어 중복 검사를 위한 임시 맵

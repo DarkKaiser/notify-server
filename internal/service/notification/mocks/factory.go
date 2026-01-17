@@ -18,7 +18,7 @@ var _ notifier.Factory = (*MockFactory)(nil)
 type MockFactory struct {
 	Mu sync.Mutex
 
-	CreateNotifiersFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error)
+	CreateNotifiersFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error)
 	RegisterFunc        func(creator notifier.Creator)
 
 	// Call Tracking
@@ -29,7 +29,7 @@ type MockFactory struct {
 }
 
 // CreateNotifiers는 설정에 따라 Notifier 목록을 생성합니다.
-func (m *MockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
+func (m *MockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 	m.Mu.Lock()
 	m.CreateNotifiersCallCount++
 	m.Mu.Unlock()
@@ -41,18 +41,18 @@ func (m *MockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.T
 }
 
 // WithCreateNotifiers CreateNotifiers 호출 시 반환할 값을 설정합니다.
-func (m *MockFactory) WithCreateNotifiers(handlers []notifier.NotifierHandler, err error) *MockFactory {
+func (m *MockFactory) WithCreateNotifiers(notifiers []notifier.Notifier, err error) *MockFactory {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
-	m.CreateNotifiersFunc = func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
-		return handlers, err
+	m.CreateNotifiersFunc = func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+		return notifiers, err
 	}
 	return m
 }
 
 // WithCreateFunc CreateNotifiers 호출 시 실행할 커스텀 함수를 설정합니다.
-func (m *MockFactory) WithCreateFunc(fn func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error)) *MockFactory {
+func (m *MockFactory) WithCreateFunc(fn func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error)) *MockFactory {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
