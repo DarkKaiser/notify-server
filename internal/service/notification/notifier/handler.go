@@ -3,8 +3,8 @@ package notifier
 import (
 	"context"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 )
 
 // NotifierHandler 개별 알림 채널(예: Telegram, Slack) 구현을 위한 인터페이스입니다.
@@ -22,7 +22,7 @@ type NotifierHandler interface {
 	//
 	// 반환값:
 	//   - succeeded: 요청이 정상적으로 접수되었는지 여부
-	Notify(taskCtx task.TaskContext, message string) (succeeded bool)
+	Notify(ctx contract.TaskContext, message string) (succeeded bool)
 
 	SupportsHTML() bool
 

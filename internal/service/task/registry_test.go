@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 )
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
 func dummyNewTask() NewTaskFunc {
-	return func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
+	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
 		return nil, nil
 	}
 }
@@ -26,8 +27,8 @@ func dummyResultFn() NewSnapshotFunc {
 func TestCommandConfig_EqualsCommandID(t *testing.T) {
 	cases := []struct {
 		name             string
-		configCommandID  CommandID
-		compareCommandID CommandID
+		configCommandID  contract.TaskCommandID
+		compareCommandID contract.TaskCommandID
 		expectedResult   bool
 		description      string
 	}{
@@ -47,21 +48,21 @@ func TestCommandConfig_EqualsCommandID(t *testing.T) {
 		},
 		{
 			name:             "와일드카드 매칭 - 일치",
-			configCommandID:  CommandID("WatchPrice_*"),
+			configCommandID:  contract.TaskCommandID("WatchPrice_*"),
 			compareCommandID: "WatchPrice_Product1",
 			expectedResult:   true,
 			description:      "와일드카드 패턴과 일치하면 true를 반환해야 합니다",
 		},
 		{
 			name:             "와일드카드 매칭 - 불일치",
-			configCommandID:  CommandID("WatchPrice_*"),
+			configCommandID:  contract.TaskCommandID("WatchPrice_*"),
 			compareCommandID: "WatchStock_Product1",
 			expectedResult:   false,
 			description:      "와일드카드 패턴과 일치하지 않으면 false를 반환해야 합니다",
 		},
 		{
 			name:             "와일드카드 매칭 - 짧은 입력",
-			configCommandID:  CommandID("WatchPrice_*"),
+			configCommandID:  contract.TaskCommandID("WatchPrice_*"),
 			compareCommandID: "Watch",
 			expectedResult:   false,
 			description:      "입력이 패턴보다 짧으면 false를 반환해야 합니다",
@@ -82,8 +83,8 @@ func TestCommandConfig_EqualsCommandID(t *testing.T) {
 
 func TestFindConfig(t *testing.T) {
 	// 테스트용 임시 Task 등록
-	testTaskID := ID("TEST_TASK_FIND_CONFIG")
-	testCommandID := CommandID("TEST_COMMAND")
+	testTaskID := contract.TaskID("TEST_TASK_FIND_CONFIG")
+	testCommandID := contract.TaskCommandID("TEST_COMMAND")
 
 	// 독립적인 레지스트리 인스턴스 생성
 	r := newRegistry()
@@ -110,7 +111,7 @@ func TestFindConfig(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 Task를 찾는 경우", func(t *testing.T) {
-		searchResult, err := r.findConfig(ID("NON_EXISTENT"), testCommandID)
+		searchResult, err := r.findConfig(contract.TaskID("NON_EXISTENT"), testCommandID)
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
 		assert.Equal(t, ErrTaskNotSupported, err, "ErrTaskNotSupported 에러를 반환해야 합니다")
@@ -118,7 +119,7 @@ func TestFindConfig(t *testing.T) {
 	})
 
 	t.Run("존재하지 않는 Command를 찾는 경우", func(t *testing.T) {
-		searchResult, err := r.findConfig(testTaskID, CommandID("NON_EXISTENT"))
+		searchResult, err := r.findConfig(testTaskID, contract.TaskCommandID("NON_EXISTENT"))
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
 		assert.Equal(t, ErrCommandNotSupported, err, "ErrCommandNotSupported 에러를 반환해야 합니다")
@@ -219,7 +220,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 
 	// Duplicate TaskID 테스트 (별도 처리 필요)
 	t.Run("Duplicate TaskID", func(t *testing.T) {
-		taskID := ID("DUPLICATE_TASK_ID")
+		taskID := contract.TaskID("DUPLICATE_TASK_ID")
 		r := newRegistry()
 
 		// 먼저 정상 등록
@@ -374,8 +375,8 @@ func TestConfig_Validate(t *testing.T) {
 // 원본 맵이 수정되더라도 레지스트리 내부 상태는 안전함을 보장합니다.
 func TestRegistry_DeepCopy(t *testing.T) {
 	r := newRegistry()
-	taskID := ID("TEST_IMMUTABLE")
-	cmdID := CommandID("TEST_CMD")
+	taskID := contract.TaskID("TEST_IMMUTABLE")
+	cmdID := contract.TaskCommandID("TEST_CMD")
 
 	// 1. 초기 Config 생성
 	commands := []*CommandConfig{
@@ -432,8 +433,8 @@ func TestRegistry_Concurrency_Stress(t *testing.T) {
 				// Random delay to mix read/write operations
 				time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
 
-				taskID := ID(fmt.Sprintf("TASK_%d_%d", writerID, j))
-				cmdID := CommandID("CMD")
+				taskID := contract.TaskID(fmt.Sprintf("TASK_%d_%d", writerID, j))
+				cmdID := contract.TaskCommandID("CMD")
 
 				// 동시성 테스트에서는 Panic이 발생할 수 있는데(중복 ID 등), 여기서는 고유 ID를 생성한다고 가정하거나
 				// Register 내부 Lock이 잘 동작하는지 확인
@@ -457,7 +458,7 @@ func TestRegistry_Concurrency_Stress(t *testing.T) {
 				// Random Writer의 Task ID 추측
 				targetWriter := rand.Intn(writers)
 				targetIter := rand.Intn(iterations)
-				taskID := ID(fmt.Sprintf("TASK_%d_%d", targetWriter, targetIter))
+				taskID := contract.TaskID(fmt.Sprintf("TASK_%d_%d", targetWriter, targetIter))
 
 				_, _ = r.findConfig(taskID, "CMD")
 			}

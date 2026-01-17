@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
@@ -133,7 +133,7 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			commandText: "/cancel_1234",
 			setupMockExec: func(m *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				m.On("CancelTask", task.InstanceID("1234")).Run(func(args mock.Arguments) {
+				m.On("Cancel", contract.TaskInstanceID("1234")).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil)
 			},
@@ -161,11 +161,11 @@ func TestTelegramNotifier_Run_Commands_Table(t *testing.T) {
 			commandText: "/test_task_run",
 			setupMockExec: func(m *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				m.On("SubmitTask", mock.MatchedBy(func(req *task.SubmitRequest) bool {
-					return req.TaskID == "test_task" &&
-						req.CommandID == "run" &&
+				m.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+					return contract.TaskID(req.TaskID) == "test_task" &&
+						contract.TaskCommandID(req.CommandID) == "run" &&
 						req.NotifierID == testTelegramNotifierID &&
-						req.RunBy == task.RunByUser
+						req.RunBy == contract.TaskRunByUser
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil)
@@ -245,7 +245,7 @@ func TestTelegramNotifier_Run_Drain(t *testing.T) {
 	runTelegramNotifier(ctx, notifier, &wg)
 
 	// Act: Send 5 messages
-	taskCtx := task.NewTaskContext()
+	taskCtx := contract.NewTaskContext()
 	for i := 0; i < 5; i++ {
 		notifier.Notify(taskCtx, "Drain Message")
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/require"
 )
@@ -17,31 +18,38 @@ import (
 
 // MockHandler는 테스트용 Handler 구현체입니다.
 type MockHandler struct {
-	id         ID
-	commandID  CommandID
-	instanceID InstanceID
+	id         contract.TaskID
+	commandID  contract.TaskCommandID
+	instanceID contract.TaskInstanceID
 	canceled   bool
+	cancelC    chan struct{}
+	cancelOnce sync.Once
 }
 
-func (h *MockHandler) GetID() ID                            { return h.id }
-func (h *MockHandler) GetCommandID() CommandID              { return h.commandID }
-func (h *MockHandler) GetInstanceID() InstanceID            { return h.instanceID }
-func (h *MockHandler) GetNotifierID() types.NotifierID      { return types.NotifierID("test-notifier") }
-func (h *MockHandler) IsCanceled() bool                     { return h.canceled }
-func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
-func (h *MockHandler) SetStorage(storage TaskResultStorage) {}
+func (h *MockHandler) GetID() contract.TaskID                 { return h.id }
+func (h *MockHandler) GetCommandID() contract.TaskCommandID   { return h.commandID }
+func (h *MockHandler) GetInstanceID() contract.TaskInstanceID { return h.instanceID }
+func (h *MockHandler) GetNotifierID() types.NotifierID        { return types.NotifierID("test-notifier") }
+func (h *MockHandler) IsCanceled() bool                       { return h.canceled }
+func (h *MockHandler) ElapsedTimeAfterRun() int64             { return 0 }
+func (h *MockHandler) SetStorage(storage TaskResultStorage)   {}
 
-func (h *MockHandler) Run(ctx TaskContext, notificationSender NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- InstanceID) {
+func (h *MockHandler) Run(ctx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
-	// 컨텍스트 종료 대기 (취소 또는 타임아웃)
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-h.cancelC:
+	}
 
 	taskDoneC <- h.instanceID
 }
 
 func (h *MockHandler) Cancel() {
-	h.canceled = true
+	h.cancelOnce.Do(func() {
+		h.canceled = true
+		close(h.cancelC)
+	})
 }
 
 func init() {
@@ -54,8 +62,13 @@ func init() {
 				NewSnapshot:   func() interface{} { return nil },
 			},
 		},
-		NewTask: func(instanceID InstanceID, req *SubmitRequest, appConfig *config.AppConfig) (Handler, error) {
-			return &MockHandler{id: req.TaskID, commandID: req.CommandID, instanceID: instanceID}, nil
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (Handler, error) {
+			return &MockHandler{
+				id:         req.TaskID,
+				commandID:  req.CommandID,
+				instanceID: instanceID,
+				cancelC:    make(chan struct{}),
+			}, nil
 		},
 	}
 	defaultRegistry.RegisterForTest("TEST_TASK", config)
@@ -142,12 +155,13 @@ func TestService_TaskRun_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task 실행 요청
-	err := service.SubmitTask(&SubmitRequest{
+	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
-		NotifierID:    "test-notifier",
+		NotifierID:    types.NotifierID("test-notifier"),
+		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
-		RunBy:         RunByUser,
+		RunBy:         contract.TaskRunByUser,
 	})
 
 	// 검증
@@ -163,15 +177,15 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task Context 생성
-	taskCtx := NewTaskContext().With("test_key", "test_value")
+	taskCtx := contract.NewTaskContext().With("test_key", "test_value")
 
 	// Task 실행 요청
-	err := service.SubmitTask(&SubmitRequest{
+	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
-		NotifierID:    "test-notifier",
+		NotifierID:    types.NotifierID("test-notifier"),
 		NotifyOnStart: false,
-		RunBy:         RunByUser,
+		RunBy:         contract.TaskRunByUser,
 		TaskContext:   taskCtx,
 	})
 
@@ -188,8 +202,8 @@ func TestService_TaskCancel_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task 취소 요청
-	instanceID := InstanceID("test_instance_123")
-	err := service.CancelTask(instanceID)
+	instanceID := contract.TaskInstanceID("test_instance_123")
+	err := service.Cancel(instanceID)
 
 	// 검증
 	require.NoError(t, err, "Task 취소 요청이 성공해야 합니다")
@@ -204,12 +218,13 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	service, mockSender, _, cancel, serviceStopWG := setupTestService(t)
 
 	// 지원되지 않는 Task 실행 요청
-	err := service.SubmitTask(&SubmitRequest{
+	err := service.Submit(&contract.TaskSubmitRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		CommandID:     "UNSUPPORTED_COMMAND",
-		NotifierID:    "test-notifier",
+		NotifierID:    types.NotifierID("test-notifier"),
+		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
-		RunBy:         RunByUser,
+		RunBy:         contract.TaskRunByUser,
 	})
 
 	// 검증
@@ -246,12 +261,13 @@ func TestService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultiple=true)
-				service.SubmitTask(&SubmitRequest{
+				service.Submit(&contract.TaskSubmitRequest{
 					TaskID:        "TEST_TASK",
 					CommandID:     "TEST_COMMAND",
-					NotifierID:    "test-notifier",
+					NotifierID:    types.NotifierID("test-notifier"),
+					TaskContext:   contract.NewTaskContext(),
 					NotifyOnStart: false,
-					RunBy:         RunByUser,
+					RunBy:         contract.TaskRunByUser,
 				})
 				time.Sleep(time.Millisecond)
 			}
@@ -284,18 +300,19 @@ func TestService_CancelConcurrency(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
 			// Task 실행
-			service.SubmitTask(&SubmitRequest{
+			service.Submit(&contract.TaskSubmitRequest{
 				TaskID:        "TEST_TASK",
 				CommandID:     "TEST_COMMAND",
-				NotifierID:    "test-notifier",
+				NotifierID:    types.NotifierID("test-notifier"),
+				TaskContext:   contract.NewTaskContext(),
 				NotifyOnStart: false,
-				RunBy:         RunByUser,
+				RunBy:         contract.TaskRunByUser,
 			})
 
 			// 실행된 Task를 찾아서 취소 시도
 			service.runningMu.Lock()
 			for instanceID := range service.handlers {
-				go service.CancelTask(instanceID)
+				go service.Cancel(instanceID)
 			}
 			service.runningMu.Unlock()
 

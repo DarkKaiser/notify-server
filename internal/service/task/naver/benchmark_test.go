@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -67,7 +68,7 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
 
 	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+		Task: tasksvc.NewBaseTask(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler),
 	}
 	tTask.SetFetcher(mockFetcher)
 
@@ -149,7 +150,7 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	}
 
 	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchNewPerformancesCommand, "test_instance", "test-notifier", tasksvc.RunByScheduler),
+		Task: tasksvc.NewBaseTask(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler),
 	}
 
 	prevPerformancesSet := make(map[string]bool)

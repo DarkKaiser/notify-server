@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,8 +37,8 @@ func TestFileTaskResultStorage_Basic(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		taskID      ID
-		commandID   CommandID
+		taskID      contract.TaskID
+		commandID   contract.TaskCommandID
 		input       interface{}
 		output      interface{} // Load할 때 사용할 빈 객체 포인터
 		wantErr     bool
@@ -45,40 +46,40 @@ func TestFileTaskResultStorage_Basic(t *testing.T) {
 	}{
 		{
 			name:      "Simple String",
-			taskID:    ID("TASK_STR"),
-			commandID: CommandID("CMD_STR"),
+			taskID:    contract.TaskID("TASK_STR"),
+			commandID: contract.TaskCommandID("CMD_STR"),
 			input:     "simple string",
 			output:    new(string),
 			wantErr:   false,
 		},
 		{
 			name:      "Integer",
-			taskID:    ID("TASK_INT"),
-			commandID: CommandID("CMD_INT"),
+			taskID:    contract.TaskID("TASK_INT"),
+			commandID: contract.TaskCommandID("CMD_INT"),
 			input:     12345,
 			output:    new(int),
 			wantErr:   false,
 		},
 		{
 			name:      "Map",
-			taskID:    ID("TASK_MAP"),
-			commandID: CommandID("CMD_MAP"),
+			taskID:    contract.TaskID("TASK_MAP"),
+			commandID: contract.TaskCommandID("CMD_MAP"),
 			input:     map[string]int{"one": 1, "two": 2},
 			output:    &map[string]int{},
 			wantErr:   false,
 		},
 		{
 			name:      "Slice",
-			taskID:    ID("TASK_SLICE"),
-			commandID: CommandID("CMD_SLICE"),
+			taskID:    contract.TaskID("TASK_SLICE"),
+			commandID: contract.TaskCommandID("CMD_SLICE"),
 			input:     []string{"a", "b", "c"},
 			output:    &[]string{},
 			wantErr:   false,
 		},
 		{
 			name:      "Complex Struct",
-			taskID:    ID("TASK_COMPLEX"),
-			commandID: CommandID("CMD_COMPLEX"),
+			taskID:    contract.TaskID("TASK_COMPLEX"),
+			commandID: contract.TaskCommandID("CMD_COMPLEX"),
 			input: ComplexData{
 				Name: "complex",
 				Tags: []string{"tag1", "tag2"},
@@ -89,16 +90,16 @@ func TestFileTaskResultStorage_Basic(t *testing.T) {
 		},
 		{
 			name:      "Empty Struct",
-			taskID:    ID("TASK_EMPTY"),
-			commandID: CommandID("CMD_EMPTY"),
+			taskID:    contract.TaskID("TASK_EMPTY"),
+			commandID: contract.TaskCommandID("CMD_EMPTY"),
 			input:     struct{}{},
 			output:    &struct{}{},
 			wantErr:   false,
 		},
 		{
 			name:      "Nil Input (JSON Marshal handles nil as null)",
-			taskID:    ID("TASK_NIL"),
-			commandID: CommandID("CMD_NIL"),
+			taskID:    contract.TaskID("TASK_NIL"),
+			commandID: contract.TaskCommandID("CMD_NIL"),
 			input:     nil,
 			output:    new(interface{}), // nil 로드 시 interface{}로 받음
 			wantErr:   false,
@@ -162,7 +163,7 @@ func TestFileTaskResultStorage_Load_NonExistentFile(t *testing.T) {
 	// 존재하지 않는 파일 로드 시 에러 없이 빈 상태(마지막 인자 변경 없음)여야 하는지,
 	// 혹은 nil 리턴인지 확인.
 	// storage.go 구현상 os.PathError이면 nil 반환하도록 되어 있음.
-	err := storage.Load(ID("NO_FILE"), CommandID("NO_CMD"), data)
+	err := storage.Load(contract.TaskID("NO_FILE"), contract.TaskCommandID("NO_CMD"), data)
 	assert.NoError(t, err, "존재하지 않는 파일은 에러 없이 무시되어야 함")
 	assert.Empty(t, data.Val)
 }
@@ -175,20 +176,20 @@ func TestFileTaskResultStorage_Security(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		taskID    ID
-		commandID CommandID
+		taskID    contract.TaskID
+		commandID contract.TaskCommandID
 		wantErr   bool
 	}{
 		{
 			name:      "Path Traversal in TaskID",
-			taskID:    ID("../hack_task"),
-			commandID: CommandID("cmd"),
+			taskID:    contract.TaskID("../hack_task"),
+			commandID: contract.TaskCommandID("cmd"),
 			wantErr:   true,
 		},
 		{
 			name:      "Path Traversal in CommandID",
-			taskID:    ID("task"),
-			commandID: CommandID("../cmd"),
+			taskID:    contract.TaskID("task"),
+			commandID: contract.TaskCommandID("../cmd"),
 			wantErr:   true,
 		},
 	}
@@ -244,8 +245,8 @@ func TestFileTaskResultStorage_Concurrency(t *testing.T) {
 	}
 
 	t.Run("Concurrent Read/Write Single File", func(t *testing.T) {
-		taskID := ID("CONCURRENCY_TASK")
-		commandID := CommandID("SAME_KEY")
+		taskID := contract.TaskID("CONCURRENCY_TASK")
+		commandID := contract.TaskCommandID("SAME_KEY")
 		workers := 50
 		var wg sync.WaitGroup
 
@@ -281,8 +282,8 @@ func TestFileTaskResultStorage_Concurrency(t *testing.T) {
 		for i := 0; i < workers; i++ {
 			go func(idx int) {
 				defer wg.Done()
-				tid := ID(fmt.Sprintf("TASK_%d", idx))
-				cid := CommandID(fmt.Sprintf("CMD_%d", idx))
+				tid := contract.TaskID(fmt.Sprintf("TASK_%d", idx))
+				cid := contract.TaskCommandID(fmt.Sprintf("CMD_%d", idx))
 				data := &Data{Counter: idx}
 
 				assert.NoError(t, storage.Save(tid, cid, data))
@@ -305,8 +306,8 @@ func BenchmarkFileTaskResultStorage_Save(b *testing.B) {
 	tempDir := b.TempDir()
 	storage.SetBaseDir(tempDir)
 
-	taskID := ID("BENCH_TASK")
-	commandID := CommandID("BENCH_CMD")
+	taskID := contract.TaskID("BENCH_TASK")
+	commandID := contract.TaskCommandID("BENCH_CMD")
 	data := map[string]string{"key": "value", "data": "benchmark testing payload"}
 
 	b.ResetTimer()
@@ -320,8 +321,8 @@ func BenchmarkFileTaskResultStorage_Load(b *testing.B) {
 	tempDir := b.TempDir()
 	storage.SetBaseDir(tempDir)
 
-	taskID := ID("BENCH_TASK")
-	commandID := CommandID("BENCH_CMD")
+	taskID := contract.TaskID("BENCH_TASK")
+	commandID := contract.TaskCommandID("BENCH_CMD")
 	data := map[string]string{"key": "value", "data": "benchmark testing payload"}
 	_ = storage.Save(taskID, commandID, data)
 

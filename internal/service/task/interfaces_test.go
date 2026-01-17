@@ -2,12 +2,14 @@ package task
 
 import (
 	"testing"
+
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
 // Compile-time checks to ensure types implement the interfaces.
 var (
 	// MockNotificationSender가 NotificationSender 인터페이스를 구현하는지 확인
-	_ NotificationSender = (*MockNotificationSender)(nil)
+	_ contract.NotificationSender = (*MockNotificationSender)(nil)
 )
 
 func TestInterfaces(t *testing.T) {

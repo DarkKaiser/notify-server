@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -56,16 +56,16 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	// 2. Task 초기화
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),
@@ -134,16 +134,16 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	// 2. Task 초기화
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),
@@ -192,16 +192,16 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 	// 2. Task 초기화
 	// 2. Task 초기화
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),
@@ -292,16 +292,16 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByScheduler,
+		RunBy:      contract.TaskRunByScheduler,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),
@@ -391,16 +391,16 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),
@@ -474,16 +474,16 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchProductPriceCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchProductPriceCommand),

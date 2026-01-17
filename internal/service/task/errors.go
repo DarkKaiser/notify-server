@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
 var (
@@ -30,7 +31,7 @@ var (
 )
 
 // NewErrCommandNotSupported 지원하지 않는 명령(Command)일 때 상세 메시지와 함께 에러를 반환합니다.
-func NewErrCommandNotSupported(commandID CommandID) error {
+func NewErrCommandNotSupported(commandID contract.TaskCommandID) error {
 	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID))
 }
 

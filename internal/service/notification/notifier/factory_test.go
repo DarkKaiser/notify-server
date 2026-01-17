@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,7 +73,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					var handlers []notifier.NotifierHandler
 					for _, t := range cfg.Notifier.Telegrams {
 						handlers = append(handlers, &notificationmocks.MockNotifierHandler{IDValue: types.NotifierID(t.ID)})
@@ -92,7 +92,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 				},
 			},
 			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{}, nil
 				},
 			},
@@ -103,10 +103,10 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			name: "Multiple Processors",
 			cfg:  &config.AppConfig{},
 			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h1"}}, nil
 				},
-				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{&notificationmocks.MockNotifierHandler{IDValue: "h2"}}, nil
 				},
 			},
@@ -117,7 +117,7 @@ func TestDefaultNotifierFactory_CreateNotifiers_Table(t *testing.T) {
 			name: "Processor Error",
 			cfg:  &config.AppConfig{},
 			registerProcs: []notifier.NotifierConfigProcessor{
-				func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("processor error")
 				},
 			},

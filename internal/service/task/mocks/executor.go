@@ -1,7 +1,7 @@
 package mocks
 
 import (
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -12,14 +12,14 @@ type MockExecutor struct {
 	mock.Mock
 }
 
-// SubmitTask는 Task를 제출합니다.
-func (m *MockExecutor) SubmitTask(req *task.SubmitRequest) error {
+// Submit은 Task를 제출합니다.
+func (m *MockExecutor) Submit(req *contract.TaskSubmitRequest) error {
 	args := m.Called(req)
 	return args.Error(0)
 }
 
-// CancelTask는 실행 중인 Task를 취소합니다.
-func (m *MockExecutor) CancelTask(instanceID task.InstanceID) error {
+// Cancel 실행 중인 Task를 취소합니다.
+func (m *MockExecutor) Cancel(instanceID contract.TaskInstanceID) error {
 	args := m.Called(instanceID)
 	return args.Error(0)
 }

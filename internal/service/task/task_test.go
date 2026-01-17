@@ -9,6 +9,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -17,12 +19,12 @@ import (
 // TestTask_BasicMethods Task의 기본 Getter/Setter 및 상태 메서드를 검증합니다.
 func TestTask_BasicMethods(t *testing.T) {
 	// Given
-	taskID := ID("TEST_TASK")
-	cmdID := CommandID("TEST_CMD")
-	instID := InstanceID("inst_123")
+	taskID := contract.TaskID("TEST_TASK")
+	cmdID := contract.TaskCommandID("TEST_CMD")
+	instID := contract.TaskInstanceID("inst_123")
 	notifier := "telegram"
 
-	task := NewBaseTask(taskID, cmdID, instID, notifier, RunByUser)
+	task := NewBaseTask(taskID, cmdID, instID, types.NotifierID(notifier), contract.TaskRunByUser)
 	mockStorage := &MockTaskResultStorage{}
 	task.SetStorage(mockStorage)
 
@@ -30,8 +32,8 @@ func TestTask_BasicMethods(t *testing.T) {
 	assert.Equal(t, taskID, task.GetID())
 	assert.Equal(t, cmdID, task.GetCommandID())
 	assert.Equal(t, instID, task.GetInstanceID())
-	assert.Equal(t, notifier, task.GetNotifierID())
-	assert.Equal(t, RunByUser, task.GetRunBy())
+	assert.Equal(t, types.NotifierID(notifier), task.GetNotifierID())
+	assert.Equal(t, contract.TaskRunByUser, task.GetRunBy())
 
 	// Cancel Test
 	assert.False(t, task.IsCanceled())
@@ -39,8 +41,8 @@ func TestTask_BasicMethods(t *testing.T) {
 	assert.True(t, task.IsCanceled())
 
 	// RunBy Update Test
-	task.SetRunBy(RunByScheduler)
-	assert.Equal(t, RunByScheduler, task.GetRunBy())
+	task.SetRunBy(contract.TaskRunByScheduler)
+	assert.Equal(t, contract.TaskRunByScheduler, task.GetRunBy())
 
 	// ElapsedTime Test
 	task.runTime = time.Now().Add(-1 * time.Second)
@@ -52,25 +54,25 @@ func TestTask_Run(t *testing.T) {
 	// 테스트 시작 전 레지스트리 초기화 (격리 보장)
 	ClearForTest()
 	defer ClearForTest()
-	generateUniqueIDs := func(prefix string) (ID, CommandID) {
+	generateUniqueIDs := func(prefix string) (contract.TaskID, contract.TaskCommandID) {
 		ts := time.Now().UnixNano()
-		return ID(fmt.Sprintf("%s_%d", prefix, ts)), CommandID(fmt.Sprintf("%s_%d", prefix, ts))
+		return contract.TaskID(fmt.Sprintf("%s_%d", prefix, ts)), contract.TaskCommandID(fmt.Sprintf("%s_%d", prefix, ts))
 	}
 
 	tests := []struct {
 		name                 string
-		runBy                RunBy                                                             // 실행 주체 (User vs Scheduler)
-		setup                func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) // 테스트 환경 설정
-		preRunAction         func(task *Task)                                                  // Run 실행 전 동작 (예: 취소)
-		verifyContext        func(t *testing.T, ctxs []TaskContext)                            // Context 상태 검증 콜백
-		expectedNotifyCount  int                                                               // 알림 발송 횟수 (에러 알림 포함)
-		expectedMessageParts []string                                                          // 알림 메시지에 포함되어야 할 문자열
-		expectPanic          bool                                                              // Panic 발생 여부 (Recover 되었는지)
+		runBy                contract.TaskRunBy                                                                          // 실행 주체 (User vs Scheduler)
+		setup                func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) // 테스트 환경 설정
+		preRunAction         func(task *Task)                                                                            // Run 실행 전 동작 (예: 취소)
+		verifyContext        func(t *testing.T, ctxs []contract.TaskContext)                                             // Context 상태 검증 콜백
+		expectedNotifyCount  int                                                                                         // 알림 발송 횟수 (에러 알림 포함)
+		expectedMessageParts []string                                                                                    // 알림 메시지에 포함되어야 할 문자열
+		expectPanic          bool                                                                                        // Panic 발생 여부 (Recover 되었는지)
 	}{
 		{
 			name:  "성공: 정상적인 실행 및 저장 (Scheduler)",
-			runBy: RunByScheduler,
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			runBy: contract.TaskRunByScheduler,
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
@@ -81,11 +83,11 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 스케줄러 실행 -> 취소 불가
 				assert.NotEmpty(t, ctxs)
-				for _, ctx := range ctxs {
-					assert.False(t, ctx.IsCancelable(), "스케줄러 실행 작업은 취소 불가능해야 합니다")
+				for _, tCtx := range ctxs {
+					assert.False(t, tCtx.IsCancelable(), "스케줄러 실행 작업은 취소 불가능해야 합니다")
 				}
 			},
 			expectedNotifyCount:  1,
@@ -93,8 +95,8 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name:  "성공: 정상적인 실행 및 저장 (User) - 취소 가능성 검증",
-			runBy: RunByUser,
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			runBy: contract.TaskRunByUser,
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
@@ -105,19 +107,20 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 사용자 실행 -> 실행 중에는 취소 가능했지만, 최종 결과 알림 시점에는 취소 불가능으로 변경됨
 				// MockSender에 전달된 컨텍스트는 이미 WithCancelable(false) 처리된 상태임
 				assert.NotEmpty(t, ctxs)
-				lastCtx := ctxs[len(ctxs)-1]
-				assert.False(t, lastCtx.IsCancelable(), "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
+
+				tCtx := ctxs[len(ctxs)-1]
+				assert.False(t, tCtx.IsCancelable(), "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"사용자 요청 완료"},
 		},
 		{
 			name: "성공: 메시지가 없으면 알림을 보내지 않음",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				// 메시지가 없어도 Snapshot이 변경되면 저장은 수행될 수 있음
@@ -133,7 +136,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "실패: Execute 함수 미설정 (방어 코드)",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				// ExecuteFunc가 nil이므로 Load/Save 호출되지 않음
 				registerTestConfig(tID, cID)
@@ -141,7 +144,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{msgExecuteFuncNotInitialized},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 에러 알림 시에도 취소 불가능해야 함
 				for _, ctx := range ctxs {
 					assert.False(t, ctx.IsCancelable())
@@ -150,7 +153,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "실패: Storage 미설정 (방어 코드)",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				exec := func(prev interface{}, html bool) (string, interface{}, error) { return "ok", nil, nil }
 				registerTestConfig(tID, cID)
 				return nil, exec // Storage is nil
@@ -160,7 +163,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "실패: 실행 전 작업 취소 (Before Run)",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				// Run 전에 취소되면 Execute 이후 로직(Save, Notify)은 실행되지 않아야 함
@@ -179,7 +182,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "에러: 비즈니스 로직 실행 실패",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 
@@ -191,7 +194,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"API 호출 실패", msgTaskExecutionFailed},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 실패 알림 시 취소 불가능 (작업 종료됨)
 				for _, ctx := range ctxs {
 					assert.False(t, ctx.IsCancelable())
@@ -200,7 +203,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "에러: 결과 저장 실패 (Save Error)",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(errors.New("DB Disk Full"))
@@ -213,7 +216,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  2, // 1. 정상 메시지, 2. 저장 실패 에러 메시지
 			expectedMessageParts: []string{"성공했으나 저장실패", "DB Disk Full"},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 두 번의 알림 모두 완료 후 시점이므로 취소 불가능해야 함
 				for _, ctx := range ctxs {
 					assert.False(t, ctx.IsCancelable())
@@ -222,7 +225,7 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name: "Panic: 실행 중 런타임 패닉 발생 (Recovery)",
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 
@@ -238,8 +241,8 @@ func TestTask_Run(t *testing.T) {
 		},
 		{
 			name:  "경고: 이전 데이터 로드 실패 (Load Error) - 실행은 계속됨 (User Run)",
-			runBy: RunByUser,
-			setup: func(tID ID, cID CommandID) (*MockTaskResultStorage, ExecuteFunc) {
+			runBy: contract.TaskRunByUser,
+			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) {
 				store := &MockTaskResultStorage{}
 				store.On("Load", tID, cID, mock.Anything).Return(errors.New("Corrupted Data"))
 				// Load 실패해도 Execute는 실행되어야 함
@@ -251,7 +254,7 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []TaskContext) {
+			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
 				// 첫 번째 알림(Load Error Warn)은 작업 진행 중이므로 취소 가능해야 함 (User Run)
 				require.Len(t, ctxs, 2)
 				assert.True(t, ctxs[0].IsCancelable(), "진행 중 발생한 경고 알림은 취소 가능해야 합니다 (User Run)")
@@ -277,8 +280,8 @@ func TestTask_Run(t *testing.T) {
 			// Task 초기화
 			// 테스트 케이스별 runBy 설정 적용 (기본값: RunByScheduler)
 			runBy := tt.runBy
-			if runBy == RunByUnknown {
-				runBy = RunByScheduler
+			if runBy == contract.TaskRunByUnknown {
+				runBy = contract.TaskRunByScheduler
 			}
 			task := NewBaseTask(tID, cID, "test_inst", "test_notifier", runBy)
 			if store != nil {
@@ -293,10 +296,10 @@ func TestTask_Run(t *testing.T) {
 
 			// Run
 			wg := &sync.WaitGroup{}
-			doneC := make(chan InstanceID, 1)
+			doneC := make(chan contract.TaskInstanceID, 1)
 			wg.Add(1)
 
-			go task.Run(NewTaskContext(), mockSender, wg, doneC)
+			go task.Run(contract.NewTaskContext(), mockSender, wg, doneC)
 
 			// Wait for completion
 			waitTimeout(t, wg, 2*time.Second)
@@ -327,11 +330,13 @@ func TestTask_Run(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 // registerTestConfig 테스트용 설정을 레지스트리에 등록합니다.
-func registerTestConfig(tID ID, cID CommandID) {
+func registerTestConfig(tID contract.TaskID, cID contract.TaskCommandID) {
 	// Register 대신 RegisterForTest를 사용하여 중복 시 덮어쓰기 허용
 	// 또는 테스트마다 매번 ClearRegistry를 호출해야 하지만, 병렬 실행 등을 고려하여 덮어쓰기가 유리함
 	defaultRegistry.RegisterForTest(tID, &Config{
-		NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) { return nil, nil },
+		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
+			return nil, nil
+		},
 		Commands: []*CommandConfig{
 			{
 				ID: cID,
@@ -373,7 +378,7 @@ func collectAllMessages(sender *MockNotificationSender) string {
 
 // TestConfigNotFound Config가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
-	task := NewBaseTask("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", RunByUser)
+	task := NewBaseTask("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser)
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
 	task.SetExecute(func(prev interface{}, html bool) (string, interface{}, error) {
@@ -381,7 +386,7 @@ func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
 	})
 
 	mockSender := NewMockNotificationSender()
-	ctx := NewTaskContext()
+	ctx := contract.NewTaskContext()
 
 	// Direct call to prepareExecution to check internal error
 	_, err := task.prepareExecution(ctx, mockSender)

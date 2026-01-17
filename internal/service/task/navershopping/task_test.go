@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -84,22 +85,22 @@ func TestCreateTask_TableDriven(t *testing.T) {
 
 	// 공통적으로 사용될 Constants
 	const (
-		validTaskID      = ID
-		validCommandID   = tasksvc.CommandID("WatchPrice_Test")
-		invalidTaskID    = tasksvc.ID("INVALID_TASK")
-		invalidCommandID = tasksvc.CommandID("Invalid_Command")
+		validTaskID      = TaskID
+		validCommandID   = WatchPriceAnyCommand
+		invalidTaskID    = contract.TaskID("INVALTaskID_TASK")
+		invalidCommandID = contract.TaskCommandID("Invalid_Command")
 	)
 
 	tests := []struct {
 		name       string
-		req        *tasksvc.SubmitRequest
+		req        *contract.TaskSubmitRequest
 		appConfig  *config.AppConfig
 		wantErr    error  // 특정 에러 타입 확인 (errors.Is)
 		wantErrMsg string // 에러 메시지 내용 확인 (Contains)
 	}{
 		{
 			name: "성공: 정상적인 요청 및 설정",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -111,7 +112,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 지원하지 않는 TaskID",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    invalidTaskID,
 				CommandID: validCommandID,
 			},
@@ -123,7 +124,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: AppConfig 내 Task 설정 없음 (빈 Config)",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -132,7 +133,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: Task 필수 설정(ClientID) 누락",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -144,7 +145,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: Task 필수 설정(ClientSecret) 누락",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -156,7 +157,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 지원하지 않는 CommandID (Prefix 불일치)",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: invalidCommandID, // "WatchPrice_"로 시작하지 않음
 			},
@@ -169,19 +170,19 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: Config에 Command 설정이 존재하지 않음",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
-				CommandID: "WatchPrice_NotInConfig",
+				CommandID: validCommandID,
 			},
 			appConfig: NewConfigBuilder().
 				WithTask(string(validTaskID), "id", "secret").
-				WithCommand(string(validCommandID), "q"). // 다른 커맨드만 있음
+				WithCommand("OtherCommand", "q"). // 다른 커맨드만 있음
 				Build(),
 			wantErr: tasksvc.ErrCommandSettingsNotFound,
 		},
 		{
 			name: "실패: Command 필수 설정(Query) 누락",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -193,7 +194,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: Command 설정 값 오류 (PriceLessThan <= 0)",
-			req: &tasksvc.SubmitRequest{
+			req: &contract.TaskSubmitRequest{
 				TaskID:    validTaskID,
 				CommandID: validCommandID,
 			},
@@ -243,11 +244,11 @@ func NewConfigBuilder() *ConfigBuilder {
 	return &ConfigBuilder{}
 }
 
-func (b *ConfigBuilder) WithTask(taskID, clientID, clientSecret string) *ConfigBuilder {
+func (b *ConfigBuilder) WithTask(taskInstanceID, clientTaskID, clientSecret string) *ConfigBuilder {
 	b.tasks = append(b.tasks, config.TaskConfig{
-		ID: taskID,
+		ID: taskInstanceID,
 		Data: map[string]interface{}{
-			"client_id":     clientID,
+			"client_id":     clientTaskID,
 			"client_secret": clientSecret,
 		},
 		Commands: []config.CommandConfig{}, // Initialize empty commands
@@ -257,7 +258,7 @@ func (b *ConfigBuilder) WithTask(taskID, clientID, clientSecret string) *ConfigB
 
 type CommandOption func(map[string]interface{})
 
-func (b *ConfigBuilder) WithCommand(commandID, query string, opts ...CommandOption) *ConfigBuilder {
+func (b *ConfigBuilder) WithCommand(commandTaskID, query string, opts ...CommandOption) *ConfigBuilder {
 	// 마지막으로 추가된 Task에 Command를 추가합니다.
 	if len(b.tasks) == 0 {
 		panic("WithCommand called before WithTask")
@@ -276,7 +277,7 @@ func (b *ConfigBuilder) WithCommand(commandID, query string, opts ...CommandOpti
 
 	lastIdx := len(b.tasks) - 1
 	b.tasks[lastIdx].Commands = append(b.tasks[lastIdx].Commands, config.CommandConfig{
-		ID:   commandID,
+		ID:   commandTaskID,
 		Data: data,
 	})
 	return b

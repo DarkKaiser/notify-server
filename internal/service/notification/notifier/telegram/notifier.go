@@ -7,9 +7,9 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -34,8 +34,8 @@ type telegramBotCommand struct {
 	commandTitle       string
 	commandDescription string
 
-	taskID    task.ID        // 이 명령어와 연결된 작업(Task) ID
-	commandID task.CommandID // 이 명령어와 연결된 작업 커맨드 ID
+	taskID    contract.TaskID        // 이 명령어와 연결된 작업(Task) ID
+	commandID contract.TaskCommandID // 이 명령어와 연결된 작업 커맨드 ID
 }
 
 // telegramBotAPI 텔레그램 봇 API 인터페이스
@@ -64,7 +64,7 @@ type telegramNotifier struct {
 
 	botAPI telegramBotAPI
 
-	executor task.Executor
+	executor contract.TaskExecutor
 
 	retryDelay time.Duration
 	limiter    *rate.Limiter

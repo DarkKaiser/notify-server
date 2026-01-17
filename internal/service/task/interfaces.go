@@ -3,6 +3,7 @@ package task
 import (
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 )
 
@@ -12,9 +13,9 @@ import (
 // Service는 이 인터페이스를 통해 Task의 구체적인 구현을 알 필요 없이,
 // 표준화된 방식으로 실행(Run), 취소(Cancel), 상태 확인 등을 수행할 수 있습니다.
 type Handler interface {
-	GetID() ID
-	GetCommandID() CommandID
-	GetInstanceID() InstanceID
+	GetID() contract.TaskID
+	GetCommandID() contract.TaskCommandID
+	GetInstanceID() contract.TaskInstanceID
 
 	// GetNotifierID 알림을 발송할 대상 Notifier의 ID를 반환합니다.
 	GetNotifierID() types.NotifierID
@@ -36,60 +37,5 @@ type Handler interface {
 	SetStorage(storage TaskResultStorage)
 
 	// Run 작업을 실행하는 메인 메서드입니다.
-	Run(taskCtx TaskContext, notificationSender NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- InstanceID)
-}
-
-// Submitter 작업을 제출하는 인터페이스입니다.
-type Submitter interface {
-	// SubmitTask 작업을 제출합니다. 제출 성공 여부(error)를 반환합니다.
-	SubmitTask(req *SubmitRequest) error
-}
-
-// Canceler 실행 중인 작업을 취소하는 인터페이스입니다.
-type Canceler interface {
-	// CancelTask 특정 작업 인스턴스를 취소합니다. 취소 성공 여부(error)를 반환합니다.
-	CancelTask(instanceID InstanceID) error
-}
-
-// Executor 작업을 실행하고 취소할 수 있는 Combined 인터페이스입니다.
-type Executor interface {
-	Submitter
-	Canceler
-}
-
-// NotificationSender Task 실행 중 발생하는 다양한 이벤트(시작, 성공, 실패 등)를 외부로 알리기 위한 인터페이스입니다.
-// Task 로직은 이 인터페이스를 통해 구체적인 알림 수단(Telegram, Email, Slack 등)의 구현 상세에 의존하지 않고
-// 추상화된 방식으로 메시지를 전달합니다. 이를 통해 알림 채널의 유연한 교체와 확장이 가능해집니다.
-type NotificationSender interface {
-	// Notify 지정된 Notifier를 통해 알림 메시지를 발송합니다.
-	// 작업 실행 컨텍스트를 함께 전달하여, 알림 수신자가 작업의 메타데이터(TaskID, Title, 실행 시간 등)를
-	// 확인할 수 있도록 지원합니다.
-	//
-	// 파라미터:
-	//   - taskCtx: 작업 실행 컨텍스트 정보
-	//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
-	//   - message: 전송할 메시지 내용
-	//
-	// 반환값:
-	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-	Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error
-
-	// NotifyDefault 시스템에 설정된 기본 알림 채널로 알림 메시지를 발송합니다.
-	// 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.
-	//
-	// 파라미터:
-	//   - message: 전송할 메시지 내용
-	//
-	// 반환값:
-	//   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-	NotifyDefault(message string) error
-
-	// SupportsHTML 지정된 ID의 Notifier가 HTML 형식을 지원하는지 여부를 반환합니다.
-	//
-	// 파라미터:
-	//   - notifierID: 지원 여부를 확인할 Notifier의 ID
-	//
-	// 반환값:
-	//   - bool: HTML 포맷 지원 여부 (true: 지원함, false: 텍스트로만 처리됨)
-	SupportsHTML(notifierID types.NotifierID) bool
+	Run(ctx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)
 }

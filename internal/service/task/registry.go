@@ -6,11 +6,12 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 // NewTaskFunc Task 인스턴스를 생성하는 팩토리 함수입니다.
-type NewTaskFunc func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error)
+type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error)
 
 // NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
 type NewSnapshotFunc func() interface{}
@@ -27,7 +28,7 @@ type Config struct {
 
 // CommandConfig 개별 명령어(Command)에 대한 실행 정책과 결과 데이터 구조체를 생성하는 구조체입니다.
 type CommandConfig struct {
-	ID CommandID
+	ID contract.TaskCommandID
 
 	// AllowMultiple 동일 명령어의 중복 실행(Concurrency) 허용 여부입니다.
 	// - true: 여러 인스턴스가 동시에 병렬 실행될 수 있습니다.
@@ -45,7 +46,7 @@ type ConfigLookup struct {
 
 // Registry 등록된 모든 Task와 Command의 설정을 관리하는 중앙 저장소(Repository)입니다.
 type Registry struct {
-	configs map[ID]*Config
+	configs map[contract.TaskID]*Config
 
 	mu sync.RWMutex
 }
@@ -56,7 +57,7 @@ var defaultRegistry = newRegistry()
 // newRegistry 새로운 Registry 인스턴스를 생성합니다.
 func newRegistry() *Registry {
 	return &Registry{
-		configs: make(map[ID]*Config),
+		configs: make(map[contract.TaskID]*Config),
 	}
 }
 
@@ -69,7 +70,7 @@ func (c *Config) Validate() error {
 		return apperrors.New(apperrors.InvalidInput, "NewTask는 nil일 수 없습니다")
 	}
 
-	seenCommands := make(map[CommandID]bool)
+	seenCommands := make(map[contract.TaskCommandID]bool)
 	for _, commandConfig := range c.Commands {
 		if commandConfig.ID == "" {
 			return apperrors.New(apperrors.InvalidInput, "CommandID는 비어있을 수 없습니다")
@@ -95,7 +96,7 @@ func (c *Config) Validate() error {
 }
 
 // Register 주어진 태스크 ID와 설정 정보를 Registry에 등록합니다.
-func (r *Registry) Register(taskID ID, config *Config) {
+func (r *Registry) Register(taskID contract.TaskID, config *Config) {
 	if config == nil {
 		panic("태스크 설정(config)은 nil일 수 없습니다")
 	}
@@ -136,7 +137,7 @@ func (r *Registry) Register(taskID ID, config *Config) {
 // RegisterForTest 유효성 검증 절차를 우회하여 Task 설정을 강제 등록합니다.
 //
 // 경고: 이 메서드는 프로덕션 환경에서 절대 호출되어서는 안 됩니다.
-func (r *Registry) RegisterForTest(taskID ID, config *Config) {
+func (r *Registry) RegisterForTest(taskID contract.TaskID, config *Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.configs[taskID] = config
@@ -149,12 +150,12 @@ func (r *Registry) RegisterForTest(taskID ID, config *Config) {
 func (r *Registry) ClearForTest() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.configs = make(map[ID]*Config)
+	r.configs = make(map[contract.TaskID]*Config)
 }
 
 // findConfig 주어진 식별자(ID)에 해당하는 Task 및 Command 설정을 검색하는 내부 메서드입니다.
 // CommandID 매칭 시 와일드카드(*) 패턴을 지원하기 위해, Map 조회 후 커맨드 목록에 대한 순차 탐색(Sequential Search)을 수행합니다.
-func (r *Registry) findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
+func (r *Registry) findConfig(taskID contract.TaskID, commandID contract.TaskCommandID) (*ConfigLookup, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -179,7 +180,7 @@ func (r *Registry) findConfig(taskID ID, commandID CommandID) (*ConfigLookup, er
 // Register 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
 // "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시켜
 // 애플리케이션 시작 단계에서 잠재적 설정 오류를 확실하게 차단합니다.
-func Register(taskID ID, config *Config) {
+func Register(taskID contract.TaskID, config *Config) {
 	defaultRegistry.Register(taskID, config)
 }
 
@@ -193,6 +194,6 @@ func ClearForTest() {
 
 // findConfig 전역 Registry를 통해 특정 Task 및 Command의 설정을 조회합니다.
 // 주로 Task 실행 시점에 호출되며, 설정 정보가 존재하지 않을 경우 적절한 에러를 반환합니다.
-func findConfig(taskID ID, commandID CommandID) (*ConfigLookup, error) {
+func findConfig(taskID contract.TaskID, commandID contract.TaskCommandID) (*ConfigLookup, error) {
 	return defaultRegistry.findConfig(taskID, commandID)
 }

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,8 +136,8 @@ func TestMockHTTPFetcher_Reset(t *testing.T) {
 // TestMockTaskResultStorage MockStorage의 기본 동작을 테스트합니다.
 func TestMockTaskResultStorage(t *testing.T) {
 	mockStorage := &MockTaskResultStorage{}
-	taskID := task.ID("task1")
-	cmdID := task.CommandID("cmd1")
+	taskID := contract.TaskID("task1")
+	cmdID := contract.TaskCommandID("cmd1")
 	data := "some-data"
 
 	// Expectation 설정
@@ -237,12 +237,12 @@ func TestCreateTestJSONFile(t *testing.T) {
 }
 
 // TestCreateTestTask TestCreateTestTask 함수가 올바른 Task를 반환하는지 테스트
-func TestCreateTestTask(t *testing.T) {
-	id := task.ID("test-task")
-	cmdID := task.CommandID("test-cmd")
-	instanceID := task.InstanceID("test-instance")
+func TestMockCreateTask(t *testing.T) {
+	id := contract.TaskID("test-task")
+	cmdID := contract.TaskCommandID("test-cmd")
+	instanceID := contract.TaskInstanceID("test-instance")
 
-	createdTask := CreateTestTask(id, cmdID, instanceID)
+	createdTask := MockCreateTask(id, cmdID, instanceID)
 
 	assert.NotNil(t, createdTask)
 	assert.Equal(t, id, createdTask.GetID())

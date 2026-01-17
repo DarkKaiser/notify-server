@@ -8,8 +8,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -105,7 +105,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 
 		req := &notifier.NotifyRequest{
 			Message: "Body",
-			TaskCtx: task.NewTaskContext().WithTitle("<Important>"),
+			TaskCtx: contract.NewTaskContext().WithTitle("<Important>"),
 		}
 
 		// Expected: <b>【 &lt;Important&gt; 】</b>\n\nBody
@@ -229,7 +229,7 @@ func TestTelegramNotifier_Regressions_Content(t *testing.T) {
 
 		req := &notifier.NotifyRequest{
 			Message: "Body",
-			TaskCtx: task.NewTaskContext().WithTitle(longTitle),
+			TaskCtx: contract.NewTaskContext().WithTitle(longTitle),
 		}
 
 		mockBot.On("Send", mock.MatchedBy(func(msg tgbotapi.MessageConfig) bool {

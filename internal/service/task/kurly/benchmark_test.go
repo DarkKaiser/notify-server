@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 )
@@ -12,8 +13,8 @@ import (
 func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
 	mockFetcher := testutil.NewMockHTTPFetcher()
-	productID := 12345 // Change productID to int
-	url := fmt.Sprintf(productPageURLFormat, productID)
+	productTaskID := 12345 // Change productTaskID to int
+	url := fmt.Sprintf(productPageURLFormat, productTaskID)
 
 	// Create a reasonably large HTML content to simulate real parsing load
 	htmlContent := fmt.Sprintf(`
@@ -49,19 +50,19 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 			</div>
 		</body>
 		</html>
-	`, productID, generateFillerHTML(1000)) // 1000 lines of filler
+	`, productTaskID, generateFillerHTML(1000)) // 1000 lines of filler
 
 	mockFetcher.SetResponse(url, []byte(htmlContent))
 
 	// 2. Setup Task
 	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchProductPriceCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		Task: tasksvc.NewBaseTask(TaskID, WatchProductPriceCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
 	// 3. Setup Command Data
 	// We use a temporary file for the CSV, created once
-	csvContent := fmt.Sprintf("No,Name,Status\n%d,Test Product,1\n", productID)
+	csvContent := fmt.Sprintf("No,Name,Status\n%d,Test Product,1\n", productTaskID)
 	// Note: In a real benchmark, file I/O might be a bottleneck, but here we want to measure the whole flow including CSV reading as it's part of the task.
 	// However, creating a file in every loop is bad. We should create it once.
 	// But `runWatchProductPrice` opens the file every time.

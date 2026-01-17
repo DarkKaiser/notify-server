@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 )
 
 // Interface Compliance Check
@@ -27,7 +27,7 @@ type MockNotifierHandler struct {
 // MockNotifyCall은 Notify 메서드 호출 기록을 저장합니다.
 type MockNotifyCall struct {
 	Message string
-	TaskCtx task.TaskContext
+	TaskCtx contract.TaskContext
 }
 
 // ID는 Notifier의 고유 식별자를 반환합니다.
@@ -37,12 +37,12 @@ func (m *MockNotifierHandler) ID() types.NotifierID {
 
 // Notify는 알림 메시지를 전송하고 호출 기록을 저장합니다.
 // 동시성 안전을 위해 mutex로 보호됩니다.
-func (m *MockNotifierHandler) Notify(taskCtx task.TaskContext, message string) bool {
+func (m *MockNotifierHandler) Notify(ctx contract.TaskContext, message string) bool {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.NotifyCalls = append(m.NotifyCalls, MockNotifyCall{
 		Message: message,
-		TaskCtx: taskCtx,
+		TaskCtx: ctx,
 	})
 	return true
 }

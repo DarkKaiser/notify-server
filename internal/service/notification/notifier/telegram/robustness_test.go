@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
@@ -91,7 +91,7 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Act
-			notifier.Notify(task.NewTaskContext(), "Test Message")
+			notifier.Notify(contract.NewTaskContext(), "Test Message")
 
 			// Wait for calls
 			// Note: We use a channel to wait with timeout
@@ -181,7 +181,7 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 	notifier.botAPI = nil
 
 	// Act 1: Send message that will cause panic
-	notifier.Notify(task.NewTaskContext(), "Panic Message")
+	notifier.Notify(contract.NewTaskContext(), "Panic Message")
 
 	// Wait a bit to ensure panic handling
 	time.Sleep(100 * time.Millisecond)
@@ -194,7 +194,7 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
 
 	// Act 2: Send normal message
-	success := notifier.Notify(task.NewTaskContext(), "Normal Message")
+	success := notifier.Notify(contract.NewTaskContext(), "Normal Message")
 	require.True(t, success, "Notify should succeed")
 
 	// Wait for processing

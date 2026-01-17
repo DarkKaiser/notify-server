@@ -7,10 +7,10 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -29,14 +29,14 @@ type Service struct {
 	// notifiersStopWG 서비스 종료 시, 모든 하위 Notifier의 고루틴들이 안전하게 종료될 때까지 대기하는 동기화 객체
 	notifiersStopWG sync.WaitGroup
 
-	executor task.Executor
+	executor contract.TaskExecutor
 
 	running   bool
 	runningMu sync.RWMutex
 }
 
 // NewService Notification 서비스를 생성합니다.
-func NewService(appConfig *config.AppConfig, factory notifier.NotifierFactory, executor task.Executor) *Service {
+func NewService(appConfig *config.AppConfig, factory notifier.NotifierFactory, executor contract.TaskExecutor) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
@@ -195,12 +195,12 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
 func (s *Service) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
-	taskCtx := task.NewTaskContext().WithTitle(title)
+	ctx := contract.NewTaskContext().WithTitle(title)
 	if errorOccurred {
-		taskCtx = taskCtx.WithError()
+		ctx = ctx.WithError()
 	}
 
-	return s.Notify(taskCtx, notifierID, message)
+	return s.Notify(ctx, notifierID, message)
 }
 
 // NotifyDefault 시스템에 설정된 기본 알림 채널로 알림 메시지를 발송합니다.
@@ -254,7 +254,7 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 
 	s.runningMu.RUnlock()
 
-	if ok := notifier.Notify(task.NewTaskContext().WithError(), message); !ok {
+	if ok := notifier.Notify(contract.NewTaskContext().WithError(), message); !ok {
 		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
 	}
 	return nil
@@ -265,13 +265,13 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 // 확인할 수 있도록 지원합니다.
 //
 // 파라미터:
-//   - taskCtx: 작업 실행 컨텍스트 정보
+//   - ctx: 작업 실행 컨텍스트 정보 (task.TaskContext는 context.Context를 구현함)
 //   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
 //   - message: 전송할 메시지 내용
 //
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환
-func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, message string) error {
+func (s *Service) Notify(ctx contract.TaskContext, notifierID types.NotifierID, message string) error {
 	s.runningMu.RLock()
 	if !s.running {
 		s.runningMu.RUnlock()
@@ -289,7 +289,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 	s.runningMu.RUnlock()
 
 	if targetNotifier != nil {
-		if ok := targetNotifier.Notify(taskCtx, message); !ok {
+		if ok := targetNotifier.Notify(ctx, message); !ok {
 			// Notifier가 이미 종료되었는지 확인
 			select {
 			case <-targetNotifier.Done():
@@ -309,7 +309,7 @@ func (s *Service) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, 
 	}).Error(m)
 
 	if defaultNotifier != nil {
-		if !defaultNotifier.Notify(task.NewTaskContext().WithError(), m) {
+		if !defaultNotifier.Notify(contract.NewTaskContext().WithError(), m) {
 			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 				"notifier_id":         notifierID,
 				"default_notifier_id": defaultNotifier.ID(),

@@ -10,6 +10,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
 	"github.com/darkkaiser/notify-server/pkg/validation"
@@ -17,10 +18,10 @@ import (
 
 const (
 	// TaskID
-	ID tasksvc.ID = "LOTTO"
+	TaskID contract.TaskID = "LOTTO"
 
 	// CommandID
-	PredictionCommand tasksvc.CommandID = "Prediction" // 로또 번호 예측
+	PredictionCommand contract.TaskCommandID = "Prediction" // 로또 번호 예측
 
 	// jarFileName PredictionCommand 수행 시 실행되는 JAR 파일명
 	jarFileName = "lottoprediction-1.0.0.jar"
@@ -53,25 +54,26 @@ func (s *taskSettings) validate() error {
 }
 
 func init() {
-	tasksvc.Register(ID, &tasksvc.Config{
-		Commands: []*tasksvc.CommandConfig{{
-			ID: PredictionCommand,
+	tasksvc.Register(TaskID, &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{
+			{
+				ID: PredictionCommand,
 
-			AllowMultiple: false,
+				AllowMultiple: false,
 
-			NewSnapshot: func() interface{} { return &predictionSnapshot{} },
-		}},
-
+				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
+			},
+		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
 	return createTask(instanceID, req, appConfig, &defaultCommandExecutor{})
 }
 
-func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
-	if req.TaskID != ID {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (tasksvc.Handler, error) {
+	if req.TaskID != TaskID {
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
@@ -79,7 +81,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	found := false
 	for _, t := range appConfig.Tasks {
-		if req.TaskID == tasksvc.ID(t.ID) {
+		if req.TaskID == contract.TaskID(t.ID) {
 			settings, err := maputil.Decode[taskSettings](t.Data)
 			if err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())

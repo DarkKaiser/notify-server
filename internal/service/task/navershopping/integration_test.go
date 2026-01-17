@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		Task:         tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -88,7 +89,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		Task:         tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -116,7 +117,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Task:         tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		Task:         tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -166,16 +167,16 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchPriceAnyCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByScheduler,
+		RunBy:      contract.TaskRunByScheduler,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Data: map[string]interface{}{
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",
@@ -261,16 +262,16 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchPriceAnyCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Data: map[string]interface{}{
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",
@@ -369,16 +370,16 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(jsonContent))
 
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchPriceAnyCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByUnknown,
+		RunBy:      contract.TaskRunByUnknown,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Data: map[string]interface{}{
 					"client_id":     "test-client-id",
 					"client_secret": "test-client-secret",

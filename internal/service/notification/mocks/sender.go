@@ -3,8 +3,8 @@ package mocks
 import (
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 )
 
 // MockNotificationSender 테스트용 NotificationSender 구현체입니다.
@@ -26,7 +26,7 @@ type MockNotificationSender struct {
 	// 호출 기록 (MockNotificationSender from task package)
 	NotifyDefaultCalls      []string
 	NotifyCalls             []NotifyCall
-	CapturedContexts        []task.TaskContext
+	CapturedContexts        []contract.TaskContext
 	SupportsHTMLCalls       []string
 	SupportsHTMLReturnValue bool
 }
@@ -35,7 +35,7 @@ type MockNotificationSender struct {
 type NotifyCall struct {
 	NotifierID  string
 	Message     string
-	TaskContext task.TaskContext
+	TaskContext contract.TaskContext
 }
 
 type MockError struct {
@@ -51,7 +51,7 @@ func NewMockNotificationSender() *MockNotificationSender {
 	return &MockNotificationSender{
 		NotifyDefaultCalls:      make([]string, 0),
 		NotifyCalls:             make([]NotifyCall, 0),
-		CapturedContexts:        make([]task.TaskContext, 0),
+		CapturedContexts:        make([]contract.TaskContext, 0),
 		SupportsHTMLCalls:       make([]string, 0),
 		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
 	}
@@ -117,7 +117,7 @@ func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다.
-func (m *MockNotificationSender) Notify(taskCtx task.TaskContext, notifierID types.NotifierID, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID types.NotifierID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

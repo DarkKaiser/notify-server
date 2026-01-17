@@ -10,6 +10,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -391,7 +392,7 @@ func (t *task) analyzeAndReport(currentSnapshot *watchNewPerformancesSnapshot, p
 	//
 	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == tasksvc.RunByUser {
+	if t.GetRunBy() == contract.TaskRunByUser {
 		if len(currentSnapshot.Performances) == 0 {
 			return "등록된 공연정보가 존재하지 않습니다.", false
 		}

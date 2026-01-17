@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -488,7 +489,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 	tests := []struct {
 		name string
 		// Input
-		runBy               tasksvc.RunBy
+		runBy               contract.TaskRunBy
 		currentPerformances []*performance
 		prevPerformances    []*performance
 		supportsHTML        bool
@@ -501,7 +502,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 	}{
 		{
 			name:                "신규 공연 감지 (Scheduler) - 알림 발송 및 저장",
-			runBy:               tasksvc.RunByScheduler,
+			runBy:               contract.TaskRunByScheduler,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{}, // 이전 기록 없음 (완전 신규)
 			supportsHTML:        false,
@@ -512,7 +513,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:                "변경 없음 (Scheduler) - 침묵 (알림 X, 저장 X)",
-			runBy:               tasksvc.RunByScheduler,
+			runBy:               contract.TaskRunByScheduler,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")}, // 동일 데이터
 			supportsHTML:        false,
@@ -523,7 +524,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:                "변경 없음 (User) - 현황 보고 (알림 O, 저장 X)",
-			runBy:               tasksvc.RunByUser,
+			runBy:               contract.TaskRunByUser,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")},
 			supportsHTML:        false,
@@ -534,7 +535,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:                "데이터 없음 (User) - 안내 메시지 (알림 O, 저장 X)",
-			runBy:               tasksvc.RunByUser,
+			runBy:               contract.TaskRunByUser,
 			currentPerformances: []*performance{}, // 수집된 공연 0개
 			prevPerformances:    []*performance{},
 			supportsHTML:        false,
@@ -545,7 +546,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:                "부분 신규 감지 (Scheduler) - 신규 건만 알림",
-			runBy:               tasksvc.RunByScheduler,
+			runBy:               contract.TaskRunByScheduler,
 			currentPerformances: []*performance{createPerf("1", "기존 공연"), createPerf("2", "신규 공연")},
 			prevPerformances:    []*performance{createPerf("1", "기존 공연")},
 			supportsHTML:        false,
@@ -786,7 +787,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			}
 
 			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
-			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByScheduler)
+			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
 			naverTask := &task{
 				Task: baseTask,
 			}
@@ -907,7 +908,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
-	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByUser)
+	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
 	naverTask := &task{Task: baseTask}
 	naverTask.SetFetcher(mockFetcher)
 
@@ -997,7 +998,7 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 			}
 
 			// executeFlow
-			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByUser)
+			baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
 			naverTask := &task{Task: baseTask}
 			naverTask.SetFetcher(mockFetcher)
 
@@ -1062,7 +1063,7 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 		}
 	}
 
-	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", tasksvc.RunByScheduler)
+	baseTask := tasksvc.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
 	testTask := &task{Task: baseTask}
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}

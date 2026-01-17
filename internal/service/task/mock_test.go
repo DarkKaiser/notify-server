@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/mock"
 )
@@ -14,12 +15,12 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) SubmitTask(req *SubmitRequest) error {
+func (m *MockTaskExecutor) Submit(req *contract.TaskSubmitRequest) error {
 	args := m.Called(req)
 	return args.Error(0)
 }
 
-func (m *MockTaskExecutor) CancelTask(instanceID InstanceID) error {
+func (m *MockTaskExecutor) Cancel(instanceID contract.TaskInstanceID) error {
 	args := m.Called(instanceID)
 	return args.Error(0)
 }
@@ -34,8 +35,18 @@ func (m *MockTestifyNotificationSender) NotifyDefault(message string) error {
 	return args.Error(0)
 }
 
-func (m *MockTestifyNotificationSender) Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error {
+func (m *MockTestifyNotificationSender) Notify(taskCtx contract.TaskContext, notifierID types.NotifierID, message string) error {
 	args := m.Called(taskCtx, notifierID, message)
+	return args.Error(0)
+}
+
+func (m *MockTestifyNotificationSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+	args := m.Called(notifierID, title, message, errorOccurred)
+	return args.Error(0)
+}
+
+func (m *MockTestifyNotificationSender) NotifyDefaultWithError(message string) error {
+	args := m.Called(message)
 	return args.Error(0)
 }
 
@@ -52,26 +63,28 @@ type MockNotificationSender struct {
 	mu sync.Mutex
 
 	// 호출 기록
-	NotifyDefaultCalls      []string
-	NotifyCalls             []NotifyCall
-	CapturedContexts        []TaskContext
+	NotifyDefaultCalls []string
+	NotifyCalls        []NotifyCall
+
+	CapturedContexts        []contract.TaskContext
 	SupportsHTMLCalls       []string
 	SupportsHTMLReturnValue bool
 }
 
 // NotifyCall Notify 호출 정보를 저장합니다.
 type NotifyCall struct {
-	NotifierID  string
-	Message     string
-	TaskContext TaskContext
+	NotifierID types.NotifierID
+	Message    string
+	TaskCtx    contract.TaskContext
 }
 
 // NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
 func NewMockNotificationSender() *MockNotificationSender {
 	return &MockNotificationSender{
-		NotifyDefaultCalls:      make([]string, 0),
+		NotifyDefaultCalls: make([]string, 0),
+
 		NotifyCalls:             make([]NotifyCall, 0),
-		CapturedContexts:        make([]TaskContext, 0),
+		CapturedContexts:        make([]contract.TaskContext, 0),
 		SupportsHTMLCalls:       make([]string, 0),
 		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
 	}
@@ -87,14 +100,14 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 }
 
 // Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) Notify(taskCtx TaskContext, notifierID types.NotifierID, message string) error {
+func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID types.NotifierID, message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID:  string(notifierID),
-		Message:     message,
-		TaskContext: taskCtx,
+		NotifierID: notifierID,
+		Message:    message,
+		TaskCtx:    taskCtx,
 	})
 	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
 	return nil
@@ -106,7 +119,22 @@ func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool 
 	defer m.mu.Unlock()
 
 	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
+	// SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
 	return m.SupportsHTMLReturnValue
+}
+
+// NotifyWithTitle 제목을 포함한 알림을 발송합니다 (Mock).
+func (m *MockNotificationSender) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
+}
+
+// NotifyDefaultWithError 오류 알림을 발송합니다 (Mock).
+func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return nil
 }
 
 // Reset 모든 호출 기록을 초기화합니다.
@@ -190,12 +218,12 @@ type MockTaskResultStorage struct {
 	mock.Mock
 }
 
-func (m *MockTaskResultStorage) Get(taskID ID, commandID CommandID) (string, error) {
+func (m *MockTaskResultStorage) Get(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
 	args := m.Called(taskID, commandID)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockTaskResultStorage) Save(taskID ID, commandID CommandID, data interface{}) error {
+func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
 	args := m.Called(taskID, commandID, data)
 	return args.Error(0)
 }
@@ -204,7 +232,7 @@ func (m *MockTaskResultStorage) SetStorage(storage TaskResultStorage) {
 	// Mock에서는 아무것도 하지 않음 or Mock 동작 정의
 }
 
-func (m *MockTaskResultStorage) Load(taskID ID, commandID CommandID, data interface{}) error {
+func (m *MockTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
 	args := m.Called(taskID, commandID, data)
 	return args.Error(0)
 }

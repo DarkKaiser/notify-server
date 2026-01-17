@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -95,7 +96,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 	// -------------------------------------------------------------------------
 	tests := []struct {
 		name      string
-		req       *tasksvc.SubmitRequest
+		req       *contract.TaskSubmitRequest
 		appConfig *config.AppConfig
 		wantErr   bool
 		errMsg    string
@@ -103,8 +104,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 	}{
 		{
 			name: "성공: 정상적인 작업 생성 (WatchProductPrice)",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: validAppConfig,
@@ -116,13 +117,13 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				assert.True(t, ok, "handler should be of type *task")
 
 				// 기본 속성 검증
-				assert.Equal(t, ID, taskImpl.GetID())
+				assert.Equal(t, TaskID, taskImpl.GetID())
 				assert.Equal(t, WatchProductPriceCommand, taskImpl.GetCommandID())
 			},
 		},
 		{
-			name: "실패: 지원하지 않는 Task ID",
-			req: &tasksvc.SubmitRequest{
+			name: "실패: 지원하지 않는 Task TaskID",
+			req: &contract.TaskSubmitRequest{
 				TaskID:    "UNKNOWN_TASK",
 				CommandID: WatchProductPriceCommand,
 			},
@@ -131,9 +132,9 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			errMsg:    "지원하지 않는 작업입니다",
 		},
 		{
-			name: "실패: 지원하지 않는 Command ID",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			name: "실패: 지원하지 않는 Command TaskID",
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: "UnknownCommand",
 			},
 			appConfig: validAppConfig,
@@ -142,8 +143,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 설정에서 Command 정보를 찾을 수 없음",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: invalidConfig_MissingCommand,
@@ -152,8 +153,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (파일 확장자 오류)",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: invalidConfig_NoCSV,
@@ -162,8 +163,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (파일명 공백)",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: invalidConfig_EmptyFile,
@@ -172,8 +173,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (필수 필드 누락)",
-			req: &tasksvc.SubmitRequest{
-				TaskID:    ID,
+			req: &contract.TaskSubmitRequest{
+				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
 			appConfig: invalidConfig_MissingField,

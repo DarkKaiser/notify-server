@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/notification/types"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -44,23 +44,23 @@ type Service struct {
 	scheduler scheduler
 
 	// handlers는 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
-	handlers map[InstanceID]Handler
+	handlers map[contract.TaskInstanceID]Handler
 
 	// idGenerator는 각 Task 실행 인스턴스에 대해 전역적으로 고유한 식별자(InstanceID)를 발급하는 생성기입니다.
 	idGenerator instanceIDGenerator
 
 	// notificationSender는 작업의 실행 결과나 중요 이벤트를 외부 시스템(예: Telegram, Slack 등)으로 전파하는
 	// 책임을 가진 추상화된 인터페이스(Interface)입니다.
-	notificationSender NotificationSender
+	notificationSender contract.NotificationSender
 
 	// taskSubmitC는 새로운 Task 실행 요청을 전달받는 채널입니다.
-	taskSubmitC chan *SubmitRequest
+	taskSubmitC chan *contract.TaskSubmitRequest
 
 	// taskDoneC는 Task 실행이 완료되었음을 알리는 신호 채널입니다.
-	taskDoneC chan InstanceID
+	taskDoneC chan contract.TaskInstanceID
 
 	// taskCancelC는 실행 중인 Task의 취소를 요청하는 제어 채널입니다.
-	taskCancelC chan InstanceID
+	taskCancelC chan contract.TaskInstanceID
 
 	// taskStopWG는 실행 중인 모든 Task의 종료를 추적하고 대기하는 동기화 객체입니다.
 	taskStopWG *sync.WaitGroup
@@ -78,15 +78,15 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		scheduler: scheduler{},
 
-		handlers: make(map[InstanceID]Handler),
+		handlers: make(map[contract.TaskInstanceID]Handler),
 
 		idGenerator: instanceIDGenerator{},
 
 		notificationSender: nil,
 
-		taskSubmitC: make(chan *SubmitRequest, defaultChannelBufferSize),
-		taskDoneC:   make(chan InstanceID, defaultChannelBufferSize),
-		taskCancelC: make(chan InstanceID, defaultChannelBufferSize),
+		taskSubmitC: make(chan *contract.TaskSubmitRequest, defaultChannelBufferSize),
+		taskDoneC:   make(chan contract.TaskInstanceID, defaultChannelBufferSize),
+		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
 		taskStopWG: &sync.WaitGroup{},
 
@@ -94,7 +94,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 	}
 }
 
-func (s *Service) SetNotificationSender(notificationSender NotificationSender) {
+func (s *Service) SetNotificationSender(notificationSender contract.NotificationSender) {
 	s.notificationSender = notificationSender
 }
 
@@ -164,16 +164,13 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitG
 }
 
 // handleSubmitRequest 새로운 Task 실행 요청을 처리합니다.
-func (s *Service) handleSubmitRequest(req *SubmitRequest) {
+func (s *Service) handleSubmitRequest(req *contract.TaskSubmitRequest) {
 	applog.WithComponentAndFields("task.service", applog.Fields{
 		"task_id":    req.TaskID,
 		"command_id": req.CommandID,
 		"run_by":     req.RunBy,
 	}).Debug("새로운 Task 실행 요청 수신")
 
-	if req.TaskContext == nil {
-		req.TaskContext = NewTaskContext()
-	}
 	req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
 
 	cfg, err := findConfig(req.TaskID, req.CommandID)
@@ -184,7 +181,7 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 			"error":      err,
 		}).Error(ErrTaskNotSupported.Error())
 
-		go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), ErrTaskNotSupported.Error())
+		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskNotSupported.Error())
 
 		return
 	}
@@ -201,14 +198,14 @@ func (s *Service) handleSubmitRequest(req *SubmitRequest) {
 }
 
 // checkConcurrencyLimit 현재 실행 중인 Task 목록을 순회하여 중복 실행 여부를 확인합니다.
-func (s *Service) checkConcurrencyLimit(req *SubmitRequest) bool {
+func (s *Service) checkConcurrencyLimit(req *contract.TaskSubmitRequest) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	for _, handler := range s.handlers {
 		if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && !handler.IsCanceled() {
-			req.TaskContext = req.TaskContext.WithInstanceID(handler.GetInstanceID(), handler.ElapsedTimeAfterRun())
-			go s.notificationSender.Notify(req.TaskContext, types.NotifierID(req.NotifierID), msgTaskAlreadyRunning)
+			req.TaskContext = req.TaskContext.WithTaskInstanceID(handler.GetInstanceID(), handler.ElapsedTimeAfterRun())
+			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
 			return true
 		}
 	}
@@ -216,7 +213,7 @@ func (s *Service) checkConcurrencyLimit(req *SubmitRequest) bool {
 	return false
 }
 
-func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
+func (s *Service) createAndStartTask(req *contract.TaskSubmitRequest, cfg *ConfigLookup) {
 	// 무한 루프 방지를 위한 최대 재시도 횟수
 	const maxRetries = 3
 
@@ -249,7 +246,7 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 				"error":      err,
 			}).Error(err)
 
-			go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), err.Error())
+			go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
 
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
@@ -275,11 +272,11 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 
 		// Task 실행
 		s.taskStopWG.Add(1)
-		req.TaskContext = req.TaskContext.WithInstanceID(instanceID, 0)
+		req.TaskContext = req.TaskContext.WithTaskInstanceID(instanceID, 0)
 		go h.Run(req.TaskContext, s.notificationSender, s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
-			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == RunByUser), types.NotifierID(req.NotifierID), msgTaskRunning)
+			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == contract.TaskRunByUser), req.NotifierID, msgTaskRunning)
 		}
 
 		// 성공적으로 실행했으므로 함수를 종료합니다.
@@ -292,10 +289,10 @@ func (s *Service) createAndStartTask(req *SubmitRequest, cfg *ConfigLookup) {
 		"command_id": req.CommandID,
 	}).Error("Task ID 생성 충돌이 반복되어 실행에 실패했습니다.")
 
-	go s.notificationSender.Notify(req.TaskContext.WithError(), types.NotifierID(req.NotifierID), "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).")
+	go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).")
 }
 
-func (s *Service) handleTaskDone(instanceID InstanceID) {
+func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -314,7 +311,7 @@ func (s *Service) handleTaskDone(instanceID InstanceID) {
 	}
 }
 
-func (s *Service) handleTaskCancel(instanceID InstanceID) {
+func (s *Service) handleTaskCancel(instanceID contract.TaskInstanceID) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -327,7 +324,7 @@ func (s *Service) handleTaskCancel(instanceID InstanceID) {
 			"instance_id": instanceID,
 		}).Debug("Task 작업 취소")
 
-		go s.notificationSender.Notify(NewTaskContext().WithTask(handler.GetID(), handler.GetCommandID()), handler.GetNotifierID(), msgTaskCanceledByUser)
+		go s.notificationSender.Notify(contract.NewTaskContext().WithTask(handler.GetID(), handler.GetCommandID()), handler.GetNotifierID(), msgTaskCanceledByUser)
 	} else {
 		applog.WithComponentAndFields("task.service", applog.Fields{
 			"instance_id": instanceID,
@@ -363,6 +360,14 @@ func (s *Service) handleStop() {
 	close(s.taskCancelC)
 
 	// Task의 작업이 모두 취소될 때까지 대기한다.
+	// 이 때, taskDoneC 채널이 가득 차서 Task 고루틴들이 블락되는 것을 방지하기 위해 별도 고루틴에서 채널을 비워줍니다.
+	// (taskStopWG.Wait()가 완료되면 taskDoneC를 닫을 것이며, 이때 range 루프도 종료됩니다)
+	go func() {
+		for range s.taskDoneC {
+			// Discard: 종료 중이므로 완료 메시지는 무시합니다.
+		}
+	}()
+
 	done := make(chan struct{})
 	go func() {
 		s.taskStopWG.Wait()
@@ -390,8 +395,15 @@ func (s *Service) handleStop() {
 	applog.WithComponent("task.service").Info("Task 서비스 중지됨")
 }
 
-// SubmitTask 실행할 Task를 큐에 제출합니다.
-func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
+// Submit 작업을 실행 큐에 등록합니다.
+func (s *Service) Submit(req *contract.TaskSubmitRequest) (err error) {
+	if req == nil {
+		return apperrors.New(apperrors.Internal, "Invalid task submit request type")
+	}
+
+	if err := req.Validate(); err != nil {
+		return err
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 요청중에 panic 발생: %v", r))
@@ -426,8 +438,9 @@ func (s *Service) SubmitTask(req *SubmitRequest) (err error) {
 	}
 }
 
-// CancelTask 특정 Task 인스턴스의 실행 취소를 요청합니다.
-func (s *Service) CancelTask(instanceID InstanceID) (err error) {
+// Cancel 특정 작업 인스턴스의 실행을 취소합니다.
+func (s *Service) Cancel(instanceID contract.TaskInstanceID) (err error) {
+
 	defer func() {
 		if r := recover(); r != nil {
 			err = apperrors.New(apperrors.Internal, fmt.Sprintf("Task 취소 요청중에 panic 발생: %v", r))

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
-	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -327,7 +327,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 		name            string
 		current         []*product
 		prev            []*product
-		runBy           tasksvc.RunBy
+		runBy           contract.TaskRunBy
 		wantMsgContent  []string
 		wantDataChanged bool
 	}{
@@ -335,7 +335,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			name:            "변경 없음 (Scheduler)",
 			current:         []*product{newProduct(1, 1000)},
 			prev:            []*product{newProduct(1, 1000)},
-			runBy:           tasksvc.RunByScheduler,
+			runBy:           contract.TaskRunByScheduler,
 			wantMsgContent:  nil,
 			wantDataChanged: false,
 		},
@@ -343,7 +343,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			name:            "변경 없음 (User) - 메시지는 생성되지만 데이터 갱신 없음",
 			current:         []*product{newProduct(1, 1000)},
 			prev:            []*product{newProduct(1, 1000)},
-			runBy:           tasksvc.RunByUser,
+			runBy:           contract.TaskRunByUser,
 			wantMsgContent:  []string{"변경된 상품 정보가 없습니다", "현재 등록된 상품 정보는 아래와 같습니다"},
 			wantDataChanged: false,
 		},
@@ -351,7 +351,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			name:    "가격 변경 발생",
 			current: []*product{newProduct(1, 800)},
 			prev:    []*product{newProduct(1, 1000)},
-			runBy:   tasksvc.RunByScheduler,
+			runBy:   contract.TaskRunByScheduler,
 			wantMsgContent: []string{
 				"상품 정보가 변경되었습니다",
 				"이전 가격", "1,000원",
@@ -363,7 +363,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			name:            "신규 상품 추가",
 			current:         []*product{newProduct(1, 1000), newProduct(2, 2000)},
 			prev:            []*product{newProduct(1, 1000)},
-			runBy:           tasksvc.RunByScheduler,
+			runBy:           contract.TaskRunByScheduler,
 			wantMsgContent:  []string{"상품 정보가 변경되었습니다", "🆕", "2,000원"},
 			wantDataChanged: true,
 		},
@@ -375,7 +375,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				return []*product{p}
 			}(),
 			prev:            []*product{newProduct(1, 1000)},
-			runBy:           tasksvc.RunByScheduler,
+			runBy:           contract.TaskRunByScheduler,
 			wantMsgContent:  nil,
 			wantDataChanged: false,
 		},

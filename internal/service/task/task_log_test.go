@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,7 +18,7 @@ func TestTask_Log(t *testing.T) {
 		// RemoveHook 기능이 없으므로... (동일)
 	}()
 
-	task := NewBaseTask("TEST_TASK", "TEST_CMD", "instance-1", "test-notifier", RunByScheduler)
+	task := NewBaseTask("TEST_TASK", "TEST_CMD", "instance-1", "test-notifier", contract.TaskRunByScheduler)
 
 	tests := []struct {
 		name      string
@@ -39,8 +40,8 @@ func TestTask_Log(t *testing.T) {
 				assert.Equal(t, applog.InfoLevel, entry.Level)
 				assert.Equal(t, "info message", entry.Message)
 				assert.Equal(t, "test.component", entry.Data["component"])
-				assert.Equal(t, ID("TEST_TASK"), entry.Data["task_id"])
-				assert.Equal(t, CommandID("TEST_CMD"), entry.Data["command_id"])
+				assert.Equal(t, contract.TaskID("TEST_TASK"), entry.Data["task_id"])
+				assert.Equal(t, contract.TaskCommandID("TEST_CMD"), entry.Data["command_id"])
 			},
 		},
 		{

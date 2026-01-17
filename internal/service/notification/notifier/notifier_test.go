@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ const (
 // =============================================================================
 
 // assertChannelReceivesData verifies that channel receives expected data.
-func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, expectedMsg string, expectedCtx task.TaskContext) {
+func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, expectedMsg string, expectedCtx contract.TaskContext) {
 	t.Helper()
 	select {
 	case data := <-ch:
@@ -38,6 +38,12 @@ func assertChannelReceivesData(t *testing.T, ch chan *notifier.NotifyRequest, ex
 	case <-time.After(testNotifierTimeout):
 		t.Fatal("Timeout receiving data from channel")
 	}
+}
+
+// createBaseNotifier creates a pointer to BaseNotifier to avoid lock copy.
+func createBaseNotifier(id string, supportsHTML bool, bufferSize int, timeout time.Duration) *notifier.BaseNotifier {
+	n := notifier.NewBaseNotifier(types.NotifierID(id), supportsHTML, bufferSize, timeout)
+	return &n
 }
 
 // =============================================================================
@@ -79,23 +85,23 @@ func TestNewBaseNotifier(t *testing.T) {
 func TestNotify(t *testing.T) {
 	tests := []struct {
 		name       string
-		Notifier   notifier.BaseNotifier
+		Notifier   *notifier.BaseNotifier
 		message    string
-		taskCtx    task.TaskContext
+		taskCtx    contract.TaskContext
 		expectData bool
 		expectTrue bool
 	}{
 		{
 			name:       "Success: With TaskContext",
-			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
+			Notifier:   createBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
 			message:    testNotifierMessage,
-			taskCtx:    task.NewTaskContext(),
+			taskCtx:    contract.NewTaskContext(),
 			expectData: true,
 			expectTrue: true,
 		},
 		{
 			name:       "Success: nil TaskContext",
-			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
+			Notifier:   createBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
 			message:    testNotifierMessage,
 			taskCtx:    nil,
 			expectData: true,
@@ -103,24 +109,24 @@ func TestNotify(t *testing.T) {
 		},
 		{
 			name:       "Success: Empty Message",
-			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
+			Notifier:   createBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
 			message:    "",
-			taskCtx:    task.NewTaskContext(),
+			taskCtx:    contract.NewTaskContext(),
 			expectData: true,
 			expectTrue: true,
 		},
 		{
 			name:       "Success: Long Message (10KB)",
-			Notifier:   notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
+			Notifier:   createBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout),
 			message:    strings.Repeat("a", 10000),
-			taskCtx:    task.NewTaskContext(),
+			taskCtx:    contract.NewTaskContext(),
 			expectData: true,
 			expectTrue: true,
 		},
 		{
 			name: "Failure: Closed Channel (nil check)",
-			Notifier: func() notifier.BaseNotifier {
-				n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout)
+			Notifier: func() *notifier.BaseNotifier {
+				n := createBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout)
 				n.Close()
 				return n
 			}(),
@@ -159,12 +165,12 @@ func TestNotify_Backpressure(t *testing.T) {
 	n := notifier.NewBaseNotifier("test", true, 1, 100*time.Millisecond)
 
 	// Fill buffer
-	require.True(t, n.Notify(task.NewTaskContext(), "msg1"))
+	require.True(t, n.Notify(contract.NewTaskContext(), "msg1"))
 
 	done := make(chan bool)
 	go func() {
 		// This should block until msg1 is drained
-		result := n.Notify(task.NewTaskContext(), "msg2")
+		result := n.Notify(contract.NewTaskContext(), "msg2")
 		done <- result
 	}()
 
@@ -196,10 +202,10 @@ func TestNotify_Backpressure(t *testing.T) {
 func TestNotify_Timeout(t *testing.T) {
 	n := notifier.NewBaseNotifier("test", true, 1, 50*time.Millisecond)
 
-	require.True(t, n.Notify(task.NewTaskContext(), "msg1"))
+	require.True(t, n.Notify(contract.NewTaskContext(), "msg1"))
 
 	start := time.Now()
-	result := n.Notify(task.NewTaskContext(), "msg2")
+	result := n.Notify(contract.NewTaskContext(), "msg2")
 	elapsed := time.Since(start)
 
 	assert.False(t, result, "Notify should return false after timeout")
@@ -220,7 +226,7 @@ func TestNotify_Concurrency(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func(idx int) {
 			defer wg.Done()
-			if n.Notify(task.NewTaskContext(), "concurrent message") {
+			if n.Notify(contract.NewTaskContext(), "concurrent message") {
 				mu.Lock()
 				successCount++
 				mu.Unlock()
@@ -242,7 +248,7 @@ func TestClose_Idempotent(t *testing.T) {
 	n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout)
 
 	n.Close()
-	assert.False(t, n.Notify(task.NewTaskContext(), "test"), "Notify should return false after close")
+	assert.False(t, n.Notify(contract.NewTaskContext(), "test"), "Notify should return false after close")
 
 	assert.NotPanics(t, func() {
 		n.Close()
@@ -253,14 +259,14 @@ func TestClose_Idempotent(t *testing.T) {
 func TestClose_AfterNotify(t *testing.T) {
 	n := notifier.NewBaseNotifier("test", true, testNotifierBufferSize, testNotifierTimeout)
 
-	require.True(t, n.Notify(task.NewTaskContext(), "msg1"))
-	require.True(t, n.Notify(task.NewTaskContext(), "msg2"))
+	require.True(t, n.Notify(contract.NewTaskContext(), "msg1"))
+	require.True(t, n.Notify(contract.NewTaskContext(), "msg2"))
 
 	n.Close()
 	// Channel should not be nil (for Drain), but Notify should fail
 	assert.NotNil(t, n.RequestC)
 
-	result := n.Notify(task.NewTaskContext(), "msg3")
+	result := n.Notify(contract.NewTaskContext(), "msg3")
 	assert.False(t, result, "Notify should return false after close")
 }
 
@@ -271,7 +277,7 @@ func TestNotify_CloseDuringBlock(t *testing.T) {
 	n := notifier.NewBaseNotifier("test-blocking", true, 1, 5*time.Second)
 
 	// Fill the buffer
-	require.True(t, n.Notify(task.NewTaskContext(), "msg1"), "First message should fill buffer")
+	require.True(t, n.Notify(contract.NewTaskContext(), "msg1"), "First message should fill buffer")
 
 	// WaitGroup to synchronize start of blocking call
 	var wgStart sync.WaitGroup
@@ -284,7 +290,7 @@ func TestNotify_CloseDuringBlock(t *testing.T) {
 	go func() {
 		wgStart.Done()
 		// This should block because buffer is full
-		result := n.Notify(task.NewTaskContext(), "msg2")
+		result := n.Notify(contract.NewTaskContext(), "msg2")
 		notifyDone <- result
 	}()
 
@@ -327,7 +333,7 @@ func TestBaseNotifier_Notify_PanicRecovery(t *testing.T) {
 		}
 	}()
 
-	succeeded := n.Notify(nil, "test message")
+	succeeded := n.Notify(contract.NewTaskContext(), "test message")
 
 	// Verification
 	assert.False(t, succeeded, "Notify should return false on panic recovery")

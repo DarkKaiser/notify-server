@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/pkg/cronx"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -20,7 +21,7 @@ type scheduler struct {
 }
 
 // Start 스케줄러를 시작하고 정의된 작업들을 Cron에 등록합니다.
-func (s *scheduler) Start(appConfig *config.AppConfig, submitter Submitter, notificationSender NotificationSender) {
+func (s *scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSubmitter, notificationSender contract.NotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -46,29 +47,30 @@ func (s *scheduler) Start(appConfig *config.AppConfig, submitter Submitter, noti
 			}
 
 			// 클로저 캡처 문제 방지를 위해 로컬 변수에 재할당 (중요!)
-			taskID := ID(t.ID)
-			commandID := CommandID(c.ID)
+			taskID := contract.TaskID(t.ID)
+			commandID := contract.TaskCommandID(c.ID)
 			defaultNotifierID := c.DefaultNotifierID
 			timeSpec := c.Scheduler.TimeSpec
 
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
 				// 작업 실행 요청. 실패 시 에러 처리 및 알림 발송
-				if err := submitter.SubmitTask(&SubmitRequest{
+				if err := submitter.Submit(&contract.TaskSubmitRequest{
 					TaskID:        taskID,
 					CommandID:     commandID,
-					NotifierID:    defaultNotifierID,
+					TaskContext:   contract.NewTaskContext(),
+					NotifierID:    types.NotifierID(defaultNotifierID),
 					NotifyOnStart: false,
-					RunBy:         RunByScheduler,
+					RunBy:         contract.TaskRunByScheduler,
 				}); err != nil {
 					message := "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다.😱"
-					s.handleError(notificationSender, defaultNotifierID, taskID, commandID, message, err)
+					s.handleError(notificationSender, types.NotifierID(defaultNotifierID), taskID, commandID, message, err)
 				}
 			})
 
 			if err != nil {
 				message := fmt.Sprintf("Cron 스케줄 파싱 실패 (TimeSpec: %s)", timeSpec)
-				s.handleError(notificationSender, defaultNotifierID, taskID, commandID, message, err)
+				s.handleError(notificationSender, types.NotifierID(defaultNotifierID), taskID, commandID, message, err)
 				continue
 			}
 		}
@@ -107,11 +109,11 @@ func (s *scheduler) Stop() {
 
 // handleError 에러 로깅 및 알림 전송을 처리하는 헬퍼 메서드
 // 에러 발생 시 로그를 남기고, 설정된 Notifier를 통해 담당자에게 알림을 보냅니다.
-func (s *scheduler) handleError(notificationSender NotificationSender, notifierID string, taskID ID, commandID CommandID, message string, err error) {
+func (s *scheduler) handleError(notificationSender contract.NotificationSender, notifierID types.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
 	fields := applog.Fields{
 		"task_id":    taskID,
 		"command_id": commandID,
-		"run_by":     RunByScheduler,
+		"run_by":     contract.TaskRunByScheduler,
 	}
 	if err != nil {
 		fields["error"] = err
@@ -122,8 +124,8 @@ func (s *scheduler) handleError(notificationSender NotificationSender, notifierI
 	applog.WithComponentAndFields("task.scheduler", fields).Error(message)
 
 	notificationSender.Notify(
-		NewTaskContext().WithTask(taskID, commandID).WithError(),
-		types.NotifierID(notifierID),
+		contract.NewTaskContext().WithTask(taskID, commandID).WithError(),
+		notifierID,
 		message,
 	)
 }

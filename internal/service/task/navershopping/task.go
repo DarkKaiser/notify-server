@@ -7,16 +7,17 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (
 	// TaskID
-	ID tasksvc.ID = "NS" // 네이버쇼핑 (https://shopping.naver.com/)
+	TaskID contract.TaskID = "NS" // 네이버쇼핑 (https://shopping.naver.com/)
 
 	// CommandID
-	WatchPriceAnyCommand = tasksvc.CommandID(watchPriceAnyCommandPrefix + "*") // 네이버쇼핑 가격 확인
+	WatchPriceAnyCommand = contract.TaskCommandID(watchPriceAnyCommandPrefix + "*") // 네이버쇼핑 가격 확인
 )
 
 type taskSettings struct {
@@ -37,32 +38,33 @@ func (s *taskSettings) validate() error {
 }
 
 func init() {
-	tasksvc.Register(ID, &tasksvc.Config{
-		Commands: []*tasksvc.CommandConfig{{
-			ID: WatchPriceAnyCommand,
+	tasksvc.Register(TaskID, &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{
+			{
+				ID: WatchPriceAnyCommand,
 
-			AllowMultiple: true,
+				AllowMultiple: true,
 
-			NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },
-		}},
-
+				NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },
+			},
+		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
 	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
 	return createTask(instanceID, req, appConfig, fetcher)
 }
 
-func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
-	if req.TaskID != ID {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != TaskID {
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
 	var settings *taskSettings
 	for _, t := range appConfig.Tasks {
-		if req.TaskID == tasksvc.ID(t.ID) {
+		if req.TaskID == contract.TaskID(t.ID) {
 			s, err := maputil.Decode[taskSettings](t.Data)
 			if err != nil {
 				return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidTaskSettings.Error())
@@ -113,13 +115,13 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	return naverShoppingTask, nil
 }
 
-func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchPriceSettings, error) {
+func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, commandID contract.TaskCommandID) (*watchPriceSettings, error) {
 	var commandSettings *watchPriceSettings
 
 	for _, t := range appConfig.Tasks {
-		if taskID == tasksvc.ID(t.ID) {
+		if taskID == contract.TaskID(t.ID) {
 			for _, c := range t.Commands {
-				if commandID == tasksvc.CommandID(c.ID) {
+				if commandID == contract.TaskCommandID(c.ID) {
 					settings, err := maputil.Decode[watchPriceSettings](c.Data)
 					if err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())

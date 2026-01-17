@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
@@ -21,7 +22,7 @@ import (
 
 type mockNotificationSender struct{}
 
-func (m *mockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID types.NotifierID, message string) error {
+func (m *mockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID types.NotifierID, message string) error {
 	return nil
 }
 
@@ -29,8 +30,16 @@ func (m *mockNotificationSender) NotifyDefault(message string) error {
 	return nil
 }
 
-func (m *mockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
+func (m *mockNotificationSender) SupportsHTML(notifierTaskID types.NotifierID) bool {
 	return true
+}
+
+func (m *mockNotificationSender) NotifyWithTitle(notifierTaskID types.NotifierID, title string, message string, errorOccurred bool) error {
+	return nil
+}
+
+func (m *mockNotificationSender) NotifyDefaultWithError(message string) error {
+	return nil
 }
 
 // === Tests ===
@@ -39,7 +48,7 @@ func TestCreateTask(t *testing.T) {
 	h := newTestHelper(t)
 	// createTask는 내부적으로 config를 조회하므로 appConfig가 필요함
 	// initTask 호출 시 내부적으로 createTask를 검증함
-	h.initTask(tasksvc.RunByUser)
+	h.initTask(contract.TaskRunByUser)
 
 	assert.NotNil(t, h.taskHandler)
 	assert.IsType(t, &task{}, h.taskHandler)
@@ -52,7 +61,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 
 	type testCase struct {
 		name                 string
-		runBy                tasksvc.RunBy
+		runBy                contract.TaskRunBy
 		mockSetup            func(b *mockResponseBuilder)
 		prevSnapshot         *watchNewPerformancesSnapshot
 		expectedMessage      string
@@ -63,7 +72,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 	tests := []testCase{
 		{
 			name:  "성공: 신규 공연 발견 (User Run)",
-			runBy: tasksvc.RunByUser,
+			runBy: contract.TaskRunByUser,
 			mockSetup: func(b *mockResponseBuilder) {
 				b.page(1).returns("Musical A", "Musical B")
 				b.page(2).returnsEmpty() // 종료 조건
@@ -75,7 +84,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 		},
 		{
 			name:  "성공: 신규 공연 없음 - User Run (현재 상태 알림)",
-			runBy: tasksvc.RunByUser,
+			runBy: contract.TaskRunByUser,
 			mockSetup: func(b *mockResponseBuilder) {
 				b.page(1).returns("Musical A")
 				b.page(2).returnsEmpty()
@@ -89,7 +98,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 		},
 		{
 			name:  "성공: 신규 공연 없음 - Scheduler Run (알림 없음)",
-			runBy: tasksvc.RunByScheduler,
+			runBy: contract.TaskRunByScheduler,
 			mockSetup: func(b *mockResponseBuilder) {
 				b.page(1).returns("Musical A")
 				b.page(2).returnsEmpty()
@@ -103,7 +112,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 		},
 		{
 			name:  "실패: 네트워크 에러 발생",
-			runBy: tasksvc.RunByUser,
+			runBy: contract.TaskRunByUser,
 			mockSetup: func(b *mockResponseBuilder) {
 				b.page(1).failsWith(fmt.Errorf("network error"))
 			},
@@ -126,7 +135,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 			}
 
 			// Execution
-			cmdConfig, _ := findCommandSettings(h.appConfig, ID, WatchNewPerformancesCommand)
+			cmdConfig, _ := findCommandSettings(h.appConfig, TaskID, WatchNewPerformancesCommand)
 			msg, newSnapshot, err := h.task.executeWatchNewPerformances(cmdConfig, tt.prevSnapshot, true)
 
 			// Verification
@@ -165,9 +174,9 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 
 	// Mock Storage 설정 (Integration Test 전용)
 	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작
-	h.storage.On("Load", ID, WatchNewPerformancesCommand, mock.Anything).Return(fmt.Errorf("no data"))
+	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(fmt.Errorf("no data"))
 	// Save 호출 성공
-	h.storage.On("Save", ID, WatchNewPerformancesCommand, mock.Anything).Return(nil)
+	h.storage.On("Save", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(nil)
 
 	// Mock HTTP 설정
 	b := newMockResponseBuilder(h.fetcher)
@@ -175,17 +184,16 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 	b.page(2).returnsEmpty()
 
 	// Task 초기화 (User Run)
-	h.initTask(tasksvc.RunByUser)
+	h.initTask(contract.TaskRunByUser)
 
 	// Task 실행 (Run 메서드 직접 호출)
 	var wg sync.WaitGroup
-	quit := make(chan tasksvc.InstanceID, 1)
+	quit := make(chan contract.TaskInstanceID, 1)
 	sender := &mockNotificationSender{}
 
 	wg.Add(1)
 	// RunByUser는 한 번 실행 후 종료됨
-	h.task.Run(tasksvc.NewTaskContext(), sender, &wg, quit)
-	wg.Wait()
+	h.task.Run(contract.NewTaskContext(), sender, &wg, quit)
 
 	// Verify Storage Interaction
 	h.storage.AssertExpectations(t)
@@ -212,10 +220,8 @@ func newTestHelper(t *testing.T) *testHelper {
 	fetcher := testutil.NewMockHTTPFetcher()
 	storage := &testutil.MockTaskResultStorage{}
 
-	// 레지스트리 재등록 (ClearForTest 대응)
-	// 통합 테스트 등에서 tasksvc.ClearForTest()를 호출하므로,
 	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
-	tasksvc.Register(ID, &tasksvc.Config{
+	tasksvc.Register(TaskID, &tasksvc.Config{
 		Commands: []*tasksvc.CommandConfig{{
 			ID: WatchNewPerformancesCommand,
 
@@ -229,7 +235,7 @@ func newTestHelper(t *testing.T) *testHelper {
 
 	// 기본 설정 생성
 	cfgBuilder := newConfigBuilder().
-		withTask(string(ID), string(WatchNewPerformancesCommand), defaultTaskData())
+		withTask(string(TaskID), string(WatchNewPerformancesCommand), defaultTaskData())
 
 	return &testHelper{
 		t:         t,
@@ -240,13 +246,13 @@ func newTestHelper(t *testing.T) *testHelper {
 }
 
 // initTask Task 인스턴스를 생성하고 의존성을 주입합니다.
-func (h *testHelper) initTask(runBy tasksvc.RunBy) {
-	req := &tasksvc.SubmitRequest{
-		TaskID:      ID,
+func (h *testHelper) initTask(runBy contract.TaskRunBy) {
+	req := &contract.TaskSubmitRequest{
+		TaskID:      TaskID,
 		CommandID:   WatchNewPerformancesCommand,
 		NotifierID:  "test_notifier",
 		RunBy:       runBy, // Scheduler or User
-		TaskContext: tasksvc.NewTaskContext(),
+		TaskContext: contract.NewTaskContext(),
 	}
 
 	handler, err := createTask("test_instance", req, h.appConfig, h.fetcher)
@@ -346,12 +352,12 @@ func newConfigBuilder() *configBuilder {
 	}
 }
 
-func (b *configBuilder) withTask(taskID, commandID string, data map[string]interface{}) *configBuilder {
+func (b *configBuilder) withTask(taskTaskID, commandTaskID string, data map[string]interface{}) *configBuilder {
 	b.appConfig.Tasks = append(b.appConfig.Tasks, config.TaskConfig{
-		ID: taskID,
+		ID: taskTaskID,
 		Commands: []config.CommandConfig{
 			{
-				ID:   commandID,
+				ID:   commandTaskID,
 				Data: data,
 			},
 		},

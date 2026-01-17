@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -24,14 +24,14 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 	tests := []struct {
 		name         string
 		message      string
-		taskCtx      task.TaskContext
+		taskCtx      contract.TaskContext
 		setupMockBot func(*MockTelegramBot, *sync.WaitGroup)
 		waitForCalls int
 	}{
 		{
 			name:    "Simple Message",
 			message: "Hello World",
-			taskCtx: task.NewTaskContext(),
+			taskCtx: contract.NewTaskContext(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -46,7 +46,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 		{
 			name:    "Message Send Error",
 			message: "Fail Message",
-			taskCtx: task.NewTaskContext(),
+			taskCtx: contract.NewTaskContext(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(3)
 				m.On("Send", mock.Anything).Run(func(args mock.Arguments) {
@@ -58,8 +58,8 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 		{
 			name:    "With Task Context",
 			message: "Test message",
-			taskCtx: task.NewTaskContext().
-				WithTask(task.ID("TEST"), task.CommandID("TEST_CMD")).
+			taskCtx: contract.NewTaskContext().
+				WithTask(contract.TaskID("TEST"), contract.TaskCommandID("TEST_CMD")).
 				WithTitle("Test Task"),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
@@ -75,7 +75,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 		{
 			name:    "With Error Context",
 			message: "Error occurred",
-			taskCtx: task.NewTaskContext().WithError(),
+			taskCtx: contract.NewTaskContext().WithError(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -90,7 +90,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 		{
 			name:    "With Long Title (Truncated)",
 			message: "Message with long title",
-			taskCtx: task.NewTaskContext().
+			taskCtx: contract.NewTaskContext().
 				WithTitle(strings.Repeat("가", 300)), // 300 unicode chars > 200 limit
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
@@ -117,7 +117,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 			// Actual behavior with limit 3900:
 			// Chunk 1: "A"*3900 (limit applied)
 			// Chunk 2: "A"*100 + "\n" + "B"*1000 (remaining 'A's + newline + 'B's)
-			taskCtx: task.NewTaskContext(),
+			taskCtx: contract.NewTaskContext(),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(2) // Expecting 2 calls
 				// First call (Chunk A - Truncated at 3900)

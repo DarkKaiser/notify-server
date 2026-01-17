@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,14 +22,14 @@ func TestRegistry_Concurrency(t *testing.T) {
 			go func(index int) {
 				defer wg.Done()
 
-				taskID := ID(fmt.Sprintf("TASK_%d", index))
+				taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 				r.Register(taskID, &Config{
-					NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
+					NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
 						return nil, nil
 					},
 					Commands: []*CommandConfig{
 						{
-							ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+							ID:            contract.TaskCommandID(fmt.Sprintf("CMD_%d", index)),
 							AllowMultiple: true,
 							NewSnapshot:   func() interface{} { return struct{}{} },
 						},
@@ -41,8 +42,8 @@ func TestRegistry_Concurrency(t *testing.T) {
 
 		// 모든 태스크가 정상 등록되었는지 확인
 		for i := 0; i < 100; i++ {
-			taskID := ID(fmt.Sprintf("TASK_%d", i))
-			cmdID := CommandID(fmt.Sprintf("CMD_%d", i))
+			taskID := contract.TaskID(fmt.Sprintf("TASK_%d", i))
+			cmdID := contract.TaskCommandID(fmt.Sprintf("CMD_%d", i))
 
 			searchResult, err := r.findConfig(taskID, cmdID)
 			assert.NoError(t, err)
@@ -58,14 +59,14 @@ func TestRegistry_Concurrency(t *testing.T) {
 
 		// 먼저 일부 태스크 등록
 		for i := 0; i < 50; i++ {
-			taskID := ID(fmt.Sprintf("TASK_%d", i))
+			taskID := contract.TaskID(fmt.Sprintf("TASK_%d", i))
 			r.Register(taskID, &Config{
-				NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
+				NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
 					return nil, nil
 				},
 				Commands: []*CommandConfig{
 					{
-						ID:            CommandID(fmt.Sprintf("CMD_%d", i)),
+						ID:            contract.TaskCommandID(fmt.Sprintf("CMD_%d", i)),
 						AllowMultiple: true,
 						NewSnapshot:   func() interface{} { return struct{}{} },
 					},
@@ -80,22 +81,22 @@ func TestRegistry_Concurrency(t *testing.T) {
 				// 조회
 				go func(index int) {
 					defer wg.Done()
-					taskID := ID(fmt.Sprintf("TASK_%d", index))
-					cmdID := CommandID(fmt.Sprintf("CMD_%d", index))
+					taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
+					cmdID := contract.TaskCommandID(fmt.Sprintf("CMD_%d", index))
 					_, _ = r.findConfig(taskID, cmdID)
 				}(i)
 			} else {
 				// 등록
 				go func(index int) {
 					defer wg.Done()
-					taskID := ID(fmt.Sprintf("TASK_%d", index))
+					taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 					r.Register(taskID, &Config{
-						NewTask: func(InstanceID, *SubmitRequest, *config.AppConfig) (Handler, error) {
+						NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
 							return nil, nil
 						},
 						Commands: []*CommandConfig{
 							{
-								ID:            CommandID(fmt.Sprintf("CMD_%d", index)),
+								ID:            contract.TaskCommandID(fmt.Sprintf("CMD_%d", index)),
 								AllowMultiple: true,
 								NewSnapshot:   func() interface{} { return struct{}{} },
 							},

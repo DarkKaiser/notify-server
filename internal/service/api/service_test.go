@@ -13,7 +13,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/darkkaiser/notify-server/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +27,8 @@ import (
 
 // setupServiceHelper는 독립적이고 고립된 테스트 환경을 구성합니다.
 // 랜덤 포트 할당, Mock 의존성 주입, 리소스 자동 정리를 포함합니다.
-func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
+// customSender가 nil이면 기본 MockNotificationSender를 사용합니다.
+func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) (*Service, *config.AppConfig, *sync.WaitGroup, context.Context, context.CancelFunc) {
 	t.Helper()
 
 	// 1. 포트 충돌 방지를 위한 동적 포트 할당
@@ -39,8 +42,13 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 	appConfig.NotifyAPI.CORS.AllowOrigins = []string{"*"} // 개발 모드
 	appConfig.Debug = true                                // 디버그 모드
 
-	// 3. Mock NotificationSender (스레드 안전)
-	mockSender := mocks.NewMockNotificationSender()
+	// 3. Mock NotificationSender (스레드 안전) 또는 커스텀 Sender 사용
+	var sender contract.NotificationSender
+	if customSender != nil {
+		sender = customSender
+	} else {
+		sender = mocks.NewMockNotificationSender()
+	}
 
 	// 4. Service 인스턴스 생성
 	buildInfo := version.Info{
@@ -49,13 +57,13 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 		BuildNumber: "test-build",
 	}
 
-	service := NewService(appConfig, mockSender, buildInfo)
+	service := NewService(appConfig, sender, buildInfo)
 
 	// 5. Context 및 WaitGroup 구성
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 
-	// 6. 리소스 정리 (t.Cleanup)
+	// 6. 리소스 정리
 	t.Cleanup(func() {
 		cancel() // 1차: Context 취소로 서비스 종료 시그널 전송
 
@@ -83,7 +91,8 @@ func setupServiceHelper(t *testing.T) (*Service, *config.AppConfig, *sync.WaitGr
 // =============================================================================
 
 func TestNewService_Success(t *testing.T) {
-	s, cfg, _, _, _ := setupServiceHelper(t)
+	t.Parallel()
+	s, cfg, _, _, _ := setupServiceHelper(t, nil)
 
 	assert.NotNil(t, s)
 	assert.Equal(t, cfg, s.appConfig)
@@ -92,16 +101,49 @@ func TestNewService_Success(t *testing.T) {
 }
 
 func TestNewService_Panics(t *testing.T) {
+	t.Parallel()
+
 	t.Run("AppConfig 누락 시 패닉", func(t *testing.T) {
+		t.Parallel()
 		assert.PanicsWithValue(t, constants.PanicMsgAppConfigRequired, func() {
 			NewService(nil, mocks.NewMockNotificationSender(), version.Info{})
 		})
 	})
 
 	t.Run("NotificationSender 누락 시 패닉", func(t *testing.T) {
+		t.Parallel()
 		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
 			NewService(&config.AppConfig{}, nil, version.Info{})
 		})
+	})
+}
+
+// mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
+type mockSenderWithoutHealth struct{}
+
+func (m *mockSenderWithoutHealth) Notify(ctx contract.TaskContext, notifierID types.NotifierID, message string) error {
+	return nil
+}
+func (m *mockSenderWithoutHealth) NotifyWithTitle(notifierID types.NotifierID, title string, message string, errorOccurred bool) error {
+	return nil
+}
+func (m *mockSenderWithoutHealth) NotifyDefault(message string) error { return nil }
+func (m *mockSenderWithoutHealth) NotifyDefaultWithError(message string) error {
+	return nil
+}
+func (m *mockSenderWithoutHealth) SupportsHTML(notifierID types.NotifierID) bool { return false }
+
+func TestNewService_Panic_InvalidSender_HealthCheckerMissing(t *testing.T) {
+	t.Parallel()
+
+	// Given: HealthChecker를 구현하지 않는 Sender
+	invalidSender := &mockSenderWithoutHealth{}
+	cfg := &config.AppConfig{}
+	buildInfo := version.Info{}
+
+	// When & Then: NewService 생성 시 Panic 발생 검증
+	assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
+		NewService(cfg, invalidSender, buildInfo)
 	})
 }
 
@@ -110,7 +152,8 @@ func TestNewService_Panics(t *testing.T) {
 // =============================================================================
 
 func TestService_setupServer_Configuration(t *testing.T) {
-	service, _, _, _, _ := setupServiceHelper(t)
+	t.Parallel()
+	service, _, _, _, _ := setupServiceHelper(t, nil)
 
 	// HSTS 활성화 설정
 	service.appConfig.NotifyAPI.WS.TLSServer = true
@@ -125,10 +168,6 @@ func TestService_setupServer_Configuration(t *testing.T) {
 	require.NotNil(t, e.Server)
 	assert.Equal(t, constants.DefaultReadHeaderTimeout, e.Server.ReadHeaderTimeout)
 	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
-
-	// 3. 보안 미들웨어 설정 추론 (TLSServer=true -> EnableHSTS=true)
-	// (미들웨어 내부 상태를 직접 확인하긴 어렵지만, 서비스가 Config를 올바르게 전달했는지 간접 검증)
-	// HSTS가 활성화된 config로 NewHTTPServer가 호출되었음을 가정
 }
 
 // =============================================================================
@@ -136,7 +175,8 @@ func TestService_setupServer_Configuration(t *testing.T) {
 // =============================================================================
 
 func TestService_Start_HTTPS_Success(t *testing.T) {
-	service, appConfig, wg, ctx, _ := setupServiceHelper(t)
+	t.Parallel()
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t, nil)
 
 	// Self-Signed Cert 생성
 	certFile, keyFile, cleanup := testutil.GenerateSelfSignedCert(t)
@@ -167,7 +207,30 @@ func TestService_Start_HTTPS_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestService_Start_HTTP_Success(t *testing.T) {
+	t.Parallel()
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t, nil)
+
+	// TLS 비활성화 (이미 기본값이지만 명시적 설정)
+	appConfig.NotifyAPI.WS.TLSServer = false
+
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err)
+
+	require.NoError(t, testutil.WaitForServer(appConfig.NotifyAPI.WS.ListenPort, 2*time.Second))
+
+	// HTTP 클라이언트로 요청
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", appConfig.NotifyAPI.WS.ListenPort))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 func TestService_Start_PortConflict(t *testing.T) {
+	t.Parallel()
+
 	// 1. 포트 선점
 	ls, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
@@ -175,7 +238,7 @@ func TestService_Start_PortConflict(t *testing.T) {
 	port := ls.Addr().(*net.TCPAddr).Port
 
 	// 2. 동일 포트로 서비스 시작 시도
-	service, _, wg, ctx, _ := setupServiceHelper(t)
+	service, _, wg, ctx, _ := setupServiceHelper(t, nil)
 	service.appConfig.NotifyAPI.WS.ListenPort = port
 
 	wg.Add(1)
@@ -205,7 +268,8 @@ func TestService_Start_PortConflict(t *testing.T) {
 }
 
 func TestService_Start_Duplicate_Idempotency(t *testing.T) {
-	service, cfg, wg, ctx, _ := setupServiceHelper(t)
+	t.Parallel()
+	service, cfg, wg, ctx, _ := setupServiceHelper(t, nil)
 
 	wg.Add(1)
 	require.NoError(t, service.Start(ctx, wg))
@@ -215,14 +279,11 @@ func TestService_Start_Duplicate_Idempotency(t *testing.T) {
 	wg.Add(1)
 	err := service.Start(ctx, wg)
 	assert.NoError(t, err)
-
-	// WaitGroup 카운트가 즉시 감소했는지 확인은 어렵지만(Race),
-	// 로그나 커버리지로 실행되지 않음을 보장.
-	// 여기서는 에러가 없다는 것만 확인.
 }
 
 func TestService_Start_WithCanceledContext(t *testing.T) {
-	service, _, wg, ctx, cancel := setupServiceHelper(t)
+	t.Parallel()
+	service, _, wg, ctx, cancel := setupServiceHelper(t, nil)
 
 	cancel() // 시작 전 취소
 
@@ -249,8 +310,7 @@ func TestService_Start_WithCanceledContext(t *testing.T) {
 // =============================================================================
 
 func TestService_handleServerError(t *testing.T) {
-	service, _, _, _, _ := setupServiceHelper(t)
-	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
+	t.Parallel()
 
 	tests := []struct {
 		name         string
@@ -263,10 +323,24 @@ func TestService_handleServerError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			mockSender.Reset() // 상태 초기화
+			t.Parallel()
+			// 각각 독립된 Mock 필요
+			service, _, _, _, _ := setupServiceHelper(t, nil)
+			mockSender := service.notificationSender.(*mocks.MockNotificationSender)
+
 			service.handleServerError(tt.inputErr)
+
+			// 1. 알림 전송 여부 확인
 			assert.Equal(t, tt.expectNotify, mockSender.WasNotifyDefaultCalled())
+
+			// 2. 에러 발생 시 메시지 내용 검증
+			if tt.expectNotify {
+				sentMsg := mockSender.LastMessage
+				assert.Contains(t, sentMsg, constants.LogMsgServiceHTTPServerFatalError)
+				assert.Contains(t, sentMsg, tt.inputErr.Error())
+			}
 		})
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	appconfig "github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +38,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 		cfg := &appconfig.AppConfig{
 			Tasks: []appconfig.TaskConfig{
 				{
-					ID:   string(ID),
+					ID:   string(TaskID),
 					Data: map[string]interface{}{"app_path": tmpDir},
 				},
 			},
@@ -47,18 +48,18 @@ func TestNewTask_Comprehensive(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		prepare       func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) // restore func() 반환
+		prepare       func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) // restore func() 반환
 		expectedError string
 	}{
 		{
 			name: "Success",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				_, cfg := setupValidEnv(t)
-				req := &tasksvc.SubmitRequest{
-					TaskID:     ID,
+				req := &contract.TaskSubmitRequest{
+					TaskID:     TaskID,
 					CommandID:  PredictionCommand,
 					NotifierID: "telegram",
-					RunBy:      tasksvc.RunByUser,
+					RunBy:      contract.TaskRunByUser,
 				}
 				// Mock LookPath to succeed
 				restore := mockLookPath(func(file string) (string, error) {
@@ -70,17 +71,17 @@ func TestNewTask_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "Registration Check Mismatch (Invalid TaskID)",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				// TaskID가 다르면 tasksvc.ErrTaskNotSupported 반환
-				req := &tasksvc.SubmitRequest{TaskID: "INVALID_TASK", CommandID: PredictionCommand}
+				req := &contract.TaskSubmitRequest{TaskID: "INVALTaskID_TASK", CommandID: PredictionCommand}
 				return req, &appconfig.AppConfig{}, func() {}
 			},
 			expectedError: tasksvc.ErrTaskNotSupported.Error(),
 		},
 		{
 			name: "Config Not Found In AppConfig",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				// 빈 설정
 				return req, &appconfig.AppConfig{Tasks: []appconfig.TaskConfig{}}, func() {}
 			},
@@ -88,10 +89,10 @@ func TestNewTask_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "Empty AppPath",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(ID), Data: map[string]interface{}{"app_path": ""}}},
+					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": ""}}},
 				}
 				return req, cfg, func() {}
 			},
@@ -99,10 +100,10 @@ func TestNewTask_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "Non-existent AppPath",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(ID), Data: map[string]interface{}{"app_path": "/invalid/path"}}},
+					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": "/invalid/path"}}},
 				}
 				return req, cfg, func() {}
 			},
@@ -110,22 +111,22 @@ func TestNewTask_Comprehensive(t *testing.T) {
 		},
 		{
 			name: "Missing JAR File",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				// 폴더는 있지만 JAR가 없는 경우
 				tmpDir := t.TempDir()
 				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(ID), Data: map[string]interface{}{"app_path": tmpDir}}},
+					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": tmpDir}}},
 				}
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				return req, cfg, func() {}
 			},
 			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName),
 		},
 		{
 			name: "Missing Java Runtime",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				_, cfg := setupValidEnv(t) // 파일 시스템은 정상이지만
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: PredictionCommand}
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 
 				// Mock LookPath to FAIL
 				restore := mockLookPath(func(file string) (string, error) {
@@ -136,10 +137,10 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			expectedError: "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다",
 		},
 		{
-			name: "Invalid Command ID",
-			prepare: func(t *testing.T) (*tasksvc.SubmitRequest, *appconfig.AppConfig, func()) {
+			name: "Invalid Command TaskID",
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				_, cfg := setupValidEnv(t)
-				req := &tasksvc.SubmitRequest{TaskID: ID, CommandID: "INVALID_CMD"} // 잘못된 명령어
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: "INVALTaskID_CMD"} // 잘못된 명령어
 
 				restore := mockLookPath(func(file string) (string, error) { return "/bin/java", nil })
 				return req, cfg, restore
@@ -153,7 +154,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			req, cfg, restore := tt.prepare(t)
 			defer restore()
 
-			// newTask 사용 (createTask가 아닌 public API 테스트)
+			// newTask 사용 (createTask가 아닌 public API 테스트) -> 이제는 Internal이지만 동일 패키지 테스트
 			handler, err := newTask("test-instance", req, cfg)
 
 			if tt.expectedError != "" {
@@ -166,7 +167,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				// 핸들러 타입 검증
 				lottoTask, ok := handler.(*task)
 				assert.True(t, ok)
-				assert.Equal(t, ID, lottoTask.GetID())
+				assert.Equal(t, TaskID, lottoTask.GetID())
 			}
 		})
 	}
@@ -199,7 +200,7 @@ func TestTask_Run(t *testing.T) {
 		mockStorage := new(MockTaskResultStorage)
 
 		task := &task{
-			Task:     tasksvc.NewBaseTask(ID, PredictionCommand, "test-instance", "telegram", tasksvc.RunByUser),
+			Task:     tasksvc.NewBaseTask(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}
@@ -236,10 +237,10 @@ func TestTask_Run(t *testing.T) {
 		})).Return(nil)
 
 		var wg sync.WaitGroup
-		doneC := make(chan tasksvc.InstanceID, 1)
+		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(tasksvc.NewTaskContext(), mockSender, &wg, doneC)
+		task.Run(contract.NewTaskContext(), mockSender, &wg, doneC)
 		wg.Wait()
 
 		mockProcess.AssertExpectations(t)
@@ -252,17 +253,17 @@ func TestTask_Run(t *testing.T) {
 
 		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(nil, fmt.Errorf("fail to start java"))
 
-		mockSender.On("Notify", mock.MatchedBy(func(ctx tasksvc.TaskContext) bool {
+		mockSender.On("Notify", mock.MatchedBy(func(ctx contract.TaskContext) bool {
 			return true
 		}), mock.Anything, mock.MatchedBy(func(msg string) bool {
 			return assert.Contains(t, msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
 		})).Return(nil)
 
 		var wg sync.WaitGroup
-		doneC := make(chan tasksvc.InstanceID, 1)
+		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(tasksvc.NewTaskContext(), mockSender, &wg, doneC)
+		task.Run(contract.NewTaskContext(), mockSender, &wg, doneC)
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)
@@ -281,27 +282,37 @@ func (m *MockNotificationSender) NotifyDefault(message string) error {
 	return args.Error(0)
 }
 
-func (m *MockNotificationSender) Notify(taskCtx tasksvc.TaskContext, notifierID types.NotifierID, message string) error {
-	args := m.Called(taskCtx, notifierID, message)
+func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID types.NotifierID, message string) error {
+	args := m.Called(taskCtx, notifierTaskID, message)
 	return args.Error(0)
 }
 
-func (m *MockNotificationSender) SupportsHTML(notifierID types.NotifierID) bool {
-	args := m.Called(notifierID)
+func (m *MockNotificationSender) SupportsHTML(notifierTaskID types.NotifierID) bool {
+	args := m.Called(notifierTaskID)
 	return args.Bool(0)
+}
+
+func (m *MockNotificationSender) NotifyWithTitle(notifierTaskID types.NotifierID, title string, message string, errorOccurred bool) error {
+	args := m.Called(notifierTaskID, title, message, errorOccurred)
+	return args.Error(0)
+}
+
+func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
+	args := m.Called(message)
+	return args.Error(0)
 }
 
 type MockTaskResultStorage struct {
 	mock.Mock
 }
 
-func (m *MockTaskResultStorage) Get(taskID tasksvc.ID, commandID tasksvc.CommandID) (string, error) {
-	args := m.Called(taskID, commandID)
+func (m *MockTaskResultStorage) Get(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID) (string, error) {
+	args := m.Called(taskTaskID, commandTaskID)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockTaskResultStorage) Save(taskID tasksvc.ID, commandID tasksvc.CommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
+func (m *MockTaskResultStorage) Save(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID, data interface{}) error {
+	args := m.Called(taskTaskID, commandTaskID, data)
 	return args.Error(0)
 }
 
@@ -309,7 +320,7 @@ func (m *MockTaskResultStorage) SetStorage(storage tasksvc.TaskResultStorage) {
 	m.Called(storage)
 }
 
-func (m *MockTaskResultStorage) Load(taskID tasksvc.ID, commandID tasksvc.CommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
+func (m *MockTaskResultStorage) Load(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID, data interface{}) error {
+	args := m.Called(taskTaskID, commandTaskID, data)
 	return args.Error(0)
 }

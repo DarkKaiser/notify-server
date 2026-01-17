@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/assert"
@@ -373,14 +374,14 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		runBy        tasksvc.RunBy
+		runBy        contract.TaskRunBy
 		currentItems []*product
 		prevItems    []*product
 		checkMsg     func(*testing.T, string, bool)
 	}{
 		{
 			name:         "신규 상품 (New)",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: []*product{p1, p2},
 			prevItems:    []*product{p1},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -392,7 +393,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "가격 하락 & Stale Link (Change)",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: []*product{p1Cheap},
 			prevItems:    []*product{p1},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -405,7 +406,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "가격 상승",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: []*product{p1Expensive},
 			prevItems:    []*product{p1},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -415,7 +416,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "변경 없음 (Scheduler)",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -425,7 +426,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "변경 없음 (User)",
-			runBy:        tasksvc.RunByUser,
+			runBy:        contract.TaskRunByUser,
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -435,7 +436,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "결과 없음 (User)",
-			runBy:        tasksvc.RunByUser,
+			runBy:        contract.TaskRunByUser,
 			currentItems: []*product{},
 			prevItems:    []*product{},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -444,7 +445,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "최초 실행 (Prev is Nil)",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: []*product{p1},
 			prevItems:    nil,
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -453,7 +454,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:  "정렬 검증 (가격 오름차순 -> 이름 오름차순)",
-			runBy: tasksvc.RunByUser, // 결과 목록을 보기 위해 User 실행 모드 사용
+			runBy: contract.TaskRunByUser, // 결과 목록을 보기 위해 User 실행 모드 사용
 			currentItems: []*product{
 				NewProductBuilder().WithPrice(20000).WithTitle("B").Build(),
 				NewProductBuilder().WithPrice(10000).WithTitle("A").Build(),
@@ -477,7 +478,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		},
 		{
 			name:         "대량 데이터 처리 (Benchmarks Memory Safety)",
-			runBy:        tasksvc.RunByScheduler,
+			runBy:        contract.TaskRunByScheduler,
 			currentItems: makeMockProducts(100), // 100개 동시 변경
 			prevItems:    []*product{},
 			checkMsg: func(t *testing.T, msg string, shouldSave bool) {
@@ -974,7 +975,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
-	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tasksvc.RunByScheduler)
+	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
 	tsk.SetFetcher(mockFetcher)
 
 	// 강제로 취소 상태 주입 (Context Cancel)
@@ -995,7 +996,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
 func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	tsk := &task{}
-	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", tasksvc.RunByScheduler)
+	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
 	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
 
 	// Setup Large Data

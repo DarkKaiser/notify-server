@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/require"
@@ -35,16 +36,16 @@ func makeHTMLItem(title, place string) string {
 }
 
 func setupTestTask(t *testing.T, fetcher tasksvc.Fetcher) (*task, *config.AppConfig) {
-	req := &tasksvc.SubmitRequest{
-		TaskID:     ID,
+	req := &contract.TaskSubmitRequest{
+		TaskID:     TaskID,
 		CommandID:  WatchNewPerformancesCommand,
 		NotifierID: "test-notifier",
-		RunBy:      tasksvc.RunByScheduler,
+		RunBy:      contract.TaskRunByScheduler,
 	}
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: string(ID),
+				ID: string(TaskID),
 				Commands: []config.CommandConfig{
 					{
 						ID: string(WatchNewPerformancesCommand),

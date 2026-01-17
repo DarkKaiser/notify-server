@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/pkg/concurrency"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/iancoleman/strcase"
@@ -19,8 +20,8 @@ const defaultDataDirectory = "data"
 
 // TaskResultStorage Task 실행 결과를 저장하고 불러오는 저장소 인터페이스
 type TaskResultStorage interface {
-	Load(taskID ID, commandID CommandID, v interface{}) error
-	Save(taskID ID, commandID CommandID, v interface{}) error
+	Load(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error
+	Save(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error
 }
 
 // FileTaskResultStorage 파일 시스템 기반의 Task 결과 저장소 구현체
@@ -80,7 +81,7 @@ func (s *FileTaskResultStorage) cleanupTempFiles() {
 	}
 }
 
-func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (string, error) {
+func (s *FileTaskResultStorage) resolvePath(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
 	// 입력값 보안 검증: Path Traversal 문자가 포함되어 있는지 확인
 	// strcase.ToSnake 변환 전에 검증해야 함 (변환 과정에서 위험 문자가 사라질 수 있음)
 	if strings.Contains(string(taskID), "..") || strings.Contains(string(taskID), "/") || strings.Contains(string(taskID), "\\") {
@@ -117,7 +118,7 @@ func (s *FileTaskResultStorage) resolvePath(taskID ID, commandID CommandID) (str
 }
 
 // Load 저장된 Task 결과를 파일에서 읽어옵니다.
-func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface{}) error {
+func (s *FileTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
 	filename, err := s.resolvePath(taskID, commandID)
 	if err != nil {
 		return err
@@ -141,7 +142,7 @@ func (s *FileTaskResultStorage) Load(taskID ID, commandID CommandID, v interface
 }
 
 // Save Task 결과를 파일에 저장합니다. (Atomic Write 적용)
-func (s *FileTaskResultStorage) Save(taskID ID, commandID CommandID, v interface{}) error {
+func (s *FileTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
 	filename, err := s.resolvePath(taskID, commandID)
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 )
@@ -45,7 +46,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Task: tasksvc.NewBaseTask(ID, WatchPriceAnyCommand, "test_instance", "test-notifier", tasksvc.RunByUnknown),
+		Task: tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 

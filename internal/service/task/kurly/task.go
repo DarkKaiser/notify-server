@@ -5,39 +5,41 @@ package kurly
 import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (
 	// TaskID
-	ID tasksvc.ID = "KURLY" // 마켓컬리 (https://www.kurly.com/)
+	TaskID contract.TaskID = "KURLY" // 마켓컬리 (https://www.kurly.com/)
 
 	// CommandID
-	WatchProductPriceCommand tasksvc.CommandID = "WatchProductPrice" // 상품 가격 변화 감시
+	WatchProductPriceCommand contract.TaskCommandID = "WatchProductPrice" // 상품 가격 변화 감시
 )
 
 func init() {
-	tasksvc.Register(ID, &tasksvc.Config{
-		Commands: []*tasksvc.CommandConfig{{
-			ID: WatchProductPriceCommand,
+	tasksvc.Register(TaskID, &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{
+			{
+				ID: WatchProductPriceCommand,
 
-			AllowMultiple: true,
+				AllowMultiple: true,
 
-			NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },
-		}},
-
+				NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },
+			},
+		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
 	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
 	return createTask(instanceID, req, appConfig, fetcher)
 }
 
-func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
-	if req.TaskID != ID {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+	if req.TaskID != TaskID {
 		return nil, tasksvc.ErrTaskNotSupported
 	}
 
@@ -49,7 +51,7 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 
 	kurlyTask.SetFetcher(fetcher)
 
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다 (Fail Fast)
+	// CommandID에 따른 실행 함수를 미리 바인딩합니다
 	switch req.CommandID {
 	case WatchProductPriceCommand:
 		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
@@ -77,13 +79,13 @@ func createTask(instanceID tasksvc.InstanceID, req *tasksvc.SubmitRequest, appCo
 	return kurlyTask, nil
 }
 
-func findCommandSettings(appConfig *config.AppConfig, taskID tasksvc.ID, commandID tasksvc.CommandID) (*watchProductPriceSettings, error) {
+func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, commandID contract.TaskCommandID) (*watchProductPriceSettings, error) {
 	var commandSettings *watchProductPriceSettings
 
 	for _, t := range appConfig.Tasks {
-		if taskID == tasksvc.ID(t.ID) {
+		if taskID == contract.TaskID(t.ID) {
 			for _, c := range t.Commands {
-				if commandID == tasksvc.CommandID(c.ID) {
+				if commandID == contract.TaskCommandID(c.ID) {
 					settings, err := maputil.Decode[watchProductPriceSettings](c.Data)
 					if err != nil {
 						return nil, apperrors.Wrap(err, apperrors.InvalidInput, tasksvc.ErrInvalidCommandSettings.Error())

@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
+	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -22,24 +24,24 @@ type MockTaskResultStorage struct {
 }
 
 // Get 저장된 작업 결과를 조회합니다.
-func (m *MockTaskResultStorage) Get(taskID task.ID, commandID task.CommandID) (string, error) {
+func (m *MockTaskResultStorage) Get(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
 	args := m.Called(taskID, commandID)
 	return args.String(0), args.Error(1)
 }
 
 // Save 작업 결과를 저장합니다.
-func (m *MockTaskResultStorage) Save(taskID task.ID, commandID task.CommandID, data interface{}) error {
+func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
 	args := m.Called(taskID, commandID, data)
 	return args.Error(0)
 }
 
 // SetStorage 내부 스토리지를 설정합니다. (Mock에서는 동작하지 않음)
-func (m *MockTaskResultStorage) SetStorage(storage task.TaskResultStorage) {
+func (m *MockTaskResultStorage) SetStorage(storage tasksvc.TaskResultStorage) {
 	// Mock에서는 아무것도 하지 않음
 }
 
 // Load 저장된 데이터를 불러옵니다.
-func (m *MockTaskResultStorage) Load(taskID task.ID, commandID task.CommandID, data interface{}) error {
+func (m *MockTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
 	args := m.Called(taskID, commandID, data)
 	return args.Error(0)
 }
@@ -151,11 +153,45 @@ func (m *MockHTTPFetcher) Reset() {
 	m.RequestedURLs = make([]string, 0)
 }
 
-// CreateTestTask 테스트를 위한 기본 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-func CreateTestTask(id task.ID, commandID task.CommandID, instanceID task.InstanceID) *task.Task {
-	t := task.NewBaseTask(id, commandID, instanceID, "test_notifier", task.RunByUser)
+// NewMockTaskConfig 테스트를 위한 기본 Task Config 인스턴스를 생성합니다.
+func NewMockTaskConfig(taskID contract.TaskID, commandID contract.TaskCommandID) *tasksvc.Config {
+	return NewMockTaskConfigWithSnapshot(taskID, commandID, nil)
+}
+
+// NewMockTaskConfigWithSnapshot 테스트를 위한 Task Config 인스턴스를 스냅샷과 함께 생성합니다.
+func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) *tasksvc.Config {
+	return &tasksvc.Config{
+		Commands: []*tasksvc.CommandConfig{
+			{
+				ID:            commandID,
+				AllowMultiple: true,
+				NewSnapshot:   func() interface{} { return snapshot },
+			},
+		},
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+			t := MockCreateTask(taskID, commandID, instanceID)
+			return t, nil
+		},
+	}
+}
+
+// MockCreateTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
+func MockCreateTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID) *tasksvc.Task {
+	t := tasksvc.NewBaseTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser)
 	t.SetStorage(&MockTaskResultStorage{})
 	return &t
+}
+
+// RegisterMockTask Mock TaskResultStorage에 특정 작업 결과를 미리 등록합니다.
+func RegisterMockTask(storage *MockTaskResultStorage, taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) {
+	storage.On("Load", taskID, commandID, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		arg := args.Get(2)
+		if arg != nil {
+			// Reflect the snapshot into the provided data interface
+			dataBytes, _ := json.Marshal(snapshot)
+			json.Unmarshal(dataBytes, arg)
+		}
+	})
 }
 
 // LoadTestData testdata 디렉토리에서 파일을 읽어옵니다.

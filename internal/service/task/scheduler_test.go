@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -215,8 +216,8 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
-				exe.On("SubmitTask", mock.MatchedBy(func(req *SubmitRequest) bool {
-					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == RunByScheduler
+				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil).Once()
@@ -238,8 +239,8 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
-				exe.On("SubmitTask", mock.MatchedBy(func(req *SubmitRequest) bool {
-					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == RunByScheduler
+				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()

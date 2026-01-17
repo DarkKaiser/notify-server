@@ -3,13 +3,17 @@ package handler
 import (
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewHandler(t *testing.T) {
+	t.Parallel()
+
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
+		t.Parallel()
 		// Setup
 		mockSender := mocks.NewMockNotificationSender()
 
@@ -22,8 +26,9 @@ func TestNewHandler(t *testing.T) {
 	})
 
 	t.Run("실패: NotificationSender가 nil인 경우 Panic", func(t *testing.T) {
+		t.Parallel()
 		// Verify
-		assert.PanicsWithValue(t, "NotificationSender는 필수입니다", func() {
+		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
 			// Execute
 			NewHandler(nil)
 		})

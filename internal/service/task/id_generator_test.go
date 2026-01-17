@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,17 +44,17 @@ func TestInstanceIDGenerator_Format_Table(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		check func(*testing.T, InstanceID)
+		check func(*testing.T, contract.TaskInstanceID)
 	}{
 		{
 			name: "Base62 Characters Only",
-			check: func(t *testing.T, id InstanceID) {
+			check: func(t *testing.T, id contract.TaskInstanceID) {
 				assert.True(t, regex.MatchString(string(id)), "ID should contain only Base62 characters")
 			},
 		},
 		{
 			name: "Length Constraints",
-			check: func(t *testing.T, id InstanceID) {
+			check: func(t *testing.T, id contract.TaskInstanceID) {
 				l := len(string(id))
 				assert.GreaterOrEqual(t, l, 15)
 				assert.LessOrEqual(t, l, 25)
@@ -78,7 +79,7 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	const numGoroutines = 100
 	const numIDsPerGoroutine = 1000
 
-	ids := make(chan InstanceID, numGoroutines*numIDsPerGoroutine)
+	ids := make(chan contract.TaskInstanceID, numGoroutines*numIDsPerGoroutine)
 	var wg sync.WaitGroup
 
 	for i := 0; i < numGoroutines; i++ {
@@ -94,7 +95,7 @@ func TestInstanceIDGenerator_New_Uniqueness(t *testing.T) {
 	wg.Wait()
 	close(ids)
 
-	uniqueMap := make(map[InstanceID]bool)
+	uniqueMap := make(map[contract.TaskInstanceID]bool)
 	count := 0
 	for id := range ids {
 		if uniqueMap[id] {

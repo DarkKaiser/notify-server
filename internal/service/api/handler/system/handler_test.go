@@ -13,7 +13,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,13 +27,8 @@ import (
 func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSender, *echo.Echo) {
 	t.Helper()
 
-	// 로그 레벨 조정 (테스트 중 불필요한 로그 방지)
-	originalLevel := applog.StandardLogger().Level
-	applog.SetLevel(applog.FatalLevel)
-
-	t.Cleanup(func() {
-		applog.SetLevel(originalLevel)
-	})
+	// 참고: applog.SetLevel과 같은 글로벌 상태 변경 코드는 t.Parallel() 사용 시 레이스 컨디션을 유발하므로 제거함.
+	// 테스트 중 발생 로그는 감수하거나, 별도의 로거 인스턴스를 사용하는 구조로 리팩토링이 필요함 (현재는 글로벌 로거 사용).
 
 	mockSender := mocks.NewMockNotificationSender()
 	buildInfo := version.Info{
@@ -54,7 +48,10 @@ func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSend
 // =============================================================================
 
 func TestNewHandler(t *testing.T) {
+	t.Parallel()
+
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
+		t.Parallel()
 		mockSender := mocks.NewMockNotificationSender()
 		buildInfo := version.Info{Version: "1.0.0"}
 
@@ -68,6 +65,7 @@ func TestNewHandler(t *testing.T) {
 	})
 
 	t.Run("실패: NotificationSender가 nil인 경우 Panic", func(t *testing.T) {
+		t.Parallel()
 		buildInfo := version.Info{Version: "1.0.0"}
 
 		assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
@@ -81,6 +79,8 @@ func TestNewHandler(t *testing.T) {
 // =============================================================================
 
 func TestHandler_HealthCheckHandler(t *testing.T) {
+	t.Parallel()
+
 	// 공통 검증 로직 Helper
 	assertHealthResponse := func(t *testing.T, rec *httptest.ResponseRecorder, expectedStatus string, expectedDeps map[string]system.DependencyStatus) {
 		t.Helper()
@@ -97,6 +97,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	}
 
 	t.Run("성공: 모든 시스템 정상 (Healthy)", func(t *testing.T) {
+		t.Parallel()
 		h, mockSender, e := setupSystemHandlerTest(t)
 
 		// Mock 설정: Health() 성공 (nil 반환)
@@ -119,6 +120,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	})
 
 	t.Run("실패: Notification 서비스 장애 (Unhealthy - Deep Check)", func(t *testing.T) {
+		t.Parallel()
 		h, mockSender, e := setupSystemHandlerTest(t)
 
 		// Mock 설정: Health() 실패 시뮬레이션
@@ -143,6 +145,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 	})
 
 	t.Run("실패: Notification Sender 미초기화 (Unhealthy - Safety Check)", func(t *testing.T) {
+		t.Parallel()
 		// NewHandler를 우회하여 강제로 nil 의존성 주입
 		h := &Handler{
 			healthChecker:   nil,
@@ -153,9 +156,6 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-
-		err := h.HealthCheckHandler(c)
-		assert.NoError(t, err)
 
 		assert.Panics(t, func() {
 			_ = h.HealthCheckHandler(c)
@@ -168,7 +168,10 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 // =============================================================================
 
 func TestHandler_VersionHandler(t *testing.T) {
+	t.Parallel()
+
 	t.Run("성공: 버전 정보 반환", func(t *testing.T) {
+		t.Parallel()
 		h, _, e := setupSystemHandlerTest(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/version", nil)

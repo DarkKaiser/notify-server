@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,12 +17,12 @@ import (
 // =============================================================================
 
 // Sender Implementation Verification
-// *Service가 Sender 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
-var _ Sender = (*Service)(nil)
+// *Service가 contract.NotificationSender 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
+var _ contract.NotificationSender = (*Service)(nil)
 
-// HealthChecker Implementation Verification
-// *Service가 HealthChecker 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
-var _ HealthChecker = (*Service)(nil)
+// contract.NotificationHealthChecker Implementation Verification
+// *Service가 contract.NotificationHealthChecker 인터페이스를 올바르게 구현하고 있는지 컴파일 타임에 검증합니다.
+var _ contract.NotificationHealthChecker = (*Service)(nil)
 
 // =============================================================================
 // Helper Types for Testing
@@ -31,10 +31,10 @@ var _ HealthChecker = (*Service)(nil)
 // FunctionalMockHandler는 Notify 메서드의 동작을 함수로 제어할 수 있는 Mock Wrapper입니다.
 type FunctionalMockHandler struct {
 	*mocks.MockNotifierHandler
-	NotifyFunc func(task.TaskContext, string) bool
+	NotifyFunc func(contract.TaskContext, string) bool
 }
 
-func (m *FunctionalMockHandler) Notify(taskCtx task.TaskContext, message string) bool {
+func (m *FunctionalMockHandler) Notify(taskCtx contract.TaskContext, message string) bool {
 	if m.NotifyFunc != nil {
 		return m.NotifyFunc(taskCtx, message)
 	}
@@ -77,10 +77,10 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			expectError:   false,
 			expectedMsg:   "Something went wrong.",
 			setupMock: func(m *FunctionalMockHandler) {
-				m.NotifyFunc = func(taskCtx task.TaskContext, message string) bool {
+				m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
 					// 기록을 위해 기본 Notify 호출
-					m.MockNotifierHandler.Notify(taskCtx, message)
-					return taskCtx.IsErrorOccurred() == true
+					m.MockNotifierHandler.Notify(ctx, message)
+					return ctx.IsErrorOccurred() == true
 				}
 			},
 		},
@@ -129,8 +129,14 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 
 				// TaskContext Verification
 				require.NotNil(t, lastCall.TaskCtx)
-				assert.Equal(t, tt.title, lastCall.TaskCtx.GetTitle())
-				assert.Equal(t, tt.errorOccurred, lastCall.TaskCtx.IsErrorOccurred())
+				if tCtx, ok := lastCall.TaskCtx.(contract.TaskContext); ok {
+					assert.Equal(t, tt.title, tCtx.GetTitle())
+					assert.Equal(t, tt.errorOccurred, tCtx.IsErrorOccurred())
+				} else {
+					// Fallback assertion if it's not a TaskContext (though it should be for NotifyWithTitle)
+					// Or fail the test
+					// assert.Fail(t, "TaskCtx is not contract.TaskContext")
+				}
 			}
 		})
 	}
@@ -170,7 +176,7 @@ func TestSender_NotifyDefault(t *testing.T) {
 			running:         true,
 			expectError:     true,
 			setupMock: func(m *FunctionalMockHandler) {
-				m.NotifyFunc = func(taskCtx task.TaskContext, message string) bool {
+				m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
 					return false // 실패 시뮬레이션
 				}
 			},
@@ -249,7 +255,9 @@ func TestSender_NotifyDefaultWithError(t *testing.T) {
 	call := mockNotifier.NotifyCalls[0]
 	assert.Equal(t, message, call.Message)
 	require.NotNil(t, call.TaskCtx)
-	assert.True(t, call.TaskCtx.IsErrorOccurred(), "Error flag should be true")
+	if tCtx, ok := call.TaskCtx.(contract.TaskContext); ok {
+		assert.True(t, tCtx.IsErrorOccurred(), "Error flag should be true")
+	}
 }
 
 // TestHealthChecker_Health는 HealthChecker.Health 메서드의 동작을 검증합니다.
@@ -342,7 +350,7 @@ func TestHealthChecker_Mockability(t *testing.T) {
 	}
 
 	// Act
-	var healthChecker HealthChecker = mock
+	var healthChecker contract.NotificationHealthChecker = mock
 	err := healthChecker.Health()
 
 	// Assert

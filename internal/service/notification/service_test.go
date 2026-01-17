@@ -8,18 +8,18 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // Sender Compliance Check
-var _ Sender = (*Service)(nil)
+var _ contract.NotificationSender = (*Service)(nil)
 
 // =============================================================================
 // Test Constants
@@ -224,7 +224,7 @@ func TestNotify_NotRunning(t *testing.T) {
 		running:      false, // 실행 중이 아님
 	})
 
-	err := service.Notify(task.NewTaskContext(), types.NotifierID(testNotifierID), "test")
+	err := service.Notify(contract.NewTaskContext(), types.NotifierID(testNotifierID), "test")
 
 	assert.Error(t, err)
 	assert.Equal(t, notifier.ErrServiceStopped, err)
@@ -251,7 +251,7 @@ func TestMultipleNotifiers(t *testing.T) {
 	}
 
 	// n2로 전송
-	err := service.Notify(task.NewTaskContext(), types.NotifierID("n2"), "msg")
+	err := service.Notify(contract.NewTaskContext(), types.NotifierID("n2"), "msg")
 	assert.NoError(t, err)
 	assertNotifyNotCalled(t, mockNotifier1)
 	require.Len(t, mockNotifier2.NotifyCalls, 1)
@@ -323,7 +323,7 @@ func TestStartAndRun(t *testing.T) {
 		cfg.Notifier.DefaultNotifierID = "default"
 
 		mockFactory := &notificationmocks.MockNotifierFactory{
-			CreateNotifiersFunc: func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+			CreateNotifiersFunc: func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 				return []notifier.NotifierHandler{mockNotifier}, nil
 			},
 		}
@@ -379,7 +379,7 @@ func TestStartErrors(t *testing.T) {
 		{
 			name: "Factory에서 에러 반환",
 			factorySetup: func(m *mocks.MockNotifierFactory) {
-				m.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return nil, errors.New("factory error")
 				}
 			},
@@ -391,7 +391,7 @@ func TestStartErrors(t *testing.T) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mocks.MockNotifierFactory) {
-				m.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				m.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{
 						&notificationmocks.MockNotifierHandler{IDValue: "other"},
 					}, nil
@@ -408,7 +408,7 @@ func TestStartErrors(t *testing.T) {
 				tt.cfgSetup(cfg)
 			}
 
-			var executor task.Executor = &taskmocks.MockExecutor{}
+			var executor contract.TaskExecutor = &taskmocks.MockExecutor{}
 			if tt.executorNil {
 				executor = nil
 			}
@@ -417,7 +417,7 @@ func TestStartErrors(t *testing.T) {
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				factory.CreateNotifiersFunc = func(c *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+				factory.CreateNotifiersFunc = func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 					return []notifier.NotifierHandler{}, nil
 				}
 			}
@@ -444,7 +444,7 @@ type localMockFactory struct {
 	handlers []notifier.NotifierHandler
 }
 
-func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 	return m.handlers, nil
 }
 
@@ -486,7 +486,7 @@ type controllableMockHandler struct {
 	notifyResult                          bool
 }
 
-func (m *controllableMockHandler) Notify(taskCtx task.TaskContext, message string) bool {
+func (m *controllableMockHandler) Notify(taskCtx contract.TaskContext, message string) bool {
 	return m.notifyResult
 }
 
@@ -524,7 +524,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Action
-	notifyErr := service.Notify(nil, "test-notifier", "hello")
+	notifyErr := service.Notify(contract.NewTaskContext(), "test-notifier", "hello")
 
 	// Assert
 	// Should return ErrServiceStopped because Done() is closed
@@ -573,7 +573,7 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 	}
 
 	factory := &notificationmocks.MockNotifierFactory{ // Changed to notificationmocks
-		CreateNotifiersFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+		CreateNotifiersFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 			return []notifier.NotifierHandler{panicNotifier, normalNotifier}, nil
 		},
 	}

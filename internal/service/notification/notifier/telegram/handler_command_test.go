@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
@@ -81,7 +81,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			expectAction: true,
 			setupMockExec: func(m *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1) // Expect run call
-				m.On("SubmitTask", mock.MatchedBy(func(req *task.SubmitRequest) bool {
+				m.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "task1" && req.CommandID == "run"
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
@@ -157,9 +157,9 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 
 		ctx := context.Background()
 		commandWithUnderscores := "/cancel_task_1_instance_123"
-		expectedInstanceID := "task_1_instance_123"
+		expectedInstanceID := contract.TaskInstanceID("task_1_instance_123")
 
-		mockExec.On("CancelTask", task.InstanceID(expectedInstanceID)).Return(nil).Once()
+		mockExec.On("Cancel", expectedInstanceID).Return(nil).Once()
 
 		n.handleCancelCommand(ctx, mockExec, commandWithUnderscores)
 
@@ -184,7 +184,7 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 			return ok && strings.Contains(msg.Text, "잘못된 취소 명령어 형식")
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		// Should NOT call CancelTask
+		// Should NOT call Cancel
 		n.handleCancelCommand(ctx, mockExec, badCommand)
 
 		mockExec.AssertExpectations(t)

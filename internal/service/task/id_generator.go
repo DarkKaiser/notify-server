@@ -3,6 +3,8 @@ package task
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
 const (
@@ -22,7 +24,7 @@ type instanceIDGenerator struct {
 
 // New 새로운 InstanceID를 생성합니다.
 // 생성된 ID는 시간 순서로 정렬 가능하며(대략적), 단일 프로세스 내에서 유일성을 보장합니다.
-func (g *instanceIDGenerator) New() InstanceID {
+func (g *instanceIDGenerator) New() contract.TaskInstanceID {
 	// 나노초 단위 타임스탬프
 	now := time.Now().UnixNano()
 
@@ -40,7 +42,7 @@ func (g *instanceIDGenerator) New() InstanceID {
 	// 패딩을 해야 문자열 정렬 시 자릿수 차이로 인한 문제와 아스키 코드 순서 문제를 완화할 수 있음.
 	b = g.appendBase62FixedLength(b, int64(seq), 6)
 
-	return InstanceID(b)
+	return contract.TaskInstanceID(b)
 }
 
 // appendBase62 정수 값을 Base62로 인코딩하여 버퍼에 추가합니다.

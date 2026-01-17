@@ -17,7 +17,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
@@ -45,7 +45,7 @@ const (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notificationSender notification.Sender
+	notificationSender contract.NotificationSender
 
 	buildInfo version.Info
 
@@ -54,12 +54,15 @@ type Service struct {
 }
 
 // NewService Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender contract.NotificationSender, buildInfo version.Info) *Service {
 	if appConfig == nil {
 		panic(constants.PanicMsgAppConfigRequired)
 	}
 	if notificationSender == nil {
 		panic(constants.PanicMsgNotificationSenderRequired)
+	}
+	if _, ok := notificationSender.(contract.NotificationHealthChecker); !ok {
+		panic(constants.PanicMsgHealthCheckerRequired)
 	}
 
 	return &Service{
@@ -142,8 +145,8 @@ func (s *Service) setupServer() *echo.Echo {
 	authenticator := apiauth.NewAuthenticator(s.appConfig)
 
 	// 2. Handler 생성
-	var healthChecker notification.HealthChecker
-	if hc, ok := s.notificationSender.(notification.HealthChecker); ok {
+	var healthChecker contract.NotificationHealthChecker
+	if hc, ok := s.notificationSender.(contract.NotificationHealthChecker); ok {
 		healthChecker = hc
 	}
 	systemHandler := system.NewHandler(healthChecker, s.buildInfo) // healthChecker가 nil일 경우 NewHandler 내부에서 panic 발생

@@ -14,6 +14,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
 	"github.com/darkkaiser/notify-server/internal/service/api"
 	v1request "github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
@@ -81,7 +82,7 @@ func setupIntegrationTest(t *testing.T) *IntegrationTestSuite {
 
 	// Notification Service needs a factory that returns our mock handler
 	mockFactory := &mockIntegrationNotifierFactory{
-		createFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+		createFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 			return []notifier.NotifierHandler{
 				&mockNotifierHandler{id: types.NotifierID("test-notifier"), supportsHTML: true},
 			}, nil
@@ -150,7 +151,7 @@ type mockNotifierHandler struct {
 func (m *mockNotifierHandler) ID() types.NotifierID    { return m.id }
 func (m *mockNotifierHandler) SupportsHTML() bool      { return m.supportsHTML }
 func (m *mockNotifierHandler) Run(ctx context.Context) { <-ctx.Done() }
-func (m *mockNotifierHandler) Notify(ctx task.TaskContext, msg string) bool {
+func (m *mockNotifierHandler) Notify(ctx contract.TaskContext, msg string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls = append(m.calls, msg)
@@ -165,10 +166,10 @@ func (m *mockNotifierHandler) GetCalls() []string {
 }
 
 type mockIntegrationNotifierFactory struct {
-	createFunc func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error)
+	createFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error)
 }
 
-func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, ex task.Executor) ([]notifier.NotifierHandler, error) {
+func (m *mockIntegrationNotifierFactory) CreateNotifiers(cfg *config.AppConfig, ex contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 	if m.createFunc != nil {
 		return m.createFunc(cfg, ex)
 	}
@@ -192,7 +193,7 @@ func (m *mockNotificationSender) NotifyDefault(msg string) error {
 	m.notifyCalls = append(m.notifyCalls, notifyCall{"default", msg})
 	return nil
 }
-func (m *mockNotificationSender) Notify(ctx task.TaskContext, nid types.NotifierID, msg string) error {
+func (m *mockNotificationSender) Notify(ctx contract.TaskContext, nid types.NotifierID, msg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.notifyCalls = append(m.notifyCalls, notifyCall{string(nid), msg})
@@ -251,7 +252,7 @@ func TestIntegration_E2E_NotificationFlow(t *testing.T) {
 	}
 
 	mockFactory := &mockIntegrationNotifierFactory{
-		createFunc: func(cfg *config.AppConfig, executor task.Executor) ([]notifier.NotifierHandler, error) {
+		createFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
 			return []notifier.NotifierHandler{finalHandler}, nil
 		},
 	}

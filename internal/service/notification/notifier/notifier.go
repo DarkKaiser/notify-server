@@ -4,15 +4,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/types"
-	"github.com/darkkaiser/notify-server/internal/service/task"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 // NotifyRequest 내부 채널을 통해 전달되는 알림 데이터입니다.
 type NotifyRequest struct {
-	TaskCtx task.TaskContext
+	TaskCtx contract.TaskContext // TODO TaskCtx -> Ctx ???
 	Message string
 }
 
@@ -50,7 +50,7 @@ func (n *BaseNotifier) ID() types.NotifierID {
 
 // Notify 메시지를 큐에 등록하여 비동기 발송을 요청합니다.
 // 전송 중 패닉이 발생해도 recover하여 서비스 안정성을 유지합니다.
-func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeeded bool) {
+func (n *BaseNotifier) Notify(ctx contract.TaskContext, message string) (succeeded bool) {
 	n.mu.RLock()
 	// 이미 종료되었거나 채널이 닫힌 경우
 	if n.closed || n.RequestC == nil {
@@ -74,7 +74,7 @@ func (n *BaseNotifier) Notify(taskCtx task.TaskContext, message string) (succeed
 	}()
 
 	req := &NotifyRequest{
-		TaskCtx: taskCtx,
+		TaskCtx: ctx,
 		Message: message,
 	}
 
