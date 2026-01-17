@@ -183,14 +183,15 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopCompleted)
 }
 
-// NotifyWithTitle 제목을 포함한 알림 메시지를 지정된 Notifier로 발송합니다.
-// 제목을 통해 알림의 맥락을 명확히 하고, errorOccurred 플래그로 오류 상황임을 시각적으로 강조할 수 있습니다.
+// NotifyWithTitle 지정된 Notifier를 통해 제목을 포함한 알림 메시지를 발송합니다.
+// 제목을 명시하여 알림의 맥락을 명확히 전달할 수 있습니다.
+// errorOccurred 플래그를 통해 해당 알림이 오류 상황에 대한 것인지 명시할 수 있습니다.
 //
 // 파라미터:
-//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
-//   - title: 알림 메시지의 제목 (강조 표시 등에 활용)
+//   - notifierID: 알림을 발송할 대상 Notifier의 식별자
+//   - title: 알림 메시지의 제목
 //   - message: 전송할 메시지 내용
-//   - errorOccurred: 오류 발생 여부 (true일 경우 오류 상황으로 처리되어 시각적 강조 등이 적용될 수 있음)
+//   - errorOccurred: 오류 발생 여부
 //
 // 반환값:
 //   - error: 발송 요청이 정상적으로 큐에 등록(실제 전송 결과와는 무관)되면 nil, 실패 시 에러 반환 (ErrServiceStopped, ErrNotFoundNotifier 등)
@@ -203,8 +204,7 @@ func (s *Service) NotifyWithTitle(notifierID contract.NotifierID, title string, 
 	return s.Notify(ctx, notifierID, message)
 }
 
-// NotifyDefault 시스템에 설정된 기본 알림 채널로 알림 메시지를 발송합니다.
-// 주로 시스템 전반적인 알림이나, 특정 대상을 지정하지 않은 일반적인 정보 전달에 사용됩니다.
+// NotifyDefault 시스템에 설정된 기본 Notifier를 통해 알림 메시지를 발송합니다.
 //
 // 파라미터:
 //   - message: 전송할 메시지 내용
@@ -231,7 +231,7 @@ func (s *Service) NotifyDefault(message string) error {
 	return nil
 }
 
-// NotifyDefaultWithError 시스템에 설정된 기본 알림 채널로 "오류" 성격의 알림 메시지를 발송합니다.
+// NotifyDefaultWithError 시스템에 설정된 기본 Notifier를 통해 "오류" 성격의 알림 메시지를 발송합니다.
 // 시스템 내부 에러, 작업 실패 등 관리자의 주의가 필요한 긴급 상황 알림에 적합합니다.
 // 내부적으로 오류 플래그가 설정되어 발송되므로, 수신 측에서 이를 인지하여 처리할 수 있습니다.
 //
@@ -265,8 +265,8 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 // 확인할 수 있도록 지원합니다.
 //
 // 파라미터:
-//   - ctx: 작업 실행 컨텍스트 정보 (task.TaskContext는 context.Context를 구현함)
-//   - notifierID: 알림을 발송할 대상 Notifier의 식별자(ID)
+//   - ctx: 작업 실행 컨텍스트 정보
+//   - notifierID: 알림을 발송할 대상 Notifier의 식별자
 //   - message: 전송할 메시지 내용
 //
 // 반환값:
@@ -336,6 +336,12 @@ func (s *Service) Health() error {
 }
 
 // SupportsHTML 지정된 ID의 Notifier가 HTML 형식을 지원하는지 여부를 반환합니다.
+//
+// 파라미터:
+//   - notifierID: 지원 여부를 확인할 Notifier의 식별자
+//
+// 반환값:
+//   - bool: HTML 포맷 지원 여부
 func (s *Service) SupportsHTML(notifierID contract.NotifierID) bool {
 	s.runningMu.RLock()
 	defer s.runningMu.RUnlock()
