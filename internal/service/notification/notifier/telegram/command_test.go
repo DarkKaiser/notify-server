@@ -18,7 +18,7 @@ import (
 // Command Handler Tests
 // =============================================================================
 
-// TestTelegramNotifier_HandleCommand verifies command handling.
+// TestTelegramNotifier_HandleCommand verifies command handling implementation.
 func TestTelegramNotifier_HandleCommand(t *testing.T) {
 	// Create common app config for command tests
 	appConfig := &config.AppConfig{
@@ -69,7 +69,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 				wg.Add(1) // Expect reply
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					return ok && strings.Contains(msg.Text, "도움말") // Assuming this string in code is intact or we'll update it
+					return ok && strings.Contains(msg.Text, "도움말")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil)
@@ -95,17 +95,9 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			// Setup
 			notifier, mockBot, mockExecutor := setupTelegramTest(t, appConfig)
 			require.NotNil(t, notifier)
-			require.NotNil(t, mockBot)
-			require.NotNil(t, mockExecutor)
 
-			// Override GetUpdatesChan to return actual channel
-			mockBot.ExpectedCalls = nil // Clear previous expectations
-			mockBot.On("GetSelf").Return(tgbotapi.User{UserName: testTelegramBotUsername}).Maybe()
-			mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(mockBot.updatesChan))
-			mockBot.On("StopReceivingUpdates").Return()
-
+			// Setup expectations
 			var wgAction sync.WaitGroup
-
 			if tt.setupMockBot != nil {
 				tt.setupMockBot(mockBot, &wgAction)
 			}
@@ -150,7 +142,6 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 
 func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 	// Regression Test for: "Cancel 명령어 파싱 오류 수정"
-	// Ensure that /cancel_task_1_inst_1 is parsed correctly as InstanceID="task_1_inst_1"
 	t.Run("Fix: handleCancelCommand supports underscores in InstanceID", func(t *testing.T) {
 		mockExec := new(taskmocks.MockExecutor)
 		n := &telegramNotifier{}
@@ -168,7 +159,6 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 
 	t.Run("Fix: handleCancelCommand fails gracefully for bad format", func(t *testing.T) {
 		mockExec := new(taskmocks.MockExecutor)
-		// We need a mockBot here because it sends a message on error
 		mockBot := &MockTelegramBot{}
 		n := &telegramNotifier{
 			botAPI: mockBot,
@@ -176,7 +166,6 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		// Only one part
 		badCommand := "/cancel"
 
 		mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -184,7 +173,6 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 			return ok && strings.Contains(msg.Text, "잘못된 취소 명령어 형식")
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		// Should NOT call Cancel
 		n.handleCancelCommand(ctx, mockExec, badCommand)
 
 		mockExec.AssertExpectations(t)

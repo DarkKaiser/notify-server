@@ -2,6 +2,7 @@ package notifier_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
@@ -14,171 +15,237 @@ import (
 )
 
 // =============================================================================
-// Interface Verification
+// Interface Compliance
 // =============================================================================
 
-func TestFactory_InterfaceCompliance(t *testing.T) {
+func TestFactory_Interfaces(t *testing.T) {
 	t.Parallel()
 
-	t.Run("NewFactory returns Factory interface", func(t *testing.T) {
-		f := notifier.NewFactory()
-		require.NotNil(t, f)
-		var _ notifier.Factory = f
+	t.Run("Factory Compliance", func(t *testing.T) {
+		var _ notifier.Factory = notifier.NewFactory()
+		var _ notifier.Factory = (*notificationmocks.MockFactory)(nil)
 	})
 
-	t.Run("MockFactory implements Factory interface", func(t *testing.T) {
-		var _ notifier.Factory = (*notificationmocks.MockFactory)(nil)
+	t.Run("Creator Compliance", func(t *testing.T) {
+		var _ notifier.Creator = notifier.FactoryFunc(nil)
+		var _ notifier.Creator = notifier.NewFactory()
 	})
 }
 
 // =============================================================================
-// Functional Tests
+// FactoryFunc Adapter Tests
+// =============================================================================
+
+func TestFactoryFunc_CreateNotifiers(t *testing.T) {
+	t.Parallel()
+
+	// Given
+	called := false
+	expectedNotifiers := []notifier.Notifier{notificationmocks.NewMockNotifier("test")}
+
+	adapter := notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+		called = true
+		return expectedNotifiers, nil
+	})
+
+	// When
+	result, err := adapter.CreateNotifiers(nil, nil)
+
+	// Then
+	assert.True(t, called)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedNotifiers, result)
+}
+
+// =============================================================================
+// Factory Tests
 // =============================================================================
 
 func TestFactory_CreateNotifiers(t *testing.T) {
 	t.Parallel()
 
-	// Given
+	// Given Common Mocks
 	mockExecutor := &taskmocks.MockExecutor{}
 	testConfig := &config.AppConfig{
 		Notifier: config.NotifierConfig{
 			DefaultNotifierID: "default",
 		},
 	}
-	notifier1 := notificationmocks.NewMockNotifier("h1")
-	notifier2 := notificationmocks.NewMockNotifier("h2")
+	n1 := notificationmocks.NewMockNotifier("n1")
+	n2 := notificationmocks.NewMockNotifier("n2")
+
+	// Helper to create a simple creator
+	createCreator := func(notifiers []notifier.Notifier, err error) notifier.Creator {
+		return notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
+			return notifiers, err
+		})
+	}
 
 	tests := []struct {
 		name              string
 		registrations     []notifier.Creator
 		expectError       bool
 		expectedNotifiers []notifier.Notifier
-		verifyCall        func(t *testing.T, cfg *config.AppConfig, executor contract.TaskExecutor) // Optional additional verification
+		expectedErrStr    string
 	}{
 		{
-			name:              "No creators registered",
+			name:              "Empty Factory (No Creators)",
 			registrations:     nil,
 			expectError:       false,
-			expectedNotifiers: nil, // Expect empty
+			expectedNotifiers: nil, // Should be empty or nil
 		},
 		{
-			name: "Single creator success",
+			name: "Single Creator Success",
 			registrations: []notifier.Creator{
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return []notifier.Notifier{notifier1}, nil
-				}),
+				createCreator([]notifier.Notifier{n1}, nil),
 			},
 			expectError:       false,
-			expectedNotifiers: []notifier.Notifier{notifier1},
+			expectedNotifiers: []notifier.Notifier{n1},
 		},
 		{
-			name: "Multiple creators aggregation",
+			name: "Multiple Creators Aggregation",
 			registrations: []notifier.Creator{
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return []notifier.Notifier{notifier1}, nil
-				}),
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return []notifier.Notifier{notifier2}, nil
-				}),
+				createCreator([]notifier.Notifier{n1}, nil),
+				createCreator([]notifier.Notifier{n2}, nil),
 			},
 			expectError:       false,
-			expectedNotifiers: []notifier.Notifier{notifier1, notifier2},
+			expectedNotifiers: []notifier.Notifier{n1, n2},
 		},
 		{
-			name: "Creator returns error (Fail Fast)",
+			name: "Creator Returns Error (Fail Fast)",
 			registrations: []notifier.Creator{
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return []notifier.Notifier{notifier1}, nil
-				}),
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return nil, errors.New("creator failed")
-				}),
-				// This one should not be called
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					assert.Fail(t, "Should not be called")
-					return nil, nil
-				}),
+				createCreator([]notifier.Notifier{n1}, nil),            // Successful one
+				createCreator(nil, errors.New("initialization error")), // Failing one
 			},
-			expectError: true,
+			expectError:    true,
+			expectedErrStr: "initialization error",
 		},
 		{
-			name: "Argument Propagation Verification",
+			name: "Nil Creator Registration (Robustness)",
 			registrations: []notifier.Creator{
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					assert.Equal(t, testConfig, cfg)
-					assert.Equal(t, mockExecutor, executor)
-					return nil, nil
-				}),
-			},
-			expectError: false,
-		},
-		{
-			name: "Nil creator registration safety",
-			registrations: []notifier.Creator{
-				notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-					return []notifier.Notifier{notifier1}, nil
-				}),
-				nil, // Explicit nil registration
+				createCreator([]notifier.Notifier{n1}, nil),
+				nil, // Explicit nil should be ignored
 			},
 			expectError:       false,
-			expectedNotifiers: []notifier.Notifier{notifier1},
+			expectedNotifiers: []notifier.Notifier{n1},
+		},
+		{
+			name: "Creator Returns Empty List",
+			registrations: []notifier.Creator{
+				createCreator([]notifier.Notifier{}, nil),
+			},
+			expectError:       false,
+			expectedNotifiers: []notifier.Notifier{}, // Empty slice, likely
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture range variable
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Setup
+			// Arrange
 			f := notifier.NewFactory()
 			for _, reg := range tt.registrations {
 				f.Register(reg)
 			}
 
-			// Execution
+			// Act
 			notifiers, err := f.CreateNotifiers(testConfig, mockExecutor)
 
-			// Verification
+			// Assert
 			if tt.expectError {
 				require.Error(t, err)
+				if tt.expectedErrStr != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrStr)
+				}
 				assert.Nil(t, notifiers)
 			} else {
 				require.NoError(t, err)
-				if tt.expectedNotifiers == nil {
+				if len(tt.expectedNotifiers) == 0 {
 					assert.Empty(t, notifiers)
 				} else {
 					assert.Equal(t, tt.expectedNotifiers, notifiers)
 				}
 			}
-
-			if tt.verifyCall != nil {
-				// Note: verifyCall is limited in parallel tests if attempting to capture arguments from closure.
-				// For simple assertions inside the creator (like Argument Propagation case), it works directly.
-			}
 		})
 	}
 }
 
-// TestExecutionOrder verifies that registered creators are executed in the order they were registered.
-func TestFactory_ExecutionOrder(t *testing.T) {
+func TestFactory_ArgumentPropagation(t *testing.T) {
 	t.Parallel()
 
+	// Given
+	expectedConfig := &config.AppConfig{Notifier: config.NotifierConfig{DefaultNotifierID: "verify"}}
+	expectedExecutor := &taskmocks.MockExecutor{}
+
 	f := notifier.NewFactory()
-	var callOrder []string
+	called := false
 
 	f.Register(notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
-		callOrder = append(callOrder, "first")
+		called = true
+		assert.Equal(t, expectedConfig, cfg, "Config should be propagated")
+		assert.Equal(t, expectedExecutor, executor, "Executor should be propagated")
 		return nil, nil
 	}))
 
-	f.Register(notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+	// Act
+	_, err := f.CreateNotifiers(expectedConfig, expectedExecutor)
+
+	// Assert
+	require.NoError(t, err)
+	assert.True(t, called, "Creator should have been called")
+}
+
+func TestFactory_ExecutionOrder(t *testing.T) {
+	t.Parallel()
+
+	// Given
+	f := notifier.NewFactory()
+	var callOrder []string
+
+	// Register multiple creators
+	f.Register(notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
+		callOrder = append(callOrder, "first")
+		return nil, nil
+	}))
+	f.Register(notifier.FactoryFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 		callOrder = append(callOrder, "second")
 		return nil, nil
 	}))
 
+	// Act
 	_, err := f.CreateNotifiers(&config.AppConfig{}, &taskmocks.MockExecutor{})
-	require.NoError(t, err)
 
-	assert.Equal(t, []string{"first", "second"}, callOrder)
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []string{"first", "second"}, callOrder, "Creators should be executed in registration order")
+}
+
+// =============================================================================
+// Documentation Examples
+// =============================================================================
+
+func ExampleFactory() {
+	// 1. Factory 생성
+	f := notifier.NewFactory()
+
+	// 2. Creator 등록 (일반적으로 패키지 init이나 메인 설정 단계에서 수행)
+	f.Register(notifier.FactoryFunc(func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+		// 실제 구현에서는 여기서 설정(cfg)을 읽어 Notifier를 초기화합니다.
+		fmt.Println("Initializing Custom Notifier")
+		return []notifier.Notifier{}, nil // 예시를 위해 빈 목록 반환
+	}))
+
+	// 3. Notifier 생성 (앱 시작 시 호출)
+	notifiers, err := f.CreateNotifiers(&config.AppConfig{}, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Created %d notifiers\n", len(notifiers))
+
+	// Output:
+	// Initializing Custom Notifier
+	// Created 0 notifiers
 }

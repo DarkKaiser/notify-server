@@ -86,12 +86,12 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	// 중복 ID 검사
 	seenIDs := make(map[contract.NotifierID]bool)
-	for _, h := range notifiers {
-		if seenIDs[h.ID()] {
+	for _, n := range notifiers {
+		if seenIDs[n.ID()] {
 			defer serviceStopWG.Done()
-			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 Notifier ID('%s')가 감지되었습니다. 설정을 확인해주세요.", h.ID()))
+			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 Notifier ID('%s')가 감지되었습니다. 설정을 확인해주세요.", n.ID()))
 		}
-		seenIDs[h.ID()] = true
+		seenIDs[n.ID()] = true
 	}
 
 	defaultNotifierID := contract.NotifierID(s.appConfig.Notifier.DefaultNotifierID)
