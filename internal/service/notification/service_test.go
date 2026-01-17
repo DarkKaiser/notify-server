@@ -55,16 +55,14 @@ func setupMockService() (*Service, *taskmocks.MockExecutor, *notificationmocks.M
 func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.MockExecutor, *notificationmocks.MockNotifierHandler) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &taskmocks.MockExecutor{}
-	mockNotifier := &notificationmocks.MockNotifierHandler{
-		IDValue:           opts.notifierID,
-		SupportsHTMLValue: opts.supportsHTML,
-	}
+	mockNotifier := notificationmocks.NewMockNotifierHandler(opts.notifierID).
+		WithSupportsHTML(opts.supportsHTML)
 
 	mockFactory := &notificationmocks.MockFactory{}
 
 	service := NewService(appConfig, mockFactory, mockExecutor)
 	service.notifiersMap = map[contract.NotifierID]notifier.NotifierHandler{
-		mockNotifier.IDValue: mockNotifier,
+		mockNotifier.ID(): mockNotifier,
 	}
 	service.defaultNotifier = mockNotifier
 	service.running = opts.running
@@ -117,10 +115,10 @@ func TestNewService(t *testing.T) {
 
 // TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
 func TestSupportsHTML(t *testing.T) {
-	mockNotifier := &notificationmocks.MockNotifierHandler{IDValue: "test", SupportsHTMLValue: true}
+	mockNotifier := notificationmocks.NewMockNotifierHandler("test").WithSupportsHTML(true)
 	service := &Service{
 		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
-			mockNotifier.IDValue: mockNotifier,
+			mockNotifier.ID(): mockNotifier,
 		},
 	}
 
@@ -239,13 +237,13 @@ func TestNotify_NotRunning(t *testing.T) {
 
 // TestMultipleNotifiers는 여러 Notifier 처리를 검증합니다.
 func TestMultipleNotifiers(t *testing.T) {
-	mockNotifier1 := &notificationmocks.MockNotifierHandler{IDValue: "n1", SupportsHTMLValue: true}
-	mockNotifier2 := &notificationmocks.MockNotifierHandler{IDValue: "n2", SupportsHTMLValue: false}
+	mockNotifier1 := notificationmocks.NewMockNotifierHandler("n1").WithSupportsHTML(true)
+	mockNotifier2 := notificationmocks.NewMockNotifierHandler("n2").WithSupportsHTML(false)
 
 	service := &Service{
 		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
-			mockNotifier1.IDValue: mockNotifier1,
-			mockNotifier2.IDValue: mockNotifier2,
+			mockNotifier1.ID(): mockNotifier1,
+			mockNotifier2.ID(): mockNotifier2,
 		},
 		running: true,
 	}
@@ -263,10 +261,8 @@ func TestMultipleNotifiers(t *testing.T) {
 
 // TestConcurrencyStress는 고부하 상황에서의 동시성 안전성을 검증합니다.
 func TestConcurrencyStress(t *testing.T) {
-	mockNotifier := &notificationmocks.MockNotifierHandler{
-		IDValue:           testNotifierID,
-		SupportsHTMLValue: true,
-	}
+	mockNotifier := notificationmocks.NewMockNotifierHandler(testNotifierID).
+		WithSupportsHTML(true)
 
 	service := &Service{
 		appConfig: &config.AppConfig{
@@ -275,7 +271,7 @@ func TestConcurrencyStress(t *testing.T) {
 			},
 		},
 		notifiersMap: map[contract.NotifierID]notifier.NotifierHandler{
-			mockNotifier.IDValue: mockNotifier,
+			mockNotifier.ID(): mockNotifier,
 		},
 		defaultNotifier: mockNotifier,
 		running:         true,
@@ -317,7 +313,7 @@ func TestConcurrencyStress(t *testing.T) {
 func TestStartAndRun(t *testing.T) {
 	t.Run("정상 시작 및 종료", func(t *testing.T) {
 		service, _, mockNotifier := setupMockService()
-		mockNotifier.IDValue = "default"
+		mockNotifier.WithID("default")
 
 		cfg := &config.AppConfig{}
 		cfg.Notifier.DefaultNotifierID = "default"
@@ -390,7 +386,7 @@ func TestStartErrors(t *testing.T) {
 			},
 			factorySetup: func(m *mocks.MockFactory) {
 				m.WithCreateNotifiers([]notifier.NotifierHandler{
-					&notificationmocks.MockNotifierHandler{IDValue: "other"},
+					notificationmocks.NewMockNotifierHandler("other"),
 				}, nil)
 			},
 			errorContains: "기본 NotifierID('def')를 찾을 수 없습니다",
@@ -457,8 +453,8 @@ func TestService_Start_DuplicateID(t *testing.T) {
 	executor := &taskmocks.MockExecutor{}
 
 	// Create 2 notifiers with SAME ID
-	h1 := &notificationmocks.MockNotifierHandler{IDValue: "duplicate-id"} // Changed to notificationmocks
-	h2 := &notificationmocks.MockNotifierHandler{IDValue: "duplicate-id"} // Changed to notificationmocks
+	h1 := notificationmocks.NewMockNotifierHandler("duplicate-id")
+	h2 := notificationmocks.NewMockNotifierHandler("duplicate-id")
 
 	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h1, h2}}
 
@@ -479,16 +475,6 @@ func TestService_Start_DuplicateID(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate-id")
 }
 
-// controllableMockHandler to control Notify return value
-type controllableMockHandler struct {
-	notificationmocks.MockNotifierHandler // Changed to notificationmocks
-	notifyResult                          bool
-}
-
-func (m *controllableMockHandler) Notify(taskCtx contract.TaskContext, message string) bool {
-	return m.notifyResult
-}
-
 func TestService_Notify_StoppedNotifier(t *testing.T) {
 	// Setup
 	cfg := &config.AppConfig{
@@ -498,20 +484,20 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 	}
 	executor := &taskmocks.MockExecutor{}
 
-	// Setup a notifier with closed Done channel and Notify returning false
+	// Setup a notifier with closed Done channel
 	closedCh := make(chan struct{})
 	close(closedCh)
 
-	h := &controllableMockHandler{
-		MockNotifierHandler: notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
-			IDValue:     "test-notifier",
-			DoneChannel: closedCh,
-		},
-		notifyResult: false, // Simulate full queue/failure
-	}
+	// Use shared MockNotifierHandler with functional injection
+	h := notificationmocks.NewMockNotifierHandler("test-notifier").
+		WithNotifyFunc(func(ctx contract.TaskContext, msg string) bool {
+			return false // Simulate failure if called
+		})
+	// Manually set DoneChannel since we need to simulate it being closed externally
+	h.DoneChannel = closedCh
 
 	mf := &localMockFactory{handlers: []notifier.NotifierHandler{h}}
-	service := NewService(cfg, mf, executor) // Changed to NewService
+	service := NewService(cfg, mf, executor)
 
 	// Start service
 	ctx, cancel := context.WithCancel(context.Background())
@@ -526,7 +512,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 	notifyErr := service.Notify(contract.NewTaskContext(), "test-notifier", "hello")
 
 	// Assert
-	// Should return ErrServiceStopped because Done() is closed
+	// Depending on implementation, if notifier is closed, Service might return ErrServiceStopped
 	assert.ErrorIs(t, notifyErr, notifier.ErrServiceStopped)
 
 	// Cleanup
@@ -538,19 +524,7 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 // Panic Recovery Tests (Merged from service_panic_test.go)
 // =============================================================================
 
-// PanicMockNotifierHandler Run 메서드에서 패닉을 발생시키는 Mock Notifier
-type PanicMockNotifierHandler struct {
-	notificationmocks.MockNotifierHandler // Changed to notificationmocks
-	PanicOnRun                            bool
-}
-
-func (m *PanicMockNotifierHandler) Run(ctx context.Context) {
-	if m.PanicOnRun {
-		panic("Simulated Panic in Notifier Run")
-	}
-	m.MockNotifierHandler.Run(ctx)
-}
-
+// TestService_Start_PanicRecovery tests panic recovery in Notifier Run.
 func TestService_Start_PanicRecovery(t *testing.T) {
 	// Setup
 	cfg := &config.AppConfig{
@@ -560,16 +534,13 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 	}
 	executor := &taskmocks.MockExecutor{}
 
-	// 패닉을 발생시키는 Notifier와 정상적인 Notifier 준비
-	panicNotifier := &PanicMockNotifierHandler{
-		MockNotifierHandler: notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
-			IDValue: "panic_notifier",
-		},
-		PanicOnRun: true,
-	}
-	normalNotifier := &notificationmocks.MockNotifierHandler{ // Changed to notificationmocks
-		IDValue: "normal_notifier",
-	}
+	// Panic Notifier: using WithRunFunc to simulate panic
+	panicNotifier := notificationmocks.NewMockNotifierHandler("panic_notifier").
+		WithRunFunc(func(ctx context.Context) {
+			panic("Simulated Panic in Notifier Run")
+		})
+
+	normalNotifier := notificationmocks.NewMockNotifierHandler("normal_notifier")
 
 	factory := &notificationmocks.MockFactory{ // Changed to notificationmocks
 		CreateNotifiersFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.NotifierHandler, error) {
@@ -608,19 +579,6 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 // Interface Tests (Moved from interface_test.go)
 // =============================================================================
 
-// FunctionalMockHandler는 Notify 메서드의 동작을 함수로 제어할 수 있는 Mock Wrapper입니다.
-type FunctionalMockHandler struct {
-	*notificationmocks.MockNotifierHandler
-	NotifyFunc func(contract.TaskContext, string) bool
-}
-
-func (m *FunctionalMockHandler) Notify(taskCtx contract.TaskContext, message string) bool {
-	if m.NotifyFunc != nil {
-		return m.NotifyFunc(taskCtx, message)
-	}
-	return m.MockNotifierHandler.Notify(taskCtx, message)
-}
-
 // TestSender_NotifyWithTitle는 Sender.NotifyWithTitle 메서드의 동작을 검증합니다.
 // 제목, 메시지, 에러 플래그가 올바르게 전달되는지, TaskContext가 올바르게 생성되는지 확인합니다.
 func TestSender_NotifyWithTitle(t *testing.T) {
@@ -632,7 +590,7 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 		errorOccurred bool
 		expectError   bool
 		expectedMsg   string
-		setupMock     func(*FunctionalMockHandler)
+		setupMock     func(*notificationmocks.MockNotifierHandler)
 	}{
 		{
 			name:          "성공: 일반 알림 전송",
@@ -652,12 +610,28 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			errorOccurred: true,
 			expectError:   false,
 			expectedMsg:   "Something went wrong.",
-			setupMock: func(m *FunctionalMockHandler) {
-				m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
-					// 기록을 위해 기본 Notify 호출
-					m.MockNotifierHandler.Notify(ctx, message)
+			setupMock: func(m *notificationmocks.MockNotifierHandler) {
+				m.WithNotifyFunc(func(ctx contract.TaskContext, message string) bool {
+					// We can just rely on the mock's default tracking if we return true?
+					// But we want to check `ctx.IsErrorOccurred()` dynamically inside the mock logic?
+					// Or just let it run and check later?
+					// The test logic asserts `baseMock.NotifyCalls`.
+					// So our custom logic is only needed if we want to change RETURN value.
+					// This test setupMock was checking `ctx.IsErrorOccurred()`.
+					// Actually, the previous code:
+					/*
+					   m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
+					       m.MockNotifierHandler.Notify(ctx, message) // Call base to record call
+					       return ctx.IsErrorOccurred() == true
+					   }
+					*/
+					// The new `Notify` calls `NotifyFunc` arguments BUT also records call BEFORE calling it? No.
+					// Let's check `mocks/handler.go`.
+					// `m.NotifyCalls = append(...)` then `if m.NotifyFunc != nil { return m.NotifyFunc(...) }`
+					// So call IS recorded automatically.
+					// We just need to return the correct bool result.
 					return ctx.IsErrorOccurred() == true
-				}
+				})
 			},
 		},
 		{
@@ -680,7 +654,9 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			})
 
 			// Wrap mock
-			mockNotifier := &FunctionalMockHandler{MockNotifierHandler: baseMock}
+			// mockNotifier := &FunctionalMockHandler{MockNotifierHandler: baseMock}
+			// Use baseMock directly as it now supports WithNotifyFunc
+			mockNotifier := baseMock
 			if tt.setupMock != nil {
 				tt.setupMock(mockNotifier)
 			}
@@ -722,7 +698,7 @@ func TestSender_NotifyDefault(t *testing.T) {
 		running         bool
 		expectError     bool
 		errorIs         error
-		setupMock       func(*FunctionalMockHandler)
+		setupMock       func(*notificationmocks.MockNotifierHandler)
 	}{
 		{
 			name:            "성공: 기본 Notifier로 전송",
@@ -745,10 +721,10 @@ func TestSender_NotifyDefault(t *testing.T) {
 			defaultNotifier: defaultNotifierID,
 			running:         true,
 			expectError:     true,
-			setupMock: func(m *FunctionalMockHandler) {
-				m.NotifyFunc = func(ctx contract.TaskContext, message string) bool {
+			setupMock: func(m *notificationmocks.MockNotifierHandler) {
+				m.WithNotifyFunc(func(ctx contract.TaskContext, message string) bool {
 					return false // 실패 시뮬레이션
-				}
+				})
 			},
 		},
 	}
@@ -770,7 +746,8 @@ func TestSender_NotifyDefault(t *testing.T) {
 
 			service, _, baseMock := setupMockServiceWithOptions(opts)
 
-			mockNotifier := &FunctionalMockHandler{MockNotifierHandler: baseMock}
+			// mockNotifier := &FunctionalMockHandler{MockNotifierHandler: baseMock}
+			mockNotifier := baseMock
 			if tt.setupMock != nil {
 				tt.setupMock(mockNotifier)
 			}

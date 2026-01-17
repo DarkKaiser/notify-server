@@ -25,7 +25,7 @@ func TestNotifierHandlerInterface(t *testing.T) {
 		name string
 		impl interface{}
 	}{
-		{"mockNotifierHandler", &notificationmocks.MockNotifierHandler{}},
+		{"mockNotifierHandler", notificationmocks.NewMockNotifierHandler("mock")},
 	}
 
 	for _, tt := range tests {
@@ -42,7 +42,7 @@ func TestNotifierHandlerInterface(t *testing.T) {
 
 // TestNotifierHandlerInterfaceMethods는 NotifierHandler 인터페이스의 메서드 존재를 검증합니다.
 func TestNotifierHandlerInterfaceMethods(t *testing.T) {
-	var handler notifier.NotifierHandler = &notificationmocks.MockNotifierHandler{IDValue: "test"}
+	var handler notifier.NotifierHandler = notificationmocks.NewMockNotifierHandler("test")
 
 	// ID() 메서드 호출 가능 여부 확인
 	id := handler.ID()

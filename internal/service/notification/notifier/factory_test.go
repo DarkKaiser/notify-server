@@ -45,8 +45,8 @@ func TestFactory_CreateNotifiers(t *testing.T) {
 			DefaultNotifierID: "default",
 		},
 	}
-	handler1 := &notificationmocks.MockNotifierHandler{IDValue: "h1"}
-	handler2 := &notificationmocks.MockNotifierHandler{IDValue: "h2"}
+	handler1 := notificationmocks.NewMockNotifierHandler("h1")
+	handler2 := notificationmocks.NewMockNotifierHandler("h2")
 
 	tests := []struct {
 		name             string

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -24,151 +25,11 @@ func (m *MockTaskExecutor) Cancel(instanceID contract.TaskInstanceID) error {
 	return args.Error(0)
 }
 
-// MockNotificationSender is a mock implementation of NotificationSender interface
-type MockTestifyNotificationSender struct {
-	mock.Mock
-}
+// Deprecated: Use notificationmocks.MockNotificationSender instead.
+// We keep this alias for compatibility if needed, but optimally should replace usages.
+type MockNotificationSender = notificationmocks.MockNotificationSender
 
-func (m *MockTestifyNotificationSender) NotifyDefault(message string) error {
-	args := m.Called(message)
-	return args.Error(0)
-}
-
-func (m *MockTestifyNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
-	args := m.Called(taskCtx, notifierID, message)
-	return args.Error(0)
-}
-
-func (m *MockTestifyNotificationSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	args := m.Called(notifierID, title, message, errorOccurred)
-	return args.Error(0)
-}
-
-func (m *MockTestifyNotificationSender) NotifyDefaultWithError(message string) error {
-	args := m.Called(message)
-	return args.Error(0)
-}
-
-func (m *MockTestifyNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
-	args := m.Called(notifierID)
-	if len(args) > 0 {
-		return args.Bool(0)
-	}
-	return true
-}
-
-// MockNotificationSender 테스트용 NotificationSender 구현체입니다.
-type MockNotificationSender struct {
-	mu sync.Mutex
-
-	// 호출 기록
-	NotifyDefaultCalls []string
-	NotifyCalls        []NotifyCall
-
-	CapturedContexts        []contract.TaskContext
-	SupportsHTMLCalls       []string
-	SupportsHTMLReturnValue bool
-}
-
-// NotifyCall Notify 호출 정보를 저장합니다.
-type NotifyCall struct {
-	NotifierID contract.NotifierID
-	Message    string
-	TaskCtx    contract.TaskContext
-}
-
-// NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
-func NewMockNotificationSender() *MockNotificationSender {
-	return &MockNotificationSender{
-		NotifyDefaultCalls: make([]string, 0),
-
-		NotifyCalls:             make([]NotifyCall, 0),
-		CapturedContexts:        make([]contract.TaskContext, 0),
-		SupportsHTMLCalls:       make([]string, 0),
-		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
-	}
-}
-
-// NotifyDefault 기본 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) NotifyDefault(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyDefaultCalls = append(m.NotifyDefaultCalls, message)
-	return nil
-}
-
-// Notify Task 컨텍스트와 함께 알림을 전송합니다 (Mock).
-func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID: notifierID,
-		Message:    message,
-		TaskCtx:    taskCtx,
-	})
-	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
-	return nil
-}
-
-// SupportsHTML HTML 메시지 지원 여부를 반환합니다 (Mock).
-func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
-	// SupportsHTMLCalls = append(m.SupportsHTMLCalls, string(notifierID))
-	return m.SupportsHTMLReturnValue
-}
-
-// NotifyWithTitle 제목을 포함한 알림을 발송합니다 (Mock).
-func (m *MockNotificationSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return nil
-}
-
-// NotifyDefaultWithError 오류 알림을 발송합니다 (Mock).
-func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return nil
-}
-
-// Reset 모든 호출 기록을 초기화합니다.
-func (m *MockNotificationSender) Reset() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyDefaultCalls = make([]string, 0)
-	m.NotifyCalls = make([]NotifyCall, 0)
-	m.SupportsHTMLCalls = make([]string, 0)
-}
-
-// GetNotifyDefaultCallCount NotifyDefault 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyDefaultCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.NotifyDefaultCalls)
-}
-
-// GetNotifyCallCount Notify 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.NotifyCalls)
-}
-
-// GetSupportsHTMLCallCount SupportsHTML 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetSupportsHTMLCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.SupportsHTMLCalls)
-}
+var NewMockNotificationSender = notificationmocks.NewMockNotificationSender
 
 // TestMockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)
 // 여러 테스트 파일에서 공통으로 사용됩니다.

@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"sync"
+	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
@@ -21,6 +22,9 @@ type MockNotificationSender struct {
 
 	// FailError 실패 시 반환할 에러 (nil이면 기본 MockError 반환)
 	FailError error
+
+	// NotifyFunc 커스텀 알림 처리 함수 (테스트 동기화 등에 사용)
+	NotifyFunc func(contract.TaskContext, contract.NotifierID, string) error
 
 	// 호출 기록 (MockNotificationSender from task package)
 	NotifyDefaultCalls      []string
@@ -116,6 +120,65 @@ func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
 	return nil
 }
 
+// SupportsHTML HTML 메시지 지원 여부를 반환합니다.
+func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
+	return m.SupportsHTMLReturnValue
+}
+
+// WithNotify Notify 호출 시 반환할 에러를 설정합니다.
+func (m *MockNotificationSender) WithNotify(err error) *MockNotificationSender {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.ShouldFail = err != nil
+	m.FailError = err
+	return m
+}
+
+// WithNotifyFunc Notify 호출 시 실행할 커스텀 함수를 설정합니다.
+// 이 함수가 nil이 아니면 기본 로직 대신 실행됩니다.
+// NOTE: 현재 MockNotificationSender 구조체에 함수 필드가 없으므로 추가가 필요할 수 있습니다.
+// 하지만 기존 factory 리팩토링과 달리 여기서는 ShouldFail/FailError 필드를 주로 사용합니다.
+// 복잡한 로직이 필요한 경우를 위해 NotifyFunc 필드를 추가하는 것이 좋습니다.
+// 일단 WithNotify만 구현하고, 추후 필요시 Func 필드를 추가합니다.
+// -> 사용자 요청 "전문가 수준"이므로 Func 필드를 추가하는게 맞습니다.
+// 하지만 replace_file_content로 전체 구조체를 건드리기엔 범위가 큽니다.
+// 일단 WithNotify(err)만으로도 많은 케이스 커버가 가능합니다. verify는 이미 CallHistory로 가능합니다.
+
+// WithNotifyFunc Notify 호출 시 실행할 커스텀 함수를 설정합니다.
+func (m *MockNotificationSender) WithNotifyFunc(fn func(contract.TaskContext, contract.NotifierID, string) error) *MockNotificationSender {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.NotifyFunc = fn
+	return m
+}
+
+// VerifyNotifyCalled Notify가 정확히 expected 횟수만큼 호출되었는지 검증합니다.
+func (m *MockNotificationSender) VerifyNotifyCalled(t *testing.T, expected int) {
+	t.Helper()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	if len(m.NotifyCalls) != expected {
+		t.Errorf("MockNotificationSender.Notify called %d times, expected %d", len(m.NotifyCalls), expected)
+	}
+}
+
+// VerifyNotifyDefaultCalled NotifyDefault가 정확히 expected 횟수만큼 호출되었는지 검증합니다.
+func (m *MockNotificationSender) VerifyNotifyDefaultCalled(t *testing.T, expected int) {
+	t.Helper()
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	if len(m.NotifyDefaultCalls) != expected {
+		t.Errorf("MockNotificationSender.NotifyDefault called %d times, expected %d", len(m.NotifyDefaultCalls), expected)
+	}
+}
+
 // Notify Task 컨텍스트와 함께 알림을 전송합니다.
 func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
 	m.Mu.Lock()
@@ -128,6 +191,10 @@ func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID
 	})
 	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
 
+	if m.NotifyFunc != nil {
+		return m.NotifyFunc(taskCtx, notifierID, message)
+	}
+
 	if m.ShouldFail {
 		if m.FailError != nil {
 			return m.FailError
@@ -135,15 +202,6 @@ func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierID
 		return &MockError{Message: "mock failure"}
 	}
 	return nil
-}
-
-// SupportsHTML HTML 메시지 지원 여부를 반환합니다.
-func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
-	return m.SupportsHTMLReturnValue
 }
 
 // Health 서비스의 건강 상태를 확인합니다.

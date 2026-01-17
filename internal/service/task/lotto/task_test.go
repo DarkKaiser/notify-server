@@ -10,6 +10,7 @@ import (
 
 	appconfig "github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -192,10 +193,10 @@ func TestTask_Run(t *testing.T) {
 	fakeLogFile := filepath.Join(tmpDir, "result_12345.log")
 
 	// Helper to setup fresh environment for each test
-	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *MockNotificationSender, *MockTaskResultStorage) {
+	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *MockTaskResultStorage) {
 		mockExecutor := new(MockCommandExecutor)
 		mockProcess := new(MockCommandProcess)
-		mockSender := new(MockNotificationSender)
+		mockSender := notificationmocks.NewMockNotificationSender()
 		mockStorage := new(MockTaskResultStorage)
 
 		task := &task{
@@ -209,7 +210,7 @@ func TestTask_Run(t *testing.T) {
 		})
 
 		// Common Mock Setup
-		mockSender.On("SupportsHTML", mock.Anything).Return(true)
+		// mockSender.SupportsHTMLReturnValue is true by default
 		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		mockStorage.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
@@ -231,10 +232,6 @@ func TestTask_Run(t *testing.T) {
 		err := os.WriteFile(fakeLogFile, []byte(fakeAnalysisContent), 0644)
 		require.NoError(t, err)
 
-		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-			return assert.Contains(t, msg, "당첨 확률이 높은 당첨번호 목록")
-		})).Return(nil)
-
 		var wg sync.WaitGroup
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
@@ -244,19 +241,16 @@ func TestTask_Run(t *testing.T) {
 
 		mockProcess.AssertExpectations(t)
 		mockExecutor.AssertExpectations(t)
-		mockSender.AssertExpectations(t)
+
+		// Verify Notification
+		mockSender.VerifyNotifyCalled(t, 1)
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "당첨 확률이 높은 당첨번호 목록")
 	})
 
 	t.Run("Execution Failed (StartCommand Error)", func(t *testing.T) {
 		task, mockExecutor, _, mockSender, _ := setup()
 
 		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(nil, fmt.Errorf("fail to start java"))
-
-		mockSender.On("Notify", mock.MatchedBy(func(ctx contract.TaskContext) bool {
-			return true
-		}), mock.Anything, mock.MatchedBy(func(msg string) bool {
-			return assert.Contains(t, msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
-		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan contract.TaskInstanceID, 1)
@@ -266,40 +260,17 @@ func TestTask_Run(t *testing.T) {
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)
-		mockSender.AssertExpectations(t)
+
+		// Verify Error Notification
+		mockSender.VerifyNotifyCalled(t, 1) // WithError notifies are also counted in NotifyCalls?
+		// Wait, NotifyDefaultWithError vs Notify.
+		// Task.Run calls task.notifyError -> which calls s.notificationSender.Notify(ctx.WithError(), ...)
+		// So checking NotifyCalls is correct.
+		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
 	})
 }
 
 // --- Local Mocks for Test ---
-
-type MockNotificationSender struct {
-	mock.Mock
-}
-
-func (m *MockNotificationSender) NotifyDefault(message string) error {
-	args := m.Called(message)
-	return args.Error(0)
-}
-
-func (m *MockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID contract.NotifierID, message string) error {
-	args := m.Called(taskCtx, notifierTaskID, message)
-	return args.Error(0)
-}
-
-func (m *MockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID) bool {
-	args := m.Called(notifierTaskID)
-	return args.Bool(0)
-}
-
-func (m *MockNotificationSender) NotifyWithTitle(notifierTaskID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	args := m.Called(notifierTaskID, title, message, errorOccurred)
-	return args.Error(0)
-}
-
-func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
-	args := m.Called(message)
-	return args.Error(0)
-}
 
 type MockTaskResultStorage struct {
 	mock.Mock

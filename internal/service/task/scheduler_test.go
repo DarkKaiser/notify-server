@@ -1,12 +1,14 @@
 package task
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,13 +18,13 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 	tests := []struct {
 		name         string
 		initialState func(*scheduler) // Setup before action
-		action       func(*scheduler, *config.AppConfig, *MockTaskExecutor, *MockTestifyNotificationSender)
+		action       func(*scheduler, *config.AppConfig, *MockTaskExecutor, *notificationmocks.MockNotificationSender)
 		verify       func(*testing.T, *scheduler)
 		doubleAction bool // Repeats action to check idempotency logic
 	}{
 		{
 			name: "Start Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockTestifyNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -38,7 +40,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 				s.running = true
 				s.cron = nil
 			},
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockTestifyNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Stop()
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -47,7 +49,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		},
 		{
 			name: "Restart Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockTestifyNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 				s.Start(cfg, exec, sender)
@@ -59,7 +61,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		{
 			name:         "Duplicate Start",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockTestifyNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -69,7 +71,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		{
 			name:         "Duplicate Stop",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *MockTestifyNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 			},
@@ -83,7 +85,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := &MockTestifyNotificationSender{}
+			mockSend := notificationmocks.NewMockNotificationSender()
 			cfg := &config.AppConfig{}
 
 			if tt.initialState != nil {
@@ -178,7 +180,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := &MockTestifyNotificationSender{}
+			mockSend := notificationmocks.NewMockNotificationSender()
 			cfg := &config.AppConfig{Tasks: tt.tasks}
 
 			s.Start(cfg, mockExe, mockSend)
@@ -197,7 +199,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 	tests := []struct {
 		name            string
 		taskConfig      config.TaskConfig
-		mockSetup       func(*MockTaskExecutor, *MockTestifyNotificationSender, *sync.WaitGroup)
+		mockSetup       func(*MockTaskExecutor, *notificationmocks.MockNotificationSender, *sync.WaitGroup)
 		shouldFailNotif bool
 	}{
 		{
@@ -215,7 +217,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					},
 				},
 			},
-			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
+			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
@@ -238,18 +240,19 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					},
 				},
 			},
-			mockSetup: func(exe *MockTaskExecutor, send *MockTestifyNotificationSender, wg *sync.WaitGroup) {
+			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
 
-				send.On("Notify", mock.Anything, contract.NotifierID("N2"), mock.MatchedBy(func(msg string) bool {
-					return msg != "" && assert.Contains(nil, msg, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") // nil passed to assert helper which is weird but works for Contains if t is not needed or we check bool
-				})).Run(func(args mock.Arguments) {
-					wg.Done()
-				}).Return(nil).Once()
+				send.WithNotifyFunc(func(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
+					if strings.Contains(message, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") {
+						wg.Done()
+					}
+					return nil
+				})
 			},
 		},
 	}
@@ -258,7 +261,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := &MockTestifyNotificationSender{}
+			mockSend := notificationmocks.NewMockNotificationSender()
 			cfg := &config.AppConfig{Tasks: []config.TaskConfig{tt.taskConfig}}
 
 			var wg sync.WaitGroup
@@ -286,7 +289,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			}
 
 			mockExe.AssertExpectations(t)
-			mockSend.AssertExpectations(t)
+			// mockSend.AssertExpectations(t) // Manual mock doesn't need this
 		})
 	}
 }
@@ -296,7 +299,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// But we can verify it cleanly.
 	s := &scheduler{}
 	mockExe := &MockTaskExecutor{}
-	mockSend := &MockTestifyNotificationSender{}
+	mockSend := notificationmocks.NewMockNotificationSender()
 
 	cfg := &config.AppConfig{
 		Tasks: []config.TaskConfig{
@@ -316,12 +319,15 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 		},
 	}
 
-	mockSend.On("Notify", mock.Anything, contract.NotifierID("N1"), mock.MatchedBy(func(msg string) bool {
-		return assert.Contains(t, msg, "Cron 스케줄 파싱 실패")
-	})).Return(nil).Once()
+	// Manual mock verification by checking calls after execution, or using WithNotifyFunc if we need synchronization or strict content check during execution.
+	// Since this is synchronous Start (it attempts to register cron jobs immediately), we can check after.
+	// However, the error log might happen via notification.
+	// Start() -> registerJobs -> if error -> notify.
+	// We can just check VerifyNotifyCalled after Start.
 
 	s.Start(cfg, mockExe, mockSend)
 	defer s.Stop()
 
-	mockSend.AssertExpectations(t)
+	mockSend.VerifyNotifyCalled(t, 1)
+	assert.Contains(t, mockSend.NotifyCalls[0].Message, "Cron 스케줄 파싱 실패")
 }
