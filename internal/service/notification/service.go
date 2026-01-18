@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	notifierpkg "github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -68,7 +68,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	if s.executor == nil {
 		defer serviceStopWG.Done()
-		return apperrors.New(apperrors.Internal, "Executor 객체가 초기화되지 않았습니다")
+		return NewErrExecutorNotInitialized()
 	}
 
 	if s.running {
@@ -78,10 +78,10 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	}
 
 	// 1. Notifier들을 초기화 및 실행
-	notifiers, err := s.notifierFactory.CreateNotifiers(s.appConfig, s.executor)
+	notifiers, err := s.notifierFactory.CreateAll(s.appConfig, s.executor)
 	if err != nil {
 		defer serviceStopWG.Done()
-		return apperrors.Wrap(err, apperrors.Internal, "Notifier 초기화 중 에러가 발생했습니다")
+		return NewErrNotifierInitFailed(err)
 	}
 
 	// 중복 ID 검사
@@ -89,7 +89,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	for _, n := range notifiers {
 		if seenIDs[n.ID()] {
 			defer serviceStopWG.Done()
-			return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("중복된 Notifier ID('%s')가 감지되었습니다. 설정을 확인해주세요.", n.ID()))
+			return NewErrDuplicateNotifierID(string(n.ID()))
 		}
 		seenIDs[n.ID()] = true
 	}
@@ -129,7 +129,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	// 2. 기본 Notifier 존재 여부 확인
 	if s.defaultNotifier == nil {
 		defer serviceStopWG.Done()
-		return apperrors.New(apperrors.NotFound, fmt.Sprintf("기본 NotifierID('%s')를 찾을 수 없습니다", s.appConfig.Notifier.DefaultNotifierID))
+		return NewErrDefaultNotifierNotFound(s.appConfig.Notifier.DefaultNotifierID)
 	}
 
 	// 3. 서비스 종료 감시 루틴 실행
@@ -228,8 +228,8 @@ func (s *Service) NotifyDefault(message string) error {
 
 	s.runningMu.RUnlock()
 
-	if ok := notifier.Notify(nil, message); !ok {
-		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+	if err := notifier.Send(nil, message); err != nil {
+		return err
 	}
 	return nil
 }
@@ -257,8 +257,8 @@ func (s *Service) NotifyDefaultWithError(message string) error {
 
 	s.runningMu.RUnlock()
 
-	if ok := notifier.Notify(contract.NewTaskContext().WithError(), message); !ok {
-		return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
+	if err := notifier.Send(contract.NewTaskContext().WithError(), message); err != nil {
+		return err
 	}
 	return nil
 }
@@ -292,15 +292,12 @@ func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.Notif
 	s.runningMu.RUnlock()
 
 	if targetNotifier != nil {
-		if ok := targetNotifier.Notify(taskCtx, message); !ok {
-			// Notifier가 이미 종료되었는지 확인
-			select {
-			case <-targetNotifier.Done():
+		if err := targetNotifier.Send(taskCtx, message); err != nil {
+			// Notifier가 종료된 경우 서비스 중단 에러로 매핑
+			if err == notifierpkg.ErrClosed {
 				return ErrServiceStopped
-			default:
-				// 종료되지 않았다면 큐가 가득 찬 것으로 간주
-				return apperrors.New(apperrors.Unavailable, "알림 전송 대기열이 가득 차서 요청을 처리할 수 없습니다.")
 			}
+			return err
 		}
 		return nil
 	}
@@ -312,10 +309,11 @@ func (s *Service) Notify(taskCtx contract.TaskContext, notifierID contract.Notif
 	}).Error(m)
 
 	if defaultNotifier != nil {
-		if !defaultNotifier.Notify(contract.NewTaskContext().WithError(), m) {
+		if err := defaultNotifier.Send(contract.NewTaskContext().WithError(), m); err != nil {
 			applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
 				"notifier_id":         notifierID,
 				"default_notifier_id": defaultNotifier.ID(),
+				"error":               err,
 			}).Warn(constants.LogMsgDefaultNotifierFailed)
 		}
 	}

@@ -18,56 +18,56 @@ var _ notifier.Factory = (*MockFactory)(nil)
 type MockFactory struct {
 	Mu sync.Mutex
 
-	CreateNotifiersFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error)
-	RegisterFunc        func(creator notifier.Creator)
+	CreateAllFunc func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error)
+	RegisterFunc  func(creator notifier.Creator)
 
 	// Call Tracking
-	CreateNotifiersCallCount int
-	RegisterCalled           bool
-	RegisterCallCount        int
-	RegisteredCreators       []notifier.Creator
+	CreateAllCallCount int
+	RegisterCalled     bool
+	RegisterCallCount  int
+	RegisteredCreators []notifier.Creator
 }
 
-// CreateNotifiers는 설정에 따라 Notifier 목록을 생성합니다.
-func (m *MockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+// CreateAll는 설정에 따라 Notifier 목록을 생성합니다.
+func (m *MockFactory) CreateAll(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 	m.Mu.Lock()
-	m.CreateNotifiersCallCount++
+	m.CreateAllCallCount++
 	m.Mu.Unlock()
 
-	if m.CreateNotifiersFunc != nil {
-		return m.CreateNotifiersFunc(cfg, executor)
+	if m.CreateAllFunc != nil {
+		return m.CreateAllFunc(cfg, executor)
 	}
 	return nil, nil // Default behavior: success with empty list
 }
 
-// WithCreateNotifiers CreateNotifiers 호출 시 반환할 값을 설정합니다.
-func (m *MockFactory) WithCreateNotifiers(notifiers []notifier.Notifier, err error) *MockFactory {
+// WithCreateAll CreateAll 호출 시 반환할 값을 설정합니다.
+func (m *MockFactory) WithCreateAll(notifiers []notifier.Notifier, err error) *MockFactory {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
-	m.CreateNotifiersFunc = func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+	m.CreateAllFunc = func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		return notifiers, err
 	}
 	return m
 }
 
-// WithCreateFunc CreateNotifiers 호출 시 실행할 커스텀 함수를 설정합니다.
+// WithCreateFunc CreateAll 호출 시 실행할 커스텀 함수를 설정합니다.
 func (m *MockFactory) WithCreateFunc(fn func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error)) *MockFactory {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
-	m.CreateNotifiersFunc = fn
+	m.CreateAllFunc = fn
 	return m
 }
 
-// VerifyCreateCalled CreateNotifiers가 정확히 expected 횟수만큼 호출되었는지 검증합니다.
+// VerifyCreateCalled CreateAll가 정확히 expected 횟수만큼 호출되었는지 검증합니다.
 func (m *MockFactory) VerifyCreateCalled(t *testing.T, expected int) {
 	t.Helper()
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
-	if m.CreateNotifiersCallCount != expected {
-		t.Errorf("MockFactory.CreateNotifiers called %d times, expected %d", m.CreateNotifiersCallCount, expected)
+	if m.CreateAllCallCount != expected {
+		t.Errorf("MockFactory.CreateAll called %d times, expected %d", m.CreateAllCallCount, expected)
 	}
 }
 
@@ -104,9 +104,9 @@ func (m *MockFactory) Reset() {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
-	m.CreateNotifiersFunc = nil
+	m.CreateAllFunc = nil
 	m.RegisterFunc = nil
-	m.CreateNotifiersCallCount = 0
+	m.CreateAllCallCount = 0
 	m.RegisterCalled = false
 	m.RegisterCallCount = 0
 	m.RegisteredCreators = nil

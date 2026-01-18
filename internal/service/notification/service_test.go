@@ -70,24 +70,24 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 	return service, mockExecutor, mockNotifier
 }
 
-// assertNotifyCalled는 mockNotifier가 정확히 한 번 호출되었고 메시지가 일치하는지 검증합니다.
-func assertNotifyCalled(t *testing.T, mock *notificationmocks.MockNotifier, expectedMsg string) {
+// assertSendCalled는 mockNotifier가 정확히 한 번 호출되었고 메시지가 일치하는지 검증합니다.
+func assertSendCalled(t *testing.T, mock *notificationmocks.MockNotifier, expectedMsg string) {
 	t.Helper()
-	require.Len(t, mock.NotifyCalls, 1, "Expected exactly one notify call")
-	assert.Equal(t, expectedMsg, mock.NotifyCalls[0].Message, "Message should match")
+	require.Len(t, mock.SendCalls, 1, "Expected exactly one send call")
+	assert.Equal(t, expectedMsg, mock.SendCalls[0].Message, "Message should match")
 }
 
-// assertNotifyCalledWithContext는 mockNotifier가 호출되었고 TaskContext가 있는지 검증합니다.
-func assertNotifyCalledWithContext(t *testing.T, mock *notificationmocks.MockNotifier, expectedMsg string) {
+// assertSendCalledWithContext는 mockNotifier가 호출되었고 TaskContext가 있는지 검증합니다.
+func assertSendCalledWithContext(t *testing.T, mock *notificationmocks.MockNotifier, expectedMsg string) {
 	t.Helper()
-	assertNotifyCalled(t, mock, expectedMsg)
-	assert.NotNil(t, mock.NotifyCalls[0].TaskContext, "TaskContext should be present")
+	assertSendCalled(t, mock, expectedMsg)
+	assert.NotNil(t, mock.SendCalls[0].TaskContext, "TaskContext should be present")
 }
 
-// assertNotifyNotCalled는 mockNotifier가 호출되지 않았는지 검증합니다.
-func assertNotifyNotCalled(t *testing.T, mock *notificationmocks.MockNotifier) {
+// assertSendNotCalled는 mockNotifier가 호출되지 않았는지 검증합니다.
+func assertSendNotCalled(t *testing.T, mock *notificationmocks.MockNotifier) {
 	t.Helper()
-	assert.Empty(t, mock.NotifyCalls, "Expected no notify calls")
+	assert.Empty(t, mock.SendCalls, "Expected no send calls")
 }
 
 // =============================================================================
@@ -202,9 +202,9 @@ func TestServiceNotify(t *testing.T) {
 			}
 
 			if tt.expectedErrCtx {
-				assertNotifyCalledWithContext(t, mockNotifier, tt.expectedMsg)
+				assertSendCalledWithContext(t, mockNotifier, tt.expectedMsg)
 			} else if tt.expectedMsg != "" {
-				assertNotifyCalled(t, mockNotifier, tt.expectedMsg)
+				assertSendCalled(t, mockNotifier, tt.expectedMsg)
 			}
 		})
 	}
@@ -226,7 +226,7 @@ func TestNotify_NotRunning(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrServiceStopped, err)
-	assertNotifyNotCalled(t, mockNotifier)
+	assertSendNotCalled(t, mockNotifier)
 }
 
 // (TestNotifyDefault_NilNotifier transferred to interface_test.go)
@@ -251,8 +251,8 @@ func TestMultipleNotifiers(t *testing.T) {
 	// n2로 전송
 	err := service.Notify(contract.NewTaskContext(), contract.NotifierID("n2"), "msg")
 	assert.NoError(t, err)
-	assertNotifyNotCalled(t, mockNotifier1)
-	require.Len(t, mockNotifier2.NotifyCalls, 1)
+	assertSendNotCalled(t, mockNotifier1)
+	require.Len(t, mockNotifier2.SendCalls, 1)
 }
 
 // =============================================================================
@@ -302,7 +302,7 @@ func TestConcurrencyStress(t *testing.T) {
 		t.Fatal("Deadlock 감지 또는 타임아웃 발생")
 	}
 
-	assert.Greater(t, len(mockNotifier.NotifyCalls), 0)
+	assert.Greater(t, len(mockNotifier.SendCalls), 0)
 }
 
 // =============================================================================
@@ -319,7 +319,7 @@ func TestStartAndRun(t *testing.T) {
 		cfg.Notifier.DefaultNotifierID = "default"
 
 		mockFactory := &notificationmocks.MockFactory{
-			CreateNotifiersFunc: func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+			CreateAllFunc: func(c *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 				return []notifier.Notifier{mockNotifier}, nil
 			},
 		}
@@ -375,7 +375,7 @@ func TestStartErrors(t *testing.T) {
 		{
 			name: "Factory에서 에러 반환",
 			factorySetup: func(m *mocks.MockFactory) {
-				m.WithCreateNotifiers(nil, errors.New("factory error"))
+				m.WithCreateAll(nil, errors.New("factory error"))
 			},
 			errorContains: "Notifier 초기화 중 에러가 발생했습니다",
 		},
@@ -385,7 +385,7 @@ func TestStartErrors(t *testing.T) {
 				c.Notifier.DefaultNotifierID = "def"
 			},
 			factorySetup: func(m *mocks.MockFactory) {
-				m.WithCreateNotifiers([]notifier.Notifier{
+				m.WithCreateAll([]notifier.Notifier{
 					notificationmocks.NewMockNotifier("other"),
 				}, nil)
 			},
@@ -410,7 +410,7 @@ func TestStartErrors(t *testing.T) {
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
-				factory.WithCreateNotifiers([]notifier.Notifier{}, nil)
+				factory.WithCreateAll([]notifier.Notifier{}, nil)
 			}
 
 			service := NewService(cfg, factory, executor)
@@ -435,7 +435,7 @@ type localMockFactory struct {
 	notifiers []notifier.Notifier
 }
 
-func (m *localMockFactory) CreateNotifiers(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+func (m *localMockFactory) CreateAll(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 	return m.notifiers, nil
 }
 
@@ -490,8 +490,8 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 
 	// Use shared MockNotifier with functional injection
 	h := notificationmocks.NewMockNotifier("test-notifier").
-		WithNotifyFunc(func(taskCtx contract.TaskContext, msg string) bool {
-			return false // Simulate failure if called
+		WithSendFunc(func(ctx contract.TaskContext, msg string) error {
+			return notifier.ErrClosed // Simulate failure if called
 		})
 	// Manually set DoneChannel since we need to simulate it being closed externally
 	h.DoneChannel = closedCh
@@ -543,7 +543,7 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 	normalNotifier := notificationmocks.NewMockNotifier("normal_notifier")
 
 	factory := &notificationmocks.MockFactory{ // Changed to notificationmocks
-		CreateNotifiersFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
+		CreateAllFunc: func(cfg *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 			return []notifier.Notifier{panicNotifier, normalNotifier}, nil
 		},
 	}
@@ -611,7 +611,7 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 			expectError:   false,
 			expectedMsg:   "Something went wrong.",
 			setupMock: func(m *notificationmocks.MockNotifier) {
-				m.WithNotifyFunc(func(taskCtx contract.TaskContext, message string) bool {
+				m.WithSendFunc(func(ctx contract.TaskContext, message string) error {
 					// We can just rely on the mock's default tracking if we return true?
 					// But we want to check `ctx.IsErrorOccurred()` dynamically inside the mock logic?
 					// Or just let it run and check later?
@@ -630,7 +630,10 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 					// `m.NotifyCalls = append(...)` then `if m.NotifyFunc != nil { return m.NotifyFunc(...) }`
 					// So call IS recorded automatically.
 					// We just need to return the correct bool result.
-					return taskCtx.IsErrorOccurred() == true
+					if ctx.IsErrorOccurred() {
+						return nil
+					}
+					return nil
 				})
 			},
 		},
@@ -675,8 +678,8 @@ func TestSender_NotifyWithTitle(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				require.NotEmpty(t, baseMock.NotifyCalls, "Notify should be called on the base mock")
-				lastCall := baseMock.NotifyCalls[len(baseMock.NotifyCalls)-1]
+				require.NotEmpty(t, baseMock.SendCalls, "Send should be called on the base mock")
+				lastCall := baseMock.SendCalls[len(baseMock.SendCalls)-1]
 				assert.Equal(t, tt.expectedMsg, lastCall.Message)
 
 				// TaskContext Verification
@@ -722,8 +725,8 @@ func TestSender_NotifyDefault(t *testing.T) {
 			running:         true,
 			expectError:     true,
 			setupMock: func(m *notificationmocks.MockNotifier) {
-				m.WithNotifyFunc(func(ctx contract.TaskContext, message string) bool {
-					return false // 실패 시뮬레이션
+				m.WithSendFunc(func(ctx contract.TaskContext, message string) error {
+					return notifier.ErrQueueFull // 실패 시뮬레이션
 				})
 			},
 		},
@@ -774,7 +777,7 @@ func TestSender_NotifyDefault(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
-				assertNotifyCalled(t, baseMock, tt.message)
+				assertSendCalled(t, baseMock, tt.message)
 			}
 		})
 	}
@@ -797,9 +800,9 @@ func TestSender_NotifyDefaultWithError(t *testing.T) {
 
 	// Assert
 	assert.NoError(t, err)
-	require.Len(t, mockNotifier.NotifyCalls, 1)
+	require.Len(t, mockNotifier.SendCalls, 1)
 
-	call := mockNotifier.NotifyCalls[0]
+	call := mockNotifier.SendCalls[0]
 	assert.Equal(t, message, call.Message)
 	require.NotNil(t, call.TaskContext)
 	assert.True(t, call.TaskContext.IsErrorOccurred(), "Error flag should be true")

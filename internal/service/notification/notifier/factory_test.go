@@ -36,7 +36,7 @@ func TestFactory_Interfaces(t *testing.T) {
 // FactoryFunc Adapter Tests
 // =============================================================================
 
-func TestFactoryFunc_CreateNotifiers(t *testing.T) {
+func TestFactoryFunc_CreateAll(t *testing.T) {
 	t.Parallel()
 
 	// Given
@@ -49,7 +49,7 @@ func TestFactoryFunc_CreateNotifiers(t *testing.T) {
 	})
 
 	// When
-	result, err := adapter.CreateNotifiers(nil, nil)
+	result, err := adapter.CreateAll(nil, nil)
 
 	// Then
 	assert.True(t, called)
@@ -61,7 +61,7 @@ func TestFactoryFunc_CreateNotifiers(t *testing.T) {
 // Factory Tests
 // =============================================================================
 
-func TestFactory_CreateNotifiers(t *testing.T) {
+func TestFactory_CreateAll(t *testing.T) {
 	t.Parallel()
 
 	// Given Common Mocks
@@ -153,7 +153,7 @@ func TestFactory_CreateNotifiers(t *testing.T) {
 			}
 
 			// Act
-			notifiers, err := f.CreateNotifiers(testConfig, mockExecutor)
+			notifiers, err := f.CreateAll(testConfig, mockExecutor)
 
 			// Assert
 			if tt.expectError {
@@ -192,7 +192,7 @@ func TestFactory_ArgumentPropagation(t *testing.T) {
 	}))
 
 	// Act
-	_, err := f.CreateNotifiers(expectedConfig, expectedExecutor)
+	_, err := f.CreateAll(expectedConfig, expectedExecutor)
 
 	// Assert
 	require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestFactory_ExecutionOrder(t *testing.T) {
 	}))
 
 	// Act
-	_, err := f.CreateNotifiers(&config.AppConfig{}, &taskmocks.MockExecutor{})
+	_, err := f.CreateAll(&config.AppConfig{}, &taskmocks.MockExecutor{})
 
 	// Assert
 	require.NoError(t, err)
@@ -240,7 +240,7 @@ func ExampleFactory() {
 	}))
 
 	// 3. Notifier 생성 (앱 시작 시 호출)
-	notifiers, err := f.CreateNotifiers(&config.AppConfig{}, nil)
+	notifiers, err := f.CreateAll(&config.AppConfig{}, nil)
 	if err != nil {
 		panic(err)
 	}

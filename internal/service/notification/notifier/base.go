@@ -72,7 +72,7 @@ func (n *Base) ID() contract.NotifierID {
 	return n.id
 }
 
-// Notify 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
+// Send 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
 //
 // 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
 //
@@ -81,15 +81,15 @@ func (n *Base) ID() contract.NotifierID {
 //   - message: 전송할 알림 메시지 본문
 //
 // 반환값:
-//   - ok: 요청이 성공적으로 큐에 등록되었으면 true, 실패(종료됨, 타임아웃 등)했으면 false
-func (n *Base) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
+//   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
+func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 	n.mu.RLock()
 
 	// 1. 종료 상태 확인
 	// 이미 Close()가 호출되었거나 채널이 초기화되지 않았다면 요청을 거부합니다.
 	if n.closed || n.requestC == nil {
 		n.mu.RUnlock()
-		return false
+		return ErrClosed
 	}
 
 	// 2. 로컬 변수 복사
@@ -120,7 +120,8 @@ func (n *Base) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
 			}
 			applog.WithComponentAndFields(constants.ComponentNotifier, fields).Error(constants.LogMsgNotifierPanicRecovered)
 
-			ok = false
+			// Panic 발생 시 에러 리턴
+			err = ErrPanicRecovered
 		}
 	}()
 
@@ -158,17 +159,17 @@ func (n *Base) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
 	select {
 	case requestC <- req:
 		// 성공: 큐에 정상적으로 등록됨
-		return true
+		return nil
 
 	case <-done:
 		// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
 		// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
-		return false
+		return ErrClosed
 
 	case <-taskCtxDone:
 		// 실패: 요청자(Caller)의 작업이 취소됨
 		// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
-		return false
+		return ErrContextCanceled
 
 	case <-timer.C:
 		// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
@@ -186,7 +187,7 @@ func (n *Base) Notify(taskCtx contract.TaskContext, message string) (ok bool) {
 		}
 		applog.WithComponentAndFields(constants.ComponentNotifier, fields).Warn(constants.LogMsgNotifierBufferFullDrop)
 
-		return false
+		return ErrQueueFull
 	}
 }
 

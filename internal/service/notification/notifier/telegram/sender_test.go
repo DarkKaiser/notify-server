@@ -24,8 +24,8 @@ import (
 // Message Sending Tests
 // =============================================================================
 
-// TestTelegramNotifier_Notify tests core notification logic including formatting and splitting.
-func TestTelegramNotifier_Notify(t *testing.T) {
+// TestTelegramNotifier_Send tests core notification logic including formatting and splitting.
+func TestTelegramNotifier_Send(t *testing.T) {
 	tests := []struct {
 		name         string
 		message      string
@@ -121,7 +121,7 @@ func TestTelegramNotifier_Notify(t *testing.T) {
 			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Act
-			notifier.Notify(tt.taskCtx, tt.message)
+			notifier.Send(tt.taskCtx, tt.message)
 
 			// Wait
 			waitForActionWithTimeout(t, &wgSend, 2*time.Second)
@@ -331,7 +331,7 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 			var wg sync.WaitGroup
 			runTelegramNotifier(ctx, notifier, &wg)
 
-			notifier.Notify(contract.NewTaskContext(), "Message")
+			notifier.Send(contract.NewTaskContext(), "Message")
 
 			// Wait with timeout
 			done := make(chan struct{})

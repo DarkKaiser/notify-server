@@ -167,7 +167,7 @@ func TestNewNotifierWithBot_Failure(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "TaskID와 CommandID는 필수 값입니다",
+			expectedError: "TaskID와 CommandID는 필수입니다",
 		},
 		{
 			name: "CommandID 누락: NewErrInvalidCommandIDs 에러가 발생해야 한다",
@@ -181,7 +181,7 @@ func TestNewNotifierWithBot_Failure(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "TaskID와 CommandID는 필수 값입니다",
+			expectedError: "TaskID와 CommandID는 필수입니다",
 		},
 		{
 			name: "명령어 이름 충돌: NewErrDuplicateCommandName 에러가 발생해야 한다",

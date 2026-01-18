@@ -26,17 +26,17 @@ func NewMockNotifier(id contract.NotifierID) *MockNotifier {
 type MockNotifier struct {
 	IDValue           contract.NotifierID
 	SupportsHTMLValue bool
-	NotifyCalls       []MockNotifyCall
-	Mu                sync.Mutex // NotifyCalls 동시성 보호
+	SendCalls         []MockSendCall
+	Mu                sync.Mutex // SendCalls 동시성 보호
 	DoneChannel       chan struct{}
 
-	// Functional Options for Behavior Injection
-	NotifyFunc func(taskCtx contract.TaskContext, message string) bool
-	RunFunc    func(context.Context)
+	// SendFunc mocks the Send method.
+	SendFunc func(taskCtx contract.TaskContext, message string) error
+	RunFunc  func(context.Context)
 }
 
-// MockNotifyCall은 Notify 메서드 호출 기록을 저장합니다.
-type MockNotifyCall struct {
+// MockSendCall은 Send 메서드 호출 기록을 저장합니다.
+type MockSendCall struct {
 	Message     string
 	TaskContext contract.TaskContext
 }
@@ -53,12 +53,10 @@ func (m *MockNotifier) WithSupportsHTML(supported bool) *MockNotifier {
 	return m
 }
 
-// WithNotifyFunc Notify 동작을 커스터마이징합니다 (Fluent API).
-func (m *MockNotifier) WithNotifyFunc(fn func(contract.TaskContext, string) bool) *MockNotifier {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.NotifyFunc = fn
-	return m
+// WithSendFunc sets the SendFunc mock.
+func (mock *MockNotifier) WithSendFunc(f func(taskCtx contract.TaskContext, message string) error) *MockNotifier {
+	mock.SendFunc = f
+	return mock
 }
 
 // WithRunFunc Run 동작을 커스터마이징합니다 (Fluent API).
@@ -74,22 +72,20 @@ func (m *MockNotifier) ID() contract.NotifierID {
 	return m.IDValue
 }
 
-// Notify는 알림 메시지를 전송하고 호출 기록을 저장합니다.
-// 동시성 안전을 위해 mutex로 보호됩니다.
-func (m *MockNotifier) Notify(taskCtx contract.TaskContext, message string) bool {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
+// Send calls SendFunc.
+func (mock *MockNotifier) Send(taskCtx contract.TaskContext, message string) error {
+	mock.Mu.Lock()
+	defer mock.Mu.Unlock()
 
-	m.NotifyCalls = append(m.NotifyCalls, MockNotifyCall{
-		Message:     message,
+	mock.SendCalls = append(mock.SendCalls, MockSendCall{
 		TaskContext: taskCtx,
+		Message:     message,
 	})
 
-	if m.NotifyFunc != nil {
-		return m.NotifyFunc(taskCtx, message)
+	if mock.SendFunc != nil {
+		return mock.SendFunc(taskCtx, message)
 	}
-
-	return true
+	return nil
 }
 
 // Run은 Notifier를 실행하고 context가 종료될 때까지 대기합니다.
@@ -126,10 +122,10 @@ func (m *MockNotifier) Done() <-chan struct{} {
 func (m *MockNotifier) Reset() {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	m.NotifyCalls = nil
+	m.SendCalls = nil
 	// DoneChannel은 닫힌 상태인지 열린 상태인지 모호할 수 있으므로,
 	// Reset 시 nil로 설정하여 다음 호출 시 새로 생성되게 함.
 	m.DoneChannel = nil
-	m.NotifyFunc = nil
+	m.SendFunc = nil
 	m.RunFunc = nil
 }

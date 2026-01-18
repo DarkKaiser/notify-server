@@ -16,7 +16,7 @@ type Notifier interface {
 	// Context가 취소되거나 내부에서 치명적인 에러가 발생하여 종료될 때까지 실행됩니다.
 	Run(ctx context.Context)
 
-	// Notify 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
+	// Send 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
 	//
 	// 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
 	//
@@ -25,8 +25,8 @@ type Notifier interface {
 	//   - message: 전송할 알림 메시지 본문
 	//
 	// 반환값:
-	//   - ok: 요청이 성공적으로 큐에 등록되었으면 true, 실패(종료됨, 타임아웃 등)했으면 false
-	Notify(taskCtx contract.TaskContext, message string) (ok bool)
+	//   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
+	Send(taskCtx contract.TaskContext, message string) error
 
 	// Done Notifier의 종료 상태를 감지할 수 있는 읽기 전용 채널을 반환합니다.
 	//

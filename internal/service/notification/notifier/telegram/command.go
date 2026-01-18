@@ -81,13 +81,14 @@ func (n *telegramNotifier) submitTask(command botCommand) {
 	}); err != nil {
 		// 실행 실패 알림 발송
 		// Receiver Loop Hang 방지: 대기열이 가득 차면 실패 알림은 과감히 생략(Drop) 하거나, 별도 고루틴으로 처리
-		// 여기서는 Notify 메서드(Non-blocking/Timeout)를 사용하여 안전하게 처리합니다.
+		// 여기서는 Send 메서드(Non-blocking/Timeout)를 사용하여 안전하게 처리합니다.
 		ctx := contract.NewTaskContext().WithTask(command.taskID, command.commandID).WithError()
-		if !n.Notify(ctx, msgTaskExecutionFailed) {
-			// Notify 실패 시(큐 가득 참 등) 로그 남김
+		if err := n.Send(ctx, msgTaskExecutionFailed); err != nil {
+			// Send 실패 시(큐 가득 참 등) 로그 남김
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
 				"command":     command.name,
+				"error":       err,
 			}).Warn(constants.LogMsgTelegramCmdFailNotifyFail)
 		}
 	}
@@ -105,8 +106,8 @@ func (n *telegramNotifier) processCancel(ctx context.Context, commandName string
 		instanceID := commandSplit[1]
 		// Executor에 취소 요청
 		if err := n.executor.Cancel(contract.TaskInstanceID(instanceID)); err != nil {
-			// 취소 실패 시 알림 (Receiver Hang 방지: Notify 사용)
-			n.Notify(contract.NewTaskContext().WithError(), fmt.Sprintf(msgTaskCancelFailed, instanceID))
+			// 취소 실패 시 알림 (Receiver Hang 방지: Send 사용)
+			n.Send(contract.NewTaskContext().WithError(), fmt.Sprintf(msgTaskCancelFailed, instanceID))
 		}
 	} else {
 		escapedCommand := html.EscapeString(commandName)

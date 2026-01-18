@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -114,7 +115,8 @@ func TestTelegramNotifier_Run_Drain(t *testing.T) {
 	// Act: Send 5 messages
 	taskCtx := contract.NewTaskContext()
 	for i := 0; i < 5; i++ {
-		notifier.Notify(taskCtx, "Drain Message")
+		err := notifier.Send(taskCtx, "Drain Message")
+		assert.NoError(t, err)
 	}
 
 	// Trigger Shutdown immediately
@@ -199,7 +201,7 @@ func TestRunSender_GracefulShutdown_InFlightMessage(t *testing.T) {
 		n.runSender(ctx)
 	}()
 
-	n.Notify(nil, msg)
+	n.Send(nil, msg)
 	time.Sleep(1 * time.Millisecond)
 	cancel()
 
@@ -261,15 +263,15 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 	originalBotAPI := notifier.botClient
 	notifier.botClient = nil // Cause nil pointer panic
 
-	notifier.Notify(contract.NewTaskContext(), "Panic Message")
+	notifier.Send(contract.NewTaskContext(), "Panic Message")
 	time.Sleep(100 * time.Millisecond) // Wait for panic and recovery
 
 	// 2. Recovery & Resume
 	notifier.botClient = originalBotAPI
 	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
 
-	success := notifier.Notify(contract.NewTaskContext(), "Normal Message")
-	require.True(t, success, "Notify should succeed")
+	err = notifier.Send(contract.NewTaskContext(), "Normal Message")
+	require.NoError(t, err, "Send should succeed")
 
 	time.Sleep(100 * time.Millisecond)
 	mockBot.AssertExpectations(t)
@@ -308,7 +310,7 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 	}()
 
 	for i := 0; i < 5; i++ {
-		n.Notify(contract.NewTaskContext(), "Slow Message")
+		n.Send(contract.NewTaskContext(), "Slow Message")
 	}
 
 	cmdUpdate := tgbotapi.Update{

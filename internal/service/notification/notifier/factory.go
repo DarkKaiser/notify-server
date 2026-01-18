@@ -7,14 +7,14 @@ import (
 
 // Creator Notifier 목록을 생성하는 역할을 정의한 인터페이스입니다.
 type Creator interface {
-	CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
+	CreateAll(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
 }
 
 // CreatorFunc 설정 정보를 바탕으로 Notifier 목록을 생성하는 함수 타입입니다.
 type CreatorFunc func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error)
 
-// CreateNotifiers 함수 f를 호출하여 Notifier 생성을 위임합니다.
-func (f CreatorFunc) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
+// CreateAll 함수 f를 호출하여 Notifier 생성을 위임합니다.
+func (f CreatorFunc) CreateAll(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
 	return f(appConfig, executor)
 }
 
@@ -44,12 +44,12 @@ func (f *defaultFactory) Register(creator Creator) {
 	}
 }
 
-// CreateNotifiers 등록된 모든 Creator를 실행하여 사용 가능한 Notifier 목록을 생성합니다.
-func (f *defaultFactory) CreateNotifiers(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
+// CreateAll 등록된 모든 Creator를 실행하여 사용 가능한 Notifier 목록을 생성합니다.
+func (f *defaultFactory) CreateAll(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]Notifier, error) {
 	var allNotifiers []Notifier
 
 	for _, creator := range f.creators {
-		notifiers, err := creator.CreateNotifiers(appConfig, executor)
+		notifiers, err := creator.CreateAll(appConfig, executor)
 		if err != nil {
 			return nil, err
 		}
