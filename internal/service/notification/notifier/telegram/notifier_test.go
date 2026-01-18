@@ -40,7 +40,12 @@ func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNoti
 	}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
+	opts := options{
+		BotToken:  "test-token",
+		ChatID:    testTelegramChatID,
+		AppConfig: appConfig,
+	}
+	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, mockExecutor, opts)
 	require.NoError(t, err)
 	notifier := notifierHandler.(*telegramNotifier)
 	notifier.retryDelay = 1 * time.Millisecond
@@ -129,7 +134,12 @@ func TestTelegramNotifier_Run_ChannelClosed_Fix(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, 11111, appConfig, mockExecutor)
+	opts := options{
+		BotToken:  "test-token",
+		ChatID:    11111,
+		AppConfig: appConfig,
+	}
+	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, mockExecutor, opts)
 	require.NoError(t, err)
 	n := nHandler.(*telegramNotifier)
 
@@ -163,7 +173,12 @@ func TestRunSender_GracefulShutdown_InFlightMessage(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, 12345, appConfig, mockExecutor)
+	opts := options{
+		BotToken:  "test-token",
+		ChatID:    12345,
+		AppConfig: appConfig,
+	}
+	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, mockExecutor, opts)
 	require.NoError(t, err)
 	n := nHandler.(*telegramNotifier)
 
@@ -206,7 +221,12 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 	mockExecutor := &taskmocks.MockExecutor{}
 
 	// Create Notifier manually
-	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, testTelegramChatID, appConfig, mockExecutor)
+	opts := options{
+		BotToken:  "test-token",
+		ChatID:    testTelegramChatID,
+		AppConfig: appConfig,
+	}
+	notifierHandler, err := newTelegramNotifierWithBot(testTelegramNotifierID, mockBot, mockExecutor, opts)
 	require.NoError(t, err)
 	notifier := notifierHandler.(*telegramNotifier)
 	notifier.retryDelay = 1 * time.Millisecond

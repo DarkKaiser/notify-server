@@ -19,16 +19,31 @@ import (
 
 // TODO 미완료
 
-type telegramNotifierCreatorFunc func(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error)
+// options 텔레그램 Notifier 생성에 필요한 설정 정보
+type options struct {
+	BotToken  string
+	ChatID    int64
+	AppConfig *config.AppConfig
+}
 
-// NewFactory 텔레그램 Notifier 설정을 처리하는 CreatorFunc를 생성하여 반환합니다.
+// NewCreator 텔레그램 Notifier 설정을 처리하는 CreatorFunc를 생성하여 반환합니다.
+func NewCreator() notifier.CreatorFunc {
+	return newCreator(newNotifier)
+}
+
+// newCreator 텔레그램 Notifier 설정을 처리하는 CreatorFunc를 생성하여 반환합니다.
 // 의존성 주입을 위해 생성자 함수를 인자로 받습니다.
-func NewFactory(creator telegramNotifierCreatorFunc) notifier.CreatorFunc {
+func newCreator(creator func(id contract.NotifierID, executor contract.TaskExecutor, opts options) (notifier.Notifier, error)) notifier.CreatorFunc {
 	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		var notifiers []notifier.Notifier
 
 		for _, telegram := range appConfig.Notifier.Telegrams {
-			n, err := creator(contract.NotifierID(telegram.ID), telegram.BotToken, telegram.ChatID, appConfig, executor)
+			opts := options{
+				BotToken:  telegram.BotToken,
+				ChatID:    telegram.ChatID,
+				AppConfig: appConfig,
+			}
+			n, err := creator(contract.NotifierID(telegram.ID), executor, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -39,12 +54,12 @@ func NewFactory(creator telegramNotifierCreatorFunc) notifier.CreatorFunc {
 	}
 }
 
-// NewNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
-func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error) {
+// newNotifier 실제 텔레그램 봇 API를 이용하여 Notifier 인스턴스를 생성합니다.
+func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, opts options) (notifier.Notifier, error) {
 	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id": id,
-		"bot_token":   strutil.Mask(botToken),
-		"chat_id":     chatID,
+		"bot_token":   strutil.Mask(opts.BotToken),
+		"chat_id":     opts.ChatID,
 	}).Debug("텔레그램 봇 초기화 시도")
 
 	// 텔레그램 봇 API 클라이언트 초기화 (Timeout 설정 포함)
@@ -53,21 +68,21 @@ func NewNotifier(id contract.NotifierID, botToken string, chatID int64, appConfi
 		Timeout: constants.DefaultHTTPClientTimeout,
 	}
 
-	botAPI, err := tgbotapi.NewBotAPIWithClient(botToken, tgbotapi.APIEndpoint, client)
+	botAPI, err := tgbotapi.NewBotAPIWithClient(opts.BotToken, tgbotapi.APIEndpoint, client)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 초기화 실패 (토큰을 확인해주세요)")
 	}
-	botAPI.Debug = appConfig.Debug
+	botAPI.Debug = opts.AppConfig.Debug
 
-	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, chatID, appConfig, executor)
+	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, executor, opts)
 }
 
 // newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, chatID int64, appConfig *config.AppConfig, executor contract.TaskExecutor) (notifier.Notifier, error) {
+func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, executor contract.TaskExecutor, opts options) (notifier.Notifier, error) {
 	notifier := &telegramNotifier{
 		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
-		chatID: chatID,
+		chatID: opts.ChatID,
 
 		botAPI: botAPI,
 
@@ -84,7 +99,7 @@ func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, c
 	registeredCommands := make(map[string]telegramBotCommand)
 
 	// 봇 명령어 목록을 초기화합니다.
-	for _, t := range appConfig.Tasks {
+	for _, t := range opts.AppConfig.Tasks {
 		for _, c := range t.Commands {
 			// 해당 커맨드가 Notifier 사용이 불가능하게 설정된 경우 건너뜁니다.
 			if !c.Notifier.Usable {

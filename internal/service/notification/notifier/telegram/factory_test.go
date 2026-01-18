@@ -113,7 +113,12 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			chatID := int64(12345)
 
 			mockExecutor := &taskmocks.MockExecutor{}
-			n, err := newTelegramNotifierWithBot("test-notifier", mockBot, chatID, tt.appConfig, mockExecutor)
+			opts := options{
+				BotToken:  "test-token",
+				ChatID:    chatID,
+				AppConfig: tt.appConfig,
+			}
+			n, err := newTelegramNotifierWithBot("test-notifier", mockBot, mockExecutor, opts)
 			require.NoError(t, err)
 
 			notifier, ok := n.(*telegramNotifier)
@@ -179,7 +184,12 @@ func TestNewNotifier_CommandCollision(t *testing.T) {
 	}
 
 	// when
-	_, err := newTelegramNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, 12345, appConfig, mockExecutor)
+	opts := options{
+		BotToken:  "test-token",
+		ChatID:    12345,
+		AppConfig: appConfig,
+	}
+	_, err := newTelegramNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, opts)
 
 	// then
 	assert.Error(t, err)
@@ -246,7 +256,12 @@ func TestNewNotifier_Validation(t *testing.T) {
 			}
 			mockExecutor := &taskmocks.MockExecutor{}
 
-			_, err := newTelegramNotifierWithBot("test_notifier", mockBot, 1234, cfg, mockExecutor)
+			opts := options{
+				BotToken:  "test-token",
+				ChatID:    1234,
+				AppConfig: cfg,
+			}
+			_, err := newTelegramNotifierWithBot("test_notifier", mockBot, mockExecutor, opts)
 
 			if tt.expectError {
 				assert.Error(t, err)
