@@ -145,12 +145,12 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	opts := options{
+	p := params{
 		BotToken:  "test-token",
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
-	nHandler, err := newTelegramNotifierWithBot("test-notifier", mockBot, mockExecutor, opts)
+	nHandler, err := newWithBot("test-notifier", mockBot, mockExecutor, p)
 	require.NoError(t, err)
 
 	n, ok := nHandler.(*telegramNotifier)
@@ -180,8 +180,8 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 func TestTelegramNotifier_Escaping(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	n := &telegramNotifier{
-		botAPI: mockBot,
-		chatID: 12345,
+		botClient: mockBot,
+		chatID:    12345,
 	}
 
 	t.Run("Escapes Special Characters", func(t *testing.T) {
@@ -257,7 +257,7 @@ func TestSafeSplit(t *testing.T) {
 func TestTelegramNotifier_RetryAfter(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	n := &telegramNotifier{
-		botAPI:     mockBot,
+		botClient:  mockBot,
 		chatID:     12345,
 		retryDelay: 10 * time.Millisecond,
 	}

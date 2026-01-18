@@ -161,8 +161,8 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 		mockExec := new(taskmocks.MockExecutor)
 		mockBot := &MockTelegramBot{}
 		n := &telegramNotifier{
-			botAPI: mockBot,
-			chatID: 12345,
+			botClient: mockBot,
+			chatID:    12345,
 		}
 
 		ctx := context.Background()

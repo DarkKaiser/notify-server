@@ -81,7 +81,7 @@ func (n *telegramNotifier) appendTitle(taskCtx contract.TaskContext, message str
 		// O(1) Map 조회로 성능 개선 (중첩 맵 사용)
 		if commands, ok := n.botCommandsByTaskAndCommand[string(taskID)]; ok {
 			if botCommand, exists := commands[string(commandID)]; exists {
-				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.commandTitle), message)
+				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.title), message)
 			}
 		}
 	}
@@ -291,7 +291,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 		}
 
 		// 전송 시도
-		_, err := n.botAPI.Send(messageConfig)
+		_, err := n.botClient.Send(messageConfig)
 		if err == nil {
 			// 성공
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{

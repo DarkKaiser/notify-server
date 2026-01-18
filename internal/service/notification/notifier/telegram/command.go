@@ -87,7 +87,7 @@ func (n *telegramNotifier) executeCommand(executor contract.TaskExecutor, botCom
 			// Notify 실패 시(큐 가득 참 등) 로그 남김
 			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 				"notifier_id": n.ID(),
-				"command":     botCommand.command,
+				"command":     botCommand.name,
 			}).Warn(constants.LogMsgTelegramCmdFailNotifyFail)
 		}
 	}
@@ -108,7 +108,7 @@ func (n *telegramNotifier) sendHelpCommandMessage(ctx context.Context) {
 		if i != 0 {
 			message += "\n\n" // 명령어 간 줄바꿈
 		}
-		message += fmt.Sprintf("%s%s\n%s", botCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
+		message += fmt.Sprintf("%s%s\n%s", botCommandInitialCharacter, botCommand.name, botCommand.description)
 	}
 	n.sendMessage(ctx, message)
 }

@@ -34,9 +34,9 @@ var _ notifier.Notifier = (*telegramNotifier)(nil) // 인터페이스 준수 확
 
 // botCommand 봇에서 실행 가능한 명령어 메타데이터
 type botCommand struct {
-	command            string
-	commandTitle       string
-	commandDescription string
+	name        string
+	title       string
+	description string
 
 	taskID    contract.TaskID        // 이 명령어와 연결된 작업(Task) ID
 	commandID contract.TaskCommandID // 이 명령어와 연결된 작업 커맨드 ID
@@ -56,8 +56,8 @@ type defaultBotClient struct {
 }
 
 // GetSelf 텔레그램 봇의 정보를 반환합니다.
-func (w *defaultBotClient) GetSelf() tgbotapi.User {
-	return w.Self
+func (c *defaultBotClient) GetSelf() tgbotapi.User {
+	return c.Self
 }
 
 // telegramNotifier 텔레그램 알림 발송 및 봇 상호작용을 처리하는 Notifier
@@ -67,7 +67,7 @@ type telegramNotifier struct {
 	chatID int64
 
 	// botClient 텔레그램 봇 API 클라이언트 (테스트 시 Mocking 가능)
-	botAPI botClient
+	botClient botClient
 
 	executor contract.TaskExecutor
 
@@ -93,11 +93,11 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 	config.Timeout = 60 // Long Polling 타임아웃 60초 설정
 
 	// 메시지 수신 채널 획득
-	updateC := n.botAPI.GetUpdatesChan(config)
+	updateC := n.botClient.GetUpdatesChan(config)
 
 	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id":  n.ID(),
-		"bot_username": n.botAPI.GetSelf().UserName,
+		"bot_username": n.botClient.GetSelf().UserName,
 		"chat_id":      n.chatID,
 	}).Debug(constants.LogMsgTelegramStarted)
 
@@ -115,8 +115,8 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 	// Sender 고루틴도 함께 종료하고 대기해야 합니다.
 	defer func() {
 		// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
-		if n.botAPI != nil {
-			n.botAPI.StopReceivingUpdates()
+		if n.botClient != nil {
+			n.botClient.StopReceivingUpdates()
 		}
 
 		// Notifier Close를 호출하여 Done 채널을 닫아 runSender를 깨웁니다.
@@ -147,7 +147,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 			}).Error(constants.LogMsgTelegramSenderTimeout)
 		}
 
-		n.botAPI = nil
+		n.botClient = nil
 
 		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 			"notifier_id": n.ID(),

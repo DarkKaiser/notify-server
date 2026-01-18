@@ -43,8 +43,8 @@ func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 // Telegram Notifier Factory Tests
 // =============================================================================
 
-// TestNewTelegramNotifierWithBot_Table verifies Notifier creation.
-func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
+// TestNewWithBot_Table verifies Notifier creation.
+func TestNewWithBot_Table(t *testing.T) {
 	tests := []struct {
 		name                 string
 		appConfig            *config.AppConfig
@@ -113,12 +113,12 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 			chatID := int64(12345)
 
 			mockExecutor := &taskmocks.MockExecutor{}
-			opts := options{
+			p := params{
 				BotToken:  "test-token",
 				ChatID:    chatID,
 				AppConfig: tt.appConfig,
 			}
-			n, err := newTelegramNotifierWithBot("test-notifier", mockBot, mockExecutor, opts)
+			n, err := newWithBot("test-notifier", mockBot, mockExecutor, p)
 			require.NoError(t, err)
 
 			notifier, ok := n.(*telegramNotifier)
@@ -127,7 +127,7 @@ func TestNewTelegramNotifierWithBot_Table(t *testing.T) {
 
 			assert.Len(t, notifier.botCommands, tt.expectedCommandCount)
 			if tt.expectedCommandCount > 0 {
-				assert.Equal(t, tt.expectedFirstCmd, notifier.botCommands[0].command)
+				assert.Equal(t, tt.expectedFirstCmd, notifier.botCommands[0].name)
 			}
 
 			// Buffer Size Verification
@@ -184,12 +184,12 @@ func TestNewNotifier_CommandCollision(t *testing.T) {
 	}
 
 	// when
-	opts := options{
+	p := params{
 		BotToken:  "test-token",
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
-	_, err := newTelegramNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, opts)
+	_, err := newWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, p)
 
 	// then
 	assert.Error(t, err)
@@ -256,12 +256,12 @@ func TestNewNotifier_Validation(t *testing.T) {
 			}
 			mockExecutor := &taskmocks.MockExecutor{}
 
-			opts := options{
+			p := params{
 				BotToken:  "test-token",
 				ChatID:    1234,
 				AppConfig: cfg,
 			}
-			_, err := newTelegramNotifierWithBot("test_notifier", mockBot, mockExecutor, opts)
+			_, err := newWithBot("test_notifier", mockBot, mockExecutor, p)
 
 			if tt.expectError {
 				assert.Error(t, err)
