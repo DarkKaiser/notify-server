@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
@@ -76,8 +75,7 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, p param
 	// 앞서 생성한 안전한 HTTP 클라이언트를 주입하여 API와의 모든 통신을 처리합니다.
 	botAPI, err := tgbotapi.NewBotAPIWithClient(p.BotToken, tgbotapi.APIEndpoint, client)
 	if err != nil {
-		// @@@@@
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 API 클라이언트 초기화에 실패했습니다. BotToken이 올바른지 확인해주세요.")
+		return nil, NewErrInvalidBotToken(err)
 	}
 
 	// 3. 디버그 모드 설정
@@ -128,11 +126,7 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 
 			// 필수 설정 값 검증
 			if t.ID == "" || c.ID == "" {
-				// @@@@@
-				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
-					"텔레그램 명령어 생성 실패: TaskID와 CommandID는 필수 값입니다. 설정 파일을 확인해주세요. (Task:'%s', Command:'%s')",
-					t.ID, c.ID,
-				))
+				return nil, NewErrInvalidCommandIDs(t.ID, c.ID)
 			}
 
 			// 명령어 이름 생성: TaskID와 CommandID를 조합하여 유니크한 명령어 이름을 만듭니다.
@@ -141,11 +135,7 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 
 			// 중복 명령어 충돌 검사: 서로 다른 Task가 우연히 같은 명령어 이름을 가지게 되는 경우를 방지합니다.
 			if existing, exists := registeredCommands[commandName]; exists {
-				// @@@@@
-				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
-					"텔레그램 명령어 충돌이 감지되었습니다: 명령어 '/%s'가 중복됩니다. (충돌: %s > %s vs %s > %s). TaskID 또는 CommandID를 변경하여 유일한 명령어가 되도록 해주세요.",
-					commandName, existing.taskID, existing.commandID, t.ID, c.ID,
-				))
+				return nil, NewErrDuplicateCommandName(commandName, existing.taskID.String(), existing.commandID.String(), t.ID, c.ID)
 			}
 
 			newCommand := botCommand{
@@ -172,7 +162,7 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 
 	// 3. 빠른 검색을 위한 인덱싱
 	notifier.botCommandsByName = make(map[string]botCommand, len(notifier.botCommands))
-	notifier.botCommandsByTask = make(map[string]map[string]botCommand) // 복합 키 검색 지원: TaskID -> CommandID -> Command
+	notifier.botCommandsByTask = make(map[contract.TaskID]map[contract.TaskCommandID]botCommand) // 복합 키 검색 지원: TaskID -> CommandID -> Command
 
 	for _, command := range notifier.botCommands {
 		// 1) 명령어 이름으로 조회
@@ -180,11 +170,11 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 
 		// 2) TaskID와 CommandID 조합으로 조회
 		if !command.taskID.IsEmpty() && !command.commandID.IsEmpty() {
-			tID := string(command.taskID)
-			cID := string(command.commandID)
+			tID := command.taskID
+			cID := command.commandID
 
 			if _, exists := notifier.botCommandsByTask[tID]; !exists {
-				notifier.botCommandsByTask[tID] = make(map[string]botCommand)
+				notifier.botCommandsByTask[tID] = make(map[contract.TaskCommandID]botCommand)
 			}
 			notifier.botCommandsByTask[tID][cID] = command
 		}

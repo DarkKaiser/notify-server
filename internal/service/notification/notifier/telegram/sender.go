@@ -49,7 +49,7 @@ func (n *telegramNotifier) handleNotifyRequest(ctx context.Context, req *notifie
 // enrichMessageWithContext TaskContext 정보를 메시지에 추가 (제목, 시간, 에러 등)
 func (n *telegramNotifier) enrichMessageWithContext(taskCtx contract.TaskContext, message string) string {
 	// 1. 작업 제목 추가
-	message = n.appendTitle(taskCtx, message)
+	message = n.prependTitle(taskCtx, message)
 
 	// 2. 작업 인스턴스 ID가 있으면 취소 명령어 안내 및 경과 시간 추가
 	message = n.appendCancelCommand(taskCtx, message)
@@ -63,8 +63,8 @@ func (n *telegramNotifier) enrichMessageWithContext(taskCtx contract.TaskContext
 	return message
 }
 
-// appendTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
-func (n *telegramNotifier) appendTitle(taskCtx contract.TaskContext, message string) string {
+// prependTitle TaskContext에서 제목 정보를 추출하여 메시지에 추가합니다.
+func (n *telegramNotifier) prependTitle(taskCtx contract.TaskContext, message string) string {
 	if title := taskCtx.GetTitle(); len(title) > 0 {
 		// 긴 제목으로 인해 HTML 태그가 닫히지 않은 채 메시지가 분할되는 등의 문제를 방지하기 위해 Truncate 처리
 		// 중요: Truncate를 먼저 수행한 후 이스케이프해야 안전합니다.
@@ -79,8 +79,8 @@ func (n *telegramNotifier) appendTitle(taskCtx contract.TaskContext, message str
 
 	if !taskID.IsEmpty() && !commandID.IsEmpty() {
 		// O(1) Map 조회로 성능 개선 (중첩 맵 사용)
-		if commands, ok := n.botCommandsByTask[string(taskID)]; ok {
-			if botCommand, exists := commands[string(commandID)]; exists {
+		if commands, ok := n.botCommandsByTask[taskID]; ok {
+			if botCommand, exists := commands[commandID]; exists {
 				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.title), message)
 			}
 		}
@@ -149,7 +149,7 @@ func formatElapsedTime(seconds int64) string {
 func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 	// 메시지 길이가 제한 이내라면 한 번에 전송
 	if len(message) <= telegramMessageMaxLength {
-		_ = n.sendSingleMessage(ctx, message)
+		_ = n.sendChunk(ctx, message)
 		return
 	}
 
@@ -175,7 +175,7 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 		if sb.Len()+neededSpace > telegramMessageMaxLength {
 			// 현재까지 모은 청크가 있다면 전송
 			if sb.Len() > 0 {
-				if err := n.sendSingleMessage(ctx, sb.String()); err != nil {
+				if err := n.sendChunk(ctx, sb.String()); err != nil {
 					return // 전송 실패 시 중단
 				}
 				sb.Reset()
@@ -191,7 +191,7 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 					}
 
 					chunk, remainder := safeSplit(currentLine, telegramMessageMaxLength)
-					if err := n.sendSingleMessage(ctx, chunk); err != nil {
+					if err := n.sendChunk(ctx, chunk); err != nil {
 						return // 전송 실패 시 중단
 					}
 					currentLine = remainder
@@ -213,7 +213,7 @@ func (n *telegramNotifier) sendMessage(ctx context.Context, message string) {
 
 	// 마지막 남은 청크 전송
 	if sb.Len() > 0 {
-		_ = n.sendSingleMessage(ctx, sb.String())
+		_ = n.sendChunk(ctx, sb.String())
 	}
 }
 
@@ -246,13 +246,13 @@ func (n *telegramNotifier) getRetryWaitDuration(retryAfter int) time.Duration {
 	return n.retryDelay
 }
 
-// sendSingleMessage 단일 메시지 전송
+// sendChunk 단일 메시지 전송
 // 컨텍스트 취소(종료 시그널)를 감지하면 즉시 중단합니다.
-func (n *telegramNotifier) sendSingleMessage(ctx context.Context, message string) error {
-	return n.sendSingleMessageInternal(ctx, message, true)
+func (n *telegramNotifier) sendChunk(ctx context.Context, message string) error {
+	return n.attemptSend(ctx, message, true)
 }
 
-func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, message string, useHTML bool) error {
+func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useHTML bool) error {
 	messageConfig := tgbotapi.NewMessage(n.chatID, message)
 	if useHTML {
 		messageConfig.ParseMode = tgbotapi.ModeHTML
@@ -322,7 +322,7 @@ func (n *telegramNotifier) sendSingleMessageInternal(ctx context.Context, messag
 				"notifier_id": n.ID(),
 				"error":       err,
 			}).Warn(constants.LogMsgTelegramHTMLFallback)
-			return n.sendSingleMessageInternal(ctx, message, false)
+			return n.attemptSend(ctx, message, false)
 		}
 
 		// 재시도 가능 여부 판단

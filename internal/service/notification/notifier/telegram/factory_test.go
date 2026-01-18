@@ -6,7 +6,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
-
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -17,25 +17,31 @@ import (
 // Telegram Bot API Client Tests
 // =============================================================================
 
-// TestTelegramBotAPIClient_GetSelf verifies GetSelf method.
 func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
-	t.Run("GetSelf function verification", func(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetSelf는 봇 자신의 정보를 반환해야 한다", func(t *testing.T) {
+		t.Parallel()
+
+		// given
+		expectedUser := tgbotapi.User{
+			ID:        123456,
+			UserName:  "test_bot",
+			FirstName: "Test",
+			LastName:  "Bot",
+		}
 		mockBotAPI := &tgbotapi.BotAPI{
-			Self: tgbotapi.User{
-				ID:        123456,
-				UserName:  "test_bot",
-				FirstName: "Test",
-				LastName:  "Bot",
-			},
+			Self: expectedUser,
 		}
 
 		client := &defaultBotClient{BotAPI: mockBotAPI}
+
+		// when
 		user := client.GetSelf()
 
+		// then
+		assert.Equal(t, expectedUser, user)
 		assert.Equal(t, int64(123456), user.ID)
-		assert.Equal(t, "test_bot", user.UserName)
-		assert.Equal(t, "Test", user.FirstName)
-		assert.Equal(t, "Bot", user.LastName)
 	})
 }
 
@@ -43,8 +49,9 @@ func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 // Telegram Notifier Factory Tests
 // =============================================================================
 
-// TestNewWithBot_Table verifies Notifier creation.
-func TestNewWithBot_Table(t *testing.T) {
+func TestNewNotifierWithBot_Success(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name                 string
 		appConfig            *config.AppConfig
@@ -52,13 +59,13 @@ func TestNewWithBot_Table(t *testing.T) {
 		expectedFirstCmd     string
 	}{
 		{
-			name:                 "Default Config",
+			name:                 "기본 설정: 도움말 명령어만 포함되어야 한다",
 			appConfig:            &config.AppConfig{},
-			expectedCommandCount: 1, // Only Help
+			expectedCommandCount: 1, // Help
 			expectedFirstCmd:     "help",
 		},
 		{
-			name: "Config with Task",
+			name: "단일 작업 설정: 도움말과 작업 명령어가 포함되어야 한다",
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -82,7 +89,7 @@ func TestNewWithBot_Table(t *testing.T) {
 			expectedFirstCmd:     "test_task_run",
 		},
 		{
-			name: "Config with Disabled Task",
+			name: "사용 불가능한(Unusable) 명령어: 무시되어야 한다",
 			appConfig: &config.AppConfig{
 				Tasks: []config.TaskConfig{
 					{
@@ -94,183 +101,162 @@ func TestNewWithBot_Table(t *testing.T) {
 								Title: "Stop",
 								Notifier: struct {
 									Usable bool `json:"usable"`
-								}{Usable: false},
+								}{Usable: false}, // Disabled
 							},
 						},
 					},
 				},
 			},
-			expectedCommandCount: 1, // Only Help (Disabled command ignored)
+			expectedCommandCount: 1, // Only Help
 			expectedFirstCmd:     "help",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
-			mockBot := &MockTelegramBot{
-				updatesChan: make(chan tgbotapi.Update),
-			}
-			chatID := int64(12345)
+			t.Parallel()
 
+			// given
+			mockBot := &MockTelegramBot{updatesChan: make(chan tgbotapi.Update)}
 			mockExecutor := &taskmocks.MockExecutor{}
 			p := params{
 				BotToken:  "test-token",
-				ChatID:    chatID,
+				ChatID:    12345,
 				AppConfig: tt.appConfig,
 			}
+
+			// when
 			n, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
+
+			// then
 			require.NoError(t, err)
 
 			notifier, ok := n.(*telegramNotifier)
-			require.True(t, ok, "Type assertion should succeed")
-			require.NotNil(t, notifier, "Notifier should not be nil")
+			require.True(t, ok, "반환된 인스턴스는 *telegramNotifier 타입이어야 한다")
+			require.NotNil(t, notifier)
 
 			assert.Len(t, notifier.botCommands, tt.expectedCommandCount)
 			if tt.expectedCommandCount > 0 {
 				assert.Equal(t, tt.expectedFirstCmd, notifier.botCommands[0].name)
 			}
 
-			// Buffer Size Verification
-			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC()), "Buffer size should match the constant")
+			// 상수 값 검증
+			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC()), "버퍼 크기가 상수와 일치해야 한다")
 		})
 	}
 }
 
-// TestNewNotifier_CommandCollision verifies that command collisions are detected.
-func TestNewNotifier_CommandCollision(t *testing.T) {
-	// given
-	// 충돌을 유발하는 설정 생성:
-	// 1. Task: "foo_bar", Command: "baz" -> /foo_bar_baz
-	// 2. Task: "foo", Command: "bar_baz" -> /foo_bar_baz
-	appConfig := &config.AppConfig{
-		Notifier: config.NotifierConfig{
-			Telegrams: []config.TelegramConfig{
-				{
-					ID:       "telegram-1",
-					BotToken: "test-token",
-					ChatID:   12345,
-				},
-			},
-		},
-		Tasks: []config.TaskConfig{
-			{
-				ID:    "foo_bar",
-				Title: "Task 1",
-				Commands: []config.CommandConfig{
-					{
-						ID:       "baz",
-						Title:    "Command 1",
-						Notifier: config.CommandNotifierConfig{Usable: true},
-					},
-				},
-			},
-			{
-				ID:    "foo",
-				Title: "Task 2",
-				Commands: []config.CommandConfig{
-					{
-						ID:       "bar_baz",
-						Title:    "Command 2",
-						Notifier: config.CommandNotifierConfig{Usable: true},
-					},
-				},
-			},
-		},
-	}
+func TestNewNotifierWithBot_Failure(t *testing.T) {
+	t.Parallel()
 
-	mockExecutor := &taskmocks.MockExecutor{}
-	mockBot := &MockTelegramBot{
-		updatesChan: make(chan tgbotapi.Update),
-	}
-
-	// when
-	p := params{
-		BotToken:  "test-token",
-		ChatID:    12345,
-		AppConfig: appConfig,
-	}
-	_, err := newNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, p)
-
-	// then
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "텔레그램 명령어 충돌이 감지되었습니다")
-	assert.Contains(t, err.Error(), "/foo_bar_baz")
-}
-
-// TestNewNotifier_Validation verifies validation logic for tasks and commands.
-func TestNewNotifier_Validation(t *testing.T) {
 	tests := []struct {
-		name        string
-		tasks       []config.TaskConfig
-		expectError bool
-		errContains string
+		name          string
+		appConfig     *config.AppConfig
+		expectedError string // 에러 메시지 일부 검증
 	}{
 		{
-			name: "성공: 유효한 ID",
-			tasks: []config.TaskConfig{
-				{
-					ID: "valid_task",
-					Commands: []config.CommandConfig{
-						{ID: "valid_command", Notifier: config.CommandNotifierConfig{Usable: true}},
+			name: "TaskID 누락: NewErrInvalidCommandIDs 에러가 발생해야 한다",
+			appConfig: &config.AppConfig{
+				Tasks: []config.TaskConfig{
+					{
+						ID: "", // Missing
+						Commands: []config.CommandConfig{
+							{ID: "Run", Notifier: config.CommandNotifierConfig{Usable: true}},
+						},
 					},
 				},
 			},
-			expectError: false,
+			expectedError: "TaskID와 CommandID는 필수 값입니다",
 		},
 		{
-			name: "실패: TaskID 누락",
-			tasks: []config.TaskConfig{
-				{
-					ID: "", // Missing ID
-					Commands: []config.CommandConfig{
-						{ID: "valid_command", Notifier: config.CommandNotifierConfig{Usable: true}},
+			name: "CommandID 누락: NewErrInvalidCommandIDs 에러가 발생해야 한다",
+			appConfig: &config.AppConfig{
+				Tasks: []config.TaskConfig{
+					{
+						ID: "TestTask",
+						Commands: []config.CommandConfig{
+							{ID: "", Notifier: config.CommandNotifierConfig{Usable: true}}, // Missing
+						},
 					},
 				},
 			},
-			expectError: true,
-			errContains: "TaskID 또는 CommandID는 비어있을 수 없습니다",
+			expectedError: "TaskID와 CommandID는 필수 값입니다",
 		},
 		{
-			name: "실패: CommandID 누락",
-			tasks: []config.TaskConfig{
-				{
-					ID: "valid_task",
-					Commands: []config.CommandConfig{
-						{ID: "", Notifier: config.CommandNotifierConfig{Usable: true}}, // Missing ID
+			name: "명령어 이름 충돌: NewErrDuplicateCommandName 에러가 발생해야 한다",
+			// 충돌 시나리오:
+			// 1. Task: "foo_bar", Command: "baz" -> /foo_bar_baz
+			// 2. Task: "foo", Command: "bar_baz" -> /foo_bar_baz
+			appConfig: &config.AppConfig{
+				Tasks: []config.TaskConfig{
+					{
+						ID: "foo_bar", Commands: []config.CommandConfig{{ID: "baz", Notifier: config.CommandNotifierConfig{Usable: true}}},
+					},
+					{
+						ID: "foo", Commands: []config.CommandConfig{{ID: "bar_baz", Notifier: config.CommandNotifierConfig{Usable: true}}},
 					},
 				},
 			},
-			expectError: true,
-			errContains: "TaskID 또는 CommandID는 비어있을 수 없습니다",
+			expectedError: "명령어 충돌: /foo_bar_baz",
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.AppConfig{
-				Tasks: tt.tasks,
-			}
+			t.Parallel()
 
-			mockBot := &MockTelegramBot{
-				updatesChan: make(chan tgbotapi.Update),
-			}
+			// given
+			mockBot := &MockTelegramBot{updatesChan: make(chan tgbotapi.Update)}
 			mockExecutor := &taskmocks.MockExecutor{}
-
 			p := params{
 				BotToken:  "test-token",
-				ChatID:    1234,
-				AppConfig: cfg,
+				ChatID:    12345,
+				AppConfig: tt.appConfig,
 			}
-			_, err := newNotifierWithBot("test_notifier", mockBot, mockExecutor, p)
 
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
+			// when
+			n, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
+
+			// then
+			require.Error(t, err)
+			assert.Nil(t, n)
+			assert.Contains(t, err.Error(), tt.expectedError)
 		})
 	}
+}
+
+func TestBuildCreator(t *testing.T) {
+	t.Parallel()
+
+	// given
+	mockConfig := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			Telegrams: []config.TelegramConfig{
+				{ID: "t1"},
+				{ID: "t2"},
+			},
+		},
+	}
+	mockExecutor := &taskmocks.MockExecutor{}
+
+	callCount := 0
+	// factory.go에 정의된 constructor 타입 시그니처와 정확히 일치해야 합니다.
+	mockCons := func(id contract.NotifierID, executor contract.TaskExecutor, p params) (notifier.Notifier, error) {
+		callCount++
+		// 테스트용 더미 Notifier 반환 (*telegramNotifier는 Notifier 인터페이스를 구현함)
+		return &telegramNotifier{}, nil
+	}
+
+	// when
+	// buildCreator는 constructor 타입을 인자로 받습니다.
+	creator := buildCreator(mockCons)
+
+	notifiers, err := creator(mockConfig, mockExecutor)
+
+	// then
+	require.NoError(t, err)
+	assert.Len(t, notifiers, 2, "2개의 텔레그램 설정이 있으므로 2개의 Notifier가 생성되어야 한다")
+	assert.Equal(t, 2, callCount, "생성자가 2번 호출되어야 한다")
 }

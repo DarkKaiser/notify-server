@@ -151,8 +151,9 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 		expectedInstanceID := contract.TaskInstanceID("task_1_instance_123")
 
 		mockExec.On("Cancel", expectedInstanceID).Return(nil).Once()
+		n.executor = mockExec
 
-		n.handleCancelCommand(ctx, mockExec, commandWithUnderscores)
+		n.processCancel(ctx, commandWithUnderscores)
 
 		mockExec.AssertExpectations(t)
 	})
@@ -173,7 +174,9 @@ func TestTelegramNotifier_Regressions_Command(t *testing.T) {
 			return ok && strings.Contains(msg.Text, "잘못된 취소 명령어 형식")
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		n.handleCancelCommand(ctx, mockExec, badCommand)
+		n.executor = mockExec
+
+		n.processCancel(ctx, badCommand)
 
 		mockExec.AssertExpectations(t)
 		mockBot.AssertExpectations(t)

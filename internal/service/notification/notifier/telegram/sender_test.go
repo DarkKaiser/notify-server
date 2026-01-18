@@ -277,7 +277,7 @@ func TestTelegramNotifier_RetryAfter(t *testing.T) {
 	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
 
 	start := time.Now()
-	n.sendSingleMessage(context.Background(), "Test Message")
+	n.sendChunk(context.Background(), "Test Message")
 	elapsed := time.Since(start)
 
 	mockBot.AssertExpectations(t)

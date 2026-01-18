@@ -83,7 +83,7 @@ type telegramNotifier struct {
 	botCommandsByName map[string]botCommand
 
 	// botCommandsByTask "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
-	botCommandsByTask map[string]map[string]botCommand
+	botCommandsByTask map[contract.TaskID]map[contract.TaskCommandID]botCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
@@ -191,7 +191,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 				go func(msg *tgbotapi.Message) {
 					defer wg.Done()
 					defer func() { <-n.commandSemaphore }()
-					n.handleCommand(ctx, n.executor, msg)
+					n.dispatchCommand(ctx, msg)
 				}(update.Message)
 			case <-ctx.Done():
 				// 컨텍스트 종료 시 루프 탈출
