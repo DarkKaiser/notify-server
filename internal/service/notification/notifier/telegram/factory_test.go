@@ -118,7 +118,7 @@ func TestNewWithBot_Table(t *testing.T) {
 				ChatID:    chatID,
 				AppConfig: tt.appConfig,
 			}
-			n, err := newWithBot("test-notifier", mockBot, mockExecutor, p)
+			n, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
 			require.NoError(t, err)
 
 			notifier, ok := n.(*telegramNotifier)
@@ -189,7 +189,7 @@ func TestNewNotifier_CommandCollision(t *testing.T) {
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
-	_, err := newWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, p)
+	_, err := newNotifierWithBot(contract.NotifierID("telegram-1"), mockBot, mockExecutor, p)
 
 	// then
 	assert.Error(t, err)
@@ -261,7 +261,7 @@ func TestNewNotifier_Validation(t *testing.T) {
 				ChatID:    1234,
 				AppConfig: cfg,
 			}
-			_, err := newWithBot("test_notifier", mockBot, mockExecutor, p)
+			_, err := newNotifierWithBot("test_notifier", mockBot, mockExecutor, p)
 
 			if tt.expectError {
 				assert.Error(t, err)

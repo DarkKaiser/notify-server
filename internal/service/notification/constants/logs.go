@@ -38,6 +38,7 @@ const (
 	LogMsgNotifierBufferFullDrop = "알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop - Timeout)"
 
 	// --- Telegram Logs ---
+	LogMsgTelegramInitClient          = "텔레그램 Notifier 초기화 및 봇 API 클라이언트 생성 시작"
 	LogMsgTelegramStarted             = "Telegram Notifier의 작업이 시작됨"
 	LogMsgTelegramSenderStarted       = "Sender 고루틴이 정상 종료됨" // 의미상 Stopped가 맞으나 원본 텍스트 유지/확인 필요. 원본: "Sender 고루틴이 정상 종료됨" -> LogMsgTelegramSenderStopped
 	LogMsgTelegramSenderStoppedNormal = "Sender 고루틴이 정상 종료됨"

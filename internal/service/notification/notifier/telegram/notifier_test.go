@@ -45,7 +45,7 @@ func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNoti
 		ChatID:    testTelegramChatID,
 		AppConfig: appConfig,
 	}
-	notifierHandler, err := newWithBot(testTelegramNotifierID, mockBot, mockExecutor, p)
+	notifierHandler, err := newNotifierWithBot(testTelegramNotifierID, mockBot, mockExecutor, p)
 	require.NoError(t, err)
 	notifier := notifierHandler.(*telegramNotifier)
 	notifier.retryDelay = 1 * time.Millisecond
@@ -139,7 +139,7 @@ func TestTelegramNotifier_Run_ChannelClosed_Fix(t *testing.T) {
 		ChatID:    11111,
 		AppConfig: appConfig,
 	}
-	nHandler, err := newWithBot("test-notifier", mockBot, mockExecutor, p)
+	nHandler, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
 	require.NoError(t, err)
 	n := nHandler.(*telegramNotifier)
 
@@ -178,7 +178,7 @@ func TestRunSender_GracefulShutdown_InFlightMessage(t *testing.T) {
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
-	nHandler, err := newWithBot("test-notifier", mockBot, mockExecutor, p)
+	nHandler, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
 	require.NoError(t, err)
 	n := nHandler.(*telegramNotifier)
 
@@ -226,7 +226,7 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 		ChatID:    testTelegramChatID,
 		AppConfig: appConfig,
 	}
-	notifierHandler, err := newWithBot(testTelegramNotifierID, mockBot, mockExecutor, p)
+	notifierHandler, err := newNotifierWithBot(testTelegramNotifierID, mockBot, mockExecutor, p)
 	require.NoError(t, err)
 	notifier := notifierHandler.(*telegramNotifier)
 	notifier.retryDelay = 1 * time.Millisecond
