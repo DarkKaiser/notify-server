@@ -74,16 +74,16 @@ type telegramNotifier struct {
 	retryDelay time.Duration
 	limiter    *rate.Limiter
 
-	// concurrencyLimit 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
-	concurrencyLimit chan struct{}
+	// commandSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
+	commandSemaphore chan struct{}
 
 	botCommands []botCommand
 
-	// botCommandsByCommand command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
-	botCommandsByCommand map[string]botCommand
+	// botCommandsByName command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
+	botCommandsByName map[string]botCommand
 
-	// botCommandsByTaskAndCommand "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
-	botCommandsByTaskAndCommand map[string]map[string]botCommand
+	// botCommandsByTask "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
+	botCommandsByTask map[string]map[string]botCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
@@ -185,12 +185,12 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 			//
 			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
 			select {
-			case n.concurrencyLimit <- struct{}{}:
+			case n.commandSemaphore <- struct{}{}:
 				// Notifier 고루틴도 WaitGroup에 추가하여 종료 시 안전하게 대기
 				wg.Add(1)
 				go func(msg *tgbotapi.Message) {
 					defer wg.Done()
-					defer func() { <-n.concurrencyLimit }()
+					defer func() { <-n.commandSemaphore }()
 					n.handleCommand(ctx, n.executor, msg)
 				}(update.Message)
 			case <-ctx.Done():

@@ -77,7 +77,7 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, p param
 	botAPI, err := tgbotapi.NewBotAPIWithClient(p.BotToken, tgbotapi.APIEndpoint, client)
 	if err != nil {
 		// @@@@@
-		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 API 클라이언트 초기화에 실패했습니다. 유효한 봇 토큰인지 확인해주세요.")
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 API 클라이언트 초기화에 실패했습니다. BotToken이 올바른지 확인해주세요.")
 	}
 
 	// 3. 디버그 모드 설정
@@ -89,11 +89,10 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, p param
 
 // newNotifierWithBot 외부에서 주입된 텔레그램 봇 API 클라이언트(botClient)를 사용하여 Notifier 인스턴스를 생성합니다.
 func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor contract.TaskExecutor, p params) (notifier.Notifier, error) {
-	// @@@@@
 	// 1. Notifier 기본 구조체 초기화
 	// 재시도 정책, 속도 제한(Rate Limiter), 동시성 제어 등 핵심 기능을 설정합니다.
 	notifier := &telegramNotifier{
-		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultTelegramNotifyTimeout),
+		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultTelegramEnqueueTimeout),
 
 		chatID: p.ChatID,
 
@@ -101,32 +100,37 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 
 		executor: executor,
 
-		// 재시도 정책 및 속도 제한 설정 (Telegram API 정책 준수)
+		// 재시도 정책(Retry Policy): API 호출 실패 시 즉시 재시도하지 않고 일정 시간 대기합니다.
+		// 이를 통해 일시적인 네트워크 장애나 서버 부하 상황에서 불필요한 요청 폭주를 막습니다.
 		retryDelay: constants.DefaultTelegramRetryDelay,
-		limiter:    rate.NewLimiter(rate.Limit(constants.DefaultTelegramRateLimit), constants.DefaultTelegramRateBurst),
 
-		// 명령어 처리 동시성 제한 (Semaphore Pattern)
+		// 속도 제한(Rate Limiting): 텔레그램 API 정책을 준수하기 위해 발송 속도를 제어합니다.
+		//   * Rate: 초당 허용 요청 수
+		//   * Burst: 순간 최대 허용 요청 수 (짧은 시간 내 연속 요청 허용)
+		limiter: rate.NewLimiter(rate.Limit(constants.DefaultTelegramRateLimit), constants.DefaultTelegramRateBurst),
+
+		// 명령어 처리 동시성 제한
 		// 과도한 요청으로 인한 리소스 고갈을 방지하기 위해 버퍼 채널을 사용합니다.
-		concurrencyLimit: make(chan struct{}, constants.TelegramCommandConcurrency),
+		commandSemaphore: make(chan struct{}, constants.TelegramCommandExecutionLimit),
 	}
 
-	// 명령어 중복 검사를 위한 임시 맵 (설정 오류 조기 발견용)
+	// 2. 봇 명령어 등록 및 검증
+
+	// 봇 명령어 중복 검사를 위한 임시 맵
 	registeredCommands := make(map[string]botCommand)
 
-	// 2. 봇 명령어 등록 및 검증
-	// 설정(AppConfig)에 정의된 작업(Task)들을 순회하며 실행 가능한 명령어를 생성합니다.
 	for _, t := range p.AppConfig.Tasks {
 		for _, c := range t.Commands {
-			// 해당 커맨드가 Notifier 사용이 불가능하게 설정된 경우 건너뜁니다.
+			// 해당 명령이 알림 사용이 불가능하게 설정된 경우 건너뜁니다.
 			if !c.Notifier.Usable {
 				continue
 			}
 
-			// 필수 설정 값 검증 (Fail-Fast)
-			// 불완전한 설정으로 서버가 실행되는 것을 방지합니다.
+			// 필수 설정 값 검증
 			if t.ID == "" || c.ID == "" {
+				// @@@@@
 				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
-					"텔레그램 명령어 생성 실패: TaskID 또는 CommandID는 비어있을 수 없습니다. (Task:'%s', Command:'%s')",
+					"텔레그램 명령어 생성 실패: TaskID와 CommandID는 필수 값입니다. 설정 파일을 확인해주세요. (Task:'%s', Command:'%s')",
 					t.ID, c.ID,
 				))
 			}
@@ -135,12 +139,12 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 			// 예: TaskID="MyTask", CommandID="Run" -> "/my_task_run"
 			commandName := fmt.Sprintf("%s_%s", strcase.ToSnake(t.ID), strcase.ToSnake(c.ID))
 
-			// 중복 명령어 충돌 검사
-			// 서로 다른 Task가 우연히 같은 명령어 이름을 가지게 되는 경우를 방지합니다.
+			// 중복 명령어 충돌 검사: 서로 다른 Task가 우연히 같은 명령어 이름을 가지게 되는 경우를 방지합니다.
 			if existing, exists := registeredCommands[commandName]; exists {
+				// @@@@@
 				return nil, apperrors.New(apperrors.InvalidInput, fmt.Sprintf(
-					"텔레그램 명령어 충돌이 감지되었습니다. 명령어: '/%s' (Task:'%s', Command:'%s')가 이미 등록된 (Task:'%s', Command:'%s')와 충돌합니다. TaskID 또는 CommandID를 변경해주세요.",
-					commandName, t.ID, c.ID, existing.taskID, existing.commandID,
+					"텔레그램 명령어 충돌이 감지되었습니다: 명령어 '/%s'가 중복됩니다. (충돌: %s > %s vs %s > %s). TaskID 또는 CommandID를 변경하여 유일한 명령어가 되도록 해주세요.",
+					commandName, existing.taskID, existing.commandID, t.ID, c.ID,
 				))
 			}
 
@@ -166,25 +170,23 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 		},
 	)
 
-	// 3. 빠른 검색을 위한 인덱싱 (Lookup Map 구축)
-	// O(n) 선형 탐색 대신 O(1) 해시 맵 검색을 사용하여 성능을 최적화합니다.
-	notifier.botCommandsByCommand = make(map[string]botCommand, len(notifier.botCommands))
-	// 복합 키 검색 지원: TaskID -> CommandID -> Command
-	notifier.botCommandsByTaskAndCommand = make(map[string]map[string]botCommand)
+	// 3. 빠른 검색을 위한 인덱싱
+	notifier.botCommandsByName = make(map[string]botCommand, len(notifier.botCommands))
+	notifier.botCommandsByTask = make(map[string]map[string]botCommand) // 복합 키 검색 지원: TaskID -> CommandID -> Command
 
-	for _, cmd := range notifier.botCommands {
-		// 1) 명령어 이름으로 조회 ("/run_task" -> Command)
-		notifier.botCommandsByCommand[cmd.name] = cmd
+	for _, command := range notifier.botCommands {
+		// 1) 명령어 이름으로 조회
+		notifier.botCommandsByName[command.name] = command
 
-		// 2) TaskID와 CommandID 조합으로 조회 (내부 로직용)
-		if !cmd.taskID.IsEmpty() && !cmd.commandID.IsEmpty() {
-			tID := string(cmd.taskID)
-			cID := string(cmd.commandID)
+		// 2) TaskID와 CommandID 조합으로 조회
+		if !command.taskID.IsEmpty() && !command.commandID.IsEmpty() {
+			tID := string(command.taskID)
+			cID := string(command.commandID)
 
-			if _, exists := notifier.botCommandsByTaskAndCommand[tID]; !exists {
-				notifier.botCommandsByTaskAndCommand[tID] = make(map[string]botCommand)
+			if _, exists := notifier.botCommandsByTask[tID]; !exists {
+				notifier.botCommandsByTask[tID] = make(map[string]botCommand)
 			}
-			notifier.botCommandsByTaskAndCommand[tID][cID] = cmd
+			notifier.botCommandsByTask[tID][cID] = command
 		}
 	}
 

@@ -63,7 +63,7 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor contract.
 
 // findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
 func (n *telegramNotifier) findBotCommand(command string) (botCommand, bool) {
-	botCommand, exists := n.botCommandsByCommand[command]
+	botCommand, exists := n.botCommandsByName[command]
 	return botCommand, exists
 }
 

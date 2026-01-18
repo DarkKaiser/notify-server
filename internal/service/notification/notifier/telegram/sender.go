@@ -79,7 +79,7 @@ func (n *telegramNotifier) appendTitle(taskCtx contract.TaskContext, message str
 
 	if !taskID.IsEmpty() && !commandID.IsEmpty() {
 		// O(1) Map 조회로 성능 개선 (중첩 맵 사용)
-		if commands, ok := n.botCommandsByTaskAndCommand[string(taskID)]; ok {
+		if commands, ok := n.botCommandsByTask[string(taskID)]; ok {
 			if botCommand, exists := commands[string(commandID)]; exists {
 				return fmt.Sprintf(msgContextTitle, html.EscapeString(botCommand.title), message)
 			}
