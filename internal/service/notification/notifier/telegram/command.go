@@ -32,7 +32,7 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor contract.
 	}()
 
 	// 텔레그램 명령어는 '/'로 시작해야 합니다. 그렇지 않은 경우 안내 메시지 전송.
-	if len(message.Text) == 0 || message.Text[:1] != telegramBotCommandInitialCharacter {
+	if len(message.Text) == 0 || message.Text[:1] != botCommandInitialCharacter {
 		n.sendUnknownCommandMessage(ctx, message.Text)
 		return
 	}
@@ -40,13 +40,13 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor contract.
 	command := message.Text[1:] // '/' 제거
 
 	// '/help' 명령어 처리
-	if command == telegramBotCommandHelp {
+	if command == botCommandHelp {
 		n.sendHelpCommandMessage(ctx)
 		return
 	}
 
 	// '/cancel_{ID}' 명령어 처리 (작업 취소)
-	if strings.HasPrefix(command, fmt.Sprintf("%s%s", telegramBotCommandCancel, telegramBotCommandSeparator)) {
+	if strings.HasPrefix(command, fmt.Sprintf("%s%s", botCommandCancel, botCommandSeparator)) {
 		n.handleCancelCommand(ctx, executor, command)
 		return
 	}
@@ -62,13 +62,13 @@ func (n *telegramNotifier) handleCommand(ctx context.Context, executor contract.
 }
 
 // findBotCommand 주어진 명령어 문자열과 일치하는 봇 명령어를 찾아 반환합니다.
-func (n *telegramNotifier) findBotCommand(command string) (telegramBotCommand, bool) {
+func (n *telegramNotifier) findBotCommand(command string) (botCommand, bool) {
 	botCommand, exists := n.botCommandsByCommand[command]
 	return botCommand, exists
 }
 
 // executeCommand 주어진 봇 명령어를 Executor를 통해 실행합니다.
-func (n *telegramNotifier) executeCommand(executor contract.TaskExecutor, botCommand telegramBotCommand) {
+func (n *telegramNotifier) executeCommand(executor contract.TaskExecutor, botCommand botCommand) {
 	// Executor를 통해 작업을 비동기로 실행 요청
 	// 실행 요청이 큐에 가득 차는 등의 이유로 실패하면 error 반환
 	if err := executor.Submit(&contract.TaskSubmitRequest{
@@ -97,7 +97,7 @@ func (n *telegramNotifier) executeCommand(executor contract.TaskExecutor, botCom
 func (n *telegramNotifier) sendUnknownCommandMessage(ctx context.Context, input string) {
 	// 텔레그램은 HTML 모드로 동작하므로, 사용자 입력값에 포함된 특수문자(<, > 등)를 이스케이프해야 합니다.
 	escapedInput := html.EscapeString(input)
-	message := fmt.Sprintf(msgUnknownCommand, escapedInput, telegramBotCommandInitialCharacter, telegramBotCommandHelp)
+	message := fmt.Sprintf(msgUnknownCommand, escapedInput, botCommandInitialCharacter, botCommandHelp)
 	n.sendMessage(ctx, message)
 }
 
@@ -108,7 +108,7 @@ func (n *telegramNotifier) sendHelpCommandMessage(ctx context.Context) {
 		if i != 0 {
 			message += "\n\n" // 명령어 간 줄바꿈
 		}
-		message += fmt.Sprintf("%s%s\n%s", telegramBotCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
+		message += fmt.Sprintf("%s%s\n%s", botCommandInitialCharacter, botCommand.command, botCommand.commandDescription)
 	}
 	n.sendMessage(ctx, message)
 }
@@ -118,7 +118,7 @@ func (n *telegramNotifier) handleCancelCommand(ctx context.Context, executor con
 	// 취소명령 형식 : /cancel_nnnn (구분자로 분리)
 	// strings.SplitN을 사용하여 명령어와 인자 두 부분으로만 나눕니다.
 	// 이를 통해 InstanceID에 구분자(_)가 포함되어 있어도 정상적으로 파싱할 수 있습니다.
-	commandSplit := strings.SplitN(command, telegramBotCommandSeparator, 2)
+	commandSplit := strings.SplitN(command, botCommandSeparator, 2)
 
 	// 올바른 형식인지 확인 (2부분으로 나뉘어야 함)
 	if len(commandSplit) == 2 {
@@ -130,7 +130,7 @@ func (n *telegramNotifier) handleCancelCommand(ctx context.Context, executor con
 		}
 	} else {
 		escapedCommand := html.EscapeString(command)
-		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedCommand, telegramBotCommandInitialCharacter, telegramBotCommandCancel, telegramBotCommandSeparator)
+		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedCommand, botCommandInitialCharacter, botCommandCancel, botCommandSeparator)
 		n.sendMessage(ctx, message)
 	}
 }

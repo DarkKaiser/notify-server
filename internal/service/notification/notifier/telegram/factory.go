@@ -74,11 +74,11 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, opts op
 	}
 	botAPI.Debug = opts.AppConfig.Debug
 
-	return newTelegramNotifierWithBot(id, &telegramBotAPIClient{BotAPI: botAPI}, executor, opts)
+	return newTelegramNotifierWithBot(id, &defaultBotClient{BotAPI: botAPI}, executor, opts)
 }
 
-// newTelegramNotifierWithBot telegramBotAPI 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
-func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, executor contract.TaskExecutor, opts options) (notifier.Notifier, error) {
+// newTelegramNotifierWithBot botClient 구현체를 이용하여 Notifier 인스턴스를 생성합니다.
+func newTelegramNotifierWithBot(id contract.NotifierID, botAPI botClient, executor contract.TaskExecutor, opts options) (notifier.Notifier, error) {
 	notifier := &telegramNotifier{
 		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultNotifyTimeout),
 
@@ -92,11 +92,11 @@ func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, e
 		executor: executor,
 
 		// 최대 100개의 동시 명령어를 처리할 수 있도록 설정
-		notifierSemaphore: make(chan struct{}, constants.TelegramCommandConcurrency),
+		concurrencyLimit: make(chan struct{}, constants.TelegramCommandConcurrency),
 	}
 
 	// 명령어 중복 검사를 위한 임시 맵
-	registeredCommands := make(map[string]telegramBotCommand)
+	registeredCommands := make(map[string]botCommand)
 
 	// 봇 명령어 목록을 초기화합니다.
 	for _, t := range opts.AppConfig.Tasks {
@@ -125,7 +125,7 @@ func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, e
 				))
 			}
 
-			newCommand := telegramBotCommand{
+			newCommand := botCommand{
 				command:            command,
 				commandTitle:       fmt.Sprintf("%s > %s", t.Title, c.Title), // 제목: 작업명 > 커맨드명
 				commandDescription: c.Description,                            // 설명: 커맨드 설명
@@ -139,31 +139,31 @@ func newTelegramNotifierWithBot(id contract.NotifierID, botAPI telegramBotAPI, e
 		}
 	}
 	notifier.botCommands = append(notifier.botCommands,
-		telegramBotCommand{
-			command:            telegramBotCommandHelp,
+		botCommand{
+			command:            botCommandHelp,
 			commandTitle:       "도움말",
 			commandDescription: "도움말을 표시합니다.",
 		},
 	)
 
 	// botCommands 슬라이스를 기반으로 빠른 조회를 위한 Map 초기화
-	notifier.botCommandsByCommand = make(map[string]telegramBotCommand, len(notifier.botCommands))
+	notifier.botCommandsByCommand = make(map[string]botCommand, len(notifier.botCommands))
 	// botCommandsByTaskAndCommand "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
-	notifier.botCommandsByTaskAndCommand = make(map[string]map[string]telegramBotCommand)
+	notifier.botCommandsByTaskAndCommand = make(map[string]map[string]botCommand)
 
-	for _, botCommand := range notifier.botCommands {
+	for _, cmd := range notifier.botCommands {
 		// command 문자열로 조회 가능하도록 Map에 추가
-		notifier.botCommandsByCommand[botCommand.command] = botCommand
+		notifier.botCommandsByCommand[cmd.command] = cmd
 
 		// taskID와 commandID가 있는 경우에만 "taskID" -> "commandID" 구조로 Map에 추가
-		if !botCommand.taskID.IsEmpty() && !botCommand.commandID.IsEmpty() {
-			tID := string(botCommand.taskID)
-			cID := string(botCommand.commandID)
+		if !cmd.taskID.IsEmpty() && !cmd.commandID.IsEmpty() {
+			tID := string(cmd.taskID)
+			cID := string(cmd.commandID)
 
 			if _, exists := notifier.botCommandsByTaskAndCommand[tID]; !exists {
-				notifier.botCommandsByTaskAndCommand[tID] = make(map[string]telegramBotCommand)
+				notifier.botCommandsByTaskAndCommand[tID] = make(map[string]botCommand)
 			}
-			notifier.botCommandsByTaskAndCommand[tID][cID] = botCommand
+			notifier.botCommandsByTaskAndCommand[tID][cID] = cmd
 		}
 	}
 

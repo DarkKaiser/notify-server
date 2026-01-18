@@ -9,7 +9,7 @@ import (
 // Telegram Bot Mock
 // =============================================================================
 
-// MockTelegramBot은 telegramBotAPI 인터페이스의 Mock 구현체입니다.
+// MockTelegramBot은 botClient 인터페이스의 Mock 구현체입니다.
 //
 // 이 Mock은 Telegram 봇 테스트에서 실제 Telegram API 호출 없이
 // 봇 동작을 검증하는 데 사용됩니다.

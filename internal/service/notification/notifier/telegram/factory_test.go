@@ -29,7 +29,7 @@ func TestTelegramBotAPIClient_GetSelf(t *testing.T) {
 			},
 		}
 
-		client := &telegramBotAPIClient{BotAPI: mockBotAPI}
+		client := &defaultBotClient{BotAPI: mockBotAPI}
 		user := client.GetSelf()
 
 		assert.Equal(t, int64(123456), user.ID)

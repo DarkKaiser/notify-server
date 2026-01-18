@@ -19,11 +19,11 @@ import (
 const (
 	// 텔레그램 봇 명령어 상수
 	// 봇과 사용자 간의 상호작용에 사용됩니다.
-	telegramBotCommandHelp   = "help"   // 도움말
-	telegramBotCommandCancel = "cancel" // 작업 취소
+	botCommandHelp   = "help"   // 도움말
+	botCommandCancel = "cancel" // 작업 취소
 
-	telegramBotCommandSeparator        = "_" // 명령어와 인자(예: InstanceID)를 구분하는 구분자
-	telegramBotCommandInitialCharacter = "/" // 텔레그램 명령어가 시작됨을 알리는 문자
+	botCommandSeparator        = "_" // 명령어와 인자(예: InstanceID)를 구분하는 구분자
+	botCommandInitialCharacter = "/" // 텔레그램 명령어가 시작됨을 알리는 문자
 
 	// 텔레그램 메시지 최대 길이 제한 (API Spec)
 	// 한 번에 전송 가능한 최대 4096자 중 메타데이터 여분을 고려하여 3900자로 제한합니다.
@@ -32,8 +32,8 @@ const (
 
 var _ notifier.Notifier = (*telegramNotifier)(nil) // 인터페이스 준수 확인
 
-// telegramBotCommand 봇에서 실행 가능한 명령어 메타데이터
-type telegramBotCommand struct {
+// botCommand 봇에서 실행 가능한 명령어 메타데이터
+type botCommand struct {
 	command            string
 	commandTitle       string
 	commandDescription string
@@ -42,21 +42,21 @@ type telegramBotCommand struct {
 	commandID contract.TaskCommandID // 이 명령어와 연결된 작업 커맨드 ID
 }
 
-// telegramBotAPI 텔레그램 봇 API 인터페이스
-type telegramBotAPI interface {
+// botClient 텔레그램 봇 API 인터페이스
+type botClient interface {
 	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
 	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
 	StopReceivingUpdates()
 	GetSelf() tgbotapi.User
 }
 
-// telegramBotAPIClient tgbotapi.BotAPI 구현체를 래핑한 구조체 (telegramBotAPI 인터페이스 구현)
-type telegramBotAPIClient struct {
+// defaultBotClient tgbotapi.BotAPI 구현체를 래핑한 구조체 (botClient 인터페이스 구현)
+type defaultBotClient struct {
 	*tgbotapi.BotAPI
 }
 
 // GetSelf 텔레그램 봇의 정보를 반환합니다.
-func (w *telegramBotAPIClient) GetSelf() tgbotapi.User {
+func (w *defaultBotClient) GetSelf() tgbotapi.User {
 	return w.Self
 }
 
@@ -66,23 +66,24 @@ type telegramNotifier struct {
 
 	chatID int64
 
-	botAPI telegramBotAPI
+	// botClient 텔레그램 봇 API 클라이언트 (테스트 시 Mocking 가능)
+	botAPI botClient
 
 	executor contract.TaskExecutor
 
 	retryDelay time.Duration
 	limiter    *rate.Limiter
 
-	// notifierSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
-	notifierSemaphore chan struct{}
+	// concurrencyLimit 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
+	concurrencyLimit chan struct{}
 
-	botCommands []telegramBotCommand
+	botCommands []botCommand
 
 	// botCommandsByCommand command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
-	botCommandsByCommand map[string]telegramBotCommand
+	botCommandsByCommand map[string]botCommand
 
 	// botCommandsByTaskAndCommand "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
-	botCommandsByTaskAndCommand map[string]map[string]telegramBotCommand
+	botCommandsByTaskAndCommand map[string]map[string]botCommand
 }
 
 // Run 메시지 폴링 및 알림 처리 메인 루프
@@ -184,12 +185,12 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 			//
 			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
 			select {
-			case n.notifierSemaphore <- struct{}{}:
+			case n.concurrencyLimit <- struct{}{}:
 				// Notifier 고루틴도 WaitGroup에 추가하여 종료 시 안전하게 대기
 				wg.Add(1)
 				go func(msg *tgbotapi.Message) {
 					defer wg.Done()
-					defer func() { <-n.notifierSemaphore }()
+					defer func() { <-n.concurrencyLimit }()
 					n.handleCommand(ctx, n.executor, msg)
 				}(update.Message)
 			case <-ctx.Done():

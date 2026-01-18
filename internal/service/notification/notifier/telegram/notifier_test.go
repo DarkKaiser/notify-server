@@ -293,10 +293,10 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 		Base:   notifier.NewBase("test", true, 10, time.Second),
 		botAPI: mockBot,
 		chatID: 12345,
-		botCommands: []telegramBotCommand{
+		botCommands: []botCommand{
 			{command: "help"},
 		},
-		notifierSemaphore: make(chan struct{}, 100),
+		concurrencyLimit: make(chan struct{}, 100),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
