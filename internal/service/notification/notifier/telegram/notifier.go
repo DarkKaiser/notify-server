@@ -17,30 +17,12 @@ import (
 // TODO 미완료
 
 const (
-	// 텔레그램 봇 명령어 상수
-	// 봇과 사용자 간의 상호작용에 사용됩니다.
-	botCommandHelp   = "help"   // 도움말
-	botCommandCancel = "cancel" // 작업 취소
-
-	botCommandSeparator        = "_" // 명령어와 인자(예: InstanceID)를 구분하는 구분자
-	botCommandInitialCharacter = "/" // 텔레그램 명령어가 시작됨을 알리는 문자
-
 	// 텔레그램 메시지 최대 길이 제한 (API Spec)
 	// 한 번에 전송 가능한 최대 4096자 중 메타데이터 여분을 고려하여 3900자로 제한합니다.
 	telegramMessageMaxLength = 3900
 )
 
 var _ notifier.Notifier = (*telegramNotifier)(nil) // 인터페이스 준수 확인
-
-// botCommand 봇에서 실행 가능한 명령어 메타데이터
-type botCommand struct {
-	name        string
-	title       string
-	description string
-
-	taskID    contract.TaskID        // 이 명령어와 연결된 작업(Task) ID
-	commandID contract.TaskCommandID // 이 명령어와 연결된 작업 커맨드 ID
-}
 
 // botClient 텔레그램 봇 API 인터페이스
 type botClient interface {

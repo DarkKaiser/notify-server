@@ -19,9 +19,6 @@ const (
 	// LogMsgTelegramDrainPanicRecovered 패닉 로그: 텔레그램 종료 시 Drain 중 패닉 발생
 	LogMsgTelegramDrainPanicRecovered = "Telegram Notifier > 종료(Drain) 처리 중 패닉 복구됨"
 
-	// LogMsgTelegramCommandPanicRecovered 패닉 로그: 텔레그램 명령어 처리 중 패닉 발생
-	LogMsgTelegramCommandPanicRecovered = "Telegram Notifier > 명령어 처리 중 패닉 복구됨"
-
 	// --- Service Logs ---
 	LogMsgServiceStarting          = "Notification 서비스 시작중..."
 	LogMsgServiceAlreadyStarted    = "Notification 서비스가 이미 시작됨!!!"
@@ -56,5 +53,12 @@ const (
 	LogMsgTelegramRateLimitWait       = "Rate Limit 감지: 텔레그램 서버가 요청한 시간만큼 대기합니다."
 	LogMsgTelegramRetryTimeout        = "알림 메시지 재시도 대기 중 시간 초과 (Timeout)"
 	LogMsgTelegramSendFinalFail       = "알림메시지 발송 최종 실패"
-	LogMsgTelegramCmdFailNotifyFail   = "실행 실패 메시지 알림 전송 실패"
+
+	// --- Telegram Command Response Logs ---
+	LogMsgTelegramCommandHandlingPanicRecovered     = "명령어 처리 중 패닉 복구됨 (PANIC RECOVERED)"
+	LogMsgTelegramTaskSubmitFailNotificationDropped = "작업 실행 실패 알림 전송 중단 (큐 포화/타임아웃)"
+	LogMsgTelegramCancelFailNotificationDropped     = "작업 취소 실패 알림 전송 중단 (큐 포화/타임아웃)"
+	LogMsgTelegramInvalidCancelReplyDropped         = "잘못된 취소 명령어 안내 전송 중단 (큐 포화/타임아웃)"
+	LogMsgTelegramHelpReplyDropped                  = "도움말 응답 전송 중단 (큐 포화/타임아웃)"
+	LogMsgTelegramUnknownCmdReplyDropped            = "알 수 없는 명령어 안내 전송 중단 (큐 포화/타임아웃)"
 )
