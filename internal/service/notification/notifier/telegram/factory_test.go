@@ -120,14 +120,14 @@ func TestNewNotifierWithBot_Success(t *testing.T) {
 			// given
 			mockBot := &MockTelegramBot{}
 			mockExecutor := &taskmocks.MockExecutor{}
-			p := params{
+			args := creationArgs{
 				BotToken:  "test-token",
 				ChatID:    12345,
 				AppConfig: tt.appConfig,
 			}
 
 			// when
-			n, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
+			n, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
 
 			// then
 			require.NoError(t, err)
@@ -210,14 +210,14 @@ func TestNewNotifierWithBot_Failure(t *testing.T) {
 			// given
 			mockBot := &MockTelegramBot{}
 			mockExecutor := &taskmocks.MockExecutor{}
-			p := params{
+			args := creationArgs{
 				BotToken:  "test-token",
 				ChatID:    12345,
 				AppConfig: tt.appConfig,
 			}
 
 			// when
-			n, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
+			n, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
 
 			// then
 			require.Error(t, err)
@@ -243,7 +243,7 @@ func TestBuildCreator(t *testing.T) {
 
 	callCount := 0
 	// factory.go에 정의된 constructor 타입 시그니처와 정확히 일치해야 합니다.
-	mockCons := func(id contract.NotifierID, executor contract.TaskExecutor, p params) (notifier.Notifier, error) {
+	mockCons := func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
 		callCount++
 		// 테스트용 더미 Notifier 반환 (*telegramNotifier는 Notifier 인터페이스를 구현함)
 		return &telegramNotifier{}, nil

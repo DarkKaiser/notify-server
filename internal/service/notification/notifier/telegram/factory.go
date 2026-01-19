@@ -18,8 +18,8 @@ import (
 
 // TODO 미완료
 
-// params 텔레그램 Notifier 인스턴스를 생성하기 위해 필요한 설정 값들을 담고 있는 구조체입니다.
-type params struct {
+// creationArgs 텔레그램 Notifier 인스턴스를 생성하기 위해 필요한 설정 값들을 담고 있는 구조체입니다.
+type creationArgs struct {
 	BotToken  string
 	ChatID    int64
 	AppConfig *config.AppConfig
@@ -30,21 +30,21 @@ func NewCreator() notifier.CreatorFunc {
 	return buildCreator(newNotifier)
 }
 
-// constructor 텔레그램 Notifier 생성 로직을 추상화한 함수 타입입니다.
-type constructor func(id contract.NotifierID, executor contract.TaskExecutor, p params) (notifier.Notifier, error)
+// notifierCtor 텔레그램 Notifier 생성 로직을 추상화한 함수 타입입니다.
+type notifierCtor func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error)
 
 // buildCreator 주입된 생성자 함수(create)를 기반으로 텔레그램 Notifier 팩토리를 생성하여 반환합니다.
-func buildCreator(create constructor) notifier.CreatorFunc {
+func buildCreator(create notifierCtor) notifier.CreatorFunc {
 	return func(appConfig *config.AppConfig, executor contract.TaskExecutor) ([]notifier.Notifier, error) {
 		var notifiers []notifier.Notifier
 
 		for _, telegram := range appConfig.Notifier.Telegrams {
-			p := params{
+			args := creationArgs{
 				BotToken:  telegram.BotToken,
 				ChatID:    telegram.ChatID,
 				AppConfig: appConfig,
 			}
-			n, err := create(contract.NotifierID(telegram.ID), executor, p)
+			n, err := create(contract.NotifierID(telegram.ID), executor, args)
 			if err != nil {
 				return nil, err
 			}
@@ -56,11 +56,11 @@ func buildCreator(create constructor) notifier.CreatorFunc {
 }
 
 // newNotifier 텔레그램 봇 API 클라이언트를 초기화하여 Notifier 인스턴스를 생성합니다.
-func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, p params) (notifier.Notifier, error) {
+func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
 	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
 		"notifier_id": id,
-		"bot_token":   strutil.Mask(p.BotToken),
-		"chat_id":     p.ChatID,
+		"bot_token":   strutil.Mask(args.BotToken),
+		"chat_id":     args.ChatID,
 	}).Debug(constants.LogMsgTelegramInitClient)
 
 	// 1. 텔레그램 봇 API 통신을 위한 커스텀 HTTP 클라이언트를 생성합니다.
@@ -73,26 +73,26 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, p param
 
 	// 2. 봇 API 클라이언트 인스턴스를 초기화합니다.
 	// 앞서 생성한 안전한 HTTP 클라이언트를 주입하여 API와의 모든 통신을 처리합니다.
-	botAPI, err := tgbotapi.NewBotAPIWithClient(p.BotToken, tgbotapi.APIEndpoint, client)
+	botAPI, err := tgbotapi.NewBotAPIWithClient(args.BotToken, tgbotapi.APIEndpoint, client)
 	if err != nil {
 		return nil, NewErrInvalidBotToken(err)
 	}
 
 	// 3. 디버그 모드 설정
 	// 앱 설정에 따라 봇 API의 상세 로그 출력 여부를 결정합니다.
-	botAPI.Debug = p.AppConfig.Debug
+	botAPI.Debug = args.AppConfig.Debug
 
-	return newNotifierWithBot(id, &defaultBotClient{BotAPI: botAPI}, executor, p)
+	return newNotifierWithClient(id, &defaultBotClient{BotAPI: botAPI}, executor, args)
 }
 
-// newNotifierWithBot 외부에서 주입된 텔레그램 봇 API 클라이언트(botClient)를 사용하여 Notifier 인스턴스를 생성합니다.
-func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor contract.TaskExecutor, p params) (notifier.Notifier, error) {
+// newNotifierWithClient 외부에서 주입된 텔레그램 봇 API 클라이언트(botClient)를 사용하여 Notifier 인스턴스를 생성합니다.
+func newNotifierWithClient(id contract.NotifierID, botClient botClient, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
 	// 1. Notifier 기본 구조체 초기화
 	// 재시도 정책, 속도 제한(Rate Limiter), 동시성 제어 등 핵심 기능을 설정합니다.
 	notifier := &telegramNotifier{
 		Base: notifier.NewBase(id, true, constants.TelegramNotifierBufferSize, constants.DefaultTelegramEnqueueTimeout),
 
-		chatID: p.ChatID,
+		chatID: args.ChatID,
 
 		botClient: botClient,
 
@@ -117,7 +117,7 @@ func newNotifierWithBot(id contract.NotifierID, botClient botClient, executor co
 	// 봇 명령어 중복 검사를 위한 임시 맵
 	registeredCommands := make(map[string]botCommand)
 
-	for _, t := range p.AppConfig.Tasks {
+	for _, t := range args.AppConfig.Tasks {
 		for _, c := range t.Commands {
 			// 해당 명령이 알림 사용이 불가능하게 설정된 경우 건너뜁니다.
 			if !c.Notifier.Usable {

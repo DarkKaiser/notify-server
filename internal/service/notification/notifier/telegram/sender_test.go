@@ -145,12 +145,12 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
 
-	p := params{
+	args := creationArgs{
 		BotToken:  "test-token",
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
-	nHandler, err := newNotifierWithBot("test-notifier", mockBot, mockExecutor, p)
+	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
 	require.NoError(t, err)
 
 	n, ok := nHandler.(*telegramNotifier)
