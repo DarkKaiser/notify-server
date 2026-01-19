@@ -86,7 +86,7 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 	return limiter
 }
 
-// RateLimiting IP 기반 Rate Limiting 미들웨어를 반환합니다.
+// RateLimit IP 기반 Rate Limiting 미들웨어를 반환합니다.
 //
 // Token Bucket 알고리즘을 사용하여 IP별로 요청 속도를 제한합니다.
 // 제한 초과 시 HTTP 429 (Too Many Requests)를 반환하고 Retry-After 헤더를 포함합니다.
@@ -103,7 +103,7 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 // 사용 예시:
 //
 //	e := echo.New()
-//	e.Use(middleware.RateLimiting(20, 40)) // 초당 20 요청, 버스트 40
+//	e.Use(middleware.RateLimit(20, 40)) // 초당 20 요청, 버스트 40
 //
 // 주의사항:
 //   - 메모리 기반 저장소 (서버 재시작 시 초기화)
@@ -111,7 +111,7 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 //
 // Panics:
 //   - requestsPerSecond 또는 burst가 0 이하인 경우
-func RateLimiting(requestsPerSecond int, burst int) echo.MiddlewareFunc {
+func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 	if requestsPerSecond <= 0 {
 		panic(fmt.Sprintf(constants.PanicMsgRateLimitRequestsPerSecondInvalid, requestsPerSecond))
 	}
@@ -132,14 +132,14 @@ func RateLimiting(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 			// 3. Rate Limit 확인
 			if !ipLimiter.Allow() {
 				// 제한 초과 로깅
-				applog.WithComponentAndFields(constants.ComponentMiddlewareRateLimit, applog.Fields{
+				applog.WithComponentAndFields(constants.MiddlewareRateLimit, applog.Fields{
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
 				}).Warn(constants.LogMsgRateLimitExceeded)
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
-				c.Response().Header().Set(constants.HeaderRetryAfter, constants.RetryAfterSeconds)
+				c.Response().Header().Set(constants.RetryAfter, constants.RetryAfterSeconds)
 
 				// HTTP 429 응답
 				return httputil.NewTooManyRequestsError(constants.ErrMsgTooManyRequests)

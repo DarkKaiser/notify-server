@@ -40,7 +40,7 @@ import (
 //   - Warning: 299 - "더 이상 사용되지 않는 API..."
 //   - X-API-Deprecated: true
 //   - X-API-Deprecated-Replacement: /api/v1/notifications
-func SetupRoutes(e *echo.Echo, h *handler.Handler, authenticator *auth.Authenticator) {
+func RegisterRoutes(e *echo.Echo, h *handler.Handler, authenticator *auth.Authenticator) {
 	// 1. API v1 그룹 생성 (/api/v1 prefix)
 	v1Group := e.Group("/api/v1")
 

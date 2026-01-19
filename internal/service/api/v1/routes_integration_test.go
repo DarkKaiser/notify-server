@@ -87,8 +87,8 @@ func TestV1API_Success_Notification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock 설정
 			mockSender := &mocks.MockNotificationSender{ShouldFail: false}
-			h := handler.NewHandler(mockSender)
-			SetupRoutes(e, h, authenticator)
+			h := handler.New(mockSender)
+			RegisterRoutes(e, h, authenticator)
 
 			req := createJSONRequest(t, http.MethodPost, "/api/v1/notifications", tt.body)
 
@@ -119,8 +119,8 @@ func TestV1API_Success_Notification(t *testing.T) {
 func TestV1API_Success_LegacyEndpoint(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
 	mockSender := &mocks.MockNotificationSender{}
-	h := handler.NewHandler(mockSender)
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(mockSender)
+	RegisterRoutes(e, h, authenticator)
 
 	body := request.NotificationRequest{
 		ApplicationID: "test-app",
@@ -148,8 +148,8 @@ func TestV1API_Success_LegacyEndpoint(t *testing.T) {
 // TestV1API_Failure_Authentication 인증 실패 시나리오를 검증합니다.
 func TestV1API_Failure_Authentication(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
-	h := handler.NewHandler(&mocks.MockNotificationSender{})
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(&mocks.MockNotificationSender{})
+	RegisterRoutes(e, h, authenticator)
 
 	tests := []struct {
 		name         string
@@ -184,8 +184,8 @@ func TestV1API_Failure_Authentication(t *testing.T) {
 // TestV1API_Failure_Validation 요청 데이터 검증 및 Content-Type 검증 실패를 테스트합니다.
 func TestV1API_Failure_Validation(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
-	h := handler.NewHandler(&mocks.MockNotificationSender{})
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(&mocks.MockNotificationSender{})
+	RegisterRoutes(e, h, authenticator)
 
 	tests := []struct {
 		name        string
@@ -248,8 +248,8 @@ func TestV1API_Failure_Validation(t *testing.T) {
 // TestV1API_Failure_MethodNotAllowed 지원하지 않는 메서드 요청 시 처리를 검증합니다.
 func TestV1API_Failure_MethodNotAllowed(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
-	h := handler.NewHandler(&mocks.MockNotificationSender{})
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(&mocks.MockNotificationSender{})
+	RegisterRoutes(e, h, authenticator)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
 	rec := httptest.NewRecorder()
@@ -267,8 +267,8 @@ func TestV1API_Failure_InternalError(t *testing.T) {
 		ShouldFail: true,
 		FailError:  notification.ErrServiceStopped,
 	}
-	h := handler.NewHandler(mockSender)
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(mockSender)
+	RegisterRoutes(e, h, authenticator)
 
 	body := request.NotificationRequest{
 		ApplicationID: "test-app",
@@ -312,8 +312,8 @@ func TestV1API_ConcurrentRequests(t *testing.T) {
 	authenticator := apiauth.NewAuthenticator(appConfig)
 	e := echo.New()
 	mockSender := &mocks.MockNotificationSender{}
-	h := handler.NewHandler(mockSender)
-	SetupRoutes(e, h, authenticator)
+	h := handler.New(mockSender)
+	RegisterRoutes(e, h, authenticator)
 
 	const numRequests = 20
 	var wg sync.WaitGroup

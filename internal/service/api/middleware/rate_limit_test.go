@@ -40,9 +40,9 @@ func TestNewIPRateLimiter_WhiteBox(t *testing.T) {
 	assert.Equal(t, 0, len(limiter.limiters), "초기 limiters 맵은 비어있어야 합니다")
 }
 
-// TestRateLimiting_InputValidation_Table은 미들웨어 생성 시 입력값 검증 로직을 테스트합니다.
+// TestRateLimit_InputValidation_Table은 미들웨어 생성 시 입력값 검증 로직을 테스트합니다.
 // 잘못된 입력값(음수, 0)에 대해 패닉이 발생하는지 확인합니다.
-func TestRateLimiting_InputValidation_Table(t *testing.T) {
+func TestRateLimit_InputValidation_Table(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -67,25 +67,25 @@ func TestRateLimiting_InputValidation_Table(t *testing.T) {
 
 			if tt.expectPanic {
 				assert.Panics(t, func() {
-					RateLimiting(tt.requestsPerSecond, tt.burst)
+					RateLimit(tt.requestsPerSecond, tt.burst)
 				}, "잘못된 입력값에 대해 패닉이 발생해야 합니다")
 			} else {
 				assert.NotPanics(t, func() {
-					RateLimiting(tt.requestsPerSecond, tt.burst)
+					RateLimit(tt.requestsPerSecond, tt.burst)
 				}, "정상 입력값에 대해 패닉이 발생하지 않아야 합니다")
 			}
 		})
 	}
 }
 
-// TestRateLimiting_Scenarios_Table은 다양한 사용 시나리오에 대한 통합 테스트를 수행합니다.
+// TestRateLimit_Scenarios_Table은 다양한 사용 시나리오에 대한 통합 테스트를 수행합니다.
 //
 // 시나리오 포함:
 //   - 기본 허용 및 차단 (Basic Allowance and Blocking)
 //   - IP 분리 (IP Isolation)
 //   - 경로 간 제한 공유 (Shared Limit across Paths)
 //   - 응답 헤더 및 바디 검증 (Response Headers and Body)
-func TestRateLimiting_Scenarios_Table(t *testing.T) {
+func TestRateLimit_Scenarios_Table(t *testing.T) {
 	// 로그 캡처 설정이 필요하지 않은 병렬 테스트
 	t.Parallel()
 
@@ -146,7 +146,7 @@ func TestRateLimiting_Scenarios_Table(t *testing.T) {
 				return c.String(http.StatusOK, "ok")
 			}
 
-			middleware := RateLimiting(tt.rps, tt.burst)
+			middleware := RateLimit(tt.rps, tt.burst)
 			h := middleware(mockHandler)
 
 			tt.operations(t, h)
@@ -154,8 +154,8 @@ func TestRateLimiting_Scenarios_Table(t *testing.T) {
 	}
 }
 
-// TestRateLimiting_ResponseHeadersAndLogs는 차단 시 응답 헤더와 로그를 심층 검증합니다.
-func TestRateLimiting_ResponseHeadersAndLogs(t *testing.T) {
+// TestRateLimit_ResponseHeadersAndLogs는 차단 시 응답 헤더와 로그를 심층 검증합니다.
+func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	// 로그 캡처를 위해 직렬 실행 (t.Parallel() 제거 권장하거나 로그 캡처 함수 내부에서 처리)
 	// 여기서는 로그 캡처 때문에 직렬 실행
 	var buf bytes.Buffer
@@ -163,7 +163,7 @@ func TestRateLimiting_ResponseHeadersAndLogs(t *testing.T) {
 	applog.SetFormatter(&applog.JSONFormatter{})
 	defer applog.SetOutput(applog.StandardLogger().Out)
 
-	middleware := RateLimiting(1, 1)
+	middleware := RateLimit(1, 1)
 	mockHandler := func(c echo.Context) error { return c.String(http.StatusOK, "ok") }
 	h := middleware(mockHandler)
 
@@ -191,7 +191,7 @@ func TestRateLimiting_ResponseHeadersAndLogs(t *testing.T) {
 	assert.Contains(t, fmt.Sprintf("%v", httpErr.Message), constants.ErrMsgTooManyRequests)
 
 	// 2.2 Retry-After 헤더 검증
-	assert.Equal(t, constants.RetryAfterSeconds, rec.Header().Get(constants.HeaderRetryAfter))
+	assert.Equal(t, constants.RetryAfterSeconds, rec.Header().Get(constants.RetryAfter))
 
 	// 2.3 로그 검증
 	require.Greater(t, buf.Len(), 0, "로그가 기록되어야 합니다")
@@ -206,16 +206,16 @@ func TestRateLimiting_ResponseHeadersAndLogs(t *testing.T) {
 	assert.Equal(t, "/test", logEntry["path"])
 }
 
-// TestRateLimiting_Recovery는 시간 경과 후 제한이 복구되는지 검증합니다.
-func TestRateLimiting_Recovery(t *testing.T) {
+// TestRateLimit_Recovery는 시간 경과 후 제한이 복구되는지 검증합니다.
+func TestRateLimit_Recovery(t *testing.T) {
 	if testing.Short() {
-		t.Skip("Short 모드에서는 시간 의존 테스트(TestRateLimiting_Recovery) 스킵")
+		t.Skip("Short 모드에서는 시간 의존 테스트(TestRateLimit_Recovery) 스킵")
 	}
 	t.Parallel()
 
 	rps := 10
 	burst := 5
-	middleware := RateLimiting(rps, burst)
+	middleware := RateLimit(rps, burst)
 	h := middleware(func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	// 1. 버스트 완전히 소진
@@ -234,14 +234,14 @@ func TestRateLimiting_Recovery(t *testing.T) {
 	assertRequest(t, h, "1.1.1.1", http.StatusOK)
 }
 
-// TestRateLimiting_Concurrency_StressTest는 고동시성 상황에서 교착 상태(deadlock)나
+// TestRateLimit_Concurrency_StressTest는 고동시성 상황에서 교착 상태(deadlock)나
 // 데이터 경합(race condition)이 발생하지 않는지 검증합니다.
-func TestRateLimiting_Concurrency_StressTest(t *testing.T) {
+func TestRateLimit_Concurrency_StressTest(t *testing.T) {
 	t.Parallel()
 
 	e := echo.New()
 	// 충분한 용량으로 설정하여 429 에러가 발생하지 않도록 함 (동시성 안전성 검증이 목적)
-	middleware := RateLimiting(500, 1000)
+	middleware := RateLimit(500, 1000)
 	h := middleware(func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	var wg sync.WaitGroup
@@ -265,13 +265,13 @@ func TestRateLimiting_Concurrency_StressTest(t *testing.T) {
 	wg.Wait()
 }
 
-// TestRateLimiting_MaxIPLimit은 최대 IP 추적 수 제한 및 오래된 항목 제거 로직을 검증합니다.
-func TestRateLimiting_MaxIPLimit(t *testing.T) {
+// TestRateLimit_MaxIPLimit은 최대 IP 추적 수 제한 및 오래된 항목 제거 로직을 검증합니다.
+func TestRateLimit_MaxIPLimit(t *testing.T) {
 	t.Parallel()
 
 	// 테스트 효율성을 위해 작은 단위로 검증할 수 없으므로(상수가 const임),
 	// 통합 테스트 레벨에서 대량의 IP를 생성하여 검증합니다.
-	// newIPRateLimiter는 private 함수이므로 공개된 RateLimiting을 통해 간접 검증하거나,
+	// newIPRateLimiter는 private 함수이므로 공개된 RateLimit을 통해 간접 검증하거나,
 	// 화이트박스 테스트(내부 헬퍼)를 활용합니다.
 
 	// internal 패키지 테스트이므로 newIPRateLimiter에 접근 가능
@@ -341,7 +341,7 @@ func assertRequestPath(t *testing.T, h echo.HandlerFunc, ip string, path string,
 				t.Errorf("expected echo.HTTPError but got %T: %v", err, err)
 			}
 		} else {
-			// 미들웨어가 에러를 리턴하지 않고 직접 응답을 쓴 경우 (RateLimiting 미들웨어는 error 리턴함)
+			// 미들웨어가 에러를 리턴하지 않고 직접 응답을 쓴 경우 (RateLimit 미들웨어는 error 리턴함)
 			assert.Equal(t, expectedStatus, rec.Code)
 		}
 	} else {

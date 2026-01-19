@@ -33,14 +33,14 @@ type Handler struct {
 	notificationSender contract.NotificationSender
 }
 
-// NewHandler Handler 인스턴스를 생성합니다.
+// New Handler 인스턴스를 생성합니다.
 //
 // Parameters:
 //   - notificationSender: 알림 전송을 담당하는 Sender 구현체
 //
 // Returns:
 //   - 초기화된 Handler 포인터
-func NewHandler(notificationSender contract.NotificationSender) *Handler {
+func New(notificationSender contract.NotificationSender) *Handler {
 	if notificationSender == nil {
 		panic(constants.PanicMsgNotificationSenderRequired)
 	}

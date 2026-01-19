@@ -37,7 +37,7 @@ func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSend
 		BuildNumber: "100",
 	}
 
-	h := NewHandler(mockSender, buildInfo)
+	h := New(mockSender, buildInfo)
 	e := echo.New()
 
 	return h, mockSender, e
@@ -47,7 +47,7 @@ func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSend
 // Constructor Tests
 // =============================================================================
 
-func TestNewHandler(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Parallel()
 
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestNewHandler(t *testing.T) {
 		mockSender := mocks.NewMockNotificationSender()
 		buildInfo := version.Info{Version: "1.0.0"}
 
-		h := NewHandler(mockSender, buildInfo)
+		h := New(mockSender, buildInfo)
 
 		assert.NotNil(t, h)
 		assert.Equal(t, mockSender, h.healthChecker)
@@ -69,7 +69,7 @@ func TestNewHandler(t *testing.T) {
 		buildInfo := version.Info{Version: "1.0.0"}
 
 		assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
-			NewHandler(nil, buildInfo)
+			New(nil, buildInfo)
 		})
 	})
 }
@@ -146,7 +146,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 
 	t.Run("실패: Notification Sender 미초기화 (Unhealthy - Safety Check)", func(t *testing.T) {
 		t.Parallel()
-		// NewHandler를 우회하여 강제로 nil 의존성 주입
+		// New를 우회하여 강제로 nil 의존성 주입
 		h := &Handler{
 			healthChecker:   nil,
 			serverStartTime: time.Now(),

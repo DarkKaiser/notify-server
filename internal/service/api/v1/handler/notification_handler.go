@@ -131,14 +131,14 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	}).Info(constants.LogMsgNotificationQueued)
 
 	// 6. 성공 응답 반환
-	return httputil.NewSuccessResponse(c)
+	return httputil.Success(c)
 }
 
 // log 핸들러 컴포넌트 로거를 생성합니다.
 //
 // 공통 필드(component, endpoint)가 자동으로 포함된 로거 엔트리를 반환하여 일관된 로그 형식을 유지합니다.
 func (h *Handler) log(c echo.Context) *applog.Entry {
-	return applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+	return applog.WithComponentAndFields(constants.Handler, applog.Fields{
 		"endpoint":   c.Path(),
 		"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
 	})

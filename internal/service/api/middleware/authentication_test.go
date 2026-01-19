@@ -66,7 +66,7 @@ func Test_extractAppKey(t *testing.T) {
 		{
 			name: "Header 우선 (권장)",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "header-key")
+				req.Header.Set(constants.XAppKey, "header-key")
 				req.URL.RawQuery = "app_key=query-key"
 			},
 			want: "header-key",
@@ -109,7 +109,7 @@ func Test_extractApplicationID(t *testing.T) {
 		{
 			name: "Header 우선 (권장)",
 			setupReq: func(c echo.Context) {
-				c.Request().Header.Set(constants.HeaderXApplicationID, "header-id")
+				c.Request().Header.Set(constants.XApplicationID, "header-id")
 				c.Request().Body = io.NopCloser(strings.NewReader(`{"application_id":"body-id"}`))
 			},
 			wantID:  "header-id",
@@ -223,15 +223,15 @@ func TestRequireAuthentication(t *testing.T) {
 		{
 			name: "성공: Header 인증 (권장)",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				req.Header.Set(constants.HeaderXApplicationID, "test-app")
+				req.Header.Set(constants.XAppKey, "valid-app-key")
+				req.Header.Set(constants.XApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "성공: Body ID + Header Key (레거시 혼합)",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
+				req.Header.Set(constants.XAppKey, "valid-app-key")
 				req.Body = io.NopCloser(strings.NewReader(`{"application_id":"test-app"}`))
 			},
 			expectedStatus: http.StatusOK,
@@ -240,7 +240,7 @@ func TestRequireAuthentication(t *testing.T) {
 			name: "성공: Query Key + Header ID (레거시 혼합)",
 			setupReq: func(req *http.Request) {
 				req.URL.RawQuery = "app_key=valid-app-key"
-				req.Header.Set(constants.HeaderXApplicationID, "test-app")
+				req.Header.Set(constants.XApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -251,7 +251,7 @@ func TestRequireAuthentication(t *testing.T) {
 		{
 			name: "실패: App Key 누락",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXApplicationID, "test-app")
+				req.Header.Set(constants.XApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedMsg:    constants.ErrMsgAuthAppKeyRequired,
@@ -259,7 +259,7 @@ func TestRequireAuthentication(t *testing.T) {
 		{
 			name: "실패: Application ID 누락 (Header & Body)",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
+				req.Header.Set(constants.XAppKey, "valid-app-key")
 				req.Body = io.NopCloser(strings.NewReader(`{}`)) // ID 필드 없음
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -272,8 +272,8 @@ func TestRequireAuthentication(t *testing.T) {
 		{
 			name: "실패: 잘못된 App Key",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "invalid-key")
-				req.Header.Set(constants.HeaderXApplicationID, "test-app")
+				req.Header.Set(constants.XAppKey, "invalid-key")
+				req.Header.Set(constants.XApplicationID, "test-app")
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedMsg:    "유효하지 않습니다", // 메시지 일부 검증
@@ -281,8 +281,8 @@ func TestRequireAuthentication(t *testing.T) {
 		{
 			name: "실패: 등록되지 않은 App ID",
 			setupReq: func(req *http.Request) {
-				req.Header.Set(constants.HeaderXAppKey, "valid-app-key")
-				req.Header.Set(constants.HeaderXApplicationID, "unknown-app")
+				req.Header.Set(constants.XAppKey, "valid-app-key")
+				req.Header.Set(constants.XApplicationID, "unknown-app")
 			},
 			expectedStatus: http.StatusUnauthorized,
 			expectedMsg:    "등록되지 않은 application_id",
@@ -338,7 +338,7 @@ func TestRequireAuthentication_BodyRestoration(t *testing.T) {
 	expectedBody := `{"application_id":"test-app", "payload":"data"}`
 
 	c, _ := setupTestContext(http.MethodPost, "/", strings.NewReader(expectedBody))
-	c.Request().Header.Set(constants.HeaderXAppKey, "valid-app-key")
+	c.Request().Header.Set(constants.XAppKey, "valid-app-key")
 	// Header ID 누락 -> Body 파싱 유도
 
 	mw := RequireAuthentication(authenticator)

@@ -129,7 +129,7 @@ func TestErrorResponses(t *testing.T) {
 //   - application/json Content-Type
 //   - ResultCode가 0인 SuccessResponse
 //   - Message 필드가 "성공"인지 확인
-func TestNewSuccessResponse(t *testing.T) {
+func TestSuccess(t *testing.T) {
 	// Echo 컨텍스트 설정
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -137,7 +137,7 @@ func TestNewSuccessResponse(t *testing.T) {
 	c := e.NewContext(req, rec)
 
 	// 성공 응답 생성
-	err := NewSuccessResponse(c)
+	err := Success(c)
 
 	// 에러가 없어야 함
 	assert.NoError(t, err, "성공 응답 생성 시 에러가 없어야 합니다")

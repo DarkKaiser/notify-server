@@ -18,10 +18,10 @@ const (
 	PanicMsgAuthContextApplicationNotFound = "Auth: Context에서 애플리케이션 정보를 가져올 수 없습니다. 인증 미들웨어가 적용되었는지 확인해주세요. (원인: %v)"
 
 	// PanicMsgRateLimitRequestsPerSecondInvalid 패닉 메시지: requestsPerSecond 설정 오류
-	PanicMsgRateLimitRequestsPerSecondInvalid = "RateLimiting: requestsPerSecond는 양수여야 합니다 (현재값: %d)"
+	PanicMsgRateLimitRequestsPerSecondInvalid = "RateLimit: requestsPerSecond는 양수여야 합니다 (현재값: %d)"
 
 	// PanicMsgRateLimitBurstInvalid 패닉 메시지: burst 설정 오류
-	PanicMsgRateLimitBurstInvalid = "RateLimiting: burst는 양수여야 합니다 (현재값: %d)"
+	PanicMsgRateLimitBurstInvalid = "RateLimit: burst는 양수여야 합니다 (현재값: %d)"
 
 	// PanicMsgDeprecatedEndpointEmpty 패닉 메시지: 대체 엔드포인트 비어있음
 	PanicMsgDeprecatedEndpointEmpty = "Deprecated: 대체 엔드포인트 경로가 비어있습니다"

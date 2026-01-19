@@ -11,8 +11,8 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// HTTPServerConfig HTTP 서버 생성에 필요한 설정을 정의합니다.
-type HTTPServerConfig struct {
+// ServerConfig HTTP 서버 생성에 필요한 설정을 정의합니다.
+type ServerConfig struct {
 	// Debug Echo 프레임워크의 상세 로깅 및 디버그 모드 활성화 여부
 	// 활성화 시 상세한 에러 메시지와 스택 트레이스가 응답에 포함될 수 있으므로,
 	// 운영(Production) 환경에서는 보안상 반드시 비활성화(false)해야 합니다.
@@ -65,7 +65,7 @@ type HTTPServerConfig struct {
 //     - 공격자가 서버 버전을 파악하여 취약점을 악용하는 것을 어렵게 함
 //     - 보안 감화를 위한 조치 (Security through Obscurity)
 //
-//  7. RateLimiting - IP 기반 요청 제한
+//  7. RateLimit - IP 기반 요청 제한
 //     - IP 주소별로 초당 요청 수 제한 (기본: 20 req/s, 버스트: 40)
 //     - Brute Force 공격 방어 및 서버 리소스 보호
 //     - 제한 초과 시 429 Too Many Requests 응답
@@ -75,7 +75,7 @@ type HTTPServerConfig struct {
 //     - 대용량 요청으로 인한 메모리 고갈 및 DoS 공격 방지
 //
 // 라우트 설정은 포함되지 않으며, 반환된 Echo 인스턴스에 별도로 설정해야 합니다.
-func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
+func NewHTTPServer(cfg ServerConfig) *echo.Echo {
 	e := echo.New()
 
 	e.Debug = cfg.Debug
@@ -132,7 +132,7 @@ func NewHTTPServer(cfg HTTPServerConfig) *echo.Echo {
 		}
 	})
 	// 7. Rate Limiting
-	e.Use(appmiddleware.RateLimiting(constants.DefaultRateLimitPerSecond, constants.DefaultRateLimitBurst))
+	e.Use(appmiddleware.RateLimit(constants.DefaultRateLimitPerSecond, constants.DefaultRateLimitBurst))
 	// 8. Body Limit
 	e.Use(middleware.BodyLimit(constants.DefaultMaxBodySize))
 

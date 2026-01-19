@@ -42,12 +42,12 @@ func DeprecatedEndpoint(newEndpoint string) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			// 1. Deprecated 경고 헤더 설정
 			warningMessage := "299 - \"Deprecated API endpoint. Use " + newEndpoint + " instead.\""
-			c.Response().Header().Set(constants.HeaderWarning, warningMessage)
-			c.Response().Header().Set(constants.HeaderXAPIDeprecated, "true")
-			c.Response().Header().Set(constants.HeaderXAPIDeprecatedReplacement, newEndpoint)
+			c.Response().Header().Set(constants.Warning, warningMessage)
+			c.Response().Header().Set(constants.XAPIDeprecated, "true")
+			c.Response().Header().Set(constants.XAPIDeprecatedReplacement, newEndpoint)
 
 			// 2. Deprecated 엔드포인트 사용 로그 기록
-			applog.WithComponentAndFields(constants.ComponentMiddlewareDeprecated, applog.Fields{
+			applog.WithComponentAndFields(constants.MiddlewareDeprecated, applog.Fields{
 				"deprecated_endpoint": c.Path(),
 				"replacement":         newEndpoint,
 				"method":              c.Request().Method,

@@ -53,13 +53,13 @@ func setupTestLogger(t *testing.T) *bytes.Buffer {
 func TestNewHTTPServer_Configuration(t *testing.T) {
 	tests := []struct {
 		name           string
-		cfg            HTTPServerConfig
+		cfg            ServerConfig
 		wantDebug      bool
 		wantHideBanner bool
 	}{
 		{
 			name: "Debug Mode Enabled",
-			cfg: HTTPServerConfig{
+			cfg: ServerConfig{
 				Debug:        true,
 				AllowOrigins: []string{"*"},
 			},
@@ -68,7 +68,7 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 		},
 		{
 			name: "Debug Mode Disabled",
-			cfg: HTTPServerConfig{
+			cfg: ServerConfig{
 				Debug:        false,
 				AllowOrigins: []string{"https://example.com"},
 			},
@@ -93,7 +93,7 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 // TestNewHTTPServer_Defaults 는 설정 값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
 func TestNewHTTPServer_Defaults(t *testing.T) {
 	// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
 	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout)
 }
@@ -101,7 +101,7 @@ func TestNewHTTPServer_Defaults(t *testing.T) {
 // TestNewHTTPServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
 // 상수에 정의된 보안 권장 값과 일치하는지 검증합니다.
 func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 
 	require.NotNil(t, e.Server, "http.Server 객체가 초기화되어야 합니다")
 	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 불일치")
@@ -113,7 +113,7 @@ func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
 // TestNewHTTPServer_ErrorHandler 는 커스텀 에러 핸들러(httputil.ErrorHandler)가
 // 올바르게 등록되었는지 검증합니다.
 func TestNewHTTPServer_ErrorHandler(t *testing.T) {
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 
 	// 함수 포인터 이름을 비교하여 검증
 	handlerName := runtime.FuncForPC(reflect.ValueOf(e.HTTPErrorHandler).Pointer()).Name()
@@ -147,7 +147,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewHTTPServer(HTTPServerConfig{EnableHSTS: tt.enableHSTS})
+			e := NewHTTPServer(ServerConfig{EnableHSTS: tt.enableHSTS})
 			e.GET("/secure", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 			req := httptest.NewRequest(http.MethodGet, "https://example.com/secure", nil)
@@ -178,7 +178,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 
 // TestServerHeaderRemoval 은 보안을 위해 'Server' 헤더가 응답에서 제거되었는지 검증합니다.
 func TestServerHeaderRemoval(t *testing.T) {
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 	e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
@@ -197,7 +197,7 @@ func TestServerHeaderRemoval(t *testing.T) {
 
 // TestBodyLimit 은 설정된 제한(128KB)보다 큰 요청이 거부되는지 검증합니다.
 func TestBodyLimit(t *testing.T) {
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 	e.POST("/upload", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	// 128KB + 1byte (경계값 테스트)
@@ -229,8 +229,8 @@ func TestMiddlewareLoggingOrder_ChainVerification(t *testing.T) {
 
 		// 실제 NewHTTPServer 대신 수동 체인 구성 (제어 용이성)
 		e := echo.New()
-		e.Use(appmiddleware.HTTPLogger())       // 1. Logger (Outer)
-		e.Use(appmiddleware.RateLimiting(1, 1)) // 2. RateLimit (Inner)
+		e.Use(appmiddleware.HTTPLogger())    // 1. Logger (Outer)
+		e.Use(appmiddleware.RateLimit(1, 1)) // 2. RateLimit (Inner)
 
 		e.GET("/test", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
@@ -253,7 +253,7 @@ func TestMiddlewareLoggingOrder_ChainVerification(t *testing.T) {
 // 이는 Secure, CORS 미들웨어가 가장 상위에 위치해야 함을 의미합니다.
 func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
 	// HSTS 활성화 & 짧은 타임아웃
-	cfg := HTTPServerConfig{
+	cfg := ServerConfig{
 		EnableHSTS: true,
 	}
 
@@ -319,7 +319,7 @@ func TestCORSConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := HTTPServerConfig{AllowOrigins: tt.allowedOrigins}
+			cfg := ServerConfig{AllowOrigins: tt.allowedOrigins}
 			e := NewHTTPServer(cfg)
 			e.GET("/cors", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
@@ -337,7 +337,7 @@ func TestCORSConfig(t *testing.T) {
 
 // TestCORSConfig_Methods 는 허용된 메서드가 올바르게 설정되는지 OPTIONS 요청으로 검증합니다.
 func TestCORSConfig_Methods(t *testing.T) {
-	cfg := HTTPServerConfig{AllowOrigins: []string{"*"}}
+	cfg := ServerConfig{AllowOrigins: []string{"*"}}
 	e := NewHTTPServer(cfg)
 
 	// Preflight 요청 (OPTIONS)
@@ -360,7 +360,7 @@ func TestCORSConfig_Methods(t *testing.T) {
 // (Middleware 순서가 HTTPLogger -> PanicRecovery 순이어야 함)
 func TestNewHTTPServer_PanicLogging(t *testing.T) {
 	buf := setupTestLogger(t)
-	e := NewHTTPServer(HTTPServerConfig{})
+	e := NewHTTPServer(ServerConfig{})
 
 	// Panic을 유발하는 핸들러 등록
 	e.GET("/panic", func(c echo.Context) error {

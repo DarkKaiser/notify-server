@@ -51,7 +51,7 @@ func PanicRecovery() echo.MiddlewareFunc {
 					}
 
 					// 4. 패닉 로그 기록
-					applog.WithComponentAndFields(constants.ComponentMiddlewarePanicRecovery, fields).Error(constants.LogMsgPanicRecovered)
+					applog.WithComponentAndFields(constants.MiddlewarePanicRecovery, fields).Error(constants.LogMsgPanicRecovered)
 
 					// 5. Echo 에러 핸들러로 전달 (HTTP 500 응답)
 					c.Error(err)

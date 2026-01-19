@@ -2,27 +2,27 @@ package constants
 
 // 로그 발생 위치(컴포넌트) 식별을 위한 상수입니다.
 const (
-	// ComponentService 서비스 컴포넌트 이름
-	ComponentService = "api.service"
+	// Service 서비스 컴포넌트 이름
+	Service = "api.service"
 
-	// ComponentHandler 핸들러 컴포넌트 이름
-	ComponentHandler = "api.handler"
+	// Handler 핸들러 컴포넌트 이름
+	Handler = "api.handler"
 
-	// ComponentMiddlewareAuthentication 인증 미들웨어 컴포넌트 이름
-	ComponentMiddlewareAuthentication = "api.middleware.auth"
+	// MiddlewareAuth 인증 미들웨어 컴포넌트 이름
+	MiddlewareAuth = "api.middleware.auth"
 
-	// ComponentMiddlewareRateLimit 속도 제한 미들웨어 컴포넌트 이름
-	ComponentMiddlewareRateLimit = "api.middleware.rate_limit"
+	// MiddlewareRateLimit 속도 제한 미들웨어 컴포넌트 이름
+	MiddlewareRateLimit = "api.middleware.rate_limit"
 
-	// ComponentMiddlewarePanicRecovery 패닉 복구 미들웨어 컴포넌트 이름
-	ComponentMiddlewarePanicRecovery = "api.middleware.panic_recovery"
+	// MiddlewarePanicRecovery 패닉 복구 미들웨어 컴포넌트 이름
+	MiddlewarePanicRecovery = "api.middleware.panic_recovery"
 
-	// ComponentMiddlewareDeprecated Deprecated 미들웨어 컴포넌트 이름
-	ComponentMiddlewareDeprecated = "api.middleware.deprecated"
+	// MiddlewareDeprecated Deprecated 미들웨어 컴포넌트 이름
+	MiddlewareDeprecated = "api.middleware.deprecated"
 
-	// ComponentMiddlewareContentType Content-Type 검증 미들웨어 컴포넌트 이름
-	ComponentMiddlewareContentType = "api.middleware.content_type"
+	// MiddlewareContentType Content-Type 검증 미들웨어 컴포넌트 이름
+	MiddlewareContentType = "api.middleware.content_type"
 
-	// ComponentErrorHandler 에러 핸들러 컴포넌트 이름
-	ComponentErrorHandler = "api.error_handler"
+	// ErrorHandler 에러 핸들러 컴포넌트 이름
+	ErrorHandler = "api.error_handler"
 )

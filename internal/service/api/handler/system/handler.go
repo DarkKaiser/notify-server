@@ -25,8 +25,8 @@ type Handler struct {
 	serverStartTime time.Time
 }
 
-// NewHandler Handler 인스턴스를 생성합니다.
-func NewHandler(healthChecker contract.NotificationHealthChecker, buildInfo version.Info) *Handler {
+// New Handler 인스턴스를 생성합니다.
+func New(healthChecker contract.NotificationHealthChecker, buildInfo version.Info) *Handler {
 	if healthChecker == nil {
 		panic(constants.PanicMsgHealthCheckerRequired)
 	}
@@ -54,7 +54,7 @@ func NewHandler(healthChecker contract.NotificationHealthChecker, buildInfo vers
 // @Success 200 {object} system.HealthResponse "헬스체크 결과"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+	applog.WithComponentAndFields(constants.Handler, applog.Fields{
 		"endpoint":  "/health",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
@@ -103,7 +103,7 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Success 200 {object} system.VersionResponse "버전 정보"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+	applog.WithComponentAndFields(constants.Handler, applog.Fields{
 		"endpoint":  "/version",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),

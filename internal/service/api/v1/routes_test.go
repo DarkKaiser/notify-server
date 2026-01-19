@@ -25,7 +25,7 @@ import (
 // "의도된 구성"을 검증하는 로직을 추가합니다.
 func TestSetupRoutes_MiddlewareChain(t *testing.T) {
 	e, h, auth := setupTestDependencies()
-	SetupRoutes(e, h, auth)
+	RegisterRoutes(e, h, auth)
 
 	routes := e.Routes()
 
@@ -59,7 +59,7 @@ func TestSetupRoutes_RouteRegistration(t *testing.T) {
 	e, h, auth := setupTestDependencies()
 
 	// Execute
-	SetupRoutes(e, h, auth)
+	RegisterRoutes(e, h, auth)
 
 	// Verify
 	routes := e.Routes()
@@ -105,7 +105,7 @@ func TestSetupRoutes_HandlerName(t *testing.T) {
 	e, h, auth := setupTestDependencies()
 
 	// Execute
-	SetupRoutes(e, h, auth)
+	RegisterRoutes(e, h, auth)
 
 	// Verify
 	routes := e.Routes()
@@ -130,7 +130,7 @@ func TestSetupRoutes_PanicOnNilDeps(t *testing.T) {
 	e := echo.New()
 
 	assert.Panics(t, func() {
-		SetupRoutes(e, nil, nil)
+		RegisterRoutes(e, nil, nil)
 	}, "nil Authenticator 전달 시 패닉이 발생해야 합니다")
 }
 
@@ -144,7 +144,7 @@ func setupTestDependencies() (*echo.Echo, *handler.Handler, *apiauth.Authenticat
 	appConfig := createTestAppConfig() // integration_test.go에 정의됨 (동일 패키지)
 	auth := apiauth.NewAuthenticator(appConfig)
 	mockService := &mocks.MockNotificationSender{}
-	h := handler.NewHandler(mockService)
+	h := handler.New(mockService)
 	return e, h, auth
 }
 

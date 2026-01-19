@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewHandler(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Parallel()
 
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
@@ -18,7 +18,7 @@ func TestNewHandler(t *testing.T) {
 		mockSender := mocks.NewMockNotificationSender()
 
 		// Execute
-		h := NewHandler(mockSender)
+		h := New(mockSender)
 
 		// Verify
 		require.NotNil(t, h, "생성된 핸들러는 nil이 아니어야 합니다")
@@ -30,7 +30,7 @@ func TestNewHandler(t *testing.T) {
 		// Verify
 		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
 			// Execute
-			NewHandler(nil)
+			New(nil)
 		})
 	})
 }

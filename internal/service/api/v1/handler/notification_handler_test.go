@@ -31,7 +31,7 @@ func setupTestHandler(t *testing.T) (*Handler, *mocks.MockNotificationSender) {
 	t.Helper()
 
 	mockService := &mocks.MockNotificationSender{}
-	handler := NewHandler(mockService)
+	handler := New(mockService)
 
 	return handler, mockService
 }

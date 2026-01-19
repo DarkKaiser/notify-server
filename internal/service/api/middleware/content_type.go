@@ -32,7 +32,7 @@ func ValidateContentType(expectedContentType string) echo.MiddlewareFunc {
 			// Content-Type 헤더가 없거나, 기대하는 타입과 다르면 에러
 			// MIME 타입 파라미터(예: charset=utf-8)를 고려하여 Contains로 검사 (대소문자 무시)
 			if contentType == "" || !strings.Contains(strings.ToLower(contentType), strings.ToLower(expectedContentType)) {
-				applog.WithComponentAndFields(constants.ComponentMiddlewareContentType, applog.Fields{
+				applog.WithComponentAndFields(constants.MiddlewareContentType, applog.Fields{
 					"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
 					"method":     c.Request().Method,
 					"path":       c.Request().URL.Path,

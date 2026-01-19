@@ -56,10 +56,10 @@ func ErrorHandler(err error, c echo.Context) {
 
 	if code >= http.StatusInternalServerError {
 		// 5xx: 서버 내부 오류 - 즉시 조치 필요
-		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Error(constants.LogMsgHTTP5xxServerError)
+		applog.WithComponentAndFields(constants.ErrorHandler, fields).Error(constants.LogMsgHTTP5xxServerError)
 	} else if code >= http.StatusBadRequest {
 		// 4xx: 클라이언트 요청 오류 - 정상적인 거부 응답
-		applog.WithComponentAndFields(constants.ComponentErrorHandler, fields).Warn(constants.LogMsgHTTP4xxClientError)
+		applog.WithComponentAndFields(constants.ErrorHandler, fields).Warn(constants.LogMsgHTTP4xxClientError)
 	}
 
 	// 이중 응답 방지: 이미 응답이 전송된 경우 추가 응답 시도하지 않음

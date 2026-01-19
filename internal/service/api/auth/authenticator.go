@@ -111,7 +111,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 	// Constant-Time 비교 (타이밍 공격 방어)
 	storedHash := a.appKeyHashes[applicationID]
 	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHashStr)) != 1 {
-		applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+		applog.WithComponentAndFields(constants.Handler, applog.Fields{
 			"application_id": applicationID,
 			"app_title":      app.Title,
 		}).Warn(constants.LogMsgAuthFailedAppKeyMismatch)

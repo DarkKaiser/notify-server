@@ -31,7 +31,7 @@ const (
 //
 // 이 서비스는 다음과 같은 역할을 수행합니다:
 //   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
-//   - 미들웨어 체인 설정 (PanicRecovery, RequestID, RateLimiting, HTTPLogger, CORS, Secure)
+//   - 미들웨어 체인 설정 (PanicRecovery, RequestID, RateLimit, HTTPLogger, CORS, Secure)
 //   - 인증 관리 (Authenticator 생성 및 API 엔드포인트 보호)
 //   - API 엔드포인트 라우팅 설정 (Health Check, Version, 알림 메시지 전송 등)
 //   - Swagger UI 제공
@@ -100,11 +100,11 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarting)
+	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStarting)
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceAlreadyStarted)
+		applog.WithComponent(constants.Service).Warn(constants.LogMsgServiceAlreadyStarted)
 		return nil
 	}
 
@@ -112,7 +112,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarted)
+	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStarted)
 
 	return nil
 }
@@ -149,19 +149,19 @@ func (s *Service) setupServer() *echo.Echo {
 	if hc, ok := s.notificationSender.(contract.NotificationHealthChecker); ok {
 		healthChecker = hc
 	}
-	systemHandler := system.NewHandler(healthChecker, s.buildInfo) // healthChecker가 nil일 경우 NewHandler 내부에서 panic 발생
-	v1Handler := v1handler.NewHandler(s.notificationSender)
+	systemHandler := system.New(healthChecker, s.buildInfo) // healthChecker가 nil일 경우 NewHandler 내부에서 panic 발생
+	v1Handler := v1handler.New(s.notificationSender)
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)
-	e := NewHTTPServer(HTTPServerConfig{
+	e := NewHTTPServer(ServerConfig{
 		Debug:        s.appConfig.Debug,
 		EnableHSTS:   s.appConfig.NotifyAPI.WS.TLSServer,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
 	// 4. 라우트 등록
-	SetupRoutes(e, systemHandler)
-	v1.SetupRoutes(e, v1Handler, authenticator)
+	RegisterRoutes(e, systemHandler)
+	v1.RegisterRoutes(e, v1Handler, authenticator)
 
 	return e
 }
@@ -180,7 +180,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	defer close(done)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
-	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+	applog.WithComponentAndFields(constants.Service, applog.Fields{
 		"port": port,
 	}).Debug(constants.LogMsgServiceHTTPServerStarting)
 
@@ -212,13 +212,13 @@ func (s *Service) handleServerError(err error) {
 
 	// http.ErrServerClosed: Graceful Shutdown 완료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceHTTPServerStopped)
+		applog.WithComponent(constants.Service).Info(constants.LogMsgServiceHTTPServerStopped)
 		return
 	}
 
 	// 예상치 못한 에러: 로깅 및 알림 전송
 	message := constants.LogMsgServiceHTTPServerFatalError
-	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+	applog.WithComponentAndFields(constants.Service, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
 	}).Error(message)
@@ -244,11 +244,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	select {
 	case <-serviceStopCtx.Done():
 		// 정상적인 종료 신호 수신
-		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopping)
+		applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStopping)
 	case <-httpServerDone:
 		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
 		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리
-		applog.WithComponent(constants.ComponentService).Error(constants.LogMsgServiceUnexpectedExit)
+		applog.WithComponent(constants.Service).Error(constants.LogMsgServiceUnexpectedExit)
 
 		s.cleanup()
 
@@ -260,7 +260,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+		applog.WithComponentAndFields(constants.Service, applog.Fields{
 			"error": err,
 		}).Error(constants.LogMsgServiceHTTPServerShutdownError)
 	}
@@ -280,5 +280,5 @@ func (s *Service) cleanup() {
 	// - 메모리는 GC가 Service 객체 해제 시 자동 정리
 	s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopped)
+	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStopped)
 }

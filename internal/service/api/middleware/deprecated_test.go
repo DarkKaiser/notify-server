@@ -144,11 +144,11 @@ func TestDeprecatedEndpoint_Headers_Table(t *testing.T) {
 
 			// Warning 헤더 검증
 			expectedWarning := fmt.Sprintf("299 - \"Deprecated API endpoint. Use %s instead.\"", tt.newEndpoint)
-			assert.Equal(t, expectedWarning, rec.Header().Get(constants.HeaderWarning))
+			assert.Equal(t, expectedWarning, rec.Header().Get(constants.Warning))
 
 			// 커스텀 헤더 검증
-			assert.Equal(t, "true", rec.Header().Get(constants.HeaderXAPIDeprecated))
-			assert.Equal(t, tt.newEndpoint, rec.Header().Get(constants.HeaderXAPIDeprecatedReplacement))
+			assert.Equal(t, "true", rec.Header().Get(constants.XAPIDeprecated))
+			assert.Equal(t, tt.newEndpoint, rec.Header().Get(constants.XAPIDeprecatedReplacement))
 		})
 	}
 }
@@ -225,7 +225,7 @@ func TestDeprecatedEndpoint_HandlerError(t *testing.T) {
 	assert.Error(t, err)
 
 	// 에러 발생 시에도 경고 헤더는 포함되어야 함
-	assert.NotEmpty(t, rec.Header().Get(constants.HeaderWarning))
-	assert.Equal(t, "true", rec.Header().Get(constants.HeaderXAPIDeprecated))
-	assert.Equal(t, newEndpoint, rec.Header().Get(constants.HeaderXAPIDeprecatedReplacement))
+	assert.NotEmpty(t, rec.Header().Get(constants.Warning))
+	assert.Equal(t, "true", rec.Header().Get(constants.XAPIDeprecated))
+	assert.Equal(t, newEndpoint, rec.Header().Get(constants.XAPIDeprecatedReplacement))
 }

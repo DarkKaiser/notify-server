@@ -92,13 +92,13 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 //  1. X-App-Key 헤더 (권장)
 //  2. app_key 쿼리 파라미터 (레거시) - 사용 시 경고 로그 출력
 func extractAppKey(c echo.Context) string {
-	appKey := c.Request().Header.Get(constants.HeaderXAppKey)
+	appKey := c.Request().Header.Get(constants.XAppKey)
 	if appKey == "" {
-		appKey = c.QueryParam(constants.QueryParamAppKey)
+		appKey = c.QueryParam(constants.AppKeyQuery)
 
 		// 레거시 방식 사용 시 경고 로그
 		if appKey != "" {
-			applog.WithComponentAndFields(constants.ComponentMiddlewareAuthentication, applog.Fields{
+			applog.WithComponentAndFields(constants.MiddlewareAuth, applog.Fields{
 				"method":    c.Request().Method,
 				"path":      c.Path(),
 				"remote_ip": c.RealIP(),
@@ -115,7 +115,7 @@ func extractAppKey(c echo.Context) string {
 //  2. Request Body (레거시, 호환성 유지) - Body 파싱 및 복원 비용 발생
 func extractApplicationID(c echo.Context) (string, error) {
 	// 우선순위 1: X-Application-Id 헤더
-	applicationID := c.Request().Header.Get(constants.HeaderXApplicationID)
+	applicationID := c.Request().Header.Get(constants.XApplicationID)
 	if applicationID != "" {
 		return applicationID, nil
 	}
