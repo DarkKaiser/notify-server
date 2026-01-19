@@ -229,7 +229,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 	for {
 		select {
 		// 내부 시스템으로부터 발송할 알림 요청 수신
-		case notifyRequest, ok := <-n.RequestC():
+		case notification, ok := <-n.NotificationC():
 			if !ok {
 				return // 채널이 닫히면 종료
 			}
@@ -251,7 +251,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 				sendCtx, cancel := context.WithTimeout(context.Background(), constants.TelegramSendTimeout)
 				defer cancel()
 
-				n.handleNotifyRequest(sendCtx, notifyRequest)
+				n.handleNotifyRequest(sendCtx, notification)
 			}()
 
 			// 서비스 종료 시그널 수신
@@ -275,11 +275,11 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			defer cancel()
 
 			// 큐에 남은 미처리 요청을 비동기적으로 처리 (Non-blocking Drain)
-			// RequestC가 닫히지 않으므로 range를 사용할 수 없음.
+			// notificationC가 닫히지 않으므로 range를 사용할 수 없음.
 		Loop:
 			for {
 				select {
-				case notifyRequest := <-n.RequestC():
+				case notification := <-n.NotificationC():
 					// 타임아웃 체크를 메시지 처리 전에 수행하여 타임아웃 발생 시 즉시 중단
 					if drainCtx.Err() != nil {
 						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
@@ -298,7 +298,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 								}).Error(constants.LogMsgTelegramDrainPanicRecovered)
 							}
 						}()
-						n.handleNotifyRequest(drainCtx, notifyRequest)
+						n.handleNotifyRequest(drainCtx, notification)
 					}()
 				default:
 					// 채널이 비었으면 루프 탈출

@@ -20,16 +20,15 @@ import (
 //   - 봇 정보 조회 시뮬레이션
 type MockTelegramBot struct {
 	mock.Mock
-	updatesChan chan tgbotapi.Update
 }
 
 // GetUpdatesChan은 Telegram 업데이트를 수신하는 채널을 반환합니다.
 func (m *MockTelegramBot) GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
-	m.Called(config)
-	if m.updatesChan == nil {
-		m.updatesChan = make(chan tgbotapi.Update, 100)
+	args := m.Called(config)
+	if ret := args.Get(0); ret != nil {
+		return ret.(tgbotapi.UpdatesChannel)
 	}
-	return m.updatesChan
+	return nil
 }
 
 // Send는 Telegram 메시지를 전송합니다.

@@ -10,14 +10,14 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
-// Request 알림 발송 요청 정보를 담고 있는 데이터 구조체입니다.
+// Notification 알림 발송 요청 정보를 담고 있는 데이터 구조체입니다.
 //
 // Service.Notify 메서드를 통해 접수된 알림 요청은 이 구조체로 포장되어,
-// 내부 채널(RequestC)을 통해 비동기적으로 각 Notifier의 Sender 고루틴에게 전달됩니다.
+// 내부 채널(notificationC)을 통해 비동기적으로 각 Notifier의 Sender 고루틴에게 전달됩니다.
 //
 // 이 구조체는 실제 알림 메시지뿐만 아니라, 해당 알림이 어떤 작업(Task)과 연관되었는지
 // 추적할 수 있는 컨텍스트 정보(TaskContext)를 함께 포함합니다.
-type Request struct {
+type Notification struct {
 	TaskContext contract.TaskContext
 	Message     string
 }
@@ -31,7 +31,7 @@ type Base struct {
 
 	supportsHTML bool
 
-	// mu 내부 상태(closed, done, RequestC)와 채널 접근 시 발생하는 경쟁 상태를 방지하기 위한 동기화 객체입니다.
+	// mu 내부 상태(closed, done, notificationC)와 채널 접근 시 발생하는 경쟁 상태를 방지하기 위한 동기화 객체입니다.
 	// 상태를 읽기만 할 때는 RLock을, 변경할 때는 Lock을 사용하여 성능과 안전성을 최적화합니다.
 	mu sync.RWMutex
 
@@ -43,11 +43,11 @@ type Base struct {
 	// 채널이 닫히는 것 자체가 신호로 사용되며, 별도의 데이터를 전달하지 않으므로 struct{} 타입을 사용합니다.
 	done chan struct{}
 
-	// requestC 알림 발송 요청들을 순차적으로 처리하기 위해 버퍼링하는 내부 채널(Queue)입니다.
+	// notificationC 알림 발송 요청들을 순차적으로 처리하기 위해 버퍼링하는 내부 채널(Queue)입니다.
 	// 비동기 처리를 통해 요청자는 즉시 리턴받고, 발송자(Sender)는 자신의 속도에 맞춰 메시지를 가져갑니다.
-	requestC chan *Request
+	notificationC chan *Notification
 
-	// enqueueTimeout 요청 큐(requestC)가 가득 찼을 때, 요청을 바로 버리지 않고 기다려줄 최대 시간입니다.
+	// enqueueTimeout 요청 큐(notificationC)가 가득 찼을 때, 요청을 바로 버리지 않고 기다려줄 최대 시간입니다.
 	// 이 시간 동안에도 빈 공간이 생기지 않으면, 시스템 보호를 위해 해당 요청은 드롭(Drop)됩니다.
 	enqueueTimeout time.Duration
 }
@@ -61,7 +61,7 @@ func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueT
 
 		done: make(chan struct{}),
 
-		requestC: make(chan *Request, bufferSize),
+		notificationC: make(chan *Notification, bufferSize),
 
 		enqueueTimeout: enqueueTimeout,
 	}
@@ -87,17 +87,17 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 
 	// 1. 종료 상태 확인
 	// 이미 Close()가 호출되었거나 채널이 초기화되지 않았다면 요청을 거부합니다.
-	if n.closed || n.requestC == nil {
+	if n.closed || n.notificationC == nil {
 		n.mu.RUnlock()
 		return ErrClosed
 	}
 
 	// 2. 로컬 변수 복사
 	// 채널 전송은 블로킹될 수 있는 작업이므로, 락을 잡은 상태에서 수행하면 성능 병목이 됩니다.
-	// 따라서 필요한 멤버 변수들(requestC, done, timeout)만 로컬 변수로 복사해두고,
+	// 따라서 필요한 멤버 변수들(notificationC, done, timeout)만 로컬 변수로 복사해두고,
 	// 락은 즉시 해제하여 다른 고루틴들이 상태를 조회하거나 변경할 수 있게 합니다.
 	done := n.done
-	requestC := n.requestC
+	notificationC := n.notificationC
 	enqueueTimeout := n.enqueueTimeout
 
 	n.mu.RUnlock()
@@ -126,7 +126,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 	}()
 
 	// 4. 요청 객체 생성
-	req := &Request{
+	req := &Notification{
 		TaskContext: taskCtx,
 		Message:     message,
 	}
@@ -157,7 +157,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 
 	// 7. 큐에 적재
 	select {
-	case requestC <- req:
+	case notificationC <- req:
 		// 성공: 큐에 정상적으로 등록됨
 		return nil
 
@@ -197,7 +197,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 //  1. Notifier의 상태가 '종료됨(Closed)'으로 변경되어 더 이상의 새로운 Notify 요청을 받지 않습니다.
 //  2. Done 채널이 닫혀서, 이를 구독하고 있는 모든 고루틴(Sender, Receiver 등)에게 종료 신호를 전파합니다.
 //
-// 참고: 내부 메시지 채널(requestC)은 명시적으로 닫지 않습니다. 이는 다중 프로듀서(Multi-Producer) 환경에서
+// 참고: 내부 메시지 채널(notificationC)은 명시적으로 닫지 않습니다. 이는 다중 프로듀서(Multi-Producer) 환경에서
 // 채널 닫기에 의한 패닉을 방지하기 위함이며, 남은 메시지는 GC에 의해 수거되거나 Drain 로직에 의해 처리됩니다.
 func (n *Base) Close() {
 	n.mu.Lock()
@@ -212,7 +212,7 @@ func (n *Base) Close() {
 			close(n.done)
 		}
 
-		// 2. 데이터 채널(requestC) 처리 전략
+		// 2. 데이터 채널(notificationC) 처리 전략
 		// Go 채널의 특성상, "닫힌 채널에 데이터를 보내면 패닉(Panic)"이 발생합니다.
 		// 여러 고루틴이 동시에 Notify()를 호출할 수 있는 환경(Multi-Producer)에서는,
 		// 여기서 채널을 닫아버리면 타이밍 이슈로 인해 채널에 값을 보내는 순간 패닉이 터질 위험이 큽니다.
@@ -231,12 +231,12 @@ func (n *Base) Done() <-chan struct{} {
 	return n.done
 }
 
-// RequestC Notifier 내부에서 관리하는 '알림 요청 채널(읽기 전용)'을 반환합니다.
+// NotificationC Notifier 내부에서 관리하는 '알림 요청 채널(읽기 전용)'을 반환합니다.
 //
 // 이 채널은 '발송자(Sender)'가 메시지를 하나씩 꺼내어 처리하기 위한 용도입니다.
 // 외부에서는 오직 '읽기(<-chan)'만 가능하므로, 임의로 채널을 닫거나 데이터를 보낼 수 없습니다.
-func (n *Base) RequestC() <-chan *Request {
-	return n.requestC
+func (n *Base) NotificationC() <-chan *Notification {
+	return n.notificationC
 }
 
 // SupportsHTML 알림 채널이 HTML 스타일의 메시지 포맷팅을 지원하는지 여부를 반환합니다.

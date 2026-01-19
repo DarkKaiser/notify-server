@@ -93,7 +93,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			notifier, mockBot, mockExecutor := setupTelegramTest(t, appConfig)
+			notifier, mockBot, mockExecutor, updatesChan := setupTelegramTest(t, appConfig)
 			require.NotNil(t, notifier)
 
 			// Setup expectations
@@ -113,7 +113,7 @@ func TestTelegramNotifier_HandleCommand(t *testing.T) {
 			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Send update
-			mockBot.updatesChan <- tgbotapi.Update{
+			updatesChan <- tgbotapi.Update{
 				Message: &tgbotapi.Message{
 					Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 					Text: tt.commandText,

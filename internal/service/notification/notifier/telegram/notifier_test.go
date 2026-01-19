@@ -33,13 +33,12 @@ const (
 // =============================================================================
 
 // setupTelegramTest sets up common test objects.
-func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *taskmocks.MockExecutor) {
+func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *taskmocks.MockExecutor, chan tgbotapi.Update) {
 	t.Helper()
 
-	mockBot := &MockTelegramBot{
-		updatesChan: make(chan tgbotapi.Update, 1),
-	}
+	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
+	updatesChan := make(chan tgbotapi.Update, 100)
 
 	p := params{
 		BotToken:  "test-token",
@@ -54,10 +53,10 @@ func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNoti
 
 	// Common expectations
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: testTelegramBotUsername}).Maybe()
-	mockBot.On("GetUpdatesChan", mock.Anything).Return(nil).Maybe()
+	mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(updatesChan)).Maybe()
 	mockBot.On("StopReceivingUpdates").Return().Maybe()
 
-	return notifier, mockBot, mockExecutor
+	return notifier, mockBot, mockExecutor, updatesChan
 }
 
 // runTelegramNotifier runs the notifier in a goroutine.
@@ -96,7 +95,7 @@ func waitForActionWithTimeout(t *testing.T, wg *sync.WaitGroup, timeout time.Dur
 func TestTelegramNotifier_Run_Drain(t *testing.T) {
 	// Setup
 	appConfig := &config.AppConfig{}
-	notifier, mockBot, _ := setupTelegramTest(t, appConfig)
+	notifier, mockBot, _, _ := setupTelegramTest(t, appConfig)
 	require.NotNil(t, notifier)
 
 	// Expectation: 5 messages will be sent
@@ -147,7 +146,7 @@ func TestTelegramNotifier_Run_ChannelClosed_Fix(t *testing.T) {
 
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "TestBot"})
 	updatesChan := make(chan tgbotapi.Update)
-	mockBot.updatesChan = updatesChan
+	// mockBot.updatesChan assignment removed
 	mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(updatesChan))
 	mockBot.On("StopReceivingUpdates").Return()
 
@@ -282,7 +281,7 @@ func TestTelegramNotifier_Concurrency(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	updateC := make(chan tgbotapi.Update, 100)
 
-	mockBot.updatesChan = updateC
+	// mockBot.updatesChan assignment removed
 	mockBot.On("GetUpdatesChan", mock.AnythingOfType("tgbotapi.UpdateConfig")).Return(tgbotapi.UpdatesChannel(updateC))
 	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"})
 	mockBot.On("StopReceivingUpdates").Return()

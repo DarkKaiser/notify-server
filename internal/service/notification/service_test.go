@@ -59,8 +59,9 @@ func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.
 		WithSupportsHTML(opts.supportsHTML)
 
 	mockFactory := &notificationmocks.MockFactory{}
+	mockCreator := mockFactory
 
-	service := NewService(appConfig, mockFactory, mockExecutor)
+	service := NewService(appConfig, mockCreator, mockExecutor)
 	service.notifiersMap = map[contract.NotifierID]notifier.Notifier{
 		mockNotifier.ID(): mockNotifier,
 	}
@@ -106,7 +107,7 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
 	// assert.NotNil(t, service.notifiersStopWG) // sync.WaitGroup is a struct, not a pointer, so it's never nil. Checking it causes lock copy lint.
-	assert.NotNil(t, service.notifierFactory)
+	assert.NotNil(t, service.notifierCreator)
 }
 
 // =============================================================================

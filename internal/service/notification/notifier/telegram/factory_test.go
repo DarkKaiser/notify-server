@@ -118,7 +118,7 @@ func TestNewNotifierWithBot_Success(t *testing.T) {
 			t.Parallel()
 
 			// given
-			mockBot := &MockTelegramBot{updatesChan: make(chan tgbotapi.Update)}
+			mockBot := &MockTelegramBot{}
 			mockExecutor := &taskmocks.MockExecutor{}
 			p := params{
 				BotToken:  "test-token",
@@ -142,7 +142,7 @@ func TestNewNotifierWithBot_Success(t *testing.T) {
 			}
 
 			// 상수 값 검증
-			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.RequestC()), "버퍼 크기가 상수와 일치해야 한다")
+			assert.Equal(t, constants.TelegramNotifierBufferSize, cap(notifier.NotificationC()), "버퍼 크기가 상수와 일치해야 한다")
 		})
 	}
 }
@@ -208,7 +208,7 @@ func TestNewNotifierWithBot_Failure(t *testing.T) {
 			t.Parallel()
 
 			// given
-			mockBot := &MockTelegramBot{updatesChan: make(chan tgbotapi.Update)}
+			mockBot := &MockTelegramBot{}
 			mockExecutor := &taskmocks.MockExecutor{}
 			p := params{
 				BotToken:  "test-token",

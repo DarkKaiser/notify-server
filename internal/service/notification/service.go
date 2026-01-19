@@ -26,8 +26,8 @@ type Service struct {
 	// defaultNotifier 알림 채널 미지정 시 사용되는 기본 Notifier 핸들러
 	defaultNotifier notifier.Notifier
 
-	// notifierFactory 런타임에 동적으로 Notifier 인스턴스를 생성하고 초기화하는 팩토리
-	notifierFactory notifier.Factory
+	// notifierCreator 런타임에 동적으로 Notifier 인스턴스를 생성하고 초기화하는 팩토리
+	notifierCreator notifier.Creator
 
 	// notifiersStopWG 서비스 종료 시, 모든 하위 Notifier의 고루틴들이 안전하게 종료될 때까지 대기하는 동기화 객체
 	notifiersStopWG sync.WaitGroup
@@ -39,14 +39,14 @@ type Service struct {
 }
 
 // NewService Notification 서비스를 생성합니다.
-func NewService(appConfig *config.AppConfig, factory notifier.Factory, executor contract.TaskExecutor) *Service {
+func NewService(appConfig *config.AppConfig, creator notifier.Creator, executor contract.TaskExecutor) *Service {
 	service := &Service{
 		appConfig: appConfig,
 
 		notifiersMap:    make(map[contract.NotifierID]notifier.Notifier),
 		defaultNotifier: nil,
 
-		notifierFactory: factory,
+		notifierCreator: creator,
 
 		notifiersStopWG: sync.WaitGroup{},
 
@@ -78,7 +78,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	}
 
 	// 1. Notifier들을 초기화 및 실행
-	notifiers, err := s.notifierFactory.CreateAll(s.appConfig, s.executor)
+	notifiers, err := s.notifierCreator.CreateAll(s.appConfig, s.executor)
 	if err != nil {
 		defer serviceStopWG.Done()
 		return NewErrNotifierInitFailed(err)
