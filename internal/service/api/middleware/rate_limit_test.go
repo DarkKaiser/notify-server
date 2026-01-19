@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -160,8 +160,8 @@ func TestRateLimit_Scenarios_Table(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			tt := tt // Capture range variable
 			t.Parallel()
 
 			// 목 핸들러: 항상 200 OK 반환
@@ -177,7 +177,7 @@ func TestRateLimit_Scenarios_Table(t *testing.T) {
 	}
 }
 
-// TestRateLimit_ResponseHeadersAndLogs는 차단 시 응답 헤더와 로그를 심층 검증합니다.
+// TestRateLimit_ResponseHeadersAndLogs는 차단 시 응답 헤더와 로그, 에러 응답 구조를 심층 검증합니다.
 func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	// 로그 캡처
 	var buf bytes.Buffer
@@ -208,12 +208,17 @@ func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	// 핸들러 실행
 	err := h(c)
 
-	// 2.1 에러 응답 검증
+	// 2.1 에러 응답 검증 (Echo HTTPError -> ErrorResponse 구조 확인)
 	require.Error(t, err)
 	httpErr, ok := err.(*echo.HTTPError)
-	require.True(t, ok)
+	require.True(t, ok, "echo.HTTPError 타입이어야 합니다")
 	assert.Equal(t, http.StatusTooManyRequests, httpErr.Code)
-	assert.Contains(t, fmt.Sprintf("%v", httpErr.Message), constants.ErrMsgTooManyRequests)
+
+	// 메시지가 response.ErrorResponse 구조체인지 확인
+	errResp, ok := httpErr.Message.(response.ErrorResponse)
+	require.True(t, ok, "에러 메시지는 response.ErrorResponse 타입이어야 합니다")
+	assert.Equal(t, http.StatusTooManyRequests, errResp.ResultCode)
+	assert.NotEmpty(t, errResp.Message, "에러 메시지가 비어있지 않아야 합니다")
 
 	// 2.2 Retry-After 헤더 검증
 	assert.Equal(t, retryAfterSeconds, rec.Header().Get(retryAfter))
@@ -328,7 +333,8 @@ func TestRateLimit_MaxIPLimit(t *testing.T) {
 	limiter := newIPRateLimiter(1, 1)
 
 	// maxIPRateLimiters보다 많은 수의 고유 IP로 요청 시도
-	const overloadCount = 10100 // maxIPRateLimiters(10000) + 100
+	// 동일 패키지 내 private 상수 접근
+	const overloadCount = maxIPRateLimiters + 100
 
 	var wg sync.WaitGroup
 	workerCount := 10
@@ -354,13 +360,8 @@ func TestRateLimit_MaxIPLimit(t *testing.T) {
 	limiter.mu.RUnlock()
 
 	// 맵 크기는 maxIPRateLimiters 상수를 초과하지 않아야 함
-	// 참고: rate_limiting.go의 maxIPRateLimiters 상수는 exported가 아니므로 직접 참조 불가
-	// 하지만 같은 패키지 내 테스트이므로 상수를 알 수 있음.
-	// rate_limiting.go 상단 const 참조 (10000)
-	const expectedMax = 10000
-
-	assert.LessOrEqual(t, size, expectedMax,
-		"메모리 누수 감지: 맵 크기(%d)가 최대 허용치(%d)를 초과했습니다", size, expectedMax)
+	assert.LessOrEqual(t, size, maxIPRateLimiters,
+		"메모리 누수 감지: 맵 크기(%d)가 최대 허용치(%d)를 초과했습니다", size, maxIPRateLimiters)
 }
 
 // --- Helpers ---
@@ -392,6 +393,8 @@ func assertRequestPath(t *testing.T, h echo.HandlerFunc, ip string, path string,
 			}
 		} else {
 			// 미들웨어가 에러를 리턴하지 않고 직접 응답을 쓴 경우 (RateLimit 미들웨어는 error 리턴함)
+			// 단, ErrorHandler가 개입되지 않은 상태에서 HandlerFunc가 직접 에러를 리턴하면 여기까지 옴.
+			// 실제 Echo 앱에서는 ErrorHandler가 처리하지만, 여기선 미들웨어 단위 테스트.
 			assert.Equal(t, expectedStatus, rec.Code)
 		}
 	} else {

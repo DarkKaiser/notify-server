@@ -12,7 +12,6 @@
 package handler
 
 import (
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
@@ -42,7 +41,7 @@ type Handler struct {
 //   - 초기화된 Handler 포인터
 func New(notificationSender contract.NotificationSender) *Handler {
 	if notificationSender == nil {
-		panic(constants.PanicMsgNotificationSenderRequired)
+		panic("NotificationSender는 필수입니다")
 	}
 
 	return &Handler{

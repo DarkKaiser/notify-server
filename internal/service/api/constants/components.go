@@ -11,12 +11,6 @@ const (
 	// MiddlewareAuth 인증 미들웨어 컴포넌트 이름
 	MiddlewareAuth = "api.middleware.auth"
 
-	// MiddlewareDeprecated Deprecated 미들웨어 컴포넌트 이름
-	MiddlewareDeprecated = "api.middleware.deprecated"
-
-	// MiddlewareContentType Content-Type 검증 미들웨어 컴포넌트 이름
-	MiddlewareContentType = "api.middleware.content_type"
-
 	// ErrorHandler 에러 핸들러 컴포넌트 이름
 	ErrorHandler = "api.error_handler"
 )

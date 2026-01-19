@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/time/rate"
@@ -127,10 +125,10 @@ func (i *ipRateLimiter) getLimiter(ip string) *rate.Limiter {
 //   - requestsPerSecond 또는 burst가 0 이하인 경우
 func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 	if requestsPerSecond <= 0 {
-		panic(fmt.Sprintf(constants.PanicMsgRateLimitRequestsPerSecondInvalid, requestsPerSecond))
+		panic(fmt.Sprintf("RateLimit: requestsPerSecond는 양수여야 합니다 (현재값: %d)", requestsPerSecond))
 	}
 	if burst <= 0 {
-		panic(fmt.Sprintf(constants.PanicMsgRateLimitBurstInvalid, burst))
+		panic(fmt.Sprintf("RateLimit: burst는 양수여야 합니다 (현재값: %d)", burst))
 	}
 
 	limiter := newIPRateLimiter(requestsPerSecond, burst)
@@ -150,13 +148,12 @@ func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
-				}).Warn(constants.LogMsgRateLimitExceeded)
+				}).Warn("API 요청 속도 제한 초과 (차단됨)")
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
 				c.Response().Header().Set(retryAfter, retryAfterSeconds)
 
-				// HTTP 429 응답
-				return httputil.NewTooManyRequestsError(constants.ErrMsgTooManyRequests)
+				return NewErrRateLimitExceeded()
 			}
 
 			// 4. 다음 핸들러 실행

@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
+
+// component 시스템 핸들러의 로깅용 컴포넌트 이름
+const component = "api.handler.system"
 
 // 헬스체크 상태
 const (
@@ -46,7 +48,7 @@ type Handler struct {
 // New Handler 인스턴스를 생성합니다.
 func New(healthChecker contract.NotificationHealthChecker, buildInfo version.Info) *Handler {
 	if healthChecker == nil {
-		panic(constants.PanicMsgHealthCheckerRequired)
+		panic("HealthChecker는 필수입니다")
 	}
 
 	return &Handler{
@@ -72,11 +74,11 @@ func New(healthChecker contract.NotificationHealthChecker, buildInfo version.Inf
 // @Success 200 {object} system.HealthResponse "헬스체크 결과"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.Handler, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"endpoint":  "/health",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug(constants.LogMsgHealthCheck)
+	}).Debug("헬스체크 조회")
 
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
@@ -121,11 +123,11 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Success 200 {object} system.VersionResponse "버전 정보"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.Handler, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"endpoint":  "/version",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug(constants.LogMsgVersionInfo)
+	}).Debug("버전 정보 조회")
 
 	return c.JSON(http.StatusOK, system.VersionResponse{
 		Version:     h.buildInfo.Version,

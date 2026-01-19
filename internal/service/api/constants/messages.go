@@ -29,12 +29,6 @@ const (
 	// 413 Request Entity Too Large
 	ErrMsgRequestEntityTooLarge = "요청 본문이 너무 큽니다"
 
-	// 415 Unsupported Media Type
-	ErrMsgUnsupportedMediaType = "지원하지 않는 미디어 타입입니다"
-
-	// 429 Too Many Requests
-	ErrMsgTooManyRequests = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요"
-
 	// 500 Internal Server Error
 	ErrMsgInternalServer            = "내부 서버 오류가 발생했습니다"
 

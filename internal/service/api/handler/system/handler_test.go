@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
@@ -68,7 +67,7 @@ func TestNew(t *testing.T) {
 		t.Parallel()
 		buildInfo := version.Info{Version: "1.0.0"}
 
-		assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
+		assert.PanicsWithValue(t, "HealthChecker는 필수입니다", func() {
 			New(nil, buildInfo)
 		})
 	})
