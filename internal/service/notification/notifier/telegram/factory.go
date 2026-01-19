@@ -16,8 +16,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// TODO 미완료
-
 // creationArgs 텔레그램 Notifier 인스턴스를 생성하기 위해 필요한 설정 값들을 담고 있는 구조체입니다.
 type creationArgs struct {
 	BotToken  string

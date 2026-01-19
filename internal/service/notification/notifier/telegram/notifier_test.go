@@ -259,14 +259,15 @@ func TestTelegramNotifier_PanicRecovery(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// 1. Trigger Panic
-	originalBotAPI := notifier.botClient
-	notifier.botClient = nil // Cause nil pointer panic
+	// Use mock behavior to induce panic instead of unsafe field modification
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		panic("simulated panic")
+	}).Return(tgbotapi.Message{}, nil).Once()
 
 	notifier.Send(contract.NewTaskContext(), "Panic Message")
 	time.Sleep(100 * time.Millisecond) // Wait for panic and recovery
 
-	// 2. Recovery & Resume
-	notifier.botClient = originalBotAPI
+	// 2. Resume Normal Ops
 	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
 
 	err = notifier.Send(contract.NewTaskContext(), "Normal Message")
