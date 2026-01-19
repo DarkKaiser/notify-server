@@ -31,19 +31,6 @@ const (
 
 	// XAPIDeprecatedReplacement 대체 엔드포인트 표시용 커스텀 헤더
 	XAPIDeprecatedReplacement = "X-API-Deprecated-Replacement"
-
-	// ------------------------------------------------------------------------------------------------
-	// Rate Limiting
-	// ------------------------------------------------------------------------------------------------
-
-	// RetryAfter RFC 7231 표준 Retry-After 헤더 (Rate Limiting 재시도 대기 시간)
-	RetryAfter = "Retry-After"
-)
-
-// HTTP 헤더 값 상수입니다.
-const (
-	// RetryAfterSeconds Rate Limiting 초과 시 권장 재시도 대기 시간 (초)
-	RetryAfterSeconds = "1"
 )
 
 // Context 키 상수입니다.

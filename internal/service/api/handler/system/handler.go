@@ -16,6 +16,24 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// 헬스체크 상태
+const (
+	// healthStatusHealthy 정상 상태
+	healthStatusHealthy = "healthy"
+
+	// healthStatusUnhealthy 비정상 상태
+	healthStatusUnhealthy = "unhealthy"
+)
+
+// 외부 의존성 식별자 및 상태 메시지
+const (
+	// depNotificationService 외부 의존성 식별자: 알림 서비스
+	depNotificationService = "notification_service"
+
+	// depNotificationServiceStatusHealthy 외부 의존성 상태 메시지: 정상 상태
+	depNotificationServiceStatusHealthy = "정상 작동 중"
+)
+
 // Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
 	healthChecker contract.NotificationHealthChecker
@@ -67,22 +85,22 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 
 	// Notification 서비스 상태 확인
 	if err := h.healthChecker.Health(); err != nil {
-		deps[constants.DependencyNotificationService] = system.DependencyStatus{
-			Status:  constants.HealthStatusUnhealthy,
+		deps[depNotificationService] = system.DependencyStatus{
+			Status:  healthStatusUnhealthy,
 			Message: err.Error(),
 		}
 	} else {
-		deps[constants.DependencyNotificationService] = system.DependencyStatus{
-			Status:  constants.HealthStatusHealthy,
-			Message: constants.MsgDepStatusHealthy,
+		deps[depNotificationService] = system.DependencyStatus{
+			Status:  healthStatusHealthy,
+			Message: depNotificationServiceStatusHealthy,
 		}
 	}
 
 	// 하나라도 unhealthy면 전체 상태를 unhealthy로 설정
-	serverStatus := constants.HealthStatusHealthy
+	serverStatus := healthStatusHealthy
 	for _, dep := range deps {
-		if dep.Status != constants.HealthStatusHealthy {
-			serverStatus = constants.HealthStatusUnhealthy
+		if dep.Status != healthStatusHealthy {
+			serverStatus = healthStatusUnhealthy
 			break
 		}
 	}

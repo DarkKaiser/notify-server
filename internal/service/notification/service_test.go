@@ -177,7 +177,7 @@ func TestServiceNotify(t *testing.T) {
 			notifierID:     "unknown",
 			message:        "msg",
 			expectError:    true,
-			expectedErrStr: ErrNotFoundNotifier.Error(),
+			expectedErrStr: ErrNotifierNotFound.Error(),
 			expectedMsg:    "등록되지 않은 Notifier ID('unknown')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: msg",
 			expectedErrCtx: true,
 		},

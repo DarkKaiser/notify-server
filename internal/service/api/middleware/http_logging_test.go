@@ -166,6 +166,69 @@ func TestHTTPLogger(t *testing.T) {
 				assert.NotEmpty(t, logEntry["latency"])
 			},
 		},
+		// --- [NEW] Added Test Cases ---
+		{
+			name: "Empty Path Normalization",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodGet, "/", nil) // Valid initial URL
+				req.URL.Path = ""                                    // Explicitly set empty to test normalization
+				return req, httptest.NewRecorder()
+			},
+			handler: func(c echo.Context) error {
+				return c.NoContent(http.StatusOK)
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, logEntry map[string]interface{}) {
+				assert.Equal(t, "/", logEntry["path"], "빈 경로는 '/'로 정규화되어야 합니다")
+			},
+		},
+		{
+			name: "Full Request Fields (Referer, Request ID)",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				req := httptest.NewRequest(http.MethodGet, "/api/full", nil)
+				req.Header.Set("Referer", "http://example.com")
+				rec := httptest.NewRecorder()
+				rec.Header().Set(echo.HeaderXRequestID, "req-12345") // Response Header에 Request ID 설정 시뮬레이션
+				return req, rec
+			},
+			handler: func(c echo.Context) error {
+				return c.NoContent(http.StatusOK)
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, logEntry map[string]interface{}) {
+				assert.Equal(t, "http://example.com", logEntry["referer"])
+				assert.Equal(t, "req-12345", logEntry["request_id"])
+				assert.NotEmpty(t, logEntry["host"])
+				assert.NotEmpty(t, logEntry["protocol"])
+			},
+		},
+		{
+			name: "Bytes Out Verification",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				return httptest.NewRequest(http.MethodGet, "/api/data", nil), httptest.NewRecorder()
+			},
+			handler: func(c echo.Context) error {
+				return c.String(http.StatusOK, "12345") // 5 bytes
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, logEntry map[string]interface{}) {
+				assert.Equal(t, "5", logEntry["bytes_out"])
+			},
+		},
+		{
+			name: "Latency Human Readable Format",
+			setupRequest: func() (*http.Request, *httptest.ResponseRecorder) {
+				return httptest.NewRequest(http.MethodGet, "/api/slow", nil), httptest.NewRecorder()
+			},
+			handler: func(c echo.Context) error {
+				return c.NoContent(http.StatusOK)
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, logEntry map[string]interface{}) {
+				latencyHuman, ok := logEntry["latency_human"].(string)
+				assert.True(t, ok)
+				assert.NotEmpty(t, latencyHuman)
+				// Go time.Duration string format check (e.g., "100µs", "1.2ms")
+				// 단순하게 숫자로 끝나지 않고 단위가 포함되어 있는지 확인
+				assert.False(t, strings.HasSuffix(latencyHuman, "000"), "단위(ms, µs 등)가 포함되어야 합니다")
+			},
+		},
 	}
 
 	for _, tt := range tests {

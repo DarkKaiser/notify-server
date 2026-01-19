@@ -96,71 +96,89 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		assert.Equal(t, expectedDeps, resp.Dependencies)
 	}
 
-	t.Run("성공: 모든 시스템 정상 (Healthy)", func(t *testing.T) {
-		t.Parallel()
-		h, mockSender, e := setupSystemHandlerTest(t)
-
-		// Mock 설정: Health() 성공 (nil 반환)
-		mockSender.ShouldFail = false
-
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		err := h.HealthCheckHandler(c)
-		assert.NoError(t, err)
-
-		expectedDeps := map[string]system.DependencyStatus{
-			constants.DependencyNotificationService: {
-				Status:  constants.HealthStatusHealthy,
-				Message: constants.MsgDepStatusHealthy,
+	tests := []struct {
+		name        string
+		setupMock   func(*mocks.MockNotificationSender)
+		forceNil    bool // handler 생성 시 healthChecker를 nil로 강제 설정
+		expectPanic bool
+		verify      func(t *testing.T, rec *httptest.ResponseRecorder)
+	}{
+		{
+			name: "성공: 모든 시스템 정상 (Healthy)",
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.ShouldFail = false
 			},
-		}
-		assertHealthResponse(t, rec, constants.HealthStatusHealthy, expectedDeps)
-	})
-
-	t.Run("실패: Notification 서비스 장애 (Unhealthy - Deep Check)", func(t *testing.T) {
-		t.Parallel()
-		h, mockSender, e := setupSystemHandlerTest(t)
-
-		// Mock 설정: Health() 실패 시뮬레이션
-		mockSender.ShouldFail = true
-		mockSender.FailError = errors.New("service stopped")
-
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
-
-		err := h.HealthCheckHandler(c)
-		assert.NoError(t, err)
-
-		expectedDeps := map[string]system.DependencyStatus{
-			constants.DependencyNotificationService: {
-				Status:  constants.HealthStatusUnhealthy,
-				Message: "service stopped",
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				expectedDeps := map[string]system.DependencyStatus{
+					depNotificationService: {
+						Status:  healthStatusHealthy,
+						Message: depNotificationServiceStatusHealthy,
+					},
+				}
+				assertHealthResponse(t, rec, healthStatusHealthy, expectedDeps)
 			},
-		}
-		// 하나라도 Unhealthy면 전체 상태도 Unhealthy
-		assertHealthResponse(t, rec, constants.HealthStatusUnhealthy, expectedDeps)
-	})
+		},
+		{
+			name: "실패: Notification 서비스 장애 (Unhealthy - Deep Check)",
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.ShouldFail = true
+				m.FailError = errors.New("service stopped")
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder) {
+				expectedDeps := map[string]system.DependencyStatus{
+					depNotificationService: {
+						Status:  healthStatusUnhealthy,
+						Message: "service stopped",
+					},
+				}
+				assertHealthResponse(t, rec, healthStatusUnhealthy, expectedDeps)
+			},
+		},
+		{
+			name:        "실패: Notification Sender 미초기화 (Unhealthy - Safety Check)",
+			forceNil:    true,
+			expectPanic: true,
+		},
+	}
 
-	t.Run("실패: Notification Sender 미초기화 (Unhealthy - Safety Check)", func(t *testing.T) {
-		t.Parallel()
-		// New를 우회하여 강제로 nil 의존성 주입
-		h := &Handler{
-			healthChecker:   nil,
-			serverStartTime: time.Now(),
-		}
-		e := echo.New()
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+			var h *Handler
+			var e *echo.Echo
+			var mockSender *mocks.MockNotificationSender
 
-		assert.Panics(t, func() {
-			_ = h.HealthCheckHandler(c)
-		}, "healthChecker가 nil이면 panic이 발생해야 합니다")
-	})
+			if tt.forceNil {
+				// New를 우회하여 강제로 nil 의존성 주입
+				h = &Handler{
+					healthChecker:   nil,
+					serverStartTime: time.Now(),
+				}
+				e = echo.New()
+			} else {
+				h, mockSender, e = setupSystemHandlerTest(t)
+				if tt.setupMock != nil {
+					tt.setupMock(mockSender)
+				}
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			if tt.expectPanic {
+				assert.Panics(t, func() {
+					_ = h.HealthCheckHandler(c)
+				})
+			} else {
+				err := h.HealthCheckHandler(c)
+				assert.NoError(t, err)
+				tt.verify(t, rec)
+			}
+		})
+	}
 }
 
 // =============================================================================
@@ -170,25 +188,59 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 func TestHandler_VersionHandler(t *testing.T) {
 	t.Parallel()
 
-	t.Run("성공: 버전 정보 반환", func(t *testing.T) {
-		t.Parallel()
-		h, _, e := setupSystemHandlerTest(t)
+	tests := []struct {
+		name      string
+		buildInfo version.Info
+		verify    func(t *testing.T, resp system.VersionResponse)
+	}{
+		{
+			name: "성공: 정상 버전 정보 반환",
+			buildInfo: version.Info{
+				Version:     "1.0.0",
+				BuildDate:   "2024-01-01",
+				BuildNumber: "100",
+			},
+			verify: func(t *testing.T, resp system.VersionResponse) {
+				assert.Equal(t, "1.0.0", resp.Version)
+				assert.Equal(t, "2024-01-01", resp.BuildDate)
+				assert.Equal(t, "100", resp.BuildNumber)
+				assert.Equal(t, runtime.Version(), resp.GoVersion)
+			},
+		},
+		{
+			name:      "성공: 빈 버전 정보 반환 (Zero Values)",
+			buildInfo: version.Info{}, // Empty
+			verify: func(t *testing.T, resp system.VersionResponse) {
+				assert.Equal(t, "", resp.Version)
+				assert.Equal(t, "", resp.BuildDate)
+				assert.Equal(t, "", resp.BuildNumber)
+				assert.Equal(t, runtime.Version(), resp.GoVersion)
+			},
+		},
+	}
 
-		req := httptest.NewRequest(http.MethodGet, "/version", nil)
-		rec := httptest.NewRecorder()
-		c := e.NewContext(req, rec)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		err := h.VersionHandler(c)
-		assert.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
+			mockSender := mocks.NewMockNotificationSender()
+			h := New(mockSender, tt.buildInfo)
+			e := echo.New()
 
-		var resp system.VersionResponse
-		err = json.Unmarshal(rec.Body.Bytes(), &resp)
-		require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodGet, "/version", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
 
-		assert.Equal(t, "1.0.0", resp.Version)
-		assert.Equal(t, "2024-01-01", resp.BuildDate)
-		assert.Equal(t, "100", resp.BuildNumber)
-		assert.Equal(t, runtime.Version(), resp.GoVersion)
-	})
+			err := h.VersionHandler(c)
+			assert.NoError(t, err)
+			assert.Equal(t, http.StatusOK, rec.Code)
+
+			var resp system.VersionResponse
+			err = json.Unmarshal(rec.Body.Bytes(), &resp)
+			require.NoError(t, err)
+
+			tt.verify(t, resp)
+		})
+	}
 }

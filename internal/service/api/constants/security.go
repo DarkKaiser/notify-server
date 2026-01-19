@@ -13,12 +13,3 @@ const (
 	// 악의적인 클라이언트의 연결 고갈 공격을 방지합니다.
 	DefaultReadHeaderTimeout = 10 * time.Second
 )
-
-// SensitiveQueryParams 로그 기록 시 마스킹 처리해야 할 쿼리 파라미터 목록입니다.
-var SensitiveQueryParams = []string{
-	AppKeyQuery,
-	"api_key",
-	"password",
-	"token",
-	"secret",
-}

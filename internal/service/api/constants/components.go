@@ -11,12 +11,6 @@ const (
 	// MiddlewareAuth 인증 미들웨어 컴포넌트 이름
 	MiddlewareAuth = "api.middleware.auth"
 
-	// MiddlewareRateLimit 속도 제한 미들웨어 컴포넌트 이름
-	MiddlewareRateLimit = "api.middleware.rate_limit"
-
-	// MiddlewarePanicRecovery 패닉 복구 미들웨어 컴포넌트 이름
-	MiddlewarePanicRecovery = "api.middleware.panic_recovery"
-
 	// MiddlewareDeprecated Deprecated 미들웨어 컴포넌트 이름
 	MiddlewareDeprecated = "api.middleware.deprecated"
 

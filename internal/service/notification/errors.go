@@ -12,8 +12,8 @@ var (
 	// ErrServiceStopped 서비스가 중지되었거나, 초기화되지 않아 알림 요청을 처리할 수 없는 경우 반환됩니다.
 	ErrServiceStopped = apperrors.New(apperrors.Unavailable, "시스템 종료 절차가 진행 중이거나, 초기화되지 않아 알림을 보낼 수 없습니다")
 
-	// ErrNotFoundNotifier 요청된 ID에 해당하는 Notifier 설정을 찾을 수 없는 경우 반환됩니다.
-	ErrNotFoundNotifier = apperrors.New(apperrors.NotFound, "등록되지 않은 알림 채널입니다. 설정 파일을 확인해 주세요")
+	// ErrNotifierNotFound 요청된 ID에 해당하는 Notifier 설정을 찾을 수 없는 경우 반환됩니다.
+	ErrNotifierNotFound = apperrors.New(apperrors.NotFound, "등록되지 않은 알림 채널입니다. 설정 파일을 확인해 주세요")
 )
 
 // NewErrDuplicateNotifierID 중복된 Notifier ID가 감지되었을 때 반환되는 에러를 생성합니다.

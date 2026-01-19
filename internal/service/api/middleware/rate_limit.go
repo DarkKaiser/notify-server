@@ -11,9 +11,23 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// componentRateLimit 속도 제한 미들웨어의 로깅용 컴포넌트 이름
+const componentRateLimit = "api.middleware.rate_limit"
+
 const (
-	// maxIPRateLimiters 추적 가능한 최대 IP 개수 (메모리 보호 및 DoS 방지)
+	// maxIPRateLimiters 서버가 메모리에 유지할 수 있는 최대 고유 IP 주소(Rate Limiter 인스턴스)의 수입니다.
+	// 10,000개로 제한함으로써, 대량의 IP를 이용한 DDoS 공격이나 과도한 트래픽 유입 시 메모리 사용량이 무한정 증가하는 것을 방지합니다.
+	// 이 임계값에 도달하면 간이 LRU(Least Recently Used)와 유사한 전략(Go Map의 무작위 순회 특성 활용)을 통해 기존 항목을 축출하여 새로운 요청을 수용합니다.
 	maxIPRateLimiters = 10000
+
+	// retryAfter RFC 7231, Section 7.1.3에 정의된 HTTP 헤더 필드입니다.
+	// 클라이언트에게 요청이 제한(Throttling)되었음을 알리고, 서비스 가용성을 위해 언제 후속 요청을 시도해야 하는지(Backpressure)를 명시적으로 지시하는 데 사용됩니다.
+	retryAfter = "Retry-After"
+
+	// retryAfterSeconds Rate Limit 임계값 초과 시 클라이언트에게 제안하는 기본 대기 시간(초)입니다.
+	// "1"초라는 짧은 지연 시간을 설정하여, 클라이언트가 즉시 재시도(Busy Waiting)하는 것을 방지하면서도 서비스 응답성을 최대한 유지하도록 설계되었습니다.
+	// 필요에 따라 지수 백오프(Exponential Backoff) 등의 다동적인 전략을 적용하기 전 단계의 고정형 백오프(Fixed Backoff) 값으로 동작합니다.
+	retryAfterSeconds = "1"
 )
 
 // ipRateLimiter IP 주소별 Rate Limiter를 관리하는 구조체입니다.
@@ -132,14 +146,14 @@ func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 			// 3. Rate Limit 확인
 			if !ipLimiter.Allow() {
 				// 제한 초과 로깅
-				applog.WithComponentAndFields(constants.MiddlewareRateLimit, applog.Fields{
+				applog.WithComponentAndFields(componentRateLimit, applog.Fields{
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
 				}).Warn(constants.LogMsgRateLimitExceeded)
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
-				c.Response().Header().Set(constants.RetryAfter, constants.RetryAfterSeconds)
+				c.Response().Header().Set(retryAfter, retryAfterSeconds)
 
 				// HTTP 429 응답
 				return httputil.NewTooManyRequestsError(constants.ErrMsgTooManyRequests)

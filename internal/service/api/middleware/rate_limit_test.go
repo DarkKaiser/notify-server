@@ -134,6 +134,29 @@ func TestRateLimit_Scenarios_Table(t *testing.T) {
 				assertRequestPath(t, h, "1.1.1.1", "/path/b", http.StatusTooManyRequests)
 			},
 		},
+		{
+			name:  "시나리오: Empty Client IP 처리",
+			rps:   1,
+			burst: 1,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// IP가 없는 경우에도 동작해야 함 (빈 문자열 키로 관리)
+				assertRequest(t, h, "", http.StatusOK)
+				// 토큰 소진 후 차단
+				assertRequest(t, h, "", http.StatusTooManyRequests)
+			},
+		},
+		{
+			name:  "시나리오: Error Propagation",
+			rps:   10,
+			burst: 10,
+			operations: func(t *testing.T, h echo.HandlerFunc) {
+				// 핸들러가 에러를 반환할 때 미들웨어가 이를 그대로 전달하는지 확인
+				// mockHandler가 아닌, 에러를 반환하는 커스텀 핸들러 사용 필요
+				// 하지만 현재 구조상 handler는 고정되어 있음.
+				// 별도 테스트 케이스로 분리가 이상적이나, 여기서는 정상 동작 여부만 확인 (핸들러 호출됨)
+				assertRequest(t, h, "1.1.1.1", http.StatusOK)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -156,12 +179,14 @@ func TestRateLimit_Scenarios_Table(t *testing.T) {
 
 // TestRateLimit_ResponseHeadersAndLogs는 차단 시 응답 헤더와 로그를 심층 검증합니다.
 func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
-	// 로그 캡처를 위해 직렬 실행 (t.Parallel() 제거 권장하거나 로그 캡처 함수 내부에서 처리)
-	// 여기서는 로그 캡처 때문에 직렬 실행
+	// 로그 캡처
 	var buf bytes.Buffer
 	applog.SetOutput(&buf)
 	applog.SetFormatter(&applog.JSONFormatter{})
-	defer applog.SetOutput(applog.StandardLogger().Out)
+	// t.Cleanup으로 안전하게 복구
+	t.Cleanup(func() {
+		applog.SetOutput(applog.StandardLogger().Out)
+	})
 
 	middleware := RateLimit(1, 1)
 	mockHandler := func(c echo.Context) error { return c.String(http.StatusOK, "ok") }
@@ -191,7 +216,7 @@ func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	assert.Contains(t, fmt.Sprintf("%v", httpErr.Message), constants.ErrMsgTooManyRequests)
 
 	// 2.2 Retry-After 헤더 검증
-	assert.Equal(t, constants.RetryAfterSeconds, rec.Header().Get(constants.RetryAfter))
+	assert.Equal(t, retryAfterSeconds, rec.Header().Get(retryAfter))
 
 	// 2.3 로그 검증
 	require.Greater(t, buf.Len(), 0, "로그가 기록되어야 합니다")
@@ -204,6 +229,31 @@ func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	assert.Equal(t, "API 요청 속도 제한 초과 (차단됨)", logEntry["msg"])
 	assert.Equal(t, "3.3.3.3", logEntry["remote_ip"])
 	assert.Equal(t, "/test", logEntry["path"])
+}
+
+// TestRateLimit_ErrorPropagation 미들웨어가 다음 핸들러의 에러를 정상적으로 반환하는지 검증합니다.
+func TestRateLimit_ErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := echo.NewHTTPError(http.StatusBadRequest, "Bad Request Test")
+	middleware := RateLimit(10, 10)
+
+	// 에러를 반환하는 핸들러
+	errorHandler := func(c echo.Context) error {
+		return expectedErr
+	}
+
+	h := middleware(errorHandler)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h(c)
+
+	assert.Error(t, err)
+	assert.Equal(t, expectedErr, err, "핸들러의 에러가 그대로 전파되어야 합니다")
 }
 
 // TestRateLimit_Recovery는 시간 경과 후 제한이 복구되는지 검증합니다.

@@ -2,18 +2,19 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/validator"
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
+
+// component 알림 핸들러의 로깅용 컴포넌트 이름
+const component = "api.handler.notification"
 
 // PublishNotificationHandler godoc
 // @Summary 알림 메시지 발송
@@ -72,14 +73,14 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		// 바인딩 실패 시 상세 원인 로깅 (디버깅 용도)
 		h.log(c).WithFields(applog.Fields{
 			"error": err,
-		}).Warn(constants.LogMsgRequestBodyBindError)
+		}).Warn("요청 본문 바인딩 실패 (JSON 형식 오류 등)")
 
-		return httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidBody)
+		return NewErrInvalidBody()
 	}
 
 	// 2. 요청 데이터 유효성 검증
 	if err := validator.Struct(req); err != nil {
-		return httputil.NewBadRequestError(validator.FormatValidationError(err))
+		return NewErrValidationFailed(validator.FormatValidationError(err))
 	}
 
 	// 3. 인증된 Application 정보 추출
@@ -92,9 +93,9 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		h.log(c).WithFields(applog.Fields{
 			"req_application_id":  req.ApplicationID,
 			"auth_application_id": app.ID,
-		}).Warn(constants.LogMsgAuthReqAppIdMismatch)
+		}).Warn("인증 실패: 요청 본문의 application_id와 인증된 애플리케이션이 일치하지 않습니다")
 
-		return httputil.NewBadRequestError(fmt.Sprintf(constants.ErrMsgBadRequestAppIdMismatch, req.ApplicationID, app.ID))
+		return NewErrAppIDMismatch(req.ApplicationID, app.ID)
 	}
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
@@ -103,24 +104,24 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	if err != nil {
 		// 1. 서비스 중지 (503 Service Unavailable)
 		if errors.Is(err, notification.ErrServiceStopped) {
-			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailable)
+			return NewErrServiceStopped()
 		}
 
 		// 2. Notifier 찾을 수 없음 (404 Not Found)
-		if errors.Is(err, notification.ErrNotFoundNotifier) {
-			return httputil.NewNotFoundError(constants.ErrMsgNotFoundNotifier)
+		if errors.Is(err, notification.ErrNotifierNotFound) {
+			return NewErrNotifierNotFound()
 		}
 
 		// 3. 큐 가득 참 등 일시적 불가 (503 Service Unavailable)
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) && appErr.Type() == apperrors.Unavailable {
-			return httputil.NewServiceUnavailableError(constants.ErrMsgServiceUnavailableOverloaded)
+			return NewErrServiceOverloaded()
 		}
 
 		h.log(c).Error(err)
 
 		// 그 외 에러는 500 처리
-		return httputil.NewInternalServerError(constants.ErrMsgInternalServerInterrupted)
+		return NewErrServiceInterrupted()
 	}
 
 	// 5. 성공 로그 기록
@@ -128,7 +129,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
-	}).Info(constants.LogMsgNotificationQueued)
+	}).Info("알림 큐 적재 성공")
 
 	// 6. 성공 응답 반환
 	return httputil.Success(c)
@@ -138,7 +139,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 //
 // 공통 필드(component, endpoint)가 자동으로 포함된 로거 엔트리를 반환하여 일관된 로그 형식을 유지합니다.
 func (h *Handler) log(c echo.Context) *applog.Entry {
-	return applog.WithComponentAndFields(constants.Handler, applog.Fields{
+	return applog.WithComponentAndFields(component, applog.Fields{
 		"endpoint":   c.Path(),
 		"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
 	})
