@@ -4,16 +4,16 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"fmt"
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
+
+// component 인증 모듈의 로깅용 컴포넌트 이름
+const component = "api.auth"
 
 // Authenticator 애플리케이션 인증을 담당하는 인증자입니다.
 //
@@ -101,7 +101,7 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 
 	app, ok := a.applications[applicationID]
 	if !ok {
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf(constants.ErrMsgUnauthorizedNotFoundApplicationID, applicationID))
+		return nil, NewErrInvalidApplicationID(applicationID)
 	}
 
 	// 입력받은 App Key를 SHA-256으로 해시
@@ -111,12 +111,12 @@ func (a *Authenticator) Authenticate(applicationID, appKey string) (*domain.Appl
 	// Constant-Time 비교 (타이밍 공격 방어)
 	storedHash := a.appKeyHashes[applicationID]
 	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHashStr)) != 1 {
-		applog.WithComponentAndFields(constants.Handler, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"application_id": applicationID,
 			"app_title":      app.Title,
-		}).Warn(constants.LogMsgAuthFailedAppKeyMismatch)
+		}).Warn("인증 실패: 제공된 App Key가 올바르지 않습니다")
 
-		return nil, httputil.NewUnauthorizedError(fmt.Sprintf(constants.ErrMsgUnauthorizedInvalidAppKey, applicationID))
+		return nil, NewErrInvalidAppKey(applicationID)
 	}
 
 	return app, nil

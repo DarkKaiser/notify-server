@@ -22,12 +22,15 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// component API 서비스의 로깅용 컴포넌트 이름
+const component = "api.service"
+
 const (
 	// shutdownTimeout Graceful Shutdown 시 최대 대기 시간 (5초)
 	shutdownTimeout = 5 * time.Second
 )
 
-// Service Notify API 서버의 생명주기를 관리하는 서비스입니다.
+// Service Notify API 서버(Echo 웹 서버)의 생명주기를 관리하는 서비스입니다.
 //
 // 이 서비스는 다음과 같은 역할을 수행합니다:
 //   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
@@ -100,11 +103,11 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStarting)
+	applog.WithComponent(component).Info(constants.LogMsgServiceStarting)
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(constants.Service).Warn(constants.LogMsgServiceAlreadyStarted)
+		applog.WithComponent(component).Warn(constants.LogMsgServiceAlreadyStarted)
 		return nil
 	}
 
@@ -112,7 +115,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
-	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStarted)
+	applog.WithComponent(component).Info(constants.LogMsgServiceStarted)
 
 	return nil
 }
@@ -180,7 +183,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 	defer close(done)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
-	applog.WithComponentAndFields(constants.Service, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"port": port,
 	}).Debug(constants.LogMsgServiceHTTPServerStarting)
 
@@ -212,13 +215,13 @@ func (s *Service) handleServerError(err error) {
 
 	// http.ErrServerClosed: Graceful Shutdown 완료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent(constants.Service).Info(constants.LogMsgServiceHTTPServerStopped)
+		applog.WithComponent(component).Info(constants.LogMsgServiceHTTPServerStopped)
 		return
 	}
 
 	// 예상치 못한 에러: 로깅 및 알림 전송
 	message := constants.LogMsgServiceHTTPServerFatalError
-	applog.WithComponentAndFields(constants.Service, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
 	}).Error(message)
@@ -244,11 +247,11 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	select {
 	case <-serviceStopCtx.Done():
 		// 정상적인 종료 신호 수신
-		applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStopping)
+		applog.WithComponent(component).Info(constants.LogMsgServiceStopping)
 	case <-httpServerDone:
 		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
 		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리
-		applog.WithComponent(constants.Service).Error(constants.LogMsgServiceUnexpectedExit)
+		applog.WithComponent(component).Error(constants.LogMsgServiceUnexpectedExit)
 
 		s.cleanup()
 
@@ -260,7 +263,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		applog.WithComponentAndFields(constants.Service, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"error": err,
 		}).Error(constants.LogMsgServiceHTTPServerShutdownError)
 	}
@@ -280,5 +283,5 @@ func (s *Service) cleanup() {
 	// - 메모리는 GC가 Service 객체 해제 시 자동 정리
 	s.runningMu.Unlock()
 
-	applog.WithComponent(constants.Service).Info(constants.LogMsgServiceStopped)
+	applog.WithComponent(component).Info(constants.LogMsgServiceStopped)
 }

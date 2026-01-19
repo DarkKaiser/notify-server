@@ -75,7 +75,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 			"error": err,
 		}).Warn("요청 본문 바인딩 실패 (JSON 형식 오류 등)")
 
-		return NewErrInvalidBody()
+		return ErrInvalidBody
 	}
 
 	// 2. 요청 데이터 유효성 검증
@@ -104,24 +104,24 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	if err != nil {
 		// 1. 서비스 중지 (503 Service Unavailable)
 		if errors.Is(err, notification.ErrServiceStopped) {
-			return NewErrServiceStopped()
+			return ErrServiceStopped
 		}
 
 		// 2. Notifier 찾을 수 없음 (404 Not Found)
 		if errors.Is(err, notification.ErrNotifierNotFound) {
-			return NewErrNotifierNotFound()
+			return ErrNotifierNotFound
 		}
 
 		// 3. 큐 가득 참 등 일시적 불가 (503 Service Unavailable)
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) && appErr.Type() == apperrors.Unavailable {
-			return NewErrServiceOverloaded()
+			return ErrServiceOverloaded
 		}
 
 		h.log(c).Error(err)
 
 		// 그 외 에러는 500 처리
-		return NewErrServiceInterrupted()
+		return ErrServiceInterrupted
 	}
 
 	// 5. 성공 로그 기록

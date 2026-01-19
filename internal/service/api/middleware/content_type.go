@@ -42,7 +42,7 @@ func ValidateContentType(expectedContentType string) echo.MiddlewareFunc {
 					"remote_ip":  c.RealIP(),
 				}).Warn("지원하지 않는 Content-Type 형식 요청")
 
-				return NewErrUnsupportedMediaType()
+				return ErrUnsupportedMediaType
 			}
 
 			return next(c)

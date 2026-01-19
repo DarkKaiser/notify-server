@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/constants"
@@ -18,12 +17,12 @@ func SetApplication(c echo.Context, app *domain.Application) {
 func GetApplication(c echo.Context) (*domain.Application, error) {
 	val := c.Get(constants.ContextKeyApplication)
 	if val == nil {
-		return nil, errors.New(constants.ErrMsgAuthApplicationMissingInContext)
+		return nil, ErrApplicationMissingInContext
 	}
 
 	app, ok := val.(*domain.Application)
 	if !ok {
-		return nil, errors.New(constants.ErrMsgAuthApplicationTypeMismatch)
+		return nil, ErrApplicationTypeMismatch
 	}
 
 	return app, nil
@@ -35,7 +34,7 @@ func GetApplication(c echo.Context) (*domain.Application, error) {
 func MustGetApplication(c echo.Context) *domain.Application {
 	app, err := GetApplication(c)
 	if err != nil {
-		panic(fmt.Sprintf(constants.PanicMsgAuthContextApplicationNotFound, err))
+		panic(fmt.Sprintf("Auth: Context에서 애플리케이션 정보를 가져올 수 없습니다. 인증 미들웨어가 적용되었는지 확인해주세요. (원인: %v)", err))
 	}
 	return app
 }

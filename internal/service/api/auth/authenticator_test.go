@@ -51,6 +51,22 @@ func restoreLogger() {
 	applog.SetOutput(applog.StandardLogger().Out)
 }
 
+// checkHTTPErrorHelper는 반환된 에러가 예상된 HTTP 에러(코드, 메시지)인지 검증합니다.
+func checkHTTPErrorHelper(t *testing.T, actualErr error, expectedCode int, expectedMsgPart string) {
+	t.Helper()
+	httpErr, ok := actualErr.(*echo.HTTPError)
+	require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 합니다: %v", actualErr)
+	assert.Equal(t, expectedCode, httpErr.Code)
+
+	// 에러 메시지 검증 (ErrorResponse 구조체)
+	if resp, ok := httpErr.Message.(response.ErrorResponse); ok {
+		assert.Contains(t, resp.Message, expectedMsgPart)
+	} else {
+		// 단순 문자열인 경우
+		assert.Contains(t, fmt.Sprint(httpErr.Message), expectedMsgPart)
+	}
+}
+
 // =============================================================================
 // Constructor Tests
 // =============================================================================
@@ -60,10 +76,10 @@ func TestNewAuthenticator_Table(t *testing.T) {
 		name          string
 		appConfig     *config.AppConfig
 		expectedCount int
-		verifyApps    func(*testing.T, map[string]*domain.Application)
+		verifyApps    func(*testing.T, map[string]*domain.Application, map[string]string)
 	}{
 		{
-			name: "단일 애플리케이션 생성",
+			name: "성공: 단일 애플리케이션 생성 및 해시 저장 확인",
 			appConfig: createTestAppConfig(
 				config.ApplicationConfig{
 					ID:                "test-app",
@@ -74,34 +90,39 @@ func TestNewAuthenticator_Table(t *testing.T) {
 				},
 			),
 			expectedCount: 1,
-			verifyApps: func(t *testing.T, apps map[string]*domain.Application) {
+			verifyApps: func(t *testing.T, apps map[string]*domain.Application, hashes map[string]string) {
+				// 1. 애플리케이션 정보 확인
 				app, ok := apps["test-app"]
-				assert.True(t, ok)
+				require.True(t, ok)
 				assert.Equal(t, "test-app", app.ID)
 				assert.Equal(t, "Test Application", app.Title)
 				assert.Equal(t, "Test Description", app.Description)
 				assert.Equal(t, contract.NotifierID("test-notifier"), app.DefaultNotifierID)
-				// 중요: AppKey는 보안을 위해 Application 구조체에 저장되지 않아야 함
-				// Application 구조체에 AppKey 필드가 없으므로 컴파일 레벨에서 보장되지만,
-				// 의도적으로 주석을 통해 확인.
+
+				// 2. 해시 저장 확인 (App Key는 평문으로 저장되지 않음)
+				hash, hashOk := hashes["test-app"]
+				require.True(t, hashOk)
+				assert.NotEmpty(t, hash)
+				assert.NotEqual(t, "test-key", hash, "App Key는 평문으로 저장되면 안 됩니다")
 			},
 		},
 		{
-			name: "다중 애플리케이션 생성",
+			name: "성공: 다중 애플리케이션 생성",
 			appConfig: createTestAppConfig(
 				config.ApplicationConfig{ID: "app1", AppKey: "key1"},
 				config.ApplicationConfig{ID: "app2", AppKey: "key2"},
 				config.ApplicationConfig{ID: "app3", AppKey: "key3"},
 			),
 			expectedCount: 3,
-			verifyApps: func(t *testing.T, apps map[string]*domain.Application) {
+			verifyApps: func(t *testing.T, apps map[string]*domain.Application, hashes map[string]string) {
 				assert.Contains(t, apps, "app1")
 				assert.Contains(t, apps, "app2")
 				assert.Contains(t, apps, "app3")
+				assert.Len(t, hashes, 3)
 			},
 		},
 		{
-			name:          "애플리케이션 없음",
+			name:          "성공: 애플리케이션 없음 (빈 설정)",
 			appConfig:     createTestAppConfig(),
 			expectedCount: 0,
 		},
@@ -111,12 +132,13 @@ func TestNewAuthenticator_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			authenticator := NewAuthenticator(tt.appConfig)
 
-			assert.NotNil(t, authenticator)
+			require.NotNil(t, authenticator)
 			assert.NotNil(t, authenticator.applications)
+			assert.NotNil(t, authenticator.appKeyHashes)
 			assert.Equal(t, tt.expectedCount, len(authenticator.applications))
 
 			if tt.verifyApps != nil {
-				tt.verifyApps(t, authenticator.applications)
+				tt.verifyApps(t, authenticator.applications, authenticator.appKeyHashes)
 			}
 		})
 	}
@@ -132,6 +154,7 @@ func TestNewAuthenticator_Table(t *testing.T) {
 //   - 정상 인증 시 Application 객체 반환
 //   - 등록되지 않은 App ID 처리 및 에러 메시지
 //   - App Key 불일치 시 처리, 에러 메시지, 그리고 보안 로그 기록
+//   - 빈 App Key 처리
 func TestAuthenticator_Authenticate_Table(t *testing.T) {
 	// 로거 캡처 설정
 	buf := new(bytes.Buffer)
@@ -157,7 +180,7 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 		checkApp      func(*testing.T, *domain.Application)
 	}{
 		{
-			name:          "인증 성공_정상 키 입력",
+			name:          "인증 성공: 정상 키 입력",
 			appID:         "test-app",
 			appKey:        "valid-key",
 			expectedError: false,
@@ -167,35 +190,23 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 			},
 		},
 		{
-			name:          "인증 실패_등록되지 않은 ID",
+			name:          "인증 실패: 등록되지 않은 ID",
 			appID:         "unknown-app",
 			appKey:        "valid-key",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 함")
-				assert.Equal(t, 401, httpErr.Code)
-
-				// 에러 메시지 검증: "등록되지 않은 application_id입니다 (ID: %s)"
-				errResp, ok := httpErr.Message.(response.ErrorResponse)
-				require.True(t, ok)
-				assert.Equal(t, fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", "unknown-app"), errResp.Message)
+				// NewErrInvalidApplicationID -> 401 Unauthorized
+				checkHTTPErrorHelper(t, err, 401, "등록되지 않은 application_id입니다")
 			},
 		},
 		{
-			name:          "인증 실패_Key 불일치_로그 기록",
+			name:          "인증 실패: Key 불일치 && 보안 로그 기록",
 			appID:         "test-app",
 			appKey:        "invalid-key",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok)
-				assert.Equal(t, 401, httpErr.Code)
-
-				// 에러 메시지 검증: "app_key가 유효하지 않습니다 (application_id: %s)"
-				errResp, ok := httpErr.Message.(response.ErrorResponse)
-				require.True(t, ok)
-				assert.Equal(t, fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", "test-app"), errResp.Message)
+				// NewErrInvalidAppKey -> 401 Unauthorized
+				checkHTTPErrorHelper(t, err, 401, "app_key가 유효하지 않습니다")
 			},
 			checkLog: func(t *testing.T, logBuf *bytes.Buffer) {
 				var logEntry LogEntry
@@ -209,14 +220,12 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 			},
 		},
 		{
-			name:          "인증 실패_빈 Key",
+			name:          "인증 실패: 빈 Key 입력",
 			appID:         "test-app",
 			appKey:        "",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok)
-				assert.Equal(t, 401, httpErr.Code)
+				checkHTTPErrorHelper(t, err, 401, "app_key가 유효하지 않습니다")
 			},
 			checkLog: func(t *testing.T, logBuf *bytes.Buffer) {
 				// 빈 키도 불일치로 간주되므로 로그가 남아야 함

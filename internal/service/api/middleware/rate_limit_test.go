@@ -383,19 +383,16 @@ func assertRequestPath(t *testing.T, h echo.HandlerFunc, ip string, path string,
 	err := h(c)
 
 	if expectedStatus >= 400 {
-		if err != nil {
-			he, ok := err.(*echo.HTTPError)
-			if ok {
-				assert.Equal(t, expectedStatus, he.Code)
-			} else {
-				// 에러가 HTTPError가 아닌 경우 실패 처리
-				t.Errorf("expected echo.HTTPError but got %T: %v", err, err)
-			}
-		} else {
-			// 미들웨어가 에러를 리턴하지 않고 직접 응답을 쓴 경우 (RateLimit 미들웨어는 error 리턴함)
-			// 단, ErrorHandler가 개입되지 않은 상태에서 HandlerFunc가 직접 에러를 리턴하면 여기까지 옴.
-			// 실제 Echo 앱에서는 ErrorHandler가 처리하지만, 여기선 미들웨어 단위 테스트.
-			assert.Equal(t, expectedStatus, rec.Code)
+		require.Error(t, err, "에러가 발생해야 합니다")
+
+		// 429 에러인 경우 ErrRateLimitExceeded 변수 검증
+		if expectedStatus == http.StatusTooManyRequests {
+			assert.ErrorIs(t, err, ErrRateLimitExceeded, "ErrRateLimitExceeded 에러가 반환되어야 합니다")
+		}
+
+		var he *echo.HTTPError
+		if assert.ErrorAs(t, err, &he) {
+			assert.Equal(t, expectedStatus, he.Code)
 		}
 	} else {
 		assert.NoError(t, err)

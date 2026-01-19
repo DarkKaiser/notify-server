@@ -17,18 +17,4 @@ const (
 	LogMsgServiceHTTPServerStopped       = "API 서비스 > http 서버 중지됨"
 	LogMsgServiceHTTPServerShutdownError = "API 서비스 > http 서버 종료 중 오류 발생"
 	LogMsgServiceHTTPServerFatalError    = "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다."
-
-	// ------------------------------------------------------------------------------------------------
-	// 미들웨어 및 보안
-	// ------------------------------------------------------------------------------------------------
-
-	LogMsgAuthAppKeyInQuery        = "보안 경고: 쿼리 파라미터로 App Key 전달됨 (헤더 사용 권장)"
-	LogMsgAuthFailedAppKeyMismatch = "인증 실패: 제공된 App Key가 올바르지 않습니다"
-
-	// ------------------------------------------------------------------------------------------------
-	// HTTP 에러
-	// ------------------------------------------------------------------------------------------------
-
-	LogMsgHTTP4xxClientError = "HTTP 4xx: 클라이언트 요청 오류"
-	LogMsgHTTP5xxServerError = "HTTP 5xx: 서버 내부 오류"
 )

@@ -132,15 +132,15 @@ func TestV1API_Success(t *testing.T) {
 func TestV1API_Failures(t *testing.T) {
 	_, _, authenticator := setupIntegrationTest(t)
 
-	// Helper to extract expected error message from handler package
-	getExpectedErrMsg := func(errGenerator func() error) string {
-		err := errGenerator()
-		if httpErr, ok := err.(*echo.HTTPError); ok {
+	// Helper to extract error message from an error object (Echo HTTPError wrapper)
+	getExpectedErrMsg := func(targetErr error) string {
+		if httpErr, ok := targetErr.(*echo.HTTPError); ok {
 			if resp, ok := httpErr.Message.(response.ErrorResponse); ok {
 				return resp.Message
 			}
+			return fmt.Sprint(httpErr.Message)
 		}
-		return ""
+		return targetErr.Error()
 	}
 
 	// Helper to simulate Auth package errors manually since we can't import internal/service/api/auth/errors.go directly if it's internal (it is accessible here as v1 is same level? No, auth is sibling).
@@ -166,7 +166,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:         "",
 			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: "app_key는 필수입니다 (X-App-Key 헤더 또는 app_key 쿼리 파라미터)", // constants.ErrMsgAuthAppKeyRequired
+			expectedErrMsg: "app_key는 필수입니다 (X-App-Key 헤더 또는 app_key 쿼리 파라미터)",
 		},
 		{
 			name:           "Failure: Invalid AppKey",
@@ -181,7 +181,7 @@ func TestV1API_Failures(t *testing.T) {
 			appIDHeader:    "another-app",                                                           // Auth succeeds for "another-app"
 			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"}, // Body requests "test-app"
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: getExpectedErrMsg(func() error { return handler.NewErrAppIDMismatch("test-app", "another-app") }),
+			expectedErrMsg: getExpectedErrMsg(handler.NewErrAppIDMismatch("test-app", "another-app")),
 		},
 
 		// 2. Validation & Binding Failures
@@ -190,7 +190,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:         "test-app-key",
 			reqBody:        "INVALID_JSON_{{",
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: "잘못된 JSON 형식입니다", // constants.ErrMsgBadRequestInvalidJSON (Middleware catches this)
+			expectedErrMsg: "잘못된 JSON 형식입니다",
 		},
 		{
 			name:           "Failure: Validation (Missing Message)",
@@ -208,7 +208,7 @@ func TestV1API_Failures(t *testing.T) {
 			mockFail:       true,
 			mockError:      notification.ErrServiceStopped,
 			expectedStatus: http.StatusServiceUnavailable,
-			expectedErrMsg: getExpectedErrMsg(handler.NewErrServiceStopped),
+			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceStopped),
 		},
 		{
 			name:           "Failure: Notifier Not Found (404)",
@@ -217,7 +217,7 @@ func TestV1API_Failures(t *testing.T) {
 			mockFail:       true,
 			mockError:      notification.ErrNotifierNotFound,
 			expectedStatus: http.StatusNotFound,
-			expectedErrMsg: getExpectedErrMsg(handler.NewErrNotifierNotFound),
+			expectedErrMsg: getExpectedErrMsg(handler.ErrNotifierNotFound),
 		},
 		{
 			name:           "Failure: Service Overloaded (503)",
@@ -226,7 +226,7 @@ func TestV1API_Failures(t *testing.T) {
 			mockFail:       true,
 			mockError:      apperrors.New(apperrors.Unavailable, "overload"),
 			expectedStatus: http.StatusServiceUnavailable,
-			expectedErrMsg: getExpectedErrMsg(handler.NewErrServiceOverloaded), // Handler maps Unavailable to Overloaded
+			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceOverloaded), // Handler maps Unavailable to Overloaded
 		},
 		{
 			name:           "Failure: Internal Error (500)",
@@ -235,7 +235,7 @@ func TestV1API_Failures(t *testing.T) {
 			mockFail:       true,
 			mockError:      errors.New("unknown error"),
 			expectedStatus: http.StatusInternalServerError,
-			expectedErrMsg: getExpectedErrMsg(handler.NewErrServiceInterrupted), // Handler maps unknown to Interrupted/Internal
+			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceInterrupted), // Handler maps unknown to Interrupted/Internal
 		},
 	}
 

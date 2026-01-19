@@ -3,13 +3,11 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -41,7 +39,7 @@ func TestValidateContentType_Table(t *testing.T) {
 		method              string
 		body                *strings.Reader
 		expectedStatus      int
-		expectedMsg         string
+		expectedErr         error // 예상되는 에러 (없으면 nil)
 	}{
 		// 성공 케이스
 		{
@@ -93,7 +91,7 @@ func TestValidateContentType_Table(t *testing.T) {
 			method:              http.MethodPost,
 			body:                validJSON,
 			expectedStatus:      http.StatusUnsupportedMediaType,
-			expectedMsg:         "지원하지 않는 Content-Type 형식입니다",
+			expectedErr:         ErrUnsupportedMediaType,
 		},
 		{
 			name:                "실패: 잘못된 Content-Type (text/plain)",
@@ -102,7 +100,7 @@ func TestValidateContentType_Table(t *testing.T) {
 			method:              http.MethodPost,
 			body:                validJSON,
 			expectedStatus:      http.StatusUnsupportedMediaType,
-			expectedMsg:         "지원하지 않는 Content-Type 형식입니다",
+			expectedErr:         ErrUnsupportedMediaType,
 		},
 		{
 			name:                "실패: 부분 일치 주의 (javascript vs json)",
@@ -111,7 +109,7 @@ func TestValidateContentType_Table(t *testing.T) {
 			method:              http.MethodPost,
 			body:                validJSON,
 			expectedStatus:      http.StatusUnsupportedMediaType,
-			expectedMsg:         "지원하지 않는 Content-Type 형식입니다",
+			expectedErr:         ErrUnsupportedMediaType,
 		},
 	}
 
@@ -149,17 +147,16 @@ func TestValidateContentType_Table(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
 				require.Error(t, err)
-				he, ok := err.(*echo.HTTPError)
-				require.True(t, ok, "echo.HTTPError 타입이어야 합니다")
-				assert.Equal(t, tt.expectedStatus, he.Code)
 
-				// 에러 메시지가 문자열인 경우 (단순 메시지)
-				if msgStr, ok := he.Message.(string); ok {
-					assert.Equal(t, tt.expectedMsg, msgStr)
-				} else if errResp, ok := he.Message.(response.ErrorResponse); ok {
-					assert.Equal(t, tt.expectedMsg, errResp.Message)
-				} else {
-					assert.Equal(t, tt.expectedMsg, fmt.Sprint(he.Message))
+				// assert.ErrorIs를 사용하여 정확한 에러 변수 검증
+				if tt.expectedErr != nil {
+					assert.ErrorIs(t, err, tt.expectedErr)
+				}
+
+				// Status Code 검증 (Echo 에러인 경우)
+				var he *echo.HTTPError
+				if assert.ErrorAs(t, err, &he) {
+					assert.Equal(t, tt.expectedStatus, he.Code)
 				}
 			}
 		})

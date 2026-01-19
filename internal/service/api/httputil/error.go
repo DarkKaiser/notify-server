@@ -10,13 +10,16 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// component 에러 핸들러의 로깅용 컴포넌트 이름
+const component = "api.error_handler"
+
 // ErrorHandler Echo 프레임워크의 전역 에러 핸들러입니다.
 //
 // 모든 HTTP 에러를 가로채서 표준 ErrorResponse JSON 형식으로 변환하여 반환합니다.
 // 에러 발생 시 적절한 로그 레벨(Error/Warn)로 상세 정보를 기록합니다.
 func ErrorHandler(err error, c echo.Context) {
 	code := http.StatusInternalServerError
-	message := constants.ErrMsgInternalServer
+	message := "내부 서버 오류가 발생했습니다"
 
 	// Echo HTTPError 타입 확인
 	if he, ok := err.(*echo.HTTPError); ok {
@@ -33,7 +36,7 @@ func ErrorHandler(err error, c echo.Context) {
 	if code == http.StatusNotFound {
 		// 기본 404 메시지이거나 빈 메시지인 경우에만 덮어씀
 		if message == "Not Found" || message == "" {
-			message = constants.ErrMsgNotFound
+			message = "요청한 리소스를 찾을 수 없습니다"
 		}
 	}
 
@@ -56,10 +59,10 @@ func ErrorHandler(err error, c echo.Context) {
 
 	if code >= http.StatusInternalServerError {
 		// 5xx: 서버 내부 오류 - 즉시 조치 필요
-		applog.WithComponentAndFields(constants.ErrorHandler, fields).Error(constants.LogMsgHTTP5xxServerError)
+		applog.WithComponentAndFields(component, fields).Error("HTTP 5xx: 서버 내부 오류")
 	} else if code >= http.StatusBadRequest {
 		// 4xx: 클라이언트 요청 오류 - 정상적인 거부 응답
-		applog.WithComponentAndFields(constants.ErrorHandler, fields).Warn(constants.LogMsgHTTP4xxClientError)
+		applog.WithComponentAndFields(component, fields).Warn("HTTP 4xx: 클라이언트 요청 오류")
 	}
 
 	// 이중 응답 방지: 이미 응답이 전송된 경우 추가 응답 시도하지 않음

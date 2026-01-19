@@ -153,7 +153,7 @@ func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
 				c.Response().Header().Set(retryAfter, retryAfterSeconds)
 
-				return NewErrRateLimitExceeded()
+				return ErrRateLimitExceeded
 			}
 
 			// 4. 다음 핸들러 실행

@@ -18,7 +18,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// SetupRoutes Echo 인스턴스에 v1 API 라우트를 설정합니다.
+// RegisterRoutes Echo 인스턴스에 v1 API 라우트를 설정합니다.
 //
 // 이 함수는 /api/v1 그룹을 생성하고, 인증 미들웨어를 적용한 후
 // 알림 전송 엔드포인트를 등록합니다.

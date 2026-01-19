@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,18 +86,6 @@ func TestPublishNotificationHandler(t *testing.T) {
 		DefaultNotifierID: contract.NotifierID("test-notifier"),
 	}
 
-	// 에러 메시지 검증을 위한 헬퍼 함수
-	// 실제 핸들러가 반환하는 에러 메시지와 정확히 일치하는지 확인합니다.
-	extractErrMsg := func(err error) string {
-		var httpErr *echo.HTTPError
-		if errors.As(err, &httpErr) {
-			if resp, ok := httpErr.Message.(response.ErrorResponse); ok {
-				return resp.Message
-			}
-		}
-		return ""
-	}
-
 	tests := []struct {
 		name           string
 		reqBody        interface{}
@@ -104,7 +93,8 @@ func TestPublishNotificationHandler(t *testing.T) {
 		mockFail       bool
 		failError      error // Mock 서비스가 반환할 에러
 		expectedStatus int
-		expectedErrMsg string
+		expectedErr    error  // 예상되는 에러 (없으면 nil)
+		expectedErrMsg string // 동적 에러 메시지 검증용 (포함 여부 확인)
 		verifyMock     func(*testing.T, *mocks.MockNotificationSender)
 	}{
 		// ---------------------------------------------------------------------
@@ -179,7 +169,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: "Key: 'NotificationRequest.ApplicationID' Error:Field validation for 'ApplicationID' failed on the 'required' tag", // validator 기본 메시지 (일부 매칭)
+			expectedErrMsg: "애플리케이션 ID는 필수입니다",
 		},
 		{
 			name: "실패: Application ID 불일치 (보안 검증)",
@@ -189,7 +179,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp, // ID: "test-app"
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: extractErrMsg(NewErrAppIDMismatch("diff-app", "test-app")),
+			expectedErrMsg: "요청 본문의 application_id와 인증된 애플리케이션이 일치하지 않습니다", // NewErrAppIDMismatch
 		},
 		{
 			name: "실패: Message 누락",
@@ -199,7 +189,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: "Key: 'NotificationRequest.Message' Error:Field validation for 'Message' failed on the 'required' tag",
+			expectedErrMsg: "메시지는 필수입니다",
 		},
 		{
 			name: "실패: Message 길이 초과 (4097자)",
@@ -209,7 +199,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: "Key: 'NotificationRequest.Message' Error:Field validation for 'Message' failed on the 'max' tag",
+			expectedErrMsg: "메시지는 최대 4096자까지 입력 가능합니다",
 		},
 
 		// ---------------------------------------------------------------------
@@ -220,14 +210,14 @@ func TestPublishNotificationHandler(t *testing.T) {
 			reqBody:        "invalid-json",
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: extractErrMsg(NewErrInvalidBody()),
+			expectedErr:    ErrInvalidBody,
 		},
 		{
 			name:           "실패: JSON 필드 타입 불일치 (error_occurred 문자열 전달)",
 			reqBody:        `{"application_id":"test-app","message":"msg","error_occurred":"not-boolean"}`, // 문자열 직접 주입
 			app:            testApp,
 			expectedStatus: http.StatusBadRequest,
-			expectedErrMsg: extractErrMsg(NewErrInvalidBody()),
+			expectedErr:    ErrInvalidBody,
 		},
 
 		// ---------------------------------------------------------------------
@@ -243,7 +233,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			mockFail:       true,
 			failError:      notification.ErrServiceStopped,
 			expectedStatus: http.StatusServiceUnavailable,
-			expectedErrMsg: extractErrMsg(NewErrServiceStopped()),
+			expectedErr:    ErrServiceStopped,
 		},
 		{
 			name: "실패: 알림 채널 미등록 (404 NotifierNotFound)",
@@ -255,7 +245,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			mockFail:       true,
 			failError:      notification.ErrNotifierNotFound,
 			expectedStatus: http.StatusNotFound,
-			expectedErrMsg: extractErrMsg(NewErrNotifierNotFound()),
+			expectedErr:    ErrNotifierNotFound,
 		},
 		{
 			name: "실패: 큐 가득 참 (503 ServiceOverloaded)",
@@ -267,7 +257,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			mockFail:       true,
 			failError:      apperrors.New(apperrors.Unavailable, "Queue Full"), // Unavailable 타입 에러 시뮬레이션
 			expectedStatus: http.StatusServiceUnavailable,
-			expectedErrMsg: extractErrMsg(NewErrServiceOverloaded()),
+			expectedErr:    ErrServiceOverloaded,
 		},
 		{
 			name: "실패: 기타 내부 오류 (500 ServiceInterrupted)",
@@ -279,7 +269,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			mockFail:       true,
 			failError:      errors.New("generic error"), // 일반 에러
 			expectedStatus: http.StatusInternalServerError,
-			expectedErrMsg: extractErrMsg(NewErrServiceInterrupted()),
+			expectedErr:    ErrServiceInterrupted,
 		},
 	}
 
@@ -302,26 +292,27 @@ func TestPublishNotificationHandler(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rec.Code)
 			} else {
 				require.Error(t, err)
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 합니다")
-				assert.Equal(t, tt.expectedStatus, httpErr.Code)
 
-				if tt.expectedErrMsg != "" {
-					errResp, ok := httpErr.Message.(response.ErrorResponse)
-					require.True(t, ok, "에러 메시지는 response.ErrorResponse 타입이어야 합니다")
+				// 1. 에러 변수 매칭 검증 (assert.ErrorIs 사용)
+				if tt.expectedErr != nil {
+					assert.ErrorIs(t, err, tt.expectedErr, "예상된 에러 변수와 일치하지 않습니다")
+				}
 
-					if strings.Contains(tt.name, "Valid") { // Validation 에러는 부분 일치 (메시지가 동적임)
-						assert.Contains(t, errResp.Message, tt.expectedErrMsg)
-					} else if strings.Contains(tt.expectedErrMsg, "Field validation") { // Validation 에러 (누락/초과)도 부분 일치
-						// Validator 메시지는 조금 다를 수 있으므로 핵심 키워드 체크 방식이 더 안전할 수 있으나,
-						// 여기서는 기대 값을 Validator 형식("Key: ...")으로 맞춰두었으므로 Contains로 비교
-						assert.Contains(t, errResp.Message, request.NotificationRequest{}.ApplicationID) // 필드명 등이 포함되는지 확인하는 것이 일반적이나, 여기선 생략하고 메시지 내용 비교
-					} else {
-						// 그 외(앱 에러)는 정확히 일치해야 함
-						if strings.Contains(tt.expectedErrMsg, "Field validation") {
-							assert.Contains(t, errResp.Message, "validation") // Validator 메시지 유연하게
+				// 2. HTTP 에러 상태 코드 검증
+				var httpErr *echo.HTTPError
+				if assert.ErrorAs(t, err, &httpErr) {
+					assert.Equal(t, tt.expectedStatus, httpErr.Code)
+
+					// 3. 에러 메시지 검증 (동적 메시지인 경우)
+					if tt.expectedErrMsg != "" {
+						errResp, ok := httpErr.Message.(response.ErrorResponse)
+						// Echo 핸들러에서 리턴하는 에러는 httputil로 생성되어 Message가 ErrorResponse 구조체일 가능성이 큼
+						// 하지만 httputil 구조에 따라 string일 수도 있으니 유의. 현재 코드 베이스는 ErrorResponse로 추정됨.
+						if ok {
+							assert.Contains(t, errResp.Message, tt.expectedErrMsg)
 						} else {
-							assert.Equal(t, tt.expectedErrMsg, errResp.Message)
+							// 만약 단순 string인 경우
+							assert.Contains(t, fmt.Sprint(httpErr.Message), tt.expectedErrMsg)
 						}
 					}
 				}
