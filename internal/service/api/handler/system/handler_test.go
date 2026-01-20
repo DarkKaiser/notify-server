@@ -26,9 +26,6 @@ import (
 func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSender, *echo.Echo) {
 	t.Helper()
 
-	// 참고: applog.SetLevel과 같은 글로벌 상태 변경 코드는 t.Parallel() 사용 시 레이스 컨디션을 유발하므로 제거함.
-	// 테스트 중 발생 로그는 감수하거나, 별도의 로거 인스턴스를 사용하는 구조로 리팩토링이 필요함 (현재는 글로벌 로거 사용).
-
 	mockSender := mocks.NewMockNotificationSender()
 	buildInfo := version.Info{
 		Version:     "1.0.0",
@@ -85,6 +82,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		t.Helper()
 
 		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, echo.MIMEApplicationJSON, rec.Header().Get(echo.HeaderContentType))
 
 		var resp system.HealthResponse
 		err := json.Unmarshal(rec.Body.Bytes(), &resp)
@@ -105,7 +103,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		{
 			name: "성공: 모든 시스템 정상 (Healthy)",
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.ShouldFail = false
+				m.On("Health").Return(nil)
 			},
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder) {
 				expectedDeps := map[string]system.DependencyStatus{
@@ -120,8 +118,7 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 		{
 			name: "실패: Notification 서비스 장애 (Unhealthy - Deep Check)",
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.ShouldFail = true
-				m.FailError = errors.New("service stopped")
+				m.On("Health").Return(errors.New("service stopped"))
 			},
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder) {
 				expectedDeps := map[string]system.DependencyStatus{
@@ -176,6 +173,10 @@ func TestHandler_HealthCheckHandler(t *testing.T) {
 				assert.NoError(t, err)
 				tt.verify(t, rec)
 			}
+
+			if mockSender != nil {
+				mockSender.AssertExpectations(t)
+			}
 		})
 	}
 }
@@ -223,7 +224,11 @@ func TestHandler_VersionHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			// VersionHandler doesn't use the sender, so we can pass a dummy mock
+			// But we use the helper for consistency, although MockSender is unused here
+			// To be explicit, we can mock nothing.
 			mockSender := mocks.NewMockNotificationSender()
+
 			h := New(mockSender, tt.buildInfo)
 			e := echo.New()
 
@@ -234,12 +239,16 @@ func TestHandler_VersionHandler(t *testing.T) {
 			err := h.VersionHandler(c)
 			assert.NoError(t, err)
 			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, echo.MIMEApplicationJSON, rec.Header().Get(echo.HeaderContentType))
 
 			var resp system.VersionResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &resp)
 			require.NoError(t, err)
 
 			tt.verify(t, resp)
+
+			// No expectations set on mockSender, so AssertExpectations will pass if nothing was called
+			mockSender.AssertExpectations(t)
 		})
 	}
 }

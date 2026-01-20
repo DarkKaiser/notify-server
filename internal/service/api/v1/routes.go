@@ -41,6 +41,16 @@ import (
 //   - X-API-Deprecated: true
 //   - X-API-Deprecated-Replacement: /api/v1/notifications
 func RegisterRoutes(e *echo.Echo, h *handler.Handler, authenticator *auth.Authenticator) {
+	if e == nil {
+		panic("Echo 인스턴스는 필수입니다")
+	}
+	if h == nil {
+		panic("Handler는 필수입니다")
+	}
+	if authenticator == nil {
+		panic("Authenticator는 필수입니다")
+	}
+
 	// 1. API v1 그룹 생성 (/api/v1 prefix)
 	v1Group := e.Group("/api/v1")
 

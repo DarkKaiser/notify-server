@@ -30,6 +30,8 @@ func setupTestHandler() *systemhandler.Handler {
 		BuildDate:   "2025-12-05",
 		BuildNumber: "1",
 	}
+	// Allow Health check by default for routing tests
+	mockSender.On("Health").Return(nil).Maybe()
 	return systemhandler.New(mockSender, buildInfo)
 }
 
@@ -46,6 +48,7 @@ func TestRegisterRoutes(t *testing.T) {
 	RegisterRoutes(e, h)
 
 	// Then
+	// 1. 등록된 라우트 확인
 	t.Run("라우트 등록 검증", func(t *testing.T) {
 		expectedRoutes := map[string]string{
 			"/health":    http.MethodGet,
@@ -66,6 +69,7 @@ func TestRegisterRoutes(t *testing.T) {
 		}
 	})
 
+	// 2. 엔드포인트 동작 통합 검증
 	t.Run("엔드포인트 동작 통합 검증", func(t *testing.T) {
 		tests := []struct {
 			name           string
@@ -83,8 +87,9 @@ func TestRegisterRoutes(t *testing.T) {
 					var healthResp system.HealthResponse
 					err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
 					require.NoError(t, err)
-					assert.NotEmpty(t, healthResp.Status)
+					assert.Equal(t, "healthy", healthResp.Status)
 					assert.GreaterOrEqual(t, healthResp.Uptime, int64(0))
+					assert.Contains(t, healthResp.Dependencies, "notification_service")
 				},
 			},
 			{
@@ -99,14 +104,16 @@ func TestRegisterRoutes(t *testing.T) {
 					assert.Equal(t, "test-version", versionResp.Version)
 					assert.Equal(t, "2025-12-05", versionResp.BuildDate)
 					assert.Equal(t, "1", versionResp.BuildNumber)
+					assert.NotEmpty(t, versionResp.GoVersion)
 				},
 			},
 			{
-				name:           "Swagger UI 접근",
+				name:           "Swagger UI 접근 (리다이렉트)",
 				method:         http.MethodGet,
 				path:           "/swagger/index.html",
 				expectedStatus: http.StatusOK,
 				verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+					// Swagger UI HTML 컨텐츠 반환 확인
 					assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 				},
 			},
@@ -142,21 +149,36 @@ func TestRegisterRoutes(t *testing.T) {
 		}
 	})
 
+	// 3. 에러 핸들링 검증
 	t.Run("에러 핸들링 검증", func(t *testing.T) {
-		t.Run("존재하지 않는 경로 (404 Not Found)", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, req)
+		tests := []struct {
+			name           string
+			method         string
+			path           string
+			expectedStatus int
+		}{
+			{
+				name:           "존재하지 않는 경로 (404 Not Found)",
+				method:         http.MethodGet,
+				path:           "/nonexistent",
+				expectedStatus: http.StatusNotFound,
+			},
+			{
+				name:           "지원하지 않는 메서드 (405 Method Not Allowed)",
+				method:         http.MethodPost,
+				path:           "/health",
+				expectedStatus: http.StatusMethodNotAllowed,
+			},
+		}
 
-			assert.Equal(t, http.StatusNotFound, rec.Code)
-		})
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(tc.method, tc.path, nil)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
 
-		t.Run("지원하지 않는 메서드 (405 Method Not Allowed)", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/health", nil)
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, req)
-
-			assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
-		})
+				assert.Equal(t, tc.expectedStatus, rec.Code)
+			})
+		}
 	})
 }

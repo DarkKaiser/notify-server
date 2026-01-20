@@ -10,6 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -298,13 +299,42 @@ func TestTask_Run(t *testing.T) {
 			doneC := make(chan contract.TaskInstanceID, 1)
 			wg.Add(1)
 
+			// Expectation Setup
+			// Notify might be called multiple times. We allow any calls for now and verify later,
+			// or we can set specific expectations if `tt.expectedNotifyCount` is known.
+			// But for simplicity/flexibility, we allow calls and verify count later.
+			mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			mockSender.On("NotifyDefault", mock.Anything).Return(nil)
+			mockSender.On("NotifyDefaultWithError", mock.Anything).Return(nil)
+
 			go task.Run(contract.NewTaskContext(), mockSender, wg, doneC)
 
 			// Wait for completion
 			waitTimeout(t, wg, 2*time.Second)
 
 			// Validate
-			assert.Equal(t, tt.expectedNotifyCount, mockSender.GetNotifyCallCount(), "알림 전송 횟수가 예상과 다릅니다")
+			// Validate
+			// Count Notify calls (Notify, NotifyWithTitle, NotifyDefault, NotifyDefaultWithError)
+			// Actually `GetNotifyCallCount` logic was just `NotifyCalls` (Notify method).
+			// Let's verify "Notify" primarily?
+			// The test seems to focus on `Notify`.
+			// Update: Some tests might trigger NotifyDefault/WithError?
+			// Let's check `collectAllMessages`.
+
+			// Verify count for "Notify" specifically if that's what was tested.
+			// Or check total calls?
+			// The original `GetNotifyCallCount` returned `len(m.NotifyCalls)`.
+			// `m.NotifyCalls` was appended in `Notify`.
+			// Verify count for all notification methods
+			actualNotifyCount := 0
+			for _, call := range mockSender.Calls {
+				if call.Method == "Notify" || call.Method == "NotifyWithTitle" ||
+					call.Method == "NotifyDefault" || call.Method == "NotifyDefaultWithError" {
+					actualNotifyCount++
+				}
+			}
+			assert.Equal(t, tt.expectedNotifyCount, actualNotifyCount, "알림 발송 횟수가 일치해야 합니다")
 
 			if len(tt.expectedMessageParts) > 0 {
 				allMsg := collectAllMessages(mockSender)
@@ -314,7 +344,18 @@ func TestTask_Run(t *testing.T) {
 			}
 
 			if tt.verifyContext != nil {
-				tt.verifyContext(t, mockSender.CapturedContexts)
+				if tt.verifyContext != nil {
+					// Extract contexts from calls
+					var ctxs []contract.TaskContext
+					for _, call := range mockSender.Calls {
+						if call.Method == "Notify" {
+							if ctx, ok := call.Arguments.Get(0).(contract.TaskContext); ok {
+								ctxs = append(ctxs, ctx)
+							}
+						}
+					}
+					tt.verifyContext(t, ctxs)
+				}
 			}
 
 			if store != nil {
@@ -363,14 +404,19 @@ func waitTimeout(t *testing.T, wg *sync.WaitGroup, timeout time.Duration) {
 }
 
 // collectAllMessages MockSender에 전송된 모든 메시지를 하나의 문자열로 합칩니다.
-func collectAllMessages(sender *MockNotificationSender) string {
+func collectAllMessages(sender *notificationmocks.MockNotificationSender) string {
 	var sb string
-	for _, call := range sender.NotifyCalls {
-		sb += call.Message + "\n"
-	}
-	// DefaultNotify calls도 포함 (필요시)
-	for _, msg := range sender.NotifyDefaultCalls {
-		sb += msg + "\n"
+	for _, call := range sender.Calls {
+		// Method check and argument extraction
+		if call.Method == "Notify" {
+			if msg, ok := call.Arguments.Get(2).(string); ok {
+				sb += msg + "\n"
+			}
+		} else if call.Method == "NotifyDefault" || call.Method == "NotifyDefaultWithError" {
+			if msg, ok := call.Arguments.Get(0).(string); ok {
+				sb += msg + "\n"
+			}
+		}
 	}
 	return sb
 }
@@ -385,6 +431,7 @@ func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
 	})
 
 	mockSender := NewMockNotificationSender()
+	mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	ctx := contract.NewTaskContext()
 
 	// Direct call to prepareExecution to check internal error

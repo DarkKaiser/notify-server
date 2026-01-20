@@ -61,7 +61,7 @@ func (n *telegramNotifier) dispatchCommand(ctx context.Context, message *tgbotap
 	// 전체 봇 서비스(수신 루프)가 중단되지 않도록 여기서 에러를 포착하고 로그를 남깁니다.
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"command":     message.Text, // 입력값: 패닉을 유발한 명령어
@@ -131,7 +131,7 @@ func (n *telegramNotifier) submitTask(command botCommand) {
 		taskCtx := contract.NewTaskContext().WithTask(command.taskID, command.commandID).WithError()
 		if err := n.Send(taskCtx, msgTaskExecutionFailed); err != nil {
 			// 실패 알림조차 전송하지 못한 경우(예: 알림 발송 큐가 가득 참), 더 이상 재시도하지 않고 로그만 남깁니다.
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"task_id":     command.taskID,
@@ -159,7 +159,7 @@ func (n *telegramNotifier) processCancel(_ context.Context, commandInput string)
 		if err := n.executor.Cancel(contract.TaskInstanceID(instanceID)); err != nil {
 			// 취소 요청이 실패한 경우(예: 이미 종료된 작업, 존재하지 않는 ID 등), 사용자에게 실패 사유를 알립니다.
 			if err := n.Send(contract.NewTaskContext().WithError(), fmt.Sprintf(msgTaskCancelFailed, instanceID)); err != nil {
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
 					"instance_id": instanceID,
@@ -173,7 +173,7 @@ func (n *telegramNotifier) processCancel(_ context.Context, commandInput string)
 		message := fmt.Sprintf(msgInvalidCancelCommandFormat, escapedInput, botCommandPrefix, botCommandCancel, botCommandSeparator)
 
 		if err := n.Send(contract.NewTaskContext(), message); err != nil {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"command":     commandInput,
@@ -194,7 +194,7 @@ func (n *telegramNotifier) replyHelpCommand(_ context.Context) {
 	}
 
 	if err := n.Send(contract.NewTaskContext(), message); err != nil {
-		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"error":       err,
@@ -210,7 +210,7 @@ func (n *telegramNotifier) replyUnknownCommand(_ context.Context, input string) 
 	message := fmt.Sprintf(msgUnknownCommand, escapedInput, botCommandPrefix, botCommandHelp)
 
 	if err := n.Send(contract.NewTaskContext(), message); err != nil {
-		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"command":     input,

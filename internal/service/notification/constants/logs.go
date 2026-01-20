@@ -29,7 +29,6 @@ const (
 	LogMsgDefaultNotifierFailed    = "기본 Notifier로 에러 알림 전송 실패 (큐 가득 참 또는 종료됨)"
 
 	// --- Telegram Logs ---
-	LogMsgTelegramInitClient          = "텔레그램 Notifier 초기화 및 봇 API 클라이언트 생성 시작"
 	LogMsgTelegramStarted             = "Telegram Notifier의 작업이 시작됨"
 	LogMsgTelegramSenderStarted       = "Sender 고루틴이 정상 종료됨" // 의미상 Stopped가 맞으나 원본 텍스트 유지/확인 필요. 원본: "Sender 고루틴이 정상 종료됨" -> LogMsgTelegramSenderStopped
 	LogMsgTelegramSenderStoppedNormal = "Sender 고루틴이 정상 종료됨"

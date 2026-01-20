@@ -2,130 +2,56 @@ package mocks
 
 import (
 	"context"
-	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/stretchr/testify/mock"
 )
 
 // Interface Compliance Check
 var _ notifier.Notifier = (*MockNotifier)(nil)
 
-// NewMockNotifier 새로운 Mock 객체를 생성합니다.
+// NewMockNotifier creates a new MockNotifier with default ID behavior.
 func NewMockNotifier(id contract.NotifierID) *MockNotifier {
-	return &MockNotifier{
-		IDValue:           id,
-		SupportsHTMLValue: true, // 기본값: HTML 지원
-	}
+	m := &MockNotifier{}
+	// Setup default behavior for ID as it's immutable context and used everywhere
+	m.On("ID").Return(id)
+	return m
 }
 
-// MockNotifier는 Notifier 인터페이스의 Mock 구현체입니다.
-//
-// 이 Mock은 알림 전송 동작을 테스트하는 데 사용되며,
-// 실제 알림 전송 없이 호출 기록을 추적합니다.
+// MockNotifier is a mock implementation of the Notifier interface using testify/mock.
 type MockNotifier struct {
-	IDValue           contract.NotifierID
-	SupportsHTMLValue bool
-	SendCalls         []MockSendCall
-	Mu                sync.Mutex // SendCalls 동시성 보호
-	DoneChannel       chan struct{}
-
-	// SendFunc mocks the Send method.
-	SendFunc func(taskCtx contract.TaskContext, message string) error
-	RunFunc  func(context.Context)
+	mock.Mock
 }
 
-// MockSendCall은 Send 메서드 호출 기록을 저장합니다.
-type MockSendCall struct {
-	Message     string
-	TaskContext contract.TaskContext
-}
-
-// WithID ID를 설정합니다 (Fluent API).
-func (m *MockNotifier) WithID(id contract.NotifierID) *MockNotifier {
-	m.IDValue = id
-	return m
-}
-
-// WithSupportsHTML HTML 지원 여부를 설정합니다 (Fluent API).
-func (m *MockNotifier) WithSupportsHTML(supported bool) *MockNotifier {
-	m.SupportsHTMLValue = supported
-	return m
-}
-
-// WithSendFunc sets the SendFunc mock.
-func (mock *MockNotifier) WithSendFunc(f func(taskCtx contract.TaskContext, message string) error) *MockNotifier {
-	mock.SendFunc = f
-	return mock
-}
-
-// WithRunFunc Run 동작을 커스터마이징합니다 (Fluent API).
-func (m *MockNotifier) WithRunFunc(fn func(context.Context)) *MockNotifier {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.RunFunc = fn
-	return m
-}
-
-// ID는 Notifier의 고유 식별자를 반환합니다.
+// ID returns the notifier's ID.
 func (m *MockNotifier) ID() contract.NotifierID {
-	return m.IDValue
+	args := m.Called()
+	return args.Get(0).(contract.NotifierID)
 }
 
-// Send calls SendFunc.
-func (mock *MockNotifier) Send(taskCtx contract.TaskContext, message string) error {
-	mock.Mu.Lock()
-	defer mock.Mu.Unlock()
-
-	mock.SendCalls = append(mock.SendCalls, MockSendCall{
-		TaskContext: taskCtx,
-		Message:     message,
-	})
-
-	if mock.SendFunc != nil {
-		return mock.SendFunc(taskCtx, message)
-	}
-	return nil
+// Send sends a notification.
+func (m *MockNotifier) Send(taskCtx contract.TaskContext, message string) error {
+	args := m.Called(taskCtx, message)
+	return args.Error(0)
 }
 
-// Run은 Notifier를 실행하고 context가 종료될 때까지 대기합니다.
+// Run runs the notifier.
 func (m *MockNotifier) Run(ctx context.Context) {
-	m.Mu.Lock()
-	runFn := m.RunFunc
-	m.Mu.Unlock()
-
-	if runFn != nil {
-		runFn(ctx)
-		return
-	}
-
-	<-ctx.Done()
+	m.Called(ctx)
 }
 
-// SupportsHTML은 HTML 형식 메시지 지원 여부를 반환합니다.
+// SupportsHTML returns whether the notifier supports HTML.
 func (m *MockNotifier) SupportsHTML() bool {
-	return m.SupportsHTMLValue
+	args := m.Called()
+	return args.Bool(0)
 }
 
-// Done은 Notifier 종료 채널을 반환합니다.
+// Done returns a channel that is closed when the notifier is done.
 func (m *MockNotifier) Done() <-chan struct{} {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	if m.DoneChannel == nil {
-		// 기본적으로 닫혀있지 않은(종료되지 않은) 채널 반환
-		m.DoneChannel = make(chan struct{})
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
 	}
-	return m.DoneChannel
-}
-
-// Reset 상태를 초기화합니다.
-func (m *MockNotifier) Reset() {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.SendCalls = nil
-	// DoneChannel은 닫힌 상태인지 열린 상태인지 모호할 수 있으므로,
-	// Reset 시 nil로 설정하여 다음 호출 시 새로 생성되게 함.
-	m.DoneChannel = nil
-	m.SendFunc = nil
-	m.RunFunc = nil
+	return args.Get(0).(<-chan struct{})
 }

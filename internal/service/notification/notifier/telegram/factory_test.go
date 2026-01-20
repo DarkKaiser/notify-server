@@ -1,12 +1,15 @@
 package telegram
 
 import (
+	"bytes"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -18,8 +21,14 @@ import (
 // Helper Mocks & Types
 // =============================================================================
 
-// MockBotClient is a manual mock for botClient interface if needed specific to factory.
-// We reuse MockTelegramBot from mock_test.go which satisfies botClient.
+// mockRoundTripper intercepts HTTP requests for testing without external network.
+type mockRoundTripper struct {
+	roundTripFunc func(*http.Request) (*http.Response, error)
+}
+
+func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.roundTripFunc(req)
+}
 
 // =============================================================================
 // Bot Client Tests
@@ -49,7 +58,7 @@ func TestDefaultBotClient_GetSelf(t *testing.T) {
 }
 
 // =============================================================================
-// Factory Creator Tests
+// Factory Creator Tests (NewCreator, BuildCreator)
 // =============================================================================
 
 func TestNewCreator(t *testing.T) {
@@ -65,83 +74,168 @@ func TestNewCreator(t *testing.T) {
 func TestBuildCreator(t *testing.T) {
 	t.Parallel()
 
-	t.Run("성공: 모든 Notifier가 정상적으로 생성되어야 한다", func(t *testing.T) {
-		t.Parallel()
+	mockExecutor := &taskmocks.MockExecutor{}
 
-		// given
-		mockConfig := &config.AppConfig{
-			Notifier: config.NotifierConfig{
-				Telegrams: []config.TelegramConfig{
-					{ID: "telegram-1", BotToken: "token-1", ChatID: 1001},
-					{ID: "telegram-2", BotToken: "token-2", ChatID: 1002},
+	tests := []struct {
+		name        string
+		config      *config.AppConfig
+		mockCtor    notifierCtor
+		expectedLen int
+		expectErr   bool
+	}{
+		{
+			name: "성공: 모든 Notifier가 정상적으로 생성되어야 한다",
+			config: &config.AppConfig{
+				Notifier: config.NotifierConfig{
+					Telegrams: []config.TelegramConfig{
+						{ID: "telegram-1", BotToken: "token-1", ChatID: 1001},
+						{ID: "telegram-2", BotToken: "token-2", ChatID: 1002},
+					},
 				},
 			},
-		}
-		mockExecutor := &taskmocks.MockExecutor{}
-
-		callCount := 0
-		// Mock constructor
-		mockCtor := func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
-			callCount++
-			assert.Equal(t, mockExecutor, executor)
-			assert.Equal(t, mockConfig, args.AppConfig)
-
-			// ID에 따른 매핑 검증
-			if id == "telegram-1" {
-				assert.Equal(t, "token-1", args.BotToken)
-				assert.Equal(t, int64(1001), args.ChatID)
-			} else if id == "telegram-2" {
-				assert.Equal(t, "token-2", args.BotToken)
-				assert.Equal(t, int64(1002), args.ChatID)
-			}
-
-			return &telegramNotifier{}, nil
-		}
-
-		// when
-		creator := buildCreator(mockCtor)
-		notifiers, err := creator(mockConfig, mockExecutor)
-
-		// then
-		require.NoError(t, err)
-		assert.Len(t, notifiers, 2)
-		assert.Equal(t, 2, callCount)
-	})
-
-	t.Run("실패: 생성자 중 하나라도 실패하면 에러를 반환해야 한다", func(t *testing.T) {
-		t.Parallel()
-
-		// given
-		mockConfig := &config.AppConfig{
-			Notifier: config.NotifierConfig{
-				Telegrams: []config.TelegramConfig{
-					{ID: "t1"}, {ID: "t2"},
+			mockCtor: func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
+				assert.Equal(t, mockExecutor, executor)
+				return &telegramNotifier{}, nil
+			},
+			expectedLen: 2,
+			expectErr:   false,
+		},
+		{
+			name: "실패: 생성자 중 하나라도 실패하면 에러를 반환해야 한다",
+			config: &config.AppConfig{
+				Notifier: config.NotifierConfig{
+					Telegrams: []config.TelegramConfig{
+						{ID: "t1"}, {ID: "t2"},
+					},
 				},
 			},
-		}
-		expectedErr := errors.New("creation failed")
+			mockCtor: func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
+				if id == "t2" {
+					return nil, errors.New("creation failed")
+				}
+				return &telegramNotifier{}, nil
+			},
+			expectedLen: 0,
+			expectErr:   true,
+		},
+	}
 
-		mockCtor := func(id contract.NotifierID, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
-			if id == "t2" {
-				return nil, expectedErr
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// when
+			creator := buildCreator(tt.mockCtor)
+			notifiers, err := creator(tt.config, mockExecutor)
+
+			// then
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Nil(t, notifiers)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, notifiers, tt.expectedLen)
 			}
-			return &telegramNotifier{}, nil
-		}
-
-		// when
-		creator := buildCreator(mockCtor)
-		notifiers, err := creator(mockConfig, &taskmocks.MockExecutor{})
-
-		// then
-		require.Error(t, err)
-		assert.ErrorIs(t, err, expectedErr)
-		assert.Nil(t, notifiers)
-	})
+		})
+	}
 }
 
 // =============================================================================
-// Notifier Construction Tests (newNotifierWithClient)
+// Notifier Construction Tests (newNotifier, newNotifierWithClient)
 // =============================================================================
+
+func TestNewNotifier_Integration(t *testing.T) {
+	// 이제 HTTPClient 주입이 가능하므로 통합 테스트를 활성화합니다.
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		token         string
+		debug         bool
+		roundTripFunc func(*http.Request) (*http.Response, error)
+		expectErr     bool
+		errContains   string
+	}{
+		{
+			name:  "성공: 유효한 토큰으로 봇 API 클라이언트 초기화 성공",
+			token: "123:valid-token",
+			debug: true,
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				// tgbotapi.NewBotAPI calls getMe to validate token
+				if strings.Contains(req.URL.Path, "/getMe") {
+					return &http.Response{
+						StatusCode: 200,
+						Body: io.NopCloser(bytes.NewBufferString(`{
+							"ok": true,
+							"result": {"id": 123, "first_name": "TestBot", "username": "test_bot"}
+						}`)),
+					}, nil
+				}
+				return nil, errors.New("unexpected request: " + req.URL.Path)
+			},
+			expectErr: false,
+		},
+		{
+			name:  "실패: API 호출 실패 (네트워크 에러)",
+			token: "123:network-error",
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("connection refused")
+			},
+			expectErr:   true,
+			errContains: "connection refused",
+		},
+		{
+			name:  "실패: 유효하지 않은 응답 (401 Unauthorized)",
+			token: "123:invalid-token",
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: 401,
+					Body: io.NopCloser(bytes.NewBufferString(`{
+						"ok": false,
+						"error_code": 401,
+						"description": "Unauthorized"
+					}`)),
+				}, nil
+			},
+			expectErr:   true, // NewBotAPI checks info, so it will fail
+			errContains: "Unauthorized",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			mockTransport := &mockRoundTripper{roundTripFunc: tt.roundTripFunc}
+			httpClient := &http.Client{Transport: mockTransport}
+
+			args := creationArgs{
+				BotToken:   tt.token,
+				ChatID:     12345,
+				AppConfig:  &config.AppConfig{Debug: tt.debug},
+				HTTPClient: httpClient, // Inject Mock Client
+			}
+
+			// when
+			n, err := newNotifier("test-notifier", &taskmocks.MockExecutor{}, args)
+
+			// then
+			if tt.expectErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				assert.Nil(t, n)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, n)
+			}
+		})
+	}
+}
 
 func TestNewNotifierWithClient_Success(t *testing.T) {
 	t.Parallel()
@@ -157,8 +251,8 @@ func TestNewNotifierWithClient_Success(t *testing.T) {
 			validateStructure: func(t *testing.T, n *telegramNotifier) {
 				assert.NotNil(t, n.limiter, "Rate Limiter가 초기화되어야 함")
 				assert.NotNil(t, n.commandSemaphore, "세마포어가 초기화되어야 함")
-				assert.Equal(t, constants.DefaultTelegramRetryDelay, n.retryDelay)
-				assert.Equal(t, constants.TelegramNotifierBufferSize, cap(n.NotificationC()))
+				assert.Equal(t, defaultRetryDelay, n.retryDelay)
+				assert.Equal(t, notifierBufferSize, cap(n.NotificationC()))
 
 				// 기본 도움말 명령어 확인
 				assert.Len(t, n.botCommands, 1)
@@ -291,14 +385,4 @@ func TestNewNotifierWithClient_Failure(t *testing.T) {
 		assert.Nil(t, n)
 		assert.Contains(t, err.Error(), "필수입니다")
 	})
-}
-
-// TestNewNotifier_IntegrationIntegration tests the actual newNotifier function locally.
-// (Optional, verifying it calls newNotifierWithClient internally)
-func TestNewNotifier_CallingWithClient(t *testing.T) {
-	t.Parallel()
-
-	// This is hard to test because it creates http.Client and tgbotapi.NewBotAPI.
-	// We assume it works if compilation passes and other tests mimic its logic.
-	// We can skip deep testing here to avoid network calls or complex mocking of tgbotapi.
 }

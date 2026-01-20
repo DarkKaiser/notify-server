@@ -16,6 +16,9 @@ import (
 
 // TODO 미완료
 
+// component Notification 서비스의 텔레그램 Notifier 로깅용 컴포넌트 이름
+const component = "notification.notifier.telegram"
+
 const (
 	// 텔레그램 메시지 최대 길이 제한 (API Spec)
 	// 한 번에 전송 가능한 최대 4096자 중 메타데이터 여분을 고려하여 3900자로 제한합니다.
@@ -77,7 +80,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 	// 메시지 수신 채널 획득
 	updateC := n.botClient.GetUpdatesChan(config)
 
-	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"notifier_id":  n.ID(),
 		"bot_username": n.botClient.GetSelf().UserName,
 		"chat_id":      n.chatID,
@@ -116,13 +119,13 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 		select {
 		case <-done:
 			// 정상 종료
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 			}).Debug(constants.LogMsgTelegramSenderStoppedNormal)
 		case <-time.After(shutdownTimeout):
 			// 타임아웃 발생 - 강제 종료
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"timeout":     shutdownTimeout,
@@ -131,7 +134,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 
 		n.botClient = nil
 
-		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 		}).Debug(constants.LogMsgTelegramStopped)
@@ -144,7 +147,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 		// 1. 텔레그램 봇 서버로부터 새로운 메시지 수신
 		case update, ok := <-updateC:
 			if !ok {
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
 				}).Error(constants.LogMsgTelegramUpdateChanClosed)
@@ -182,7 +185,7 @@ func (n *telegramNotifier) Run(ctx context.Context) {
 				// 세마포어가 가득 찬 경우 (Backpressure)
 				// 과도한 부하 상황이므로 로그를 남기고 메시지를 처리하지 않음 (Drop)
 				// 사용자가 다시 시도하도록 유도하거나, 단순히 무시하여 서버 안정성을 확보함.
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
 				}).Warn(constants.LogMsgTelegramCommandOverload)
@@ -201,7 +204,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 	// 루프 자체에서 예기치 않은 패닉이 발생해도 로그를 남기고 종료하여, 문제 원인을 파악할 수 있게 합니다.
 	defer func() {
 		if r := recover(); r != nil {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"panic":       r,
 			}).Error(constants.LogMsgTelegramSenderPanicRecovered)
@@ -220,7 +223,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+						applog.WithComponentAndFields(component, applog.Fields{
 							"notifier_id": n.ID(),
 							"panic":       r,
 						}).Error(constants.LogMsgTelegramNotifyPanicRecovered)
@@ -264,7 +267,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 				case notification := <-n.NotificationC():
 					// 타임아웃 체크를 메시지 처리 전에 수행하여 타임아웃 발생 시 즉시 중단
 					if drainCtx.Err() != nil {
-						applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+						applog.WithComponentAndFields(component, applog.Fields{
 							"notifier_id": n.ID(),
 						}).Warn(constants.LogMsgTelegramDrainTimeout)
 						break Loop
@@ -274,7 +277,7 @@ func (n *telegramNotifier) runSender(ctx context.Context) {
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
-								applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+								applog.WithComponentAndFields(component, applog.Fields{
 									"notifier_id": n.ID(),
 									"panic":       r,
 								}).Error(constants.LogMsgTelegramDrainPanicRecovered)

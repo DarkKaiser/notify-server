@@ -265,7 +265,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 	// 컨텍스트가 취소되면 Wait는 즉시 에러를 반환합니다.
 	if n.limiter != nil {
 		if err := n.limiter.Wait(ctx); err != nil {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
 			}).Debug(constants.LogMsgTelegramRateLimitCancel)
@@ -281,7 +281,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.DeadlineExceeded {
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
 				}).Error(constants.LogMsgTelegramSendTimeout)
@@ -294,7 +294,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 		_, err := n.botClient.Send(messageConfig)
 		if err == nil {
 			// 성공
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"attempt":     attempt,
@@ -305,7 +305,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 
 		// 실패 로그
 		lastErr = err
-		applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"attempt":     attempt,
@@ -318,7 +318,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 
 		// HTML 파싱 에러 시 Plain Text로 Fallback
 		if useHTML && errCode == 400 {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
 			}).Warn(constants.LogMsgTelegramHTMLFallback)
@@ -327,7 +327,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 
 		// 재시도 가능 여부 판단
 		if !shouldRetryError(errCode) {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"error":       err,
 				"code":        errCode,
@@ -342,7 +342,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 
 		// 429 에러 시 로그
 		if errCode == 429 && retryAfter > 0 {
-			applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
 				"retry_after": retryAfter,
 			}).Warn(constants.LogMsgTelegramRateLimitWait)
@@ -353,7 +353,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 		select {
 		case <-ctx.Done():
 			if ctx.Err() == context.DeadlineExceeded {
-				applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
 				}).Error(constants.LogMsgTelegramRetryTimeout)
@@ -365,7 +365,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 	}
 
 	// 최종 실패
-	applog.WithComponentAndFields(constants.ComponentNotifierTelegram, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"notifier_id": n.ID(),
 		"chat_id":     n.chatID,
 		"error":       lastErr,

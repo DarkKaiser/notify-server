@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,6 +89,11 @@ func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := NewMockNotificationSender()
+	// Default expectations for async notifications (Task service is chatty)
+	mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockSender.On("NotifyDefault", mock.Anything).Return(nil).Maybe()
+	mockSender.On("NotifyDefaultWithError", mock.Anything).Return(nil).Maybe()
 	service.SetNotificationSender(mockSender)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -235,7 +241,7 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 
 	// 큐에 들어가지 않았으므로 비동기 알림은 발송되지 않아야 합니다 (단, Fail Fast로 인해 호출자가 직접 처리 가능)
 	time.Sleep(100 * time.Millisecond) // 알림 발송 대기 (비동기 확인용)
-	callCount := mockSender.GetNotifyCallCount()
+	callCount := len(mockSender.Calls)
 	require.Equal(t, 0, callCount, "큐에 들어가지 않았으므로 비동기 알림은 없어야 합니다")
 
 	// 서비스 중지

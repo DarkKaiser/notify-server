@@ -104,6 +104,11 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	applog.WithComponent(component).Info("API 서비스 시작중...")
 
+	if s.notificationSender == nil {
+		defer serviceStopWG.Done()
+		return ErrNotificationSenderNotInitialized
+	}
+
 	if s.running {
 		defer serviceStopWG.Done()
 		applog.WithComponent(component).Warn("API 서비스가 이미 시작됨!!!")

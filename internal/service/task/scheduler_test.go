@@ -223,6 +223,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil).Once()
+				send.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 		},
 		{
@@ -247,12 +248,15 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
 
-				send.WithNotifyFunc(func(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
+				// Replace WithNotifyFunc with On().Run() behavior
+				send.On("Notify", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					message := args.Get(2).(string)
+					// Simulate logic: if message matches, done
 					if strings.Contains(message, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") {
 						wg.Done()
 					}
-					return nil
-				})
+					// Return nil implicitly or strictly? method returns error.
+				}).Return(nil) // Allow multiple calls if retries involve? OR just once. Once() is safer if we expect 1.
 			},
 		},
 	}
@@ -289,7 +293,8 @@ func TestScheduler_Execution_Table(t *testing.T) {
 			}
 
 			mockExe.AssertExpectations(t)
-			// mockSend.AssertExpectations(t) // Manual mock doesn't need this
+			mockExe.AssertExpectations(t)
+			mockSend.AssertExpectations(t)
 		})
 	}
 }
@@ -325,9 +330,15 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// Start() -> registerJobs -> if error -> notify.
 	// We can just check VerifyNotifyCalled after Start.
 
+	// Expect Notify to be called with specific error
+	mockSend.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
+		return strings.Contains(msg, "Cron 스케줄 파싱 실패")
+	})).Return(nil).Once()
+
 	s.Start(cfg, mockExe, mockSend)
 	defer s.Stop()
 
-	mockSend.VerifyNotifyCalled(t, 1)
-	assert.Contains(t, mockSend.NotifyCalls[0].Message, "Cron 스케줄 파싱 실패")
+	// Verification is implicit via Expectation on mockSend?
+	// Or we can AssertExpectations at end.
+	mockSend.AssertExpectations(t)
 }

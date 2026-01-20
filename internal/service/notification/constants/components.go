@@ -4,7 +4,4 @@ package constants
 const (
 	// ComponentService 서비스 컴포넌트 이름
 	ComponentService = "notification.service"
-
-	// ComponentNotifierTelegram Telegram Notifier 컴포넌트 이름
-	ComponentNotifierTelegram = "notification.notifier.telegram"
 )

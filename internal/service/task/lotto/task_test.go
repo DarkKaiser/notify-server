@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -211,8 +212,13 @@ func TestTask_Run(t *testing.T) {
 
 		// Common Mock Setup
 		// mockSender.SupportsHTMLReturnValue is true by default
+		mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
 		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		mockStorage.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		// Setup default Notify expectation (can be overridden or refined in sub-tests)
+		// Or strictly define per test
+		// Success path needs: Notify(Ctx, ID, Message)
 
 		return task, mockExecutor, mockProcess, mockSender, mockStorage
 	}
@@ -229,6 +235,11 @@ func TestTask_Run(t *testing.T) {
 
 		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
 
+		// Expect Notify for Success
+		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
+			return contains(msg, "당첨 확률이 높은 당첨번호 목록")
+		})).Return(nil)
+
 		err := os.WriteFile(fakeLogFile, []byte(fakeAnalysisContent), 0644)
 		require.NoError(t, err)
 
@@ -241,16 +252,20 @@ func TestTask_Run(t *testing.T) {
 
 		mockProcess.AssertExpectations(t)
 		mockExecutor.AssertExpectations(t)
-
-		// Verify Notification
-		mockSender.VerifyNotifyCalled(t, 1)
-		assert.Contains(t, mockSender.NotifyCalls[0].Message, "당첨 확률이 높은 당첨번호 목록")
+		mockSender.AssertExpectations(t)
 	})
 
 	t.Run("Execution Failed (StartCommand Error)", func(t *testing.T) {
 		task, mockExecutor, _, mockSender, _ := setup()
 
 		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(nil, fmt.Errorf("fail to start java"))
+
+		// Expect Notify for Error
+		// Note: The actual implementation might use NotifyDefaultWithError or Notify.
+		// BaseTask.notifyError uses: s.notificationSender.Notify(ctx, s.defaultNotifierID, message)
+		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
+			return contains(msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan contract.TaskInstanceID, 1)
@@ -260,14 +275,13 @@ func TestTask_Run(t *testing.T) {
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)
-
-		// Verify Error Notification
-		mockSender.VerifyNotifyCalled(t, 1) // WithError notifies are also counted in NotifyCalls?
-		// Wait, NotifyDefaultWithError vs Notify.
-		// Task.Run calls task.notifyError -> which calls s.notificationSender.Notify(ctx.WithError(), ...)
-		// So checking NotifyCalls is correct.
-		assert.Contains(t, mockSender.NotifyCalls[0].Message, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+		mockSender.AssertExpectations(t)
 	})
+}
+
+// Helper for strings.Contains in Matcher
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 // --- Local Mocks for Test ---

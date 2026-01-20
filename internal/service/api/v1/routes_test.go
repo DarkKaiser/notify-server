@@ -13,6 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // =============================================================================
@@ -39,7 +40,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 		},
 	}
 	auth := apiauth.NewAuthenticator(appConfig)
-	mockSender := &mocks.MockNotificationSender{}
+	mockSender := mocks.NewMockNotificationSender()
 	h := handler.New(mockSender)
 
 	// Register
@@ -68,7 +69,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `{"application_id":"test-app", "message":"hello"}`,
 			expectedStatus: http.StatusOK,
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				assert.True(t, m.NotifyCalled, "핸들러가 호출되어야 함")
+				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 			},
 		},
 		{
@@ -82,7 +83,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `{"application_id":"test-app", "message":"legacy"}`,
 			expectedStatus: http.StatusOK,
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				assert.True(t, m.NotifyCalled, "핸들러가 호출되어야 함")
+				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 				// Check Headers
 				assert.Contains(t, rec.Header().Get("Warning"), "299", "Warning 헤더 299 코드 포함")
 				assert.Equal(t, "true", rec.Header().Get("X-API-Deprecated"))
@@ -103,7 +104,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `{"application_id":"test-app", "message":"no-auth"}`,
 			expectedStatus: http.StatusBadRequest, // AppKey 누락 -> 400
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				assert.False(t, m.NotifyCalled, "인증 실패 시 핸들러는 호출되지 않아야 함")
+				m.AssertNotCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 			},
 		},
 		{
@@ -117,7 +118,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `raw-text`,
 			expectedStatus: http.StatusBadRequest, // 400 (Middleware might skip if CL=0, then Handler Bind fails)
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				assert.False(t, m.NotifyCalled, "핸들러 비즈니스 로직은 실행되지 않아야 함")
+				m.AssertNotCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 				// 415(Middleware) or 400(Bind) are both acceptable rejections
 				if rec.Code == http.StatusUnsupportedMediaType {
 					assert.Contains(t, rec.Body.String(), "Content-Type")
@@ -151,9 +152,13 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture Loop Variable
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset Mock
-			mockSender.Reset()
+			// Reset Mock State
+			mockSender.Calls = nil
+			mockSender.ExpectedCalls = nil
+			// Setup default expectation for Success case (allowed to be called)
+			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			bodyBytes := []byte(tt.body)
 			req := httptest.NewRequest(tt.method, tt.path, bytes.NewReader(bodyBytes))
@@ -174,14 +179,56 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			if tt.verify != nil {
 				tt.verify(t, rec, mockSender)
 			}
+
+			// Mock Assertion
+			mockSender.AssertExpectations(t)
 		})
 	}
 }
 
-// TestRegisterRoutes_PanicOnNilDeps는 필수 의존성이 nil일 경우 패닉 발생을 검증합니다.
-func TestRegisterRoutes_PanicOnNilDeps(t *testing.T) {
+// TestRegisterRoutes_Validation은 필수 의존성이 주입되지 않았을 때의 패닉 상황을 검증합니다.
+func TestRegisterRoutes_Validation(t *testing.T) {
 	e := echo.New()
-	assert.Panics(t, func() {
-		RegisterRoutes(e, nil, nil)
-	}, "핸들러나 인증자가 nil이면 패닉이 발생해야 합니다")
+	mockSender := mocks.NewMockNotificationSender()
+	h := handler.New(mockSender)
+	auth := apiauth.NewAuthenticator(&config.AppConfig{})
+
+	tests := []struct {
+		name          string
+		echo          *echo.Echo
+		handler       *handler.Handler
+		authenticator *apiauth.Authenticator
+		expectPanic   string
+	}{
+		{
+			name:          "Echo 누락",
+			echo:          nil,
+			handler:       h,
+			authenticator: auth,
+			expectPanic:   "Echo 인스턴스는 필수입니다",
+		},
+		{
+			name:          "Handler 누락",
+			echo:          e,
+			handler:       nil,
+			authenticator: auth,
+			expectPanic:   "Handler는 필수입니다",
+		},
+		{
+			name:          "Authenticator 누락",
+			echo:          e,
+			handler:       h,
+			authenticator: nil,
+			expectPanic:   "Authenticator는 필수입니다",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			assert.PanicsWithValue(t, tt.expectPanic, func() {
+				RegisterRoutes(tt.echo, tt.handler, tt.authenticator)
+			})
+		})
+	}
 }

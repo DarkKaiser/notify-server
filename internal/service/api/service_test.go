@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +49,11 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 		sender = customSender
 	} else {
 		sender = mocks.NewMockNotificationSender()
+	}
+
+	// Default Health check expectation for mock sender if it's the mock
+	if mSender, ok := sender.(*mocks.MockNotificationSender); ok {
+		mSender.On("Health").Return(nil).Maybe()
 	}
 
 	// 4. Service 인스턴스 생성
@@ -240,6 +247,26 @@ func TestService_Start_HTTP_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestService_Start_Failure_NilSender(t *testing.T) {
+	t.Parallel()
+	// 생성자 회피를 위한 수동 생성 (Service는 같은 패키지이므로 internal 필드 접근 가능)
+	service := &Service{
+		appConfig:          &config.AppConfig{},
+		notificationSender: nil, // 강제 nil 설정 (Start 시 체크되어야 함)
+	}
+
+	ctx := context.Background()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	// When
+	err := service.Start(ctx, wg)
+
+	// Then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NotificationSender 객체가 초기화되지 않았습니다")
+}
+
 func TestService_Start_Failure_PortConflict(t *testing.T) {
 	t.Parallel()
 
@@ -253,9 +280,12 @@ func TestService_Start_Failure_PortConflict(t *testing.T) {
 	service, _, wg, ctx, _ := setupServiceHelper(t, nil)
 	service.appConfig.NotifyAPI.WS.ListenPort = port
 
+	// Expectation for NotifyDefaultWithError
+	service.notificationSender.(*mocks.MockNotificationSender).On("NotifyDefaultWithError", mock.Anything).Return(nil)
+
 	wg.Add(1)
 	err = service.Start(ctx, wg)
-	require.NoError(t, err)
+	require.NoError(t, err) // Start 자체는 에러가 없음 (비동기 처리)
 
 	// 3. 에러 발생으로 인해 즉시 종료되어야 함
 	done := make(chan struct{})
@@ -276,7 +306,7 @@ func TestService_Start_Failure_PortConflict(t *testing.T) {
 
 	// 4. 알림 전송 확인
 	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
-	assert.True(t, mockSender.WasNotifyDefaultCalled(), "서버 시작 실패 시 알림이 전송되어야 함")
+	mockSender.AssertCalled(t, "NotifyDefaultWithError", mock.Anything)
 }
 
 func TestService_Start_Duplicate_Idempotency(t *testing.T) {
@@ -315,6 +345,40 @@ func TestService_Start_WithCanceledContext(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("취소된 컨텍스트로 시작 시 즉시 종료되어야 함")
 	}
+
+	// 실행 상태가 false여야 함
+	service.runningMu.Lock()
+	assert.False(t, service.running)
+	service.runningMu.Unlock()
+}
+
+func TestService_Start_Concurrency(t *testing.T) {
+	t.Parallel()
+	service, _, wg, ctx, _ := setupServiceHelper(t, nil)
+
+	// 동시에 10번 Start 호출
+	const concurrency = 10
+	var startWg sync.WaitGroup
+	startWg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer startWg.Done()
+
+			// WG Add/Done 밸런스를 외부에서 맞추기 어려우므로, Start 내부에서 Done이 호출될 것을 고려하여
+			// 테스트용 임시 WG를 사용할 수도 있으나, 여기서는 service_test.go의 특성상
+			// 메인 WG에 대해 Add를 매번 하고, Start가 실패(중복)하면 Done을 즉시 호출하므로
+			// 메인 WG 로직을 따름.
+			wg.Add(1)
+			_ = service.Start(ctx, wg)
+		}()
+	}
+	startWg.Wait()
+
+	// 서비스가 실행 중인지 확인
+	service.runningMu.Lock()
+	assert.True(t, service.running)
+	service.runningMu.Unlock()
 }
 
 // =============================================================================
@@ -342,16 +406,20 @@ func TestService_handleServerError(t *testing.T) {
 			service, _, _, _, _ := setupServiceHelper(t, nil)
 			mockSender := service.notificationSender.(*mocks.MockNotificationSender)
 
+			if tt.expectNotify {
+				mockSender.On("NotifyDefaultWithError", mock.MatchedBy(func(msg string) bool {
+					return strings.Contains(msg, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.") &&
+						(tt.inputErr == nil || strings.Contains(msg, tt.inputErr.Error()))
+				})).Return(nil)
+			}
+
 			service.handleServerError(tt.inputErr)
 
 			// 1. 알림 전송 여부 확인
-			assert.Equal(t, tt.expectNotify, mockSender.WasNotifyDefaultCalled())
-
-			// 2. 에러 발생 시 메시지 내용 검증
 			if tt.expectNotify {
-				sentMsg := mockSender.LastMessage
-				assert.Contains(t, sentMsg, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.")
-				assert.Contains(t, sentMsg, tt.inputErr.Error())
+				mockSender.AssertCalled(t, "NotifyDefaultWithError", mock.Anything)
+			} else {
+				mockSender.AssertNotCalled(t, "NotifyDefaultWithError", mock.Anything)
 			}
 		})
 	}

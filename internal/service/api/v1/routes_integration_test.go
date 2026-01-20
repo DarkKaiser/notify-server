@@ -21,6 +21,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,7 +99,9 @@ func TestV1API_Success(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup Mock
-			mockSender := &mocks.MockNotificationSender{ShouldFail: false}
+			mockSender := mocks.NewMockNotificationSender()
+			// Default expectation for success
+			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			h := handler.New(mockSender)
 
 			// Register Routes (New Router per test to ensure clean state)
@@ -154,8 +157,7 @@ func TestV1API_Failures(t *testing.T) {
 		appKey         string
 		appIDHeader    string      // For testing AppID mismatch where Auth passes but Body differs
 		reqBody        interface{} // string or struct
-		mockFail       bool
-		mockError      error
+		setupMock      func(*mocks.MockNotificationSender)
 		expectedStatus int
 		expectedErrMsg string
 		verifyDetails  string // Substring to check for dynamic validation errors
@@ -202,38 +204,42 @@ func TestV1API_Failures(t *testing.T) {
 
 		// 3. Service Level Failures
 		{
-			name:           "Failure: Service Stopped (503)",
-			appKey:         "test-app-key",
-			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
-			mockFail:       true,
-			mockError:      notification.ErrServiceStopped,
+			name:    "Failure: Service Stopped (503)",
+			appKey:  "test-app-key",
+			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
+			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceStopped),
 		},
 		{
-			name:           "Failure: Notifier Not Found (404)",
-			appKey:         "test-app-key",
-			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
-			mockFail:       true,
-			mockError:      notification.ErrNotifierNotFound,
+			name:    "Failure: Notifier Not Found (404)",
+			appKey:  "test-app-key",
+			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrNotifierNotFound)
+			},
 			expectedStatus: http.StatusNotFound,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrNotifierNotFound),
 		},
 		{
-			name:           "Failure: Service Overloaded (503)",
-			appKey:         "test-app-key",
-			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
-			mockFail:       true,
-			mockError:      apperrors.New(apperrors.Unavailable, "overload"),
+			name:    "Failure: Service Overloaded (503)",
+			appKey:  "test-app-key",
+			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(apperrors.New(apperrors.Unavailable, "overload"))
+			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceOverloaded), // Handler maps Unavailable to Overloaded
 		},
 		{
-			name:           "Failure: Internal Error (500)",
-			appKey:         "test-app-key",
-			reqBody:        request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
-			mockFail:       true,
-			mockError:      errors.New("unknown error"),
+			name:    "Failure: Internal Error (500)",
+			appKey:  "test-app-key",
+			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("unknown error"))
+			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceInterrupted), // Handler maps unknown to Interrupted/Internal
 		},
@@ -242,9 +248,9 @@ func TestV1API_Failures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock Setup
-			mockSender := &mocks.MockNotificationSender{
-				ShouldFail: tt.mockFail,
-				FailError:  tt.mockError,
+			mockSender := mocks.NewMockNotificationSender()
+			if tt.setupMock != nil {
+				tt.setupMock(mockSender)
 			}
 			h := handler.New(mockSender)
 
@@ -291,7 +297,9 @@ func TestV1API_Failures(t *testing.T) {
 // TestV1API_ConcurrentRequests 동시 요청 처리 능력을 검증합니다.
 func TestV1API_ConcurrentRequests(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
-	mockSender := &mocks.MockNotificationSender{}
+	mockSender := mocks.NewMockNotificationSender()
+	// Allow calls
+	mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	h := handler.New(mockSender)
 	RegisterRoutes(e, h, authenticator)
 
