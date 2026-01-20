@@ -149,7 +149,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 //  4. 라우트 등록 (전역 라우트, v1 API 라우트)
 func (s *Service) setupServer() *echo.Echo {
 	// 1. Authenticator 생성
-	authenticator := auth.NewAuthenticator(s.appConfig)
+	authenticator := auth.NewAuthenticator(s.appConfig.NotifyAPI.Applications)
 
 	// 2. Handler 생성
 	var healthChecker contract.NotificationHealthChecker

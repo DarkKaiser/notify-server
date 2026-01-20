@@ -335,7 +335,7 @@ func TestV1API_ConcurrentRequests(t *testing.T) {
 func setupIntegrationTest(t *testing.T) (*echo.Echo, *config.AppConfig, *apiauth.Authenticator) {
 	t.Helper()
 	appConfig := createTestAppConfig()
-	authenticator := apiauth.NewAuthenticator(appConfig)
+	authenticator := apiauth.NewAuthenticator(appConfig.NotifyAPI.Applications)
 	e := echo.New()
 	return e, appConfig, authenticator
 }

@@ -17,7 +17,11 @@ type MockNotificationSender struct {
 
 // NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
 func NewMockNotificationSender() *MockNotificationSender {
-	return &MockNotificationSender{}
+	m := &MockNotificationSender{}
+	// Default Safe Behaviors
+	m.On("Health").Return(nil)
+	m.On("SupportsHTML", mock.Anything).Return(true)
+	return m
 }
 
 // Notify 메타데이터와 함께 알림을 전송합니다.
@@ -54,4 +58,28 @@ func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bo
 func (m *MockNotificationSender) Health() error {
 	args := m.Called()
 	return args.Error(0)
+}
+
+// WithNotify configures the mock to return a specific error for Notify calls.
+func (m *MockNotificationSender) WithNotify(err error) *MockNotificationSender {
+	m.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(err)
+	return m
+}
+
+// WithNotifyWithTitle configures the mock to return a specific error for NotifyWithTitle calls.
+func (m *MockNotificationSender) WithNotifyWithTitle(err error) *MockNotificationSender {
+	m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(err)
+	return m
+}
+
+// WithHealthy configures the mock to return nil for Health calls (healthy state).
+func (m *MockNotificationSender) WithHealthy() *MockNotificationSender {
+	m.On("Health").Return(nil)
+	return m
+}
+
+// WithUnhealthy configures the mock to return an error for Health calls (unhealthy state).
+func (m *MockNotificationSender) WithUnhealthy(err error) *MockNotificationSender {
+	m.On("Health").Return(err)
+	return m
 }

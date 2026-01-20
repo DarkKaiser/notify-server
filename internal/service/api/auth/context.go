@@ -8,7 +8,7 @@ import (
 )
 
 // contextKeyApplication 인증된 Application 객체 저장용 Context 키
-const contextKeyApplication = "authenticated_application"
+const contextKeyApplication = "darkkaiser/notify-server/api/auth/AuthenticatedApplication"
 
 // SetApplication 인증된 애플리케이션 정보를 Context에 저장합니다.
 func SetApplication(c echo.Context, app *domain.Application) {

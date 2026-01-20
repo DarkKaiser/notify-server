@@ -56,11 +56,11 @@ type Authenticator struct {
 // 보안:
 //   - App Key는 SHA-256으로 해시되어 저장됩니다.
 //   - 원본 App Key는 메모리에 저장되지 않아 메모리 덤프 공격을 방어합니다.
-func NewAuthenticator(appConfig *config.AppConfig) *Authenticator {
+func NewAuthenticator(applicationConfigs []config.ApplicationConfig) *Authenticator {
 	applications := make(map[string]*domain.Application)
 	appKeyHashes := make(map[string]string)
 
-	for _, application := range appConfig.NotifyAPI.Applications {
+	for _, application := range applicationConfigs {
 		applications[application.ID] = &domain.Application{
 			ID:                application.ID,
 			Title:             application.Title,

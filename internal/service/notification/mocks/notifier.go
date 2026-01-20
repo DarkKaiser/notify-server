@@ -16,6 +16,9 @@ func NewMockNotifier(id contract.NotifierID) *MockNotifier {
 	m := &MockNotifier{}
 	// Setup default behavior for ID as it's immutable context and used everywhere
 	m.On("ID").Return(id)
+	// Default behaviors to avoid boilerplate in every test
+	m.On("Run", mock.Anything).Return()
+	m.On("Done").Return(nil)
 	return m
 }
 
@@ -36,6 +39,12 @@ func (m *MockNotifier) Send(taskCtx contract.TaskContext, message string) error 
 	return args.Error(0)
 }
 
+// WithSend configures the mock to return a specific error for Send calls.
+func (m *MockNotifier) WithSend(err error) *MockNotifier {
+	m.On("Send", mock.Anything, mock.Anything).Return(err)
+	return m
+}
+
 // Run runs the notifier.
 func (m *MockNotifier) Run(ctx context.Context) {
 	m.Called(ctx)
@@ -45,6 +54,12 @@ func (m *MockNotifier) Run(ctx context.Context) {
 func (m *MockNotifier) SupportsHTML() bool {
 	args := m.Called()
 	return args.Bool(0)
+}
+
+// WithSupportsHTML configures the mock to return a specific boolean for SupportsHTML calls.
+func (m *MockNotifier) WithSupportsHTML(supported bool) *MockNotifier {
+	m.On("SupportsHTML").Return(supported)
+	return m
 }
 
 // Done returns a channel that is closed when the notifier is done.

@@ -29,3 +29,15 @@ func (m *MockFactory) CreateAll(cfg *config.AppConfig, executor contract.TaskExe
 func (m *MockFactory) Register(creator notifier.Creator) {
 	m.Called(creator)
 }
+
+// WithCreateAll configures the mock to return specific notifiers for CreateAll calls.
+func (m *MockFactory) WithCreateAll(notifiers []notifier.Notifier, err error) *MockFactory {
+	m.On("CreateAll", mock.Anything, mock.Anything).Return(notifiers, err)
+	return m
+}
+
+// WithRegister configures the mock to expect Register calls.
+func (m *MockFactory) WithRegister() *MockFactory {
+	m.On("Register", mock.Anything).Return()
+	return m
+}

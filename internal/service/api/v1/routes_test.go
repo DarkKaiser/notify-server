@@ -39,7 +39,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			},
 		},
 	}
-	auth := apiauth.NewAuthenticator(appConfig)
+	auth := apiauth.NewAuthenticator(appConfig.NotifyAPI.Applications)
 	mockSender := mocks.NewMockNotificationSender()
 	h := handler.New(mockSender)
 
@@ -191,7 +191,7 @@ func TestRegisterRoutes_Validation(t *testing.T) {
 	e := echo.New()
 	mockSender := mocks.NewMockNotificationSender()
 	h := handler.New(mockSender)
-	auth := apiauth.NewAuthenticator(&config.AppConfig{})
+	auth := apiauth.NewAuthenticator([]config.ApplicationConfig{})
 
 	tests := []struct {
 		name          string

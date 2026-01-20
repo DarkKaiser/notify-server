@@ -43,7 +43,7 @@ func setupAuthenticator(t *testing.T) *auth.Authenticator {
 			},
 		},
 	}
-	return auth.NewAuthenticator(cfg)
+	return auth.NewAuthenticator(cfg.NotifyAPI.Applications)
 }
 
 func init() {
