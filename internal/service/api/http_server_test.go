@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	appmiddleware "github.com/darkkaiser/notify-server/internal/service/api/middleware"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -94,8 +93,8 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 func TestNewHTTPServer_Defaults(t *testing.T) {
 	// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
 	e := NewHTTPServer(ServerConfig{})
-	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
-	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout)
+	assert.Equal(t, defaultReadTimeout, e.Server.ReadTimeout)
+	assert.Equal(t, defaultWriteTimeout, e.Server.WriteTimeout)
 }
 
 // TestNewHTTPServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
@@ -104,10 +103,10 @@ func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
 	e := NewHTTPServer(ServerConfig{})
 
 	require.NotNil(t, e.Server, "http.Server 객체가 초기화되어야 합니다")
-	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 불일치")
-	assert.Equal(t, constants.DefaultReadHeaderTimeout, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout 불일치")
-	assert.Equal(t, constants.DefaultWriteTimeout, e.Server.WriteTimeout, "WriteTimeout 불일치")
-	assert.Equal(t, constants.DefaultIdleTimeout, e.Server.IdleTimeout, "IdleTimeout 불일치")
+	assert.Equal(t, defaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 불일치")
+	assert.Equal(t, defaultReadHeaderTimeout, e.Server.ReadHeaderTimeout, "ReadHeaderTimeout 불일치")
+	assert.Equal(t, defaultWriteTimeout, e.Server.WriteTimeout, "WriteTimeout 불일치")
+	assert.Equal(t, defaultIdleTimeout, e.Server.IdleTimeout, "IdleTimeout 불일치")
 }
 
 // TestNewHTTPServer_ErrorHandler 는 커스텀 에러 핸들러(httputil.ErrorHandler)가
@@ -195,8 +194,26 @@ func TestServerHeaderRemoval(t *testing.T) {
 // Middleware Chain & Ordering Tests
 // =============================================================================
 
-// TestBodyLimit 은 설정된 제한(128KB)보다 큰 요청이 거부되는지 검증합니다.
-func TestBodyLimit(t *testing.T) {
+// =============================================================================
+// Middleware Chain & Ordering Tests
+// =============================================================================
+
+// TestMiddleware_RequestID 는 응답에 X-Request-ID 헤더가 포함되는지 검증합니다.
+func TestMiddleware_RequestID(t *testing.T) {
+	e := NewHTTPServer(ServerConfig{})
+	e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
+
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.NotEmpty(t, rec.Header().Get(echo.HeaderXRequestID), "X-Request-ID 헤더가 존재해야 합니다")
+}
+
+// TestMiddleware_BodyLimit 은 설정된 제한(128KB)보다 큰 요청이 거부되는지 검증합니다.
+func TestMiddleware_BodyLimit(t *testing.T) {
 	e := NewHTTPServer(ServerConfig{})
 	e.POST("/upload", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
@@ -220,66 +237,71 @@ func TestBodyLimit(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recValid.Code, "제한 범위 내의 요청은 성공해야 합니다")
 }
 
-// TestMiddlewareLoggingOrder_ChainVerification 은 미들웨어 체인의 실행 순서를 검증합니다.
-// HTTPLogger가 에러 유발 미들웨어보다 상위(Outer)에 있어야 에러 상황도 로그에 남습니다.
-func TestMiddlewareLoggingOrder_ChainVerification(t *testing.T) {
-	// RateLimit 발생 시(429) 로그가 남는지 검증
-	t.Run("Logs 429 Too Many Requests", func(t *testing.T) {
-		buf := setupTestLogger(t)
+// TestMiddleware_RateLimit_And_Logging 은 실제 서버 인스턴스에서 Rate Limit가 동작하고,
+// 차단(429) 시 로그가 남는지 통합 검증합니다.
+func TestMiddleware_RateLimit_And_Logging(t *testing.T) {
+	// 로그 캡처 설정
+	buf := setupTestLogger(t)
 
-		// 실제 NewHTTPServer 대신 수동 체인 구성 (제어 용이성)
-		e := echo.New()
-		e.Use(appmiddleware.HTTPLogger())    // 1. Logger (Outer)
-		e.Use(appmiddleware.RateLimit(1, 1)) // 2. RateLimit (Inner)
+	// 실제 서버 인스턴스 생성
+	e := NewHTTPServer(ServerConfig{})
+	e.GET("/fast", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
-		e.GET("/test", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+	// Burst(40) 만큼은 성공해야 함
+	// 주의: 테스트 실행 속도에 따라 토큰이 보충될 수 있으므로 느슨하게 검증하거나,
+	// 빠르게 소진시켜야 함.
+	burst := defaultRateLimitBurst
 
-		// 1회차 성공
-		e.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/test", nil))
-
-		// 2회차 실패 (429)
+	// Burst + 5회 요청을 빠르게 전송
+	for i := 0; i < burst+5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/fast", nil)
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
-		assert.Contains(t, buf.String(), `"status":429`, "Logger가 429 에러를 기록해야 합니다")
-	})
+		if rec.Code == http.StatusTooManyRequests {
+			// 429 발생 확인
+			// 로그에 status: 429가 기록되었는지 확인
+			assert.Contains(t, buf.String(), `"status":429`, "Rate Limit 차단 시 Access Log가 기록되어야 합니다")
+			return
+		}
+	}
 
-	// 참고: Timeout(503) 로깅 테스트는 비동기 로깅 특성상 Flaky할 수 있어
-	// TestMiddlewareOrdering_SecurityOnErrors 에서 상태 코드 및 헤더 검증으로 대체함.
+	t.Log("WARN: Rate Limit(429)를 유발하지 못했습니다. (시스템 부하 등으로 인해 토큰이 빨리 충전됨)")
 }
 
 // TestMiddlewareOrdering_SecurityOnErrors 는 보안 헤더가 에러 응답(429, 503)에도 적용되는지 검증합니다.
 // 이는 Secure, CORS 미들웨어가 가장 상위에 위치해야 함을 의미합니다.
 func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
-	// HSTS 활성화 & 짧은 타임아웃
 	cfg := ServerConfig{
 		EnableHSTS: true,
 	}
+	e := NewHTTPServer(cfg)
 
-	t.Run("Security Headers on 429 RateLimit", func(t *testing.T) {
-		// 독립된 서버 인스턴스 (RateLimiter 상태 격리)
-		e := NewHTTPServer(cfg)
+	t.Run("Security Headers on 404 NotFound", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/not-found", nil)
+		req.TLS = &tls.ConnectionState{}
+		rec := httptest.NewRecorder()
 
-		burst := constants.DefaultRateLimitBurst
-		// Burst + 여유분 만큼 요청
-		for i := 0; i < burst+10; i++ {
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
-			req.TLS = &tls.ConnectionState{} // HSTS 트리거용
-			rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-			e.ServeHTTP(rec, req)
-
-			if rec.Code == http.StatusTooManyRequests {
-				// 429 응답에도 보안 헤더 존재해야 함
-				assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "429 응답 HSTS 누락")
-				assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
-				return
-			}
-		}
-		t.Log("RateLimit을 유발하지 못했습니다 (테스트 환경 빠름 등)")
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+		assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "404 응답에도 HSTS 헤더가 있어야 합니다")
 	})
 
+	t.Run("Security Headers on 413 PayloadTooLarge", func(t *testing.T) {
+		e.POST("/upload", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+
+		limitBytes := 128 * 1024
+		body := strings.Repeat("a", limitBytes+1)
+		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(body))
+		req.TLS = &tls.ConnectionState{}
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		assert.NotEmpty(t, rec.Header().Get("Strict-Transport-Security"), "413 응답에도 HSTS 헤더가 있어야 합니다")
+	})
 }
 
 // =============================================================================

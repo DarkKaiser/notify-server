@@ -12,7 +12,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 
@@ -86,38 +85,6 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 	return service, appConfig, wg, ctx, cancel
 }
 
-// =============================================================================
-// Constructor & Validation Tests
-// =============================================================================
-
-func TestNewService_Success(t *testing.T) {
-	t.Parallel()
-	s, cfg, _, _, _ := setupServiceHelper(t, nil)
-
-	assert.NotNil(t, s)
-	assert.Equal(t, cfg, s.appConfig)
-	assert.NotNil(t, s.notificationSender)
-	assert.False(t, s.running)
-}
-
-func TestNewService_Panics(t *testing.T) {
-	t.Parallel()
-
-	t.Run("AppConfig 누락 시 패닉", func(t *testing.T) {
-		t.Parallel()
-		assert.PanicsWithValue(t, constants.PanicMsgAppConfigRequired, func() {
-			NewService(nil, mocks.NewMockNotificationSender(), version.Info{})
-		})
-	})
-
-	t.Run("NotificationSender 누락 시 패닉", func(t *testing.T) {
-		t.Parallel()
-		assert.PanicsWithValue(t, constants.PanicMsgNotificationSenderRequired, func() {
-			NewService(&config.AppConfig{}, nil, version.Info{})
-		})
-	})
-}
-
 // mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
 type mockSenderWithoutHealth struct{}
 
@@ -133,18 +100,63 @@ func (m *mockSenderWithoutHealth) NotifyDefaultWithError(message string) error {
 }
 func (m *mockSenderWithoutHealth) SupportsHTML(notifierID contract.NotifierID) bool { return false }
 
-func TestNewService_Panic_InvalidSender_HealthCheckerMissing(t *testing.T) {
+// =============================================================================
+// Constructor & Validation Tests
+// =============================================================================
+
+func TestNewService_Success(t *testing.T) {
+	t.Parallel()
+	s, cfg, _, _, _ := setupServiceHelper(t, nil)
+
+	assert.NotNil(t, s)
+	assert.Equal(t, cfg, s.appConfig)
+	assert.NotNil(t, s.notificationSender)
+	assert.False(t, s.running)
+}
+
+func TestNewService_Validation(t *testing.T) {
 	t.Parallel()
 
-	// Given: HealthChecker를 구현하지 않는 Sender
+	validSender := mocks.NewMockNotificationSender()
 	invalidSender := &mockSenderWithoutHealth{}
-	cfg := &config.AppConfig{}
+	validConfig := &config.AppConfig{}
 	buildInfo := version.Info{}
 
-	// When & Then: NewService 생성 시 Panic 발생 검증
-	assert.PanicsWithValue(t, constants.PanicMsgHealthCheckerRequired, func() {
-		NewService(cfg, invalidSender, buildInfo)
-	})
+	tests := []struct {
+		name        string
+		appConfig   *config.AppConfig
+		sender      contract.NotificationSender
+		expectPanic string
+	}{
+		{
+			name:        "AppConfig 누락 시 패닉",
+			appConfig:   nil,
+			sender:      validSender,
+			expectPanic: "AppConfig는 필수입니다",
+		},
+		{
+			name:        "NotificationSender 누락 시 패닉",
+			appConfig:   validConfig,
+			sender:      nil,
+			expectPanic: "NotificationSender는 필수입니다",
+		},
+		{
+			name:        "HealthChecker 미구현 Sender 사용 시 패닉",
+			appConfig:   validConfig,
+			sender:      invalidSender,
+			expectPanic: "HealthChecker는 필수입니다",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.PanicsWithValue(t, tt.expectPanic, func() {
+				NewService(tt.appConfig, tt.sender, buildInfo)
+			})
+		})
+	}
 }
 
 // =============================================================================
@@ -166,8 +178,8 @@ func TestService_setupServer_Configuration(t *testing.T) {
 
 	// 2. HTTP Server 타임아웃 설정 전파 확인
 	require.NotNil(t, e.Server)
-	assert.Equal(t, constants.DefaultReadHeaderTimeout, e.Server.ReadHeaderTimeout)
-	assert.Equal(t, constants.DefaultReadTimeout, e.Server.ReadTimeout)
+	assert.Equal(t, defaultReadHeaderTimeout, e.Server.ReadHeaderTimeout)
+	assert.Equal(t, defaultReadTimeout, e.Server.ReadTimeout)
 }
 
 // =============================================================================
@@ -228,7 +240,7 @@ func TestService_Start_HTTP_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestService_Start_PortConflict(t *testing.T) {
+func TestService_Start_Failure_PortConflict(t *testing.T) {
 	t.Parallel()
 
 	// 1. 포트 선점
@@ -338,7 +350,7 @@ func TestService_handleServerError(t *testing.T) {
 			// 2. 에러 발생 시 메시지 내용 검증
 			if tt.expectNotify {
 				sentMsg := mockSender.LastMessage
-				assert.Contains(t, sentMsg, constants.LogMsgServiceHTTPServerFatalError)
+				assert.Contains(t, sentMsg, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.")
 				assert.Contains(t, sentMsg, tt.inputErr.Error())
 			}
 		})

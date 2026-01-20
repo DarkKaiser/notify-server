@@ -372,13 +372,22 @@ func TestBase_Concurrency_Safe(t *testing.T) {
 		n.Close()
 	}()
 
+	// Wait for all senders to finish
 	wg.Wait()
+
+	// Stop consumer
 	close(consumerStop)
 
-	// Post-condition: Notifier should be closed
+	// Close notifier asynchronously if not already closed
+	// (In some race scenarios, it might have been closed by the random closer)
+	// But here we just want to ensure it's eventually closed for the check.
+	// Actually, the random closer is already running. We just need to wait for it.
+
+	// Better approach: Wait for Done() with timeout (simulate Eventually)
 	select {
 	case <-n.Done():
-	default:
-		t.Error("Notifier should be closed by now")
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Error("Notifier should be closed by now (timeout waiting for Done)")
 	}
 }

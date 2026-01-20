@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/labstack/echo/v4"
@@ -20,7 +20,7 @@ const (
 
 // sensitiveQueryParams HTTP 요청 로깅 시 보안을 위해 값을 마스킹(가리기) 처리해야 하는 쿼리 파라미터 키 목록입니다.
 var sensitiveQueryParams = []string{
-	constants.AppKeyQuery,
+	auth.QueryParamAppKey,
 	"api_key",
 	"password",
 	"token",

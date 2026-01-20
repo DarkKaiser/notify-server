@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
@@ -45,7 +44,7 @@ const (
 //     - 헤더가 없는 경우에만 불가피하게 Body를 파싱합니다.
 //
 // 인증 성공 시:
-//   - Application 객체를 Context에 저장 (키: ContextKeyApplication)
+//   - Application 객체를 Context에 저장 (auth.SetApplication 사용)
 //   - 다음 핸들러로 제어 전달
 //
 // 인증 실패 시:
@@ -105,7 +104,7 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 func extractAppKey(c echo.Context) string {
 	appKey := c.Request().Header.Get(headerXAppKey)
 	if appKey == "" {
-		appKey = c.QueryParam(constants.AppKeyQuery)
+		appKey = c.QueryParam(auth.QueryParamAppKey)
 
 		// 레거시 방식 사용 시 경고 로그
 		if appKey != "" {

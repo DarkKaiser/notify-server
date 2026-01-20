@@ -2,13 +2,45 @@ package api
 
 import (
 	"net/http"
+	"time"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	appmiddleware "github.com/darkkaiser/notify-server/internal/service/api/middleware"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+)
+
+const (
+	// defaultMaxBodySize 요청 본문의 최대 크기 (128KB)
+	// DoS 공격 방지 및 메모리 보호를 위해 제한합니다.
+	defaultMaxBodySize = "128K"
+)
+
+// HTTP 연결 타임아웃 설정 (시간 제한)
+const (
+	// defaultReadTimeout 요청 본문 읽기 최대 시간 (30초)
+	defaultReadTimeout = 30 * time.Second
+
+	// defaultReadHeaderTimeout HTTP 헤더 읽기 최대 대기 시간 (10초)
+	// Slowloris DoS 공격을 방어하기 위해 헤더를 매우 느리게 전송하는
+	// 악의적인 클라이언트의 연결 고갈 공격을 방지합니다.
+	defaultReadHeaderTimeout = 10 * time.Second
+
+	// defaultWriteTimeout 응답 쓰기 최대 시간 (65초)
+	defaultWriteTimeout = 65 * time.Second
+
+	// defaultIdleTimeout Keep-Alive 연결 유휴 최대 시간 (120초)
+	defaultIdleTimeout = 120 * time.Second
+)
+
+// 트래픽 제한 정책 (Rate Limiting)
+const (
+	// defaultRateLimitPerSecond IP별 초당 허용 요청 수 (기본값: 20)
+	defaultRateLimitPerSecond = 20
+
+	// defaultRateLimitBurst IP별 버스트 허용량 (기본값: 40)
+	defaultRateLimitBurst = 40
 )
 
 // ServerConfig HTTP 서버 생성에 필요한 설정을 정의합니다.
@@ -82,10 +114,10 @@ func NewHTTPServer(cfg ServerConfig) *echo.Echo {
 	e.HideBanner = true
 
 	// 보안 및 리소스 관리를 위한 HTTP 서버 타임아웃 설정
-	e.Server.ReadTimeout = constants.DefaultReadTimeout             // 요청 본문 읽기 제한
-	e.Server.ReadHeaderTimeout = constants.DefaultReadHeaderTimeout // 요청 헤더 읽기 제한
-	e.Server.WriteTimeout = constants.DefaultWriteTimeout           // 응답 쓰기 제한
-	e.Server.IdleTimeout = constants.DefaultIdleTimeout             // Keep-Alive 연결 유휴 제한
+	e.Server.ReadTimeout = defaultReadTimeout             // 요청 본문 읽기 제한
+	e.Server.ReadHeaderTimeout = defaultReadHeaderTimeout // 요청 헤더 읽기 제한
+	e.Server.WriteTimeout = defaultWriteTimeout           // 응답 쓰기 제한
+	e.Server.IdleTimeout = defaultIdleTimeout             // Keep-Alive 연결 유휴 제한
 
 	// Echo 프레임워크의 내부 로그를 애플리케이션 로거로 통합합니다.
 	// 이를 통해 모든 로그가 동일한 형식과 출력 대상을 사용하게 됩니다.
@@ -132,9 +164,9 @@ func NewHTTPServer(cfg ServerConfig) *echo.Echo {
 		}
 	})
 	// 7. Rate Limiting
-	e.Use(appmiddleware.RateLimit(constants.DefaultRateLimitPerSecond, constants.DefaultRateLimitBurst))
+	e.Use(appmiddleware.RateLimit(defaultRateLimitPerSecond, defaultRateLimitBurst))
 	// 8. Body Limit
-	e.Use(middleware.BodyLimit(constants.DefaultMaxBodySize))
+	e.Use(middleware.BodyLimit(defaultMaxBodySize))
 
 	return e
 }

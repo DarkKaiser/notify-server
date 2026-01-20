@@ -3,8 +3,7 @@ package httputil
 import (
 	"net/http"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -51,10 +50,8 @@ func ErrorHandler(err error, c echo.Context) {
 	}
 
 	// 인증된 애플리케이션 정보 추가 (있는 경우)
-	if app := c.Get(constants.ContextKeyApplication); app != nil {
-		if application, ok := app.(*domain.Application); ok {
-			fields["application_id"] = application.ID
-		}
+	if app, _ := auth.GetApplication(c); app != nil {
+		fields["application_id"] = app.ID
 	}
 
 	if code >= http.StatusInternalServerError {

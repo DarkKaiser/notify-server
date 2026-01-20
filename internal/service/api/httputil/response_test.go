@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -15,10 +14,36 @@ import (
 )
 
 // =============================================================================
+// Helper Functions
+// =============================================================================
+
+// checkHTTPError는 반환된 에러가 예상된 HTTP 에러(코드, 메시지)인지 검증하는 헬퍼 함수입니다.
+func checkHTTPError(t *testing.T, err error, expectedStatus int, expectedMessage string) {
+	t.Helper()
+
+	require.Error(t, err)
+
+	// 1. echo.HTTPError 타입 확인
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok, "반환된 에러는 *echo.HTTPError 타입이어야 합니다")
+
+	// 2. 상태 코드 확인
+	assert.Equal(t, expectedStatus, httpErr.Code)
+
+	// 3. ErrorResponse 구조체 확인
+	errResp, ok := httpErr.Message.(response.ErrorResponse)
+	require.True(t, ok, "에러 메시지는 response.ErrorResponse 타입이어야 합니다")
+
+	// 4. 내부 필드 검증
+	assert.Equal(t, expectedMessage, errResp.Message)
+	assert.Equal(t, expectedStatus, errResp.ResultCode)
+}
+
+// =============================================================================
 // Error Response Tests
 // =============================================================================
 
-// TestErrorResponses는 모든 에러 응답 헬퍼 함수를 검증합니다.
+// TestErrorResponses는 모든 에러 응답 팩토리 함수를 검증합니다.
 func TestErrorResponses(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +59,7 @@ func TestErrorResponses(t *testing.T) {
 		{
 			name:           "BadRequest_일반 메시지",
 			createError:    NewBadRequestError,
-			message:        constants.ErrMsgBadRequest,
+			message:        "잘못된 요청입니다",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -73,7 +98,6 @@ func TestErrorResponses(t *testing.T) {
 			message:        "서비스 이용 불가",
 			expectedStatus: http.StatusServiceUnavailable,
 		},
-		// 엣지 케이스 통합
 		{
 			name:           "EdgeCase_매우 긴 메시지",
 			createError:    NewBadRequestError,
@@ -93,28 +117,8 @@ func TestErrorResponses(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// 에러 생성
 			err := tt.createError(tt.message)
-
-			// 에러가 반환되는지 확인
-			require.Error(t, err)
-
-			// echo.HTTPError 타입 확인
-			httpErr, ok := err.(*echo.HTTPError)
-			require.True(t, ok, "반환된 에러는 *echo.HTTPError 타입이어야 합니다")
-
-			// 상태 코드 확인
-			assert.Equal(t, tt.expectedStatus, httpErr.Code)
-
-			// ErrorResponse 구조체 확인
-			errResp, ok := httpErr.Message.(response.ErrorResponse)
-			require.True(t, ok, "에러 메시지는 response.ErrorResponse 타입이어야 합니다")
-
-			// 메시지 확인
-			assert.Equal(t, tt.message, errResp.Message)
-
-			// ResultCode 확인
-			assert.Equal(t, tt.expectedStatus, errResp.ResultCode)
+			checkHTTPError(t, err, tt.expectedStatus, tt.message)
 		})
 	}
 }
@@ -127,30 +131,33 @@ func TestErrorResponses(t *testing.T) {
 func TestSuccess(t *testing.T) {
 	t.Parallel()
 
-	// Echo 컨텍스트 설정
+	// Given
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	// 성공 응답 생성
+	// When
 	err := Success(c)
 
-	// 에러가 없어야 함
+	// Then
 	require.NoError(t, err)
 
-	// HTTP 상태 코드 확인
+	// 1. HTTP 상태 코드 확인
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	// Content-Type 확인
+	// 2. Content-Type 확인
 	assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 
-	// 응답 본문 파싱
+	// 3. JSON 구조 및 값 검증 (Wire Format 검증)
+	// 실제 응답이 예상한 JSON 구조(스네이크 케이스 등)를 따르는지 확인
+	expectedJSON := `{"result_code":0, "message":"성공"}`
+	assert.JSONEq(t, expectedJSON, rec.Body.String(), "응답 JSON이 예상과 다릅니다")
+
+	// 4. 구조체 언마샬링 검증 (타입 안전성 확인)
 	var resp response.SuccessResponse
 	err = json.Unmarshal(rec.Body.Bytes(), &resp)
 	require.NoError(t, err)
-
-	// 값 검증
 	assert.Equal(t, 0, resp.ResultCode)
-	assert.Equal(t, constants.MsgSuccess, resp.Message)
+	assert.Equal(t, "성공", resp.Message)
 }

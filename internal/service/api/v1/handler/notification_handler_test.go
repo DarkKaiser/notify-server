@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
@@ -60,7 +60,7 @@ func createTestRequest(t *testing.T, method, url string, body interface{}, app *
 
 	// Context에 인증된 Application 설정 (미들웨어가 이미 처리했다고 가정)
 	if app != nil {
-		c.Set(constants.ContextKeyApplication, app)
+		auth.SetApplication(c, app)
 	}
 
 	return rec, c

@@ -3,8 +3,9 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
+	"github.com/labstack/echo/v4"
 )
 
 var (
@@ -17,10 +18,10 @@ var (
 
 // NewErrInvalidApplicationID 요청된 Application ID가 시스템에 등록되어 있지 않거나 식별할 수 없을 때 발생하는 인증 에러(401 Unauthorized)를 생성합니다.
 func NewErrInvalidApplicationID(id string) error {
-	return httputil.NewUnauthorizedError(fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", id))
+	return echo.NewHTTPError(http.StatusUnauthorized, fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", id))
 }
 
 // NewErrInvalidAppKey 제공된 App Key가 해당 Application ID의 인증 정보와 일치하지 않을 때 발생하는 인증 에러(401 Unauthorized)를 생성합니다.
 func NewErrInvalidAppKey(id string) error {
-	return httputil.NewUnauthorizedError(fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", id))
+	return echo.NewHTTPError(http.StatusUnauthorized, fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", id))
 }

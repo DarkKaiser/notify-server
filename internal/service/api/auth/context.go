@@ -3,19 +3,21 @@ package auth
 import (
 	"fmt"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/labstack/echo/v4"
 )
 
+// contextKeyApplication 인증된 Application 객체 저장용 Context 키
+const contextKeyApplication = "authenticated_application"
+
 // SetApplication 인증된 애플리케이션 정보를 Context에 저장합니다.
 func SetApplication(c echo.Context, app *domain.Application) {
-	c.Set(constants.ContextKeyApplication, app)
+	c.Set(contextKeyApplication, app)
 }
 
 // GetApplication Context에서 애플리케이션 정보를 조회합니다.
 func GetApplication(c echo.Context) (*domain.Application, error) {
-	val := c.Get(constants.ContextKeyApplication)
+	val := c.Get(contextKeyApplication)
 	if val == nil {
 		return nil, ErrApplicationMissingInContext
 	}

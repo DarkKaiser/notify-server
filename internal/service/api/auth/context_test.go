@@ -1,4 +1,4 @@
-package auth_test
+package auth
 
 import (
 	"fmt"
@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -30,9 +28,9 @@ func TestSetApplication_GetApplication_RoundTrip(t *testing.T) {
 		Title: "Test Application",
 	}
 
-	auth.SetApplication(c, expectedApp)
+	SetApplication(c, expectedApp)
 
-	actualApp, err := auth.GetApplication(c)
+	actualApp, err := GetApplication(c)
 	require.NoError(t, err)
 	assert.Equal(t, expectedApp, actualApp)
 }
@@ -47,7 +45,7 @@ func TestGetApplication(t *testing.T) {
 		{
 			name: "성공: 올바른 애플리케이션 정보가 있는 경우",
 			setupCtx: func(c echo.Context) {
-				auth.SetApplication(c, &domain.Application{ID: "valid-app"})
+				SetApplication(c, &domain.Application{ID: "valid-app"})
 			},
 			expectedApp: &domain.Application{ID: "valid-app"},
 			expectedErr: nil,
@@ -56,21 +54,22 @@ func TestGetApplication(t *testing.T) {
 			name:        "실패: Context에 키가 없는 경우",
 			setupCtx:    func(c echo.Context) {}, // 아무것도 설정하지 않음
 			expectedApp: nil,
-			expectedErr: auth.ErrApplicationMissingInContext,
+			expectedErr: ErrApplicationMissingInContext,
 		},
 		{
-			name: "실패: 잘못된 타입이 저장된 경우",
+			name: "실패: 잘못된 타입이 저장된 경우 (White-box Testing)",
 			setupCtx: func(c echo.Context) {
-				c.Set(constants.ContextKeyApplication, "invalid-string-type")
+				// 내부 상수 contextKeyApplication에 직접 접근하여 잘못된 타입 주입
+				c.Set(contextKeyApplication, "invalid-string-type")
 			},
 			expectedApp: nil,
-			expectedErr: auth.ErrApplicationTypeMismatch,
+			expectedErr: ErrApplicationTypeMismatch,
 		},
 		{
 			name: "Edge Case: nil 포인터가 저장된 경우",
 			setupCtx: func(c echo.Context) {
 				var nilApp *domain.Application = nil
-				c.Set(constants.ContextKeyApplication, nilApp)
+				SetApplication(c, nilApp)
 			},
 			expectedApp: nil,
 			expectedErr: nil, // GetApplication은 타입이 맞으면 에러를 리턴하지 않음 (nil 리턴)
@@ -82,7 +81,7 @@ func TestGetApplication(t *testing.T) {
 			c, _ := setupContextHelper()
 			tt.setupCtx(c)
 
-			app, err := auth.GetApplication(c)
+			app, err := GetApplication(c)
 
 			if tt.expectedErr != nil {
 				assert.ErrorIs(t, err, tt.expectedErr)
@@ -110,7 +109,7 @@ func TestMustGetApplication(t *testing.T) {
 		{
 			name: "성공: 올바른 애플리케이션 정보가 있는 경우",
 			setupCtx: func(c echo.Context) {
-				auth.SetApplication(c, &domain.Application{ID: "must-app"})
+				SetApplication(c, &domain.Application{ID: "must-app"})
 			},
 			expectedApp: &domain.Application{ID: "must-app"},
 			shouldPanic: false,
@@ -119,15 +118,16 @@ func TestMustGetApplication(t *testing.T) {
 			name:        "패닉: Context에 정보가 없는 경우",
 			setupCtx:    func(c echo.Context) {},
 			shouldPanic: true,
-			panicValue:  fmt.Sprintf(panicMsgTemplate, auth.ErrApplicationMissingInContext),
+			panicValue:  fmt.Sprintf(panicMsgTemplate, ErrApplicationMissingInContext),
 		},
 		{
-			name: "패닉: 잘못된 타입인 경우",
+			name: "패닉: 잘못된 타입인 경우 (White-box Testing)",
 			setupCtx: func(c echo.Context) {
-				c.Set(constants.ContextKeyApplication, 12345) // int type
+				// 내부 상수 contextKeyApplication에 직접 접근하여 잘못된 타입 주입
+				c.Set(contextKeyApplication, 12345) // int type
 			},
 			shouldPanic: true,
-			panicValue:  fmt.Sprintf(panicMsgTemplate, auth.ErrApplicationTypeMismatch),
+			panicValue:  fmt.Sprintf(panicMsgTemplate, ErrApplicationTypeMismatch),
 		},
 	}
 
@@ -138,11 +138,11 @@ func TestMustGetApplication(t *testing.T) {
 
 			if tt.shouldPanic {
 				assert.PanicsWithValue(t, tt.panicValue, func() {
-					auth.MustGetApplication(c)
+					MustGetApplication(c)
 				})
 			} else {
 				assert.NotPanics(t, func() {
-					app := auth.MustGetApplication(c)
+					app := MustGetApplication(c)
 					assert.Equal(t, tt.expectedApp, app)
 				})
 			}
