@@ -7,9 +7,6 @@ const (
 	// LogMsgNotificationServicePanicRecovered 패닉 로그: 서비스 내 개별 Notifier 실행 중 패닉 발생
 	LogMsgNotificationServicePanicRecovered = "Notification 서비스 > 실행 중 패닉 복구됨"
 
-	// LogMsgNotifierPanicRecovered 패닉 로그: BaseNotifier 알림 전송 중 패닉 발생
-	LogMsgNotifierPanicRecovered = "Notifier > 알림 전송 중 패닉 복구됨"
-
 	// LogMsgTelegramSenderPanicRecovered 패닉 로그: 텔레그램 Sender 루프 중 패닉 발생
 	LogMsgTelegramSenderPanicRecovered = "Telegram Notifier > Sender 루프 패닉 복구됨"
 
@@ -30,9 +27,6 @@ const (
 	LogMsgNotifierNotStopped       = "Notifier가 아직 종료되지 않았습니다 (비정상 상황)"
 	LogMsgNotifierNotFoundRejected = "등록되지 않은 Notifier ID('%s')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: %s"
 	LogMsgDefaultNotifierFailed    = "기본 Notifier로 에러 알림 전송 실패 (큐 가득 참 또는 종료됨)"
-
-	// --- Notifier Logs ---
-	LogMsgNotifierBufferFullDrop = "알림 채널 버퍼가 가득 차서 메시지를 전송할 수 없습니다 (Drop - Timeout)"
 
 	// --- Telegram Logs ---
 	LogMsgTelegramInitClient          = "텔레그램 Notifier 초기화 및 봇 API 클라이언트 생성 시작"

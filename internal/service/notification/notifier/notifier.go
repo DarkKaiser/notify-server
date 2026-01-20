@@ -6,6 +6,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
+// component Notification 서비스의 Notifier 로깅용 컴포넌트 이름
+const component = "notification.notifier"
+
 // Notifier 다양한 알림 채널(예: 텔레그램, 슬랙 등)을 추상화한 인터페이스입니다.
 type Notifier interface {
 	// ID Notifier 인스턴스의 고유 식별자(ID)를 반환합니다.

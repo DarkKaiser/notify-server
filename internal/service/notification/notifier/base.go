@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -118,7 +117,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 					fields["task_title"] = title
 				}
 			}
-			applog.WithComponentAndFields(constants.ComponentNotifier, fields).Error(constants.LogMsgNotifierPanicRecovered)
+			applog.WithComponentAndFields(component, fields).Error("Notifier > 알림 전송 처리 중 예기치 않은 패닉이 발생했으나, 서비스 유지를 위해 안전하게 복구되었습니다")
 
 			// Panic 발생 시 에러 리턴
 			err = ErrPanicRecovered
@@ -185,7 +184,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 				fields["task_title"] = title
 			}
 		}
-		applog.WithComponentAndFields(constants.ComponentNotifier, fields).Warn(constants.LogMsgNotifierBufferFullDrop)
+		applog.WithComponentAndFields(component, fields).Warn("알림 발송 대기열이 포화 상태에 도달하여, 시스템 보호를 위해 요청 처리를 건너뛰었습니다 (Queue Full)")
 
 		return ErrQueueFull
 	}

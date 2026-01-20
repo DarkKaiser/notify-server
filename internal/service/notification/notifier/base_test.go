@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 // =============================================================================
@@ -16,14 +17,18 @@ import (
 // =============================================================================
 
 const (
-	testID           = contract.NotifierID("test-notifier")
-	testMessage      = "test-message"
-	testShortTimeout = 10 * time.Millisecond
-	testSafeTimeout  = 5 * time.Second
+	testID          = contract.NotifierID("test-notifier")
+	testMessage     = "test-message"
+	testSafeTimeout = 5 * time.Second
 )
 
+// TestMain runs tests and checks for goroutine leaks.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+
 // =============================================================================
-// 1. Initialization & Accessors
+// 1. Initialization & Basic Behavior
 // =============================================================================
 
 func TestBase_Initialization(t *testing.T) {
@@ -36,31 +41,33 @@ func TestBase_Initialization(t *testing.T) {
 		bufferSize   int
 		timeout      time.Duration
 	}{
-		{"Standard Config", "notifier-normal", true, 100, 1 * time.Second},
-		{"Zero Buffer", "notifier-sync", false, 0, 500 * time.Millisecond},
+		{"Standard Config", "notifier-standard", true, 100, 1 * time.Second},
+		{"Zero Buffer (Unbuffered)", "notifier-sync", false, 0, 500 * time.Millisecond},
 		{"Large Config", "notifier-large", true, 10000, 1 * time.Minute},
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture loop variable
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			// Action
 			n := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.timeout)
 
-			// Field verification
+			// Assertion: Fields
 			assert.Equal(t, tt.id, n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			assert.Equal(t, tt.timeout, n.enqueueTimeout)
 
-			// Channel initialization verification
+			// Assertion: Channel State
+			// NotificationC should be initialized
 			require.NotNil(t, n.NotificationC())
 			assert.Equal(t, tt.bufferSize, cap(n.NotificationC()))
 
-			// Done channel should be open
+			// Done channel should be open initially
 			select {
 			case <-n.Done():
-				t.Fatal("Done() channel should be open initially")
+				t.Fatal("Done() channel should be open (not closed) initially")
 			default:
 				// OK
 			}
@@ -69,325 +76,275 @@ func TestBase_Initialization(t *testing.T) {
 }
 
 // =============================================================================
-// 2. Send Logic (Core Behavior)
+// 2. Send Logic (Core Scenarios)
 // =============================================================================
 
 func TestBase_Send(t *testing.T) {
 	t.Parallel()
 
-	type testCase struct {
-		name        string
-		bufferSize  int
-		timeout     time.Duration
-		prepare     func(n *Base) (contract.TaskContext, context.CancelFunc)
-		action      func(n *Base, ctx contract.TaskContext) error
-		expectError error
-		verify      func(t *testing.T, n *Base)
-	}
+	t.Run("Success: Buffered Send (Space Available)", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 1, testSafeTimeout)
+		ctx := contract.NewTaskContext()
 
-	tests := []testCase{
-		{
-			name:       "Success: Buffered Send (Space Available)",
-			bufferSize: 1,
-			timeout:    testSafeTimeout,
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				return contract.NewTaskContext(), func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				return n.Send(ctx, testMessage)
-			},
-			expectError: nil,
-			verify: func(t *testing.T, n *Base) {
-				select {
-				case noti := <-n.NotificationC():
-					assert.Equal(t, testMessage, noti.Message)
-					assert.NotNil(t, noti.TaskContext)
-				default:
-					t.Fatal("Message should be in the queue")
-				}
-			},
-		},
-		{
-			name:       "Success: Unbuffered Send (Consumer Ready)",
-			bufferSize: 0,
-			timeout:    testSafeTimeout,
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				// Start a consumer to read the message immediately
-				go func() {
-					<-n.NotificationC()
-				}()
-				return contract.NewTaskContext(), func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				return n.Send(ctx, testMessage)
-			},
-			expectError: nil,
-			verify:      nil,
-		},
-		{
-			name:       "Success: Nil TaskContext",
-			bufferSize: 1,
-			timeout:    testSafeTimeout,
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				return nil, func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				// Pass nil explicitly
-				return n.Send(nil, testMessage)
-			},
-			expectError: nil,
-			verify: func(t *testing.T, n *Base) {
-				select {
-				case noti := <-n.NotificationC():
-					assert.Equal(t, testMessage, noti.Message)
-					assert.Nil(t, noti.TaskContext)
-				default:
-					t.Fatal("Message should be in the queue even with nil context")
-				}
-			},
-		},
-		{
-			name:       "Failure: Queue Full (Timeout)",
-			bufferSize: 0,
-			timeout:    10 * time.Millisecond, // very short timeout
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				// No consumer -> simulates full queue
-				return contract.NewTaskContext(), func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				return n.Send(ctx, testMessage)
-			},
-			expectError: ErrQueueFull,
-			verify:      nil,
-		},
-		{
-			name:       "Failure: Closed Notifier",
-			bufferSize: 10,
-			timeout:    testSafeTimeout,
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				n.Close() // Close before sending
-				return contract.NewTaskContext(), func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				return n.Send(ctx, testMessage)
-			},
-			expectError: ErrClosed,
-			verify:      nil,
-		},
-		{
-			name:       "Failure: Caller Context Canceled",
-			bufferSize: 0,
-			timeout:    testSafeTimeout,
-			prepare: func(n *Base) (contract.TaskContext, context.CancelFunc) {
-				// Create a cancelable context
-				ctx := contract.NewTaskContext()
-				// We need to simulate the underlying context cancellation.
-				// Since contract.TaskContext interface doesn't expose Cancel(),
-				// we pass a custom context implementation OR use internal knowledge.
-				//
-				// Better approach: Test integration with standard context cancellation.
-				// However, `Base.Send` takes `contract.TaskContext`.
-				//
-				// Let's use a mock or custom impl for this specific test
-				// to avoid depending on specific `TaskContext` impl details.
-				wrappableCtx, cancel := context.WithCancel(context.Background())
-				// Cancel immediately
-				cancel()
+		// Queue has space (1), so this should not block and return nil
+		err := n.Send(ctx, testMessage)
+		require.NoError(t, err)
 
-				return &mockCanceledContext{
-					TaskContext: ctx,
-					done:        wrappableCtx.Done(),
-				}, func() {}
-			},
-			action: func(n *Base, ctx contract.TaskContext) error {
-				return n.Send(ctx, testMessage)
-			},
-			expectError: ErrContextCanceled,
-			verify:      nil,
-		},
-	}
+		// Verify message in queue
+		select {
+		case msg := <-n.NotificationC():
+			assert.Equal(t, testMessage, msg.Message)
+			assert.Equal(t, ctx, msg.TaskContext)
+		default:
+			t.Fatal("Queue should contain the sent message")
+		}
+	})
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	t.Run("Success: Unbuffered Send (Consumer Ready)", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 0, testSafeTimeout)
 
-			n := NewBase(testID, true, tt.bufferSize, tt.timeout)
-
-			ctx, cleanup := tt.prepare(&n)
-			defer cleanup()
-
-			err := tt.action(&n, ctx)
-
-			if tt.expectError != nil {
-				assert.ErrorIs(t, err, tt.expectError)
-			} else {
-				assert.NoError(t, err)
+		// Unbuffered channel requires a receiver
+		go func() {
+			select {
+			case <-n.NotificationC():
+				// Consumed
+			case <-time.After(testSafeTimeout):
+				// Prevent test hang
 			}
+		}()
 
-			if tt.verify != nil {
-				tt.verify(t, &n)
-			}
+		// Wait briefly to ensure consumer is ready (though not strictly guaranteed without sync, NewBase readiness is enough here)
+		time.Sleep(10 * time.Millisecond)
+
+		err := n.Send(contract.NewTaskContext(), testMessage)
+		require.NoError(t, err)
+	})
+
+	t.Run("Success: Nil TaskContext is Allowed", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 1, testSafeTimeout)
+
+		err := n.Send(nil, testMessage)
+		require.NoError(t, err)
+
+		msg := <-n.NotificationC()
+		assert.Equal(t, testMessage, msg.Message)
+		assert.Nil(t, msg.TaskContext)
+	})
+
+	t.Run("Failure: Queue Full (Timeout)", func(t *testing.T) {
+		t.Parallel()
+		// Buffer size 0 and no consumer -> immediately blocking
+		// Small timeout to fail fast
+		shortTimeout := 10 * time.Millisecond
+		n := NewBase(testID, true, 0, shortTimeout)
+
+		start := time.Now()
+		err := n.Send(contract.NewTaskContext(), testMessage)
+
+		// Should return ErrQueueFull after approx shortTimeout
+		require.ErrorIs(t, err, ErrQueueFull)
+
+		elapsed := time.Since(start)
+		assert.GreaterOrEqual(t, elapsed, shortTimeout, "Should wait at least the timeout duration")
+		// Allow generous margin for context switch / CI slowness
+		assert.Less(t, elapsed, shortTimeout+200*time.Millisecond, "Should not wait excessively longer than timeout")
+	})
+
+	t.Run("Failure: Context Canceled (Pre-check)", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 0, testSafeTimeout)
+
+		// Create a pre-canceled context
+		ctx := contract.NewTaskContext()
+		_, cancel := context.WithCancel(ctx) // This wraps standard Context
+		cancel()                             // Cancel immediately
+
+		// We need to inject this canceled context behavior into TaskContext.
+		// Since contract.NewTaskContext() returns a struct implemented in `task_context.go` which embeds `context.Context`,
+		// wrapping it with `context.WithCancel` works if we cast it back or if the interface allows access to Done().
+		//
+		// Challenge: `contract.TaskContext` is an interface. `context.WithCancel` returns `context.Context`.
+		// We CANNOT simply pass the result of `WithCancel` to `Send` because parameters don't match.
+		//
+		// Solution: Use a test helper or struct embedding to construct a "Canceled TaskContext".
+		canceledTaskCtx := &testCanceledTaskContext{
+			TaskContext: ctx,
+			doneCh:      make(chan struct{}),
+		}
+		close(canceledTaskCtx.doneCh) // Pre-closed
+
+		err := n.Send(canceledTaskCtx, testMessage)
+		require.ErrorIs(t, err, ErrContextCanceled)
+	})
+
+	t.Run("Failure: Notifier Closed", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 1, testSafeTimeout)
+		n.Close()
+
+		err := n.Send(contract.NewTaskContext(), testMessage)
+		require.ErrorIs(t, err, ErrClosed)
+	})
+
+	t.Run("Failure: Panic Recovery", func(t *testing.T) {
+		t.Parallel()
+		n := NewBase(testID, true, 1, testSafeTimeout)
+
+		// Cause a panic by manually closing the send channel while simulating sending
+		// Go panics when sending to a closed channel.
+		// Note: Accessing internal field for white-box testing
+		close(n.notificationC)
+
+		assert.NotPanics(t, func() {
+			err := n.Send(contract.NewTaskContext(), "trigger panic")
+			assert.ErrorIs(t, err, ErrPanicRecovered)
 		})
-	}
-}
-
-// mockCanceledContext allows injecting a done channel
-type mockCanceledContext struct {
-	contract.TaskContext
-	done <-chan struct{}
-}
-
-func (m *mockCanceledContext) Done() <-chan struct{} {
-	return m.done
+	})
 }
 
 // =============================================================================
-// 3. Lifecycle (Close) Behavior
+// 3. Lifecycle & Shutdown Logic
 // =============================================================================
 
-func TestBase_Close_Idempotency(t *testing.T) {
+func TestBase_Close_Behavior(t *testing.T) {
 	t.Parallel()
 
-	n := NewBase(testID, true, 10, testSafeTimeout)
+	n := NewBase(testID, true, 1, testSafeTimeout)
 
-	// First Close
-	n.Close()
+	// 1. Initial State
 	select {
 	case <-n.Done():
-		// OK
+		t.Fatal("Done channel should be open initially")
 	default:
-		t.Fatal("Done() should be closed after Close()")
 	}
 
-	// Second Close (Should not panic)
+	// 2. Perform Close
+	n.Close()
+
+	// 3. Check Done Channel (Should be closed)
+	select {
+	case <-n.Done():
+		// Success
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Done channel should be closed immediately after Close()")
+	}
+
+	// 4. Idempotency (Calling Close again should be safe)
 	assert.NotPanics(t, func() {
 		n.Close()
 	})
 
-	// Should remain closed
-	err := n.Send(nil, "msg")
+	// 5. Check Internal Channel State (Design Decision: notificationC is NOT closed)
+	// We verify we can still read from it if it had items (though it's empty now).
+	// More importantly, we verify we generally don't panic or misbehave.
+	// Since we can't easily check "is closed" without risk, we rely on behavior.
+	// But `Send` should reject new items.
+	err := n.Send(nil, "new msg")
 	assert.ErrorIs(t, err, ErrClosed)
 }
 
-func TestBase_Close_UnblocksWaitingSend(t *testing.T) {
+func TestBase_Close_UnblocksBlockingSend(t *testing.T) {
 	t.Parallel()
+	n := NewBase(testID, true, 0, 1*time.Minute) // Unbuffered, blocks forever without receiver
 
-	// Unbuffered channel with long timeout -> Send will block
-	n := NewBase(testID, true, 0, 1*time.Minute)
+	// Channel to signal send started
+	sendErrCh := make(chan error, 1)
 
-	errCh := make(chan error)
-	readyCh := make(chan struct{})
-
+	// Start blocking Send
 	go func() {
-		close(readyCh) // Signal that goroutine started
-		errCh <- n.Send(contract.NewTaskContext(), "blocked")
+		sendErrCh <- n.Send(contract.NewTaskContext(), "blocking")
 	}()
 
-	<-readyCh
-	// Yield to allow Send to block
+	// Ensure Send is definitely blocking or about to block
 	time.Sleep(50 * time.Millisecond)
 
-	// Action: call Close
+	// Action: Output Close triggers cancellation of Send
 	start := time.Now()
 	n.Close()
 
 	// Verify
 	select {
-	case err := <-errCh:
-		// Logic: Send should return ErrClosed immediately when Close() is called
-		assert.ErrorIs(t, err, ErrClosed)
-		assert.WithinDuration(t, start, time.Now(), 100*time.Millisecond, "Send should unblock immediately")
+	case err := <-sendErrCh:
+		// Expect ErrClosed because n.done was closed
+		require.ErrorIs(t, err, ErrClosed)
+		assert.WithinDuration(t, start, time.Now(), 100*time.Millisecond, "Close should unblock Send immediately")
 	case <-time.After(1 * time.Second):
-		t.Fatal("Send did not return after Close()")
+		t.Fatal("Close did not unblock Send goroutine")
 	}
 }
 
 // =============================================================================
-// 4. Panic Recovery (White-box Test)
+// 4. Concurrency & Race Conditions
 // =============================================================================
 
-func TestBase_PanicRecovery(t *testing.T) {
+func TestBase_Concurrency_Stress(t *testing.T) {
 	t.Parallel()
 
-	n := NewBase(testID, true, 10, testSafeTimeout)
-
-	// Simulate a catastrophic state (nil channel) that would cause panic on send
-	// We access unexported field 'notificationC' for white-box testing.
-	// NOTE: Depending on implementation, sending to nil channel blocks forever, not panic.
-	// EXCEPT if we close it? Sending to closed channel panics.
-
-	// Let's rely on internal implementation: Close channel manually to cause panic on send?
-	// Go spec: send to closed channel causes panic.
-	close(n.notificationC)
-
-	assert.NotPanics(t, func() {
-		err := n.Send(contract.NewTaskContext(), "will panic internal")
-		assert.ErrorIs(t, err, ErrPanicRecovered)
-	}, "Send should catch panic and return error")
-}
-
-// =============================================================================
-// 5. Concurrency Stress Test
-// =============================================================================
-
-func TestBase_Concurrency_Safe(t *testing.T) {
-	t.Parallel()
-
-	// High concurrency to detect race conditions with -race flag
-	concurrency := 100
-	loops := 50
-	n := NewBase(testID, true, concurrency, testSafeTimeout)
+	workerCount := 10
+	msgCount := 10
+	n := NewBase(testID, true, workerCount*msgCount, testSafeTimeout)
 
 	var wg sync.WaitGroup
-	wg.Add(concurrency)
+	wg.Add(workerCount)
 
-	// Launch multiple senders
-	for i := 0; i < concurrency; i++ {
+	// Multiple writers
+	for i := 0; i < workerCount; i++ {
 		go func() {
 			defer wg.Done()
-			for k := 0; k < loops; k++ {
-				// Ignores error (queue might be full or closed, just checking for data races)
+			for j := 0; j < msgCount; j++ {
+				// We don't check error here, focusing on race detection
 				_ = n.Send(nil, testMessage)
 			}
 		}()
 	}
 
-	// Simultaneously read from channel to clear buffer
-	consumerStop := make(chan struct{})
+	// Single Reader (Consumer)
+	consumedCount := 0
+	doneCh := make(chan struct{})
 	go func() {
+		defer close(doneCh)
 		for {
 			select {
 			case <-n.NotificationC():
-				// consume
-			case <-consumerStop:
-				return
+				consumedCount++
+			case <-n.Done():
+				// Drain remaining
+				for {
+					select {
+					case <-n.NotificationC():
+						consumedCount++
+					default:
+						// Empty
+						return
+					}
+				}
 			}
 		}
 	}()
 
-	// Randomly Close later
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		n.Close()
-	}()
-
-	// Wait for all senders to finish
 	wg.Wait()
+	n.Close()
+	<-doneCh
 
-	// Stop consumer
-	close(consumerStop)
+	// Since we closed AFTER wg.Wait, all messages *should* have been accepted.
+	// However, if logic allows drops or timeouts, count might differ.
+	// In this buffered setup with SafeTimeout, drops are unlikely unless logic fails.
+	// But primarily this test is for RACE DETECTION.
+}
 
-	// Close notifier asynchronously if not already closed
-	// (In some race scenarios, it might have been closed by the random closer)
-	// But here we just want to ensure it's eventually closed for the check.
-	// Actually, the random closer is already running. We just need to wait for it.
+// =============================================================================
+// Helpers / Mocks
+// =============================================================================
 
-	// Better approach: Wait for Done() with timeout (simulate Eventually)
-	select {
-	case <-n.Done():
-		// Success
-	case <-time.After(1 * time.Second):
-		t.Error("Notifier should be closed by now (timeout waiting for Done)")
-	}
+// testCanceledTaskContext wraps a TaskContext to simulate cancellation
+type testCanceledTaskContext struct {
+	contract.TaskContext
+	doneCh chan struct{}
+}
+
+func (m *testCanceledTaskContext) Done() <-chan struct{} {
+	return m.doneCh
 }

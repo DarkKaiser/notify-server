@@ -12,7 +12,7 @@ import (
 
 	_ "github.com/darkkaiser/notify-server/docs"
 	"github.com/darkkaiser/notify-server/internal/config"
-	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
@@ -144,7 +144,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 //  4. 라우트 등록 (전역 라우트, v1 API 라우트)
 func (s *Service) setupServer() *echo.Echo {
 	// 1. Authenticator 생성
-	authenticator := apiauth.NewAuthenticator(s.appConfig)
+	authenticator := auth.NewAuthenticator(s.appConfig)
 
 	// 2. Handler 생성
 	var healthChecker contract.NotificationHealthChecker
@@ -155,7 +155,7 @@ func (s *Service) setupServer() *echo.Echo {
 	v1Handler := v1handler.New(s.notificationSender)
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)
-	e := NewHTTPServer(ServerConfig{
+	e := NewEchoServer(ServerConfig{
 		Debug:        s.appConfig.Debug,
 		EnableHSTS:   s.appConfig.NotifyAPI.WS.TLSServer,
 		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,

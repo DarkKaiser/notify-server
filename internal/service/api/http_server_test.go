@@ -48,8 +48,8 @@ func setupTestLogger(t *testing.T) *bytes.Buffer {
 // Server Initialization & Configuration Logic Tests
 // =============================================================================
 
-// TestNewHTTPServer_Configuration 은 HTTPServerConfig가 Echo 인스턴스에 올바르게 적용되는지 검증합니다.
-func TestNewHTTPServer_Configuration(t *testing.T) {
+// TestNewEchoServer_Configuration 은 HTTPServerConfig가 Echo 인스턴스에 올바르게 적용되는지 검증합니다.
+func TestNewEchoServer_Configuration(t *testing.T) {
 	tests := []struct {
 		name           string
 		cfg            ServerConfig
@@ -78,7 +78,7 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewHTTPServer(tt.cfg)
+			e := NewEchoServer(tt.cfg)
 
 			assert.Equal(t, tt.wantDebug, e.Debug)
 			assert.Equal(t, tt.wantHideBanner, e.HideBanner)
@@ -89,18 +89,18 @@ func TestNewHTTPServer_Configuration(t *testing.T) {
 	}
 }
 
-// TestNewHTTPServer_Defaults 는 설정 값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
-func TestNewHTTPServer_Defaults(t *testing.T) {
+// TestNewEchoServer_Defaults 는 설정 값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
+func TestNewEchoServer_Defaults(t *testing.T) {
 	// 대신 Server 필드의 기본 타임아웃은 항상 constant 값이어야 함
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 	assert.Equal(t, defaultReadTimeout, e.Server.ReadTimeout)
 	assert.Equal(t, defaultWriteTimeout, e.Server.WriteTimeout)
 }
 
-// TestNewHTTPServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
+// TestNewEchoServer_ServerTimeouts 는 http.Server의 중요 타임아웃 설정이
 // 상수에 정의된 보안 권장 값과 일치하는지 검증합니다.
-func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
-	e := NewHTTPServer(ServerConfig{})
+func TestNewEchoServer_ServerTimeouts(t *testing.T) {
+	e := NewEchoServer(ServerConfig{})
 
 	require.NotNil(t, e.Server, "http.Server 객체가 초기화되어야 합니다")
 	assert.Equal(t, defaultReadTimeout, e.Server.ReadTimeout, "ReadTimeout 불일치")
@@ -109,10 +109,10 @@ func TestNewHTTPServer_ServerTimeouts(t *testing.T) {
 	assert.Equal(t, defaultIdleTimeout, e.Server.IdleTimeout, "IdleTimeout 불일치")
 }
 
-// TestNewHTTPServer_ErrorHandler 는 커스텀 에러 핸들러(httputil.ErrorHandler)가
+// TestNewEchoServer_ErrorHandler 는 커스텀 에러 핸들러(httputil.ErrorHandler)가
 // 올바르게 등록되었는지 검증합니다.
-func TestNewHTTPServer_ErrorHandler(t *testing.T) {
-	e := NewHTTPServer(ServerConfig{})
+func TestNewEchoServer_ErrorHandler(t *testing.T) {
+	e := NewEchoServer(ServerConfig{})
 
 	// 함수 포인터 이름을 비교하여 검증
 	handlerName := runtime.FuncForPC(reflect.ValueOf(e.HTTPErrorHandler).Pointer()).Name()
@@ -146,7 +146,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewHTTPServer(ServerConfig{EnableHSTS: tt.enableHSTS})
+			e := NewEchoServer(ServerConfig{EnableHSTS: tt.enableHSTS})
 			e.GET("/secure", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 			req := httptest.NewRequest(http.MethodGet, "https://example.com/secure", nil)
@@ -177,7 +177,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 
 // TestServerHeaderRemoval 은 보안을 위해 'Server' 헤더가 응답에서 제거되었는지 검증합니다.
 func TestServerHeaderRemoval(t *testing.T) {
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 	e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
@@ -200,7 +200,7 @@ func TestServerHeaderRemoval(t *testing.T) {
 
 // TestMiddleware_RequestID 는 응답에 X-Request-ID 헤더가 포함되는지 검증합니다.
 func TestMiddleware_RequestID(t *testing.T) {
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 	e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
 
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
@@ -214,7 +214,7 @@ func TestMiddleware_RequestID(t *testing.T) {
 
 // TestMiddleware_BodyLimit 은 설정된 제한(128KB)보다 큰 요청이 거부되는지 검증합니다.
 func TestMiddleware_BodyLimit(t *testing.T) {
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 	e.POST("/upload", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	// 128KB + 1byte (경계값 테스트)
@@ -244,7 +244,7 @@ func TestMiddleware_RateLimit_And_Logging(t *testing.T) {
 	buf := setupTestLogger(t)
 
 	// 실제 서버 인스턴스 생성
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 	e.GET("/fast", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	// Burst(40) 만큼은 성공해야 함
@@ -275,7 +275,7 @@ func TestMiddlewareOrdering_SecurityOnErrors(t *testing.T) {
 	cfg := ServerConfig{
 		EnableHSTS: true,
 	}
-	e := NewHTTPServer(cfg)
+	e := NewEchoServer(cfg)
 
 	t.Run("Security Headers on 404 NotFound", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/not-found", nil)
@@ -342,7 +342,7 @@ func TestCORSConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := ServerConfig{AllowOrigins: tt.allowedOrigins}
-			e := NewHTTPServer(cfg)
+			e := NewEchoServer(cfg)
 			e.GET("/cors", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 			req := httptest.NewRequest(http.MethodGet, "/cors", nil)
@@ -360,7 +360,7 @@ func TestCORSConfig(t *testing.T) {
 // TestCORSConfig_Methods 는 허용된 메서드가 올바르게 설정되는지 OPTIONS 요청으로 검증합니다.
 func TestCORSConfig_Methods(t *testing.T) {
 	cfg := ServerConfig{AllowOrigins: []string{"*"}}
-	e := NewHTTPServer(cfg)
+	e := NewEchoServer(cfg)
 
 	// Preflight 요청 (OPTIONS)
 	req := httptest.NewRequest(http.MethodOptions, "/", nil)
@@ -378,11 +378,11 @@ func TestCORSConfig_Methods(t *testing.T) {
 	assert.Contains(t, allowMethods, "DELETE")
 }
 
-// TestNewHTTPServer_PanicLogging 은 Panic 발생 시 HTTPLogger가 500 Status를 기록하는지 검증합니다.
+// TestNewEchoServer_PanicLogging 은 Panic 발생 시 HTTPLogger가 500 Status를 기록하는지 검증합니다.
 // (Middleware 순서가 HTTPLogger -> PanicRecovery 순이어야 함)
-func TestNewHTTPServer_PanicLogging(t *testing.T) {
+func TestNewEchoServer_PanicLogging(t *testing.T) {
 	buf := setupTestLogger(t)
-	e := NewHTTPServer(ServerConfig{})
+	e := NewEchoServer(ServerConfig{})
 
 	// Panic을 유발하는 핸들러 등록
 	e.GET("/panic", func(c echo.Context) error {
