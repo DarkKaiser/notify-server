@@ -34,42 +34,6 @@ func TestNewErrorNotification(t *testing.T) {
 	assert.Empty(t, n.TaskID)
 }
 
-func TestNewTaskNotification(t *testing.T) {
-	t.Parallel()
-
-	// Given
-	notifierID := NotifierID("telegram")
-	taskID := TaskID("TEST_TASK")
-	commandID := TaskCommandID("CMD_CHECK")
-	instanceID := TaskInstanceID("INST_UUID")
-	message := "Task Completed"
-	elapsed := 500 * time.Millisecond
-	isError := true
-	isCancelable := true
-
-	// When
-	n := NewTaskNotification(
-		notifierID,
-		taskID,
-		commandID,
-		instanceID,
-		message,
-		elapsed,
-		isError,
-		isCancelable,
-	)
-
-	// Then
-	assert.Equal(t, notifierID, n.NotifierID)
-	assert.Equal(t, taskID, n.TaskID)
-	assert.Equal(t, commandID, n.CommandID)
-	assert.Equal(t, instanceID, n.InstanceID)
-	assert.Equal(t, message, n.Message)
-	assert.Equal(t, elapsed, n.ElapsedTime)
-	assert.Equal(t, isError, n.ErrorOccurred)
-	assert.Equal(t, isCancelable, n.Cancelable)
-}
-
 func TestNotification_Validate(t *testing.T) {
 	t.Parallel()
 
@@ -130,16 +94,16 @@ func TestNotification_String(t *testing.T) {
 	}{
 		{
 			name: "Full context notification",
-			notification: NewTaskNotification(
-				"slack",
-				"TASK",
-				"CMD",
-				"INST",
-				"Msg",
-				time.Second,
-				true,
-				true,
-			),
+			notification: Notification{
+				NotifierID:    "slack",
+				TaskID:        "TASK",
+				CommandID:     "CMD",
+				InstanceID:    "INST",
+				Message:       "Msg",
+				ElapsedTime:   time.Second,
+				ErrorOccurred: true,
+				Cancelable:    true,
+			},
 			wantContains: []string{
 				"notifier=slack",
 				"task=TASK/CMD",

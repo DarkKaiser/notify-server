@@ -129,24 +129,3 @@ func NewErrorNotification(message string) Notification {
 		ErrorOccurred: true,
 	}
 }
-
-// NewTaskNotification 작업(Task) 실행 결과와 관련된 풍부한 맥락(Context) 정보를 담은 상세 알림 객체를 생성하여 반환하는 팩토리 함수입니다.
-//
-// 이 함수는 단순히 메시지 내용만 전달하는 것을 넘어, "어떤 작업이(TaskID)", "구체적으로 무엇을 수행하다가(CommandID)",
-// "어떤 실행 회차에서(InstanceID)" 발생한 알림인지를 명확히 기술합니다. 또한 소요 시간(ElapsedTime)과
-// 에러 여부 등의 메타데이터를 함께 캡슐화하여, 추후 로그 분석이나 시스템 트러블슈팅 시
-// 실행 흐름을 완벽하게 재구성할 수 있는 핵심적인 단서를 제공합니다.
-func NewTaskNotification(notifierID NotifierID,
-	taskID TaskID, commandID TaskCommandID, instanceID TaskInstanceID,
-	message string, elapsedTime time.Duration, errorOccurred bool, cancelable bool) Notification {
-	return Notification{
-		NotifierID:    notifierID,
-		TaskID:        taskID,
-		CommandID:     commandID,
-		InstanceID:    instanceID,
-		Message:       message,
-		ElapsedTime:   elapsedTime,
-		ErrorOccurred: errorOccurred,
-		Cancelable:    cancelable,
-	}
-}
