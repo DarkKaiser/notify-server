@@ -101,7 +101,7 @@ func TestV1API_Success(t *testing.T) {
 			// Setup Mock
 			mockSender := mocks.NewMockNotificationSender()
 			// Default expectation for success
-			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
 			h := handler.New(mockSender)
 
 			// Register Routes (New Router per test to ensure clean state)
@@ -208,7 +208,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:  "test-app-key",
 			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceStopped),
@@ -218,7 +218,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:  "test-app-key",
 			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrNotifierNotFound)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrNotifierNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrNotifierNotFound),
@@ -228,7 +228,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:  "test-app-key",
 			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(apperrors.New(apperrors.Unavailable, "overload"))
+				m.On("Notify", mock.Anything, mock.Anything).Return(apperrors.New(apperrors.Unavailable, "overload"))
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceOverloaded), // Handler maps Unavailable to Overloaded
@@ -238,7 +238,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:  "test-app-key",
 			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("unknown error"))
+				m.On("Notify", mock.Anything, mock.Anything).Return(errors.New("unknown error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceInterrupted), // Handler maps unknown to Interrupted/Internal
@@ -299,7 +299,7 @@ func TestV1API_ConcurrentRequests(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
 	mockSender := mocks.NewMockNotificationSender()
 	// Allow calls
-	mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil)
 	h := handler.New(mockSender)
 	RegisterRoutes(e, h, authenticator)
 

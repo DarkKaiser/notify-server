@@ -95,16 +95,10 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 // mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
 type mockSenderWithoutHealth struct{}
 
-func (m *mockSenderWithoutHealth) Notify(taskCtx contract.TaskContext, notifierID contract.NotifierID, message string) error {
+func (m *mockSenderWithoutHealth) Notify(ctx context.Context, notification contract.Notification) error {
 	return nil
 }
-func (m *mockSenderWithoutHealth) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	return nil
-}
-func (m *mockSenderWithoutHealth) NotifyDefault(message string) error { return nil }
-func (m *mockSenderWithoutHealth) NotifyDefaultWithError(message string) error {
-	return nil
-}
+
 func (m *mockSenderWithoutHealth) SupportsHTML(notifierID contract.NotifierID) bool { return false }
 
 // =============================================================================
@@ -280,8 +274,10 @@ func TestService_Start_Failure_PortConflict(t *testing.T) {
 	service, _, wg, ctx, _ := setupServiceHelper(t, nil)
 	service.appConfig.NotifyAPI.WS.ListenPort = port
 
-	// Expectation for NotifyDefaultWithError
-	service.notificationSender.(*mocks.MockNotificationSender).On("NotifyDefaultWithError", mock.Anything).Return(nil)
+	// Expectation for Notify with ErrorNotification
+	service.notificationSender.(*mocks.MockNotificationSender).On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred
+	})).Return(nil)
 
 	wg.Add(1)
 	err = service.Start(ctx, wg)
@@ -306,7 +302,9 @@ func TestService_Start_Failure_PortConflict(t *testing.T) {
 
 	// 4. 알림 전송 확인
 	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
-	mockSender.AssertCalled(t, "NotifyDefaultWithError", mock.Anything)
+	mockSender.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred
+	}))
 }
 
 func TestService_Start_Duplicate_Idempotency(t *testing.T) {
@@ -407,9 +405,10 @@ func TestService_handleServerError(t *testing.T) {
 			mockSender := service.notificationSender.(*mocks.MockNotificationSender)
 
 			if tt.expectNotify {
-				mockSender.On("NotifyDefaultWithError", mock.MatchedBy(func(msg string) bool {
-					return strings.Contains(msg, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.") &&
-						(tt.inputErr == nil || strings.Contains(msg, tt.inputErr.Error()))
+				mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.ErrorOccurred &&
+						strings.Contains(n.Message, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.") &&
+						(tt.inputErr == nil || strings.Contains(n.Message, tt.inputErr.Error()))
 				})).Return(nil)
 			}
 
@@ -417,10 +416,90 @@ func TestService_handleServerError(t *testing.T) {
 
 			// 1. 알림 전송 여부 확인
 			if tt.expectNotify {
-				mockSender.AssertCalled(t, "NotifyDefaultWithError", mock.Anything)
+				mockSender.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.ErrorOccurred
+				}))
 			} else {
-				mockSender.AssertNotCalled(t, "NotifyDefaultWithError", mock.Anything)
+				mockSender.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
 			}
 		})
+	}
+}
+
+func TestService_Start_HTTPS_Failure(t *testing.T) {
+	t.Parallel()
+	service, appConfig, wg, ctx, _ := setupServiceHelper(t, nil)
+
+	// 존재하지 않는 인증서 경로 설정
+	appConfig.NotifyAPI.WS.TLSServer = true
+	appConfig.NotifyAPI.WS.TLSCertFile = "invalid/cert/path.pem"
+	appConfig.NotifyAPI.WS.TLSKeyFile = "invalid/key/path.pem"
+
+	// Mock Sender: 에러 발생 시 알림 전송 기대
+	service.notificationSender.(*mocks.MockNotificationSender).On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred && strings.Contains(n.Message, "치명적인 오류가 발생하였습니다")
+	})).Return(nil)
+
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	require.NoError(t, err) // 비동기 시작이므로 Start 자체는 성공
+
+	// HTTPS 서버 시작 실패로 인해 서비스가 종료되어야 함
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 성공적 종료
+		service.runningMu.Lock()
+		assert.False(t, service.running)
+		service.runningMu.Unlock()
+	case <-time.After(2 * time.Second):
+		t.Fatal("HTTPS 시작 실패에도 불구하고 서비스가 종료되지 않았습니다")
+	}
+
+	// 알림 전송 확인
+	service.notificationSender.(*mocks.MockNotificationSender).AssertCalled(t, "Notify", mock.Anything, mock.Anything)
+}
+
+func TestService_Shutdown_Timeout(t *testing.T) {
+	// 이 테스트는 전역 변수 shutdownTimeout을 수정하므로 병렬 실행 불가
+	// t.Parallel() 제외
+
+	// 기존 타임아웃 백업 및 복원
+	originalTimeout := shutdownTimeout
+	shutdownTimeout = 100 * time.Millisecond // 테스트를 위해 매우 짧게 설정
+	defer func() { shutdownTimeout = originalTimeout }()
+
+	service, _, wg, ctx, cancel := setupServiceHelper(t, nil)
+
+	// 정상 시작
+	wg.Add(1)
+	require.NoError(t, service.Start(ctx, wg))
+	require.NoError(t, testutil.WaitForServer(service.appConfig.NotifyAPI.WS.ListenPort, 2*time.Second))
+
+	// 강제로 종료 지연을 유발하는 핸들러 등록 (내부 구현 의존적이므로 생략하고, 짧은 타임아웃 내에 종료되는지만 확인)
+	// 서비스 시작 후 바로 종료 시도
+
+	start := time.Now()
+	cancel() // 종료 시그널
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 타임아웃(100ms) + 알파 내에 종료되어야 함
+		elapsed := time.Since(start)
+		// 5초(기본값)까지 가지 않고 빨리 끝났는지 확인
+		assert.Less(t, elapsed, 2*time.Second, "Shutdown이 너무 오래 걸렸습니다 (타임아웃 설정 무시됨?)")
+	case <-time.After(3 * time.Second):
+		t.Fatal("서비스가 타임아웃 내에 종료되지 않았습니다")
 	}
 }

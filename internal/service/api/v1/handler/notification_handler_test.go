@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,16 +46,18 @@ func createTestRequest(t *testing.T, method, url string, body interface{}, app *
 
 	e := echo.New()
 
-	var bodyBytes []byte
-	if s, ok := body.(string); ok {
-		bodyBytes = []byte(s)
-	} else if body != nil {
-		b, err := json.Marshal(body)
-		require.NoError(t, err, "Body marshaling failed")
-		bodyBytes = b
+	var bodyReader io.Reader
+	if body != nil {
+		if s, ok := body.(string); ok {
+			bodyReader = strings.NewReader(s)
+		} else {
+			b, err := json.Marshal(body)
+			require.NoError(t, err, "Body marshaling failed")
+			bodyReader = bytes.NewReader(b)
+		}
 	}
 
-	req := httptest.NewRequest(method, url, strings.NewReader(string(bodyBytes)))
+	req := httptest.NewRequest(method, url, bodyReader)
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 
 	rec := httptest.NewRecorder()
@@ -110,10 +114,14 @@ func TestPublishNotificationHandler(t *testing.T) {
 			app:            testApp,
 			expectedStatus: http.StatusOK,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", contract.NotifierID("test-notifier"), "Test App", "Test Message", false).Return(nil)
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "Test Message" && !n.ErrorOccurred
+				})).Return(nil)
 			},
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", contract.NotifierID("test-notifier"), "Test App", "Test Message", false)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "Test Message" && !n.ErrorOccurred
+				}))
 			},
 		},
 		{
@@ -126,10 +134,14 @@ func TestPublishNotificationHandler(t *testing.T) {
 			app:            testApp,
 			expectedStatus: http.StatusOK,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, "Error Message", true).Return(nil)
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "Error Message" && n.ErrorOccurred
+				})).Return(nil)
 			},
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, "Error Message", true)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "Error Message" && n.ErrorOccurred
+				}))
 			},
 		},
 		{
@@ -142,10 +154,14 @@ func TestPublishNotificationHandler(t *testing.T) {
 			app:            testApp,
 			expectedStatus: http.StatusOK,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, "a", mock.Anything).Return(nil)
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "a"
+				})).Return(nil)
 			},
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, "a", mock.Anything)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "a"
+				}))
 			},
 		},
 		{
@@ -158,14 +174,14 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			setupMock: func(m *mocks.MockNotificationSender) {
 				// Match message length
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-					return len(msg) == 4096
-				}), mock.Anything).Return(nil)
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return len(n.Message) == 4096
+				})).Return(nil)
 			},
 			verifyMock: func(t *testing.T, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-					return len(msg) == 4096
-				}), mock.Anything)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return len(n.Message) == 4096
+				}))
 			},
 		},
 
@@ -224,6 +240,13 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedErr:    ErrInvalidBody,
 		},
 		{
+			name:           "실패: 빈 JSON 본문",
+			reqBody:        "", // Empty Body
+			app:            testApp,
+			expectedStatus: http.StatusBadRequest,
+			expectedErrMsg: "애플리케이션 ID는 필수입니다",
+		},
+		{
 			name:           "실패: JSON 필드 타입 불일치 (error_occurred 문자열 전달)",
 			reqBody:        `{"application_id":"test-app","message":"msg","error_occurred":"not-boolean"}`, // 문자열 직접 주입
 			app:            testApp,
@@ -242,7 +265,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app: testApp,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErr:    ErrServiceStopped,
@@ -255,7 +278,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app: testApp,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(notification.ErrNotifierNotFound)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrNotifierNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
 			expectedErr:    ErrNotifierNotFound,
@@ -268,7 +291,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app: testApp,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(apperrors.New(apperrors.Unavailable, "Queue Full"))
+				m.On("Notify", mock.Anything, mock.Anything).Return(apperrors.New(apperrors.Unavailable, "Queue Full"))
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErr:    ErrServiceOverloaded,
@@ -281,7 +304,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app: testApp,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("generic error"))
+				m.On("Notify", mock.Anything, mock.Anything).Return(errors.New("generic error"))
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedErr:    ErrServiceInterrupted,
@@ -293,6 +316,8 @@ func TestPublishNotificationHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			handler, mockService := setupTestHandler(t)
+			// Mock 검증이 테스트 종료 시 반드시 수행되도록 보장
+			defer mockService.AssertExpectations(t)
 
 			if tt.setupMock != nil {
 				tt.setupMock(mockService)
@@ -335,8 +360,6 @@ func TestPublishNotificationHandler(t *testing.T) {
 			if tt.verifyMock != nil {
 				tt.verifyMock(t, mockService)
 			}
-
-			mockService.AssertExpectations(t)
 		})
 	}
 }

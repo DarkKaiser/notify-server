@@ -8,6 +8,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/model/request"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
@@ -100,7 +101,12 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 
 	// 4. 알림 메시지 전송 (비동기 큐 방식)
 	// 큐 포화 또는 시스템 종료 시 error 반환 → 503/500 에러 응답
-	err := h.notificationSender.NotifyWithTitle(app.DefaultNotifierID, app.Title, req.Message, req.ErrorOccurred)
+	err := h.notificationSender.Notify(c.Request().Context(), contract.Notification{
+		NotifierID:    app.DefaultNotifierID,
+		Title:         app.Title,
+		Message:       req.Message,
+		ErrorOccurred: req.ErrorOccurred,
+	})
 	if err != nil {
 		// 1. 서비스 중지 (503 Service Unavailable)
 		if errors.Is(err, notification.ErrServiceStopped) {

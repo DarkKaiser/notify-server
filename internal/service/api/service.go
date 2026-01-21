@@ -24,7 +24,7 @@ import (
 // component API 서비스의 로깅용 컴포넌트 이름
 const component = "api.service"
 
-const (
+var (
 	// shutdownTimeout Graceful Shutdown 시 최대 대기 시간 (5초)
 	shutdownTimeout = 5 * time.Second
 )
@@ -230,7 +230,7 @@ func (s *Service) handleServerError(err error) {
 		"error": err,
 	}).Error(message)
 
-	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", message, err))
+	s.notificationSender.Notify(context.Background(), contract.NewErrorNotification(fmt.Sprintf("%s\r\n\r\n%s", message, err)))
 }
 
 // waitForShutdown 종료 신호를 대기하고 Graceful Shutdown을 수행합니다.

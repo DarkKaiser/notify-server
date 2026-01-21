@@ -10,6 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -52,6 +53,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 		path           string
 		headers        map[string]string
 		body           string
+		setupMock      func(*mocks.MockNotificationSender)
 		expectedStatus int
 		verify         func(*testing.T, *httptest.ResponseRecorder, *mocks.MockNotificationSender)
 	}{
@@ -68,8 +70,15 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			},
 			body:           `{"application_id":"test-app", "message":"hello"}`,
 			expectedStatus: http.StatusOK,
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "hello"
+				})).Return(nil)
+			},
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "hello"
+				}))
 			},
 		},
 		{
@@ -82,8 +91,15 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			},
 			body:           `{"application_id":"test-app", "message":"legacy"}`,
 			expectedStatus: http.StatusOK,
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "legacy"
+				})).Return(nil)
+			},
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				m.AssertCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "legacy"
+				}))
 				// Check Headers
 				assert.Contains(t, rec.Header().Get("Warning"), "299", "Warning 헤더 299 코드 포함")
 				assert.Equal(t, "true", rec.Header().Get("X-API-Deprecated"))
@@ -104,7 +120,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `{"application_id":"test-app", "message":"no-auth"}`,
 			expectedStatus: http.StatusBadRequest, // AppKey 누락 -> 400
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				m.AssertNotCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
 			},
 		},
 		{
@@ -118,13 +134,40 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			body:           `raw-text`,
 			expectedStatus: http.StatusBadRequest, // 400 (Middleware might skip if CL=0, then Handler Bind fails)
 			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
-				m.AssertNotCalled(t, "NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
 				// 415(Middleware) or 400(Bind) are both acceptable rejections
 				if rec.Code == http.StatusUnsupportedMediaType {
 					assert.Contains(t, rec.Body.String(), "Content-Type")
 				} else {
 					assert.Contains(t, rec.Body.String(), "JSON") // Bind Failure
 				}
+			},
+		},
+		{
+			name:   "Failure: Legacy Endpoint Missing Auth",
+			method: http.MethodPost,
+			path:   "/api/v1/notice/message",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMEApplicationJSON,
+			},
+			body:           `{"application_id":"test-app", "message":"no-auth-legacy"}`,
+			expectedStatus: http.StatusBadRequest,
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
+			},
+		},
+		{
+			name:   "Failure: Legacy Endpoint Invalid Content-Type",
+			method: http.MethodPost,
+			path:   "/api/v1/notice/message",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMETextPlain,
+				"X-App-Key":            "valid-key",
+			},
+			body:           `raw-legacy`,
+			expectedStatus: http.StatusBadRequest,
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
 			},
 		},
 
@@ -157,8 +200,13 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			// Reset Mock State
 			mockSender.Calls = nil
 			mockSender.ExpectedCalls = nil
-			// Setup default expectation for Success case (allowed to be called)
-			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+			// Defer Assertion
+			defer mockSender.AssertExpectations(t)
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockSender)
+			}
 
 			bodyBytes := []byte(tt.body)
 			req := httptest.NewRequest(tt.method, tt.path, bytes.NewReader(bodyBytes))
@@ -179,9 +227,6 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 			if tt.verify != nil {
 				tt.verify(t, rec, mockSender)
 			}
-
-			// Mock Assertion
-			mockSender.AssertExpectations(t)
 		})
 	}
 }
