@@ -48,7 +48,7 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 	if customSender != nil {
 		sender = customSender
 	} else {
-		sender = mocks.NewMockNotificationSender()
+		sender = mocks.NewMockNotificationSender(t)
 	}
 
 	// Default Health check expectation for mock sender if it's the mock
@@ -66,14 +66,16 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 	service := NewService(appConfig, sender, buildInfo)
 
 	// 5. Context 및 WaitGroup 구성
-	ctx, cancel := context.WithCancel(context.Background())
+	// serviceStopCtx는 부모가 취소할 수 있는 컨텍스트입니다.
+	serviceStopCtx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 
-	// 6. 리소스 정리
+	// 6. 리소스 정리 (Cleanup)
 	t.Cleanup(func() {
-		cancel() // 1차: Context 취소로 서비스 종료 시그널 전송
+		// 명시적으로 컨텍스트를 취소하여 진행 중인 테스트 고루틴들에게 종료 신호를 보냅니다.
+		cancel()
 
-		// 2차: 고루틴 종료 대기 (타임아웃 적용)
+		// 서비스 종료 대기 (타임아웃 적용)
 		done := make(chan struct{})
 		go func() {
 			wg.Wait()
@@ -82,14 +84,14 @@ func setupServiceHelper(t *testing.T, customSender contract.NotificationSender) 
 
 		select {
 		case <-done:
-			// 정상 종료
+			// 정상적으로 모든 고루틴이 종료됨
 		case <-time.After(3 * time.Second):
-			// 고루틴 누수 가능성 경고 (테스트 실패로 처리하지 않음)
+			// 아직 종료되지 않은 고루틴이 있음 (누수 가능성 경고)
 			t.Logf("WARN: Service WaitGroup did not finish in time (Port: %d)", port)
 		}
 	})
 
-	return service, appConfig, wg, ctx, cancel
+	return service, appConfig, wg, serviceStopCtx, cancel
 }
 
 // mockSenderWithoutHealth HealthChecker 인터페이스를 구현하지 않는 Mock Sender
@@ -118,7 +120,7 @@ func TestNewService_Success(t *testing.T) {
 func TestNewService_Validation(t *testing.T) {
 	t.Parallel()
 
-	validSender := mocks.NewMockNotificationSender()
+	validSender := mocks.NewMockNotificationSender(t)
 	invalidSender := &mockSenderWithoutHealth{}
 	validConfig := &config.AppConfig{}
 	buildInfo := version.Info{}
@@ -383,6 +385,28 @@ func TestService_Start_Concurrency(t *testing.T) {
 // Error Handling Tests
 // =============================================================================
 
+// TestService_handleServerError_ContextPropagation verifies that handling server errors
+// properly respects and propagates the given context (serviceStopCtx).
+func TestService_handleServerError_ContextPropagation(t *testing.T) {
+	t.Parallel()
+
+	service, _, _, ctx, _ := setupServiceHelper(t, nil)
+	mockSender := service.notificationSender.(*mocks.MockNotificationSender)
+
+	expectedErr := assert.AnError
+
+	// Expectation: context passed to Notify must be the same as passed to handleServerError
+	mockSender.On("Notify", ctx, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred && strings.Contains(n.Message, expectedErr.Error())
+	})).Return(nil)
+
+	// Act
+	service.handleServerError(ctx, expectedErr)
+
+	// Assert
+	mockSender.AssertExpectations(t)
+}
+
 func TestService_handleServerError(t *testing.T) {
 	t.Parallel()
 
@@ -401,7 +425,7 @@ func TestService_handleServerError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// 각각 독립된 Mock 필요
-			service, _, _, _, _ := setupServiceHelper(t, nil)
+			service, _, _, ctx, _ := setupServiceHelper(t, nil)
 			mockSender := service.notificationSender.(*mocks.MockNotificationSender)
 
 			if tt.expectNotify {
@@ -412,7 +436,8 @@ func TestService_handleServerError(t *testing.T) {
 				})).Return(nil)
 			}
 
-			service.handleServerError(tt.inputErr)
+			// Use the context from setuphelper
+			service.handleServerError(ctx, tt.inputErr)
 
 			// 1. 알림 전송 여부 확인
 			if tt.expectNotify {

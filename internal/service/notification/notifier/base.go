@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -9,16 +10,16 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
-// Notification 알림 발송 요청 정보를 담고 있는 데이터 구조체입니다.
+// notificationRequest 알림 발송 요청 정보를 담고 있는 내부 데이터 구조체입니다.
 //
 // Service.Notify 메서드를 통해 접수된 알림 요청은 이 구조체로 포장되어,
 // 내부 채널(notificationC)을 통해 비동기적으로 각 Notifier의 Sender 고루틴에게 전달됩니다.
 //
-// 이 구조체는 실제 알림 메시지뿐만 아니라, 해당 알림이 어떤 작업(Task)과 연관되었는지
-// 추적할 수 있는 컨텍스트 정보(TaskContext)를 함께 포함합니다.
-type Notification struct {
-	TaskContext contract.TaskContext
-	Message     string
+// Go 관례상 context.Context를 구조체에 저장하는 것은 지양되지만,
+// Worker Pool 패턴에서 채널을 통해 Context를 전달하기 위해 내부적으로만 사용하는 래퍼입니다.
+type notificationRequest struct {
+	Ctx          context.Context
+	Notification contract.Notification
 }
 
 // Base 모든 Notifier 구현체가 공통적으로 상속(임베딩)받아 사용하는 기본 구조체입니다.
@@ -44,7 +45,7 @@ type Base struct {
 
 	// notificationC 알림 발송 요청들을 순차적으로 처리하기 위해 버퍼링하는 내부 채널(Queue)입니다.
 	// 비동기 처리를 통해 요청자는 즉시 리턴받고, 발송자(Sender)는 자신의 속도에 맞춰 메시지를 가져갑니다.
-	notificationC chan *Notification
+	notificationC chan *notificationRequest
 
 	// enqueueTimeout 요청 큐(notificationC)가 가득 찼을 때, 요청을 바로 버리지 않고 기다려줄 최대 시간입니다.
 	// 이 시간 동안에도 빈 공간이 생기지 않으면, 시스템 보호를 위해 해당 요청은 드롭(Drop)됩니다.
@@ -60,15 +61,15 @@ func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueT
 
 		done: make(chan struct{}),
 
-		notificationC: make(chan *Notification, bufferSize),
+		notificationC: make(chan *notificationRequest, bufferSize),
 
 		enqueueTimeout: enqueueTimeout,
 	}
 }
 
 // ID Notifier 인스턴스의 고유 식별자(ID)를 반환합니다.
-func (n *Base) ID() contract.NotifierID {
-	return n.id
+func (b *Base) ID() contract.NotifierID {
+	return b.id
 }
 
 // Send 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
@@ -76,18 +77,22 @@ func (n *Base) ID() contract.NotifierID {
 // 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
 //
 // 파라미터:
-//   - taskCtx: 알림과 연관된 작업 컨텍스트 (TaskID, Title 등)
-//   - message: 전송할 알림 메시지 본문
+//   - ctx: 요청의 생명주기를 관리하는 컨텍스트
+//   - notification: 전송할 알림 데이터
 //
 // 반환값:
 //   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
-func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
-	n.mu.RLock()
+func (b *Base) Send(ctx context.Context, notification contract.Notification) (err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	b.mu.RLock()
 
 	// 1. 종료 상태 확인
 	// 이미 Close()가 호출되었거나 채널이 초기화되지 않았다면 요청을 거부합니다.
-	if n.closed || n.notificationC == nil {
-		n.mu.RUnlock()
+	if b.closed || b.notificationC == nil {
+		b.mu.RUnlock()
 		return ErrClosed
 	}
 
@@ -95,27 +100,25 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 	// 채널 전송은 블로킹될 수 있는 작업이므로, 락을 잡은 상태에서 수행하면 성능 병목이 됩니다.
 	// 따라서 필요한 멤버 변수들(notificationC, done, timeout)만 로컬 변수로 복사해두고,
 	// 락은 즉시 해제하여 다른 고루틴들이 상태를 조회하거나 변경할 수 있게 합니다.
-	done := n.done
-	notificationC := n.notificationC
-	enqueueTimeout := n.enqueueTimeout
+	done := b.done
+	notificationC := b.notificationC
+	enqueueTimeout := b.enqueueTimeout
 
-	n.mu.RUnlock()
+	b.mu.RUnlock()
 
 	// 3. 패닉 복구
 	// 혹시 모를 내부 로직 오류나 채널 이슈로 패닉이 발생해도, 서비스 전체가 죽지 않도록 방어합니다.
 	defer func() {
 		if r := recover(); r != nil {
 			fields := applog.Fields{
-				"notifier_id": n.ID(),
+				"notifier_id": b.ID(),
 				"panic":       r,
 			}
-			if taskCtx != nil {
-				if tid := taskCtx.GetTaskID(); tid != "" {
-					fields["task_id"] = tid
-				}
-				if title := taskCtx.GetTitle(); title != "" {
-					fields["task_title"] = title
-				}
+			if notification.TaskID != "" {
+				fields["task_id"] = notification.TaskID
+			}
+			if notification.Title != "" {
+				fields["task_title"] = notification.Title
 			}
 			applog.WithComponentAndFields(component, fields).Error("Notifier > 알림 전송 처리 중 예기치 않은 패닉이 발생했으나, 서비스 유지를 위해 안전하게 복구되었습니다")
 
@@ -125,9 +128,9 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 	}()
 
 	// 4. 요청 객체 생성
-	req := &Notification{
-		TaskContext: taskCtx,
-		Message:     message,
+	req := &notificationRequest{
+		Ctx:          ctx,
+		Notification: notification,
 	}
 
 	// 5. 타이머 생성
@@ -146,15 +149,7 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 		}
 	}()
 
-	// 6. 작업 취소 감지 설정
-	// 전달받은 작업 컨텍스트(taskCtx)가 있다면, 해당 작업이 취소되었는지 확인할 수 있도록 채널을 가져옵니다.
-	// 없다면(nil), 취소 감지 기능은 동작하지 않습니다.
-	var taskCtxDone <-chan struct{}
-	if taskCtx != nil {
-		taskCtxDone = taskCtx.Done()
-	}
-
-	// 7. 큐에 적재
+	// 6. 큐에 적재
 	select {
 	case notificationC <- req:
 		// 성공: 큐에 정상적으로 등록됨
@@ -165,24 +160,22 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 		// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
 		return ErrClosed
 
-	case <-taskCtxDone:
+	case <-ctx.Done():
 		// 실패: 요청자(Caller)의 작업이 취소됨
 		// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
-		return ErrContextCanceled
+		return ctx.Err()
 
 	case <-timer.C:
 		// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
 		// 시스템 보호를 위해 해당 요청을 드롭(Drop)하고 로그를 남깁니다.
 		fields := applog.Fields{
-			"notifier_id": n.ID(),
+			"notifier_id": b.ID(),
 		}
-		if taskCtx != nil {
-			if tid := taskCtx.GetTaskID(); tid != "" {
-				fields["task_id"] = tid
-			}
-			if title := taskCtx.GetTitle(); title != "" {
-				fields["task_title"] = title
-			}
+		if notification.TaskID != "" {
+			fields["task_id"] = notification.TaskID
+		}
+		if notification.Title != "" {
+			fields["task_title"] = notification.Title
 		}
 		applog.WithComponentAndFields(component, fields).Warn("알림 발송 대기열이 포화 상태에 도달하여, 시스템 보호를 위해 요청 처리를 건너뛰었습니다 (Queue Full)")
 
@@ -198,17 +191,17 @@ func (n *Base) Send(taskCtx contract.TaskContext, message string) (err error) {
 //
 // 참고: 내부 메시지 채널(notificationC)은 명시적으로 닫지 않습니다. 이는 다중 프로듀서(Multi-Producer) 환경에서
 // 채널 닫기에 의한 패닉을 방지하기 위함이며, 남은 메시지는 GC에 의해 수거되거나 Drain 로직에 의해 처리됩니다.
-func (n *Base) Close() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+func (b *Base) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	if !n.closed {
-		n.closed = true
+	if !b.closed {
+		b.closed = true
 
 		// 1. 종료 신호 전파
 		// done 채널을 닫음으로써, 이 채널을 구독하고 있는 모든 고루틴에 "시스템이 종료되었음"을 알립니다.
-		if n.done != nil {
-			close(n.done)
+		if b.done != nil {
+			close(b.done)
 		}
 
 		// 2. 데이터 채널(notificationC) 처리 전략
@@ -226,20 +219,20 @@ func (n *Base) Close() {
 //
 // 반환된 채널이 닫혔다면, 해당 Notifier가 Close() 호출에 의해 종료되었음을 의미합니다.
 // 주로 Select 구문 내에서 종료 시그널을 감지하여 고루틴을 안전하게 정리(Graceful Shutdown)하는 데 사용됩니다.
-func (n *Base) Done() <-chan struct{} {
-	return n.done
+func (b *Base) Done() <-chan struct{} {
+	return b.done
 }
 
 // NotificationC Notifier 내부에서 관리하는 '알림 요청 채널(읽기 전용)'을 반환합니다.
 //
 // 이 채널은 '발송자(Sender)'가 메시지를 하나씩 꺼내어 처리하기 위한 용도입니다.
 // 외부에서는 오직 '읽기(<-chan)'만 가능하므로, 임의로 채널을 닫거나 데이터를 보낼 수 없습니다.
-func (n *Base) NotificationC() <-chan *Notification {
-	return n.notificationC
+func (b *Base) NotificationC() <-chan *notificationRequest {
+	return b.notificationC
 }
 
 // SupportsHTML 알림 채널이 HTML 스타일의 메시지 포맷팅을 지원하는지 여부를 반환합니다.
 // true인 경우, 메시지 내용에 <b>, <i>, <a href="..."> 등의 태그를 사용할 수 있습니다.
-func (n *Base) SupportsHTML() bool {
-	return n.supportsHTML
+func (b *Base) SupportsHTML() bool {
+	return b.supportsHTML
 }

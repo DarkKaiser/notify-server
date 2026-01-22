@@ -23,8 +23,8 @@ func setupTestEcho() *echo.Echo {
 	return echo.New()
 }
 
-func setupTestHandler() *systemhandler.Handler {
-	mockSender := mocks.NewMockNotificationSender()
+func setupTestHandler(t *testing.T) *systemhandler.Handler {
+	mockSender := mocks.NewMockNotificationSender(t)
 	buildInfo := version.Info{
 		Version:     "test-version",
 		BuildDate:   "2025-12-05",
@@ -42,7 +42,7 @@ func setupTestHandler() *systemhandler.Handler {
 func TestRegisterRoutes(t *testing.T) {
 	// Given
 	e := setupTestEcho()
-	h := setupTestHandler()
+	h := setupTestHandler(t)
 
 	// When
 	RegisterRoutes(e, h)

@@ -5,297 +5,204 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
-
-	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/constants"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// TODO 미완료
-
-// component Notification 서비스의 텔레그램 Notifier 로깅용 컴포넌트 이름
-const component = "notification.notifier.telegram"
-
-const (
-	// 텔레그램 메시지 최대 길이 제한 (API Spec)
-	// 한 번에 전송 가능한 최대 4096자 중 메타데이터 여분을 고려하여 3900자로 제한합니다.
-	telegramMessageMaxLength = 3900
-)
-
-var _ notifier.Notifier = (*telegramNotifier)(nil) // 인터페이스 준수 확인
-
-// botClient 텔레그램 봇 API 인터페이스
-type botClient interface {
-	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
-	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
-	StopReceivingUpdates()
-	GetSelf() tgbotapi.User
-}
-
-// defaultBotClient tgbotapi.BotAPI 구현체를 래핑한 구조체 (botClient 인터페이스 구현)
-type defaultBotClient struct {
-	*tgbotapi.BotAPI
-}
-
-// GetSelf 텔레그램 봇의 정보를 반환합니다.
-func (c *defaultBotClient) GetSelf() tgbotapi.User {
-	return c.Self
-}
-
-// telegramNotifier 텔레그램 알림 발송 및 봇 상호작용을 처리하는 Notifier
-type telegramNotifier struct {
-	notifier.Base
-
-	chatID int64
-
-	// botClient 텔레그램 봇 API 클라이언트 (테스트 시 Mocking 가능)
-	botClient botClient
-
-	executor contract.TaskExecutor
-
-	retryDelay time.Duration
-	limiter    *rate.Limiter
-
-	// commandSemaphore 봇 명령어 처리 핸들러의 동시 실행 수를 제한하기 위한 세마포어
-	commandSemaphore chan struct{}
-
-	botCommands []botCommand
-
-	// botCommandsByName command 문자열로 빠르게 조회하기 위한 Map (O(1) 조회)
-	botCommandsByName map[string]botCommand
-
-	// botCommandsByTask "taskID" -> "commandID" -> command 구조로 조회 (키 충돌 방지)
-	botCommandsByTask map[contract.TaskID]map[contract.TaskCommandID]botCommand
-}
-
-// Run 메시지 폴링 및 알림 처리 메인 루프
-func (n *telegramNotifier) Run(ctx context.Context) {
-	// 텔레그램 메시지 수신 설정
+// Run 텔레그램 봇의 메인 실행 루프를 시작합니다.
+//
+// 아키텍처 개요:
+//
+// 이 메서드는 Sender/Receiver 패턴을 사용하여 두 가지 핵심 작업을 병렬로 수행합니다:
+//
+//  1. Receiver (메인 고루틴):
+//     - 텔레그램 서버로부터 봇 명령어를 Long Polling 방식으로 수신합니다
+//     - 수신한 명령어를 별도 고루틴으로 디스패치하여 Non-blocking 처리합니다
+//     - 세마포어로 동시 실행 수를 제한하여 과부하를 방지합니다 (Backpressure)
+//
+//  2. Sender (별도 고루틴):
+//     - 내부 시스템으로부터 알림 발송 요청을 채널로 수신합니다
+//     - 텔레그램 API를 호출하여 실제 메시지를 전송합니다
+//     - Rate Limit, 재시도, HTML 파싱 오류 등을 처리합니다
+//
+// 설계 의도 (Decoupling):
+//
+//	Receiver와 Sender를 분리한 이유는 상호 간섭을 방지하기 위함입니다.
+//	만약 알림 발송이 느려지거나 Rate Limit에 걸려도, 봇 명령어 수신에는
+//	전혀 영향을 주지 않습니다. 각 작업의 생명주기를 독립적으로 관리할 수 있어
+//	유지보수성과 안정성이 향상됩니다.
+//
+// 종료 처리 (Graceful Shutdown):
+//
+//   - serviceStopCtx 취소 또는 updateC 채널 닫힘 시 정상 종료됩니다
+//   - defer cleanup()을 통해 모든 고루틴이 안전하게 종료될 때까지 대기합니다
+//   - Sender는 종료 시 큐에 남은 메시지를 최대 60초간 처리합니다 (Drain)
+//   - 타임아웃 안전장치로 좀비 고루틴 발생을 방지합니다
+func (n *telegramNotifier) Run(serviceStopCtx context.Context) {
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 1단계: 텔레그램 Long Polling 설정
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Short Polling(짧은 주기로 반복 요청)과 달리, Long Polling은 서버에 연결을 열어두고
+	// 새로운 메시지가 도착할 때까지 대기하는 방식입니다.
+	//
+	// 장점:
+	//   - 네트워크 대역폭 절약: 불필요한 반복 요청을 하지 않습니다
+	//   - 빠른 반응 속도: 메시지 도착 즉시 수신할 수 있습니다
+	//   - 서버 부하 감소: API 호출 횟수가 크게 줄어듭니다
 	config := tgbotapi.NewUpdate(0)
-	config.Timeout = 60 // Long Polling 타임아웃 60초 설정
+	config.Timeout = 60 // 60초 동안 대기 (Telegram API 권장값)
 
-	// 메시지 수신 채널 획득
-	updateC := n.botClient.GetUpdatesChan(config)
+	// 업데이트 수신 채널 획득
+	// 주의: GetUpdatesChan()은 내부적으로 별도 고루틴을 생성하여 지속적으로 업데이트를 가져옵니다.
+	updateC := n.client.GetUpdatesChan(config)
 
 	applog.WithComponentAndFields(component, applog.Fields{
 		"notifier_id":  n.ID(),
-		"bot_username": n.botClient.GetSelf().UserName,
+		"bot_username": n.client.GetSelf().UserName,
 		"chat_id":      n.chatID,
-	}).Debug(constants.LogMsgTelegramStarted)
+	}).Debug("텔레그램 봇 서비스 시작됨: Long Polling 활성화, Sender/Receiver 고루틴 실행 중")
 
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 2단계: 고루틴 생명주기 관리 준비
+	// ─────────────────────────────────────────────────────────────────────────────
+	// WaitGroup을 사용하여 다음 고루틴들의 종료를 추적합니다:
+	//   - Sender 고루틴 (알림 발송)
+	//   - 명령어 처리 고루틴들 (봇 명령어 실행)
+	//     → Receiver(receiveAndDispatchCommands) 내부에서 메시지 수신 시마다 동적 생성
+	//
+	// 이를 통해 cleanup() 함수에서 모든 고루틴이 안전하게 종료될 때까지 대기하여
+	// Graceful Shutdown을 보장합니다 (리소스 누수 방지).
 	var wg sync.WaitGroup
 
-	// 1. 알림 발송을 전담하는 고루틴 시작 (Sender)
-	// 이를 통해 알림 전송 지연이 발생하더라도 봇 명령어 수신(Receiver)은 영향을 받지 않습니다.
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 3단계: Sender 고루틴 시작 (알림 발송 전담 워커)
+	// ─────────────────────────────────────────────────────────────────────────────
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		n.runSender(ctx)
+		n.sendNotifications(serviceStopCtx)
 	}()
 
-	// 중요: Run 메서드가 어떤 이유로든(정상 종료, 채널 닫힘, 패닉) 종료될 때
-	// Sender 고루틴도 함께 종료하고 대기해야 합니다.
-	defer func() {
-		// 텔레그램 메시지 수신을 중지하고 관련 리소스를 정리합니다.
-		if n.botClient != nil {
-			n.botClient.StopReceivingUpdates()
-		}
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 4단계: 종료 시 리소스 정리 예약 (defer)
+	// ─────────────────────────────────────────────────────────────────────────────
+	defer n.cleanup(&wg)
 
-		// Notifier Close를 호출하여 Done 채널을 닫아 runSender를 깨웁니다.
-		n.Close()
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 5단계: 메인 루프 시작 (Receiver - 봇 명령어 수신 및 처리)
+	// ─────────────────────────────────────────────────────────────────────────────
+	n.receiveAndDispatchCommands(serviceStopCtx, updateC, &wg)
+}
 
-		// Sender 고루틴이 종료될 때까지 대기 (타임아웃 적용)
-		// 비정상 상황에서 무한 대기를 방지하여 서비스 종료 시 Hang을 막습니다.
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
+// cleanup Run 메서드 종료 시 모든 리소스를 안전하게 정리합니다.
+//
+// 이 함수는 defer로 호출되어 Run 함수가 종료될 때(정상/비정상 모두) 반드시 실행됩니다.
+// Graceful Shutdown을 보장하기 위해 다음 순서를 엄격히 준수해야 합니다:
+//
+// 정리 순서 (중요: 순서 변경 시 리소스 누수나 좀비 고루틴 발생 가능):
+//
+//  1. 신규 메시지 수신 중단 (StopReceivingUpdates)
+//     → 새로운 봇 명령어가 들어오지 않도록 Long Polling을 먼저 중단합니다
+//
+//  2. Notifier 내부 상태 종료 (Close)
+//     → Sender 고루틴에게 종료 신호를 보내 Drain 프로세스를 시작합니다
+//
+//  3. 활성 고루틴 종료 대기 (waitForGoroutines)
+//     → 모든 고루틴이 작업을 완료하고 종료될 때까지 대기합니다 (타임아웃 적용)
+//
+//  4. 리소스 해제 (client = nil)
+//     → 모든 고루틴이 종료된 후 안전하게 클라이언트 참조를 제거합니다
+func (n *telegramNotifier) cleanup(wg *sync.WaitGroup) {
+	// ─────────────────────────────────────────────────────────────────────────────
+	// A. 신규 메시지 수신 중단
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 텔레그램 서버로부터 더 이상 새로운 업데이트를 받지 않도록 Long Polling을 중단합니다.
+	// 이를 통해 새로운 봇 명령어가 들어오는 것을 차단하여 종료 프로세스를 시작합니다.
+	if n.client != nil {
+		n.client.StopReceivingUpdates()
+	}
 
-		shutdownTimeout := constants.TelegramShutdownTimeout + 5*time.Second
-		select {
-		case <-done:
-			// 정상 종료
-			applog.WithComponentAndFields(component, applog.Fields{
-				"notifier_id": n.ID(),
-				"chat_id":     n.chatID,
-			}).Debug(constants.LogMsgTelegramSenderStoppedNormal)
-		case <-time.After(shutdownTimeout):
-			// 타임아웃 발생 - 강제 종료
-			applog.WithComponentAndFields(component, applog.Fields{
-				"notifier_id": n.ID(),
-				"chat_id":     n.chatID,
-				"timeout":     shutdownTimeout,
-			}).Error(constants.LogMsgTelegramSenderTimeout)
-		}
+	// ─────────────────────────────────────────────────────────────────────────────
+	// B. Notifier 내부 상태 종료
+	// ─────────────────────────────────────────────────────────────────────────────
+	// n.Done 채널을 닫아 Sender 고루틴에게 "종료해라"라는 신호를 보냅니다.
+	// Sender는 이 신호를 받으면 큐에 남은 메시지를 처리(Drain)한 후 종료합니다.
+	n.Close()
 
-		n.botClient = nil
+	// ─────────────────────────────────────────────────────────────────────────────
+	// C. 활성 고루틴 종료 대기 (Graceful Shutdown)
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Sender 고루틴과 모든 명령어 처리 고루틴이 안전하게 종료될 때까지 대기합니다.
+	// 타임아웃(65초)을 적용하여 무한 대기를 방지하고 좀비 고루틴 발생을 막습니다.
+	n.waitForGoroutines(wg)
 
+	// ─────────────────────────────────────────────────────────────────────────────
+	// D. 리소스 해제
+	// ─────────────────────────────────────────────────────────────────────────────
+	// 모든 고루틴이 종료된 후 텔레그램 클라이언트 참조를 제거하여 메모리 누수를 방지합니다.
+	n.client = nil
+
+	applog.WithComponentAndFields(component, applog.Fields{
+		"notifier_id": n.ID(),
+		"chat_id":     n.chatID,
+	}).Debug("텔레그램 봇 서비스 종료됨: 모든 고루틴 정리 완료")
+}
+
+// waitForGoroutines 모든 활성 고루틴이 종료될 때까지 대기합니다.
+//
+// 이 함수는 cleanup 프로세스의 핵심으로, Sender 고루틴과 모든 명령어 처리 고루틴이
+// 안전하게 작업을 완료하고 종료될 때까지 기다립니다.
+//
+// 타임아웃 전략:
+//
+//   - Drain 타임아웃(60초) + 여유분(5초) = 총 65초를 허용합니다
+//   - Sender는 종료 시그널을 받으면 큐에 남은 메시지를 최대 60초간 처리합니다
+//   - 5초 여유분은 명령어 처리 고루틴들이 정리될 시간을 제공합니다
+//
+// 타임아웃이 필요한 이유:
+//
+//   - 네트워크 문제나 버그로 인해 고루틴이 무한 대기할 수 있습니다
+//   - 타임아웃 없이는 서비스 종료가 영원히 블로킹될 수 있습니다
+//   - 운영 환경에서 빠른 재시작이 필요할 때 무한 대기는 치명적입니다
+func (n *telegramNotifier) waitForGoroutines(wg *sync.WaitGroup) {
+	// Sender 고루틴과 실행 중인 모든 명령어 처리 고루틴이 작업을 마칠 때까지 기다립니다.
+	goroutinesDone := make(chan struct{})
+	go func() {
+		wg.Wait()             // 모든 고루틴이 wg.Done()을 호출할 때까지 대기
+		close(goroutinesDone) // 완료 시그널 전송
+	}()
+
+	// Drain 타임아웃(60초) + 여유분(5초) = 총 65초
+	// Sender의 Drain 프로세스가 최대 60초 소요될 수 있으므로, 충분한 시간을 제공합니다.
+	shutdownWaitTimeout := shutdownTimeout + (5 * time.Second)
+	select {
+	case <-goroutinesDone:
+		// ─────────────────────────────────────────────────────────────────────
+		// Case A: 정상 종료 (모든 고루틴이 제한 시간 내에 종료됨)
+		// ─────────────────────────────────────────────────────────────────────
 		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
-		}).Debug(constants.LogMsgTelegramStopped)
-	}()
-
-	// 2. 텔레그램 메시지 수신 및 명령어 처리 (Receiver)
-	// 메인 루프에서는 봇 업데이트만 처리합니다.
-	for {
-		select {
-		// 1. 텔레그램 봇 서버로부터 새로운 메시지 수신
-		case update, ok := <-updateC:
-			if !ok {
-				applog.WithComponentAndFields(component, applog.Fields{
-					"notifier_id": n.ID(),
-					"chat_id":     n.chatID,
-				}).Error(constants.LogMsgTelegramUpdateChanClosed)
-				return
-			}
-
-			// 메시지가 없는 업데이트는 무시
-			if update.Message == nil {
-				continue
-			}
-
-			// 등록되지 않은 ChatID인 경우는 무시한다.
-			if update.Message.Chat.ID != n.chatID {
-				continue
-			}
-
-			// 수신된 명령어를 처리 핸들러로 위임
-			// 명령어 처리 중 네트워크 지연(예: 메시지 발송)이 발생해도
-			// Receiver 루프가 차단되지 않도록 고루틴으로 실행합니다.
-			//
-			// Goroutine Leak 방지: 세마포어를 통해 동시 실행 고루틴 수를 제한합니다.
-			select {
-			case n.commandSemaphore <- struct{}{}:
-				// Notifier 고루틴도 WaitGroup에 추가하여 종료 시 안전하게 대기
-				wg.Add(1)
-				go func(msg *tgbotapi.Message) {
-					defer wg.Done()
-					defer func() { <-n.commandSemaphore }()
-					n.dispatchCommand(ctx, msg)
-				}(update.Message)
-			case <-ctx.Done():
-				// 컨텍스트 종료 시 루프 탈출
-				return
-			default:
-				// 세마포어가 가득 찬 경우 (Backpressure)
-				// 과도한 부하 상황이므로 로그를 남기고 메시지를 처리하지 않음 (Drop)
-				// 사용자가 다시 시도하도록 유도하거나, 단순히 무시하여 서버 안정성을 확보함.
-				applog.WithComponentAndFields(component, applog.Fields{
-					"notifier_id": n.ID(),
-					"chat_id":     n.chatID,
-				}).Warn(constants.LogMsgTelegramCommandOverload)
-			}
-
-		case <-ctx.Done():
-			// loop 탈출 -> defer 구문 실행 -> 정리
-			return
-		}
+		}).Debug("Graceful Shutdown 완료: 모든 고루틴 정상 종료됨")
+	case <-time.After(shutdownWaitTimeout):
+		// ─────────────────────────────────────────────────────────────────────
+		// Case B: 타임아웃 발생 (좀비 고루틴 가능성)
+		// ─────────────────────────────────────────────────────────────────────
+		// 일부 고루틴이 아직 실행 중일 수 있지만, 무한 대기를 방지하기 위해
+		// 서비스 종료를 강제로 진행합니다. 좀비 고루틴이 남을 수 있으나,
+		// 프로세스 종료 시 OS가 정리합니다.
+		applog.WithComponentAndFields(component, applog.Fields{
+			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
+			"timeout":     shutdownWaitTimeout,
+		}).Error("Graceful Shutdown 타임아웃: 일부 고루틴 강제 종료됨, 좀비 고루틴 발생 가능")
 	}
 }
 
-// runSender 알림 발송 요청을 처리하는 작업 루프 (Worker)
-func (n *telegramNotifier) runSender(ctx context.Context) {
-	// Goroutine 최상위 Panic Recovery
-	// 루프 자체에서 예기치 않은 패닉이 발생해도 로그를 남기고 종료하여, 문제 원인을 파악할 수 있게 합니다.
-	defer func() {
-		if r := recover(); r != nil {
-			applog.WithComponentAndFields(component, applog.Fields{
-				"notifier_id": n.ID(),
-				"panic":       r,
-			}).Error(constants.LogMsgTelegramSenderPanicRecovered)
-		}
-	}()
-
-	for {
-		select {
-		// 내부 시스템으로부터 발송할 알림 요청 수신
-		case notification, ok := <-n.NotificationC():
-			if !ok {
-				return // 채널이 닫히면 종료
-			}
-
-			// 안전하게 메시지 처리 (Panic Recovery)
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						applog.WithComponentAndFields(component, applog.Fields{
-							"notifier_id": n.ID(),
-							"panic":       r,
-						}).Error(constants.LogMsgTelegramNotifyPanicRecovered)
-					}
-				}()
-
-				// 메시지 전송 시 독립적인 컨텍스트 사용 (Graceful Shutdown 시 In-Flight 메시지 유실 방지)
-				// 메인 ctx가 취소되더라도, 이미 꺼낸 메시지는 끝까지 전송을 시도해야 합니다.
-				// 중요: 네트워크 전송 전용 타임아웃(30s)을 사용하여 Rate Limit 대기 등으로 인한 유실 방지
-				sendCtx, cancel := context.WithTimeout(context.Background(), constants.TelegramSendTimeout)
-				defer cancel()
-
-				n.handleNotifyRequest(sendCtx, notification)
-			}()
-
-			// 서비스 종료 시그널 수신
-		case <-ctx.Done():
-			// Do nothing here, wait for Done() signal or Drain logic below
-
-		// Notifier 자체 종료 시그널 수신 (Run 루프가 종료될 때)
-		// Receiver가 죽으면 Sender도 같이 죽어야 함 (Zombie 방지)
-		case <-n.Done():
-			// 아래 Drain 로직으로 진입
-		}
-
-		// 종료 조건 확인: Context가 취소되었거나, Notifier가 닫혔을 때
-		if ctx.Err() != nil || n.isClosed() {
-			// 컨텍스트 종료 시 남은 요청 처리 (Drain)
-			// Drain 시에는 이미 취소된(Expired) Context를 사용하면 안 되므로,
-			// 새로운 Background Context나 Drain 전용 타임아웃 컨텍스트를 사용해야 합니다.
-			// 무한 대기(Hang)를 방지하기 위해 60초의 타임아웃을 설정합니다.
-			// (버퍼 1000개, 초당 20~30개 처리 가정 시 최소 30~50초 소요됨)
-			drainCtx, cancel := context.WithTimeout(context.Background(), constants.TelegramShutdownTimeout)
-			defer cancel()
-
-			// 큐에 남은 미처리 요청을 비동기적으로 처리 (Non-blocking Drain)
-			// notificationC가 닫히지 않으므로 range를 사용할 수 없음.
-		Loop:
-			for {
-				select {
-				case notification := <-n.NotificationC():
-					// 타임아웃 체크를 메시지 처리 전에 수행하여 타임아웃 발생 시 즉시 중단
-					if drainCtx.Err() != nil {
-						applog.WithComponentAndFields(component, applog.Fields{
-							"notifier_id": n.ID(),
-						}).Warn(constants.LogMsgTelegramDrainTimeout)
-						break Loop
-					}
-
-					// Drain 중에도 Panic Recovery가 필요합니다.
-					func() {
-						defer func() {
-							if r := recover(); r != nil {
-								applog.WithComponentAndFields(component, applog.Fields{
-									"notifier_id": n.ID(),
-									"panic":       r,
-								}).Error(constants.LogMsgTelegramDrainPanicRecovered)
-							}
-						}()
-						n.handleNotifyRequest(drainCtx, notification)
-					}()
-				default:
-					// 채널이 비었으면 루프 탈출
-					break Loop
-				}
-			}
-			return
-		}
-	}
-}
-
-// isClosed Notifier가 닫혔는지 확인하는 헬퍼 메서드 (Lock-free check using Done channel)
+// isClosed 텔레그램 Notifier가 현재 종료된 상태인지 확인합니다.
+//
+// 이 메서드는 notifier.Base의 Done() 채널을 Non-blocking Select 패턴으로 검사하여,
+// 채널이 닫혔는지(종료 시그널 발생) 여부를 즉시 반환합니다.
 func (n *telegramNotifier) isClosed() bool {
 	select {
 	case <-n.Done():

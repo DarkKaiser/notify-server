@@ -41,7 +41,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 		},
 	}
 	auth := apiauth.NewAuthenticator(appConfig.NotifyAPI.Applications)
-	mockSender := mocks.NewMockNotificationSender()
+	mockSender := mocks.NewMockNotificationSender(t)
 	h := handler.New(mockSender)
 
 	// Register
@@ -234,7 +234,7 @@ func TestRegisterRoutes_Wiring(t *testing.T) {
 // TestRegisterRoutes_Validation은 필수 의존성이 주입되지 않았을 때의 패닉 상황을 검증합니다.
 func TestRegisterRoutes_Validation(t *testing.T) {
 	e := echo.New()
-	mockSender := mocks.NewMockNotificationSender()
+	mockSender := mocks.NewMockNotificationSender(t)
 	h := handler.New(mockSender)
 	auth := apiauth.NewAuthenticator([]config.ApplicationConfig{})
 

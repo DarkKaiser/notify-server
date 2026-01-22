@@ -48,7 +48,7 @@ func TestDefaultBotClient_GetSelf(t *testing.T) {
 		Self: expectedUser,
 	}
 
-	client := &defaultBotClient{BotAPI: mockBotAPI}
+	client := &tgClient{BotAPI: mockBotAPI}
 
 	// when
 	user := client.GetSelf()
@@ -249,7 +249,7 @@ func TestNewNotifierWithClient_Success(t *testing.T) {
 			name:      "기본 설정: 필수 필드 및 도움말 명령어가 초기화되어야 한다",
 			appConfig: &config.AppConfig{},
 			validateStructure: func(t *testing.T, n *telegramNotifier) {
-				assert.NotNil(t, n.limiter, "Rate Limiter가 초기화되어야 함")
+				assert.NotNil(t, n.rateLimiter, "Rate Limiter가 초기화되어야 함")
 				assert.NotNil(t, n.commandSemaphore, "세마포어가 초기화되어야 함")
 				assert.Equal(t, defaultRetryDelay, n.retryDelay)
 				assert.Equal(t, notifierBufferSize, cap(n.NotificationC()))
@@ -339,7 +339,7 @@ func TestNewNotifierWithClient_Success(t *testing.T) {
 			notifier := n.(*telegramNotifier)
 
 			// 공통 검증: 봇 클라이언트 주입
-			assert.Equal(t, mockBot, notifier.botClient)
+			assert.Equal(t, mockBot, notifier.client)
 			assert.Equal(t, int64(12345), notifier.chatID)
 
 			// 케이스별 상세 검증

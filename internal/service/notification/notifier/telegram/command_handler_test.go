@@ -21,13 +21,13 @@ import (
 // =============================================================================
 
 // TestTelegramNotifier_DispatchCommand provides comprehensive coverage for command handling.
-// It uses a table-driven approach to test valid commands, error scenarios, and edge cases.
+// It uses a table-driven approach to test valid commands, error scenarios, context timeouts, and edge cases.
 func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 	// Common AppConfig for tests
 	appConfig := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID: "task1",
+				ID: "taskone",
 				Commands: []config.CommandConfig{
 					{
 						ID:          "run",
@@ -73,20 +73,16 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 		{
 			name: "Task Run Command",
 			commandMessage: &tgbotapi.Message{
-				Text: "/task_1_run", // Mapped to task1:run by logic (simulated lookup) or direct config?
-				// Note: command.go uses lookupCommand which checks botCommandsByName.
-				// We need to ensure the notifier is initialized with these commands.
-				// The setupTelegramTeast initializes notifier with appConfig.
-				// However, config parsing logic creates the name.
-				// Assuming "task1" + "run" -> "task1_run" (or similar).
-				// Let's assume the factory logic creates "task1_run".
+				Text: "/taskone_run", // taskone + run -> taskone_run
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
 			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				me.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
-					return req.TaskID == "task1" && req.CommandID == "run"
+				// Task submission uses the parent context (serviceStopCtx), so we don't check for short timeout deadline here
+				// but verify the Submit call itself.
+				me.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+					return req.TaskID == "taskone" && req.CommandID == "run"
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil).Once()
@@ -110,8 +106,42 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 		},
 
 		// ---------------------------------------------------------------------
-		// Error Handling Cases
+		// Invalid Input & Routing Cases
 		// ---------------------------------------------------------------------
+		{
+			name: "Empty Message",
+			commandMessage: &tgbotapi.Message{
+				Text: "", // Empty text
+				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
+			},
+			expectAction: true,
+			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+				wg.Add(1)
+				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.Contains(msg.Text, "등록되지 않은")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil).Once()
+			},
+		},
+		{
+			name: "No Prefix Command",
+			commandMessage: &tgbotapi.Message{
+				Text: "hello", // No '/' prefix
+				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
+			},
+			expectAction: true,
+			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+				wg.Add(1)
+				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+					msg, ok := c.(tgbotapi.MessageConfig)
+					return ok && strings.Contains(msg.Text, "등록되지 않은")
+				})).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(tgbotapi.Message{}, nil).Once()
+			},
+		},
 		{
 			name: "Unknown Command",
 			commandMessage: &tgbotapi.Message{
@@ -121,10 +151,11 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 			expectAction: true,
 			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
+				// Verify Send is called
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					// Actual msg: "'/unknown_cmd'는 등록되지 않은 명령어입니다."
-					return ok && strings.Contains(msg.Text, "등록되지 않은")
+					// Actual msg: "입력하신 명령어 '/unknown_cmd'는 등록되지 않은 명령어입니다."
+					return ok && strings.Contains(msg.Text, "등록되지 않은 명령어")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil).Once()
@@ -175,14 +206,10 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 			expectAction: true,
 			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				// Splits to ["cancel", ""]. Calls Cancel(""). Mock return error.
-				me.On("Cancel", contract.TaskInstanceID("")).Return(errors.New("invalid id")).Once()
-
-				// Expect failure notification
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					// Actual msg: "작업취소 요청이 실패하였습니다"
-					return ok && strings.Contains(msg.Text, "작업취소 요청이 실패")
+					// Actual msg: "입력하신 명령어 '/cancel_'는 올바른 형식이 아닙니다."
+					return ok && strings.Contains(msg.Text, "올바른 형식이 아닙니다")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil).Once()
@@ -195,20 +222,20 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 		{
 			name: "Task Submit Failed",
 			commandMessage: &tgbotapi.Message{
-				Text: "/task_1_run",
+				Text: "/taskone_run",
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
 			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Executor fails
-				me.On("Submit", mock.Anything).Return(errors.New("queue full")).Once()
+				me.On("Submit", mock.Anything, mock.Anything).Return(errors.New("queue full")).Once()
 
 				// Expect error notification to user
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					// Actual msg: "사용자가 요청한 작업의 실행 요청이 실패하였습니다."
-					return ok && strings.Contains(msg.Text, "실행 요청이 실패")
+					// Actual msg: "작업 실행 요청이 실패했습니다."
+					return ok && strings.Contains(msg.Text, "작업 실행 요청이 실패")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil).Once()
@@ -229,8 +256,8 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				// Expect error notification to user
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
-					// Actual msg: "작업취소 요청이 실패하였습니다.(ID:...)"
-					return ok && strings.Contains(msg.Text, "작업취소 요청이 실패")
+					// Actual msg: "작업 취소 요청이 실패했습니다."
+					return ok && strings.Contains(msg.Text, "작업 취소 요청이 실패")
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(tgbotapi.Message{}, nil).Once()
@@ -243,43 +270,19 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 		{
 			name: "Panic Recovery",
 			commandMessage: &tgbotapi.Message{
-				Text: "/panic_trigger", // Note: This requires a way to trigger panic.
-				// Since we can't easily inject code into dispatchCommand to panic *before* routing without code change,
-				// we simulate panic within a mock call if possible, or reliance on known behavior.
-				// dispatchCommand itself calls lookup or string ops.
-				// To test the *defer recover* inside dispatchCommand, we need a panic to happen *inside* the function.
-				// Best way: Trigger panic in one of the called methods (e.g., lookupCommand or replyUnknown).
-				// Let's use an unknown command but make MockBot.Send panic.
+				Text: "/panic_trigger", // Will cause panic inside mock verification
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
 			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
-				// We expect replyUnknown to be called.
-				// Make Send panic.
+				// We simulate a panic by mocking a call that panics.
+				// Since dispatchCommand calls replyUnknownCommand for "/panic_trigger",
+				// we mock Send to panic.
 				mb.On("Send", mock.Anything).Run(func(args mock.Arguments) {
 					wg.Done()
 					panic("simulated panic in command handler")
 				}).Return(tgbotapi.Message{}, nil).Once()
-
-				// The panic should be recovered in dispatchCommand.
-				// We need to ensure the test doesn't crash and we can verify recovery.
-				// Since dispatchCommand logs the panic, we assume it recovers.
-				// We wait for the panic action to complete (Send called).
-				// NOTE: wg.Done must happen even if panic occurs?
-				// The panic handler inside dispatchCommand does NOT signal the WaitGroup we passed in test setup/expectations.
-				// However, 'Run' in mock executes before return/panic? No, if we panic, we panic.
-				// We should ideally use a side-channel or ensure the test control simply doesn't hang.
-				// Here, relying on 'Send' being called matches 'expectAction'.
-				// But since it panics, we must ensure wg.Done is called.
-				// We can defer wg.Done in the Run block if we want, but better:
-				// The mock Run runs, then we panic.
-				// The test runner catches panic? No, dispatchCommand catches it.
-				// So processing continues? No, dispatchCommand returns (recover).
-				// Our waitForActionWithTimeout checks wg.
-				// So we must ensure wg.Done() is called.
-				// Ideally, we signal *before* panic.
-				// "wg.Done(); panic(...)"
 			},
 		},
 	}
@@ -293,28 +296,14 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 			notifier, mockBot, mockExecutor, updatesChan := setupTelegramTest(t, appConfig)
 			require.NotNil(t, notifier)
 
-			// Manually inject a known command for the "Task Run" test case if needed
-			// Since setupTelegramTest uses factory which reads appConfig,
-			// if appConfig has "task1" / "run", the factory should have created the command mapping.
-			// However, the exact command name depends on factory logic: likely "task1_run"
-			// (TaskID + "_" + CommandID is a common pattern, let's assume it's "task1_run" for now).
-			// If lookup fails, the test will look like "Unknown Command".
-
 			// Setup Expectations
 			var wgAction sync.WaitGroup
 			if tt.setupMocks != nil {
 				tt.setupMocks(mockBot, mockExecutor, &wgAction)
 			}
 
-			// Configure a specialized panic trigger for the "Panic Recovery" case
-			if tt.name == "Panic Recovery" {
-				// We override the setup to ensure wg.Done is called before panic
-				// The setupMocks above already defines the behavior:
-				// mb.On("Send", ...).Run(func() { wg.Done(); panic(...) })
-				// This ensures our test waitgroup is satisfied before the stack unwinds.
-			}
-
 			// Run Notifier
+			// IMPORTANT: We use a cancellable context to simulate service stop
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -330,8 +319,6 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 			if tt.expectAction {
 				waitForActionWithTimeout(t, &wgAction, testTelegramTimeout)
 			} else {
-				// If no action expected, give a short time to ensure nothing happens (negative test)
-				// But we usually verify "no method called" via mock assertions at the end.
 				time.Sleep(100 * time.Millisecond)
 			}
 

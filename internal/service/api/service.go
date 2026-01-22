@@ -134,7 +134,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 
 	// HTTP 서버 시작
 	httpServerDone := make(chan struct{})
-	go s.startHTTPServer(e, httpServerDone)
+	go s.startHTTPServer(serviceStopCtx, e, httpServerDone)
 
 	// Shutdown 대기
 	s.waitForShutdown(serviceStopCtx, e, httpServerDone)
@@ -175,16 +175,17 @@ func (s *Service) setupServer() *echo.Echo {
 
 // startHTTPServer HTTP/HTTPS 서버를 시작합니다.
 //
-// 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 done 채널을 닫아
+// 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 httpServerDone 채널을 닫아
 // 대기 중인 고루틴에 신호를 보냅니다.
 //
 // Parameters:
+//   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
-//   - done: 서버 종료 완료 신호 채널
+//   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널
 //
 // Note: 이 함수는 블로킹되며, 서버가 종료될 때까지 반환되지 않습니다.
-func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
-	defer close(done)
+func (s *Service) startHTTPServer(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
+	defer close(httpServerDone)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
 	applog.WithComponentAndFields(component, applog.Fields{
@@ -202,7 +203,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 		err = e.Start(fmt.Sprintf(":%d", port))
 	}
 
-	s.handleServerError(err)
+	s.handleServerError(serviceStopCtx, err)
 }
 
 // handleServerError HTTP 서버 시작 중 발생한 에러를 처리합니다.
@@ -211,7 +212,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 //   - nil: 처리하지 않음 (정상 종료)
 //   - http.ErrServerClosed: Info 레벨 로깅 (Graceful Shutdown)
 //   - 그 외: Error 레벨 로깅 + 텔레그램 알림 전송 (예상치 못한 에러)
-func (s *Service) handleServerError(err error) {
+func (s *Service) handleServerError(serviceStopCtx context.Context, err error) {
 	// nil: 정상 종료, 처리 불필요
 	if err == nil {
 		return
@@ -230,7 +231,7 @@ func (s *Service) handleServerError(err error) {
 		"error": err,
 	}).Error(message)
 
-	s.notificationSender.Notify(context.Background(), contract.NewErrorNotification(fmt.Sprintf("%s\r\n\r\n%s", message, err)))
+	s.notificationSender.Notify(serviceStopCtx, contract.NewErrorNotification(fmt.Sprintf("%s\r\n\r\n%s", message, err)))
 }
 
 // waitForShutdown 종료 신호를 대기하고 Graceful Shutdown을 수행합니다.
@@ -242,9 +243,9 @@ func (s *Service) handleServerError(err error) {
 //  4. 서비스 상태 정리 (running 플래그 초기화)
 //
 // Parameters:
-//   - serviceStopCtx: 종료 신호를 받기 위한 Context
+//   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
-//   - httpServerDone: HTTP 서버 종료 완료 신호 채널
+//   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널
 //
 // Note: 이 함수는 서비스가 완전히 종료될 때까지 블로킹됩니다.
 func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {

@@ -53,7 +53,7 @@ func TestFactory_CreateAll(t *testing.T) {
 		{
 			name: "Success: Single Creator",
 			creators: []notifier.Creator{
-				createMockCreator("n1"),
+				createMockCreator(t, "n1"),
 			},
 			expectError:       false,
 			expectedCount:     1,
@@ -62,8 +62,8 @@ func TestFactory_CreateAll(t *testing.T) {
 		{
 			name: "Success: Multiple Creators (Aggregation)",
 			creators: []notifier.Creator{
-				createMockCreator("n1"),
-				createMockCreator("n2", "n3"),
+				createMockCreator(t, "n1"),
+				createMockCreator(t, "n2", "n3"),
 			},
 			expectError:       false,
 			expectedCount:     3,
@@ -72,11 +72,11 @@ func TestFactory_CreateAll(t *testing.T) {
 		{
 			name: "Failure: Creator Returns Error (Fail Fast)",
 			creators: []notifier.Creator{
-				createMockCreator("n1"), // 성공
+				createMockCreator(t, "n1"), // 성공
 				notifier.CreatorFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 					return nil, errors.New("init failed") // 실패
 				}),
-				createMockCreator("n2"), // 실행되지 않아야 함
+				createMockCreator(t, "n2"), // 실행되지 않아야 함
 			},
 			expectError:    true,
 			expectedErrStr: "init failed",
@@ -84,7 +84,7 @@ func TestFactory_CreateAll(t *testing.T) {
 		{
 			name: "Robustness: Nil Creator Registration",
 			creators: []notifier.Creator{
-				createMockCreator("n1"),
+				createMockCreator(t, "n1"),
 				nil, // 무시되어야 함
 			},
 			expectError:       false,
@@ -159,11 +159,11 @@ func TestFactory_Order_Preservation(t *testing.T) {
 // =============================================================================
 
 // createMockCreator는 지정된 ID를 가진 MockNotifier들을 반환하는 Creator를 생성합니다.
-func createMockCreator(ids ...string) notifier.Creator {
+func createMockCreator(t *testing.T, ids ...string) notifier.Creator {
 	return notifier.CreatorFunc(func(_ *config.AppConfig, _ contract.TaskExecutor) ([]notifier.Notifier, error) {
 		var list []notifier.Notifier
 		for _, id := range ids {
-			list = append(list, notificationmocks.NewMockNotifier(contract.NotifierID(id)))
+			list = append(list, notificationmocks.NewMockNotifier(t, contract.NotifierID(id)))
 		}
 		return list, nil
 	})

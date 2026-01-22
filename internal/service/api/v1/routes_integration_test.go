@@ -99,7 +99,7 @@ func TestV1API_Success(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup Mock
-			mockSender := mocks.NewMockNotificationSender()
+			mockSender := mocks.NewMockNotificationSender(t)
 			// Default expectation for success
 			mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
 			h := handler.New(mockSender)
@@ -248,7 +248,7 @@ func TestV1API_Failures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock Setup
-			mockSender := mocks.NewMockNotificationSender()
+			mockSender := mocks.NewMockNotificationSender(t)
 			if tt.setupMock != nil {
 				tt.setupMock(mockSender)
 			}
@@ -297,7 +297,7 @@ func TestV1API_Failures(t *testing.T) {
 // TestV1API_ConcurrentRequests 동시 요청 처리 능력을 검증합니다.
 func TestV1API_ConcurrentRequests(t *testing.T) {
 	e, _, authenticator := setupIntegrationTest(t)
-	mockSender := mocks.NewMockNotificationSender()
+	mockSender := mocks.NewMockNotificationSender(t)
 	// Allow calls
 	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil)
 	h := handler.New(mockSender)

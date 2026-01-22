@@ -104,19 +104,19 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, args cr
 
 	// 1. 텔레그램 봇 API 통신을 위한 HTTP 클라이언트를 설정합니다.
 	// 테스트 등의 경우 외부에서 주입된 HTTP 클라이언트가 있다면 우선 사용합니다.
-	client := args.HTTPClient
-	if client == nil {
+	httpClient := args.HTTPClient
+	if httpClient == nil {
 		// Go의 기본 http.DefaultClient는 타임아웃이 설정되어 있지 않아, 네트워크 장애 발생 시
 		// 요청이 무한히 대기하는(Hang) 심각한 리소스 누수(Goroutine Leak)가 발생할 수 있습니다.
 		// 이를 방지하기 위해 반드시 명시적인 타임아웃을 설정해야 합니다.
-		client = &http.Client{
+		httpClient = &http.Client{
 			Timeout: defaultHTTPClientTimeout,
 		}
 	}
 
 	// 2. 봇 API 클라이언트 인스턴스를 초기화합니다.
 	// 앞서 생성한 안전한 HTTP 클라이언트를 주입하여 API와의 모든 통신을 처리합니다.
-	botAPI, err := tgbotapi.NewBotAPIWithClient(args.BotToken, tgbotapi.APIEndpoint, client)
+	botAPI, err := tgbotapi.NewBotAPIWithClient(args.BotToken, tgbotapi.APIEndpoint, httpClient)
 	if err != nil {
 		return nil, NewErrInvalidBotToken(err)
 	}
@@ -125,11 +125,11 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, args cr
 	// 앱 설정에 따라 봇 API의 상세 로그 출력 여부를 결정합니다.
 	botAPI.Debug = args.AppConfig.Debug
 
-	return newNotifierWithClient(id, &defaultBotClient{BotAPI: botAPI}, executor, args)
+	return newNotifierWithClient(id, &tgClient{BotAPI: botAPI}, executor, args)
 }
 
-// newNotifierWithClient 외부에서 주입된 텔레그램 봇 API 클라이언트(botClient)를 사용하여 Notifier 인스턴스를 생성합니다.
-func newNotifierWithClient(id contract.NotifierID, botClient botClient, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
+// newNotifierWithClient 외부에서 주입된 텔레그램 봇 API 클라이언트(client)를 사용하여 Notifier 인스턴스를 생성합니다.
+func newNotifierWithClient(id contract.NotifierID, client client, executor contract.TaskExecutor, args creationArgs) (notifier.Notifier, error) {
 	// 1. Notifier 기본 구조체 초기화
 	// 재시도 정책, 속도 제한(Rate Limiter), 동시성 제어 등 핵심 기능을 설정합니다.
 	notifier := &telegramNotifier{
@@ -137,7 +137,7 @@ func newNotifierWithClient(id contract.NotifierID, botClient botClient, executor
 
 		chatID: args.ChatID,
 
-		botClient: botClient,
+		client: client,
 
 		executor: executor,
 
@@ -148,7 +148,7 @@ func newNotifierWithClient(id contract.NotifierID, botClient botClient, executor
 		// 속도 제한(Rate Limiting): 텔레그램 API 정책을 준수하기 위해 발송 속도를 제어합니다.
 		//   * Rate: 초당 허용 요청 수
 		//   * Burst: 순간 최대 허용 요청 수 (짧은 시간 내 연속 요청 허용)
-		limiter: rate.NewLimiter(rate.Limit(defaultRateLimit), defaultRateBurst),
+		rateLimiter: rate.NewLimiter(rate.Limit(defaultRateLimit), defaultRateBurst),
 
 		// 명령어 처리 동시성 제한
 		// 과도한 요청으로 인한 리소스 고갈을 방지하기 위해 버퍼 채널을 사용합니다.

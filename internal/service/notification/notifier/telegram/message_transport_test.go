@@ -11,7 +11,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -28,15 +27,13 @@ import (
 func TestTelegramNotifier_Send(t *testing.T) {
 	tests := []struct {
 		name         string
-		message      string
-		taskCtx      contract.TaskContext
+		notification contract.Notification
 		setupMockBot func(*MockTelegramBot, *sync.WaitGroup)
 		waitForCalls int
 	}{
 		{
-			name:    "Simple Message",
-			message: "Hello World",
-			taskCtx: contract.NewTaskContext(),
+			name:         "Simple Message",
+			notification: contract.NewNotification("Hello World"),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -49,9 +46,8 @@ func TestTelegramNotifier_Send(t *testing.T) {
 			waitForCalls: 1,
 		},
 		{
-			name:    "Message Send Error",
-			message: "Fail Message",
-			taskCtx: contract.NewTaskContext(),
+			name:         "Message Send Error",
+			notification: contract.NewNotification("Fail Message"),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(3) // Retries
 				m.On("Send", mock.Anything).Run(func(args mock.Arguments) {
@@ -61,9 +57,11 @@ func TestTelegramNotifier_Send(t *testing.T) {
 			waitForCalls: 1,
 		},
 		{
-			name:    "With Task Context (Title)",
-			message: "Test message",
-			taskCtx: contract.NewTaskContext().WithTitle("Test Task"),
+			name: "With Task Context (Title)",
+			notification: contract.Notification{
+				Title:   "Test Task",
+				Message: "Test message",
+			},
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(1)
 				m.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -76,9 +74,8 @@ func TestTelegramNotifier_Send(t *testing.T) {
 			waitForCalls: 1,
 		},
 		{
-			name:    "With Long Message (Auto Splitting)",
-			message: strings.Repeat("A", 4000) + "\n" + strings.Repeat("B", 1000),
-			taskCtx: contract.NewTaskContext(),
+			name:         "With Long Message (Auto Splitting)",
+			notification: contract.NewNotification(strings.Repeat("A", 4000) + "\n" + strings.Repeat("B", 1000)),
 			setupMockBot: func(m *MockTelegramBot, wg *sync.WaitGroup) {
 				wg.Add(2)
 				// Chunk 1
@@ -121,7 +118,7 @@ func TestTelegramNotifier_Send(t *testing.T) {
 			runTelegramNotifier(ctx, notifier, &wg)
 
 			// Act
-			notifier.Send(tt.taskCtx, tt.message)
+			notifier.Send(context.Background(), tt.notification)
 
 			// Wait
 			waitForActionWithTimeout(t, &wgSend, 2*time.Second)
@@ -170,8 +167,8 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 		wg.Done()
 	}).Return(tgbotapi.Message{}, nil)
 
-	// Direct call to handleNotifyRequest for focused test
-	n.handleNotifyRequest(context.Background(), &notifier.Notification{Message: htmlMessage})
+	// Direct call to sendNotification for focused test
+	n.sendNotification(context.Background(), &contract.Notification{Message: htmlMessage})
 
 	wg.Wait()
 	mockBot.AssertExpectations(t)
@@ -180,12 +177,12 @@ func TestTelegramNotifier_HTMLContent(t *testing.T) {
 func TestTelegramNotifier_Escaping(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	n := &telegramNotifier{
-		botClient: mockBot,
-		chatID:    12345,
+		client: mockBot,
+		chatID: 12345,
 	}
 
 	t.Run("Escapes Special Characters", func(t *testing.T) {
-		req := &notifier.Notification{Message: "Price < 1000 & Name > Foo"}
+		req := &contract.Notification{Message: "Price < 1000 & Name > Foo"}
 		expectedMessage := "Price < 1000 & Name > Foo" // Telegram API handles escaping if ParseMode is not set? OR we set it?
 		// Wait, in sender.go we see logic dealing with HTML. If ParseMode is HTML, we generally need escaping.
 		// However, looking at source `sender.go`, `sendSingleMessage` sets ModeHTML by default.
@@ -198,14 +195,14 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 			return msg.Text == expectedMessage
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		n.handleNotifyRequest(context.Background(), req)
+		n.sendNotification(context.Background(), req)
 		mockBot.AssertExpectations(t)
 	})
 
 	t.Run("Escapes Title in Context", func(t *testing.T) {
-		req := &notifier.Notification{
-			TaskContext: contract.NewTaskContext().WithTitle("<Important>"),
-			Message:     "Plain text message",
+		req := &contract.Notification{
+			Title:   "<Important>",
+			Message: "Plain text message",
 		}
 
 		// Titles are escaped: <Important> -> &lt;Important&gt;
@@ -215,7 +212,7 @@ func TestTelegramNotifier_Escaping(t *testing.T) {
 			return strings.Contains(msg.Text, expectedPartial)
 		})).Return(tgbotapi.Message{}, nil).Once()
 
-		n.handleNotifyRequest(context.Background(), req)
+		n.sendNotification(context.Background(), req)
 		mockBot.AssertExpectations(t)
 	})
 }
@@ -257,7 +254,7 @@ func TestSafeSplit(t *testing.T) {
 func TestTelegramNotifier_RetryAfter(t *testing.T) {
 	mockBot := &MockTelegramBot{}
 	n := &telegramNotifier{
-		botClient:  mockBot,
+		client:     mockBot,
 		chatID:     12345,
 		retryDelay: 10 * time.Millisecond,
 	}
@@ -311,7 +308,7 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			notifier, mockBot, _, _ := setupTelegramTest(t, &config.AppConfig{})
-			notifier.limiter = rate.NewLimiter(rate.Inf, 0)
+			notifier.rateLimiter = rate.NewLimiter(rate.Inf, 0)
 			notifier.retryDelay = 10 * time.Millisecond
 
 			var wgSend sync.WaitGroup
@@ -331,7 +328,7 @@ func TestTelegramNotifier_SmartRetry(t *testing.T) {
 			var wg sync.WaitGroup
 			runTelegramNotifier(ctx, notifier, &wg)
 
-			notifier.Send(contract.NewTaskContext(), "Message")
+			notifier.Send(context.Background(), contract.NewNotification("Message"))
 
 			// Wait with timeout
 			done := make(chan struct{})

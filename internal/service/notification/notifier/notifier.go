@@ -24,12 +24,22 @@ type Notifier interface {
 	// 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
 	//
 	// 파라미터:
-	//   - taskCtx: 알림과 연관된 작업 컨텍스트 (TaskID, Title 등)
-	//   - message: 전송할 알림 메시지 본문
+	//   - ctx: 요청의 생명주기를 관리하는 컨텍스트
+	//   - notification: 전송할 알림 데이터
 	//
 	// 반환값:
 	//   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
-	Send(taskCtx contract.TaskContext, message string) error
+	Send(ctx context.Context, notification contract.Notification) error
+
+	// Close Notifier의 운영을 중단하고 관련 리소스를 정리합니다.
+	//
+	// 이 메서드가 호출되면:
+	//  1. Notifier의 상태가 '종료됨(Closed)'으로 변경되어 더 이상의 새로운 Notify 요청을 받지 않습니다.
+	//  2. Done 채널이 닫혀서, 이를 구독하고 있는 모든 고루틴(Sender, Receiver 등)에게 종료 신호를 전파합니다.
+	//
+	// 참고: 내부 메시지 채널(notificationC)은 명시적으로 닫지 않습니다. 이는 다중 프로듀서(Multi-Producer) 환경에서
+	// 채널 닫기에 의한 패닉을 방지하기 위함이며, 남은 메시지는 GC에 의해 수거되거나 Drain 로직에 의해 처리됩니다.
+	Close()
 
 	// Done Notifier의 종료 상태를 감지할 수 있는 읽기 전용 채널을 반환합니다.
 	//

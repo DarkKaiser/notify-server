@@ -26,7 +26,7 @@ import (
 func setupSystemHandlerTest(t *testing.T) (*Handler, *mocks.MockNotificationSender, *echo.Echo) {
 	t.Helper()
 
-	mockSender := mocks.NewMockNotificationSender()
+	mockSender := mocks.NewMockNotificationSender(t)
 	buildInfo := version.Info{
 		Version:     "1.0.0",
 		BuildDate:   "2024-01-01",
@@ -48,7 +48,7 @@ func TestNew(t *testing.T) {
 
 	t.Run("성공: 올바른 의존성으로 핸들러 생성", func(t *testing.T) {
 		t.Parallel()
-		mockSender := mocks.NewMockNotificationSender()
+		mockSender := mocks.NewMockNotificationSender(t)
 		buildInfo := version.Info{Version: "1.0.0"}
 
 		h := New(mockSender, buildInfo)
@@ -227,7 +227,7 @@ func TestHandler_VersionHandler(t *testing.T) {
 			// VersionHandler doesn't use the sender, so we can pass a dummy mock
 			// But we use the helper for consistency, although MockSender is unused here
 			// To be explicit, we can mock nothing.
-			mockSender := mocks.NewMockNotificationSender()
+			mockSender := mocks.NewMockNotificationSender(t)
 
 			h := New(mockSender, tt.buildInfo)
 			e := echo.New()

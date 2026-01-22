@@ -22,13 +22,8 @@ const (
 	// titleTruncateLength 제목이 너무 길 경우 텔레그램 메시지 분할 시 HTML 태그 깨짐 방지를 위해 자를 길이
 	titleTruncateLength = 200
 
-	msgUnknownCommand             = "'%s'는 등록되지 않은 명령어입니다.\n명령어를 모르시면 '%s%s'을 입력하세요."
-	msgInvalidCancelCommandFormat = "'%s'는 잘못된 취소 명령어 형식입니다.\n올바른 형식: '%s%s%s[작업인스턴스ID]'"
-	msgTaskExecutionFailed        = "사용자가 요청한 작업의 실행 요청이 실패하였습니다."
-	msgTaskCancelFailed           = "작업취소 요청이 실패하였습니다.(ID:%s)"
-	msgContextTitle               = "<b>【 %s 】</b>\n\n%s"
-	msgContextError               = "%s\n\n*** 오류가 발생하였습니다. ***"
-	msgElapsedTime                = " (%s지남)"
+	msgContextTitle = "<b>【 %s 】</b>\n\n%s"
+	msgContextError = "%s\n\n*** 오류가 발생하였습니다. ***"
 )
 
 // handleNotifyRequest 시스템 알림 전송 요청을 처리하고, 작업 컨텍스트 정보를 메시지에 추가하여 텔레그램으로 발송합니다.
@@ -291,7 +286,7 @@ func (n *telegramNotifier) attemptSend(ctx context.Context, message string, useH
 		}
 
 		// 전송 시도
-		_, err := n.botClient.Send(messageConfig)
+		_, err := n.client.Send(messageConfig)
 		if err == nil {
 			// 성공
 			applog.WithComponentAndFields(component, applog.Fields{

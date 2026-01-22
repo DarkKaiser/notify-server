@@ -20,7 +20,7 @@ func TestNew(t *testing.T) {
 	}{
 		{
 			name:               "성공: 올바른 의존성으로 핸들러 생성",
-			notificationSender: mocks.NewMockNotificationSender(),
+			notificationSender: mocks.NewMockNotificationSender(t),
 			expectPanic:        false,
 		},
 		{
