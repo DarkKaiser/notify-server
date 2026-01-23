@@ -109,7 +109,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 	})
 	if err != nil {
 		// 1. 서비스 중지 (503 Service Unavailable)
-		if errors.Is(err, notification.ErrServiceStopped) {
+		if errors.Is(err, notification.ErrServiceNotRunning) {
 			return ErrServiceStopped
 		}
 

@@ -265,7 +265,7 @@ func TestPublishNotificationHandler(t *testing.T) {
 			},
 			app: testApp,
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceNotRunning)
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErr:    ErrServiceStopped,

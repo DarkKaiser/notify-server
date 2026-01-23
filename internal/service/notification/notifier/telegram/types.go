@@ -66,7 +66,7 @@ type telegramNotifier struct {
 	// client 텔레그램 봇 API와의 통신을 담당하는 클라이언트입니다.
 	client client
 
-	// retryDelay API 호출 실패 시 재시도 전에 대기하는 시간입니다.
+	// retryDelay 메시지 전송 실패 시 다음 재시도까지의 대기 시간입니다.
 	// 일시적인 네트워크 장애나 서버 부하 상황에서 즉시 재시도하지 않고 백오프(Backoff)를 적용합니다.
 	retryDelay time.Duration
 

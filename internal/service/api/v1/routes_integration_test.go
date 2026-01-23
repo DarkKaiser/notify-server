@@ -208,7 +208,7 @@ func TestV1API_Failures(t *testing.T) {
 			appKey:  "test-app-key",
 			reqBody: request.NotificationRequest{ApplicationID: "test-app", Message: "fail"},
 			setupMock: func(m *mocks.MockNotificationSender) {
-				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceStopped)
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrServiceNotRunning)
 			},
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedErrMsg: getExpectedErrMsg(handler.ErrServiceStopped),
