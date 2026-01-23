@@ -81,7 +81,7 @@ func (n *telegramNotifier) dispatchCommand(serviceStopCtx context.Context, messa
 				"chat_id":     n.chatID,
 				"command":     message.Text, // 입력값: 패닉을 유발한 명령어
 				"panic":       r,
-			}).Error("텔레그램 명령어 처리 루틴에서 예기치 않은 심각한 오류가 발생하여 안전하게 복구되었습니다 (Panic Recovered)")
+			}).Error("텔레그램 핸들러 패닉 복구: 명령어 처리 중 예기치 않은 오류가 발생했습니다 (서비스 유지됨)")
 		}
 	}()
 
@@ -167,7 +167,7 @@ func (n *telegramNotifier) submitTask(serviceStopCtx context.Context, command bo
 				"command_id":  command.commandID,
 				"command":     command.name,
 				"error":       err,
-			}).Warn("텔레그램 > 작업 실행 실패 안내 메시지 전송이 중단되었습니다 (알림 대기열 포화 또는 타임아웃)")
+			}).Warn("텔레그램 알림 누락: 작업 실패 안내 메시지 전송이 차단되었습니다 (Queue Full 또는 Timeout)")
 		}
 	}
 }
@@ -218,7 +218,7 @@ func (n *telegramNotifier) processCancel(serviceStopCtx context.Context, command
 					"chat_id":     n.chatID,
 					"instance_id": instanceID,
 					"error":       err,
-				}).Warn("텔레그램 > 작업 취소 실패 안내 메시지 전송이 중단되었습니다 (알림 대기열 포화 또는 타임아웃)")
+				}).Warn("텔레그램 알림 누락: 작업 취소 실패 안내 메시지 전송이 차단되었습니다 (Queue Full 또는 Timeout)")
 			}
 		}
 	} else {
@@ -240,7 +240,7 @@ func (n *telegramNotifier) processCancel(serviceStopCtx context.Context, command
 				"chat_id":     n.chatID,
 				"command":     commandInput,
 				"error":       err,
-			}).Warn("텔레그램 > 잘못된 취소 명령어 형식 안내 메시지 전송이 중단되었습니다 (알림 대기열 포화 또는 타임아웃)")
+			}).Warn("텔레그램 알림 누락: 명령어 형식 오류 안내 메시지 전송이 차단되었습니다 (Queue Full 또는 Timeout)")
 		}
 	}
 }
@@ -261,7 +261,7 @@ func (n *telegramNotifier) replyHelpCommand(serviceStopCtx context.Context) {
 			"chat_id":       n.chatID,
 			"command_count": len(n.botCommands),
 			"error":         err,
-		}).Warn("텔레그램 > 도움말 메시지 전송이 중단되었습니다 (알림 대기열 포화 또는 타임아웃)")
+		}).Warn("텔레그램 알림 누락: 도움말 안내 메시지 전송이 차단되었습니다 (Queue Full 또는 Timeout)")
 	}
 }
 
@@ -282,6 +282,6 @@ func (n *telegramNotifier) replyUnknownCommand(serviceStopCtx context.Context, i
 			"chat_id":     n.chatID,
 			"command":     input,
 			"error":       err,
-		}).Warn("텔레그램 > 알 수 없는 명령어 안내 메시지 전송이 중단되었습니다 (알림 대기열 포화 또는 타임아웃)")
+		}).Warn("텔레그램 알림 누락: 미등록 명령어 안내 메시지 전송이 차단되었습니다 (Queue Full 또는 Timeout)")
 	}
 }

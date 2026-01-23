@@ -49,7 +49,7 @@ func (n *telegramNotifier) receiveAndDispatchCommands(serviceStopCtx context.Con
 				applog.WithComponentAndFields(component, applog.Fields{
 					"notifier_id": n.ID(),
 					"chat_id":     n.chatID,
-				}).Error("Long Polling 채널 종료됨: 명령어 수신 루프 종료 및 cleanup 시작")
+				}).Error("수신 채널 종료: Long Polling 루프 중단 (Cleanup 수행)")
 
 				return
 			}
@@ -111,7 +111,7 @@ func (n *telegramNotifier) receiveAndDispatchCommands(serviceStopCtx context.Con
 					"chat_id":            n.chatID,
 					"semaphore_capacity": cap(n.commandSemaphore), // 최대 동시 명령어 처리 수
 					"active_commands":    len(n.commandSemaphore), // 현재 실행 중인 명령어 수
-				}).Warn("명령어 처리 용량 초과로 요청 드롭됨: 빈번 발생 시 세마포어 용량 증가 검토 필요")
+				}).Warn("요청 처리 거부: 동시 처리 용량 초과로 인한 드롭 (Backpressure)")
 			}
 
 		// ═════════════════════════════════════════════════════════════════════

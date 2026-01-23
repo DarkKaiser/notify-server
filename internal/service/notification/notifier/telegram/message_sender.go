@@ -266,7 +266,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				"error":       err,
 				"limit":       n.rateLimiter.Limit(),
 				"burst":       n.rateLimiter.Burst(),
-			}).Debug("RateLimiter 대기 중 컨텍스트 취소 신호 감지, 전송 작업을 중단합니다")
+			}).Debug("작업 중단: RateLimiter 대기 중 컨텍스트가 취소되었습니다")
 
 			return err
 		}
@@ -297,7 +297,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 					"notifier_id": n.ID(),
 					"error":       ctx.Err(),
 					"attempt":     attempt,
-				}).Error("알림 메시지 발송 작업이 제한 시간을 초과하여 중단되었습니다 (Timeout)")
+				}).Error("작업 중단: 발송 제한 시간(Timeout)을 초과하였습니다")
 			}
 			return ctx.Err()
 		default:
@@ -318,7 +318,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				"attempt":        attempt,
 				"mode":           formatParseMode(messageConfig.ParseMode),
 				"message_length": len(message),
-			}).Info("알림 메시지가 성공적으로 발송되었습니다")
+			}).Info("발송 성공: 텔레그램 API로 메시지가 정상 전송되었습니다")
 
 			return nil
 		}
@@ -334,7 +334,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 			"error":          err,
 			"mode":           formatParseMode(messageConfig.ParseMode),
 			"message_length": len(message),
-		}).Warn("알림 메시지 발송 시도가 실패했습니다")
+		}).Warn("발송 실패: 텔레그램 API 호출에서 오류가 발생했습니다 (재시도 예정)")
 
 		// 텔레그램 API 에러에서 HTTP 상태 코드와 Retry-After 값을 추출합니다.
 		// 이 정보는 재시도 전략을 결정하는 데 사용됩니다.
@@ -354,7 +354,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				"error":          err,
 				"attempt":        attempt,
 				"message_length": len(message),
-			}).Warn("HTML 파싱 오류(400)가 감지되어, PlainText 모드로 자동 전환 후 재시도합니다 (Fallback)")
+			}).Warn("HTML 파싱 오류(400): PlainText 모드로 자동 전환하여 재시도합니다 (Fallback)")
 
 			return n.attemptSendWithRetry(ctx, message, false)
 		}
@@ -369,7 +369,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				"error":       err,
 				"code":        errCode,
 				"attempt":     attempt,
-			}).Error("재시도 불가능한 API 오류가 발생하여 발송 작업을 즉시 중단합니다")
+			}).Error("작업 중단: 재시도 불가능한 API 오류가 발생했습니다 (4xx Fatal Error)")
 
 			return err
 		}
@@ -392,7 +392,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				"attempt":     attempt,
 				"limit":       n.rateLimiter.Limit(),
 				"burst":       n.rateLimiter.Burst(),
-			}).Warn("429 Rate Limit 감지: 서버 요청에 따라 일정 시간 대기 후 재시도합니다")
+			}).Warn("재시도 대기: 429 Rate Limit 감지 (Retry-After 준수)")
 		}
 
 		backoff := n.delayForRetry(retryAfter)
@@ -405,7 +405,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 					"error":       ctx.Err(),
 					"backoff":     backoff,
 					"attempt":     attempt,
-				}).Error("다음 재시도를 대기하던 중 작업 시간이 초과되었습니다 (Timeout)")
+				}).Error("재시도 중단: 대기 중 작업 제한 시간(Timeout)을 초과하였습니다")
 			}
 			return ctx.Err()
 		case <-time.After(backoff):
@@ -425,7 +425,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		"max_retries":    maxRetries,
 		"message_length": len(message),
 		"use_html":       useHTML,
-	}).Error("최대 재시도 횟수를 초과하여 알림 메시지 발송이 최종적으로 실패했습니다")
+	}).Error("전송 최종 실패: 최대 재시도 횟수를 초과하였습니다")
 
 	return lastErr
 }

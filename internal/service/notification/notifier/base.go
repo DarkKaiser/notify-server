@@ -120,7 +120,7 @@ func (b *Base) Send(ctx context.Context, notification contract.Notification) (er
 			if notification.Title != "" {
 				fields["task_title"] = notification.Title
 			}
-			applog.WithComponentAndFields(component, fields).Error("Notifier > 알림 전송 처리 중 예기치 않은 패닉이 발생했으나, 서비스 유지를 위해 안전하게 복구되었습니다")
+			applog.WithComponentAndFields(component, fields).Error("Notifier 패닉 복구: 알림 전송 중 예기치 않은 오류가 발생했습니다 (서비스 유지됨)")
 
 			// Panic 발생 시 에러 리턴
 			err = ErrPanicRecovered
@@ -177,7 +177,7 @@ func (b *Base) Send(ctx context.Context, notification contract.Notification) (er
 		if notification.Title != "" {
 			fields["task_title"] = notification.Title
 		}
-		applog.WithComponentAndFields(component, fields).Warn("알림 발송 대기열이 포화 상태에 도달하여, 시스템 보호를 위해 요청 처리를 건너뛰었습니다 (Queue Full)")
+		applog.WithComponentAndFields(component, fields).Warn("알림 요청 거부: 발송 대기열 용량 초과 (Queue Full)")
 
 		return ErrQueueFull
 	}

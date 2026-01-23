@@ -74,7 +74,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		// 바인딩 실패 시 상세 원인 로깅 (디버깅 용도)
 		h.log(c).WithFields(applog.Fields{
 			"error": err,
-		}).Warn("요청 본문 바인딩 실패 (JSON 형식 오류 등)")
+		}).Warn("요청 처리 실패: 본문 형식이 올바르지 않습니다 (JSON 바인딩 오류)")
 
 		return ErrInvalidBody
 	}
@@ -135,7 +135,7 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 		"application_id": req.ApplicationID,
 		"notifier_id":    app.DefaultNotifierID,
 		"message_length": len(req.Message),
-	}).Info("알림 큐 적재 성공")
+	}).Info("알림 전송 요청 수락: 메시지가 발송 대기열에 등록되었습니다")
 
 	// 6. 성공 응답 반환
 	return httputil.Success(c)

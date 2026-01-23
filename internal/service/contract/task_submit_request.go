@@ -43,7 +43,7 @@ func (r *TaskSubmitRequest) Validate() error {
 		return err
 	}
 	if len(r.NotifierID) > 0 && strings.TrimSpace(string(r.NotifierID)) == "" {
-		return apperrors.New(apperrors.InvalidInput, "NotifierID는 공백으로만 구성될 수 없습니다")
+		return apperrors.New(apperrors.InvalidInput, "NotifierID 유효성 검증 실패: 공백 이외의 유효한 문자열을 포함해야 합니다")
 	}
 	if err := r.RunBy.Validate(); err != nil {
 		return err

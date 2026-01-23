@@ -60,7 +60,7 @@ func (n *telegramNotifier) Run(serviceStopCtx context.Context) {
 		"notifier_id":  n.ID(),
 		"bot_username": n.client.GetSelf().UserName,
 		"chat_id":      n.chatID,
-	}).Debug("텔레그램 봇 서비스 시작됨: Long Polling 활성화, Sender/Receiver 고루틴 실행 중")
+	}).Debug("텔레그램 Notifier 시작: Long Polling 활성화 (Sender/Receiver Ready)")
 
 	// ─────────────────────────────────────────────────────────────────────────────
 	// 2단계: 고루틴 생명주기 관리 준비
@@ -145,7 +145,7 @@ func (n *telegramNotifier) cleanup(wg *sync.WaitGroup) {
 	applog.WithComponentAndFields(component, applog.Fields{
 		"notifier_id": n.ID(),
 		"chat_id":     n.chatID,
-	}).Debug("텔레그램 봇 서비스 종료됨: 모든 고루틴 정리 완료")
+	}).Debug("텔레그램 Notifier 종료: 모든 리소스 및 고루틴 정리 완료")
 }
 
 // waitForGoroutines 모든 활성 고루틴이 종료될 때까지 대기합니다.
@@ -183,7 +183,7 @@ func (n *telegramNotifier) waitForGoroutines(wg *sync.WaitGroup) {
 		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
-		}).Debug("Graceful Shutdown 완료: 모든 고루틴 정상 종료됨")
+		}).Debug("정상 종료: 모든 고루틴 작업 완료 (Graceful Shutdown)")
 	case <-time.After(shutdownWaitTimeout):
 		// ─────────────────────────────────────────────────────────────────────
 		// Case B: 타임아웃 발생 (좀비 고루틴 가능성)
@@ -195,7 +195,7 @@ func (n *telegramNotifier) waitForGoroutines(wg *sync.WaitGroup) {
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 			"timeout":     shutdownWaitTimeout,
-		}).Error("Graceful Shutdown 타임아웃: 일부 고루틴 강제 종료됨, 좀비 고루틴 발생 가능")
+		}).Error("비정상 종료: Graceful Shutdown 대기 시간 초과 (일부 고루틴 강제 종료)")
 	}
 }
 

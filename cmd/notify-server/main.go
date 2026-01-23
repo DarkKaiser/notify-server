@@ -86,6 +86,9 @@ const (
 `
 )
 
+// component main 로깅용 컴포넌트 이름
+const component = "main"
+
 const (
 	// shutdownTimeout 종료 시그널 수신 후 최대 대기 시간
 	shutdownTimeout = 30 * time.Second
@@ -142,7 +145,7 @@ func run() error {
 	buildInfo := version.Get()
 
 	// 6. 초기화 시작 로그 기록
-	applog.WithComponentAndFields("main", applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"env":          map[bool]string{true: "development", false: "production"}[appConfig.Debug],
 		"version":      buildInfo.Version,
 		"commit":       buildInfo.Commit,
@@ -201,14 +204,14 @@ func run() error {
 	termC := make(chan os.Signal, 1)
 	signal.Notify(termC, syscall.SIGINT, syscall.SIGTERM)
 
-	applog.WithComponent("main").Info("Notify Server 가동이 완료되었습니다 (Ready to Serve)")
+	applog.WithComponent(component).Info("Notify Server 초기화가 성공적으로 완료되었습니다 (Ready to Serve)")
 
 	// 11. 메인 루프 대기
 	// 종료 신호가 들어올 때까지 메인 고루틴을 블로킹 상태로 유지합니다.
 	sig := <-termC
-	applog.WithComponentAndFields("main", applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"signal": sig,
-	}).Info("종료 신호(Signal)를 수신했습니다. Graceful Shutdown 프로세스를 시작합니다.")
+	}).Info("종료 신호(Signal)를 수신했습니다. Graceful Shutdown 프로세스를 시작합니다")
 
 	// 12. 서비스 종료 전파
 	// 취소 함수(serviceStopCancel)를 호출하여 `serviceStopCtx`를 대기하고 있는 모든 하위 서비스에 종료를 알립니다.
@@ -231,9 +234,9 @@ func run() error {
 	// 14. 종료 완료 대기 또는 강제 종료
 	select {
 	case <-done:
-		applog.WithComponent("main").Info("모든 서비스가 리소스를 정리하고 정상적으로 종료되었습니다.")
+		applog.WithComponent(component).Info("모든 서비스가 리소스를 정리하고 정상적으로 종료되었습니다")
 	case <-shutdownCtx.Done():
-		applog.WithComponent("main").Error("종료 타임아웃 발생: 일부 서비스가 응답하지 않아 강제 종료합니다.")
+		applog.WithComponent(component).Error("종료 타임아웃 발생: 일부 서비스가 응답하지 않아 강제 종료합니다")
 		return fmt.Errorf("종료 제한 시간(%v)을 초과하여 프로세스를 강제 종료합니다", shutdownTimeout)
 	}
 

@@ -148,7 +148,7 @@ func RateLimit(requestsPerSecond int, burst int) echo.MiddlewareFunc {
 					"remote_ip": ip,
 					"path":      c.Request().URL.Path,
 					"method":    c.Request().Method,
-				}).Warn("API 요청 속도 제한 초과 (차단됨)")
+				}).Warn("요청 차단: 속도 제한(Rate Limit)을 초과하였습니다")
 
 				// Retry-After 헤더 설정 (1초 후 재시도 권장)
 				c.Response().Header().Set(retryAfter, retryAfterSeconds)

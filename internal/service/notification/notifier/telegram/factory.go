@@ -100,7 +100,7 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, args cr
 		"notifier_id": id,
 		"bot_token":   strutil.Mask(args.BotToken),
 		"chat_id":     args.ChatID,
-	}).Debug("텔레그램 Notifier 초기화 및 봇 API 클라이언트 생성 시작")
+	}).Debug("텔레그램 Notifier 초기화: 봇 API 클라이언트 생성을 시작합니다")
 
 	// 1. 텔레그램 봇 API 통신을 위한 HTTP 클라이언트를 설정합니다.
 	// 테스트 등의 경우 외부에서 주입된 HTTP 클라이언트가 있다면 우선 사용합니다.

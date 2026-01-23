@@ -10,10 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
-
-// TODO 미완료
 
 // component Notification 서비스의 로깅용 컴포넌트 이름
 const component = "notification.service"
@@ -62,14 +59,20 @@ func NewService(appConfig *config.AppConfig, creator notifier.Creator, executor 
 	return service
 }
 
-// Start 알림 서비스를 시작합니다.
+// Start Notification 서비스를 시작하고 모든 Notifier를 초기화합니다.
 //
-// 이 메서드는 설정된 Notifier들을 초기화하고 각각의 고루틴을 실행하여 알림 발송을 준비합니다.
-// 서비스가 이미 실행 중이거나 필수 의존성(executor)이 없는 경우 에러를 반환합니다.
+// 이 메서드는 서비스의 전체 생명주기를 관리하는 핵심 진입점입니다.
+//
+// 각 Notifier는 독립적인 고루틴에서 실행되며, 하나의 Notifier에서 패닉이 발생하더라도
+// 다른 Notifier의 동작에는 영향을 주지 않습니다. 서비스 종료 시에는 모든 Notifier가
+// 안전하게 정리될 때까지 대기합니다.
 //
 // 파라미터:
-//   - serviceStopCtx: 서비스 종료 신호를 전달받는 컨텍스트입니다. 이 컨텍스트가 취소되면 모든 Notifier가 정리됩니다.
-//   - serviceStopWG: 서비스 종료 시 모든 고루틴이 완전히 종료될 때까지 대기하기 위한 WaitGroup입니다.
+//   - serviceStopCtx: 서비스 종료 신호를 전달받는 컨텍스트입니다.
+//     이 컨텍스트가 취소되면 모든 Notifier의 정리 프로세스가 시작됩니다.
+//   - serviceStopWG: 서비스 종료 시 모든 고루틴(Notifier 및 종료 처리 고루틴)이
+//     완전히 종료될 때까지 대기하기 위한 WaitGroup입니다.
+//     호출자는 이 WaitGroup을 통해 안전한 종료를 보장할 수 있습니다.
 //
 // 반환값:
 //   - error: 초기화 실패, 중복 실행, 또는 설정 오류 시 에러를 반환합니다.
@@ -77,16 +80,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(component).Info("Notification 서비스 시작중...")
+	applog.WithComponent(component).Info("서비스 시작 진입: Notification 서비스 초기화 프로세스를 시작합니다")
 
 	if s.executor == nil {
 		defer serviceStopWG.Done()
-		return NewErrExecutorNotInitialized()
+		return ErrExecutorNotInitialized
 	}
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(component).Warn("Notification 서비스가 이미 시작됨!!!")
+		applog.WithComponent(component).Warn("Notification 서비스가 이미 실행 중입니다 (중복 호출)")
 		return nil
 	}
 

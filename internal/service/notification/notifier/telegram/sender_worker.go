@@ -39,7 +39,7 @@ func (n *telegramNotifier) sendNotifications(serviceStopCtx context.Context) {
 				"notifier_id": n.ID(),
 				"chat_id":     n.chatID,
 				"panic":       r,
-			}).Error("Sender 고루틴 패닉으로 알림 발송 기능 중단됨: 즉시 원인 조사 및 서비스 재시작 필요")
+			}).Error("발송 프로세스 비정상 종료: Sender 고루틴 패닉 발생 (서비스 재시작 필요)")
 		}
 	}()
 
@@ -80,7 +80,7 @@ func (n *telegramNotifier) sendNotifications(serviceStopCtx context.Context) {
 						if req.Notification.Title != "" {
 							fields["task_title"] = req.Notification.Title
 						}
-						applog.WithComponentAndFields(component, fields).Error("알림 메시지 처리 중 패닉 복구됨: 해당 메시지 손실, Sender 고루틴은 정상 동작 중")
+						applog.WithComponentAndFields(component, fields).Error("메시지 처리 실패: 발송 로직 수행 중 패닉 발생 (해당 건 스킵)")
 					}
 				}()
 
@@ -183,7 +183,7 @@ Loop:
 					"chat_id":             n.chatID,
 					"timeout":             shutdownTimeout,
 					"remaining_in_buffer": len(n.NotificationC()),
-				}).Warn("Drain 타임아웃으로 잔여 메시지 손실됨: 빈번 발생 시 shutdownTimeout 증가 검토 필요")
+				}).Warn("잔여 메시지 폐기: 종료 대기 시간(Drain Timeout) 초과")
 
 				break Loop // 타임아웃 시 남은 메시지를 버리고 종료
 			}
@@ -206,7 +206,7 @@ Loop:
 						if req.Notification.Title != "" {
 							fields["task_title"] = req.Notification.Title
 						}
-						applog.WithComponentAndFields(component, fields).Error("Drain 중 패닉 복구됨: 해당 메시지 손실, Drain 프로세스는 계속 진행")
+						applog.WithComponentAndFields(component, fields).Error("잔여 메시지 처리 실패: Drain 로직 수행 중 패닉 발생 (해당 건 스킵)")
 					}
 				}()
 
