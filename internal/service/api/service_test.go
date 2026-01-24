@@ -431,7 +431,7 @@ func TestService_handleServerError(t *testing.T) {
 			if tt.expectNotify {
 				mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
 					return n.ErrorOccurred &&
-						strings.Contains(n.Message, "API 서비스 > http 서버를 구성하는 중에 치명적인 오류가 발생하였습니다.") &&
+						strings.Contains(n.Message, "HTTP 서버 기동 실패: 치명적인 구성 오류가 발생하였습니다") &&
 						(tt.inputErr == nil || strings.Contains(n.Message, tt.inputErr.Error()))
 				})).Return(nil)
 			}
@@ -462,7 +462,7 @@ func TestService_Start_HTTPS_Failure(t *testing.T) {
 
 	// Mock Sender: 에러 발생 시 알림 전송 기대
 	service.notificationSender.(*mocks.MockNotificationSender).On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
-		return n.ErrorOccurred && strings.Contains(n.Message, "치명적인 오류가 발생하였습니다")
+		return n.ErrorOccurred && strings.Contains(n.Message, "HTTP 서버 기동 실패: 치명적인 구성 오류가 발생하였습니다")
 	})).Return(nil)
 
 	wg.Add(1)

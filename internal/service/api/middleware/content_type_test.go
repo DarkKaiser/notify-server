@@ -208,7 +208,7 @@ func TestValidateContentType_LogVerification(t *testing.T) {
 
 	assert.Equal(t, "api.middleware.content_type", logEntry["component"])
 	assert.Equal(t, "warning", logEntry["level"])
-	assert.Equal(t, "지원하지 않는 Content-Type 형식 요청", logEntry["msg"])
+	assert.Equal(t, "Content-Type 검증 실패: 지원하지 않는 형식입니다", logEntry["msg"])
 
 	// 상세 필드 검증
 	assert.Equal(t, echo.MIMEApplicationJSON, logEntry["expected"])

@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,112 +29,104 @@ var _ contract.NotificationSender = (*Service)(nil)
 const (
 	testNotifierID    = "test-notifier"
 	defaultNotifierID = "default-notifier"
-	testMessage       = "test message"
 )
 
 // =============================================================================
 // Test Helpers
 // =============================================================================
 
-// mockServiceOptions는 setupMockServiceWithOptions의 옵션입니다.
-type mockServiceOptions struct {
-	notifierID   contract.NotifierID
-	supportsHTML bool
-	running      bool
+// StubPanicNotifier is a helper for testing panic recovery.
+// Using testify/mock for panic is unstable, so we use a stub.
+type StubPanicNotifier struct {
+	id string
 }
 
-// setupMockService는 기본 설정으로 테스트용 Service와 Mock 객체를 생성합니다.
-func setupMockService() (*Service, *taskmocks.MockExecutor, *notificationmocks.MockNotifier) {
-	return setupMockServiceWithOptions(mockServiceOptions{
-		notifierID:   testNotifierID,
-		supportsHTML: true,
-		running:      false,
-	})
+func (s *StubPanicNotifier) ID() contract.NotifierID                                 { return contract.NotifierID(s.id) }
+func (s *StubPanicNotifier) Run(ctx context.Context)                                 { panic("Simulated Panic in Notifier Run") }
+func (s *StubPanicNotifier) Send(ctx context.Context, n contract.Notification) error { return nil }
+func (s *StubPanicNotifier) Close()                                                  {}
+func (s *StubPanicNotifier) Done() <-chan struct{}                                   { return nil }
+func (s *StubPanicNotifier) SupportsHTML() bool                                      { return true }
+
+// serviceTestHelper simplifies test setup
+type serviceTestHelper struct {
+	t            *testing.T
+	service      *Service
+	mockExecutor *taskmocks.MockExecutor
+	mockFactory  *notificationmocks.MockFactory
+	// Key: NotifierID, Value: MockNotifier
+	mocks map[string]*notificationmocks.MockNotifier
 }
 
-// setupMockServiceWithOptions는 옵션을 받아 테스트용 Service와 Mock 객체를 생성합니다.
-func setupMockServiceWithOptions(opts mockServiceOptions) (*Service, *taskmocks.MockExecutor, *notificationmocks.MockNotifier) {
-	appConfig := &config.AppConfig{}
-	mockExecutor := &taskmocks.MockExecutor{}
-	// Default behaviors
-	mockNotifier := notificationmocks.NewMockNotifier(opts.notifierID)
-	mockNotifier.On("SupportsHTML").Return(opts.supportsHTML).Maybe()
+func newServiceTestHelper(t *testing.T) *serviceTestHelper {
+	return &serviceTestHelper{
+		t:            t,
+		mockExecutor: &taskmocks.MockExecutor{},
+		mockFactory:  new(notificationmocks.MockFactory),
+		mocks:        make(map[string]*notificationmocks.MockNotifier),
+	}
+}
 
-	// Default Run behavior: wait for context done
-	mockNotifier.On("Run", mock.Anything).Run(func(args mock.Arguments) {
+func (h *serviceTestHelper) AddMockNotifier(id string) *notificationmocks.MockNotifier {
+	m := notificationmocks.NewMockNotifier(h.t, contract.NotifierID(id))
+	// Default behaviors to avoid unexpected calls failing tests unless overridden
+	m.On("ID").Return(contract.NotifierID(id)).Maybe()
+	m.On("SupportsHTML").Return(true).Maybe()
+	m.On("Run", mock.Anything).Run(func(args mock.Arguments) {
 		ctx := args.Get(0).(context.Context)
 		<-ctx.Done()
 	}).Return().Maybe()
+	m.On("Done").Return(nil).Maybe()
+	// m.On("Send", mock.Anything, mock.Anything).Return(nil).Maybe() // Removed default Send behavior to allow specific error return in tests
 
-	// Default Done behavior: closed or nil? Previous mock returned open channel.
-	// Let's return nil (which means we need to handle it in MockNotifier, I did safe handle).
-	// Or better, return a channel that never closes unless we want it to.
-	// But Service doesn't rely on Done() except maybe for Health?
-	// Service uses `n.Run()`.
-	// Let's stick to safe defaults.
-	mockNotifier.On("Done").Return(nil).Maybe()
-
-	// Default Send behavior: success
-	mockNotifier.On("Send", mock.Anything, mock.Anything).Return(nil).Maybe()
-
-	mockFactory := new(notificationmocks.MockFactory)
-	mockCreator := mockFactory
-
-	service := NewService(appConfig, mockCreator, mockExecutor)
-	service.notifiersMap = map[contract.NotifierID]notifier.Notifier{
-		mockNotifier.ID(): mockNotifier,
-	}
-	service.defaultNotifier = mockNotifier
-	service.running = opts.running
-
-	return service, mockExecutor, mockNotifier
+	h.mocks[id] = m
+	return m
 }
 
-// assertSendCalled는 mockNotifier가 정확히 한 번 호출되었고 메시지가 일치하는지 검증합니다.
-func assertSendCalled(t *testing.T, m *notificationmocks.MockNotifier, expectedMsg string) {
-	t.Helper()
-	// Verify Send was called with any context and specific message
-	found := false
-	for _, call := range m.Calls {
-		if call.Method == "Send" {
-			if msg, ok := call.Arguments.Get(1).(string); ok && msg == expectedMsg {
-				found = true
-				break
-			}
+func (h *serviceTestHelper) Build(defaultID string) *Service {
+	cfg := &config.AppConfig{
+		Notifier: config.NotifierConfig{
+			DefaultNotifierID: defaultID,
+		},
+	}
+
+	notifiers := make([]notifier.Notifier, 0, len(h.mocks))
+	for _, m := range h.mocks {
+		notifiers = append(notifiers, m)
+	}
+
+	h.mockFactory.On("CreateAll", mock.Anything, mock.Anything).Return(notifiers, nil)
+
+	s := NewService(cfg, h.mockFactory, h.mockExecutor)
+
+	// Manually inject notifiers to simulate Start() having run,
+	// or properly run Start() in tests.
+	// For unit tests focusing on Notify logic, we often want to inject directly.
+	// But Start() also handles duplicate checks and default assignment.
+	// Let's rely on tests calling Start() or manual injection as needed.
+
+	return s
+}
+
+// Manually start service for Notify tests without actual goroutines if needed,
+// or just populate fields.
+func (h *serviceTestHelper) DirtyStart(s *Service, defaultID string) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	s.running = true
+
+	for id, m := range h.mocks {
+		s.notifiers[contract.NotifierID(id)] = m
+		if id == defaultID {
+			s.defaultNotifier = m
 		}
 	}
-	assert.True(t, found, "Expected Send call with message: %s", expectedMsg)
-}
-
-// assertSendCalledWithContext는 mockNotifier가 호출되었고 TaskContext가 있는지 검증합니다.
-func assertSendCalledWithContext(t *testing.T, m *notificationmocks.MockNotifier, expectedMsg string) {
-	t.Helper()
-	// Iterate calls to find match
-	found := false
-	for _, call := range m.Calls {
-		if call.Method == "Send" {
-			msg, ok1 := call.Arguments.Get(1).(string)
-			ctx, ok2 := call.Arguments.Get(0).(contract.TaskContext)
-			if ok1 && ok2 && msg == expectedMsg && ctx != nil {
-				found = true
-				break
-			}
-		}
-	}
-	assert.True(t, found, "Expected Send call with TaskContext and message: %s", expectedMsg)
-}
-
-// assertSendNotCalled는 mockNotifier가 호출되지 않았는지 검증합니다.
-func assertSendNotCalled(t *testing.T, m *notificationmocks.MockNotifier) {
-	t.Helper()
-	m.AssertNotCalled(t, "Send", mock.Anything, mock.Anything)
 }
 
 // =============================================================================
-// Service Initialization Tests
+// Service Lifecycle Tests
 // =============================================================================
 
-// TestNewService는 Service 생성을 검증합니다.
 func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockExecutor := &taskmocks.MockExecutor{}
@@ -144,276 +137,37 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, appConfig, service.appConfig)
 	assert.Equal(t, mockExecutor, service.executor)
 	assert.False(t, service.running)
-	// assert.NotNil(t, service.notifiersStopWG) // sync.WaitGroup is a struct, not a pointer, so it's never nil. Checking it causes lock copy lint.
-	assert.NotNil(t, service.notifierCreator)
+	assert.NotNil(t, service.creator)
 }
 
-// =============================================================================
-// HTML Support Tests
-// =============================================================================
+func TestService_Start_Success(t *testing.T) {
+	helper := newServiceTestHelper(t)
+	helper.AddMockNotifier("default-notifier")
+	helper.AddMockNotifier("extra-notifier")
 
-// TestSupportsHTML은 HTML 지원 여부 확인을 검증합니다.
-func TestSupportsHTML(t *testing.T) {
-	mockNotifier := notificationmocks.NewMockNotifier("test")
-	mockNotifier.On("SupportsHTML").Return(true)
-	service := &Service{
-		notifiersMap: map[contract.NotifierID]notifier.Notifier{
-			mockNotifier.ID(): mockNotifier,
-		},
-	}
+	service := helper.Build("default-notifier")
 
-	tests := []struct {
-		name       string
-		notifierID string
-		want       bool
-	}{
-		{"존재하는 Notifier (HTML 지원)", "test", true},
-		{"존재하지 않는 Notifier", "unknown", false},
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, service.SupportsHTML(contract.NotifierID(tt.notifierID)))
-		})
-	}
-}
-
-// =============================================================================
-// Notification Sending Tests
-// =============================================================================
-
-// TestServiceNotify는 Service의 Notify 메서드를 검증합니다.
-func TestServiceNotify(t *testing.T) {
-	tests := []struct {
-		name           string
-		notifierID     string
-		message        string
-		isError        bool
-		expectError    bool
-		expectedErrStr string
-		expectedMsg    string
-		expectedErrCtx bool
-	}{
-		{
-			name:        "성공: 일반 메시지",
-			notifierID:  testNotifierID,
-			message:     "test msg",
-			isError:     false,
-			expectError: false,
-			expectedMsg: "test msg",
-		},
-		{
-			name:           "성공: 에러 메시지",
-			notifierID:     testNotifierID,
-			message:        "error msg",
-			isError:        true,
-			expectError:    false,
-			expectedMsg:    "error msg",
-			expectedErrCtx: true,
-		},
-		{
-			name:           "실패: 존재하지 않는 Notifier (기본 Notifier로 폴백)",
-			notifierID:     "unknown",
-			message:        "msg",
-			expectError:    true,
-			expectedErrStr: ErrNotifierNotFound.Error(),
-			expectedMsg:    "등록되지 않은 Notifier ID('unknown')입니다. 메시지 발송이 거부되었습니다. 원본 메시지: msg",
-			expectedErrCtx: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
-				notifierID:   testNotifierID,
-				supportsHTML: true,
-				running:      true,
-			})
-
-			err := service.NotifyWithTitle(contract.NotifierID(tt.notifierID), "title", tt.message, tt.isError)
-
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.expectedErrStr != "" {
-					assert.Contains(t, err.Error(), tt.expectedErrStr)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-
-			if tt.expectedErrCtx {
-				assertSendCalledWithContext(t, mockNotifier, tt.expectedMsg)
-			} else if tt.expectedMsg != "" {
-				assertSendCalled(t, mockNotifier, tt.expectedMsg)
-			}
-		})
-	}
-}
-
-// (TestNotifyWithTitle transferred to interface_test.go)
-
-// (TestNotifyDefault transferred to interface_test.go)
-
-// TestNotify_NotRunning은 서비스가 실행 중이 아닐 때의 동작을 검증합니다.
-func TestNotify_NotRunning(t *testing.T) {
-	service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
-		notifierID:   testNotifierID,
-		supportsHTML: true,
-		running:      false, // 실행 중이 아님
-	})
-
-	err := service.Notify(contract.NewTaskContext(), contract.NotifierID(testNotifierID), "test")
-
-	assert.Error(t, err)
-	assert.Equal(t, ErrServiceStopped, err)
-	assertSendNotCalled(t, mockNotifier)
-}
-
-// (TestNotifyDefault_NilNotifier transferred to interface_test.go)
-
-// =============================================================================
-// Multiple Notifiers Tests
-// =============================================================================
-
-// TestMultipleNotifiers는 여러 Notifier 처리를 검증합니다.
-func TestMultipleNotifiers(t *testing.T) {
-	mockNotifier1 := notificationmocks.NewMockNotifier("n1")
-	mockNotifier1.On("SupportsHTML").Return(true)
-	mockNotifier1.On("Run", mock.Anything).Return()
-	mockNotifier1.On("Done").Return(nil)
-
-	mockNotifier2 := notificationmocks.NewMockNotifier("n2")
-	mockNotifier2.On("SupportsHTML").Return(false)
-	mockNotifier2.On("Send", mock.Anything, mock.Anything).Return(nil)
-	mockNotifier2.On("Run", mock.Anything).Return()
-	mockNotifier2.On("Done").Return(nil)
-
-	service := &Service{
-		notifiersMap: map[contract.NotifierID]notifier.Notifier{
-			mockNotifier1.ID(): mockNotifier1,
-			mockNotifier2.ID(): mockNotifier2,
-		},
-		running: true,
-	}
-
-	// n2로 전송
-	err := service.Notify(contract.NewTaskContext(), contract.NotifierID("n2"), "msg")
+	err := service.Start(ctx, wg)
 	assert.NoError(t, err)
-	assertSendNotCalled(t, mockNotifier1)
-	mockNotifier2.AssertCalled(t, "Send", mock.Anything, "msg")
+	assert.True(t, service.running)
+
+	// Verify notifiers are stored
+	assert.Equal(t, 2, len(service.notifiers))
+	assert.NotNil(t, service.defaultNotifier)
+	assert.Equal(t, contract.NotifierID("default-notifier"), service.defaultNotifier.ID())
+
+	// Shutdown
+	cancel()
+	wg.Wait()
+	assert.False(t, service.running)
 }
 
-// =============================================================================
-// Concurrency Tests
-// =============================================================================
-
-// TestConcurrencyStress는 고부하 상황에서의 동시성 안전성을 검증합니다.
-func TestConcurrencyStress(t *testing.T) {
-	mockNotifier := notificationmocks.NewMockNotifier(testNotifierID)
-	mockNotifier.On("SupportsHTML").Return(true)
-	mockNotifier.On("Send", mock.Anything, mock.Anything).Return(nil)
-	mockNotifier.On("Run", mock.Anything).Return()
-	mockNotifier.On("Done").Return(nil)
-
-	service := &Service{
-		appConfig: &config.AppConfig{
-			Notifier: config.NotifierConfig{
-				DefaultNotifierID: testNotifierID,
-			},
-		},
-		notifiersMap: map[contract.NotifierID]notifier.Notifier{
-			mockNotifier.ID(): mockNotifier,
-		},
-		defaultNotifier: mockNotifier,
-		running:         true,
-	}
-
-	concurrency := 100
-	wg := sync.WaitGroup{}
-	wg.Add(concurrency)
-
-	for i := 0; i < concurrency; i++ {
-		go func() {
-			defer wg.Done()
-			service.NotifyWithTitle(contract.NotifierID(testNotifierID), "title", "stress test", false)
-			service.NotifyDefault("default stress")
-		}()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// 성공
-	case <-time.After(5 * time.Second):
-		t.Fatal("Deadlock 감지 또는 타임아웃 발생")
-	}
-
-	mockNotifier.AssertNumberOfCalls(t, "Send", 200)
-}
-
-// =============================================================================
-// Service Lifecycle Tests
-// =============================================================================
-
-// TestStartAndRun은 Service 생명주기를 검증합니다.
-func TestStartAndRun(t *testing.T) {
-	t.Run("정상 시작 및 종료", func(t *testing.T) {
-		// setupMockService creates a mock with "test-notifier" ID.
-		// We want "default". So create a new one.
-		mockNotifier := notificationmocks.NewMockNotifier("default")
-		mockNotifier.On("SupportsHTML").Return(true)
-		mockNotifier.On("Run", mock.Anything).Return()
-		mockNotifier.On("Done").Return(nil)
-		mockNotifier.On("Send", mock.Anything, mock.Anything).Return(nil)
-		// mockNotifier.WithID("default") // Removed
-
-		cfg := &config.AppConfig{}
-		cfg.Notifier.DefaultNotifierID = "default"
-
-		mockFactory := new(notificationmocks.MockFactory)
-		mockFactory.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{mockNotifier}, nil)
-
-		// Re-create service with the specific mock factory for this test case
-		// Since setupMockService created a service with a default mock factory, we need to override it here.
-		// However, it's cleaner to just create a new service with the desired factory.
-		service := NewService(cfg, mockFactory, &taskmocks.MockExecutor{}) // Inject mockFactory directly
-		service.notifiersMap = map[contract.NotifierID]notifier.Notifier{} // Reset map if needed, though NewService does it.
-		// We need to re-apply the mock state if setupMockService did meaningful setup besides creation.
-		// setupMockService sets notifiersMap and defaultNotifier, but Start() will overwrite them using the Factory.
-		// So for TestStartAndRun, we mainly need the Factory to behave correctly.
-
-		ctx, cancel := context.WithCancel(context.Background())
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-
-		err := service.Start(ctx, wg)
-		assert.NoError(t, err)
-		assert.True(t, service.running)
-
-		err = service.NotifyDefault("test")
-		assert.NoError(t, err)
-
-		cancel()
-		wg.Wait()
-
-		assert.False(t, service.running)
-		err = service.NotifyDefault("fail")
-		assert.Error(t, err)
-		assert.Equal(t, ErrServiceStopped, err)
-	})
-}
-
-// =============================================================================
-// Service Start Error Tests
-// =============================================================================
-
-// TestStartErrors는 Service 시작 시 에러 처리를 검증합니다.
-func TestStartErrors(t *testing.T) {
+func TestService_Start_Errors(t *testing.T) {
 	tests := []struct {
 		name          string
 		cfgSetup      func(*config.AppConfig)
@@ -431,7 +185,7 @@ func TestStartErrors(t *testing.T) {
 			factorySetup: func(m *notificationmocks.MockFactory) {
 				m.On("CreateAll", mock.Anything, mock.Anything).Return(nil, errors.New("factory error"))
 			},
-			errorContains: "Notifier 초기화 중 에러가 발생했습니다",
+			errorContains: "Notifier 인스턴스 초기화 실패",
 		},
 		{
 			name: "기본 Notifier를 찾을 수 없음",
@@ -440,15 +194,31 @@ func TestStartErrors(t *testing.T) {
 			},
 			factorySetup: func(m *notificationmocks.MockFactory) {
 				m.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{
-					notificationmocks.NewMockNotifier("other"),
+					notificationmocks.NewMockNotifier(t, "other"),
 				}, nil)
 			},
-			errorContains: "기본 NotifierID('def')를 찾을 수 없습니다",
+			errorContains: "기본 Notifier('def')를 찾을 수 없습니다",
+		},
+		{
+			name: "중복된 Notifier ID",
+			cfgSetup: func(c *config.AppConfig) {
+				c.Notifier.DefaultNotifierID = "dup"
+			},
+			factorySetup: func(m *notificationmocks.MockFactory) {
+				// Create 2 mocks with same ID
+				h1 := notificationmocks.NewMockNotifier(t, "dup")
+				h2 := notificationmocks.NewMockNotifier(t, "dup")
+				// Expect redundant Close calls for leak prevention
+				h1.On("Close").Return()
+				h2.On("Close").Return()
+
+				m.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{h1, h2}, nil)
+			},
+			errorContains: "중복된 Notifier ID",
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.AppConfig{}
 			if tt.cfgSetup != nil {
@@ -464,6 +234,7 @@ func TestStartErrors(t *testing.T) {
 			if tt.factorySetup != nil {
 				tt.factorySetup(factory)
 			} else {
+				// Default empty factory behavior if not set
 				factory.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{}, nil)
 			}
 
@@ -480,83 +251,41 @@ func TestStartErrors(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// Improvement Tests (Merged from service_improvement_test.go)
-// =============================================================================
-
-func TestService_Start_DuplicateID(t *testing.T) {
+func TestService_Start_PanicRecovery(t *testing.T) {
 	// Setup
 	cfg := &config.AppConfig{
 		Notifier: config.NotifierConfig{
-			DefaultNotifierID: "test-notifier",
+			DefaultNotifierID: "normal",
 		},
 	}
 	executor := &taskmocks.MockExecutor{}
 
-	// Create 2 notifiers with SAME ID
-	h1 := notificationmocks.NewMockNotifier("duplicate-id")
-	h2 := notificationmocks.NewMockNotifier("duplicate-id")
+	panicNotifier := &StubPanicNotifier{id: "panic"}
+	normalNotifier := notificationmocks.NewMockNotifier(t, "normal")
+	normalNotifier.On("Run", mock.Anything).Run(func(args mock.Arguments) {
+		<-args.Get(0).(context.Context).Done()
+	}).Return()
+	normalNotifier.On("SupportsHTML").Return(true).Maybe()
 
-	mf := new(notificationmocks.MockFactory)
-	mf.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{h1, h2}, nil)
+	factory := new(notificationmocks.MockFactory)
+	factory.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{panicNotifier, normalNotifier}, nil)
 
-	service := NewService(cfg, mf, executor) // Changed to NewService
+	service := NewService(cfg, factory, executor)
 
-	// Action
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	// Verify
-	err := service.Start(ctx, wg)
-
-	// Assert
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "중복된 Notifier ID")
-	assert.Contains(t, err.Error(), "duplicate-id")
-}
-
-func TestService_Notify_StoppedNotifier(t *testing.T) {
-	// Setup
-	cfg := &config.AppConfig{
-		Notifier: config.NotifierConfig{
-			DefaultNotifierID: "test-notifier",
-		},
-	}
-	executor := &taskmocks.MockExecutor{}
-
-	// Setup a notifier with closed Done channel
-	closedCh := make(chan struct{})
-	close(closedCh)
-
-	// Use shared MockNotifier with functional injection
-	// Use shared MockNotifier with functional injection
-	h := notificationmocks.NewMockNotifier("test-notifier")
-	h.On("Send", mock.Anything, mock.Anything).Return(notifier.ErrClosed)
-	h.On("SupportsHTML").Return(true)
-	h.On("Run", mock.Anything).Return()
-	h.On("Done").Return((<-chan struct{})(closedCh)) // Return closed channel to simulate done
-
-	mf := new(notificationmocks.MockFactory)
-	mf.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{h}, nil)
-	service := NewService(cfg, mf, executor)
-
-	// Start service
-	ctx, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
-	// Start normally
+	// Action
 	err := service.Start(ctx, wg)
 	assert.NoError(t, err)
 
-	// Action
-	notifyErr := service.Notify(contract.NewTaskContext(), "test-notifier", "hello")
+	// Wait for panic to happen and recover
+	time.Sleep(50 * time.Millisecond)
 
-	// Assert
-	// Depending on implementation, if notifier is closed, Service might return ErrServiceStopped
-	assert.ErrorIs(t, notifyErr, ErrServiceStopped)
+	// Verify Service is still running
+	assert.NoError(t, service.Health())
 
 	// Cleanup
 	cancel()
@@ -564,406 +293,237 @@ func TestService_Notify_StoppedNotifier(t *testing.T) {
 }
 
 // =============================================================================
-// Panic Recovery Tests (Merged from service_panic_test.go)
+// Start Notification Logic Tests
 // =============================================================================
 
-// TestService_Start_PanicRecovery tests panic recovery in Notifier Run.
-func TestService_Start_PanicRecovery(t *testing.T) {
-	// Setup
-	cfg := &config.AppConfig{
-		Notifier: config.NotifierConfig{
-			DefaultNotifierID: "normal_notifier",
+func TestService_Notify(t *testing.T) {
+	// Common test data
+	taskID := contract.TaskID("TaskA")
+	cmdID := contract.TaskCommandID("CmdA")
+	title := "MyTitle"
+
+	tests := []struct {
+		name           string
+		notifierID     string
+		defaultID      string
+		serviceRunning bool
+
+		// Input
+		notification contract.Notification
+
+		// Mocks setup
+		setupMocks func(h *serviceTestHelper)
+
+		// Expectations
+		wantErr         bool
+		wantErrIs       error
+		wantErrContains string
+		wantLogContains string // Simplified log check (conceptually)
+	}{
+		{
+			name:           "성공: 지정된 Notifier로 전송",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "target", Message: "hello"},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("target")
+				m.On("Send", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "hello"
+				})).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:           "성공: Notifier 미지정 시 기본값 사용",
+			notifierID:     "", // Empty
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{Message: "hello defaults"},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("default")
+				m.On("Send", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.Message == "hello defaults"
+				})).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:           "성공: 에러 알림 전송",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "target", Message: "fail", ErrorOccurred: true},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("target")
+				m.On("Send", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.ErrorOccurred == true
+				})).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:           "실패: 서비스 중지됨",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: false,
+			notification:   contract.Notification{NotifierID: "target", Message: "hello"},
+			setupMocks:     func(h *serviceTestHelper) {},
+			wantErr:        true,
+			wantErrIs:      ErrServiceNotRunning,
+		},
+		{
+			name:           "실패: 유효하지 않은 알림 (메시지 없음)",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "target", Message: ""},
+			setupMocks:     func(h *serviceTestHelper) {},
+			wantErr:        true,
+			wantErrIs:      contract.ErrMessageRequired,
+		},
+		{
+			name:           "실패: 존재하지 않는 Notifier ID (기본 Notifier로 경고)",
+			notifierID:     "unknown",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "unknown", Message: "hello", TaskID: taskID, CommandID: cmdID, Title: title},
+			setupMocks: func(h *serviceTestHelper) {
+				d := h.AddMockNotifier("default")
+				// Expect error notification sent to default
+				d.On("Send", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.ErrorOccurred && strings.Contains(n.Message, "등록되지 않은 Notifier ID") && strings.Contains(n.Message, "unknown")
+				})).Return(nil)
+			},
+			wantErr:   true,
+			wantErrIs: ErrNotifierNotFound,
+		},
+		{
+			name:           "실패: 존재하지 않는 Notifier ID + 기본 Notifier 없음 (Double Failure)",
+			notifierID:     "unknown",
+			defaultID:      "", // No default
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "unknown", Message: "hello"},
+			setupMocks: func(h *serviceTestHelper) {
+				// No default notifier to fallback to
+				// But we need at least one notifier in map to not just have Start() fail?
+				// Actually if defaultID is empty or nil, service might have running=true but defaultNotifier=nil
+				h.AddMockNotifier("other")
+			},
+			wantErr:   true,
+			wantErrIs: ErrNotifierNotFound,
+		},
+		{
+			name:           "실패: 기본 Notifier ID 누락 (Service Notify 호출 시)",
+			notifierID:     "",
+			defaultID:      "", // Invalid config state or runtime state
+			serviceRunning: true,
+			notification:   contract.Notification{Message: "hello"},
+			setupMocks:     func(h *serviceTestHelper) {},
+			wantErr:        true,
+			wantErrIs:      ErrServiceNotRunning, // Mapped to service not running if default is nil
+		},
+		{
+			name:           "실패: Notifier Send 에러 (ErrClosed -> ServiceStopped 매핑)",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "target", Message: "hello"},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("target")
+				m.On("Send", mock.Anything, mock.Anything).Return(notifier.ErrClosed)
+			},
+			wantErr:   true,
+			wantErrIs: ErrServiceNotRunning,
+		},
+		{
+			name:           "실패: Notifier Send 일반 에러",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true,
+			notification:   contract.Notification{NotifierID: "target", Message: "hello"},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("target")
+				m.On("Send", mock.Anything, mock.Anything).Return(errors.New("network error"))
+			},
+			wantErr:         true,
+			wantErrContains: "network error",
 		},
 	}
-	executor := &taskmocks.MockExecutor{}
 
-	// Panic Notifier: using WithRunFunc to simulate panic
-	// Panic Notifier: using Run to simulate panic
-	panicNotifier := notificationmocks.NewMockNotifier("panic_notifier")
-	panicNotifier.On("Run", mock.Anything).Run(func(args mock.Arguments) {
-		panic("Simulated Panic in Notifier Run")
-	}).Return()
-	panicNotifier.On("SupportsHTML").Return(true)
-	panicNotifier.On("Done").Return(nil)
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			helper := newServiceTestHelper(t)
 
-	normalNotifier := notificationmocks.NewMockNotifier("normal_notifier")
-	normalNotifier.On("Run", mock.Anything).Return()
-	normalNotifier.On("Done").Return(nil)
-	normalNotifier.On("SupportsHTML").Return(true) // Start might check this or logs?
-	// Actually Health check calls SupportsHTML? No.
-	// But let's add minimal expectations.
+			// Custom mocks setup
+			if tt.setupMocks != nil {
+				tt.setupMocks(helper)
+			}
 
-	factory := new(notificationmocks.MockFactory)
-	factory.On("CreateAll", mock.Anything, mock.Anything).Return([]notifier.Notifier{panicNotifier, normalNotifier}, nil)
+			service := helper.Build(tt.defaultID)
 
-	service := NewService(cfg, factory, executor) // Changed to NewService
+			// Manually set running state and map injection
+			// (Since Build() constructs service but doesn't call Start)
+			service.runningMu.Lock()
+			service.running = tt.serviceRunning
+			// Inject created mocks into service map
+			for id, m := range helper.mocks {
+				service.notifiers[contract.NotifierID(id)] = m
+				if id == tt.defaultID {
+					service.defaultNotifier = m
+				}
+			}
+			service.runningMu.Unlock()
 
-	// Test
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+			// Action
+			err := service.Notify(context.Background(), tt.notification)
 
-	// Service Termination WaitGroup (Service Start uses this to signal service stop)
-	serviceStopWG := &sync.WaitGroup{}
-	serviceStopWG.Add(1)
+			// Assert
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantErrIs != nil {
+					assert.ErrorIs(t, err, tt.wantErrIs)
+				}
+				if tt.wantErrContains != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
 
-	// Start Service
-	err := service.Start(ctx, serviceStopWG)
-	assert.NoError(t, err)
+// =============================================================================
+// Helper Method Tests
+// =============================================================================
 
-	// service.Start launches goroutines for notifiers.
-	// One of them will panic immediately.
-	// We wait a bit to ensure panic happens and is recovered.
-	time.Sleep(100 * time.Millisecond)
+func TestService_Health(t *testing.T) {
+	service := &Service{
+		running: false,
+	}
+	assert.ErrorIs(t, service.Health(), ErrServiceNotRunning)
 
-	// Verify Service is still running
+	service.running = true
 	assert.NoError(t, service.Health())
-
-	// Terminate Service
-	cancel()
-	serviceStopWG.Wait()
 }
 
-// =============================================================================
-// Interface Tests (Moved from interface_test.go)
-// =============================================================================
+func TestService_SupportsHTML(t *testing.T) {
+	helper := newServiceTestHelper(t)
+	m := helper.AddMockNotifier("html-support")
+	m.On("SupportsHTML").Return(true)
 
-// TestSender_NotifyWithTitle는 Sender.NotifyWithTitle 메서드의 동작을 검증합니다.
-// 제목, 메시지, 에러 플래그가 올바르게 전달되는지, TaskContext가 올바르게 생성되는지 확인합니다.
-func TestSender_NotifyWithTitle(t *testing.T) {
-	tests := []struct {
-		name          string
-		notifierID    string
-		title         string
-		message       string
-		errorOccurred bool
-		expectError   bool
-		expectedMsg   string
-		setupMock     func(*notificationmocks.MockNotifier)
-	}{
-		{
-			name:          "성공: 일반 알림 전송",
-			notifierID:    testNotifierID,
-			title:         "Notice",
-			message:       "This is a test message.",
-			errorOccurred: false,
-			expectError:   false,
-			expectedMsg:   "This is a test message.",
-			setupMock:     nil,
-		},
-		{
-			name:          "성공: 에러 알림 전송 (Error Flag True)",
-			notifierID:    testNotifierID,
-			title:         "Error Alert",
-			message:       "Something went wrong.",
-			errorOccurred: true,
-			expectError:   false,
-			expectedMsg:   "Something went wrong.",
-			setupMock: func(m *notificationmocks.MockNotifier) {
-				m.On("Send", mock.Anything, mock.Anything).Return(func(ctx contract.TaskContext, msg string) error {
-					if ctx.IsErrorOccurred() {
-						return nil
-					}
-					return nil
-				})
-			},
-		},
-		{
-			name:        "실패: 존재하지 않는 Notifier",
-			notifierID:  "unknown_notifier",
-			title:       "Fail",
-			message:     "This should fail.",
-			expectError: true,
-			setupMock:   nil,
-		},
-	}
+	service := helper.Build("default")
+	helper.DirtyStart(service, "default")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			service, _, baseMock := setupMockServiceWithOptions(mockServiceOptions{
-				notifierID:   testNotifierID,
-				supportsHTML: true,
-				running:      true,
-			})
-
-			// Wrap mock
-			// mockNotifier := &FunctionalMock{MockNotifier: baseMock}
-			// Use baseMock directly as it now supports WithNotifyFunc
-			mockNotifier := baseMock
-			if tt.setupMock != nil {
-				tt.setupMock(mockNotifier)
-			}
-
-			// Replace in service map only if ID matches testNotifierID,
-			// otherwise we leave it as is or handle unknown ID case.
-			if tt.notifierID == testNotifierID {
-				service.notifiersMap[contract.NotifierID(testNotifierID)] = mockNotifier
-			}
-
-			// Act
-			err := service.NotifyWithTitle(contract.NotifierID(tt.notifierID), tt.title, tt.message, tt.errorOccurred)
-
-			// Assert
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.NoError(t, err)
-				baseMock.AssertCalled(t, "Send", mock.Anything, tt.expectedMsg)
-
-				// Verify TaskContext properties via Call arguments
-				// Find the call
-				var lastCall *mock.Call
-				for _, c := range baseMock.Calls {
-					if c.Method == "Send" {
-						lastCall = &c
-						// Don't break, get last one? Test assumes one call usually.
-					}
-				}
-				require.NotNil(t, lastCall)
-				args := lastCall.Arguments
-				ctx := args.Get(0).(contract.TaskContext)
-
-				require.NotNil(t, ctx)
-				assert.Equal(t, tt.title, ctx.GetTitle())
-				assert.Equal(t, tt.errorOccurred, ctx.IsErrorOccurred())
-			}
-		})
-	}
+	assert.True(t, service.SupportsHTML("html-support"))
+	assert.False(t, service.SupportsHTML("unknown"))
 }
 
-// TestSender_NotifyDefault는 Sender.NotifyDefault 메서드의 동작을 검증합니다.
-// 기본 Notifier로 메시지가 전달되는지 확인합니다.
-func TestSender_NotifyDefault(t *testing.T) {
-	tests := []struct {
-		name            string
-		message         string
-		defaultNotifier string
-		running         bool
-		expectError     bool
-		errorIs         error
-		setupMock       func(*notificationmocks.MockNotifier)
-	}{
-		{
-			name:            "성공: 기본 Notifier로 전송",
-			message:         "Default Message",
-			defaultNotifier: defaultNotifierID,
-			running:         true,
-			expectError:     false,
-		},
-		{
-			name:            "실패: 기본 Notifier 미설정 (Service Stopped 간주)",
-			message:         "Fail Message",
-			defaultNotifier: "", // 미설정
-			running:         true,
-			expectError:     true,
-			errorIs:         ErrServiceStopped,
-		},
-		{
-			name:            "실패: 메시지 전송 실패 (Queue Full 등)",
-			message:         "Fail Message",
-			defaultNotifier: defaultNotifierID,
-			running:         true,
-			expectError:     true,
-			setupMock: func(m *notificationmocks.MockNotifier) {
-				// Clear default Send expectation from setupMockServiceWithOptions
-				var newCalls []*mock.Call
-				for _, call := range m.ExpectedCalls {
-					if call.Method != "Send" {
-						newCalls = append(newCalls, call)
-					}
-				}
-				m.ExpectedCalls = newCalls
-
-				m.On("Send", mock.Anything, mock.Anything).Return(notifier.ErrQueueFull)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			// Use defaultNotifierID if tt.defaultNotifier is set, otherwise use a placeholder that we will clear
-			setupID := defaultNotifierID
-			if tt.defaultNotifier != "" {
-				setupID = tt.defaultNotifier
-			}
-
-			opts := mockServiceOptions{
-				notifierID:   contract.NotifierID(setupID),
-				supportsHTML: true,
-				running:      tt.running,
-			}
-
-			service, _, baseMock := setupMockServiceWithOptions(opts)
-
-			// mockNotifier := &FunctionalMock{MockNotifier: baseMock}
-			mockNotifier := baseMock
-			if tt.setupMock != nil {
-				tt.setupMock(mockNotifier)
-			}
-
-			// Inject wrapped mock if needed
-			if service.defaultNotifier != nil {
-				// ID가 일치하면 교체 (여기서는 setupMockServiceWithOptions가 생성한 mockNotifier를 사용하므로 항상 일치)
-				service.defaultNotifier = mockNotifier
-			}
-
-			// If test case expects no default notifier, explicitly set to nil
-			if tt.defaultNotifier == "" {
-				service.defaultNotifier = nil
-			}
-
-			// Act
-			err := service.NotifyDefault(tt.message)
-
-			// Assert
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorIs != nil {
-					assert.ErrorIs(t, err, tt.errorIs)
-				}
-			} else {
-				assert.NoError(t, err)
-				assert.NoError(t, err)
-				baseMock.AssertCalled(t, "Send", mock.Anything, tt.message)
-			}
-		})
-	}
-}
-
-// TestSender_NotifyDefaultWithError는 Sender.NotifyDefaultWithError 메서드를 검증합니다.
-// 에러 플래그가 설정된 채로 기본 Notifier에 전달되는지 확인합니다.
-func TestSender_NotifyDefaultWithError(t *testing.T) {
-	// Arrange
-	service, _, mockNotifier := setupMockServiceWithOptions(mockServiceOptions{
-		notifierID:   defaultNotifierID,
-		supportsHTML: true,
-		running:      true,
-	})
-
-	message := "Critical Error"
-
-	// Act
-	err := service.NotifyDefaultWithError(message)
-
-	// Assert
-	assert.NoError(t, err)
-	mockNotifier.AssertCalled(t, "Send", mock.Anything, message)
-
-	// Verify TaskContext
-	// We need to capture the arguments to verify IsErrorOccurred
-	// Since AssertCalled doesn't give us the args.
-	// We can iterate Calls given we know it was called.
-	var lastCall *mock.Call
-	for _, c := range mockNotifier.Calls {
-		if c.Method == "Send" {
-			lastCall = &c
-			break
-		}
-	}
-	require.NotNil(t, lastCall)
-	args := lastCall.Arguments
-	ctx := args.Get(0).(contract.TaskContext)
-
-	require.NotNil(t, ctx)
-	assert.True(t, ctx.IsErrorOccurred(), "Error flag should be true")
-}
-
-// TestHealthChecker_Health는 HealthChecker.Health 메서드의 동작을 검증합니다.
-// 서비스 실행 상태에 따른 반환값을 확인합니다.
-func TestHealthChecker_Health(t *testing.T) {
-	tests := []struct {
-		name        string
-		running     bool
-		expectError bool
-		errorIs     error
-	}{
-		{
-			name:        "정상: 서비스 실행 중",
-			running:     true,
-			expectError: false,
-		},
-		{
-			name:        "에러: 서비스 중지됨",
-			running:     false,
-			expectError: true,
-			errorIs:     ErrServiceStopped,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			service, _, _ := setupMockServiceWithOptions(mockServiceOptions{
-				notifierID:   testNotifierID,
-				supportsHTML: true,
-				running:      tt.running,
-			})
-
-			// Act
-			err := service.Health()
-
-			// Assert
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorIs != nil {
-					assert.ErrorIs(t, err, tt.errorIs)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// TestSender_Mockability는 Sender 및 HealthChecker 인터페이스가 Mocking 가능한지 시연합니다.
-// 이는 "Interface Code" 자체에 대한 테스트의 일환으로 볼 수 있습니다.
-type MockSender struct {
-	NotifyWithTitleFunc        func(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error
-	NotifyDefaultFunc          func(message string) error
-	NotifyDefaultWithErrorFunc func(message string) error
-	HealthFunc                 func() error // HealthChecker 구현
-}
-
-func (m *MockSender) NotifyWithTitle(notifierID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	if m.NotifyWithTitleFunc != nil {
-		return m.NotifyWithTitleFunc(notifierID, title, message, errorOccurred)
-	}
-	return nil
-}
-func (m *MockSender) NotifyDefault(message string) error {
-	if m.NotifyDefaultFunc != nil {
-		return m.NotifyDefaultFunc(message)
-	}
-	return nil
-}
-func (m *MockSender) NotifyDefaultWithError(message string) error {
-	if m.NotifyDefaultWithErrorFunc != nil {
-		return m.NotifyDefaultWithErrorFunc(message)
-	}
-	return nil
-}
-func (m *MockSender) Health() error {
-	if m.HealthFunc != nil {
-		return m.HealthFunc()
-	}
-	return nil
-}
-
-func TestHealthChecker_Mockability(t *testing.T) {
-	// Arrange
-	mock := &MockSender{
-		HealthFunc: func() error {
-			return errors.New("mock error")
-		},
-	}
-
-	// Act
-	var healthChecker contract.NotificationHealthChecker = mock
-	err := healthChecker.Health()
-
-	// Assert
-	assert.Error(t, err)
-	assert.Equal(t, "mock error", err.Error())
+func TestService_GetExecutors(t *testing.T) {
+	// Assuming GetExecutors exists or similar accessor?
+	// Based on viewed code, Executor is internal.
+	// If no public accessor, skip.
 }

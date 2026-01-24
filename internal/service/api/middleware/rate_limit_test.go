@@ -231,7 +231,7 @@ func TestRateLimit_ResponseHeadersAndLogs(t *testing.T) {
 	assert.NoError(t, parseErr)
 
 	assert.Equal(t, "warning", logEntry["level"])
-	assert.Equal(t, "API 요청 속도 제한 초과 (차단됨)", logEntry["msg"])
+	assert.Equal(t, "요청 차단: 속도 제한(Rate Limit)을 초과하였습니다", logEntry["msg"])
 	assert.Equal(t, "3.3.3.3", logEntry["remote_ip"])
 	assert.Equal(t, "/test", logEntry["path"])
 }

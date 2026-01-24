@@ -294,7 +294,7 @@ func TestLoad_Integration(t *testing.T) {
 			// Let's verify actual behavior. Likely an unmarshal error or zero value.
 			// After testing, mapstructure often returns error for incompatible types even with WeaklyTypedInput.
 			wantErr: true,
-			errMsg:  "설정값을 구조체에 매핑하지 못했습니다",
+			errMsg:  "설정값을 구조체에 매핑하지 못하였습니다",
 		},
 	}
 
