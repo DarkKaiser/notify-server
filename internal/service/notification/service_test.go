@@ -439,7 +439,7 @@ func TestService_Notify(t *testing.T) {
 			wantErrIs:      ErrServiceNotRunning,
 		},
 		{
-			name:           "Failure: Notifier Send Error (Mapped to ServiceStopped)",
+			name:           "Failure: Notifier Closed (Service Running) -> ErrNotifierUnavailable",
 			notifierID:     "target",
 			defaultID:      "default",
 			serviceRunning: true,
@@ -447,6 +447,27 @@ func TestService_Notify(t *testing.T) {
 			setupMocks: func(h *serviceTestHelper) {
 				m := h.AddMockNotifier("target")
 				m.On("Send", mock.Anything, mock.Anything).Return(notifier.ErrClosed)
+			},
+			wantErr:   true,
+			wantErrIs: ErrNotifierUnavailable,
+		},
+		{
+			name:           "Failure: Notifier Closed (Service Stopping) -> ErrServiceNotRunning",
+			notifierID:     "target",
+			defaultID:      "default",
+			serviceRunning: true, // Initially running to pass first check
+			notification:   contract.Notification{NotifierID: "target", Message: "hello"},
+			setupMocks: func(h *serviceTestHelper) {
+				m := h.AddMockNotifier("target")
+				m.On("Send", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					// Simulate service shutdown occurring during Send
+					// check h.service is set (requires helper update in loop)
+					if h.service != nil {
+						h.service.runningMu.Lock()
+						h.service.running = false
+						h.service.runningMu.Unlock()
+					}
+				}).Return(notifier.ErrClosed)
 			},
 			wantErr:   true,
 			wantErrIs: ErrServiceNotRunning,
@@ -478,6 +499,7 @@ func TestService_Notify(t *testing.T) {
 
 			// Instantiate Service
 			service := helper.Build(tt.defaultID)
+			helper.service = service
 
 			// Manually inject state (DirtyStart) for unit testing Notify
 			helper.DirtyStart(service, tt.defaultID)
@@ -511,6 +533,102 @@ func TestService_Notify(t *testing.T) {
 // =============================================================================
 // 3. Helper Method Tests
 // =============================================================================
+
+func TestService_Start_Idempotency(t *testing.T) {
+	t.Parallel()
+	helper := newServiceTestHelper(t)
+	helper.AddMockNotifier("default")
+
+	service := helper.Build("default")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := &sync.WaitGroup{}
+
+	// 1st Start
+	wg.Add(1)
+	err := service.Start(ctx, wg)
+	assert.NoError(t, err)
+
+	// 2nd Start (Idempotent - should return nil but log warning)
+	wg.Add(1)
+	err = service.Start(ctx, wg)
+	assert.NoError(t, err)
+
+	// Clean up
+	cancel()
+	wg.Wait()
+}
+
+func TestService_Cleanup_Resources(t *testing.T) {
+	t.Parallel()
+	helper := newServiceTestHelper(t)
+	helper.AddMockNotifier("default")
+
+	service := helper.Build("default")
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	// Start
+	require.NoError(t, service.Start(ctx, wg))
+	require.True(t, service.running)
+
+	// Stop
+	cancel()
+	wg.Wait()
+
+	// Verify Cleanup
+	assert.False(t, service.running)
+	assert.Nil(t, service.executor, "Executor should be nil after shutdown")
+	assert.Nil(t, service.notifiers, "Notifiers map should be nil after shutdown")
+	assert.Nil(t, service.defaultNotifier, "DefaultNotifier should be nil after shutdown")
+}
+
+func TestService_Notify_Concurrent(t *testing.T) {
+	t.Parallel()
+	helper := newServiceTestHelper(t)
+	m := helper.AddMockNotifier("default")
+	// Allow Send to be called multiple times
+	m.On("Send", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	service := helper.Build("default")
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	require.NoError(t, service.Start(ctx, wg))
+
+	// Run concurrent notifications
+	var notifyWg sync.WaitGroup
+	workers := 20
+	requests := 50
+
+	notifyWg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer notifyWg.Done()
+			for j := 0; j < requests; j++ {
+				// We don't check error here strictly because service might stop in middle
+				// We just want to ensure no panics (race detector will catch races)
+				_ = service.Notify(context.Background(), contract.Notification{
+					Message: "load test",
+				})
+				time.Sleep(time.Millisecond)
+			}
+		}()
+	}
+
+	// Trigger shutdown in middle of processing
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	wg.Wait()
+
+	// Wait for notify workers
+	notifyWg.Wait()
+
+	// Ensure service is stopped
+	assert.False(t, service.running)
+}
 
 func TestService_Health(t *testing.T) {
 	t.Parallel()

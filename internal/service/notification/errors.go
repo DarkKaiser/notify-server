@@ -10,8 +10,12 @@ var (
 	// ErrServiceNotRunning 서비스가 정상적인 실행 상태(Running)가 아닐 때(종료 절차 진행 중 또는 미시작) 반환하는 에러입니다.
 	ErrServiceNotRunning = apperrors.New(apperrors.Unavailable, "서비스가 실행 상태가 아닙니다: 시스템이 종료 중이거나 아직 시작되지 않았습니다")
 
-	// ErrNotifierNotFound 지정된 알림 채널(Notifier)을 찾을 수 없거나, 설정 파일에 등록되지 않은 채널 ID가 요청되었을 때 반환하는 에러입니다.
+	// ErrNotifierNotFound 해당 알림 채널(Notifier)을 찾을 수 없거나, 설정 파일에 등록되지 않은 채널 ID가 요청되었을 때 반환하는 에러입니다.
 	ErrNotifierNotFound = apperrors.New(apperrors.NotFound, "등록되지 않은 Notifier입니다. 설정 파일을 확인해 주세요")
+
+	// ErrNotifierUnavailable 해당 알림 채널(Notifier)이 일시적으로 중단되었거나 종료(Closed)되어 알림을 전송할 수 없을 때 반환하는 에러입니다.
+	// Notification 서비스는 정상 실행 중이나, 특정 채널만 사용 불가능한 상태(Partial Failure)를 의미합니다.
+	ErrNotifierUnavailable = apperrors.New(apperrors.Unavailable, "해당 Notifier가 사용 불가능한 상태입니다 (일시적 중단 또는 종료됨)")
 
 	// ErrExecutorNotInitialized 서비스 시작 시 핵심 의존성 객체인 Task Executor가 올바르게 초기화되지 않았을 때 반환하는 에러입니다.
 	ErrExecutorNotInitialized = apperrors.New(apperrors.Internal, "Executor 객체가 초기화되지 않았습니다")

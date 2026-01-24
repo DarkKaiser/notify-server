@@ -284,6 +284,19 @@ func TestPublishNotificationHandler(t *testing.T) {
 			expectedErr:    ErrNotifierNotFound,
 		},
 		{
+			name: "실패: Notifier 사용 불가 (503 NotifierUnavailable)",
+			reqBody: request.NotificationRequest{
+				ApplicationID: "test-app",
+				Message:       "Notifier Down",
+			},
+			app: testApp,
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("Notify", mock.Anything, mock.Anything).Return(notification.ErrNotifierUnavailable)
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedErr:    ErrNotifierUnavailable,
+		},
+		{
 			name: "실패: 큐 가득 참 (503 ServiceOverloaded)",
 			reqBody: request.NotificationRequest{
 				ApplicationID: "test-app",

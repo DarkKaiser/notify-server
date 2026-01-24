@@ -19,8 +19,11 @@ var (
 	// ErrServiceInterrupted 요청 처리 중 예기치 않은 시스템 오류나 인터럽트(Context Cancelled)가 발생했을 때 반환하는 에러입니다.
 	ErrServiceInterrupted = httputil.NewInternalServerError("알림 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요")
 
-	// ErrNotifierNotFound 지정된 알림 채널(Notifier)을 찾을 수 없거나, 존재하지 않을 때 반환하는 에러입니다.
+	// ErrNotifierNotFound 해당 알림 채널(Notifier)을 찾을 수 없거나, 존재하지 않을 때 반환하는 에러입니다.
 	ErrNotifierNotFound = httputil.NewNotFoundError("등록되지 않은 알림 채널입니다. 설정을 확인해 주세요")
+
+	// ErrNotifierUnavailable 해당 알림 채널(Notifier)이 일시적으로 중단되었거나 종료(Closed)되어 사용할 수 없을 때 반환하는 에러입니다.
+	ErrNotifierUnavailable = httputil.NewServiceUnavailableError("해당 알림 채널이 사용 불가능한 상태입니다 (일시적 중단 또는 종료됨). 잠시 후 다시 시도해주세요")
 )
 
 // NewErrAppIDMismatch 요청 본문(Body)의 Application ID와 인증 정보(Header/Query)가 불일치할 때 반환하는 보안 에러를 생성합니다.

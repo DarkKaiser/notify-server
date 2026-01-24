@@ -420,10 +420,20 @@ func (s *Service) Notify(ctx context.Context, notification contract.Notification
 	// 4단계: 알림 전송
 	// ========================================
 	if err := targetNotifier.Send(ctx, notification); err != nil {
-		// Notifier가 이미 종료된 경우, 서비스 중단 에러로 매핑하여 반환합니다.
-		// 이렇게 하면 호출자는 일관된 에러 타입(ErrServiceNotRunning)으로 처리할 수 있습니다.
+		// Notifier가 이미 종료된(Closed) 경우 세부 상태를 확인하여 에러를 매핑합니다.
 		if err == notifier.ErrClosed {
-			return ErrServiceNotRunning
+			// 1. 서비스 자체가 종료 중인 경우 -> ErrServiceNotRunning 반환
+			s.runningMu.RLock()
+			isServiceRunning := s.running
+			s.runningMu.RUnlock()
+
+			if !isServiceRunning {
+				return ErrServiceNotRunning
+			}
+
+			// 2. 서비스는 실행 중인데 특정 Notifier만 종료된 경우 -> ErrNotifierUnavailable 반환
+			// (패닉 복구 또는 내부 오류로 인해 해당 Notifier만 중단된 상황)
+			return ErrNotifierUnavailable
 		}
 
 		return err

@@ -113,12 +113,18 @@ func (h *Handler) PublishNotificationHandler(c echo.Context) error {
 			return ErrServiceStopped
 		}
 
-		// 2. Notifier 찾을 수 없음 (404 Not Found)
+		// 2. Notifier 사용 불가 (503 Service Unavailable)
+		// 서비스는 정상인데 특정 알림 채널(Notifier)만 죽은 경우입니다.
+		if errors.Is(err, notification.ErrNotifierUnavailable) {
+			return ErrNotifierUnavailable
+		}
+
+		// 3. Notifier 찾을 수 없음 (404 Not Found)
 		if errors.Is(err, notification.ErrNotifierNotFound) {
 			return ErrNotifierNotFound
 		}
 
-		// 3. 큐 가득 참 등 일시적 불가 (503 Service Unavailable)
+		// 4. 큐 가득 참 등 일시적 불가 (503 Service Unavailable)
 		var appErr *apperrors.AppError
 		if errors.As(err, &appErr) && appErr.Type() == apperrors.Unavailable {
 			return ErrServiceOverloaded
