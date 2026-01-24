@@ -273,6 +273,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 		select {
 		case <-notifier.Done():
 			// 정상 종료됨: Done() 채널이 닫혀있음
+
 		default:
 			// 비정상 상황: WaitGroup은 완료되었으나 Done() 채널은 아직 열려있음
 			applog.WithComponentAndFields(component, applog.Fields{

@@ -169,6 +169,14 @@ func (m *mockNotifierHandler) Send(ctx context.Context, notification contract.No
 	return nil
 }
 
+func (m *mockNotifierHandler) TrySend(ctx context.Context, notification contract.Notification) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Store the message for assertion
+	m.calls = append(m.calls, notification.Message)
+	return nil
+}
+
 func (m *mockNotifierHandler) Close()                {}
 func (m *mockNotifierHandler) Done() <-chan struct{} { return nil }
 

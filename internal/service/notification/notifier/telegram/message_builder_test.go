@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -76,6 +77,7 @@ func TestFormatElapsedTime(t *testing.T) {
 // setupNotifierForBuilder 테스트용 Notifier 인스턴스를 생성하는 헬퍼 함수
 func setupNotifierForBuilder() *telegramNotifier {
 	return &telegramNotifier{
+		Base:              notifier.NewBase("test-id", true, 100, 10*time.Second),
 		botCommandsByTask: make(map[contract.TaskID]map[contract.TaskCommandID]botCommand),
 	}
 }

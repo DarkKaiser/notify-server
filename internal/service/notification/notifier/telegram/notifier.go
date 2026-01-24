@@ -184,6 +184,7 @@ func (n *telegramNotifier) waitForGoroutines(wg *sync.WaitGroup) {
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
 		}).Debug("정상 종료: 모든 고루틴 작업 완료 (Graceful Shutdown)")
+
 	case <-time.After(shutdownWaitTimeout):
 		// ─────────────────────────────────────────────────────────────────────
 		// Case B: 타임아웃 발생 (좀비 고루틴 가능성)
@@ -207,6 +208,7 @@ func (n *telegramNotifier) isClosed() bool {
 	select {
 	case <-n.Done():
 		return true
+
 	default:
 		return false
 	}

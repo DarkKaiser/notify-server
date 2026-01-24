@@ -123,6 +123,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			select {
 			case <-req.Context().Done():
 				return nil, req.Context().Err() // 요청 컨텍스트가 종료되면 재시도 중단
+
 			case <-time.After(delay):
 				// 대기 시간 종료 후 루프 계속 진행
 			}

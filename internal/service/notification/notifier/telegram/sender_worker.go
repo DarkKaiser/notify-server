@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"time"
 
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -158,7 +159,37 @@ func (n *telegramNotifier) drainRemainingNotifications() {
 	defer cancel() // 함수 종료 시 리소스 정리
 
 	// ═════════════════════════════════════════════════════════════════════════════
-	// 2. Non-blocking Drain Loop
+	// 2. 경쟁 상태 방지: Sender 진입 대기 (Wait for Pending Sends)
+	// ═════════════════════════════════════════════════════════════════════════════
+	// 종료 직전에 Send() 메서드에 진입하여 채널에 넣으려는 시도들이 완료될 때까지 기다립니다.
+	// 이를 통해 "채널 확인(Empty) -> 종료 -> Send(Push)" 순서로 발생하는 데이터 유실을 방지합니다.
+	// WaitGroup.Wait()는 블로킹되므로, 타임아웃(waitPendingSendsCtx)을 적용하여 무한 대기를 방지합니다.
+	waitPendingSendsC := make(chan struct{})
+	go func() {
+		n.Base.WaitForPendingSends()
+		close(waitPendingSendsC)
+	}()
+
+	// Pending Sends 대기용으로 짧은 타임아웃(예: 5초)을 별도로 설정합니다.
+	waitPendingSendsCtx, waitPendingSendsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitPendingSendsCancel()
+
+	select {
+	case <-waitPendingSendsC:
+		// 대기 완료: 모든 Sender가 작업을 마침 (채널에 넣었거나 포기했거나)
+
+	case <-waitPendingSendsCtx.Done():
+		// 대기 타임아웃: Pending Sends가 너무 오래 걸림 -> 포기하고 Drain으로 넘어감
+		applog.WithComponentAndFields(component, applog.Fields{
+			"notifier_id": n.ID(),
+			"chat_id":     n.chatID,
+			"timeout":     5 * time.Second,
+			"queue_depth": len(n.Base.NotificationC()),
+		}).Warn("Pending Sends 대기 중단: 대기 제한 시간 초과 (잔여 시간 동안 전송 시도)")
+	}
+
+	// ═════════════════════════════════════════════════════════════════════════════
+	// 3. Non-blocking Drain Loop
 	// ═════════════════════════════════════════════════════════════════════════════
 	// select-default 패턴을 사용하여:
 	//   - 채널에 메시지가 있으면 → 처리

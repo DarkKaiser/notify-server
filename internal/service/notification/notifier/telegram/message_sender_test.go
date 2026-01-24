@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,13 +23,14 @@ import (
 // setupSenderTest creates a harness for testing logic without external dependencies.
 func setupSenderTest(t *testing.T) (*telegramNotifier, *MockTelegramBot) {
 	mockBot := NewMockTelegramBot(t)
-	notifier := &telegramNotifier{
+	n := &telegramNotifier{
+		Base:        notifier.NewBase("test-id", true, 100, 10*time.Second),
 		client:      mockBot,
 		chatID:      12345,
 		retryDelay:  1 * time.Millisecond,         // Fast retry for testing
 		rateLimiter: rate.NewLimiter(rate.Inf, 0), // Infinite rate limit by default
 	}
-	return notifier, mockBot
+	return n, mockBot
 }
 
 // =============================================================================
@@ -134,7 +136,10 @@ func TestShouldRetry(t *testing.T) {
 }
 
 func TestDelayForRetry(t *testing.T) {
-	n := &telegramNotifier{retryDelay: 5 * time.Second}
+	n := &telegramNotifier{
+		Base:       notifier.NewBase("test-id", true, 100, 10*time.Second),
+		retryDelay: 5 * time.Second,
+	}
 
 	t.Run("Use Retry-After Header", func(t *testing.T) {
 		assert.Equal(t, 10*time.Second, n.delayForRetry(10))
@@ -394,6 +399,7 @@ func TestRateLimiterIntegration(t *testing.T) {
 	limiter := rate.NewLimiter(rate.Limit(1), 1)
 
 	n := &telegramNotifier{
+		Base:        notifier.NewBase("test-id", true, 100, 10*time.Second),
 		client:      mockCli,
 		chatID:      12345,
 		rateLimiter: limiter,

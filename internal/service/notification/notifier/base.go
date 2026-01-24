@@ -31,9 +31,17 @@ type Base struct {
 
 	supportsHTML bool
 
+	// enqueueTimeout 요청 큐(notificationC)가 가득 찼을 때, 요청을 바로 버리지 않고 기다려줄 최대 시간입니다.
+	// 이 시간 동안에도 빈 공간이 생기지 않으면, 시스템 보호를 위해 해당 요청은 드롭(Drop)됩니다.
+	enqueueTimeout time.Duration
+
+	// notificationC 알림 발송 요청들을 순차적으로 처리하기 위해 버퍼링하는 내부 채널(Queue)입니다.
+	// 비동기 처리를 통해 요청자는 즉시 리턴받고, 발송자(Sender)는 자신의 속도에 맞춰 메시지를 가져갑니다.
+	notificationC chan *notificationRequest
+
 	// mu 내부 상태(closed, done, notificationC)와 채널 접근 시 발생하는 경쟁 상태를 방지하기 위한 동기화 객체입니다.
 	// 상태를 읽기만 할 때는 RLock을, 변경할 때는 Lock을 사용하여 성능과 안전성을 최적화합니다.
-	mu sync.RWMutex
+	mu *sync.RWMutex
 
 	// closed Close() 메서드가 호출되어 Notifier가 영구적으로 종료되었는지를 나타내는 상태 플래그입니다.
 	// 이 값이 true가 되면, 더 이상 새로운 알림 요청을 수락하지 않고 거부합니다.
@@ -43,13 +51,12 @@ type Base struct {
 	// 채널이 닫히는 것 자체가 신호로 사용되며, 별도의 데이터를 전달하지 않으므로 struct{} 타입을 사용합니다.
 	done chan struct{}
 
-	// notificationC 알림 발송 요청들을 순차적으로 처리하기 위해 버퍼링하는 내부 채널(Queue)입니다.
-	// 비동기 처리를 통해 요청자는 즉시 리턴받고, 발송자(Sender)는 자신의 속도에 맞춰 메시지를 가져갑니다.
-	notificationC chan *notificationRequest
-
-	// enqueueTimeout 요청 큐(notificationC)가 가득 찼을 때, 요청을 바로 버리지 않고 기다려줄 최대 시간입니다.
-	// 이 시간 동안에도 빈 공간이 생기지 않으면, 시스템 보호를 위해 해당 요청은 드롭(Drop)됩니다.
-	enqueueTimeout time.Duration
+	// pendingSendsWG Send() 또는 TrySend() 메서드를 통해 현재 채널 전송을 시도 중인 고루틴들을 추적하는 WaitGroup입니다.
+	//
+	// 이 필드는 Graceful Shutdown 시 메시지 유실을 방지하기 위한 핵심 동기화 장치입니다.
+	// Close() 호출 후에도 이미 sendInternal()에 진입한 고루틴들이 채널에 메시지를 넣을 기회를 보장하기 위해,
+	// 워커(Consumer) 고루틴은 종료 전 WaitForSenders()를 호출하여 이 카운터가 0이 될 때까지 대기합니다.
+	pendingSendsWG *sync.WaitGroup
 }
 
 // NewBase 새로운 Base Notifier 인스턴스를 생성하고 초기화합니다.
@@ -59,11 +66,15 @@ func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueT
 
 		supportsHTML: supportsHTML,
 
-		done: make(chan struct{}),
+		enqueueTimeout: enqueueTimeout,
 
 		notificationC: make(chan *notificationRequest, bufferSize),
 
-		enqueueTimeout: enqueueTimeout,
+		mu: &sync.RWMutex{},
+
+		done: make(chan struct{}),
+
+		pendingSendsWG: &sync.WaitGroup{},
 	}
 }
 
@@ -124,7 +135,11 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 		return ErrClosed
 	}
 
-	// 2. 로컬 변수 복사
+	// 2. Pending Sends 카운터 증가 (Race Condition 방지)
+	b.pendingSendsWG.Add(1)
+	defer b.pendingSendsWG.Done()
+
+	// 3. 로컬 변수 복사
 	// 채널 전송은 블로킹될 수 있는 작업이므로, 락을 잡은 상태에서 수행하면 성능 병목이 됩니다.
 	// 따라서 필요한 멤버 변수들(notificationC, done, timeout)만 로컬 변수로 복사해두고,
 	// 락은 즉시 해제하여 다른 고루틴들이 상태를 조회하거나 변경할 수 있게 합니다.
@@ -134,7 +149,7 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 
 	b.mu.RUnlock()
 
-	// 3. 패닉 복구
+	// 4. 패닉 복구
 	// 혹시 모를 내부 로직 오류나 채널 이슈로 패닉이 발생해도, 서비스 전체가 죽지 않도록 방어합니다.
 	defer func() {
 		if r := recover(); r != nil {
@@ -155,15 +170,15 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 		}
 	}()
 
-	// 4. 요청 객체 생성
+	// 5. 요청 객체 생성
 	req := &notificationRequest{
 		Ctx:          ctx,
 		Notification: notification,
 	}
 
-	// 5. 블로킹 모드 확인
+	// 6. 블로킹 모드 확인
 	if blockingMode {
-		// 5-1. 타이머 생성
+		// 6-1. 타이머 생성
 		// 채널이 가득 찼을 때 무한정 대기하지 않고, 설정된 타임아웃(enqueueTimeout)만큼만 기다립니다.
 		// 이는 시스템 과부하 시 요청을 "실패" 처리함으로써 전체 시스템의 응답성을 보호하는 Backpressure 역할을 합니다.
 		timer := time.NewTimer(enqueueTimeout)
@@ -174,12 +189,13 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 			if !timer.Stop() {
 				select {
 				case <-timer.C:
+
 				default:
 				}
 			}
 		}()
 
-		// 5-2. 큐에 적재
+		// 6-2. 큐에 적재
 		// 큐가 가득 찼을 때, 설정된 타임아웃(enqueueTimeout)까지 대기하며 빈 공간이 생기기를 기다립니다.
 		// 타임아웃 내에 처리되지 않으면 포기(Drop)하여 시스템 전체의 지연을 방지합니다.
 		select {
@@ -204,7 +220,7 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 			return ErrQueueFull
 		}
 	} else {
-		// 5-3. 큐에 적재
+		// 6-3. 큐에 적재
 		// 채널이 가득 차 있어도 대기(Block)하지 않고, 즉시 ErrQueueFull을 반환합니다.
 		select {
 		case notificationC <- req:
@@ -281,6 +297,15 @@ func (b *Base) Close() {
 // 주로 Select 구문 내에서 종료 시그널을 감지하여 고루틴을 안전하게 정리(Graceful Shutdown)하는 데 사용됩니다.
 func (b *Base) Done() <-chan struct{} {
 	return b.done
+}
+
+// WaitForPendingSends 현재 진행 중인 모든 Send() 및 TrySend() 요청이 완료될 때까지 블로킹 대기합니다.
+//
+// 이 메서드는 Graceful Shutdown 시 메시지 유실을 방지하기 위해 워커(Consumer) 고루틴이 종료 직전에 호출합니다.
+// Close()가 호출된 시점에 이미 sendInternal()에 진입한 고루틴들이 채널에 메시지를 전송할 기회를 보장하여,
+// "채널 확인(Empty) → 종료 → Send(Push)" 순서로 발생하는 Race Condition을 방지합니다.
+func (b *Base) WaitForPendingSends() {
+	b.pendingSendsWG.Wait()
 }
 
 // NotificationC Notifier 내부에서 관리하는 '알림 요청 채널(읽기 전용)'을 반환합니다.

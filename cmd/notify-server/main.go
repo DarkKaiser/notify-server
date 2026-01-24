@@ -235,6 +235,7 @@ func run() error {
 	select {
 	case <-done:
 		applog.WithComponent(component).Info("모든 서비스가 리소스를 정리하고 정상적으로 종료되었습니다")
+
 	case <-shutdownCtx.Done():
 		applog.WithComponent(component).Error("종료 타임아웃 발생: 일부 서비스가 응답하지 않아 강제 종료합니다")
 		return fmt.Errorf("종료 제한 시간(%v)을 초과하여 프로세스를 강제 종료합니다", shutdownTimeout)

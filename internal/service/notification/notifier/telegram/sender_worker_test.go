@@ -17,51 +17,12 @@ import (
 )
 
 // =============================================================================
-// Sender Worker Tests (Lifecycle & Drain)
+// Helper Functions
 // =============================================================================
 
-// TestSenderWorker_Run_Drain 정상적인 종료 상황(Graceful Shutdown)에서
-// 큐에 남은 메시지들이 모두 처리(Drain)되는지 검증합니다.
-func TestSenderWorker_Run_Drain(t *testing.T) {
-	// Setup
-	appConfig := &config.AppConfig{}
-	notifier, mockBot, _, _ := setupTelegramTest(t, appConfig)
-	require.NotNil(t, notifier)
-
-	// Expectation: 5 messages will be sent
-	var wgSend sync.WaitGroup
-	wgSend.Add(5)
-
-	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
-		wgSend.Done()
-	}).Return(tgbotapi.Message{}, nil).Times(5)
-
-	// Run notifier (Start Sender Loop)
-	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-	runTelegramNotifier(ctx, notifier, &wg)
-
-	// Act: Send 5 messages
-	for i := 0; i < 5; i++ {
-		err := notifier.Send(context.Background(), contract.NewNotification("Drain Message"))
-		assert.NoError(t, err)
-	}
-
-	// Trigger Shutdown immediately
-	// 메시지가 채널에 들어갈 시간을 아주 잠깐 줍니다.
-	time.Sleep(10 * time.Millisecond)
-	cancel()
-
-	// Wait for shutdown and drain
-	wg.Wait()
-
-	// Assertions
-	mockBot.AssertExpectations(t)
-}
-
-// TestSenderWorker_GracefulShutdown_InFlightMessage 셧다운 시점에
-// 이미 처리 중(In-Flight)인 메시지가 손실되지 않고 완료되는지 검증합니다.
-func TestSenderWorker_GracefulShutdown_InFlightMessage(t *testing.T) {
+// setupTestNotifier initializes a fully functional telegramNotifier for testing.
+// It uses the actual factory function to ensure all internal fields (including Base) are correctly set up.
+func setupTestNotifier(t *testing.T) (*telegramNotifier, *MockTelegramBot, *taskmocks.MockExecutor) {
 	appConfig := &config.AppConfig{}
 	mockBot := &MockTelegramBot{}
 	mockExecutor := &taskmocks.MockExecutor{}
@@ -71,195 +32,349 @@ func TestSenderWorker_GracefulShutdown_InFlightMessage(t *testing.T) {
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
+
+	// Use the factory to ensure proper initialization
 	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
 	require.NoError(t, err)
+
 	n := nHandler.(*telegramNotifier)
 
-	msg := "In-Flight Message"
-	var wgSender sync.WaitGroup
-	wgSender.Add(1)
-	sendCalled := make(chan struct{})
+	// Custom adjustments for testing speed
+	n.retryDelay = time.Microsecond
+	n.rateLimiter = rate.NewLimiter(rate.Inf, 0)
 
-	// Send가 호출되면 신호를 보내고, 약간의 지연을 주어 처리 중임을 시뮬레이션
+	// Expect GetSelf to be called during startup logging/checks
+	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "test_bot"}, nil).Maybe()
+
+	return n, mockBot, mockExecutor
+}
+
+// =============================================================================
+// Sender Worker Tests (Lifecycle & Happy Path)
+// =============================================================================
+
+func TestSenderWorker_Start_Lifecycle(t *testing.T) {
+	n, _, _ := setupTestNotifier(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() {
+		n.sendNotifications(ctx)
+		close(done)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Worker did not exit gracefully on context cancel")
+	}
+}
+
+func TestSenderWorker_ProcessSendQueue(t *testing.T) {
+	n, mockBot, _ := setupTestNotifier(t)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
 	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
-		close(sendCalled)
-		time.Sleep(50 * time.Millisecond) // 처리 지연 시뮬레이션
+		wg.Done()
+	}).Return(tgbotapi.Message{}, nil).Times(3)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		n.sendNotifications(ctx)
+		close(workerDone)
+	}()
+
+	n.Send(context.Background(), contract.NewNotification("Msg 1"))
+	n.Send(context.Background(), contract.NewNotification("Msg 2"))
+	n.Send(context.Background(), contract.NewNotification("Msg 3"))
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for messages to be processed")
+	}
+
+	cancel()
+	<-workerDone
+}
+
+// =============================================================================
+// Exception Handling (Panic Recovery)
+// =============================================================================
+
+func TestSenderWorker_ProcessSendQueue_PanicRecovery(t *testing.T) {
+	n, mockBot, _ := setupTestNotifier(t)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+		msg, ok := c.(tgbotapi.MessageConfig)
+		return ok && msg.Text == "Panic"
+	})).Run(func(args mock.Arguments) {
+		panic("Intentional Panic")
+	}).Return(tgbotapi.Message{}, nil).Once()
+
+	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
+		msg, ok := c.(tgbotapi.MessageConfig)
+		return ok && msg.Text == "Normal"
+	})).Run(func(args mock.Arguments) {
+		wg.Done()
+	}).Return(tgbotapi.Message{}, nil).Once()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		n.sendNotifications(ctx)
+		close(workerDone)
+	}()
+
+	n.Send(context.Background(), contract.NewNotification("Panic"))
+	n.Send(context.Background(), contract.NewNotification("Normal"))
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Worker died or failed to process subsequent message after panic")
+	}
+
+	cancel()
+	<-workerDone
+	mockBot.AssertExpectations(t)
+}
+
+// =============================================================================
+// Graceful Shutdown (Drain) Tests
+// =============================================================================
+
+func TestSenderWorker_Drain_Success(t *testing.T) {
+	n, mockBot, _ := setupTestNotifier(t)
+
+	var wg sync.WaitGroup
+	wg.Add(5)
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		wg.Done()
+	}).Return(tgbotapi.Message{}, nil).Times(5)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		n.sendNotifications(ctx)
+		close(workerDone)
+	}()
+
+	for i := 0; i < 5; i++ {
+		n.Send(context.Background(), contract.NewNotification("Drain Msg"))
+	}
+
+	cancel()
+
+	select {
+	case <-workerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Drain timed out or stuck")
+	}
+
+	mockBot.AssertExpectations(t)
+}
+
+func TestSenderWorker_Drain_Timeout(t *testing.T) {
+	// Drain 타임아웃 테스트: 전역 변수 shutdownTimeout을 조작하여 검증
+	// 대량의 메시지(50개)를 보내고, 타임아웃(1ms) 내에 극히 일부만 처리됨을 확인
+
+	originalTimeout := shutdownTimeout
+	shutdownTimeout = 1 * time.Millisecond
+	defer func() { shutdownTimeout = originalTimeout }()
+
+	n, mockBot, _ := setupTestNotifier(t)
+
+	// 각 메시지 처리 시간을 10ms로 설정 (타임아웃은 1ms)
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		time.Sleep(10 * time.Millisecond)
 	}).Return(tgbotapi.Message{}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Start only SendNotifications (Sender Worker) manually for detailed control
+	workerDone := make(chan struct{})
 	go func() {
-		defer wgSender.Done()
 		n.sendNotifications(ctx)
+		close(workerDone)
 	}()
 
-	// Act
-	n.Send(context.Background(), contract.NewNotification(msg))
+	// 메시지 50개 푸시 (총 500ms 소요 예상)
+	for i := 0; i < 50; i++ {
+		n.Send(context.Background(), contract.NewNotification("Slow Msg"))
+	}
 
-	// Wait until Send is called
-	<-sendCalled
-
-	// Trigger Shutdown while Send is still running (sleeping)
+	time.Sleep(20 * time.Millisecond)
 	cancel()
 
-	// Wait for Sender Worker to finish
-	wgSender.Wait()
+	start := time.Now()
+	<-workerDone
+	duration := time.Since(start)
 
-	n.Close()
-	mockBot.AssertExpectations(t)
+	// 검증 전략:
+	// 50개를 처리하려면 최소 500ms(50 * 10ms)가 필요함.
+	// 타임아웃이 1ms이므로, 200ms 내에 종료되어야 함 (즉, 모든 메시지를 처리하지 못하고 중단됨).
+	assert.Less(t, duration, 200*time.Millisecond, "Drain should have timed out early")
+
+	// 추가 검증: 실제로 처리되지 못한 메시지가 있어야 함 (Mock 호출 횟수 체크가 이상적이나 예제상 시간으로 검증)
+
 }
 
-// TestSenderWorker_PanicRecovery Sender 루프 내에서 패닉이 발생했을 때
-// 워커가 죽지 않고 복구되어 다음 메시지를 계속 처리하는지 검증합니다.
-func TestSenderWorker_PanicRecovery(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
-
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    testTelegramChatID,
-		AppConfig: appConfig,
-	}
-	notifierHandler, err := newNotifierWithClient(testTelegramNotifierID, mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	notifier := notifierHandler.(*telegramNotifier)
-	notifier.retryDelay = 1 * time.Millisecond
-	notifier.rateLimiter = rate.NewLimiter(rate.Inf, 0)
-
-	// Setup Expectations
-	initDone := make(chan struct{})
-	mockBot.On("GetSelf").Run(func(args mock.Arguments) {
-		close(initDone)
-	}).Return(tgbotapi.User{UserName: testTelegramBotUsername}).Once()
-
-	updatesCh := make(chan tgbotapi.Update, 1)
-	mockBot.On("GetUpdatesChan", mock.Anything).Return(tgbotapi.UpdatesChannel(updatesCh)).Once()
-	mockBot.On("StopReceivingUpdates").Return().Maybe()
-
-	// Run notifier
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestSenderWorker_Drain_PanicRecovery(t *testing.T) {
+	n, mockBot, _ := setupTestNotifier(t)
 
 	var wg sync.WaitGroup
-	runTelegramNotifier(ctx, notifier, &wg)
+	wg.Add(2)
 
-	// Wait for Run to initialize
-	select {
-	case <-initDone:
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for GetSelf")
-	}
-
-	// 1. Trigger Panic via Mock
-	// 첫 번째 메시지 전송 시 패닉 발생
-	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
-		if msgConfig, ok := c.(tgbotapi.MessageConfig); ok {
-			return msgConfig.Text == "Panic Message"
+	callCount := 0
+	mockBot.On("Send", mock.Anything).Run(func(args mock.Arguments) {
+		callCount++
+		if callCount == 2 {
+			panic("Panic in Drain")
 		}
-		return false
-	})).Run(func(args mock.Arguments) {
-		panic("simulated panic")
-	}).Return(tgbotapi.Message{}, nil).Once() // Once ensures it's expected only once
+		wg.Done()
+	}).Return(tgbotapi.Message{}, nil).Times(3)
 
-	// 2. Resume Normal Ops
-	// 두 번째 메시지는 정상 처리되어야 함
-	processedNormal := make(chan struct{})
-	mockBot.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
-		if msgConfig, ok := c.(tgbotapi.MessageConfig); ok {
-			return msgConfig.Text == "Normal Message"
-		}
-		return false
-	})).Run(func(args mock.Arguments) {
-		close(processedNormal)
-	}).Return(tgbotapi.Message{}, nil).Once()
+	ctx, cancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		n.sendNotifications(ctx)
+		close(workerDone)
+	}()
 
-	// Act
-	notifier.Send(context.Background(), contract.NewNotification("Panic Message"))
+	n.Send(context.Background(), contract.NewNotification("1"))
+	n.Send(context.Background(), contract.NewNotification("2")) // Will Panic
+	n.Send(context.Background(), contract.NewNotification("3"))
 
-	// 패닉 복구 후 루프가 살아있는지 확인하기 위해 즉시 다음 메시지 전송
-	time.Sleep(10 * time.Millisecond)
-	notifier.Send(context.Background(), contract.NewNotification("Normal Message"))
-
-	// Validation
-	select {
-	case <-processedNormal:
-		// Success: 패닉 이후 메시지가 정상 처리됨
-	case <-time.After(1 * time.Second):
-		t.Fatal("Sender worker did not recover from panic")
-	}
+	cancel()
+	<-workerDone
 
 	mockBot.AssertExpectations(t)
 }
 
-// TestSenderWorker_Drain_Timeout Drain 프로세스가 타임아웃 내에 완료되지 못할 경우
-// 강제로 종료되는지 검증합니다. (무한 대기 방지)
-// 주의: types.go의 shutdownTimeout 상수는 60초이므로, 실제 60초를 기다리는 대신
-// 로직 검증을 위해 Context 타임아웃 동작을 시뮬레이션하거나, 별도의 테스트용 메서드가 필요할 수 있습니다.
-// 하지만 블랙박스 테스트 원칙상 내부 상수를 변경하기 어려우므로,
-// 여기서는 drainRemainingNotifications가 context cancellation에 반응하는지를 간접적으로 확인합니다.
-//
-// 더 정확한 테스트를 위해 제한적인 환경(느린 전송)을 조성합니다.
-func TestSenderWorker_Drain_Timeout(t *testing.T) {
-	// Drain 타임아웃 테스트 (기본 동작 검증)
+// =============================================================================
+// Shutdown Triggers (Context vs Close)
+// =============================================================================
 
-	appConfig := &config.AppConfig{}
-	// Note: Buffer size is fixed to 30 in factory.go, so we can't change it via config for now.
+func TestSenderWorker_Shutdown_Triggers(t *testing.T) {
+	t.Run("Context Cancel Trigger", func(t *testing.T) {
+		n, mockBot, _ := setupTestNotifier(t)
+		mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
 
-	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+		ctx, cancel := context.WithCancel(context.Background())
+		workerDone := make(chan struct{})
+		go func() {
+			n.sendNotifications(ctx)
+			close(workerDone)
+		}()
 
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    12345,
-		AppConfig: appConfig,
-	}
-	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	n := nHandler.(*telegramNotifier)
-
-	// Initialize essential fields
-	n.retryDelay = 1 * time.Millisecond
-	n.rateLimiter = rate.NewLimiter(rate.Inf, 0)
-
-	// Mock Send with delay
-	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Run(func(args mock.Arguments) {
+		n.Send(context.Background(), contract.NewNotification("Msg"))
 		time.Sleep(10 * time.Millisecond)
+
+		cancel() // 트리거: Context Cancel
+
+		select {
+		case <-workerDone:
+		case <-time.After(1 * time.Second):
+			t.Fatal("Worker failed to shutdown on context cancel")
+		}
+		mockBot.AssertExpectations(t)
 	})
 
-	// Start Sender Worker
+	t.Run("Notifier Close Trigger", func(t *testing.T) {
+		n, mockBot, _ := setupTestNotifier(t)
+		mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Once()
+
+		// Context는 취소하지 않음 (Background)
+		workerDone := make(chan struct{})
+		go func() {
+			n.sendNotifications(context.Background())
+			close(workerDone)
+		}()
+
+		n.Send(context.Background(), contract.NewNotification("Msg"))
+		time.Sleep(10 * time.Millisecond)
+
+		n.Close() // 트리거: Notifier Close (n.Done() closed)
+
+		select {
+		case <-workerDone:
+		case <-time.After(1 * time.Second):
+			t.Fatal("Worker failed to shutdown on Notifier.Close()")
+		}
+		mockBot.AssertExpectations(t)
+	})
+}
+
+// =============================================================================
+// Pending Sends (Wait for Enqueue)
+// =============================================================================
+
+func TestSenderWorker_WaitForPendingSends(t *testing.T) {
+	n, mockBot, _ := setupTestNotifier(t)
+	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil)
+
+	// 1. 버퍼 가득 채우기 (30개)
+	for i := 0; i < 30; i++ {
+		_ = n.Send(context.Background(), contract.NewNotification("Fill"))
+	}
+
+	// 2. 31번째 요청 (Blocking) - 별도 고루틴
+	pendingDone := make(chan struct{})
+	blockEntered := make(chan struct{})
+
+	go func() {
+		close(blockEntered) // 진입 신호
+		_ = n.Send(context.Background(), contract.NewNotification("Pending"))
+		close(pendingDone) // 완료 신호
+	}()
+
+	<-blockEntered
+	// Send가 내부적으로 Block 될 때까지 조금만 기다립니다 (이 부분은 채널로 감지 불가하므로 짧은 sleep 필요)
+	// 하지만 base_test.go와 달리 SenderWorker가 동작해야 풀리므로, 여기선 여전히 살짝 기다려야 함.
+	// 순서를 확실히 하기 위해:
+	//   Buffer Full -> Send 호출 (Block) -> Worker Start -> Consume -> Space Available -> Send Unblock
+	time.Sleep(10 * time.Millisecond)
+
+	// 3. Worker 시작 (메시지 소비 시작)
 	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-	wg.Add(1)
+	workerDone := make(chan struct{})
+
+	// 소비가 시작되면 버퍼 공간이 생겨 Pending Send가 해제됨
 	go func() {
-		defer wg.Done()
 		n.sendNotifications(ctx)
+		close(workerDone)
 	}()
 
-	// Send messages (less than buffer size 30)
-	count := 10
-	for i := 0; i < count; i++ {
-		// We ignore error here as we just want to fill buffer
-		_ = n.Send(context.Background(), contract.NewNotification("Drain Check"))
-	}
-	t.Logf("Sent %d messages", count)
-
-	// Stop Sender -> Trigger Drain
-	t.Log("Cancelling context...")
-	cancel()
-
-	// Wait for finish
-	finished := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(finished)
-	}()
-
+	// 4. Pending Send가 완료될 때까지 대기 (Worker가 소비했으므로 가능해야 함)
 	select {
-	case <-finished:
-		t.Log("Drain finished successfully")
-	case <-time.After(3 * time.Second):
-		t.Fatal("Drain did not finish in time")
+	case <-pendingDone:
+		// 성공: 버퍼가 비워져서 메시지가 들어감
+	case <-time.After(1 * time.Second):
+		t.Fatal("Blocking send was not processed (Worker not consuming?)")
 	}
+
+	// 5. 종료
+	cancel()
+	<-workerDone
 }

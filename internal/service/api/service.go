@@ -253,6 +253,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	case <-serviceStopCtx.Done():
 		// 정상적인 종료 신호 수신
 		applog.WithComponent(component).Info("종료 절차 진입: API 서비스 중지 시그널을 수신했습니다")
+
 	case <-httpServerDone:
 		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
 		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리

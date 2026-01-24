@@ -300,6 +300,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				}).Error("작업 중단: 발송 제한 시간(Timeout)을 초과하였습니다")
 			}
 			return ctx.Err()
+
 		default:
 			// 컨텍스트가 정상이므로 계속 진행
 		}
@@ -408,6 +409,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 				}).Error("재시도 중단: 대기 중 작업 제한 시간(Timeout)을 초과하였습니다")
 			}
 			return ctx.Err()
+
 		case <-time.After(backoff):
 			// 대기 시간이 경과하면 다음 재시도로 진행합니다.
 		}

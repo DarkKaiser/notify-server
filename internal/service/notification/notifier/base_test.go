@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,8 +32,6 @@ func TestMain(m *testing.M) {
 // =============================================================================
 
 func TestBase_Initialization(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name           string
 		id             contract.NotifierID
@@ -69,14 +68,21 @@ func TestBase_Initialization(t *testing.T) {
 			t.Parallel()
 
 			// Act
-			n := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.enqueueTimeout)
+			baseVal := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.enqueueTimeout)
+			n := &baseVal
 
-			// Assert
+			// Assert: Public Accessors
 			assert.Equal(t, tt.id, n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			assert.Equal(t, tt.enqueueTimeout, n.enqueueTimeout)
 			require.NotNil(t, n.NotificationC())
 			assert.Equal(t, tt.bufferSize, cap(n.NotificationC()))
+
+			// Assert: Internal Pointer Initialization (Safety Check)
+			// 포인터 필드들이 올바르게 초기화되었는지 확인하여 Nil Pointer Dereference 방지
+			assert.NotNil(t, n.mu, "Mutex must be initialized")
+			assert.NotNil(t, n.pendingSendsWG, "WaitGroup must be initialized")
+			assert.NotNil(t, n.done, "Done channel must be initialized")
 
 			// Verify channel states
 			select {
@@ -90,150 +96,119 @@ func TestBase_Initialization(t *testing.T) {
 }
 
 // =============================================================================
-// 2. Send & TrySend Logic (Table Driven)
+// 2. Send (Blocking) Logic
 // =============================================================================
 
-func TestBase_SendMethods(t *testing.T) {
+func TestBase_Send(t *testing.T) {
 	t.Parallel()
 
-	type actionFunc func(n *Base, ctx context.Context) error
+	t.Run("Success_EmptyBuffer", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
+		err := n.Send(context.Background(), contract.NewNotification(testMessage))
+		assert.NoError(t, err)
+	})
 
-	tests := []struct {
-		name           string
-		bufferSize     int
-		enqueueTimeout time.Duration
-		prefillCount   int // Number of messages to fill the buffer with before text
-		action         actionFunc
-		wantErr        bool
-		wantErrIs      error
-		wantDuration   time.Duration // Minimum duration expected (for Blocking checks)
-	}{
-		// ---------------------------------------------------------------------
-		// Send (Blocking) Scenarios
-		// ---------------------------------------------------------------------
-		{
-			name:           "Send: Success (Empty Buffer)",
-			bufferSize:     1,
-			enqueueTimeout: testDefaultTimeout,
-			action: func(n *Base, ctx context.Context) error {
-				return n.Send(ctx, contract.NewNotification(testMessage))
-			},
-			wantErr: false,
-		},
-		{
-			name:           "Send: Success (Unbuffered with Consumer)",
-			bufferSize:     0,
-			enqueueTimeout: testDefaultTimeout,
-			action: func(n *Base, ctx context.Context) error {
-				// Start consumer first
-				go func() {
-					select {
-					case <-n.NotificationC():
-					case <-time.After(testDefaultTimeout):
-					}
-				}()
-				return n.Send(ctx, contract.NewNotification(testMessage))
-			},
-			wantErr: false,
-		},
-		{
-			name:           "Send: Failure with Timeout (Queue Full)",
-			bufferSize:     0,
-			enqueueTimeout: 20 * time.Millisecond,
-			action: func(n *Base, ctx context.Context) error {
-				return n.Send(ctx, contract.NewNotification(testMessage))
-			},
-			wantErr:      true,
-			wantErrIs:    ErrQueueFull,
-			wantDuration: 20 * time.Millisecond,
-		},
-		{
-			name:           "Send: Failure w/ Canceled Context (Immediate)",
-			bufferSize:     1,
-			enqueueTimeout: testDefaultTimeout,
-			action: func(n *Base, ctx context.Context) error {
-				canceledCtx, cancel := context.WithCancel(ctx)
-				cancel() // Cancel immediately
-				return n.Send(canceledCtx, contract.NewNotification(testMessage))
-			},
-			wantErr:   true,
-			wantErrIs: context.Canceled,
-		},
+	t.Run("Context Propagation", func(t *testing.T) {
+		// 전달한 Context가 Consumer에게 그대로 전달되는지 확인
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
 
-		// ---------------------------------------------------------------------
-		// TrySend (Non-blocking) Scenarios
-		// ---------------------------------------------------------------------
-		{
-			name:           "TrySend: Success (Space Available)",
-			bufferSize:     1,
-			enqueueTimeout: testDefaultTimeout,
-			action: func(n *Base, ctx context.Context) error {
-				return n.TrySend(ctx, contract.NewNotification(testMessage))
-			},
-			wantErr: false,
-		},
-		{
-			name:           "TrySend: Failure Immediate (Queue Full)",
-			bufferSize:     0,                  // Unbuffered channel is full by default if no consumer
-			enqueueTimeout: testDefaultTimeout, // Timeout shouldn't matter
-			action: func(n *Base, ctx context.Context) error {
-				return n.TrySend(ctx, contract.NewNotification(testMessage))
-			},
-			wantErr:   true,
-			wantErrIs: ErrQueueFull,
-		},
-	}
+		key := "req-id"
+		val := "1234"
+		ctx := context.WithValue(context.Background(), key, val)
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		err := n.Send(ctx, contract.NewNotification(testMessage))
+		require.NoError(t, err)
 
-			// Arrange
-			n := NewBase(testID, true, tt.bufferSize, tt.enqueueTimeout)
+		select {
+		case req := <-n.NotificationC():
+			assert.Equal(t, val, req.Ctx.Value(key), "Context value should be propagated to consumer")
+		case <-time.After(testDefaultTimeout):
+			t.Fatal("Message not received")
+		}
+	})
 
-			// Pre-fill buffer if requested
-			for i := 0; i < tt.prefillCount; i++ {
-				// We use a non-blocking send directly to the channel for setup
-				select {
-				case n.notificationC <- &notificationRequest{}:
-				default:
-					t.Fatalf("Failed to pre-fill buffer, it might be full already")
-				}
-			}
+	t.Run("Failure_BufferFull_Timeout", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 0, 10*time.Millisecond) // Short timeout
+		n := &baseVal
 
-			// Act
-			start := time.Now()
-			err := tt.action(&n, context.Background())
-			duration := time.Since(start)
+		// Unbuffered channel with no consumer -> Send will block then timeout
+		start := time.Now()
+		err := n.Send(context.Background(), contract.NewNotification(testMessage))
+		duration := time.Since(start)
 
-			// Assert
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.wantErrIs != nil {
-					assert.ErrorIs(t, err, tt.wantErrIs)
-				}
-			} else {
-				require.NoError(t, err)
-			}
+		assert.ErrorIs(t, err, ErrQueueFull)
+		assert.GreaterOrEqual(t, duration, 10*time.Millisecond, "Should block for at least timeout duration")
+	})
 
-			if tt.wantDuration > 0 {
-				assert.GreaterOrEqual(t, duration, tt.wantDuration, "Operation completed too fast, expected blocking behavior")
-			}
-		})
-	}
+	t.Run("Failure_ContextAlreadyCancelled", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		err := n.Send(ctx, contract.NewNotification(testMessage))
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("Failure_ContextCancelled_WhileBlocking", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 0, 1*time.Second) // Long timeout
+		n := &baseVal
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Start cancel timer
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+		}()
+
+		start := time.Now()
+		err := n.Send(ctx, contract.NewNotification(testMessage))
+		duration := time.Since(start)
+
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Less(t, duration, 100*time.Millisecond, "Should return immediately after cancellation")
+	})
 }
 
 // =============================================================================
-// 3. Lifecycle & Safety Tests
+// 3. TrySend (Non-Blocking) Logic
+// =============================================================================
+
+func TestBase_TrySend(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success_SpaceAvailable", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
+		err := n.TrySend(context.Background(), contract.NewNotification(testMessage))
+		assert.NoError(t, err)
+	})
+
+	t.Run("Failure_BufferFull_Immediate", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 0, 1*time.Second) // Timeout shouldn't matter
+		n := &baseVal
+
+		start := time.Now()
+		err := n.TrySend(context.Background(), contract.NewNotification(testMessage))
+		duration := time.Since(start)
+
+		assert.ErrorIs(t, err, ErrQueueFull)
+		assert.Less(t, duration, 5*time.Millisecond, "TrySend should return immediately")
+	})
+}
+
+// =============================================================================
+// 4. Lifecycle & Safety Tests
 // =============================================================================
 
 func TestBase_Lifecycle(t *testing.T) {
 	t.Parallel()
 
-	// 3-1. Close Idempotency
-	t.Run("Close Idempotency", func(t *testing.T) {
-		n := NewBase(testID, true, 1, testDefaultTimeout)
+	t.Run("Close_Idempotency", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
 
 		// First Close
 		n.Close()
@@ -253,27 +228,23 @@ func TestBase_Lifecycle(t *testing.T) {
 		assert.ErrorIs(t, err, ErrClosed)
 	})
 
-	// 3-2. Unblocking on Close
-	t.Run("Send Unblocks on Close", func(t *testing.T) {
-		n := NewBase(testID, true, 0, 1*time.Minute) // Long timeout
+	t.Run("Close_Unblocks_PendingSend", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 0, 1*time.Minute)
+		n := &baseVal
+
+		errCh := make(chan error, 1)
 
 		// Start a blocking send
-		errCh := make(chan error, 1)
-		readyCh := make(chan struct{}) // Synchronization channel
-
 		go func() {
-			close(readyCh) // Signal that goroutine started
 			errCh <- n.Send(context.Background(), contract.NewNotification("blocking"))
 		}()
 
-		<-readyCh                         // Wait for goroutine start
-		time.Sleep(10 * time.Millisecond) // Allow it to reach the select statement
+		// Give it time to block
+		time.Sleep(20 * time.Millisecond)
 
-		// Action: Close the notifier
 		start := time.Now()
 		n.Close()
 
-		// Verify: Should unblock immediately with ErrClosed
 		select {
 		case err := <-errCh:
 			assert.ErrorIs(t, err, ErrClosed)
@@ -285,15 +256,139 @@ func TestBase_Lifecycle(t *testing.T) {
 }
 
 func TestBase_PanicRecovery(t *testing.T) {
-	t.Parallel()
+	// Send 메서드 내부의 recover() 로직이 제대로 동작하는지 검증합니다.
+	// 강제로 Panic을 유발하기 위해 내부 상태를 비정상적으로 조작합니다.
+	t.Run("Recover_From_Panic", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
 
-	n := NewBase(testID, true, 1, testDefaultTimeout)
+		// 1. 강제 Panic 유발 조건 생성
+		// notificationC를 닫아버렸지만, closed 플래그는 false로 유지합니다.
+		// 이렇게 하면 Send 메서드는 closed 체크를 통과한 후,
+		// 닫힌 채널에 전송을 시도하여(Panic: send on closed channel) 패닉이 발생합니다.
+		close(n.notificationC)
 
-	// White-box testing: manually close internal channel to trigger panic
-	close(n.notificationC)
+		// 2. 검증 수행
+		var err error
+		assert.NotPanics(t, func() {
+			// Panic이 내부 defer에서 recover되어야 함
+			err = n.Send(context.Background(), contract.NewNotification(testMessage))
+		}, "Send should recover from internal panic")
 
-	assert.NotPanics(t, func() {
-		err := n.Send(context.Background(), contract.NewNotification("trigger panic"))
-		assert.ErrorIs(t, err, ErrPanicRecovered)
+		// 3. 반환값 확인
+		assert.ErrorIs(t, err, ErrPanicRecovered, "Should return ErrPanicRecovered on panic")
 	})
+}
+
+// =============================================================================
+// 5. Concurrency & Race Condition Tests
+// =============================================================================
+
+func TestBase_WaitForPendingSends_Integration(t *testing.T) {
+	// Send가 Close에 의해 중단되는 시나리오에서,
+	// WaitForPendingSends가 Race 없이 정상적으로 대기를 수행하는지 검증
+
+	baseVal := NewBase("test-wait-group", true, 0, 1*time.Second)
+	n := &baseVal
+
+	sendErrCh := make(chan error)
+	blockEntered := make(chan struct{})
+
+	// 1. Start a BLOCKING Sender
+	go func() {
+		close(blockEntered) // Signal that we are about to call Send
+		// This will block because buffer=0 and no receiver
+		sendErrCh <- n.Send(context.Background(), contract.NewNotification("msg"))
+	}()
+
+	<-blockEntered
+	// Ensure Send has acquired lock/entered select
+	time.Sleep(20 * time.Millisecond)
+
+	// 2. Trigger Shutdown
+	// Calling Close acquires the Lock, ensuring synchronization
+	n.Close()
+
+	// 3. Wait for pending sends
+	done := make(chan struct{})
+	go func() {
+		n.WaitForPendingSends()
+		close(done)
+	}()
+
+	// 4. Verification
+	// The Send() should have returned ErrClosed
+	select {
+	case err := <-sendErrCh:
+		assert.ErrorIs(t, err, ErrClosed)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Sender stuck")
+	}
+
+	// The WaitForPendingSends should complete shortly after Send returns
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Fatal("WaitForPendingSends stuck")
+	}
+}
+
+func TestBase_Concurrent_Send_Close(t *testing.T) {
+	// Hammer Test: Massive concurrent Send/TrySend vs Close
+	baseVal := NewBase("hammer-test", true, 1000, 1*time.Second)
+	n := &baseVal
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	// Consumers: To prevent deadlock if buffer fills up before Close
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case <-n.NotificationC():
+			case <-n.Done():
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	senderCount := 100
+	for i := 0; i < senderCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < 50; j++ {
+				if j%2 == 0 {
+					_ = n.Send(context.Background(), contract.NewNotification("msg"))
+				} else {
+					_ = n.TrySend(context.Background(), contract.NewNotification("msg"))
+				}
+			}
+		}()
+	}
+
+	close(start) // GO!
+	time.Sleep(5 * time.Millisecond)
+	n.Close()
+
+	// Wait for all senders
+	doneCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(doneCh)
+	}()
+
+	select {
+	case <-doneCh:
+		// Success
+	case <-time.After(5 * time.Second):
+		t.Fatal("Deadlock detected")
+	}
 }

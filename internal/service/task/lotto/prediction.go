@@ -29,6 +29,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 			select {
 			case <-ctx.Done():
 				return
+
 			case <-ticker.C:
 				if t.IsCanceled() {
 					cancel()

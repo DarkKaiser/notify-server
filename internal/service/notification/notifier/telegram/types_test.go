@@ -91,6 +91,7 @@ func TestTypes_Constants(t *testing.T) {
 // 실제 생성 로직은 wrapper/factory 쪽에 있지만, 타입 관점에서 필드 무결성을 확인합니다.
 func TestTelegramNotifier_Initialization_Values(t *testing.T) {
 	n := &telegramNotifier{
+		Base:       notifier.NewBase("test-id", true, 100, 10*time.Second),
 		chatID:     12345,
 		retryDelay: 500 * time.Millisecond,
 	}
