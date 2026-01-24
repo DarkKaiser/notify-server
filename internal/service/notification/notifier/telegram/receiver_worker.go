@@ -132,6 +132,22 @@ func (n *telegramNotifier) receiveAndDispatchCommands(serviceStopCtx context.Con
 		case <-serviceStopCtx.Done():
 			// 서비스 종료 요청 → 루프 탈출 → defer cleanup() 실행
 			return
+
+		// ═════════════════════════════════════════════════════════════════════
+		// Case C: Notifier 종료 감지 (Zombie State 방지)
+		// ═════════════════════════════════════════════════════════════════════
+		// Sender 고루틴이 패닉으로 사망하여 n.Close()가 호출된 경우입니다.
+		// Sender 고루틴이 죽으면 Notifier로서의 기능(발송)이 불가능하므로 Receiver도 함께 종료해야 합니다.
+		// 이를 감지하지 못하면 "Zombie Receiver"가 되어 명령어를 계속받지만 처리하지 못하는 상태가 됩니다.
+		case <-n.Done():
+			applog.WithComponentAndFields(component, applog.Fields{
+				"notifier_id":     n.ID(),
+				"chat_id":         n.chatID,
+				"active_commands": len(n.commandSemaphore), // 현재 실행 중인 명령어 수 (영향도)
+				"queued_updates":  len(updateC),            // 처리되지 못한 대기 메시지 수 (손실)
+			}).Error("Receiver 비상 종료: Notifier 종료 신호 감지 (Sender 사망 등)")
+
+			return
 		}
 	}
 }

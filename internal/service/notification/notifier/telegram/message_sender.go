@@ -252,28 +252,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 	}
 
 	// ========================================
-	// 2단계: Rate Limiting 적용
-	// ========================================
-	// 텔레그램 API는 분당 전송 횟수를 제한합니다 (예: 30메시지/초).
-	// Rate Limiter는 토큰 버킷(Token Bucket) 알고리즘을 사용하여 이 제한을 준수합니다:
-	//   - 토큰이 있으면 즉시 통과
-	//   - 토큰이 없으면 토큰이 재충전될 때까지 대기
-	//   - 컨텍스트 취소 시 즉시 에러 반환
-	if n.rateLimiter != nil {
-		if err := n.rateLimiter.Wait(ctx); err != nil {
-			applog.WithComponentAndFields(component, applog.Fields{
-				"notifier_id": n.ID(),
-				"error":       err,
-				"limit":       n.rateLimiter.Limit(),
-				"burst":       n.rateLimiter.Burst(),
-			}).Debug("작업 중단: RateLimiter 대기 중 컨텍스트가 취소되었습니다")
-
-			return err
-		}
-	}
-
-	// ========================================
-	// 3단계: 재시도 루프 초기화
+	// 2단계: 재시도 루프 초기화
 	// ========================================
 	// 최대 3회까지 재시도합니다.
 	// 일시적 네트워크 오류나 서버 과부하 상황에서 복원력을 제공합니다.
@@ -281,11 +260,33 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 	var lastErr error
 
 	// ========================================
-	// 4단계: 재시도 루프 시작
+	// 3단계: 재시도 루프 시작
 	// ========================================
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// ----------------------------------------
-		// 4-1. 전송 전 컨텍스트 확인
+		// 3-0. Rate Limiting 적용
+		// ----------------------------------------
+		// 텔레그램 API는 분당 전송 횟수를 제한합니다 (예: 30메시지/초).
+		// Rate Limiter는 토큰 버킷(Token Bucket) 알고리즘을 사용하여 이 제한을 준수합니다:
+		//   - 토큰이 있으면 즉시 통과
+		//   - 토큰이 없으면 토큰이 재충전될 때까지 대기
+		//   - 컨텍스트 취소 시 즉시 에러 반환
+		if n.rateLimiter != nil {
+			if err := n.rateLimiter.Wait(ctx); err != nil {
+				applog.WithComponentAndFields(component, applog.Fields{
+					"notifier_id": n.ID(),
+					"error":       err,
+					"limit":       n.rateLimiter.Limit(),
+					"burst":       n.rateLimiter.Burst(),
+					"attempt":     attempt,
+				}).Debug("작업 중단: RateLimiter 대기 중 컨텍스트가 취소되었습니다")
+
+				return err
+			}
+		}
+
+		// ----------------------------------------
+		// 3-1. 전송 전 컨텍스트 확인
 		// ----------------------------------------
 		// non-blocking select로 컨텍스트 취소를 확인합니다.
 		// 취소되었다면 즉시 에러를 반환하여 불필요한 API 호출을 방지합니다.
@@ -306,12 +307,12 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		}
 
 		// ----------------------------------------
-		// 4-2. 텔레그램 API 호출
+		// 3-2. 텔레그램 API 호출
 		// ----------------------------------------
 		_, err := n.client.Send(messageConfig)
 		if err == nil {
 			// ----------------------------------------
-			// 4-3. 성공 처리
+			// 3-3. 성공 처리
 			// ----------------------------------------
 			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id":    n.ID(),
@@ -325,7 +326,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		}
 
 		// ----------------------------------------
-		// 4-4. 실패 처리 및 에러 분석
+		// 3-4. 실패 처리 및 에러 분석
 		// ----------------------------------------
 		lastErr = err
 		applog.WithComponentAndFields(component, applog.Fields{
@@ -342,7 +343,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		errCode, retryAfter := parseTelegramError(err)
 
 		// ----------------------------------------
-		// 4-5. HTML Fallback 메커니즘
+		// 3-5. HTML Fallback 메커니즘
 		// ----------------------------------------
 		// 400 Bad Request 에러는 대부분 HTML 파싱 실패를 의미합니다.
 		// 예: 닫히지 않은 태그, 잘못된 HTML 문법 등
@@ -361,7 +362,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		}
 
 		// ----------------------------------------
-		// 4-6. 재시도 가능 여부 판단
+		// 3-6. 재시도 가능 여부 판단
 		// ----------------------------------------
 		if !shouldRetry(errCode) {
 			applog.WithComponentAndFields(component, applog.Fields{
@@ -381,7 +382,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 		}
 
 		// ----------------------------------------
-		// 4-7. 재시도 대기
+		// 3-7. 재시도 대기
 		// ----------------------------------------
 		// 429 Rate Limit 에러 시 특별 처리:
 		// 텔레그램 서버가 Retry-After 헤더로 대기 시간을 명시할 수 있습니다.
@@ -416,7 +417,7 @@ func (n *telegramNotifier) attemptSendWithRetry(ctx context.Context, message str
 	}
 
 	// ========================================
-	// 5단계: 최종 실패 처리
+	// 4단계: 최종 실패 처리
 	// ========================================
 	// 모든 재시도가 실패한 경우 여기에 도달합니다.
 	// 운영 모니터링을 위해 상세한 에러 로그를 남깁니다.

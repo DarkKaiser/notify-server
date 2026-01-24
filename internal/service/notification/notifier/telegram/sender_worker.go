@@ -41,10 +41,24 @@ func (n *telegramNotifier) sendNotifications(serviceStopCtx context.Context) {
 				"chat_id":     n.chatID,
 				"panic":       r,
 			}).Error("발송 프로세스 비정상 종료: Sender 고루틴 패닉 발생 (서비스 재시작 필요)")
+
+			// [중요] Sender 고루틴이 죽으면 Notifier 기능이 마비되므로,
+			// 상태를 명시적으로 'Closed'로 변경하여 외부에서 이를 인지할 수 있게 해야 합니다.
+			// 그렇지 않으면 외부(Service)에서는 정상으로 착각하여 메시지를 계속 보내고,
+			// 큐가 가득 찰 때까지 메시지가 유실되는 'Silent Failure'가 발생합니다.
+			n.Close()
 		}
 	}()
 
 	for {
+		// [테스트 전용 훅]
+		// Sender 루프의 최상위 레벨에서 발생하는 패닉을 시뮬레이션하기 위한 코드입니다.
+		// 실제 운영 환경에서는 절대 실행되지 않으며, 오직 `sender_worker_test.go`에서
+		// 패닉 복구 및 리소스 정리(Close) 로직이 정상 동작하는지 검증하기 위해 사용됩니다.
+		if n.testHookSenderPanic != nil {
+			n.testHookSenderPanic()
+		}
+
 		select {
 		// ═════════════════════════════════════════════════════════════════════
 		// Case A: 알림 발송 요청 수신 (정상 처리 흐름)
@@ -170,8 +184,8 @@ func (n *telegramNotifier) drainRemainingNotifications() {
 		close(waitPendingSendsC)
 	}()
 
-	// Pending Sends 대기용으로 짧은 타임아웃(예: 5초)을 별도로 설정합니다.
-	waitPendingSendsCtx, waitPendingSendsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Pending Sends 대기용으로 짧은 타임아웃(예: 6초)을 별도로 설정합니다.
+	waitPendingSendsCtx, waitPendingSendsCancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer waitPendingSendsCancel()
 
 	select {
@@ -183,7 +197,7 @@ func (n *telegramNotifier) drainRemainingNotifications() {
 		applog.WithComponentAndFields(component, applog.Fields{
 			"notifier_id": n.ID(),
 			"chat_id":     n.chatID,
-			"timeout":     5 * time.Second,
+			"timeout":     6 * time.Second,
 			"queue_depth": len(n.Base.NotificationC()),
 		}).Warn("Pending Sends 대기 중단: 대기 제한 시간 초과 (잔여 시간 동안 전송 시도)")
 	}

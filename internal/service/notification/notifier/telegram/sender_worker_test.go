@@ -162,6 +162,35 @@ func TestSenderWorker_ProcessSendQueue_PanicRecovery(t *testing.T) {
 	mockBot.AssertExpectations(t)
 }
 
+func TestSenderWorker_PanicRecovery_OuterLoop(t *testing.T) {
+	n, _, _ := setupTestNotifier(t)
+
+	// 테스트 훅 주입: 루프 시작 시 강제 패닉
+	n.testHookSenderPanic = func() {
+		panic("Outer Loop Panic")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		n.sendNotifications(ctx)
+		close(workerDone)
+	}()
+
+	// 패닉 후 루프가 종료될 때까지 대기
+	select {
+	case <-workerDone:
+		// 성공: 루프 탈출
+	case <-time.After(1 * time.Second):
+		t.Fatal("Worker did not exit after panic")
+	}
+
+	// 검증: Notifier가 명시적으로 닫혔는지 확인 (Silent Failure 방지 확인)
+	assert.True(t, n.isClosed(), "Notifier should be closed after sender panic")
+
+	cancel()
+}
+
 // =============================================================================
 // Graceful Shutdown (Drain) Tests
 // =============================================================================

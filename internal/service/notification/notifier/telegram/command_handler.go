@@ -158,7 +158,7 @@ func (n *telegramNotifier) submitTask(serviceStopCtx context.Context, command bo
 			Message:       "작업 실행 요청이 실패했습니다.\n\n잠시 후 다시 시도해 주세요.\n(원인: 시스템 과부하 또는 대기열 포화)",
 			ErrorOccurred: true,
 		}
-		if err := n.Send(serviceStopCtx, notification); err != nil {
+		if err := n.TrySend(serviceStopCtx, notification); err != nil {
 			// 실패 알림조차 전송하지 못한 경우(예: 알림 발송 큐가 가득 참), 더 이상 재시도하지 않고 로그만 남깁니다.
 			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id": n.ID(),
@@ -205,7 +205,7 @@ func (n *telegramNotifier) processCancel(serviceStopCtx context.Context, command
 		// TaskExecutor에게 해당 작업의 실행 취소를 요청합니다.
 		if err := n.executor.Cancel(contract.TaskInstanceID(instanceID)); err != nil {
 			// 취소 요청이 실패한 경우(예: 이미 종료된 작업, 존재하지 않는 ID 등), 사용자에게 실패 사유를 알립니다.
-			if err := n.Send(serviceStopCtx, contract.NewErrorNotification(
+			if err := n.TrySend(serviceStopCtx, contract.NewErrorNotification(
 				fmt.Sprintf(
 					"작업 취소 요청이 실패했습니다.\n\n"+
 						"작업 ID: %s\n\n"+

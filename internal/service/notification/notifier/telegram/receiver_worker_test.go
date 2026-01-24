@@ -87,12 +87,7 @@ func TestReceiverWorker_Process_Flow(t *testing.T) {
 	// Arrange: Mock Send behavior (as 'dispatchCommand' sends reply for unknown commands)
 	// We send a command that we know triggers a reply, or we just verify dispatch happened.
 	// Since dispatchCommand calls internal logic that eventually talks to Bot API or Executor,
-	// let's assume "/start" might trigger something.
-	// Whatever it triggers, we want to ensure the worker didn't crash.
-	//
-	// NOTE: Since we didn't mock 'Send' inside dispatchCommand in a granular way here,
 	// we assume standard behavior. If dispatchCommand calls Send, our mockBot needs to handle it.
-	// Let's make mockBot permissive.
 	env.mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Maybe()
 
 	// Act: Start Receiver Worker manually
@@ -172,20 +167,6 @@ func TestReceiverWorker_Backpressure(t *testing.T) {
 	env.notifier.commandSemaphore <- struct{}{} // Occupy the only slot
 
 	// Arrange: Mock TrySend behavior verification
-	// Since we can't easily mock internal TrySend of notifier struct (it calls Base.TrySend),
-	// we rely on the fact that TrySend will push to env.notifier.NotificationC().
-	// But Wait... telegramNotifier embeds Base. Base has NotificationC channel.
-	// If TrySend succeeds, it puts message into that channel.
-	// If TrySend fails (Queue Full), it returns error.
-	//
-	// In the worker code:
-	// if err := n.TrySend(...); err != nil { Log Error }
-	//
-	// We want to verify TrySend was called.
-	// If the NotificationC has capacity, TrySend succeeds and we see a message in it.
-	// Let's ensure Base has buffer.
-	// newNotifierWithClient creates Base with buffer.
-
 	// Ensure there is space in Notifications Queue to receive the "Busy" message
 	require.True(t, cap(env.notifier.NotificationC()) > 0)
 
@@ -261,5 +242,29 @@ func TestReceiverWorker_Shutdown_ContextCancel(t *testing.T) {
 		// Success
 	case <-time.After(2 * time.Second):
 		t.Fatal("Worker loop did not exit on context cancel")
+	}
+}
+
+// TestReceiverWorker_Shutdown_NotifierClosed verifies loop exit when Notifier is closed (e.g. by Sender panic).
+// This prevents the "Zombie Process" state where Receiver runs indefinitely after Notifier is functionally dead.
+func TestReceiverWorker_Shutdown_NotifierClosed(t *testing.T) {
+	env := setupReceiverTest(t)
+	defer env.cleanup()
+
+	done := make(chan struct{})
+	go func() {
+		env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
+		close(done)
+	}()
+
+	// Act: Close Notifier (Simulate Sender Panic effect)
+	env.notifier.Close()
+
+	// Assert: Loop exits
+	select {
+	case <-done:
+		// Success: Receiver detected Close() and exited
+	case <-time.After(1 * time.Second):
+		t.Fatal("Worker loop did not exit on Notifier close (Zombie State detected)")
 	}
 }

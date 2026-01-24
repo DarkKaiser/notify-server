@@ -93,6 +93,13 @@ type telegramNotifier struct {
 	// botCommandsByTask TaskID와 CommandID의 조합으로 명령어를 조회하는 2단계 인덱스입니다.
 	// 작업 취소 시 특정 Task의 특정 Command를 찾기 위해 사용되며, 키 충돌을 방지합니다.
 	botCommandsByTask map[contract.TaskID]map[contract.TaskCommandID]botCommand
+
+	// === 테스트 지원 (Internal) ===
+
+	// testHookSenderPanic 테스트 전용 훅입니다.
+	// Sender 루프 내부에서 강제로 패닉을 유발하여 복구 로직을 검증하기 위해 사용됩니다.
+	// 실제 운영 환경에서는 절대 사용되지 않아야 합니다 (nil 유지).
+	testHookSenderPanic func()
 }
 
 // 인터페이스 준수 확인
