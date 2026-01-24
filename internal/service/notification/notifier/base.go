@@ -75,6 +75,7 @@ func (b *Base) ID() contract.NotifierID {
 // Send 알림 발송 요청을 내부 큐(채널)에 안전하게 등록합니다.
 //
 // 이 메서드는 실제 발송을 수행하지 않고, 요청을 메모리 큐에 넣는 역할만 수행하므로 매우 빠르게 리턴됩니다.
+// 큐가 가득 찬 경우, 설정된 타임아웃(enqueueTimeout)만큼 대기합니다.
 //
 // 파라미터:
 //   - ctx: 요청의 생명주기를 관리하는 컨텍스트
@@ -82,9 +83,36 @@ func (b *Base) ID() contract.NotifierID {
 //
 // 반환값:
 //   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
-func (b *Base) Send(ctx context.Context, notification contract.Notification) (err error) {
+func (b *Base) Send(ctx context.Context, notification contract.Notification) error {
+	return b.sendInternal(ctx, notification, true)
+}
+
+// TrySend 알림 발송 요청을 내부 큐(채널)에 등록 시도합니다.
+//
+// Send와 달리, 큐가 가득 찼을 때 대기(Block)하지 않고 즉시 에러(ErrQueueFull)를 반환합니다.
+// 빠른 응답이 중요하거나, 알림 유실이 허용되는 경우(예: 시스템 점유 상태 알림)에 사용합니다.
+//
+// 파라미터:
+//   - ctx: 요청의 생명주기를 관리하는 컨텍스트
+//   - notification: 전송할 알림 데이터
+//
+// 반환값:
+//   - error: 성공 시 nil, 큐가 가득 찬 경우 즉시 ErrQueueFull 에러를 반환합니다.
+func (b *Base) TrySend(ctx context.Context, notification contract.Notification) error {
+	return b.sendInternal(ctx, notification, false)
+}
+
+// sendInternal 알림 발송 요청을 처리하는 내부 공통 메서드입니다.
+// block 파라미터에 따라 Blocking(Send) 또는 Non-blocking(TrySend) 모드로 동작합니다.
+func (b *Base) sendInternal(ctx context.Context, notification contract.Notification, blockingMode bool) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	// 0. 컨텍스트 취소 확인
+	// 이미 취소된 컨텍스트인 경우 락 획득 등의 비용을 아끼고 즉시 종료합니다.
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	b.mu.RLock()
@@ -133,54 +161,86 @@ func (b *Base) Send(ctx context.Context, notification contract.Notification) (er
 		Notification: notification,
 	}
 
-	// 5. 타이머 생성
-	// 채널이 가득 찼을 때 무한정 대기하지 않고, 설정된 타임아웃(enqueueTimeout)만큼만 기다립니다.
-	// 이는 시스템 과부하 시 요청을 "실패" 처리함으로써 전체 시스템의 응답성을 보호하는 Backpressure 역할을 합니다.
-	timer := time.NewTimer(enqueueTimeout)
-	defer func() {
-		// 타이머 리소스 정리 가이드 (Go 공식 문서 권장사항):
-		// timer.Stop()이 false를 반환하면 이미 타이머가 만료되어 시간 값(C)이 채널에 전송되었을 수 있습니다.
-		// 이 경우 채널을 비워주지(Drain) 않으면 타이머 고루틴이 메모리에 남을 수 있으므로 비동기로 비워줍니다.
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
+	// 5. 블로킹 모드 확인
+	if blockingMode {
+		// 5-1. 타이머 생성
+		// 채널이 가득 찼을 때 무한정 대기하지 않고, 설정된 타임아웃(enqueueTimeout)만큼만 기다립니다.
+		// 이는 시스템 과부하 시 요청을 "실패" 처리함으로써 전체 시스템의 응답성을 보호하는 Backpressure 역할을 합니다.
+		timer := time.NewTimer(enqueueTimeout)
+		defer func() {
+			// 타이머 리소스 정리 가이드 (Go 공식 문서 권장사항):
+			// timer.Stop()이 false를 반환하면 이미 타이머가 만료되어 시간 값(C)이 채널에 전송되었을 수 있습니다.
+			// 이 경우 채널을 비워주지(Drain) 않으면 타이머 고루틴이 메모리에 남을 수 있으므로 비동기로 비워줍니다.
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
+		}()
+
+		// 5-2. 큐에 적재
+		// 큐가 가득 찼을 때, 설정된 타임아웃(enqueueTimeout)까지 대기하며 빈 공간이 생기기를 기다립니다.
+		// 타임아웃 내에 처리되지 않으면 포기(Drop)하여 시스템 전체의 지연을 방지합니다.
+		select {
+		case notificationC <- req:
+			// 성공: 큐에 정상적으로 등록됨
+			return nil
+
+		case <-done:
+			// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
+			// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
+			return ErrClosed
+
+		case <-ctx.Done():
+			// 실패: 요청자(Caller)의 작업이 취소됨
+			// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
+			return ctx.Err()
+
+		case <-timer.C:
+			// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
+			// 시스템 보호를 위해 해당 요청을 드롭(Drop)하고 로그를 남깁니다.
+			b.logQueueFull(notification)
+			return ErrQueueFull
 		}
-	}()
+	} else {
+		// 5-3. 큐에 적재
+		// 채널이 가득 차 있어도 대기(Block)하지 않고, 즉시 ErrQueueFull을 반환합니다.
+		select {
+		case notificationC <- req:
+			// 성공: 큐에 정상적으로 등록됨
+			return nil
 
-	// 6. 큐에 적재
-	select {
-	case notificationC <- req:
-		// 성공: 큐에 정상적으로 등록됨
-		return nil
+		case <-done:
+			// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
+			// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
+			return ErrClosed
 
-	case <-done:
-		// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
-		// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
-		return ErrClosed
+		case <-ctx.Done():
+			// 실패: 요청자(Caller)의 작업이 취소됨
+			// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
+			return ctx.Err()
 
-	case <-ctx.Done():
-		// 실패: 요청자(Caller)의 작업이 취소됨
-		// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
-		return ctx.Err()
-
-	case <-timer.C:
-		// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
-		// 시스템 보호를 위해 해당 요청을 드롭(Drop)하고 로그를 남깁니다.
-		fields := applog.Fields{
-			"notifier_id": b.ID(),
+		default:
+			// 실패: 큐가 가득 차 있음 (즉시 리턴)
+			b.logQueueFull(notification)
+			return ErrQueueFull
 		}
-		if notification.TaskID != "" {
-			fields["task_id"] = notification.TaskID
-		}
-		if notification.Title != "" {
-			fields["task_title"] = notification.Title
-		}
-		applog.WithComponentAndFields(component, fields).Warn("알림 요청 거부: 발송 대기열 용량 초과 (Queue Full)")
-
-		return ErrQueueFull
 	}
+}
+
+// logQueueFull 발송 대기열(Queue)이 가득 차서 알림 요청이 거부되었을 때 경고 로그를 남깁니다.
+func (b *Base) logQueueFull(notification contract.Notification) {
+	fields := applog.Fields{
+		"notifier_id": b.ID(),
+	}
+	if notification.TaskID != "" {
+		fields["task_id"] = notification.TaskID
+	}
+	if notification.Title != "" {
+		fields["task_title"] = notification.Title
+	}
+	applog.WithComponentAndFields(component, fields).Warn("알림 요청 거부: 발송 대기열 용량 초과 (Queue Full)")
 }
 
 // Close Notifier의 운영을 중단하고 관련 리소스를 정리합니다.

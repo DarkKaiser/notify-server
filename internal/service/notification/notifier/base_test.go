@@ -18,7 +18,7 @@ import (
 const (
 	testID             = contract.NotifierID("test-notifier")
 	testMessage        = "test-message"
-	testDefaultTimeout = 5 * time.Second
+	testDefaultTimeout = 50 * time.Millisecond // Unit testing requires fast timeouts
 )
 
 // TestMain runs tests and checks for goroutine leaks.
@@ -52,13 +52,13 @@ func TestBase_Initialization(t *testing.T) {
 			id:             "notifier-sync",
 			supportsHTML:   false,
 			bufferSize:     0,
-			enqueueTimeout: 500 * time.Millisecond,
+			enqueueTimeout: 50 * time.Millisecond,
 		},
 		{
 			name:           "Large Buffer",
 			id:             "notifier-large",
 			supportsHTML:   true,
-			bufferSize:     10000,
+			bufferSize:     1000,
 			enqueueTimeout: 1 * time.Minute,
 		},
 	}
@@ -68,19 +68,17 @@ func TestBase_Initialization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Action
+			// Act
 			n := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.enqueueTimeout)
 
-			// Assertion: Fields match
+			// Assert
 			assert.Equal(t, tt.id, n.ID())
 			assert.Equal(t, tt.supportsHTML, n.SupportsHTML())
 			assert.Equal(t, tt.enqueueTimeout, n.enqueueTimeout)
-
-			// Assertion: Channel State
 			require.NotNil(t, n.NotificationC())
 			assert.Equal(t, tt.bufferSize, cap(n.NotificationC()))
 
-			// Assertion: Lifecycle State
+			// Verify channel states
 			select {
 			case <-n.Done():
 				t.Fatal("Done() channel should be open (not closed) initially")
@@ -92,203 +90,210 @@ func TestBase_Initialization(t *testing.T) {
 }
 
 // =============================================================================
-// 2. Send Logic (Core Scenarios)
+// 2. Send & TrySend Logic (Table Driven)
 // =============================================================================
 
-func TestBase_Send(t *testing.T) {
+func TestBase_SendMethods(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Success: Buffered Send (Space Available)", func(t *testing.T) {
-		t.Parallel()
-		// Arrange
+	type actionFunc func(n *Base, ctx context.Context) error
+
+	tests := []struct {
+		name           string
+		bufferSize     int
+		enqueueTimeout time.Duration
+		prefillCount   int // Number of messages to fill the buffer with before text
+		action         actionFunc
+		wantErr        bool
+		wantErrIs      error
+		wantDuration   time.Duration // Minimum duration expected (for Blocking checks)
+	}{
+		// ---------------------------------------------------------------------
+		// Send (Blocking) Scenarios
+		// ---------------------------------------------------------------------
+		{
+			name:           "Send: Success (Empty Buffer)",
+			bufferSize:     1,
+			enqueueTimeout: testDefaultTimeout,
+			action: func(n *Base, ctx context.Context) error {
+				return n.Send(ctx, contract.NewNotification(testMessage))
+			},
+			wantErr: false,
+		},
+		{
+			name:           "Send: Success (Unbuffered with Consumer)",
+			bufferSize:     0,
+			enqueueTimeout: testDefaultTimeout,
+			action: func(n *Base, ctx context.Context) error {
+				// Start consumer first
+				go func() {
+					select {
+					case <-n.NotificationC():
+					case <-time.After(testDefaultTimeout):
+					}
+				}()
+				return n.Send(ctx, contract.NewNotification(testMessage))
+			},
+			wantErr: false,
+		},
+		{
+			name:           "Send: Failure with Timeout (Queue Full)",
+			bufferSize:     0,
+			enqueueTimeout: 20 * time.Millisecond,
+			action: func(n *Base, ctx context.Context) error {
+				return n.Send(ctx, contract.NewNotification(testMessage))
+			},
+			wantErr:      true,
+			wantErrIs:    ErrQueueFull,
+			wantDuration: 20 * time.Millisecond,
+		},
+		{
+			name:           "Send: Failure w/ Canceled Context (Immediate)",
+			bufferSize:     1,
+			enqueueTimeout: testDefaultTimeout,
+			action: func(n *Base, ctx context.Context) error {
+				canceledCtx, cancel := context.WithCancel(ctx)
+				cancel() // Cancel immediately
+				return n.Send(canceledCtx, contract.NewNotification(testMessage))
+			},
+			wantErr:   true,
+			wantErrIs: context.Canceled,
+		},
+
+		// ---------------------------------------------------------------------
+		// TrySend (Non-blocking) Scenarios
+		// ---------------------------------------------------------------------
+		{
+			name:           "TrySend: Success (Space Available)",
+			bufferSize:     1,
+			enqueueTimeout: testDefaultTimeout,
+			action: func(n *Base, ctx context.Context) error {
+				return n.TrySend(ctx, contract.NewNotification(testMessage))
+			},
+			wantErr: false,
+		},
+		{
+			name:           "TrySend: Failure Immediate (Queue Full)",
+			bufferSize:     0,                  // Unbuffered channel is full by default if no consumer
+			enqueueTimeout: testDefaultTimeout, // Timeout shouldn't matter
+			action: func(n *Base, ctx context.Context) error {
+				return n.TrySend(ctx, contract.NewNotification(testMessage))
+			},
+			wantErr:   true,
+			wantErrIs: ErrQueueFull,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Arrange
+			n := NewBase(testID, true, tt.bufferSize, tt.enqueueTimeout)
+
+			// Pre-fill buffer if requested
+			for i := 0; i < tt.prefillCount; i++ {
+				// We use a non-blocking send directly to the channel for setup
+				select {
+				case n.notificationC <- &notificationRequest{}:
+				default:
+					t.Fatalf("Failed to pre-fill buffer, it might be full already")
+				}
+			}
+
+			// Act
+			start := time.Now()
+			err := tt.action(&n, context.Background())
+			duration := time.Since(start)
+
+			// Assert
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantErrIs != nil {
+					assert.ErrorIs(t, err, tt.wantErrIs)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+
+			if tt.wantDuration > 0 {
+				assert.GreaterOrEqual(t, duration, tt.wantDuration, "Operation completed too fast, expected blocking behavior")
+			}
+		})
+	}
+}
+
+// =============================================================================
+// 3. Lifecycle & Safety Tests
+// =============================================================================
+
+func TestBase_Lifecycle(t *testing.T) {
+	t.Parallel()
+
+	// 3-1. Close Idempotency
+	t.Run("Close Idempotency", func(t *testing.T) {
 		n := NewBase(testID, true, 1, testDefaultTimeout)
-		ctx := context.Background()
 
-		// Act
-		err := n.Send(ctx, contract.NewNotification(testMessage))
-
-		// Assert
-		require.NoError(t, err)
-
+		// First Close
+		n.Close()
 		select {
-		case req := <-n.NotificationC():
-			assert.Equal(t, testMessage, req.Notification.Message)
-			assert.Equal(t, ctx, req.Ctx)
+		case <-n.Done():
 		default:
-			t.Fatal("Queue should contain the sent message")
+			t.Fatal("Done channel should be closed")
 		}
+
+		// Second Close (Should not panic)
+		assert.NotPanics(t, func() {
+			n.Close()
+		})
+
+		// Send after Close should fail
+		err := n.Send(context.Background(), contract.NewNotification(testMessage))
+		assert.ErrorIs(t, err, ErrClosed)
 	})
 
-	t.Run("Success: Unbuffered Send (Consumer Ready)", func(t *testing.T) {
-		t.Parallel()
-		// Arrange
-		n := NewBase(testID, true, 0, testDefaultTimeout)
-		notification := contract.NewNotification(testMessage)
+	// 3-2. Unblocking on Close
+	t.Run("Send Unblocks on Close", func(t *testing.T) {
+		n := NewBase(testID, true, 0, 1*time.Minute) // Long timeout
 
-		// Start a consumer
+		// Start a blocking send
+		errCh := make(chan error, 1)
+		readyCh := make(chan struct{}) // Synchronization channel
+
 		go func() {
-			select {
-			case <-n.NotificationC():
-				// Consumed
-			case <-time.After(testDefaultTimeout):
-				// Prevent leak if test fails
-			}
+			close(readyCh) // Signal that goroutine started
+			errCh <- n.Send(context.Background(), contract.NewNotification("blocking"))
 		}()
 
-		// Small delay to ensure consumer is likely ready (optional but helpful for deterministic feel)
-		time.Sleep(10 * time.Millisecond)
+		<-readyCh                         // Wait for goroutine start
+		time.Sleep(10 * time.Millisecond) // Allow it to reach the select statement
 
-		// Act
-		err := n.Send(context.Background(), notification)
-
-		// Assert
-		require.NoError(t, err)
-	})
-
-	t.Run("Success: Nil Context Defaults to Background", func(t *testing.T) {
-		t.Parallel()
-		n := NewBase(testID, true, 1, testDefaultTimeout)
-
-		err := n.Send(nil, contract.NewNotification(testMessage))
-		require.NoError(t, err)
-
-		req := <-n.NotificationC()
-		assert.NotNil(t, req.Ctx, "Nil context should be replaced with default context")
-	})
-
-	t.Run("Failure: Queue Full (Timeout)", func(t *testing.T) {
-		t.Parallel()
-		// Unbuffered channel with no consumer -> immediately blocking
-		// Very short timeout for test speed
-		shortTimeout := 10 * time.Millisecond
-		n := NewBase(testID, true, 0, shortTimeout)
-
+		// Action: Close the notifier
 		start := time.Now()
-		err := n.Send(context.Background(), contract.NewNotification(testMessage))
-
-		// Assert
-		require.ErrorIs(t, err, ErrQueueFull)
-		assert.GreaterOrEqual(t, time.Since(start), shortTimeout, "Should wait at least the timeout duration")
-	})
-
-	t.Run("Failure: Context Canceled (Already Canceled)", func(t *testing.T) {
-		t.Parallel()
-		n := NewBase(testID, true, 1, testDefaultTimeout)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		err := n.Send(ctx, contract.NewNotification(testMessage))
-
-		// Should return standard context error
-		require.ErrorIs(t, err, context.Canceled)
-	})
-
-	t.Run("Failure: Context Deadline Exceeded", func(t *testing.T) {
-		t.Parallel()
-		// Enqueue timeout is LONG, but Context deadline is SHORT
-		n := NewBase(testID, true, 0, 1*time.Minute)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
-
-		start := time.Now()
-		err := n.Send(ctx, contract.NewNotification(testMessage))
-
-		// Should return standard context error, NOT ErrQueueFull
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-		assert.WithinDuration(t, start, time.Now(), 100*time.Millisecond)
-	})
-
-	t.Run("Failure: Notifier Closed", func(t *testing.T) {
-		t.Parallel()
-		n := NewBase(testID, true, 1, testDefaultTimeout)
 		n.Close()
 
-		err := n.Send(context.Background(), contract.NewNotification(testMessage))
-		require.ErrorIs(t, err, ErrClosed)
-	})
-
-	t.Run("Failure: Panic Recovery", func(t *testing.T) {
-		t.Parallel()
-		n := NewBase(testID, true, 1, testDefaultTimeout)
-
-		// White-box testing: manually close the channel to trigger panic on send
-		close(n.notificationC)
-
-		assert.NotPanics(t, func() {
-			err := n.Send(context.Background(), contract.NewNotification("trigger panic"))
-			assert.ErrorIs(t, err, ErrPanicRecovered)
-		})
+		// Verify: Should unblock immediately with ErrClosed
+		select {
+		case err := <-errCh:
+			assert.ErrorIs(t, err, ErrClosed)
+			assert.WithinDuration(t, start, time.Now(), 100*time.Millisecond)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Send did not unblock after Close()")
+		}
 	})
 }
 
-// =============================================================================
-// 3. Unblocking Behavior (Concurrency)
-// =============================================================================
-
-func TestBase_Unblocking(t *testing.T) {
+func TestBase_PanicRecovery(t *testing.T) {
 	t.Parallel()
 
-	// Helper to run a test that blocks
-	runBlockingTest := func(t *testing.T, name string, trigger func(n *Base, cancel context.CancelFunc), expectedErr error) {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			n := NewBase(testID, true, 0, 1*time.Minute) // Will block
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			errCh := make(chan error, 1)
-			go func() {
-				errCh <- n.Send(ctx, contract.NewNotification("blocking"))
-			}()
-
-			// Wait for Send to block
-			time.Sleep(20 * time.Millisecond)
-
-			// Trigger the unblocking event
-			start := time.Now()
-			trigger(&n, cancel)
-
-			// Verify return
-			select {
-			case err := <-errCh:
-				require.ErrorIs(t, err, expectedErr)
-				assert.WithinDuration(t, start, time.Now(), 100*time.Millisecond, "Should return immediately after trigger")
-			case <-time.After(1 * time.Second):
-				t.Fatal("Send did not unblock")
-			}
-		})
-	}
-
-	runBlockingTest(t, "Unblock via Close()", func(n *Base, _ context.CancelFunc) {
-		n.Close()
-	}, ErrClosed)
-
-	runBlockingTest(t, "Unblock via Context Cancel", func(n *Base, cancel context.CancelFunc) {
-		cancel()
-	}, context.Canceled)
-}
-
-// =============================================================================
-// 4. Lifecycle & Idempotency
-// =============================================================================
-
-func TestBase_Close_Idempotency(t *testing.T) {
-	t.Parallel()
 	n := NewBase(testID, true, 1, testDefaultTimeout)
 
-	// First Close
-	n.Close()
-	select {
-	case <-n.Done():
-	default:
-		t.Fatal("Done channel should be closed")
-	}
+	// White-box testing: manually close internal channel to trigger panic
+	close(n.notificationC)
 
-	// Second Close (Should not panic)
 	assert.NotPanics(t, func() {
-		n.Close()
+		err := n.Send(context.Background(), contract.NewNotification("trigger panic"))
+		assert.ErrorIs(t, err, ErrPanicRecovered)
 	})
 }

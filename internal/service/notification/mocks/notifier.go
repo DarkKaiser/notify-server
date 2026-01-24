@@ -63,6 +63,12 @@ func (m *MockNotifier) Send(ctx context.Context, notification contract.Notificat
 	return args.Error(0)
 }
 
+// TrySend sends a notification without blocking.
+func (m *MockNotifier) TrySend(ctx context.Context, notification contract.Notification) error {
+	args := m.Called(ctx, notification)
+	return args.Error(0)
+}
+
 // Run runs the notifier.
 func (m *MockNotifier) Run(ctx context.Context) {
 	m.Called(ctx)
@@ -118,6 +124,27 @@ func (m *MockNotifier) ExpectSendSuccess() *mock.Call {
 // ExpectSendFailure Send 호출 실패를 가정합니다.
 func (m *MockNotifier) ExpectSendFailure(err error) *mock.Call {
 	return m.OnSend(mock.Anything, mock.Anything).Return(err)
+}
+
+// OnTrySend TrySend 메서드 호출에 대한 기대치를 설정합니다.
+func (m *MockNotifier) OnTrySend(ctx interface{}, notification interface{}) *mock.Call {
+	if ctx == nil {
+		ctx = mock.Anything
+	}
+	if notification == nil {
+		notification = mock.Anything
+	}
+	return m.On("TrySend", ctx, notification)
+}
+
+// ExpectTrySendSuccess TrySend 호출 성공을 가정합니다.
+func (m *MockNotifier) ExpectTrySendSuccess() *mock.Call {
+	return m.OnTrySend(mock.Anything, mock.Anything).Return(nil)
+}
+
+// ExpectTrySendFailure TrySend 호출 실패를 가정합니다.
+func (m *MockNotifier) ExpectTrySendFailure(err error) *mock.Call {
+	return m.OnTrySend(mock.Anything, mock.Anything).Return(err)
 }
 
 // OnClose Close 메서드 호출에 대한 기대치를 설정합니다.

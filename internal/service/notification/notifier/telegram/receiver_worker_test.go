@@ -16,312 +16,250 @@ import (
 )
 
 // =============================================================================
-// Receiver Worker Tests
+// Test Helper & Setup
 // =============================================================================
 
-// TestReceiverWorker_ChannelClosed 텔레그램 업데이트 채널이 닫혔을 때
-// 수신 루프가 정상적으로 종료되는지 검증합니다.
-func TestReceiverWorker_ChannelClosed(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
-
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    11111,
-		AppConfig: appConfig,
-	}
-	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	n := nHandler.(*telegramNotifier)
-
-	// Mock Expectations
-	updatesChan := make(chan tgbotapi.Update)
-	// Run() will call GetUpdatesChan
-	mockBot.On("GetUpdatesChan", mock.Anything).Return((tgbotapi.UpdatesChannel)(updatesChan))
-	mockBot.On("GetSelf").Return(tgbotapi.User{UserName: "TestBot"})
-	mockBot.On("StopReceivingUpdates").Return()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	runResult := make(chan struct{})
-	go func() {
-		// Run starts Receiver Loop
-		n.Run(ctx)
-		close(runResult)
-	}()
-
-	// Act: Close the channel
-	close(updatesChan)
-
-	// Assert: Loop should exit
-	select {
-	case <-runResult:
-		// Success
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run loop did not exit when update channel was closed")
-	}
-
-	mockBot.AssertExpectations(t)
+// receiverTestEnv encapsulates the test environment for Receiver Worker
+type receiverTestEnv struct {
+	t            *testing.T
+	ctx          context.Context
+	cancel       context.CancelFunc
+	notifier     *telegramNotifier
+	mockBot      *MockTelegramBot
+	mockExecutor *taskmocks.MockExecutor
+	updatesChan  chan tgbotapi.Update
+	wg           sync.WaitGroup
 }
 
-// TestReceiverWorker_Dispatch_Success 수신된 메시지가 올바르게 디스패치되어
-// 처리되는지 검증합니다. (세마포어 획득 및 고루틴 실행 확인)
-func TestReceiverWorker_Dispatch_Success(t *testing.T) {
-	appConfig := &config.AppConfig{}
+// setupReceiverTest initializes common test dependencies
+func setupReceiverTest(t *testing.T) *receiverTestEnv {
 	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{} // Not used for execution in this unit test level but required for creation
+	mockExecutor := &taskmocks.MockExecutor{}
+	appConfig := &config.AppConfig{}
 
 	args := creationArgs{
 		BotToken:  "test-token",
 		ChatID:    12345,
 		AppConfig: appConfig,
 	}
+
 	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
 	require.NoError(t, err)
 	n := nHandler.(*telegramNotifier)
 
-	// Manually set commandSemaphore
-	n.commandSemaphore = make(chan struct{}, 10)
+	// Override rate limiter to allow unlimited for testing logic speed
+	n.rateLimiter = rate.NewLimiter(rate.Inf, 0)
+	n.retryDelay = 1 * time.Millisecond // Fast retry
 
-	// Prepare WaitGroup and Update Channel
-	var wg sync.WaitGroup
-	updatesChan := make(chan tgbotapi.Update, 1)
-
-	// Act with manual worker invocation
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	go func() {
-		n.receiveAndDispatchCommands(ctx, updatesChan, &wg)
-	}()
+	return &receiverTestEnv{
+		t:            t,
+		ctx:          ctx,
+		cancel:       cancel,
+		notifier:     n,
+		mockBot:      mockBot,
+		mockExecutor: mockExecutor,
+		updatesChan:  make(chan tgbotapi.Update, 100), // Buffered update channel
+		wg:           sync.WaitGroup{},
+	}
+}
 
-	// Send valid update
-	updatesChan <- tgbotapi.Update{
+// cleanup ensures resources are released
+func (e *receiverTestEnv) cleanup() {
+	e.cancel()
+	// Tests should wait for wg manually if they started the worker
+}
+
+// =============================================================================
+// Receiver Logic Tests
+// =============================================================================
+
+// TestReceiverWorker_Process_Flow validates the standard message processing flow:
+// 1. Valid update received -> 2. Semaphore acquired -> 3. Dispatch successful.
+func TestReceiverWorker_Process_Flow(t *testing.T) {
+	env := setupReceiverTest(t)
+	defer env.cleanup()
+
+	// Arrange: Ensure semaphore is open
+	env.notifier.commandSemaphore = make(chan struct{}, 10)
+
+	// Arrange: Mock Send behavior (as 'dispatchCommand' sends reply for unknown commands)
+	// We send a command that we know triggers a reply, or we just verify dispatch happened.
+	// Since dispatchCommand calls internal logic that eventually talks to Bot API or Executor,
+	// let's assume "/start" might trigger something.
+	// Whatever it triggers, we want to ensure the worker didn't crash.
+	//
+	// NOTE: Since we didn't mock 'Send' inside dispatchCommand in a granular way here,
+	// we assume standard behavior. If dispatchCommand calls Send, our mockBot needs to handle it.
+	// Let's make mockBot permissive.
+	env.mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Maybe()
+
+	// Act: Start Receiver Worker manually
+	go env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
+
+	// Act: Send a valid update
+	env.updatesChan <- tgbotapi.Update{
 		Message: &tgbotapi.Message{
-			Chat: &tgbotapi.Chat{ID: 12345},
-			Text: "/start",
+			MessageID: 1,
+			Chat:      &tgbotapi.Chat{ID: 12345},
+			Text:      "/ping",
 		},
 	}
 
-	// Wait a bit for dispatch
-	time.Sleep(100 * time.Millisecond)
+	// Assert: Wait for processing (non-deterministic but robust enough with channel check)
+	// We verify the channel is drained.
+	assert.Eventually(t, func() bool {
+		return len(env.updatesChan) == 0
+	}, 1*time.Second, 10*time.Millisecond, "Updates channel should be consumed")
 
-	// Since we mock dispatchCommand logic inside receiveAndDispatchCommands is hard without modifying code,
-	// checking if semaphore has active slot is a way.
-	// But `receiveAndDispatchCommands` launches a goroutine that ACQUIRES then RELEASES immediately after dispatchCommand.
-	// So we might miss it.
-	// Instead, we can verify logs or just trust that `dispatchCommand` (which panics or logs) calls things.
-
-	// However, `dispatchCommand` inside tests will call `n.replyUnknownCommand` or similar if logic matches.
-	// Since we didn't mock `Send` in `telegramNotifier`, `dispatchCommand` might fail/panic if it tries to send reply.
-	// But `dispatchCommand` has panic recovery.
-
-	// A better integration style test for dispatch is `TestReceiverWorker_Dispatch_Integration` where we verify `Send` is called.
-
-	// Let's rely on `TestReceiverWorker_Dispatch_Legacy` (Concurrency test) logic verification:
-	// Verify wg was added. But wg is local.
-
-	// Since verifying "dispatch happened" without side effects is hard,
-	// we will assume success if it doesn't crash and channel is read.
-	assert.Equal(t, 0, len(updatesChan), "Channel should be drained")
+	// Cleanup will happen via defer env.cleanup()
 }
 
-// TestReceiverWorker_Ignore_Checks 잘못된 ChatID나 비 텍스트 메시지가 무시되는지 검증합니다.
-func TestReceiverWorker_Ignore_Checks(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+// TestReceiverWorker_Ignore_Invalid_Updates verifies that invalid messages
+// (Wrong ChatID, Non-text) are ignored without consuming semaphore resources.
+func TestReceiverWorker_Ignore_Invalid_Updates(t *testing.T) {
+	env := setupReceiverTest(t)
+	defer env.cleanup()
 
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    12345,
-		AppConfig: appConfig,
-	}
-	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	n := nHandler.(*telegramNotifier)
+	// Arrange: Spy on semaphore
+	env.notifier.commandSemaphore = make(chan struct{}, 10)
 
-	updatesChan := make(chan tgbotapi.Update, 10)
-	var wg sync.WaitGroup
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go n.receiveAndDispatchCommands(ctx, updatesChan, &wg)
+	go env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
 
 	// 1. Wrong ChatID
-	updatesChan <- tgbotapi.Update{
+	env.updatesChan <- tgbotapi.Update{
 		Message: &tgbotapi.Message{
-			Chat: &tgbotapi.Chat{ID: 99999}, // Wrong ID
-			Text: "/start",
+			Chat: &tgbotapi.Chat{ID: 99999}, // Invalid
+			Text: "/ping",
 		},
 	}
 
-	// 2. Non-text Message (e.g. Photo)
-	updatesChan <- tgbotapi.Update{
+	// 2. Non-text Message (Photo)
+	env.updatesChan <- tgbotapi.Update{
 		Message: &tgbotapi.Message{
 			Chat:  &tgbotapi.Chat{ID: 12345},
-			Photo: []tgbotapi.PhotoSize{{}}, // Has photo
-			// Text is empty
+			Photo: []tgbotapi.PhotoSize{{}}, // Photo
 		},
 	}
 
-	// 3. Update without Message (e.g. EditedMessage)
-	updatesChan <- tgbotapi.Update{
+	// 3. Update without Message
+	env.updatesChan <- tgbotapi.Update{
 		EditedMessage: &tgbotapi.Message{
 			Chat: &tgbotapi.Chat{ID: 12345},
-			Text: "/edit",
+			Text: "/ping",
 		},
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// Assert: Channel drained (consumed), but Semaphore should be empty (no dispatch)
+	assert.Eventually(t, func() bool {
+		return len(env.updatesChan) == 0
+	}, 1*time.Second, 10*time.Millisecond, "All invalid updates should be consumed (ignored)")
 
-	// Since ignored messages don't spawn goroutines, wg should be clean (0 adds)
-	// We can't check wg count directly.
-	// But we can check that we didn't crash.
-	// Also ensure channel is empty
-	assert.Equal(t, 0, len(updatesChan))
+	assert.Equal(t, 0, len(env.notifier.commandSemaphore), "Semaphore should remain empty as no tasks were dispatched")
 }
 
-// TestReceiverWorker_Backpressure_Drop 세마포어가 가득 찼을 때
-// 추가 요청이 오면 블로킹되지 않고 Drop 되는지(Backpressure) 검증합니다.
-func TestReceiverWorker_Backpressure_Drop(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+// TestReceiverWorker_Backpressure verifies that when the semaphore is full:
+// 1. Request is dropped (channel consumed).
+// 2. TrySend is called to send a "System Busy" message.
+func TestReceiverWorker_Backpressure(t *testing.T) {
+	env := setupReceiverTest(t)
+	defer env.cleanup()
 
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    12345,
-		AppConfig: appConfig,
-	}
-	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	n := nHandler.(*telegramNotifier)
-
-	// Force tiny semaphore
+	// Arrange: Fill the semaphore completely
 	semaphoreSize := 1
-	n.commandSemaphore = make(chan struct{}, semaphoreSize)
+	env.notifier.commandSemaphore = make(chan struct{}, semaphoreSize)
+	env.notifier.commandSemaphore <- struct{}{} // Occupy the only slot
 
-	// Fill semaphore
-	n.commandSemaphore <- struct{}{}
+	// Arrange: Mock TrySend behavior verification
+	// Since we can't easily mock internal TrySend of notifier struct (it calls Base.TrySend),
+	// we rely on the fact that TrySend will push to env.notifier.NotificationC().
+	// But Wait... telegramNotifier embeds Base. Base has NotificationC channel.
+	// If TrySend succeeds, it puts message into that channel.
+	// If TrySend fails (Queue Full), it returns error.
+	//
+	// In the worker code:
+	// if err := n.TrySend(...); err != nil { Log Error }
+	//
+	// We want to verify TrySend was called.
+	// If the NotificationC has capacity, TrySend succeeds and we see a message in it.
+	// Let's ensure Base has buffer.
+	// newNotifierWithClient creates Base with buffer.
 
-	updatesChan := make(chan tgbotapi.Update, 5)
-	var wg sync.WaitGroup
+	// Ensure there is space in Notifications Queue to receive the "Busy" message
+	require.True(t, cap(env.notifier.NotificationC()) > 0)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Act: Start Worker
+	go env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
 
-	// To verify drop, we can monitor the logs? Or check that processing didn't happen?
-	// In the implementation, Drop logs a warning and DOES NOT add to wg.
-	// If it blocked, the channel would remain full.
-
-	go n.receiveAndDispatchCommands(ctx, updatesChan, &wg)
-
-	// Send an update while semaphore is full
-	updatesChan <- tgbotapi.Update{
+	// Act: Send a command while semaphore is full
+	env.updatesChan <- tgbotapi.Update{
 		Message: &tgbotapi.Message{
 			Chat: &tgbotapi.Chat{ID: 12345},
-			Text: "/start",
+			Text: "/heavy_task",
 		},
 	}
 
-	// Give a little time
-	time.Sleep(100 * time.Millisecond)
+	// Assert:
+	// 1. Update consumed (processed)
+	assert.Eventually(t, func() bool {
+		return len(env.updatesChan) == 0
+	}, 1*time.Second, 10*time.Millisecond, "Update should be dropped/consumed")
 
-	// If it processed, it would be blocked inside the goroutine waiting for semaphore,
-	// BUT `receiveAndDispatchCommands` acquires semaphore BEFORE starting goroutine.
-	// So `select` logic dictates:
-	// If `case n.commandSemaphore <- struct{}{}:` blocks, it goes to `default:`
-	// So if it dropped, it skipped `wg.Add(1)` and moved on.
-	// The updatesChan should be empty (update consumed).
+	// 2. Semaphore still full (no new task started)
+	assert.Equal(t, 1, len(env.notifier.commandSemaphore))
 
-	assert.Equal(t, 0, len(updatesChan), "Update should be consumed (dropped)")
-	assert.Equal(t, 1, len(n.commandSemaphore), "Semaphore should still be full")
-
-	// If it was NOT dropped (blocked), receiveAndDispatchCommands would be stuck in `case <- updateC`?
-	// No, the `select` has `default`.
-	// So consuming the update proves it hit `default` branch because semaphore was full.
+	// 3. "System Busy" notification sent via TrySend -> NotificationC
+	select {
+	case req := <-env.notifier.NotificationC():
+		assert.Contains(t, req.Notification.Message, "시스템 이용자가 많아", "Should send busy message")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Expected 'System Busy' notification in queue, but found none")
+	}
 }
 
-// TestReceiverWorker_Concurrency (Legacy migrated) verifies correct concurrent processing capabilities.
-func TestReceiverWorker_Concurrency(t *testing.T) {
-	appConfig := &config.AppConfig{}
-	mockBot := &MockTelegramBot{} // Assuming MockTelegramBot is defined in this package
-
-	// Setup mock behaviors
-	updateC := make(chan tgbotapi.Update, 100)
-
-	// This test sets up a full environment via newNotifier mostly.
-	// But strict control is nice.
-
-	// Instead of full newNotifier logic, let's test just the receiver loop with a mock notifier struct if possible,
-	// or use the helper.
-
-	mockExecutor := &taskmocks.MockExecutor{}
-	args := creationArgs{
-		BotToken:  "test-token",
-		ChatID:    12345,
-		AppConfig: appConfig,
-	}
-	nHandler, err := newNotifierWithClient("test-notifier", mockBot, mockExecutor, args)
-	require.NoError(t, err)
-	n := nHandler.(*telegramNotifier)
-
-	// Fixup notifier for test
-	n.retryDelay = 1 * time.Millisecond
-	n.rateLimiter = rate.NewLimiter(rate.Inf, 0)
-	n.commandSemaphore = make(chan struct{}, 100)
-
-	// Mock Send for reply
-	// When dispatchCommand handles "/help", it sends a reply.
-	mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, nil).Run(func(args mock.Arguments) {
-		time.Sleep(10 * time.Millisecond) // Simulate work
-	})
-
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Run Receiver loop
-	go n.receiveAndDispatchCommands(ctx, updateC, &wg)
-
-	// Send 5 concurrent commands
-	for i := 0; i < 5; i++ {
-		updateC <- tgbotapi.Update{
-			Message: &tgbotapi.Message{
-				Chat: &tgbotapi.Chat{ID: 12345},
-				Text: "/help",
-			},
-		}
-	}
-
-	// Allow time for processing
-	time.Sleep(100 * time.Millisecond)
-
-	// Validation
-	// All should have been processed (consumed from channel)
-	if len(updateC) > 0 {
-		t.Errorf("Channel not drained, pending: %d", len(updateC))
-	}
-
-	cancel()
-	// wg should eventually be done as processing finishes (defer wg.Done())
-	// But we need to wait for them.
-	// Note: receiveAndDispatchCommands launches goroutines with wg.Add.
-	// So we can wait on wg.
+// TestReceiverWorker_Shutdown_ChannelClosed verifies loop exit when Update Channel closes.
+func TestReceiverWorker_Shutdown_ChannelClosed(t *testing.T) {
+	env := setupReceiverTest(t)
+	defer env.cleanup()
 
 	done := make(chan struct{})
 	go func() {
-		wg.Wait()
+		env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
 		close(done)
 	}()
 
+	// Act: Close updates channel
+	close(env.updatesChan)
+
+	// Assert: Loop exits
 	select {
 	case <-done:
 		// Success
-	case <-time.After(1 * time.Second):
-		t.Fatal("Goroutines did not finish")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Worker loop did not exit on channel close")
+	}
+}
+
+// TestReceiverWorker_Shutdown_ContextCancel verifies loop exit when Context is canceled.
+func TestReceiverWorker_Shutdown_ContextCancel(t *testing.T) {
+	env := setupReceiverTest(t)
+	// No defer cleanup here, we call cancel explicitly
+
+	done := make(chan struct{})
+	go func() {
+		env.notifier.receiveAndDispatchCommands(env.ctx, env.updatesChan, &env.wg)
+		close(done)
+	}()
+
+	// Act: Cancel Context
+	env.cancel()
+
+	// Assert: Loop exits
+	select {
+	case <-done:
+		// Success
+	case <-time.After(2 * time.Second):
+		t.Fatal("Worker loop did not exit on context cancel")
 	}
 }

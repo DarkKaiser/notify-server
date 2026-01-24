@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -112,6 +113,17 @@ func (n *telegramNotifier) receiveAndDispatchCommands(serviceStopCtx context.Con
 					"semaphore_capacity": cap(n.commandSemaphore), // 최대 동시 명령어 처리 수
 					"active_commands":    len(n.commandSemaphore), // 현재 실행 중인 명령어 수
 				}).Warn("요청 처리 거부: 동시 처리 용량 초과로 인한 드롭 (Backpressure)")
+
+				// 사용자에게 시스템 혼잡 안내 메시지 전송
+				// 요청이 거부되었음을 명확히 알려주어 사용자가 상황을 이해하고 잠시 후 다시 시도하게 합니다.
+				busyMessage := "현재 시스템 이용자가 많아 요청을 처리할 수 없습니다.\n\n잠시 후 다시 시도해 주세요."
+				if err := n.TrySend(serviceStopCtx, contract.NewNotification(busyMessage)); err != nil {
+					// 안내 메시지 전송조차 실패한 경우(예: 발송 큐 포화), 더 이상 할 수 있는 조치가 없으므로 로그만 남깁니다.
+					applog.WithComponentAndFields(component, applog.Fields{
+						"notifier_id": n.ID(),
+						"error":       err,
+					}).Error("시스템 혼잡 안내 발송 실패: 대기열 용량 초과")
+				}
 			}
 
 		// ═════════════════════════════════════════════════════════════════════
