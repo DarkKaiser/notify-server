@@ -12,26 +12,28 @@ import (
 
 	_ "github.com/darkkaiser/notify-server/docs"
 	"github.com/darkkaiser/notify-server/internal/config"
-	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/handler/system"
 	v1 "github.com/darkkaiser/notify-server/internal/service/api/v1"
 	v1handler "github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
-	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
 
-const (
+// component API 서비스의 로깅용 컴포넌트 이름
+const component = "api.service"
+
+var (
 	// shutdownTimeout Graceful Shutdown 시 최대 대기 시간 (5초)
 	shutdownTimeout = 5 * time.Second
 )
 
-// Service Notify API 서버의 생명주기를 관리하는 서비스입니다.
+// Service Notify API 서버(Echo 웹 서버)의 생명주기를 관리하는 서비스입니다.
 //
 // 이 서비스는 다음과 같은 역할을 수행합니다:
 //   - Echo 기반 HTTP/HTTPS 서버 시작 및 종료
-//   - 미들웨어 체인 설정 (PanicRecovery, RequestID, RateLimiting, HTTPLogger, CORS, Secure)
+//   - 미들웨어 체인 설정 (PanicRecovery, RequestID, RateLimit, HTTPLogger, CORS, Secure)
 //   - 인증 관리 (Authenticator 생성 및 API 엔드포인트 보호)
 //   - API 엔드포인트 라우팅 설정 (Health Check, Version, 알림 메시지 전송 등)
 //   - Swagger UI 제공
@@ -45,7 +47,7 @@ const (
 type Service struct {
 	appConfig *config.AppConfig
 
-	notificationSender notification.Sender
+	notificationSender contract.NotificationSender
 
 	buildInfo version.Info
 
@@ -54,12 +56,15 @@ type Service struct {
 }
 
 // NewService Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig, notificationSender notification.Sender, buildInfo version.Info) *Service {
+func NewService(appConfig *config.AppConfig, notificationSender contract.NotificationSender, buildInfo version.Info) *Service {
 	if appConfig == nil {
-		panic(constants.PanicMsgAppConfigRequired)
+		panic("AppConfig는 필수입니다")
 	}
 	if notificationSender == nil {
-		panic(constants.PanicMsgNotificationSenderRequired)
+		panic("NotificationSender는 필수입니다")
+	}
+	if _, ok := notificationSender.(contract.NotificationHealthChecker); !ok {
+		panic("HealthChecker는 필수입니다")
 	}
 
 	return &Service{
@@ -85,11 +90,11 @@ func NewService(appConfig *config.AppConfig, notificationSender notification.Sen
 //  6. 서버 에러 처리 및 알림 전송 (예상치 못한 에러 발생 시)
 //  7. 서비스 상태 정리 (running 플래그 초기화)
 //
-// Parameters:
+// 파라미터:
 //   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - serviceStopWG: 서비스 종료 완료를 알리기 위한 WaitGroup
 //
-// Returns:
+// 반환값:
 //   - error: notificationSender가 nil이거나 서비스가 이미 실행 중인 경우
 //
 // Note: 이 함수는 즉시 반환되며, 실제 서버는 고루틴에서 실행됩니다.
@@ -97,11 +102,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarting)
+	applog.WithComponent(component).Info("서비스 시작 진입: API 서비스 초기화 프로세스를 시작합니다")
+
+	if s.notificationSender == nil {
+		defer serviceStopWG.Done()
+		return ErrNotificationSenderNotInitialized
+	}
 
 	if s.running {
 		defer serviceStopWG.Done()
-		applog.WithComponent(constants.ComponentService).Warn(constants.LogMsgServiceAlreadyStarted)
+		applog.WithComponent(component).Warn("API 서비스가 이미 실행 중입니다 (중복 호출)")
 		return nil
 	}
 
@@ -109,7 +119,7 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStarted)
+	applog.WithComponent(component).Info("서비스 시작 완료: API 서비스가 정상적으로 초기화되었습니다")
 
 	return nil
 }
@@ -124,7 +134,7 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 
 	// HTTP 서버 시작
 	httpServerDone := make(chan struct{})
-	go s.startHTTPServer(e, httpServerDone)
+	go s.startHTTPServer(serviceStopCtx, e, httpServerDone)
 
 	// Shutdown 대기
 	s.waitForShutdown(serviceStopCtx, e, httpServerDone)
@@ -139,44 +149,48 @@ func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *
 //  4. 라우트 등록 (전역 라우트, v1 API 라우트)
 func (s *Service) setupServer() *echo.Echo {
 	// 1. Authenticator 생성
-	authenticator := apiauth.NewAuthenticator(s.appConfig)
+	authenticator := auth.NewAuthenticator(s.appConfig.NotifyAPI.Applications)
 
 	// 2. Handler 생성
-	systemHandler := system.NewHandler(s.notificationSender, s.buildInfo)
-	v1Handler := v1handler.NewHandler(s.notificationSender)
+	var healthChecker contract.NotificationHealthChecker
+	if hc, ok := s.notificationSender.(contract.NotificationHealthChecker); ok {
+		healthChecker = hc
+	}
+	systemHandler := system.New(healthChecker, s.buildInfo) // healthChecker가 nil일 경우 NewHandler 내부에서 panic 발생
+	v1Handler := v1handler.New(s.notificationSender)
 
 	// 3. Echo 서버 생성 (미들웨어 체인 포함)
-	e := NewHTTPServer(HTTPServerConfig{
-		Debug:          s.appConfig.Debug,
-		EnableHSTS:     s.appConfig.NotifyAPI.WS.TLSServer,
-		RequestTimeout: constants.DefaultRequestTimeout,
-		AllowOrigins:   s.appConfig.NotifyAPI.CORS.AllowOrigins,
+	e := NewEchoServer(ServerConfig{
+		Debug:        s.appConfig.Debug,
+		EnableHSTS:   s.appConfig.NotifyAPI.WS.TLSServer,
+		AllowOrigins: s.appConfig.NotifyAPI.CORS.AllowOrigins,
 	})
 
 	// 4. 라우트 등록
-	SetupRoutes(e, systemHandler)
-	v1.SetupRoutes(e, v1Handler, authenticator)
+	RegisterRoutes(e, systemHandler)
+	v1.RegisterRoutes(e, v1Handler, authenticator)
 
 	return e
 }
 
 // startHTTPServer HTTP/HTTPS 서버를 시작합니다.
 //
-// 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 done 채널을 닫아
+// 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 httpServerDone 채널을 닫아
 // 대기 중인 고루틴에 신호를 보냅니다.
 //
 // Parameters:
+//   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
-//   - done: 서버 종료 완료 신호 채널
+//   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널
 //
 // Note: 이 함수는 블로킹되며, 서버가 종료될 때까지 반환되지 않습니다.
-func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
-	defer close(done)
+func (s *Service) startHTTPServer(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
+	defer close(httpServerDone)
 
 	port := s.appConfig.NotifyAPI.WS.ListenPort
-	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"port": port,
-	}).Debug(constants.LogMsgServiceHTTPServerStarting)
+	}).Debug("HTTP 서버 가동: 리스너가 포트에 바인딩되었습니다")
 
 	var err error
 	if s.appConfig.NotifyAPI.WS.TLSServer {
@@ -189,7 +203,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 		err = e.Start(fmt.Sprintf(":%d", port))
 	}
 
-	s.handleServerError(err)
+	s.handleServerError(serviceStopCtx, err)
 }
 
 // handleServerError HTTP 서버 시작 중 발생한 에러를 처리합니다.
@@ -198,7 +212,7 @@ func (s *Service) startHTTPServer(e *echo.Echo, done chan struct{}) {
 //   - nil: 처리하지 않음 (정상 종료)
 //   - http.ErrServerClosed: Info 레벨 로깅 (Graceful Shutdown)
 //   - 그 외: Error 레벨 로깅 + 텔레그램 알림 전송 (예상치 못한 에러)
-func (s *Service) handleServerError(err error) {
+func (s *Service) handleServerError(serviceStopCtx context.Context, err error) {
 	// nil: 정상 종료, 처리 불필요
 	if err == nil {
 		return
@@ -206,18 +220,18 @@ func (s *Service) handleServerError(err error) {
 
 	// http.ErrServerClosed: Graceful Shutdown 완료
 	if errors.Is(err, http.ErrServerClosed) {
-		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceHTTPServerStopped)
+		applog.WithComponent(component).Info("HTTP 서버 정지: 서버가 닫혔습니다 (Server Closed)")
 		return
 	}
 
 	// 예상치 못한 에러: 로깅 및 알림 전송
-	message := constants.LogMsgServiceHTTPServerFatalError
-	applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+	message := "HTTP 서버 기동 실패: 치명적인 구성 오류가 발생하였습니다"
+	applog.WithComponentAndFields(component, applog.Fields{
 		"port":  s.appConfig.NotifyAPI.WS.ListenPort,
 		"error": err,
 	}).Error(message)
 
-	s.notificationSender.NotifyDefaultWithError(fmt.Sprintf("%s\r\n\r\n%s", message, err))
+	s.notificationSender.Notify(serviceStopCtx, contract.NewErrorNotification(fmt.Sprintf("%s\r\n\r\n%s", message, err)))
 }
 
 // waitForShutdown 종료 신호를 대기하고 Graceful Shutdown을 수행합니다.
@@ -229,20 +243,21 @@ func (s *Service) handleServerError(err error) {
 //  4. 서비스 상태 정리 (running 플래그 초기화)
 //
 // Parameters:
-//   - serviceStopCtx: 종료 신호를 받기 위한 Context
+//   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
-//   - httpServerDone: HTTP 서버 종료 완료 신호 채널
+//   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널
 //
 // Note: 이 함수는 서비스가 완전히 종료될 때까지 블로킹됩니다.
 func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, httpServerDone chan struct{}) {
 	select {
 	case <-serviceStopCtx.Done():
 		// 정상적인 종료 신호 수신
-		applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopping)
+		applog.WithComponent(component).Info("종료 절차 진입: API 서비스 중지 시그널을 수신했습니다")
+
 	case <-httpServerDone:
 		// HTTP 서버가 예기치 않게 종료됨 (포트 바인딩 실패, 패닉 등)
 		// 이미 종료되었으므로 Shutdown 호출 없이 상태만 정리
-		applog.WithComponent(constants.ComponentService).Error(constants.LogMsgServiceUnexpectedExit)
+		applog.WithComponent(component).Error("비정상 종료: API 서비스가 예기치 않게 중단되었습니다")
 
 		s.cleanup()
 
@@ -254,9 +269,9 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, e *echo.Echo, 
 	defer cancel()
 
 	if err := e.Shutdown(ctx); err != nil {
-		applog.WithComponentAndFields(constants.ComponentService, applog.Fields{
+		applog.WithComponentAndFields(component, applog.Fields{
 			"error": err,
-		}).Error(constants.LogMsgServiceHTTPServerShutdownError)
+		}).Error("종료 처리 실패: HTTP 서버 Shutdown 중 오류가 발생했습니다")
 	}
 
 	<-httpServerDone
@@ -274,5 +289,5 @@ func (s *Service) cleanup() {
 	// - 메모리는 GC가 Service 객체 해제 시 자동 정리
 	s.runningMu.Unlock()
 
-	applog.WithComponent(constants.ComponentService).Info(constants.LogMsgServiceStopped)
+	applog.WithComponent(component).Info("API 서비스 종료 완료: 모든 리소스가 정리되었습니다")
 }

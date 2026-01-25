@@ -1,4 +1,4 @@
-package auth_test
+package auth
 
 import (
 	"fmt"
@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -22,120 +20,132 @@ func setupContextHelper() (echo.Context, *httptest.ResponseRecorder) {
 	return e.NewContext(req, rec), rec
 }
 
-// TestSetApplication SetApplication 함수가 Context에 올바르게 값을 설정하는지 검증합니다.
-func TestSetApplication(t *testing.T) {
-	// Given
+// TestSetApplication_GetApplication_RoundTrip은 SetApplication과 GetApplication의 상호 작용을 검증합니다.
+func TestSetApplication_GetApplication_RoundTrip(t *testing.T) {
 	c, _ := setupContextHelper()
 	expectedApp := &domain.Application{
 		ID:    "test-app",
 		Title: "Test Application",
 	}
 
-	// When
-	auth.SetApplication(c, expectedApp)
+	SetApplication(c, expectedApp)
 
-	// Then
-	// 내부 상수에 직접 접근할 수 없으므로(다른 패키지), Get으로 조회하여 간접 검증하거나
-	// auth 패키지 내부 테스트(package auth)로 작성해야 하지만,
-	// 여기서는 블랙박스 테스트(package auth_test)를 지향하므로 GetApplication으로 검증합니다.
-	val := c.Get(constants.ContextKeyApplication)
-	assert.Equal(t, expectedApp, val, "Context에 애플리케이션 정보가 저장되어야 합니다")
+	actualApp, err := GetApplication(c)
+	require.NoError(t, err)
+	assert.Equal(t, expectedApp, actualApp)
 }
 
-// TestGetApplication GetApplication 함수의 다양한 성공/실패 케이스를 검증합니다.
 func TestGetApplication(t *testing.T) {
-	t.Run("성공: 올바른 애플리케이션 정보가 있는 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-		expectedApp := &domain.Application{ID: "valid-app"}
-		auth.SetApplication(c, expectedApp)
+	tests := []struct {
+		name        string
+		setupCtx    func(echo.Context)
+		expectedApp *domain.Application
+		expectedErr error
+	}{
+		{
+			name: "성공: 올바른 애플리케이션 정보가 있는 경우",
+			setupCtx: func(c echo.Context) {
+				SetApplication(c, &domain.Application{ID: "valid-app"})
+			},
+			expectedApp: &domain.Application{ID: "valid-app"},
+			expectedErr: nil,
+		},
+		{
+			name:        "실패: Context에 키가 없는 경우",
+			setupCtx:    func(c echo.Context) {}, // 아무것도 설정하지 않음
+			expectedApp: nil,
+			expectedErr: ErrApplicationMissingInContext,
+		},
+		{
+			name: "실패: 잘못된 타입이 저장된 경우 (White-box Testing)",
+			setupCtx: func(c echo.Context) {
+				// 내부 상수 contextKeyApplication에 직접 접근하여 잘못된 타입 주입
+				c.Set(contextKeyApplication, "invalid-string-type")
+			},
+			expectedApp: nil,
+			expectedErr: ErrApplicationTypeMismatch,
+		},
+		{
+			name: "Edge Case: nil 포인터가 저장된 경우",
+			setupCtx: func(c echo.Context) {
+				var nilApp *domain.Application = nil
+				SetApplication(c, nilApp)
+			},
+			expectedApp: nil,
+			expectedErr: nil, // GetApplication은 타입이 맞으면 에러를 리턴하지 않음 (nil 리턴)
+		},
+	}
 
-		// When
-		actualApp, err := auth.GetApplication(c)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := setupContextHelper()
+			tt.setupCtx(c)
 
-		// Then
-		require.NoError(t, err)
-		assert.Equal(t, expectedApp, actualApp)
-	})
+			app, err := GetApplication(c)
 
-	t.Run("실패: Context에 키가 없는 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-
-		// When
-		actualApp, err := auth.GetApplication(c)
-
-		// Then
-		require.Error(t, err)
-		assert.Nil(t, actualApp)
-		assert.Equal(t, constants.ErrMsgAuthApplicationMissingInContext, err.Error())
-	})
-
-	t.Run("실패: 잘못된 타입이 저장된 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-		c.Set(constants.ContextKeyApplication, "invalid-string-type") // *domain.Application이 아닌 값
-
-		// When
-		actualApp, err := auth.GetApplication(c)
-
-		// Then
-		require.Error(t, err)
-		assert.Nil(t, actualApp)
-		assert.Equal(t, constants.ErrMsgAuthApplicationTypeMismatch, err.Error())
-	})
-
-	t.Run("실패: nil이 저장된 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-		var nilApp *domain.Application = nil
-		c.Set(constants.ContextKeyApplication, nilApp) // *domain.Application 타입이지만 값은 nil
-
-		// When
-		// GetApplication의 타입 단언(assertion)은 nil 포인터도 해당 타입으로 통과시키지만,
-		// 비즈니스 로직상 nil이 반환되면 안 되는 경우 추가 검증이 필요할 수 있습니다.
-		// 현재 구현상으로는 타입이 맞으면 리턴합니다.
-		actualApp, err := auth.GetApplication(c)
-
-		// Then
-		require.NoError(t, err)
-		assert.Nil(t, actualApp)
-	})
+			if tt.expectedErr != nil {
+				assert.ErrorIs(t, err, tt.expectedErr)
+				assert.Nil(t, app)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedApp, app)
+			}
+		})
+	}
 }
 
-// TestMustGetApplication MustGetApplication 함수의 동작과 패닉 발생을 검증합니다.
 func TestMustGetApplication(t *testing.T) {
-	t.Run("성공: 올바른 애플리케이션 정보가 있는 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-		expectedApp := &domain.Application{ID: "must-app"}
-		auth.SetApplication(c, expectedApp)
+	// panic 메시지 포맷 템플릿 (internal의 구현과 일치해야 함)
+	// 주의: 만약 internal 구현의 메시지가 바뀌면 이 테스트도 수정해야 함
+	panicMsgTemplate := "Auth: Context에서 애플리케이션 정보를 가져올 수 없습니다. 인증 미들웨어가 적용되었는지 확인해주세요. (원인: %v)"
 
-		// When
-		actualApp := auth.MustGetApplication(c)
+	tests := []struct {
+		name        string
+		setupCtx    func(echo.Context)
+		expectedApp *domain.Application
+		shouldPanic bool
+		panicValue  string // 예상되는 패닉 메시지
+	}{
+		{
+			name: "성공: 올바른 애플리케이션 정보가 있는 경우",
+			setupCtx: func(c echo.Context) {
+				SetApplication(c, &domain.Application{ID: "must-app"})
+			},
+			expectedApp: &domain.Application{ID: "must-app"},
+			shouldPanic: false,
+		},
+		{
+			name:        "패닉: Context에 정보가 없는 경우",
+			setupCtx:    func(c echo.Context) {},
+			shouldPanic: true,
+			panicValue:  fmt.Sprintf(panicMsgTemplate, ErrApplicationMissingInContext),
+		},
+		{
+			name: "패닉: 잘못된 타입인 경우 (White-box Testing)",
+			setupCtx: func(c echo.Context) {
+				// 내부 상수 contextKeyApplication에 직접 접근하여 잘못된 타입 주입
+				c.Set(contextKeyApplication, 12345) // int type
+			},
+			shouldPanic: true,
+			panicValue:  fmt.Sprintf(panicMsgTemplate, ErrApplicationTypeMismatch),
+		},
+	}
 
-		// Then
-		assert.Equal(t, expectedApp, actualApp)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := setupContextHelper()
+			tt.setupCtx(c)
 
-	t.Run("패닉: Context에 정보가 없는 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-
-		// When & Then
-		assert.PanicsWithValue(t, fmt.Sprintf(constants.PanicMsgAuthContextApplicationNotFound, constants.ErrMsgAuthApplicationMissingInContext), func() {
-			auth.MustGetApplication(c)
-		}, "정보가 없을 때 적절한 메시지와 함께 패닉이 발생해야 합니다")
-	})
-
-	t.Run("패닉: 잘못된 타입인 경우", func(t *testing.T) {
-		// Given
-		c, _ := setupContextHelper()
-		c.Set(constants.ContextKeyApplication, 12345)
-
-		// When & Then
-		assert.PanicsWithValue(t, fmt.Sprintf(constants.PanicMsgAuthContextApplicationNotFound, constants.ErrMsgAuthApplicationTypeMismatch), func() {
-			auth.MustGetApplication(c)
-		}, "타입이 다를 때 적절한 메시지와 함께 패닉이 발생해야 합니다")
-	})
+			if tt.shouldPanic {
+				assert.PanicsWithValue(t, tt.panicValue, func() {
+					MustGetApplication(c)
+				})
+			} else {
+				assert.NotPanics(t, func() {
+					app := MustGetApplication(c)
+					assert.Equal(t, tt.expectedApp, app)
+				})
+			}
+		})
+	}
 }

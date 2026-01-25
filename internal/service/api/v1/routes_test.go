@@ -1,159 +1,279 @@
 package v1
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/config"
 	apiauth "github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/v1/handler"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // =============================================================================
-// Unit Tests
+// Unit Tests: Router Wiring & Configuration
 // =============================================================================
 
-// TestSetupRoutes_MiddlewareChain은 라우트에 미들웨어가 예상대로 적용되었는지 검증합니다.
-// Echo의 Route Info는 적용된 미들웨어의 상세 정보를 직접 제공하지 않으므로,
-// 핸들러 Function Name을 통해 미들웨어 체인이 래핑되었는지 간접적으로 확인하거나
-// 통합 테스트에 의존해야 합니다.
+// TestRegisterRoutes_Wiring은 라우터가 올바르게 설정되었는지 검증합니다.
 //
-// 하지만 여기서는 좀 더 명확한 검증을 위해,
-// SetupRoutes 호출 시 인증 미들웨어가 각 경로에 필수적으로 포함되는지
-// "의도된 구성"을 검증하는 로직을 추가합니다.
-func TestSetupRoutes_MiddlewareChain(t *testing.T) {
-	e, h, auth := setupTestDependencies()
-	SetupRoutes(e, h, auth)
+// 검증 범위:
+//   - 엔드포인트 등록 여부 (POST /api/v1/notifications 등)
+//   - 미들웨어 체인 동작 (인증, Content-Type, Deprecated)
+//   - 핸들러 연결 여부 (Mock 호출 확인)
+//   - 미지원 메서드 및 경로 처리 (405, 404)
+func TestRegisterRoutes_Wiring(t *testing.T) {
+	// Setup Dependencies
+	e := echo.New()
 
-	routes := e.Routes()
-
-	// 각 주요 라우트별 필수 미들웨어/핸들러 구성 확인
-	checks := []struct {
-		path   string
-		method string
-	}{
-		{"/api/v1/notifications", http.MethodPost},
-		{"/api/v1/notice/message", http.MethodPost},
+	// Test Config & Authenticator (Self-contained)
+	appConfig := &config.AppConfig{
+		NotifyAPI: config.NotifyAPIConfig{
+			Applications: []config.ApplicationConfig{
+				{ID: "test-app", Title: "Test App", DefaultNotifierID: "test-notifier", AppKey: "valid-key"},
+			},
+		},
 	}
+	auth := apiauth.NewAuthenticator(appConfig.NotifyAPI.Applications)
+	mockSender := mocks.NewMockNotificationSender(t)
+	h := handler.New(mockSender)
 
-	for _, check := range checks {
-		found := false
-		for _, r := range routes {
-			if r.Path == check.path && r.Method == check.method {
-				found = true
-				// Echo의 미들웨어는 핸들러를 감싸는 형태이므로,
-				// 최종 핸들러 이름에 미들웨어 관련 정보가 포함될 수 있음 (구현에 따라 다름).
-				// 여기서는 라우트가 정상적으로 등록되었는지 확인하는 것으로 최소한의 구성을 보장합니다.
-				assert.NotEmpty(t, r.Name, "핸들러 이름이 비어있지 않아야 합니다")
-			}
-		}
-		assert.True(t, found, "라우트 미발견: %s", check.path)
-	}
-}
-
-// TestSetupRoutes_RouteRegistration은 각 라우트가 올바른 메서드와 경로로 등록되었는지 검증합니다.
-func TestSetupRoutes_RouteRegistration(t *testing.T) {
-	// Setup
-	e, h, auth := setupTestDependencies()
-
-	// Execute
-	SetupRoutes(e, h, auth)
-
-	// Verify
-	routes := e.Routes()
+	// Register
+	RegisterRoutes(e, h, auth)
 
 	tests := []struct {
-		name        string
-		method      string
-		path        string
-		shouldExist bool
+		name           string
+		method         string
+		path           string
+		headers        map[string]string
+		body           string
+		setupMock      func(*mocks.MockNotificationSender)
+		expectedStatus int
+		verify         func(*testing.T, *httptest.ResponseRecorder, *mocks.MockNotificationSender)
 	}{
-		// 정상 등록 라우트
-		{"Notifications POST 등록 확인", http.MethodPost, "/api/v1/notifications", true},
-		{"Legacy Message POST 등록 확인", http.MethodPost, "/api/v1/notice/message", true},
+		// ---------------------------------------------------------------------
+		// 1. 성공 케이스 (Wiring Success)
+		// ---------------------------------------------------------------------
+		{
+			name:   "Success: Main Endpoint",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMEApplicationJSON,
+				"X-App-Key":            "valid-key",
+			},
+			body:           `{"application_id":"test-app", "message":"hello"}`,
+			expectedStatus: http.StatusOK,
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "hello"
+				})).Return(nil)
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "hello"
+				}))
+			},
+		},
+		{
+			name:   "Success: Legacy Endpoint (Deprecated Headers)",
+			method: http.MethodPost,
+			path:   "/api/v1/notice/message",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMEApplicationJSON,
+				"X-App-Key":            "valid-key",
+			},
+			body:           `{"application_id":"test-app", "message":"legacy"}`,
+			expectedStatus: http.StatusOK,
+			setupMock: func(m *mocks.MockNotificationSender) {
+				m.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "legacy"
+				})).Return(nil)
+			},
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertCalled(t, "Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+					return n.NotifierID == "test-notifier" && n.Title == "Test App" && n.Message == "legacy"
+				}))
+				// Check Headers
+				assert.Contains(t, rec.Header().Get("Warning"), "299", "Warning 헤더 299 코드 포함")
+				assert.Equal(t, "true", rec.Header().Get("X-API-Deprecated"))
+				assert.Equal(t, "/api/v1/notifications", rec.Header().Get("X-API-Deprecated-Replacement"))
+			},
+		},
 
-		// 미지원 메서드 확인
-		{"Notifications GET 미지원", http.MethodGet, "/api/v1/notifications", false},
-		{"Notifications PUT 미지원", http.MethodPut, "/api/v1/notifications", false},
-		{"Notifications DELETE 미지원", http.MethodDelete, "/api/v1/notifications", false},
-		{"Notifications PATCH 미지원", http.MethodPatch, "/api/v1/notifications", false},
+		// ---------------------------------------------------------------------
+		// 2. 미들웨어 동작 검증 (Middleware Wiring)
+		// ---------------------------------------------------------------------
+		{
+			name:   "Failure: Missing Auth (Authentication Middleware)",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMEApplicationJSON,
+			},
+			body:           `{"application_id":"test-app", "message":"no-auth"}`,
+			expectedStatus: http.StatusBadRequest, // AppKey 누락 -> 400
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
+			},
+		},
+		{
+			name:   "Failure: Invalid Content-Type (Binding/Middleware)",
+			method: http.MethodPost,
+			path:   "/api/v1/notifications",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMETextPlain, // Invalid
+				"X-App-Key":            "valid-key",
+			},
+			body:           `raw-text`,
+			expectedStatus: http.StatusBadRequest, // 400 (Middleware might skip if CL=0, then Handler Bind fails)
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
+				// 415(Middleware) or 400(Bind) are both acceptable rejections
+				if rec.Code == http.StatusUnsupportedMediaType {
+					assert.Contains(t, rec.Body.String(), "Content-Type")
+				} else {
+					assert.Contains(t, rec.Body.String(), "JSON") // Bind Failure
+				}
+			},
+		},
+		{
+			name:   "Failure: Legacy Endpoint Missing Auth",
+			method: http.MethodPost,
+			path:   "/api/v1/notice/message",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMEApplicationJSON,
+			},
+			body:           `{"application_id":"test-app", "message":"no-auth-legacy"}`,
+			expectedStatus: http.StatusBadRequest,
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
+			},
+		},
+		{
+			name:   "Failure: Legacy Endpoint Invalid Content-Type",
+			method: http.MethodPost,
+			path:   "/api/v1/notice/message",
+			headers: map[string]string{
+				echo.HeaderContentType: echo.MIMETextPlain,
+				"X-App-Key":            "valid-key",
+			},
+			body:           `raw-legacy`,
+			expectedStatus: http.StatusBadRequest,
+			verify: func(t *testing.T, rec *httptest.ResponseRecorder, m *mocks.MockNotificationSender) {
+				m.AssertNotCalled(t, "Notify", mock.Anything, mock.Anything)
+			},
+		},
 
-		// 존재하지 않는 경로 확인
-		{"루트 경로 미존재", http.MethodGet, "/api/v1", false},
-		{"임의 경로 미존재", http.MethodGet, "/api/v1/random", false},
+		// ---------------------------------------------------------------------
+		// 3. 라우팅 검증 (Routing)
+		// ---------------------------------------------------------------------
+		{
+			name:           "Failure: Method Not Allowed",
+			method:         http.MethodGet,
+			path:           "/api/v1/notifications",
+			headers:        nil,
+			body:           "",
+			expectedStatus: http.StatusMethodNotAllowed,
+			verify:         nil,
+		},
+		{
+			name:           "Failure: Not Found",
+			method:         http.MethodPost,
+			path:           "/api/v1/unknown",
+			headers:        nil,
+			body:           "",
+			expectedStatus: http.StatusNotFound,
+			verify:         nil,
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // Capture Loop Variable
 		t.Run(tt.name, func(t *testing.T) {
-			found := false
-			for _, route := range routes {
-				if route.Method == tt.method && route.Path == tt.path {
-					found = true
-					break
-				}
+			// Reset Mock State
+			mockSender.Calls = nil
+			mockSender.ExpectedCalls = nil
+
+			// Defer Assertion
+			defer mockSender.AssertExpectations(t)
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockSender)
 			}
-			assert.Equal(t, tt.shouldExist, found, "라우트 존재 여부가 기대값과 다릅니다: %s %s", tt.method, tt.path)
+
+			bodyBytes := []byte(tt.body)
+			req := httptest.NewRequest(tt.method, tt.path, bytes.NewReader(bodyBytes))
+			req.ContentLength = int64(len(bodyBytes))
+			req.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			rec := httptest.NewRecorder()
+
+			// Execute
+			e.ServeHTTP(rec, req)
+
+			// Verify Status
+			assert.Equal(t, tt.expectedStatus, rec.Code, "Expected Status: %d, Got: %d, Body: %s", tt.expectedStatus, rec.Code, rec.Body.String())
+
+			// Custom Verify
+			if tt.verify != nil {
+				tt.verify(t, rec, mockSender)
+			}
 		})
 	}
 }
 
-// TestSetupRoutes_HandlerName은 각 라우트에 올바른 핸들러가 할당되었는지 검증합니다.
-func TestSetupRoutes_HandlerName(t *testing.T) {
-	// Setup
-	e, h, auth := setupTestDependencies()
-
-	// Execute
-	SetupRoutes(e, h, auth)
-
-	// Verify
-	routes := e.Routes()
-	targetRoutes := []string{"/api/v1/notifications", "/api/v1/notice/message"}
-
-	for _, path := range targetRoutes {
-		found := false
-		for _, route := range routes {
-			if route.Path == path && route.Method == http.MethodPost {
-				found = true
-				// 핸들러 Function Name 검증 (패키지명 포함)
-				assert.Contains(t, route.Name, "v1/handler", "올바른 핸들러 패키지가 아닙니다: %s", path)
-				assert.Contains(t, route.Name, "PublishNotificationHandler", "올바른 핸들러 함수가 아닙니다: %s", path)
-			}
-		}
-		assert.True(t, found, "라우트를 찾을 수 없습니다: %s", path)
-	}
-}
-
-// TestSetupRoutes_PanicOnNilDeps는 필수 의존성이 nil일 경우 패닉 발생을 검증합니다.
-func TestSetupRoutes_PanicOnNilDeps(t *testing.T) {
+// TestRegisterRoutes_Validation은 필수 의존성이 주입되지 않았을 때의 패닉 상황을 검증합니다.
+func TestRegisterRoutes_Validation(t *testing.T) {
 	e := echo.New()
+	mockSender := mocks.NewMockNotificationSender(t)
+	h := handler.New(mockSender)
+	auth := apiauth.NewAuthenticator([]config.ApplicationConfig{})
 
-	assert.Panics(t, func() {
-		SetupRoutes(e, nil, nil)
-	}, "nil Authenticator 전달 시 패닉이 발생해야 합니다")
-}
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-// setupTestDependencies는 테스트에 필요한 Ech, Handler, Authenticator 인스턴스를 생성합니다.
-func setupTestDependencies() (*echo.Echo, *handler.Handler, *apiauth.Authenticator) {
-	e := echo.New()
-	appConfig := createTestAppConfig() // integration_test.go에 정의됨 (동일 패키지)
-	auth := apiauth.NewAuthenticator(appConfig)
-	mockService := &mocks.MockNotificationSender{}
-	h := handler.NewHandler(mockService)
-	return e, h, auth
-}
-
-// findRoute는 주어진 메서드와 경로에 해당하는 라우트를 찾습니다.
-func findRoute(routes []*echo.Route, method, path string) *echo.Route {
-	for _, route := range routes {
-		if route.Method == method && route.Path == path {
-			return route
-		}
+	tests := []struct {
+		name          string
+		echo          *echo.Echo
+		handler       *handler.Handler
+		authenticator *apiauth.Authenticator
+		expectPanic   string
+	}{
+		{
+			name:          "Echo 누락",
+			echo:          nil,
+			handler:       h,
+			authenticator: auth,
+			expectPanic:   "Echo 인스턴스는 필수입니다",
+		},
+		{
+			name:          "Handler 누락",
+			echo:          e,
+			handler:       nil,
+			authenticator: auth,
+			expectPanic:   "Handler는 필수입니다",
+		},
+		{
+			name:          "Authenticator 누락",
+			echo:          e,
+			handler:       h,
+			authenticator: nil,
+			expectPanic:   "Authenticator는 필수입니다",
+		},
 	}
-	return nil
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			assert.PanicsWithValue(t, tt.expectPanic, func() {
+				RegisterRoutes(tt.echo, tt.handler, tt.authenticator)
+			})
+		})
+	}
 }

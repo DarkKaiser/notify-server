@@ -6,24 +6,22 @@ import (
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
-// SetupRoutes 전역 라우트와 에러 핸들러를 설정합니다.
+// RegisterRoutes API 서비스의 전역 라우트를 등록합니다.
 //
-// 설정 항목:
-//   - 시스템 엔드포인트: /health, /version (인증 불필요)
-//   - Swagger 문서: /swagger/*
-//   - HTTP 에러 핸들러: 404, 500 등 표준 에러 응답
-func SetupRoutes(e *echo.Echo, h *system.Handler) {
-	setupSystemRoutes(e, h)
-	setupSwaggerRoutes(e)
+// 이 함수는 다음과 같은 공통 엔드포인트들을 설정합니다:
+//   - 시스템 엔드포인트: 서비스 상태 확인(/health) 및 버전 정보(/version) (인증 불필요)
+//   - API 문서: Swagger UI (/swagger/*) 제공
+func RegisterRoutes(e *echo.Echo, h *system.Handler) {
+	registerSystemRoutes(e, h)
+	registerSwaggerRoutes(e)
 }
 
-func setupSystemRoutes(e *echo.Echo, h *system.Handler) {
-	// 시스템 상태 확인 엔드포인트 (인증 불필요)
+func registerSystemRoutes(e *echo.Echo, h *system.Handler) {
 	e.GET("/health", h.HealthCheckHandler)
 	e.GET("/version", h.VersionHandler)
 }
 
-func setupSwaggerRoutes(e *echo.Echo) {
+func registerSwaggerRoutes(e *echo.Echo) {
 	// Swagger UI 엔드포인트 설정
 	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(
 		// Swagger 문서 JSON 파일 위치 지정

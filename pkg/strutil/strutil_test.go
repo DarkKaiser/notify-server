@@ -265,13 +265,7 @@ func TestSplitClean(t *testing.T) {
 		{name: "Comma separated", s: "1,2,3", sep: ",", expected: []string{"1", "2", "3"}},
 		{name: "Comma separated with empty", s: ",1,2,3,,,", sep: ",", expected: []string{"1", "2", "3"}},
 		{name: "Comma separated with spaces", s: ",1,  ,  ,2,3,,,", sep: ",", expected: []string{"1", "2", "3"}},
-		{name: "Multi-char separator", s: ",1,,2,3,", sep: ",,", expected: []string{",1", "2,3,"}}, // sep=",," -> ",1" (ok), ",2" (starts with ,), "3," (ok) -> wait.
-		// "1,," -> prefix "," + "1" + suffix ",,"
-		// s = ",1,,2,3,". sep = ",,".
-		// Split -> [",1", "2,3,"].
-		// Trim each?
-		// ",1" -> ",1".
-		// "2,3," -> "2,3,".
+		{name: "Multi-char separator", s: ",1,,2,3,", sep: ",,", expected: []string{",1", "2,3,"}},
 		{name: "Separator not found", s: "1,2,3", sep: "-", expected: []string{"1,2,3"}},
 		{name: "Empty string", s: "", sep: "-", expected: nil},
 		{name: "Only separators", s: ",,,", sep: ",", expected: nil},
@@ -441,13 +435,8 @@ func TestAnyContent(t *testing.T) {
 		{"Whitespace only (Trim applied)", []string{"   "}, false}, // AnyContent trims spaces
 		{
 			name: "Unicode whitespace",
-			strs: []string{"\u3000", "\u200B"}, // Ideographic space, Zero width space
-			want: true,                         // strings.TrimSpace trims Unicode spaces generally, let's verify if our expectation aligns with Go stdlib
-			// Go TrimSpace handles: '\t', '\n', '\v', '\f', '\r', ' ', U+0085 (NEL), U+00A0 (NBSP).
-			// Go 1.22 strings.TrimSpace uses unicode.IsSpace.
-			// \u3000 is space. \u200B is NOT space in Go unicode.IsSpace.
-			// So "\u3000" -> "" (False), "\u200B" -> "\u200B" (True).
-			// If we put both, result is True because of \u200B.
+			strs: []string{"\u3000", "\u200B"},
+			want: true,
 		},
 	}
 
@@ -459,6 +448,92 @@ func TestAnyContent(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// =============================================================================
+// Truncate Tests (New Added)
+// =============================================================================
+
+// TestTruncate Truncate 함수의 문자열 줄임 동작을 검증합니다.
+// 멀티바이트 문자(한글, 이모지 등)와 다양한 엣지 케이스를 포함합니다.
+func TestTruncate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		limit int
+		want  string
+	}{
+		// [Category 1] 기본 동작
+		{"Short string", "hello", 10, "hello"},
+		{"Exact length", "hello", 5, "hello"},
+		{"Long string", "hello world", 5, "hello..."},
+		{"Empty string", "", 5, ""},
+
+		// [Category 2] 멀티바이트 (한글)
+		{"Korean short", "안녕하세요", 10, "안녕하세요"},
+		{"Korean exact", "안녕하세요", 5, "안녕하세요"},
+		{"Korean long", "안녕하세요 반갑", 5, "안녕하세요..."},
+
+		// [Category 3] 멀티바이트 (이모지)
+		{"Emoji short", "😀😁😂", 10, "😀😁😂"},
+		{"Emoji exact", "😀😁😂", 3, "😀😁😂"},
+		{"Emoji long", "😀😁😂🤣😃", 3, "😀😁😂..."},
+
+		// [Category 4] 엣지 케이스
+		{"Zero limit", "hello", 0, ""},
+		{"Negative limit", "hello", -5, ""},
+		{"Limit 1", "hello", 1, "h..."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Truncate(tt.input, tt.limit); got != tt.want {
+				t.Errorf("Truncate(%q, %d) = %q, want %q", tt.input, tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+// FuzzTruncate Truncate 함수가 임의의 입력과 길이에 대해 안전하게 동작하는지 검증합니다.
+func FuzzTruncate(f *testing.F) {
+	f.Add("hello world", 5)
+	f.Add("안녕하세요", 2)
+	f.Add("😀😁😂", 1)
+	f.Add("", 10)
+
+	f.Fuzz(func(t *testing.T, s string, limit int) {
+		got := Truncate(s, limit)
+
+		// 1. 길이는 항상 limit + 3 ("...") 이하여야 함 (limit > 0 일 때)
+		// Rune count 기준이므로 바이트 길이는 다를 수 있음에 유의
+		runeCount := utf8.RuneCountInString(got)
+		if limit > 0 {
+			if strings.HasSuffix(got, "...") {
+				// 원본보다 짧거나 같아야 함 (Rune 수)
+				// 잘린 경우 길이는 limit + 3 ("...")
+				if runeCount > limit+3 {
+					t.Errorf("Result too long: limit=%d, got len=%d (%q)", limit, runeCount, got)
+				}
+			} else {
+				// 잘리지 않은 경우, limit 이하여야 하고 원본과 같아야 함
+				if runeCount > limit {
+					// 원본 자체가 limit보다 커서 잘려야 했는데 안 잘린 케이스
+					// 단, RuneCountInString은 유효하지 않은 UTF-8을 RuneError(1 rune)로 치환하므로
+					// 원본이 유효한 UTF-8인 경우만 검증
+					if utf8.ValidString(s) {
+						t.Errorf("Result should be truncated but wasn't: limit=%d, got len=%d (%q)", limit, runeCount, got)
+					}
+				}
+			}
+		} else {
+			// limit <= 0 이면 빈 문자열
+			if got != "" {
+				t.Errorf("Expected empty string for limit=%d, got %q", limit, got)
+			}
+		}
+	})
 }
 
 // =============================================================================
@@ -512,6 +587,15 @@ func BenchmarkMask(b *testing.B) {
 	}
 }
 
+func BenchmarkTruncate(b *testing.B) {
+	input := "This is a very long string that needs to be truncated for testing purposes."
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Truncate(input, 20)
+	}
+}
+
 // =============================================================================
 // Examples (Documentation)
 // =============================================================================
@@ -533,4 +617,12 @@ func ExampleStripHTML() {
 	htmlStr := "<b>Bold</b> &amp; <i>Italic</i>"
 	fmt.Println(StripHTML(htmlStr))
 	// Output: Bold & Italic
+}
+
+func ExampleTruncate() {
+	fmt.Println(Truncate("Hello World", 5))
+	fmt.Println(Truncate("안녕하세요", 2))
+	// Output:
+	// Hello...
+	// 안녕...
 }

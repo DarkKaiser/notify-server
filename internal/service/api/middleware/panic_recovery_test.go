@@ -28,20 +28,22 @@ import (
 //   - HTTP 500 상태 코드 응답 확인
 func TestPanicRecovery_Table(t *testing.T) {
 	// Setup: 로거 출력을 캡처하기 위한 설정
-	setupLogger := func() (*bytes.Buffer, func()) {
+	setupLogger := func(t *testing.T) *bytes.Buffer {
+		t.Helper()
 		var buf bytes.Buffer
 		applog.SetOutput(&buf)
 		applog.SetFormatter(&applog.JSONFormatter{}) // JSON 포맷터 사용
+
 		originalOut := applog.StandardLogger().Out
-		restore := func() {
+		t.Cleanup(func() {
 			applog.SetOutput(originalOut)
-		}
-		return &buf, restore
+		})
+		return &buf
 	}
 
 	tests := []struct {
 		name         string
-		panicPayload interface{}
+		panicPayload any
 		requestID    string
 		verifyLog    func(*testing.T, map[string]interface{})
 	}{
@@ -51,7 +53,7 @@ func TestPanicRecovery_Table(t *testing.T) {
 			verifyLog: func(t *testing.T, entry map[string]interface{}) {
 				msg, ok := entry["msg"].(string)
 				assert.True(t, ok)
-				assert.Equal(t, "PANIC RECOVERED", msg)
+				assert.Equal(t, "패닉 복구: 예기치 못한 오류가 발생하여 안전하게 복구했습니다", msg)
 
 				errorField, ok := entry["error"].(string) // 문자열 패닉은 fmt.Sprintf로 변환됨
 				assert.True(t, ok)
@@ -72,6 +74,24 @@ func TestPanicRecovery_Table(t *testing.T) {
 			},
 		},
 		{
+			name:         "성공: 정수형(Int) 패닉 복구",
+			panicPayload: 12345,
+			verifyLog: func(t *testing.T, entry map[string]interface{}) {
+				errorField, ok := entry["error"].(string)
+				assert.True(t, ok)
+				assert.Contains(t, errorField, "12345")
+			},
+		},
+		{
+			name:         "성공: 구조체 패닉 복구",
+			panicPayload: struct{ Code int }{Code: 500},
+			verifyLog: func(t *testing.T, entry map[string]interface{}) {
+				errorField, ok := entry["error"].(string)
+				assert.True(t, ok)
+				assert.Contains(t, errorField, "{500}")
+			},
+		},
+		{
 			name:         "성공: Request ID 포함 패닉 로깅",
 			panicPayload: "알 수 없는 오류",
 			requestID:    "req-123456",
@@ -85,8 +105,7 @@ func TestPanicRecovery_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buf, restore := setupLogger()
-			defer restore()
+			buf := setupLogger(t)
 
 			e := echo.New()
 			// PanicRecovery 미들웨어 등록
@@ -111,12 +130,10 @@ func TestPanicRecovery_Table(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/panic", nil)
 			rec := httptest.NewRecorder()
 
-			// 미들웨어 체인 실행 (e.ServeHTTP보다 명시적일 수 있으나 ServeHTTP가 통합 테스트에 가까움)
-			// 여기선 ServeHTTP를 사용하여 전체 파이프라인(에러 핸들러 포함) 동작 확인
+			// 미들웨어 체인 실행
 			e.ServeHTTP(rec, req)
 
 			// 1. 상태 코드 검증 (패닉 복구 후 500 에러 반환)
-			// 참고: Echo 기본 에러 핸들러는 panic 에러를 받아서 500으로 처리함
 			assert.Equal(t, http.StatusInternalServerError, rec.Code)
 
 			// 2. 로그 파싱 및 검증
@@ -126,7 +143,7 @@ func TestPanicRecovery_Table(t *testing.T) {
 			err := json.Unmarshal(buf.Bytes(), &logEntry)
 			assert.NoError(t, err, "JSON 로그 파싱 실패")
 
-			// 공통 필드 검증
+			// 공통 필드 검증 (unexported 상수 직접 검증은 불가하지만 값으로 검증)
 			assert.Equal(t, "api.middleware.panic_recovery", logEntry["component"])
 			assert.Equal(t, "error", logEntry["level"])
 
@@ -142,4 +159,42 @@ func TestPanicRecovery_Table(t *testing.T) {
 func TestPanicRecovery_MiddlewareReturn(t *testing.T) {
 	middleware := PanicRecovery()
 	assert.NotNil(t, middleware, "미들웨어 함수는 nil이 아니어야 합니다")
+}
+
+// TestNewErrPanicRecovered_Conversion_Table은 패닉 값 변환 로직을 검증합니다.
+func TestNewErrPanicRecovered_Conversion_Table(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{
+			name:     "문자열 변환",
+			input:    "critical error",
+			expected: "critical error",
+		},
+		{
+			name:     "정수형 변환",
+			input:    12345,
+			expected: "12345",
+		},
+		{
+			name:     "구조체 변환",
+			input:    struct{ ID int }{ID: 1},
+			expected: "{1}",
+		},
+		{
+			name:     "nil 변환",
+			input:    nil,
+			expected: "<nil>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewErrPanicRecovered(tt.input)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expected)
+		})
+	}
 }

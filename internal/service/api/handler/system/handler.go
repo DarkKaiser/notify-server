@@ -9,30 +9,50 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/version"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/system"
-	"github.com/darkkaiser/notify-server/internal/service/notification"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
 
+// component 시스템 핸들러의 로깅용 컴포넌트 이름
+const component = "api.handler.system"
+
+// 헬스체크 상태
+const (
+	// healthStatusHealthy 정상 상태
+	healthStatusHealthy = "healthy"
+
+	// healthStatusUnhealthy 비정상 상태
+	healthStatusUnhealthy = "unhealthy"
+)
+
+// 외부 의존성 식별자 및 상태 메시지
+const (
+	// depNotificationService 외부 의존성 식별자: 알림 서비스
+	depNotificationService = "notification_service"
+
+	// depNotificationServiceStatusHealthy 외부 의존성 상태 메시지: 정상 상태
+	depNotificationServiceStatusHealthy = "정상 작동 중"
+)
+
 // Handler 시스템 엔드포인트 핸들러 (헬스체크, 버전 정보)
 type Handler struct {
-	notificationSender notification.Sender
+	healthChecker contract.NotificationHealthChecker
 
 	buildInfo version.Info
 
 	serverStartTime time.Time
 }
 
-// NewHandler Handler 인스턴스를 생성합니다.
-func NewHandler(notificationSender notification.Sender, buildInfo version.Info) *Handler {
-	if notificationSender == nil {
-		panic(constants.PanicMsgNotificationSenderRequired)
+// New Handler 인스턴스를 생성합니다.
+func New(healthChecker contract.NotificationHealthChecker, buildInfo version.Info) *Handler {
+	if healthChecker == nil {
+		panic("HealthChecker는 필수입니다")
 	}
 
 	return &Handler{
-		notificationSender: notificationSender,
+		healthChecker: healthChecker,
 
 		buildInfo: buildInfo,
 
@@ -54,11 +74,11 @@ func NewHandler(notificationSender notification.Sender, buildInfo version.Info) 
 // @Success 200 {object} system.HealthResponse "헬스체크 결과"
 // @Router /health [get]
 func (h *Handler) HealthCheckHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"endpoint":  "/health",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug(constants.LogMsgHealthCheck)
+	}).Debug("헬스체크 조회")
 
 	uptime := int64(time.Since(h.serverStartTime).Seconds())
 
@@ -66,30 +86,23 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 	deps := make(map[string]system.DependencyStatus)
 
 	// Notification 서비스 상태 확인
-	if h.notificationSender != nil {
-		if err := h.notificationSender.Health(); err != nil {
-			deps[constants.DependencyNotificationService] = system.DependencyStatus{
-				Status:  constants.HealthStatusUnhealthy,
-				Message: err.Error(),
-			}
-		} else {
-			deps[constants.DependencyNotificationService] = system.DependencyStatus{
-				Status:  constants.HealthStatusHealthy,
-				Message: constants.MsgDepStatusHealthy,
-			}
+	if err := h.healthChecker.Health(); err != nil {
+		deps[depNotificationService] = system.DependencyStatus{
+			Status:  healthStatusUnhealthy,
+			Message: err.Error(),
 		}
 	} else {
-		deps[constants.DependencyNotificationService] = system.DependencyStatus{
-			Status:  constants.HealthStatusUnhealthy,
-			Message: constants.MsgDepStatusNotInitialized,
+		deps[depNotificationService] = system.DependencyStatus{
+			Status:  healthStatusHealthy,
+			Message: depNotificationServiceStatusHealthy,
 		}
 	}
 
 	// 하나라도 unhealthy면 전체 상태를 unhealthy로 설정
-	serverStatus := constants.HealthStatusHealthy
+	serverStatus := healthStatusHealthy
 	for _, dep := range deps {
-		if dep.Status != constants.HealthStatusHealthy {
-			serverStatus = constants.HealthStatusUnhealthy
+		if dep.Status != healthStatusHealthy {
+			serverStatus = healthStatusUnhealthy
 			break
 		}
 	}
@@ -110,11 +123,11 @@ func (h *Handler) HealthCheckHandler(c echo.Context) error {
 // @Success 200 {object} system.VersionResponse "버전 정보"
 // @Router /version [get]
 func (h *Handler) VersionHandler(c echo.Context) error {
-	applog.WithComponentAndFields(constants.ComponentHandler, applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"endpoint":  "/version",
 		"method":    c.Request().Method,
 		"remote_ip": c.RealIP(),
-	}).Debug(constants.LogMsgVersionInfo)
+	}).Debug("버전 정보 조회")
 
 	return c.JSON(http.StatusOK, system.VersionResponse{
 		Version:     h.buildInfo.Version,

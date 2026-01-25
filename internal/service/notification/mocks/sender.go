@@ -1,211 +1,128 @@
 package mocks
 
 import (
-	"sync"
+	"context"
 
-	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/stretchr/testify/mock"
 )
 
-// MockNotificationSender 테스트용 NotificationSender 구현체입니다.
+// Interface Compliance Checks
+// 컴파일 타임에 Mock 객체가 인터페이스를 올바르게 구현하고 있는지 검증합니다.
+var _ contract.NotificationSender = (*MockNotificationSender)(nil)
+var _ contract.NotificationHealthChecker = (*MockNotificationSender)(nil)
+
+// MockNotificationSender 테스트용 NotificationSender 및 HealthChecker 구현체입니다.
+// "github.com/stretchr/testify/mock" 패키지를 사용하여 동작을 정의하고 검증할 수 있습니다.
 type MockNotificationSender struct {
-	mu sync.Mutex
-
-	NotifyCalled      bool
-	LastNotifierID    string
-	LastTitle         string
-	LastMessage       string
-	LastErrorOccurred bool
-	ShouldFail        bool
-
-	NotifyDefaultCalled bool
-
-	// FailError 실패 시 반환할 에러 (nil이면 기본 MockError 반환)
-	FailError error
-
-	// 호출 기록 (MockNotificationSender from task package)
-	NotifyDefaultCalls      []string
-	NotifyCalls             []NotifyCall
-	CapturedContexts        []task.TaskContext
-	SupportsHTMLCalls       []string
-	SupportsHTMLReturnValue bool
+	mock.Mock
 }
 
-// NotifyCall Notify 호출 정보를 저장합니다.
-type NotifyCall struct {
-	NotifierID  string
-	Message     string
-	TaskContext task.TaskContext
-}
+// NewMockNotificationSender 새로운 MockNotificationSender 인스턴스를 생성합니다.
+//
+// 주요 기능:
+//   - t.Cleanup을 사용하여 테스트 종료 시 AssertExpectations 자동 호출
+//   - SupportsHTML 메서드에 대한 기본 허용적 설정을 적용합니다.
+func NewMockNotificationSender(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *MockNotificationSender {
+	m := &MockNotificationSender{}
+	m.Mock.Test(t)
 
-type MockError struct {
-	Message string
-}
-
-func (e *MockError) Error() string {
-	return e.Message
-}
-
-// NewMockNotificationSender 새로운 Mock 객체를 생성합니다.
-func NewMockNotificationSender() *MockNotificationSender {
-	return &MockNotificationSender{
-		NotifyDefaultCalls:      make([]string, 0),
-		NotifyCalls:             make([]NotifyCall, 0),
-		CapturedContexts:        make([]task.TaskContext, 0),
-		SupportsHTMLCalls:       make([]string, 0),
-		SupportsHTMLReturnValue: true, // 기본값: HTML 지원
-	}
-}
-
-// NotifyWithTitle 지정된 NotifierID로 제목이 포함된 알림 메시지를 발송합니다.
-func (m *MockNotificationSender) NotifyWithTitle(notifierID string, title string, message string, errorOccurred bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyCalled = true
-	m.LastNotifierID = notifierID
-	m.LastTitle = title
-	m.LastMessage = message
-	m.LastErrorOccurred = errorOccurred
-
-	if m.ShouldFail {
-		if m.FailError != nil {
-			return m.FailError
-		}
-		return &MockError{Message: "mock failure"}
-	}
-	return nil
-}
-
-// NotifyDefault 기본 알림을 전송합니다.
-func (m *MockNotificationSender) NotifyDefault(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// api 패키지 사용성
-	m.NotifyDefaultCalled = true
-	m.LastMessage = message
-
-	// task 패키지 사용성
-	m.NotifyDefaultCalls = append(m.NotifyDefaultCalls, message)
-
-	if m.ShouldFail {
-		if m.FailError != nil {
-			return m.FailError
-		}
-		return &MockError{Message: "mock failure"}
-	}
-	return nil
-}
-
-// NotifyDefaultWithError 시스템 기본 알림 채널로 "오류" 성격의 알림 메시지를 발송합니다.
-func (m *MockNotificationSender) NotifyDefaultWithError(message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyDefaultCalled = true
-	m.LastMessage = message
-	m.LastErrorOccurred = true
-
-	if m.ShouldFail {
-		if m.FailError != nil {
-			return m.FailError
-		}
-		return &MockError{Message: "mock failure"}
-	}
-	return nil
-}
-
-// Notify Task 컨텍스트와 함께 알림을 전송합니다.
-func (m *MockNotificationSender) Notify(taskCtx task.TaskContext, notifierID string, message string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyCalls = append(m.NotifyCalls, NotifyCall{
-		NotifierID:  notifierID,
-		Message:     message,
-		TaskContext: taskCtx,
+	t.Cleanup(func() {
+		m.AssertExpectations(t)
 	})
-	m.CapturedContexts = append(m.CapturedContexts, taskCtx)
 
-	if m.ShouldFail {
-		if m.FailError != nil {
-			return m.FailError
-		}
-		return &MockError{Message: "mock failure"}
-	}
-	return nil
+	// 기본 동작: SupportsHTML은 상태 변경이 없으므로 기본적으로 true 반환
+	m.On("SupportsHTML", mock.Anything).Return(true).Maybe()
+
+	return m
 }
 
-// SupportsHTML HTML 메시지 지원 여부를 반환합니다.
-func (m *MockNotificationSender) SupportsHTML(notifierID string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// =============================================================================
+// Interface Implementation
+// =============================================================================
 
-	m.SupportsHTMLCalls = append(m.SupportsHTMLCalls, notifierID)
-	return m.SupportsHTMLReturnValue
+// Notify 메타데이터와 함께 알림을 전송합니다.
+func (m *MockNotificationSender) Notify(ctx context.Context, notification contract.Notification) error {
+	args := m.Called(ctx, notification)
+	return args.Error(0)
 }
 
-// Health 서비스의 건강 상태를 확인합니다.
+// SupportsHTML HTML 지원 여부를 반환합니다.
+func (m *MockNotificationSender) SupportsHTML(notifierID contract.NotifierID) bool {
+	args := m.Called(notifierID)
+	return args.Bool(0)
+}
+
+// Health 서비스 상태를 확인합니다.
 func (m *MockNotificationSender) Health() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	args := m.Called()
+	return args.Error(0)
+}
 
-	if m.ShouldFail {
-		if m.FailError != nil {
-			return m.FailError
-		}
-		return &MockError{Message: "mock failure"}
+// =============================================================================
+// Fluent Helpers (Expectation Setup)
+// =============================================================================
+
+// OnNotify Notify 메서드 호출에 대한 기대치를 설정합니다.
+func (m *MockNotificationSender) OnNotify(ctx interface{}, notification interface{}) *mock.Call {
+	if ctx == nil {
+		ctx = mock.Anything
 	}
-	return nil
+	if notification == nil {
+		notification = mock.Anything
+	}
+	return m.On("Notify", ctx, notification)
 }
 
-// Reset 상태를 초기화합니다.
-func (m *MockNotificationSender) Reset() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.NotifyCalled = false
-	m.LastNotifierID = ""
-	m.LastTitle = ""
-	m.LastMessage = ""
-	m.LastErrorOccurred = false
-	m.ShouldFail = false
-	m.FailError = nil // FailError 초기화
-	m.NotifyDefaultCalled = false
-
-	m.NotifyDefaultCalls = make([]string, 0)
-	m.NotifyCalls = make([]NotifyCall, 0)
-	m.SupportsHTMLCalls = make([]string, 0)
+// ExpectNotifySuccess Notify 호출 성공을 가정합니다.
+func (m *MockNotificationSender) ExpectNotifySuccess() *mock.Call {
+	return m.OnNotify(mock.Anything, mock.Anything).Return(nil)
 }
 
-// GetNotifyDefaultCallCount NotifyDefault 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyDefaultCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.NotifyDefaultCalls)
+// ExpectNotifyFailure Notify 호출 실패를 가정합니다.
+func (m *MockNotificationSender) ExpectNotifyFailure(err error) *mock.Call {
+	return m.OnNotify(mock.Anything, mock.Anything).Return(err)
 }
 
-// GetNotifyCallCount Notify 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetNotifyCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.NotifyCalls)
+// OnHealth Health 메서드 호출에 대한 기대치를 설정합니다.
+func (m *MockNotificationSender) OnHealth() *mock.Call {
+	return m.On("Health")
 }
 
-// GetSupportsHTMLCallCount SupportsHTML 호출 횟수를 반환합니다.
-func (m *MockNotificationSender) GetSupportsHTMLCallCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return len(m.SupportsHTMLCalls)
+// ExpectHealthy Health 호출 시 정상(nil error)을 가정합니다.
+func (m *MockNotificationSender) ExpectHealthy() *mock.Call {
+	return m.OnHealth().Return(nil)
 }
 
-// WasNotifyDefaultCalled NotifyDefault (또는 WithError)가 호출되었는지 반환합니다.
-func (m *MockNotificationSender) WasNotifyDefaultCalled() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// ExpectUnhealthy Health 호출 시 에러를 가정합니다.
+func (m *MockNotificationSender) ExpectUnhealthy(err error) *mock.Call {
+	return m.OnHealth().Return(err)
+}
 
-	return m.NotifyDefaultCalled
+// =============================================================================
+// Deprecated / Legacy Helpers (Backward Compatibility)
+// =============================================================================
+
+// WithNotify configures the mock to return a specific error for Notify calls.
+// Deprecated: Use OnNotify or ExpectNotifySuccess instead.
+func (m *MockNotificationSender) WithNotify(err error) *MockNotificationSender {
+	m.On("Notify", mock.Anything, mock.Anything).Return(err)
+	return m
+}
+
+// WithHealthy configures the mock to return nil for Health calls (healthy state).
+// Deprecated: Use ExpectHealthy instead.
+func (m *MockNotificationSender) WithHealthy() *MockNotificationSender {
+	m.On("Health").Return(nil)
+	return m
+}
+
+// WithUnhealthy configures the mock to return an error for Health calls (unhealthy state).
+// Deprecated: Use ExpectUnhealthy instead.
+func (m *MockNotificationSender) WithUnhealthy(err error) *MockNotificationSender {
+	m.On("Health").Return(err)
+	return m
 }

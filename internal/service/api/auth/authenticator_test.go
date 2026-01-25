@@ -10,6 +10,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
+
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -19,23 +21,6 @@ import (
 // =============================================================================
 // Test Utils & Helpers
 // =============================================================================
-
-// LogEntry 로그 검증을 위한 구조체
-type LogEntry struct {
-	Level         string `json:"level"`
-	Message       string `json:"msg"`
-	ApplicationID string `json:"application_id"`
-	AppTitle      string `json:"app_title"`
-}
-
-// createTestAppConfig 테스트용 AppConfig를 생성합니다.
-func createTestAppConfig(apps ...config.ApplicationConfig) *config.AppConfig {
-	return &config.AppConfig{
-		NotifyAPI: config.NotifyAPIConfig{
-			Applications: apps,
-		},
-	}
-}
 
 // setupTestLogger는 테스트를 위해 로거 출력을 버퍼로 변경합니다.
 func setupTestLogger(buf *bytes.Buffer) {
@@ -49,6 +34,22 @@ func restoreLogger() {
 	applog.SetOutput(applog.StandardLogger().Out)
 }
 
+// checkHTTPErrorHelper는 반환된 에러가 예상된 HTTP 에러(코드, 메시지)인지 검증합니다.
+func checkHTTPErrorHelper(t *testing.T, actualErr error, expectedCode int, expectedMsgPart string) {
+	t.Helper()
+	httpErr, ok := actualErr.(*echo.HTTPError)
+	require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 합니다: %v", actualErr)
+	assert.Equal(t, expectedCode, httpErr.Code)
+
+	// 에러 메시지 검증 (ErrorResponse 구조체)
+	if resp, ok := httpErr.Message.(response.ErrorResponse); ok {
+		assert.Contains(t, resp.Message, expectedMsgPart)
+	} else {
+		// 단순 문자열인 경우
+		assert.Contains(t, fmt.Sprint(httpErr.Message), expectedMsgPart)
+	}
+}
+
 // =============================================================================
 // Constructor Tests
 // =============================================================================
@@ -56,65 +57,84 @@ func restoreLogger() {
 func TestNewAuthenticator_Table(t *testing.T) {
 	tests := []struct {
 		name          string
-		appConfig     *config.AppConfig
+		apps          []config.ApplicationConfig
 		expectedCount int
-		verifyApps    func(*testing.T, map[string]*domain.Application)
+		verifyApps    func(*testing.T, map[string]*domain.Application, map[string]string)
 	}{
 		{
-			name: "단일 애플리케이션 생성",
-			appConfig: createTestAppConfig(
-				config.ApplicationConfig{
+			name: "성공: 단일 애플리케이션 생성 및 해시 저장 확인",
+			apps: []config.ApplicationConfig{
+				{
 					ID:                "test-app",
 					Title:             "Test Application",
 					Description:       "Test Description",
 					DefaultNotifierID: "test-notifier",
 					AppKey:            "test-key",
 				},
-			),
+			},
 			expectedCount: 1,
-			verifyApps: func(t *testing.T, apps map[string]*domain.Application) {
+			verifyApps: func(t *testing.T, apps map[string]*domain.Application, hashes map[string]string) {
+				// 1. 애플리케이션 정보 확인
 				app, ok := apps["test-app"]
-				assert.True(t, ok)
+				require.True(t, ok)
 				assert.Equal(t, "test-app", app.ID)
 				assert.Equal(t, "Test Application", app.Title)
 				assert.Equal(t, "Test Description", app.Description)
-				assert.Equal(t, "test-notifier", app.DefaultNotifierID)
-				// 중요: AppKey는 보안을 위해 Application 구조체에 저장되지 않아야 함
-				// Application 구조체에 AppKey 필드가 없으므로 컴파일 레벨에서 보장되지만,
-				// 의도적으로 주석을 통해 확인.
+				assert.Equal(t, contract.NotifierID("test-notifier"), app.DefaultNotifierID)
+
+				// 2. 해시 저장 확인 (App Key는 평문으로 저장되지 않음)
+				hash, hashOk := hashes["test-app"]
+				require.True(t, hashOk)
+				assert.NotEmpty(t, hash)
+				assert.NotEqual(t, "test-key", hash, "App Key는 평문으로 저장되면 안 됩니다")
 			},
 		},
 		{
-			name: "다중 애플리케이션 생성",
-			appConfig: createTestAppConfig(
-				config.ApplicationConfig{ID: "app1", AppKey: "key1"},
-				config.ApplicationConfig{ID: "app2", AppKey: "key2"},
-				config.ApplicationConfig{ID: "app3", AppKey: "key3"},
-			),
+			name: "성공: 다중 애플리케이션 생성",
+			apps: []config.ApplicationConfig{
+				{ID: "app1", AppKey: "key1"},
+				{ID: "app2", AppKey: "key2"},
+				{ID: "app3", AppKey: "key3"},
+			},
 			expectedCount: 3,
-			verifyApps: func(t *testing.T, apps map[string]*domain.Application) {
+			verifyApps: func(t *testing.T, apps map[string]*domain.Application, hashes map[string]string) {
 				assert.Contains(t, apps, "app1")
 				assert.Contains(t, apps, "app2")
 				assert.Contains(t, apps, "app3")
+				assert.Len(t, hashes, 3)
 			},
 		},
 		{
-			name:          "애플리케이션 없음",
-			appConfig:     createTestAppConfig(),
+			name: "성공: 중복된 ID는 덮어쓰기됨 (Last Writer Wins)",
+			apps: []config.ApplicationConfig{
+				{ID: "dup-app", Title: "Original", AppKey: "key1"},
+				{ID: "dup-app", Title: "Overwritten", AppKey: "key2"},
+			},
+			expectedCount: 1,
+			verifyApps: func(t *testing.T, apps map[string]*domain.Application, hashes map[string]string) {
+				app, ok := apps["dup-app"]
+				require.True(t, ok)
+				assert.Equal(t, "Overwritten", app.Title, "나중에 정의된 설정으로 덮어써져야 합니다")
+			},
+		},
+		{
+			name:          "성공: 애플리케이션 없음 (빈 설정)",
+			apps:          []config.ApplicationConfig{},
 			expectedCount: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			authenticator := NewAuthenticator(tt.appConfig)
+			authenticator := NewAuthenticator(tt.apps)
 
-			assert.NotNil(t, authenticator)
+			require.NotNil(t, authenticator)
 			assert.NotNil(t, authenticator.applications)
+			assert.NotNil(t, authenticator.appKeyHashes)
 			assert.Equal(t, tt.expectedCount, len(authenticator.applications))
 
 			if tt.verifyApps != nil {
-				tt.verifyApps(t, authenticator.applications)
+				tt.verifyApps(t, authenticator.applications, authenticator.appKeyHashes)
 			}
 		})
 	}
@@ -130,20 +150,22 @@ func TestNewAuthenticator_Table(t *testing.T) {
 //   - 정상 인증 시 Application 객체 반환
 //   - 등록되지 않은 App ID 처리 및 에러 메시지
 //   - App Key 불일치 시 처리, 에러 메시지, 그리고 보안 로그 기록
+//   - 빈 App Key 처리
 func TestAuthenticator_Authenticate_Table(t *testing.T) {
 	// 로거 캡처 설정
 	buf := new(bytes.Buffer)
 	setupTestLogger(buf)
 	defer restoreLogger()
 
-	appConfig := createTestAppConfig(
-		config.ApplicationConfig{
+	// 공통 인증자 설정
+	apps := []config.ApplicationConfig{
+		{
 			ID:     "test-app",
 			Title:  "테스트 앱",
 			AppKey: "valid-key",
 		},
-	)
-	authenticator := NewAuthenticator(appConfig)
+	}
+	authenticator := NewAuthenticator(apps)
 
 	tests := []struct {
 		name          string
@@ -151,11 +173,11 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 		appKey        string
 		expectedError bool
 		checkError    func(*testing.T, error)
-		checkLog      func(*testing.T, *bytes.Buffer) // 로그 검증 로직
+		expectedLog   map[string]string // 기대하는 로그 필드 (키:값)
 		checkApp      func(*testing.T, *domain.Application)
 	}{
 		{
-			name:          "인증 성공_정상 키 입력",
+			name:          "인증 성공: 정상 키 입력",
 			appID:         "test-app",
 			appKey:        "valid-key",
 			expectedError: false,
@@ -165,60 +187,39 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 			},
 		},
 		{
-			name:          "인증 실패_등록되지 않은 ID",
+			name:          "인증 실패: 등록되지 않은 ID",
 			appID:         "unknown-app",
 			appKey:        "valid-key",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok, "에러는 *echo.HTTPError 타입이어야 함")
-				assert.Equal(t, 401, httpErr.Code)
-
-				// 에러 메시지 검증: "등록되지 않은 application_id입니다 (ID: %s)"
-				errResp, ok := httpErr.Message.(response.ErrorResponse)
-				require.True(t, ok)
-				assert.Equal(t, fmt.Sprintf("등록되지 않은 application_id입니다 (ID: %s)", "unknown-app"), errResp.Message)
+				checkHTTPErrorHelper(t, err, 401, "등록되지 않은 application_id입니다")
 			},
 		},
 		{
-			name:          "인증 실패_Key 불일치_로그 기록",
+			name:          "인증 실패: Key 불일치 및 보안 로그 검증",
 			appID:         "test-app",
 			appKey:        "invalid-key",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok)
-				assert.Equal(t, 401, httpErr.Code)
-
-				// 에러 메시지 검증: "app_key가 유효하지 않습니다 (application_id: %s)"
-				errResp, ok := httpErr.Message.(response.ErrorResponse)
-				require.True(t, ok)
-				assert.Equal(t, fmt.Sprintf("app_key가 유효하지 않습니다 (application_id: %s)", "test-app"), errResp.Message)
+				checkHTTPErrorHelper(t, err, 401, "app_key가 유효하지 않습니다")
 			},
-			checkLog: func(t *testing.T, logBuf *bytes.Buffer) {
-				var logEntry LogEntry
-				err := json.Unmarshal(logBuf.Bytes(), &logEntry)
-				require.NoError(t, err, "로그 파싱 실패")
-
-				assert.Equal(t, "warning", logEntry.Level)
-				assert.Equal(t, "인증 실패: 제공된 App Key가 올바르지 않습니다", logEntry.Message)
-				assert.Equal(t, "test-app", logEntry.ApplicationID)
-				assert.Equal(t, "테스트 앱", logEntry.AppTitle)
+			expectedLog: map[string]string{
+				"level":          "warning",
+				"msg":            "인증 실패: 제공된 App Key가 올바르지 않습니다",
+				"application_id": "test-app",
+				"app_title":      "테스트 앱",
 			},
 		},
 		{
-			name:          "인증 실패_빈 Key",
+			name:          "인증 실패: 빈 Key 입력",
 			appID:         "test-app",
 			appKey:        "",
 			expectedError: true,
 			checkError: func(t *testing.T, err error) {
-				httpErr, ok := err.(*echo.HTTPError)
-				require.True(t, ok)
-				assert.Equal(t, 401, httpErr.Code)
+				checkHTTPErrorHelper(t, err, 401, "app_key가 유효하지 않습니다")
 			},
-			checkLog: func(t *testing.T, logBuf *bytes.Buffer) {
-				// 빈 키도 불일치로 간주되므로 로그가 남아야 함
-				assert.Contains(t, logBuf.String(), "제공된 App Key가 올바르지 않습니다")
+			expectedLog: map[string]string{
+				"msg": "인증 실패: 제공된 App Key가 올바르지 않습니다",
 			},
 		},
 	}
@@ -235,8 +236,14 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 				if tt.checkError != nil {
 					tt.checkError(t, err)
 				}
-				if tt.checkLog != nil {
-					tt.checkLog(t, buf)
+				if tt.expectedLog != nil {
+					var logEntry map[string]interface{}
+					err := json.Unmarshal(buf.Bytes(), &logEntry)
+					require.NoError(t, err, "로그 파싱 실패: %s", buf.String())
+
+					for k, v := range tt.expectedLog {
+						assert.Equal(t, v, logEntry[k], "로그 필드 불일치: %s", k)
+					}
 				}
 			} else {
 				assert.NoError(t, err)
@@ -257,11 +264,11 @@ func TestAuthenticator_Authenticate_Table(t *testing.T) {
 
 // TestAuthenticator_ConcurrentAccess는 동시성 안전성을 검증합니다.
 func TestAuthenticator_ConcurrentAccess(t *testing.T) {
-	appConfig := createTestAppConfig(
-		config.ApplicationConfig{ID: "app1", AppKey: "key1"},
-		config.ApplicationConfig{ID: "app2", AppKey: "key2"},
-	)
-	authenticator := NewAuthenticator(appConfig)
+	apps := []config.ApplicationConfig{
+		{ID: "app1", AppKey: "key1"},
+		{ID: "app2", AppKey: "key2"},
+	}
+	authenticator := NewAuthenticator(apps)
 
 	// 동시에 고루틴에서 Authenticate 호출
 	const goroutines = 100

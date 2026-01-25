@@ -1,14 +1,14 @@
 package middleware
 
 import (
-	"fmt"
 	"runtime"
 
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
+
+// componentPanicRecovery 패닉 복구 미들웨어의 로깅용 컴포넌트 이름
+const componentPanicRecovery = "api.middleware.panic_recovery"
 
 const (
 	// stackBufferSize 스택 트레이스 버퍼 크기 (4KB)
@@ -32,7 +32,7 @@ func PanicRecovery() echo.MiddlewareFunc {
 					// 1. 패닉 값을 에러로 변환
 					err, ok := r.(error)
 					if !ok {
-						err = apperrors.New(apperrors.Internal, fmt.Sprintf("%v", r))
+						err = NewErrPanicRecovered(r)
 					}
 
 					// 2. 스택 트레이스 수집
@@ -51,12 +51,13 @@ func PanicRecovery() echo.MiddlewareFunc {
 					}
 
 					// 4. 패닉 로그 기록
-					applog.WithComponentAndFields(constants.ComponentMiddlewarePanicRecovery, fields).Error(constants.LogMsgPanicRecovered)
+					applog.WithComponentAndFields(componentPanicRecovery, fields).Error("패닉 복구: 예기치 못한 오류가 발생하여 안전하게 복구했습니다")
 
 					// 5. Echo 에러 핸들러로 전달 (HTTP 500 응답)
 					c.Error(err)
 				}
 			}()
+
 			return next(c)
 		}
 	}

@@ -3,7 +3,6 @@ package httputil
 import (
 	"net/http"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	"github.com/labstack/echo/v4"
 )
@@ -56,10 +55,10 @@ func NewServiceUnavailableError(message string) error {
 	})
 }
 
-// NewSuccessResponse 표준 성공 응답(200 OK)을 JSON 형식으로 반환합니다.
-func NewSuccessResponse(c echo.Context) error {
+// Success 표준 성공 응답(200 OK)을 JSON 형식으로 반환합니다.
+func Success(c echo.Context) error {
 	return c.JSON(http.StatusOK, response.SuccessResponse{
 		ResultCode: 0,
-		Message:    constants.MsgSuccess,
+		Message:    "성공",
 	})
 }

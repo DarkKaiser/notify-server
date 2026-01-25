@@ -103,7 +103,7 @@ func LoadWithFile(filename string) (*AppConfig, []string, error) {
 
 	var appConfig AppConfig
 	if err := k.UnmarshalWithConf("", &appConfig, unmarshalConf); err != nil {
-		return nil, nil, apperrors.Wrap(err, apperrors.System, "설정값을 구조체에 매핑하지 못했습니다. 데이터 타입(숫자/문자 등)을 확인해주세요")
+		return nil, nil, apperrors.Wrap(err, apperrors.System, "설정값을 구조체에 매핑하지 못하였습니다. 데이터 타입(숫자/문자 등)을 확인해주세요")
 	}
 
 	// 5. 유효성 검사 수행

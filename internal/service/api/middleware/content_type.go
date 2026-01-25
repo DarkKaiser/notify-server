@@ -1,13 +1,14 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
 )
+
+// componentContentType Content-Type 검증 미들웨어의 로깅용 컴포넌트 이름
+const componentContentType = "api.middleware.content_type"
 
 // ValidateContentType 요청의 Content-Type을 검증하는 미들웨어를 반환합니다.
 //
@@ -32,16 +33,16 @@ func ValidateContentType(expectedContentType string) echo.MiddlewareFunc {
 			// Content-Type 헤더가 없거나, 기대하는 타입과 다르면 에러
 			// MIME 타입 파라미터(예: charset=utf-8)를 고려하여 Contains로 검사 (대소문자 무시)
 			if contentType == "" || !strings.Contains(strings.ToLower(contentType), strings.ToLower(expectedContentType)) {
-				applog.WithComponentAndFields(constants.ComponentMiddlewareContentType, applog.Fields{
+				applog.WithComponentAndFields(componentContentType, applog.Fields{
 					"request_id": c.Response().Header().Get(echo.HeaderXRequestID),
 					"method":     c.Request().Method,
 					"path":       c.Request().URL.Path,
 					"expected":   expectedContentType,
 					"actual":     contentType,
 					"remote_ip":  c.RealIP(),
-				}).Warn(constants.LogMsgUnsupportedContentType)
+				}).Warn("Content-Type 검증 실패: 지원하지 않는 형식입니다")
 
-				return echo.NewHTTPError(http.StatusUnsupportedMediaType, constants.ErrMsgUnsupportedMediaType)
+				return ErrUnsupportedMediaType
 			}
 
 			return next(c)

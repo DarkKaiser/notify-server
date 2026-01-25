@@ -6,7 +6,7 @@
 //
 //   - HTTPLogger: HTTP 요청/응답 로깅 (민감 정보 자동 마스킹)
 //   - RequireAuthentication: 애플리케이션 키 기반 인증
-//   - RateLimiting: IP 기반 요청 속도 제한
+//   - RateLimit: IP 기반 요청 속도 제한
 //   - PanicRecovery: 패닉 복구 및 에러 로깅
 //   - DeprecatedEndpoint: 레거시 엔드포인트 경고 헤더 추가
 //   - LoggerAdapter: Echo 로거를 애플리케이션 로거로 연결
@@ -16,5 +16,5 @@
 //	e := echo.New()
 //	e.Use(middleware.PanicRecovery())
 //	e.Use(middleware.HTTPLogger())
-//	e.Use(middleware.RateLimiting(10, 20))
+//	e.Use(middleware.RateLimit(10, 20))
 package middleware

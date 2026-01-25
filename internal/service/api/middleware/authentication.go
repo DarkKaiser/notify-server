@@ -7,10 +7,20 @@ import (
 	"net/http"
 
 	"github.com/darkkaiser/notify-server/internal/service/api/auth"
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
-	"github.com/darkkaiser/notify-server/internal/service/api/httputil"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/labstack/echo/v4"
+)
+
+// componentAuth 인증 미들웨어의 로깅용 컴포넌트 이름
+const componentAuth = "api.middleware.auth"
+
+const (
+	// headerXAppKey 애플리케이션 인증용 HTTP 헤더 키 (권장 방식)
+	headerXAppKey = "X-App-Key"
+
+	// headerXApplicationID 애플리케이션 식별용 HTTP 헤더 키 (성능 최적화 및 GET 요청용)
+	// 이 헤더가 존재하면 Body 파싱을 건너뛰고 헤더 값으로 인증합니다.
+	headerXApplicationID = "X-Application-Id"
 )
 
 // RequireAuthentication 애플리케이션 인증을 수행하는 미들웨어를 반환합니다.
@@ -34,7 +44,7 @@ import (
 //     - 헤더가 없는 경우에만 불가피하게 Body를 파싱합니다.
 //
 // 인증 성공 시:
-//   - Application 객체를 Context에 저장 (키: ContextKeyApplication)
+//   - Application 객체를 Context에 저장 (auth.SetApplication 사용)
 //   - 다음 핸들러로 제어 전달
 //
 // 인증 실패 시:
@@ -51,7 +61,7 @@ import (
 //   - authenticator가 nil인 경우
 func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFunc {
 	if authenticator == nil {
-		panic(constants.PanicMsgAuthenticatorRequired)
+		panic("Authenticator는 필수입니다")
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -59,7 +69,7 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 			// 1. App Key 추출
 			appKey := extractAppKey(c)
 			if appKey == "" {
-				return httputil.NewBadRequestError(constants.ErrMsgAuthAppKeyRequired)
+				return ErrAppKeyRequired
 			}
 
 			// 2. Application ID 추출
@@ -68,7 +78,7 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 				return err
 			}
 			if applicationID == "" {
-				return httputil.NewBadRequestError(constants.ErrMsgAuthApplicationIDRequired)
+				return ErrApplicationIDRequired
 			}
 
 			// 3. 인증 처리
@@ -92,17 +102,17 @@ func RequireAuthentication(authenticator *auth.Authenticator) echo.MiddlewareFun
 //  1. X-App-Key 헤더 (권장)
 //  2. app_key 쿼리 파라미터 (레거시) - 사용 시 경고 로그 출력
 func extractAppKey(c echo.Context) string {
-	appKey := c.Request().Header.Get(constants.HeaderXAppKey)
+	appKey := c.Request().Header.Get(headerXAppKey)
 	if appKey == "" {
-		appKey = c.QueryParam(constants.QueryParamAppKey)
+		appKey = c.QueryParam(auth.QueryParamAppKey)
 
 		// 레거시 방식 사용 시 경고 로그
 		if appKey != "" {
-			applog.WithComponentAndFields(constants.ComponentMiddlewareAuthentication, applog.Fields{
+			applog.WithComponentAndFields(componentAuth, applog.Fields{
 				"method":    c.Request().Method,
 				"path":      c.Path(),
 				"remote_ip": c.RealIP(),
-			}).Warn(constants.LogMsgAuthAppKeyInQuery)
+			}).Warn("보안 경고: 쿼리 파라미터로 App Key 전달됨 (헤더 사용 권장)")
 		}
 	}
 	return appKey
@@ -115,7 +125,7 @@ func extractAppKey(c echo.Context) string {
 //  2. Request Body (레거시, 호환성 유지) - Body 파싱 및 복원 비용 발생
 func extractApplicationID(c echo.Context) (string, error) {
 	// 우선순위 1: X-Application-Id 헤더
-	applicationID := c.Request().Header.Get(constants.HeaderXApplicationID)
+	applicationID := c.Request().Header.Get(headerXApplicationID)
 	if applicationID != "" {
 		return applicationID, nil
 	}
@@ -133,17 +143,17 @@ func extractApplicationID(c echo.Context) (string, error) {
 		//
 		// 이들을 포착하여 클라이언트에게 명확한 표준 413 에러 응답으로 정규화합니다.
 		if _, ok := err.(*http.MaxBytesError); ok {
-			return "", echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+			return "", ErrBodyTooLarge
 		}
 		if he, ok := err.(*echo.HTTPError); ok && he.Code == http.StatusRequestEntityTooLarge {
-			return "", echo.NewHTTPError(http.StatusRequestEntityTooLarge, constants.ErrMsgRequestEntityTooLarge)
+			return "", ErrBodyTooLarge
 		}
-		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestBodyReadFailed)
+		return "", ErrBodyReadFailed
 	}
 	c.Request().Body.Close()
 
 	if len(bodyBytes) == 0 {
-		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestEmptyBody)
+		return "", ErrEmptyBody
 	}
 
 	// Body 복원 (다음 핸들러에서 사용 가능하도록)
@@ -153,7 +163,7 @@ func extractApplicationID(c echo.Context) (string, error) {
 		ApplicationID string `json:"application_id"`
 	}
 	if err := json.Unmarshal(bodyBytes, &authRequest); err != nil {
-		return "", httputil.NewBadRequestError(constants.ErrMsgBadRequestInvalidJSON)
+		return "", ErrInvalidJSON
 	}
 
 	return authRequest.ApplicationID, nil

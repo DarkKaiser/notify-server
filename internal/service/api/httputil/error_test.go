@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/api/constants"
+	"github.com/darkkaiser/notify-server/internal/service/api/auth"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/domain"
 	"github.com/darkkaiser/notify-server/internal/service/api/model/response"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -35,10 +35,12 @@ type LogEntry struct {
 
 // TestErrorHandler_Comprehensive는 커스텀 HTTP 에러 핸들러의 모든 동작을 검증합니다.
 //
-// 주요 개선 사항:
-//   - 테이블 기반 테스트 구조 강화 (setupContext 활용)
-//   - JSON 로그 구조 정밀 검증 (필드별 값 확인)
-//   - 새로운 로깅 필드(IP, RequestID, AppID) 검증 추가
+// 주의: 이 테스트는 pkg/log의 글로벌 상태를 변경하므로 t.Parallel()을 사용할 수 없습니다.
+// 반드시 직렬로 실행되어야 합니다.
+// TestErrorHandler_Comprehensive는 커스텀 HTTP 에러 핸들러의 모든 동작을 검증합니다.
+//
+// 주의: 이 테스트는 pkg/log의 글로벌 상태를 변경하므로 t.Parallel()을 사용할 수 없습니다.
+// 반드시 직렬로 실행되어야 합니다.
 func TestErrorHandler_Comprehensive(t *testing.T) {
 	// 로거 캡처 설정
 	buf := new(bytes.Buffer)
@@ -52,16 +54,17 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 		err             error
 		setupContext    func(c echo.Context, req *http.Request, rec *httptest.ResponseRecorder)
 		expectedStatus  int
-		expectedBody    interface{} // 문자열 또는 response.ErrorResponse
-		expectedLog     *LogEntry   // 검증할 로그 필드 (nil이면 로그 검증 건너뜀)
-		expectedLogPart string      // 로그에 포함되어야 할 문자열 (메시지 등 단순 확인용)
+		expectedJSON    string    // 예상되는 JSON 응답 (문자열)
+		expectedLog     *LogEntry // 검증할 로그 필드 (nil이면 로그 검증 건너뜀)
+		expectedLogPart string    // 로그에 포함되어야 할 문자열 (메시지 등 단순 확인용)
+		expectNoLog     bool      // 로그가 생성되지 않아야 함을 명시
 	}{
 		{
 			name:           "404 Not Found_기본 메시지",
 			method:         http.MethodGet,
 			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
 			expectedStatus: http.StatusNotFound,
-			expectedBody:   response.ErrorResponse{Message: "요청한 리소스를 찾을 수 없습니다"},
+			expectedJSON:   `{"result_code":404,"message":"요청한 리소스를 찾을 수 없습니다"}`,
 			expectedLog: &LogEntry{
 				Level:      "warning",
 				Message:    "HTTP 4xx: 클라이언트 요청 오류",
@@ -73,7 +76,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:          http.MethodGet,
 			err:             echo.NewHTTPError(http.StatusNotFound, "Custom Check"),
 			expectedStatus:  http.StatusNotFound,
-			expectedBody:    response.ErrorResponse{Message: "Custom Check"},
+			expectedJSON:    `{"result_code":404,"message":"Custom Check"}`,
 			expectedLogPart: "클라이언트 요청 오류",
 		},
 		{
@@ -81,7 +84,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodPost,
 			err:            echo.NewHTTPError(http.StatusMethodNotAllowed, "method not allowed"),
 			expectedStatus: http.StatusMethodNotAllowed,
-			expectedBody:   response.ErrorResponse{Message: "method not allowed"},
+			expectedJSON:   `{"result_code":405,"message":"method not allowed"}`,
 			expectedLog: &LogEntry{
 				Level:      "warning",
 				StatusCode: http.StatusMethodNotAllowed,
@@ -92,7 +95,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodPost,
 			err:            echo.NewHTTPError(http.StatusBadRequest, response.ErrorResponse{Message: "잘못된 요청입니다"}),
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   response.ErrorResponse{Message: "잘못된 요청입니다"},
+			expectedJSON:   `{"result_code":400,"message":"잘못된 요청입니다"}`,
 			expectedLog: &LogEntry{
 				Level:      "warning",
 				StatusCode: http.StatusBadRequest,
@@ -103,7 +106,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodPost,
 			err:            echo.NewHTTPError(http.StatusUnauthorized, "인증이 필요합니다"),
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   response.ErrorResponse{Message: "인증이 필요합니다"},
+			expectedJSON:   `{"result_code":401,"message":"인증이 필요합니다"}`,
 			expectedLog: &LogEntry{
 				Level:      "warning",
 				StatusCode: http.StatusUnauthorized,
@@ -114,7 +117,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodGet,
 			err:            errors.New("database connection failed"),
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   response.ErrorResponse{Message: "내부 서버 오류가 발생했습니다"},
+			expectedJSON:   `{"result_code":500,"message":"내부 서버 오류가 발생했습니다"}`,
 			expectedLog: &LogEntry{
 				Level:      "error",
 				Message:    "HTTP 5xx: 서버 내부 오류",
@@ -130,7 +133,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 				rec.Header().Set(echo.HeaderXRequestID, "test-req-id-123")
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   response.ErrorResponse{Message: "Bad Request"},
+			expectedJSON:   `{"result_code":400,"message":"Bad Request"}`,
 			expectedLog: &LogEntry{
 				RemoteIP:  "192.168.1.100",
 				RequestID: "test-req-id-123",
@@ -143,10 +146,10 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			setupContext: func(c echo.Context, req *http.Request, rec *httptest.ResponseRecorder) {
 				// 인증된 애플리케이션 주입
 				app := &domain.Application{ID: "my-test-app"}
-				c.Set(constants.ContextKeyApplication, app)
+				auth.SetApplication(c, app)
 			},
 			expectedStatus: http.StatusForbidden,
-			expectedBody:   response.ErrorResponse{Message: "Forbidden"},
+			expectedJSON:   `{"result_code":403,"message":"Forbidden"}`,
 			expectedLog: &LogEntry{
 				ApplicationID: "my-test-app",
 			},
@@ -156,7 +159,7 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			method:         http.MethodHead,
 			err:            echo.NewHTTPError(http.StatusNotFound, "Not Found"),
 			expectedStatus: http.StatusNotFound,
-			expectedBody:   nil, // Body가 비어있어야 함
+			expectedJSON:   "", // Body가 비어있어야 함
 		},
 		{
 			name:   "이미 응답 커밋됨_작업 중단",
@@ -165,14 +168,42 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			setupContext: func(c echo.Context, req *http.Request, rec *httptest.ResponseRecorder) {
 				c.Response().Committed = true
 			},
-			expectedStatus: http.StatusOK, // 핸들러가 상태 코드를 덮어쓰지 않아야 함 (초기 상태 200)
-			expectedBody:   nil,           // 아무것도 쓰지 않아야 함
+			expectedStatus: http.StatusOK, // 핸들러가 상태 코드를 덮어쓰지 않아야 함
+			expectedJSON:   "",
+		},
+		// --- 엣지 케이스 추가 ---
+		{
+			name:           "EdgeCase_HTTPError 메시지 타입 불일치(int)",
+			method:         http.MethodGet,
+			err:            echo.NewHTTPError(http.StatusBadRequest, 12345), // int 메시지
+			expectedStatus: http.StatusBadRequest,
+			// 메시지가 string이나 ErrorResponse가 아니면 기본값("내부 서버 오류...")이 유지됨.
+			expectedJSON: `{"result_code":400,"message":"내부 서버 오류가 발생했습니다"}`,
+			expectedLog: &LogEntry{
+				Level: "warning",
+			},
+		},
+		{
+			name:           "EdgeCase_Status 3xx (로그 제외)",
+			method:         http.MethodGet,
+			err:            echo.NewHTTPError(http.StatusFound, "Redirecting"),
+			expectedStatus: http.StatusFound,
+			expectNoLog:    true, // 400 미만 상태 코드는 로그를 남기지 않음
+			expectedJSON:   `{"result_code":302,"message":"Redirecting"}`,
+		},
+		{
+			name:           "EdgeCase_Struct 메시지 처리",
+			method:         http.MethodGet,
+			err:            echo.NewHTTPError(http.StatusBadRequest, struct{ Details string }{Details: "wrong type"}),
+			expectedStatus: http.StatusBadRequest,
+			// response.ErrorResponse가 아닌 구조체는 처리되지 않으므로 기본 메시지가 나옴
+			expectedJSON: `{"result_code":400,"message":"내부 서버 오류가 발생했습니다"}`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 초기화
+			// 초기화 (직렬 실행이므로 루프 내 Reset 필수)
 			buf.Reset()
 			e := echo.New()
 			req := httptest.NewRequest(tt.method, "/", nil)
@@ -187,60 +218,50 @@ func TestErrorHandler_Comprehensive(t *testing.T) {
 			// 테스트 실행
 			ErrorHandler(tt.err, c)
 
-			// 응답 상태 코드 검증
+			// 1. 응답 상태 코드 검증
 			assert.Equal(t, tt.expectedStatus, rec.Code, "HTTP 상태 코드가 일치해야 합니다")
 
-			// 응답 본문 검증
-			if tt.expectedBody != nil {
-				var expected response.ErrorResponse
-				if val, ok := tt.expectedBody.(response.ErrorResponse); ok {
-					expected = val
-				}
-
-				// Body 파싱 확인
-				var actual response.ErrorResponse
-				if err := json.Unmarshal(rec.Body.Bytes(), &actual); err != nil {
-					t.Fatalf("Failed to decode response body: %v", err)
-				}
-				assert.Equal(t, expected.Message, actual.Message, "응답 메시지가 일치해야 합니다")
-
-				// 추가: ResultCode 검증
-				// ErrorHandler는 Status Code를 ResultCode로 설정해야 함
-				assert.Equal(t, tt.expectedStatus, actual.ResultCode, "ResultCode는 HTTP 상태 코드와 일치해야 합니다")
+			// 2. 응답 JSON 검증
+			if tt.expectedJSON != "" {
+				assert.JSONEq(t, tt.expectedJSON, rec.Body.String(), "응답 JSON이 예상과 일치해야 합니다")
 			} else {
-				// Body가 비어있어야 하는 경우 (Head 요청 or Committed)
 				assert.Empty(t, rec.Body.String(), "응답 본문이 비어있어야 합니다")
 			}
 
-			// 로그 검증
-			if tt.expectedLog != nil {
-				var logEntry LogEntry
-				err := json.Unmarshal(buf.Bytes(), &logEntry)
-				require.NoError(t, err, "로그 파싱에 실패했습니다")
+			// 3. 로그 검증
+			if tt.expectNoLog {
+				assert.Empty(t, buf.String(), "로그가 생성되지 않아야 합니다")
+			} else {
+				if tt.expectedLog != nil {
+					var logEntry LogEntry
+					err := json.Unmarshal(buf.Bytes(), &logEntry)
+					require.NoError(t, err, "로그 파싱에 실패했습니다: %s", buf.String())
 
-				// 명시된 필드만 검증
-				if tt.expectedLog.Level != "" {
-					assert.Equal(t, tt.expectedLog.Level, logEntry.Level, "로그 레벨이 일치해야 합니다")
+					if tt.expectedLog.Level != "" {
+						assert.Equal(t, tt.expectedLog.Level, logEntry.Level)
+					}
+					if tt.expectedLog.Message != "" {
+						assert.Equal(t, tt.expectedLog.Message, logEntry.Message)
+					}
+					if tt.expectedLog.StatusCode != 0 {
+						assert.Equal(t, tt.expectedLog.StatusCode, logEntry.StatusCode)
+					}
+					if tt.expectedLog.RemoteIP != "" {
+						assert.Equal(t, tt.expectedLog.RemoteIP, logEntry.RemoteIP)
+					}
+					if tt.expectedLog.RequestID != "" {
+						assert.Equal(t, tt.expectedLog.RequestID, logEntry.RequestID)
+					}
+					if tt.expectedLog.ApplicationID != "" {
+						assert.Equal(t, tt.expectedLog.ApplicationID, logEntry.ApplicationID)
+					} else {
+						assert.Empty(t, logEntry.ApplicationID)
+					}
 				}
-				if tt.expectedLog.Message != "" {
-					assert.Equal(t, tt.expectedLog.Message, logEntry.Message, "로그 메시지가 일치해야 합니다")
-				}
-				if tt.expectedLog.StatusCode != 0 {
-					assert.Equal(t, tt.expectedLog.StatusCode, logEntry.StatusCode, "로그 상태 코드가 일치해야 합니다")
-				}
-				if tt.expectedLog.RemoteIP != "" {
-					assert.Equal(t, tt.expectedLog.RemoteIP, logEntry.RemoteIP, "로그 클라이언트 IP가 일치해야 합니다")
-				}
-				if tt.expectedLog.RequestID != "" {
-					assert.Equal(t, tt.expectedLog.RequestID, logEntry.RequestID, "로그 RequestID가 일치해야 합니다")
-				}
-				if tt.expectedLog.ApplicationID != "" {
-					assert.Equal(t, tt.expectedLog.ApplicationID, logEntry.ApplicationID, "로그 ApplicationID가 일치해야 합니다")
-				}
-			}
 
-			if tt.expectedLogPart != "" {
-				assert.Contains(t, buf.String(), tt.expectedLogPart, "로그에 예상 문구가 포함되어야 합니다")
+				if tt.expectedLogPart != "" {
+					assert.Contains(t, buf.String(), tt.expectedLogPart)
+				}
 			}
 		})
 	}

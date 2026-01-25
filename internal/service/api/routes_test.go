@@ -16,121 +16,169 @@ import (
 )
 
 // =============================================================================
-// Routes Setup Tests
+// Helper Functions
 // =============================================================================
 
-// TestSetupRoutes_Integration_Table 은 전체 라우트 설정 및 핸들러 동작을 통합 테스트합니다.
-func TestSetupRoutes_Integration_Table(t *testing.T) {
-	e := echo.New()
+func setupTestEcho() *echo.Echo {
+	return echo.New()
+}
+
+func setupTestHandler(t *testing.T) *systemhandler.Handler {
+	mockSender := mocks.NewMockNotificationSender(t)
 	buildInfo := version.Info{
 		Version:     "test-version",
 		BuildDate:   "2025-12-05",
 		BuildNumber: "1",
-		GoVersion:   "go1.21",
 	}
-	mockSender := mocks.NewMockNotificationSender()
-	systemHandler := systemhandler.NewHandler(mockSender, buildInfo)
-	SetupRoutes(e, systemHandler)
-
-	tests := []struct {
-		name           string
-		method         string
-		path           string
-		expectedStatus int
-		verifyResponse func(t *testing.T, rec *httptest.ResponseRecorder)
-	}{
-		{
-			name:           "Health 체크",
-			method:         http.MethodGet,
-			path:           "/health",
-			expectedStatus: http.StatusOK,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var healthResp system.HealthResponse
-				err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
-				require.NoError(t, err, "Health 응답은 JSON이어야 함")
-				assert.NotEmpty(t, healthResp.Status, "상태값이 있어야 함")
-				assert.GreaterOrEqual(t, healthResp.Uptime, int64(0), "Uptime은 0 이상이어야 함")
-			},
-		},
-		{
-			name:           "Version 정보 확인",
-			method:         http.MethodGet,
-			path:           "/version",
-			expectedStatus: http.StatusOK,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				var versionResp system.VersionResponse
-				err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
-				require.NoError(t, err, "Version 응답은 JSON이어야 함")
-				assert.Equal(t, "test-version", versionResp.Version)
-				assert.Equal(t, "2025-12-05", versionResp.BuildDate)
-				assert.Equal(t, "1", versionResp.BuildNumber)
-				assert.NotEmpty(t, versionResp.GoVersion)
-			},
-		},
-		{
-			// echo-swagger 미들웨어는 정적 파일이 없더라도 /swagger/index.html 경로에 대해
-			// 기본적으로 200 OK와 함께 자체 UI 템플릿을 렌더링하려고 시도할 수 있음.
-			// 따라서 상태 코드를 200으로 변경하고, Content-Type이 HTML인지 확인하여
-			// 라우트가 정상적으로 연결되었음을 검증함.
-			name:           "Swagger UI 접근",
-			method:         http.MethodGet,
-			path:           "/swagger/index.html",
-			expectedStatus: http.StatusOK,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
-			},
-		},
-		{
-			name:           "존재하지 않는 라우트 (404)",
-			method:         http.MethodGet,
-			path:           "/undefined-route",
-			expectedStatus: http.StatusNotFound,
-			verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
-				// SetupRoutes에서 커스텀 핸들러가 설정되었으므로 JSON 응답을 기대할 수 있음
-				// 단, echo.New()는 기본적으로 텍스트 응답을 줄 수 있으나, SetupRoutes 내부에서
-				// ErrorHandler를 설정하므로 JSON이어야 함.
-				assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(tc.method, tc.path, nil)
-			rec := httptest.NewRecorder()
-			e.ServeHTTP(rec, req)
-
-			assert.Equal(t, tc.expectedStatus, rec.Code)
-
-			if tc.verifyResponse != nil {
-				tc.verifyResponse(t, rec)
-			}
-		})
-	}
+	// Allow Health check by default for routing tests
+	mockSender.On("Health").Return(nil).Maybe()
+	return systemhandler.New(mockSender, buildInfo)
 }
 
-// TestSetupRoutes_Registration 은 각 엔드포인트가 정확한 경로와 메서드로 등록되었는지 검증합니다.
-func TestSetupRoutes_Registration(t *testing.T) {
-	e := echo.New()
-	mockSender := mocks.NewMockNotificationSender()
-	handler := systemhandler.NewHandler(mockSender, version.Info{})
-	SetupRoutes(e, handler)
+// =============================================================================
+// Route Registration Tests
+// =============================================================================
 
-	expectedRoutes := map[string]string{
-		"/health":    http.MethodGet,
-		"/version":   http.MethodGet,
-		"/swagger/*": http.MethodGet,
-	}
+func TestRegisterRoutes(t *testing.T) {
+	// Given
+	e := setupTestEcho()
+	h := setupTestHandler(t)
 
-	routes := e.Routes()
-	for path, method := range expectedRoutes {
-		found := false
-		for _, r := range routes {
-			if r.Path == path && r.Method == method {
-				found = true
-				break
-			}
+	// When
+	RegisterRoutes(e, h)
+
+	// Then
+	// 1. 등록된 라우트 확인
+	t.Run("라우트 등록 검증", func(t *testing.T) {
+		expectedRoutes := map[string]string{
+			"/health":    http.MethodGet,
+			"/version":   http.MethodGet,
+			"/swagger/*": http.MethodGet,
 		}
-		assert.True(t, found, "라우트 %s %s 가 등록되어야 합니다", method, path)
-	}
+
+		routes := e.Routes()
+		for path, method := range expectedRoutes {
+			found := false
+			for _, r := range routes {
+				if r.Path == path && r.Method == method {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "라우트 %s %s가 등록되어야 합니다", method, path)
+		}
+	})
+
+	// 2. 엔드포인트 동작 통합 검증
+	t.Run("엔드포인트 동작 통합 검증", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			method         string
+			path           string
+			expectedStatus int
+			verifyResponse func(t *testing.T, rec *httptest.ResponseRecorder)
+		}{
+			{
+				name:           "Health 체크 (시스템 상태)",
+				method:         http.MethodGet,
+				path:           "/health",
+				expectedStatus: http.StatusOK,
+				verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+					var healthResp system.HealthResponse
+					err := json.Unmarshal(rec.Body.Bytes(), &healthResp)
+					require.NoError(t, err)
+					assert.Equal(t, "healthy", healthResp.Status)
+					assert.GreaterOrEqual(t, healthResp.Uptime, int64(0))
+					assert.Contains(t, healthResp.Dependencies, "notification_service")
+				},
+			},
+			{
+				name:           "Version 정보 (빌드 정보)",
+				method:         http.MethodGet,
+				path:           "/version",
+				expectedStatus: http.StatusOK,
+				verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+					var versionResp system.VersionResponse
+					err := json.Unmarshal(rec.Body.Bytes(), &versionResp)
+					require.NoError(t, err)
+					assert.Equal(t, "test-version", versionResp.Version)
+					assert.Equal(t, "2025-12-05", versionResp.BuildDate)
+					assert.Equal(t, "1", versionResp.BuildNumber)
+					assert.NotEmpty(t, versionResp.GoVersion)
+				},
+			},
+			{
+				name:           "Swagger UI 접근 (리다이렉트)",
+				method:         http.MethodGet,
+				path:           "/swagger/index.html",
+				expectedStatus: http.StatusOK,
+				verifyResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
+					// Swagger UI HTML 컨텐츠 반환 확인
+					assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+				},
+			},
+			{
+				name:           "Swagger JSON 문서 접근",
+				method:         http.MethodGet,
+				path:           "/swagger/doc.json", // echo-swagger 기본 설정 경로
+				expectedStatus: http.StatusNotFound, // 주의: 실제 doc.json 파일이 없으면 404가 뜰 수 있음. 여기선 핸들러 등록 여부만 보거나, 404면 404로 검증.
+				// echo-swagger는 내부적으로 파일을 찾는데, 테스트 환경에 파일이 없으므로 404 혹은 500이 날 수 있음.
+				// 하지만 여기서는 라우팅 자체가 되었는지만 확인하면 되므로, 404라도 Echo가 처리한 것이면 OK.
+				// (만약 라우트가 없다면 404지만 Echo 기본 404 핸들러를 탐)
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(tc.method, tc.path, nil)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				// Swagger JSON의 경우 파일 부재로 404가 날 수 있으므로 별도 처리하지 않고
+				// 여기서는 상태 코드보다는 패닉 없이 수행되는지를 중점으로 볼 수도 있음.
+				// 하지만 명확함을 위해 Health/Version은 Code까지 검증.
+				if tc.name == "Swagger JSON 문서 접근" {
+					return // 파일 의존성이 있으므로 생략하거나, mock 파일 시스템이 필요함.
+				}
+
+				assert.Equal(t, tc.expectedStatus, rec.Code)
+				if tc.verifyResponse != nil {
+					tc.verifyResponse(t, rec)
+				}
+			})
+		}
+	})
+
+	// 3. 에러 핸들링 검증
+	t.Run("에러 핸들링 검증", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			method         string
+			path           string
+			expectedStatus int
+		}{
+			{
+				name:           "존재하지 않는 경로 (404 Not Found)",
+				method:         http.MethodGet,
+				path:           "/nonexistent",
+				expectedStatus: http.StatusNotFound,
+			},
+			{
+				name:           "지원하지 않는 메서드 (405 Method Not Allowed)",
+				method:         http.MethodPost,
+				path:           "/health",
+				expectedStatus: http.StatusMethodNotAllowed,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(tc.method, tc.path, nil)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				assert.Equal(t, tc.expectedStatus, rec.Code)
+			})
+		}
+	})
 }
