@@ -1,4 +1,4 @@
-package navershopping
+﻿package navershopping
 
 import (
 	"encoding/json"
@@ -496,7 +496,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Task 생성 및 RunBy 설정
 			tsk := &task{
-				Task: tasksvc.NewBaseTask("T", "C", "I", "N", tt.runBy),
+				Base: tasksvc.NewBaseTask("T", "C", "I", "N", tt.runBy),
 			}
 
 			current := &watchPriceSnapshot{Products: tt.currentItems}
@@ -975,7 +975,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
-	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
+	tsk.Base = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
 	tsk.SetFetcher(mockFetcher)
 
 	// 강제로 취소 상태 주입 (Context Cancel)
@@ -996,7 +996,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
 func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	tsk := &task{}
-	tsk.Task = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
+	tsk.Base = tasksvc.NewBaseTask("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
 	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
 
 	// Setup Large Data

@@ -46,7 +46,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Task: tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base: tasksvc.NewBaseTask(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 

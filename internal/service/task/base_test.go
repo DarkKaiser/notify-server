@@ -64,7 +64,7 @@ func TestTask_Run(t *testing.T) {
 		name                 string
 		runBy                contract.TaskRunBy                                                                          // 실행 주체 (User vs Scheduler)
 		setup                func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) // 테스트 환경 설정
-		preRunAction         func(task *Task)                                                                            // Run 실행 전 동작 (예: 취소)
+		preRunAction         func(task *Base)                                                                            // Run 실행 전 동작 (예: 취소)
 		verifyNotification   func(t *testing.T, notifs []contract.Notification)                                          // Notification 상태 검증 콜백
 		expectedNotifyCount  int                                                                                         // 알림 발송 횟수 (에러 알림 포함)
 		expectedMessageParts []string                                                                                    // 알림 메시지에 포함되어야 할 문자열
@@ -177,7 +177,7 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			preRunAction: func(task *Task) {
+			preRunAction: func(task *Base) {
 				task.Cancel()
 			},
 			expectedNotifyCount: 0,

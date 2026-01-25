@@ -114,7 +114,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	lottoTask := &task{
-		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		Base: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
 		appPath: appPath,
 
@@ -135,7 +135,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 }
 
 type task struct {
-	tasksvc.Task
+	tasksvc.Base
 
 	appPath string
 

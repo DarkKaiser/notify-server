@@ -45,7 +45,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	naverTask := &task{
-		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		Base: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 	}
 
 	naverTask.SetFetcher(notificationFetcher)
@@ -103,5 +103,5 @@ func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, co
 }
 
 type task struct {
-	tasksvc.Task
+	tasksvc.Base
 }

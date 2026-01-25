@@ -170,17 +170,17 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 			},
 		},
 		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-			t := MockCreateTask(taskID, commandID, instanceID)
-			return t, nil
+			t := NewMockTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser)
+			return &t, nil
 		},
 	}
 }
 
-// MockCreateTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-func MockCreateTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID) *tasksvc.Task {
-	t := tasksvc.NewBaseTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser)
+// NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
+func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) tasksvc.Base {
+	t := tasksvc.NewBaseTask(taskID, commandID, instanceID, notifierID, runBy)
 	t.SetStorage(&MockTaskResultStorage{})
-	return &t
+	return t
 }
 
 // RegisterMockTask Mock TaskResultStorage에 특정 작업 결과를 미리 등록합니다.
