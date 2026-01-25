@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,10 +22,10 @@ import (
 
 // setupTestNotifier initializes a fully functional telegramNotifier for testing.
 // It uses the actual factory function to ensure all internal fields (including Base) are correctly set up.
-func setupTestNotifier(t *testing.T) (*telegramNotifier, *MockTelegramBot, *taskmocks.MockExecutor) {
+func setupTestNotifier(t *testing.T) (*telegramNotifier, *MockTelegramBot, *contractmocks.MockTaskExecutor) {
 	appConfig := &config.AppConfig{}
 	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+	mockExecutor := &contractmocks.MockTaskExecutor{}
 
 	args := creationArgs{
 		BotToken:  "test-token",

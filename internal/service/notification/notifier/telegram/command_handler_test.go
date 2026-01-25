@@ -10,7 +10,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -47,7 +47,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 	tests := []struct {
 		name           string
 		commandMessage *tgbotapi.Message
-		setupMocks     func(*MockTelegramBot, *taskmocks.MockExecutor, *sync.WaitGroup)
+		setupMocks     func(*MockTelegramBot, *contractmocks.MockTaskExecutor, *sync.WaitGroup)
 		expectAction   bool // If true, waits for an async action (Send or Submit)
 	}{
 		// ---------------------------------------------------------------------
@@ -60,7 +60,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -77,7 +77,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Task submission uses the parent context (serviceStopCtx), so we don't check for short timeout deadline here
 				// but verify the Submit call itself.
@@ -95,7 +95,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Expect cancellation of specific instance
 				me.On("Cancel", contract.TaskInstanceID("task_1_instance_123")).
@@ -115,7 +115,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -132,7 +132,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -149,7 +149,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Verify Send is called
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
@@ -168,7 +168,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -187,7 +187,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -204,7 +204,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				mb.On("Send", mock.MatchedBy(func(c tgbotapi.Chattable) bool {
 					msg, ok := c.(tgbotapi.MessageConfig)
@@ -226,7 +226,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Executor fails
 				me.On("Submit", mock.Anything, mock.Anything).Return(errors.New("queue full")).Once()
@@ -248,7 +248,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// Executor fails (e.g. not found)
 				me.On("Cancel", mock.Anything).Return(errors.New("not found")).Once()
@@ -274,7 +274,7 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 				Chat: &tgbotapi.Chat{ID: testTelegramChatID},
 			},
 			expectAction: true,
-			setupMocks: func(mb *MockTelegramBot, me *taskmocks.MockExecutor, wg *sync.WaitGroup) {
+			setupMocks: func(mb *MockTelegramBot, me *contractmocks.MockTaskExecutor, wg *sync.WaitGroup) {
 				wg.Add(1)
 				// We simulate a panic by mocking a call that panics.
 				// Since dispatchCommand calls replyUnknownCommand for "/panic_trigger",

@@ -7,9 +7,9 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +32,7 @@ func TestFactory_CreateAll(t *testing.T) {
 	t.Parallel()
 
 	// 공통 Mock 객체
-	mockMsgExecutor := &taskmocks.MockExecutor{}
+	mockMsgExecutor := &contractmocks.MockTaskExecutor{}
 	cfg := &config.AppConfig{}
 
 	// Test case 구조체의 가독성을 높여 정의

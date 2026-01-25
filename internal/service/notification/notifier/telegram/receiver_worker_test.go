@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -26,7 +26,7 @@ type receiverTestEnv struct {
 	cancel       context.CancelFunc
 	notifier     *telegramNotifier
 	mockBot      *MockTelegramBot
-	mockExecutor *taskmocks.MockExecutor
+	mockExecutor *contractmocks.MockTaskExecutor
 	updatesChan  chan tgbotapi.Update
 	wg           sync.WaitGroup
 }
@@ -34,7 +34,7 @@ type receiverTestEnv struct {
 // setupReceiverTest initializes common test dependencies
 func setupReceiverTest(t *testing.T) *receiverTestEnv {
 	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+	mockExecutor := &contractmocks.MockTaskExecutor{}
 	appConfig := &config.AppConfig{}
 
 	args := creationArgs{

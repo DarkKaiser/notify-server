@@ -10,10 +10,10 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,7 +59,7 @@ func (s *StubPanicNotifier) SupportsHTML() bool                                 
 type serviceTestHelper struct {
 	t            *testing.T
 	service      *Service
-	mockExecutor *taskmocks.MockExecutor
+	mockExecutor *contractmocks.MockTaskExecutor
 	mockFactory  *notificationmocks.MockFactory
 	// Key: NotifierID, Value: MockNotifier
 	mocks map[string]*notificationmocks.MockNotifier
@@ -68,7 +68,7 @@ type serviceTestHelper struct {
 func newServiceTestHelper(t *testing.T) *serviceTestHelper {
 	return &serviceTestHelper{
 		t:            t,
-		mockExecutor: &taskmocks.MockExecutor{},
+		mockExecutor: &contractmocks.MockTaskExecutor{},
 		mockFactory:  new(notificationmocks.MockFactory),
 		mocks:        make(map[string]*notificationmocks.MockNotifier),
 	}
@@ -134,7 +134,7 @@ func (h *serviceTestHelper) DirtyStart(s *Service, defaultID string) {
 func TestNewService(t *testing.T) {
 	t.Parallel()
 	appConfig := &config.AppConfig{}
-	mockExecutor := &taskmocks.MockExecutor{}
+	mockExecutor := &contractmocks.MockTaskExecutor{}
 	mockFactory := new(notificationmocks.MockFactory)
 	service := NewService(appConfig, mockFactory, mockExecutor)
 
@@ -234,7 +234,7 @@ func TestService_Start_Errors(t *testing.T) {
 				tt.cfgSetup(cfg)
 			}
 
-			var executor contract.TaskExecutor = &taskmocks.MockExecutor{}
+			var executor contract.TaskExecutor = &contractmocks.MockTaskExecutor{}
 			if tt.executorNil {
 				executor = nil
 			}
@@ -269,7 +269,7 @@ func TestService_Start_PanicRecovery(t *testing.T) {
 			DefaultNotifierID: "normal",
 		},
 	}
-	executor := &taskmocks.MockExecutor{}
+	executor := &contractmocks.MockTaskExecutor{}
 
 	// StubPanicNotifier will panic on Run()
 	panicNotifier := &StubPanicNotifier{id: "panic"}

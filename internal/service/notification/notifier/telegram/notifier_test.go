@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -32,11 +32,11 @@ const (
 
 // setupTelegramTest sets up common test objects.
 // 이 헬퍼는 다른 테스트 파일(sender_worker_test.go 등)에서도 사용될 수 있습니다.
-func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *taskmocks.MockExecutor, chan tgbotapi.Update) {
+func setupTelegramTest(t *testing.T, appConfig *config.AppConfig) (*telegramNotifier, *MockTelegramBot, *contractmocks.MockTaskExecutor, chan tgbotapi.Update) {
 	t.Helper()
 
 	mockBot := &MockTelegramBot{}
-	mockExecutor := &taskmocks.MockExecutor{}
+	mockExecutor := &contractmocks.MockTaskExecutor{}
 	updatesChan := make(chan tgbotapi.Update, 100)
 
 	args := creationArgs{

@@ -10,8 +10,9 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
-	taskmocks "github.com/darkkaiser/notify-server/internal/service/task/mocks"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,7 +75,7 @@ func TestNewCreator(t *testing.T) {
 func TestBuildCreator(t *testing.T) {
 	t.Parallel()
 
-	mockExecutor := &taskmocks.MockExecutor{}
+	mockExecutor := &contractmocks.MockTaskExecutor{}
 
 	tests := []struct {
 		name        string
@@ -220,7 +221,7 @@ func TestNewNotifier_Integration(t *testing.T) {
 			}
 
 			// when
-			n, err := newNotifier("test-notifier", &taskmocks.MockExecutor{}, args)
+			n, err := newNotifier("test-notifier", &contractmocks.MockTaskExecutor{}, args)
 
 			// then
 			if tt.expectErr {
@@ -324,7 +325,7 @@ func TestNewNotifierWithClient_Success(t *testing.T) {
 
 			// given
 			mockBot := &MockTelegramBot{}
-			mockExecutor := &taskmocks.MockExecutor{}
+			mockExecutor := &contractmocks.MockTaskExecutor{}
 			args := creationArgs{
 				BotToken:  "test-token",
 				ChatID:    12345,
@@ -366,7 +367,7 @@ func TestNewNotifierWithClient_Failure(t *testing.T) {
 		mockBot := &MockTelegramBot{}
 		args := creationArgs{BotToken: "t", ChatID: 1, AppConfig: collisionConfig}
 
-		n, err := newNotifierWithClient("id", mockBot, &taskmocks.MockExecutor{}, args)
+		n, err := newNotifierWithClient("id", mockBot, &contractmocks.MockTaskExecutor{}, args)
 		require.Error(t, err)
 		assert.Nil(t, n)
 		assert.Contains(t, err.Error(), "/foo_bar_baz")
@@ -380,7 +381,7 @@ func TestNewNotifierWithClient_Failure(t *testing.T) {
 		}
 		args := creationArgs{BotToken: "t", ChatID: 1, AppConfig: invalidConfig}
 
-		n, err := newNotifierWithClient("id", mockBot, &taskmocks.MockExecutor{}, args)
+		n, err := newNotifierWithClient("id", mockBot, &contractmocks.MockTaskExecutor{}, args)
 		require.Error(t, err)
 		assert.Nil(t, n)
 		assert.Contains(t, err.Error(), "필수입니다")
