@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -64,7 +65,7 @@ func TestTask_Run(t *testing.T) {
 		runBy                contract.TaskRunBy                                                                          // 실행 주체 (User vs Scheduler)
 		setup                func(tID contract.TaskID, cID contract.TaskCommandID) (*MockTaskResultStorage, ExecuteFunc) // 테스트 환경 설정
 		preRunAction         func(task *Task)                                                                            // Run 실행 전 동작 (예: 취소)
-		verifyContext        func(t *testing.T, ctxs []contract.TaskContext)                                             // Context 상태 검증 콜백
+		verifyNotification   func(t *testing.T, notifs []contract.Notification)                                          // Notification 상태 검증 콜백
 		expectedNotifyCount  int                                                                                         // 알림 발송 횟수 (에러 알림 포함)
 		expectedMessageParts []string                                                                                    // 알림 메시지에 포함되어야 할 문자열
 		expectPanic          bool                                                                                        // Panic 발생 여부 (Recover 되었는지)
@@ -83,11 +84,11 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
 				// 스케줄러 실행 -> 취소 불가
-				assert.NotEmpty(t, ctxs)
-				for _, tCtx := range ctxs {
-					assert.False(t, tCtx.IsCancelable(), "스케줄러 실행 작업은 취소 불가능해야 합니다")
+				assert.NotEmpty(t, notifs)
+				for _, n := range notifs {
+					assert.False(t, n.Cancelable, "스케줄러 실행 작업은 취소 불가능해야 합니다")
 				}
 			},
 			expectedNotifyCount:  1,
@@ -107,14 +108,14 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
 				// 사용자 실행 -> 실행 중에는 취소 가능했지만, 최종 결과 알림 시점에는 취소 불가능으로 변경됨
-				// MockSender에 전달된 컨텍스트는 이미 WithCancelable(false) 처리된 상태임
-				assert.NotEmpty(t, ctxs)
-
-				tCtx := ctxs[len(ctxs)-1]
-				assert.False(t, tCtx.IsCancelable(), "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
+				// handleExecutionResult에서 완료 알림은 Cancelable=false로 강제 설정함.
+				assert.NotEmpty(t, notifs)
+				lastNotif := notifs[len(notifs)-1]
+				assert.False(t, lastNotif.Cancelable, "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
 			},
+
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"사용자 요청 완료"},
 		},
@@ -144,10 +145,11 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{msgExecuteFuncNotInitialized},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
-				// 에러 알림 시에도 취소 불가능해야 함
-				for _, ctx := range ctxs {
-					assert.False(t, ctx.IsCancelable())
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
+				// 에러 알림 -> ErrorOccurred=true, Cancelable=false (notifyError 구현상)
+				for _, n := range notifs {
+					assert.False(t, n.Cancelable)
+					assert.True(t, n.ErrorOccurred)
 				}
 			},
 		},
@@ -194,10 +196,10 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  1,
 			expectedMessageParts: []string{"API 호출 실패", msgTaskExecutionFailed},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
-				// 실패 알림 시 취소 불가능 (작업 종료됨)
-				for _, ctx := range ctxs {
-					assert.False(t, ctx.IsCancelable())
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
+				// 실패 알림(notifyError) -> Cancelable=false
+				for _, n := range notifs {
+					assert.False(t, n.Cancelable)
 				}
 			},
 		},
@@ -216,10 +218,14 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount:  2, // 1. 정상 메시지, 2. 저장 실패 에러 메시지
 			expectedMessageParts: []string{"성공했으나 저장실패", "DB Disk Full"},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
-				// 두 번의 알림 모두 완료 후 시점이므로 취소 불가능해야 함
-				for _, ctx := range ctxs {
-					assert.False(t, ctx.IsCancelable())
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
+				// 두 번의 알림 모두 완료 후 시점이므로 (하나는 성공 후 저장실패)
+				// 1. notify(성공) -> RunBy=Scheduler(Default) -> False? Test setup uses default.
+				// Wait, setup function doesn't set RunBy. Default NewBaseTask uses provided arg in loop.
+				// Loop sets RunBy based on test case. Here it is Default (Scheduler).
+				// So Cancelable=False.
+				for _, n := range notifs {
+					assert.False(t, n.Cancelable)
 				}
 			},
 		},
@@ -254,12 +260,12 @@ func TestTask_Run(t *testing.T) {
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			verifyContext: func(t *testing.T, ctxs []contract.TaskContext) {
-				// 첫 번째 알림(Load Error Warn)은 작업 진행 중이므로 취소 가능해야 함 (User Run)
-				require.Len(t, ctxs, 2)
-				assert.True(t, ctxs[0].IsCancelable(), "진행 중 발생한 경고 알림은 취소 가능해야 합니다 (User Run)")
-				// 두 번째 알림(완료)은 취소 불가능
-				assert.False(t, ctxs[1].IsCancelable(), "완료 알림은 취소 불가능해야 합니다")
+			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
+				// 첫 번째 알림(Load Error Warn) -> notify() 호출 -> RunBy=User -> Cancelable=True
+				require.Len(t, notifs, 2)
+				assert.True(t, notifs[0].Cancelable, "진행 중 발생한 경고 알림은 취소 가능해야 합니다 (User Run)")
+				// 두 번째 알림(완료) -> handleExecutionResult -> Cancelable=False
+				assert.False(t, notifs[1].Cancelable, "완료 알림은 취소 불가능해야 합니다")
 			},
 			expectedNotifyCount:  2, // 1. Load 에러 알림(Warn), 2. 실행 결과 알림
 			expectedMessageParts: []string{"이전 작업결과데이터 로딩이 실패", "복구 후 실행"},
@@ -272,7 +278,7 @@ func TestTask_Run(t *testing.T) {
 			tID, cID := generateUniqueIDs("TASK")
 
 			// Mock 객체 생성
-			mockSender := NewMockNotificationSender()
+			mockSender := notificationmocks.NewMockNotificationSender(t)
 
 			// Setup
 			store, exec := tt.setup(tID, cID)
@@ -303,12 +309,11 @@ func TestTask_Run(t *testing.T) {
 			// Notify might be called multiple times. We allow any calls for now and verify later,
 			// or we can set specific expectations if `tt.expectedNotifyCount` is known.
 			// But for simplicity/flexibility, we allow calls and verify count later.
-			mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-			mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-			mockSender.On("NotifyDefault", mock.Anything).Return(nil)
-			mockSender.On("NotifyDefaultWithError", mock.Anything).Return(nil)
+			mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			go task.Run(contract.NewTaskContext(), mockSender, wg, doneC)
+			mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
+
+			go task.Run(context.Background(), mockSender, wg, doneC)
 
 			// Wait for completion
 			waitTimeout(t, wg, 2*time.Second)
@@ -322,15 +327,10 @@ func TestTask_Run(t *testing.T) {
 			// Update: Some tests might trigger NotifyDefault/WithError?
 			// Let's check `collectAllMessages`.
 
-			// Verify count for "Notify" specifically if that's what was tested.
-			// Or check total calls?
-			// The original `GetNotifyCallCount` returned `len(m.NotifyCalls)`.
-			// `m.NotifyCalls` was appended in `Notify`.
-			// Verify count for all notification methods
+			// Verify notification call count
 			actualNotifyCount := 0
 			for _, call := range mockSender.Calls {
-				if call.Method == "Notify" || call.Method == "NotifyWithTitle" ||
-					call.Method == "NotifyDefault" || call.Method == "NotifyDefaultWithError" {
+				if call.Method == "Notify" {
 					actualNotifyCount++
 				}
 			}
@@ -343,19 +343,17 @@ func TestTask_Run(t *testing.T) {
 				}
 			}
 
-			if tt.verifyContext != nil {
-				if tt.verifyContext != nil {
-					// Extract contexts from calls
-					var ctxs []contract.TaskContext
-					for _, call := range mockSender.Calls {
-						if call.Method == "Notify" {
-							if ctx, ok := call.Arguments.Get(0).(contract.TaskContext); ok {
-								ctxs = append(ctxs, ctx)
-							}
+			if tt.verifyNotification != nil {
+				// Extract notifications from calls
+				var notifs []contract.Notification
+				for _, call := range mockSender.Calls {
+					if call.Method == "Notify" {
+						if n, ok := call.Arguments.Get(1).(contract.Notification); ok {
+							notifs = append(notifs, n)
 						}
 					}
-					tt.verifyContext(t, ctxs)
 				}
+				tt.verifyNotification(t, notifs)
 			}
 
 			if store != nil {
@@ -409,12 +407,8 @@ func collectAllMessages(sender *notificationmocks.MockNotificationSender) string
 	for _, call := range sender.Calls {
 		// Method check and argument extraction
 		if call.Method == "Notify" {
-			if msg, ok := call.Arguments.Get(2).(string); ok {
-				sb += msg + "\n"
-			}
-		} else if call.Method == "NotifyDefault" || call.Method == "NotifyDefaultWithError" {
-			if msg, ok := call.Arguments.Get(0).(string); ok {
-				sb += msg + "\n"
+			if n, ok := call.Arguments.Get(1).(contract.Notification); ok {
+				sb += n.Message + "\n"
 			}
 		}
 	}
@@ -430,9 +424,9 @@ func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
 		return "", nil, nil
 	})
 
-	mockSender := NewMockNotificationSender()
-	mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	ctx := contract.NewTaskContext()
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+	ctx := context.Background()
 
 	// Direct call to prepareExecution to check internal error
 	_, err := task.prepareExecution(ctx, mockSender)

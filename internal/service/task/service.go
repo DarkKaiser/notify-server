@@ -148,13 +148,13 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitG
 			if !ok {
 				return
 			}
-			s.handleSubmitRequest(req)
+			s.handleSubmitRequest(serviceStopCtx, req)
 
 		case instanceID := <-s.taskDoneC:
 			s.handleTaskDone(instanceID)
 
 		case instanceID := <-s.taskCancelC:
-			s.handleTaskCancel(instanceID)
+			s.handleTaskCancel(serviceStopCtx, instanceID)
 
 		case <-serviceStopCtx.Done():
 			s.handleStop()
@@ -164,14 +164,12 @@ func (s *Service) run0(serviceStopCtx context.Context, serviceStopWG *sync.WaitG
 }
 
 // handleSubmitRequest 새로운 Task 실행 요청을 처리합니다.
-func (s *Service) handleSubmitRequest(req *contract.TaskSubmitRequest) {
+func (s *Service) handleSubmitRequest(serviceStopCtx context.Context, req *contract.TaskSubmitRequest) {
 	applog.WithComponentAndFields("task.service", applog.Fields{
 		"task_id":    req.TaskID,
 		"command_id": req.CommandID,
 		"run_by":     req.RunBy,
 	}).Debug("새로운 Task 실행 요청 수신")
-
-	req.TaskContext = req.TaskContext.WithTask(req.TaskID, req.CommandID)
 
 	cfg, err := findConfig(req.TaskID, req.CommandID)
 	if err != nil {
@@ -181,7 +179,16 @@ func (s *Service) handleSubmitRequest(req *contract.TaskSubmitRequest) {
 			"error":      err,
 		}).Error(ErrTaskNotSupported.Error())
 
-		go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, ErrTaskNotSupported.Error())
+		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+			NotifierID:    req.NotifierID,
+			TaskID:        req.TaskID,
+			CommandID:     req.CommandID,
+			InstanceID:    "", // InstanceID not yet generated
+			Message:       ErrTaskNotSupported.Error(),
+			ElapsedTime:   0,
+			ErrorOccurred: true,
+			Cancelable:    false,
+		})
 
 		return
 	}
@@ -189,23 +196,32 @@ func (s *Service) handleSubmitRequest(req *contract.TaskSubmitRequest) {
 	// 인스턴스 중복 실행 확인
 	// AllowMultiple이 false인 경우, 동일한 Task(Command)가 이미 실행 중이면 요청을 거부합니다.
 	if !cfg.Command.AllowMultiple {
-		if s.checkConcurrencyLimit(req) {
+		if s.checkConcurrencyLimit(serviceStopCtx, req) {
 			return
 		}
 	}
 
-	s.createAndStartTask(req, cfg)
+	s.createAndStartTask(serviceStopCtx, req, cfg)
 }
 
 // checkConcurrencyLimit 현재 실행 중인 Task 목록을 순회하여 중복 실행 여부를 확인합니다.
-func (s *Service) checkConcurrencyLimit(req *contract.TaskSubmitRequest) bool {
+func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *contract.TaskSubmitRequest) bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
 	for _, handler := range s.handlers {
 		if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && !handler.IsCanceled() {
-			req.TaskContext = req.TaskContext.WithTaskInstanceID(handler.GetInstanceID(), handler.ElapsedTimeAfterRun())
-			go s.notificationSender.Notify(req.TaskContext, req.NotifierID, msgTaskAlreadyRunning)
+			// req.TaskContext = req.TaskContext.WithTaskInstanceID... -> Removed
+			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+				NotifierID:    req.NotifierID,
+				TaskID:        req.TaskID,
+				CommandID:     req.CommandID,
+				InstanceID:    handler.GetInstanceID(),
+				Message:       msgTaskAlreadyRunning,
+				ElapsedTime:   time.Duration(handler.ElapsedTimeAfterRun()) * time.Second,
+				ErrorOccurred: false,
+				Cancelable:    false,
+			})
 			return true
 		}
 	}
@@ -213,7 +229,7 @@ func (s *Service) checkConcurrencyLimit(req *contract.TaskSubmitRequest) bool {
 	return false
 }
 
-func (s *Service) createAndStartTask(req *contract.TaskSubmitRequest, cfg *ConfigLookup) {
+func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *ConfigLookup) {
 	// 무한 루프 방지를 위한 최대 재시도 횟수
 	const maxRetries = 3
 
@@ -246,7 +262,16 @@ func (s *Service) createAndStartTask(req *contract.TaskSubmitRequest, cfg *Confi
 				"error":      err,
 			}).Error(err)
 
-			go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, err.Error())
+			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+				NotifierID:    req.NotifierID,
+				TaskID:        req.TaskID,
+				CommandID:     req.CommandID,
+				InstanceID:    "", // InstanceID not generated
+				Message:       err.Error(),
+				ElapsedTime:   0,
+				ErrorOccurred: true,
+				Cancelable:    false,
+			})
 
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
@@ -272,11 +297,21 @@ func (s *Service) createAndStartTask(req *contract.TaskSubmitRequest, cfg *Confi
 
 		// Task 실행
 		s.taskStopWG.Add(1)
-		req.TaskContext = req.TaskContext.WithTaskInstanceID(instanceID, 0)
-		go h.Run(req.TaskContext, s.notificationSender, s.taskStopWG, s.taskDoneC)
+		// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
+		// context.Background()를 전달합니다. Task 취소는 handler.Cancel()을 통해 처리됩니다.
+		go h.Run(context.Background(), s.notificationSender, s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
-			go s.notificationSender.Notify(req.TaskContext.WithCancelable(req.RunBy == contract.TaskRunByUser), req.NotifierID, msgTaskRunning)
+			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+				NotifierID:    req.NotifierID,
+				TaskID:        req.TaskID,
+				CommandID:     req.CommandID,
+				InstanceID:    instanceID,
+				Message:       msgTaskRunning,
+				ElapsedTime:   0,
+				ErrorOccurred: false,
+				Cancelable:    req.RunBy == contract.TaskRunByUser,
+			})
 		}
 
 		// 성공적으로 실행했으므로 함수를 종료합니다.
@@ -289,7 +324,16 @@ func (s *Service) createAndStartTask(req *contract.TaskSubmitRequest, cfg *Confi
 		"command_id": req.CommandID,
 	}).Error("Task ID 생성 충돌이 반복되어 실행에 실패했습니다.")
 
-	go s.notificationSender.Notify(req.TaskContext.WithError(), req.NotifierID, "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).")
+	go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+		NotifierID:    req.NotifierID,
+		TaskID:        req.TaskID,
+		CommandID:     req.CommandID,
+		InstanceID:    "",
+		Message:       "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).",
+		ElapsedTime:   0,
+		ErrorOccurred: true,
+		Cancelable:    false,
+	})
 }
 
 func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
@@ -311,7 +355,7 @@ func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 	}
 }
 
-func (s *Service) handleTaskCancel(instanceID contract.TaskInstanceID) {
+func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID contract.TaskInstanceID) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -324,13 +368,22 @@ func (s *Service) handleTaskCancel(instanceID contract.TaskInstanceID) {
 			"instance_id": instanceID,
 		}).Debug("Task 작업 취소")
 
-		go s.notificationSender.Notify(contract.NewTaskContext().WithTask(handler.GetID(), handler.GetCommandID()), handler.GetNotifierID(), msgTaskCanceledByUser)
+		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+			NotifierID:    handler.GetNotifierID(),
+			TaskID:        handler.GetID(),
+			CommandID:     handler.GetCommandID(),
+			InstanceID:    instanceID,
+			Message:       msgTaskCanceledByUser,
+			ElapsedTime:   time.Duration(handler.ElapsedTimeAfterRun()) * time.Second,
+			ErrorOccurred: false,
+			Cancelable:    false,
+		})
 	} else {
 		applog.WithComponentAndFields("task.service", applog.Fields{
 			"instance_id": instanceID,
 		}).Warn("등록되지 않은 Task에 대한 작업취소 요청 메시지 수신")
 
-		go s.notificationSender.NotifyDefault(fmt.Sprintf(msgTaskNotFound, instanceID))
+		go s.notificationSender.Notify(serviceStopCtx, contract.NewNotification(fmt.Sprintf(msgTaskNotFound, instanceID)))
 	}
 }
 
@@ -377,6 +430,7 @@ func (s *Service) handleStop() {
 	select {
 	case <-done:
 		// 정상적으로 모든 태스크가 종료됨
+
 	case <-time.After(30 * time.Second):
 		applog.WithComponent("task.service").Warn("Service 종료 대기 시간 초과! (30s) 강제 종료합니다.")
 	}
@@ -396,7 +450,7 @@ func (s *Service) handleStop() {
 }
 
 // Submit 작업을 실행 큐에 등록합니다.
-func (s *Service) Submit(req *contract.TaskSubmitRequest) (err error) {
+func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (err error) {
 	if req == nil {
 		return apperrors.New(apperrors.Internal, "Invalid task submit request type")
 	}
@@ -433,6 +487,7 @@ func (s *Service) Submit(req *contract.TaskSubmitRequest) (err error) {
 	select {
 	case s.taskSubmitC <- req:
 		return nil
+
 	default:
 		return apperrors.New(apperrors.Internal, "Task 실행 요청 큐가 가득 찼습니다.")
 	}
@@ -462,6 +517,7 @@ func (s *Service) Cancel(instanceID contract.TaskInstanceID) (err error) {
 	select {
 	case s.taskCancelC <- instanceID:
 		return nil
+
 	default:
 		return apperrors.New(apperrors.Internal, "Task 취소 요청 큐가 가득 찼습니다.")
 	}

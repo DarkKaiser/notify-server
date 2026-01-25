@@ -8,6 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -37,11 +38,11 @@ func (h *MockHandler) IsCanceled() bool                     { return h.canceled 
 func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
 func (h *MockHandler) SetStorage(storage TaskResultStorage) {}
 
-func (h *MockHandler) Run(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
+func (h *MockHandler) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
 	select {
-	case <-taskCtx.Done():
+	case <-ctx.Done():
 	case <-h.cancelC:
 	}
 
@@ -88,12 +89,10 @@ func init() {
 func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
-	mockSender := NewMockNotificationSender()
+	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// Default expectations for async notifications (Task service is chatty)
-	mockSender.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockSender.On("NotifyWithTitle", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockSender.On("NotifyDefault", mock.Anything).Return(nil).Maybe()
-	mockSender.On("NotifyDefaultWithError", mock.Anything).Return(nil).Maybe()
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+
 	service.SetNotificationSender(mockSender)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -145,7 +144,7 @@ func TestService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 
-	mockSender := NewMockNotificationSender()
+	mockSender := notificationmocks.NewMockNotificationSender(t)
 
 	// 알림 발송자 설정
 	service.SetNotificationSender(mockSender)
@@ -163,11 +162,10 @@ func TestService_TaskRun_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task 실행 요청
-	err := service.Submit(&contract.TaskSubmitRequest{
+	err := service.Submit(context.Background(), &contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
 		NotifierID:    contract.NotifierID("test-notifier"),
-		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
 	})
@@ -185,16 +183,16 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 	service, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task Context 생성
-	taskCtx := contract.NewTaskContext().With("test_key", "test_value")
+	// taskCtx := contract.NewTaskContext().With("test_key", "test_value")
+	taskCtx := context.WithValue(context.Background(), "test_key", "test_value")
 
 	// Task 실행 요청
-	err := service.Submit(&contract.TaskSubmitRequest{
+	err := service.Submit(taskCtx, &contract.TaskSubmitRequest{
 		TaskID:        "TEST_TASK",
 		CommandID:     "TEST_COMMAND",
 		NotifierID:    contract.NotifierID("test-notifier"),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
-		TaskContext:   taskCtx,
 	})
 
 	// 검증
@@ -226,11 +224,10 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 	service, mockSender, _, cancel, serviceStopWG := setupTestService(t)
 
 	// 지원되지 않는 Task 실행 요청
-	err := service.Submit(&contract.TaskSubmitRequest{
+	err := service.Submit(context.Background(), &contract.TaskSubmitRequest{
 		TaskID:        "UNSUPPORTED_TASK",
 		CommandID:     "UNSUPPORTED_COMMAND",
 		NotifierID:    contract.NotifierID("test-notifier"),
-		TaskContext:   contract.NewTaskContext(),
 		NotifyOnStart: false,
 		RunBy:         contract.TaskRunByUser,
 	})
@@ -269,11 +266,10 @@ func TestService_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < numRequestsPerGoroutine; j++ {
 				// Naver Shopping Task 실행 (AllowMultiple=true)
-				service.Submit(&contract.TaskSubmitRequest{
+				service.Submit(context.Background(), &contract.TaskSubmitRequest{
 					TaskID:        "TEST_TASK",
 					CommandID:     "TEST_COMMAND",
 					NotifierID:    contract.NotifierID("test-notifier"),
-					TaskContext:   contract.NewTaskContext(),
 					NotifyOnStart: false,
 					RunBy:         contract.TaskRunByUser,
 				})
@@ -308,11 +304,10 @@ func TestService_CancelConcurrency(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numIterations; i++ {
 			// Task 실행
-			service.Submit(&contract.TaskSubmitRequest{
+			service.Submit(context.Background(), &contract.TaskSubmitRequest{
 				TaskID:        "TEST_TASK",
 				CommandID:     "TEST_COMMAND",
 				NotifierID:    contract.NotifierID("test-notifier"),
-				TaskContext:   contract.NewTaskContext(),
 				NotifyOnStart: false,
 				RunBy:         contract.TaskRunByUser,
 			})
