@@ -56,7 +56,7 @@ func (c *tgClient) GetSelf() tgbotapi.User {
 
 // telegramNotifier 텔레그램을 통한 알림 발송 및 봇 명령어 처리를 담당하는 Notifier 구현체입니다.
 type telegramNotifier struct {
-	notifier.Base
+	*notifier.Base
 
 	// === 메시지 전송 관련 ===
 

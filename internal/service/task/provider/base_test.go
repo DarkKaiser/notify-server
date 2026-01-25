@@ -297,7 +297,7 @@ func TestTask_Run(t *testing.T) {
 
 			// Pre-Run Action
 			if tt.preRunAction != nil {
-				tt.preRunAction(&task)
+				tt.preRunAction(task)
 			}
 
 			// Run

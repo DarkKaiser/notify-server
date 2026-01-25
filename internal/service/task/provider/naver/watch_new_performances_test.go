@@ -352,7 +352,9 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			taskInstance := &task{} // 순수 함수 테스트이므로 빈 task 객체 사용 가능
+			taskInstance := &task{
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+			}
 
 			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
 			var prevSnap *watchNewPerformancesSnapshot
@@ -457,7 +459,9 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			taskInstance := &task{}
+			taskInstance := &task{
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+			}
 			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
 			if tt.validate != nil {
@@ -563,8 +567,9 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			// Setup Task
-			tsk := &task{}
-			tsk.SetRunBy(tt.runBy)
+			tsk := &task{
+				Base: provider.NewBase("T", "C", "I", "N", tt.runBy),
+			}
 
 			// Prepare Snapshots
 			currentSnap := &watchNewPerformancesSnapshot{Performances: tt.currentPerformances}

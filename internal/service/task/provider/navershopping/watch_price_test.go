@@ -298,7 +298,17 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 				tt.mockSetup(mockFetcher)
 			}
 
-			tsk := &task{clientID: "id", clientSecret: "secret"}
+			tsk := &task{
+				Base: provider.NewBase(
+					"test-task",
+					WatchPriceAnyCommand,
+					"test-instance",
+					"test-notifier",
+					contract.TaskRunByUser,
+				),
+				clientID:     "id",
+				clientSecret: "secret",
+			}
 			tsk.SetFetcher(mockFetcher)
 
 			got, err := tsk.fetchProducts(&tt.settings)
@@ -345,7 +355,17 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 			// 어떤 URL이든 성공 응답을 주도록 설정 (URL 검증이 목적이므로 내용은 무관)
 			mockFetcher.SetResponse(tt.expectedURL, defaultResponse)
 
-			tsk := &task{clientID: "id", clientSecret: "secret"}
+			tsk := &task{
+				Base: provider.NewBase(
+					"test-task",
+					WatchPriceAnyCommand,
+					"test-instance",
+					"test-notifier",
+					contract.TaskRunByUser,
+				),
+				clientID:     "id",
+				clientSecret: "secret",
+			}
 			tsk.SetFetcher(mockFetcher)
 
 			_, err := tsk.fetchProducts(&tt.settings)
@@ -684,7 +704,9 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tsk := &task{}
+			tsk := &task{
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+			}
 			got := tsk.mapToProduct(tt.item)
 
 			if tt.wantProduct {
@@ -952,7 +974,17 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 		Total: 150, Start: 101, Display: 50, Items: page2Items,
 	}))
 
-	tsk := &task{clientID: "id", clientSecret: "secret"}
+	tsk := &task{
+		Base: provider.NewBase(
+			"test-task",
+			WatchPriceAnyCommand,
+			"test-instance",
+			"test-notifier",
+			contract.TaskRunByUser,
+		),
+		clientID:     "id",
+		clientSecret: "secret",
+	}
 	tsk.SetFetcher(mockFetcher)
 
 	products, err := tsk.fetchProducts(&settings)

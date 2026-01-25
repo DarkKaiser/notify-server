@@ -135,7 +135,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 }
 
 type task struct {
-	provider.Base
+	*provider.Base
 
 	appPath string
 

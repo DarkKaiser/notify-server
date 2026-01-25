@@ -10,6 +10,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -113,7 +114,9 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 
 func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
-	tsk := &task{}
+	tsk := &task{
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+	}
 
 	tests := []struct {
 		name          string
@@ -287,7 +290,9 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 				mockFetcher.On("Get", url).Return(createMockResponse(tt.mockStatusCode, tt.mockHTML), nil)
 			}
 
-			tsk := &task{}
+			tsk := &task{
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+			}
 			tsk.SetFetcher(mockFetcher)
 
 			got, err := tsk.fetchProductInfo(tt.productID)
@@ -315,7 +320,9 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 
 func TestTask_DiffAndNotify(t *testing.T) {
 	t.Parallel()
-	tsk := &task{}
+	tsk := &task{
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+	}
 
 	newProduct := func(id, price int) *product {
 		p := &product{ID: id, Name: "Test", Price: price}

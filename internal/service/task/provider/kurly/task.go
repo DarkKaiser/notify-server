@@ -110,7 +110,7 @@ func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, co
 }
 
 type task struct {
-	provider.Base
+	*provider.Base
 
 	appConfig *config.AppConfig
 }
