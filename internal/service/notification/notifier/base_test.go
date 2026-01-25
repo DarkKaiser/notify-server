@@ -68,8 +68,7 @@ func TestBase_Initialization(t *testing.T) {
 			t.Parallel()
 
 			// Act
-			baseVal := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.enqueueTimeout)
-			n := &baseVal
+			n := NewBase(tt.id, tt.supportsHTML, tt.bufferSize, tt.enqueueTimeout)
 
 			// Assert: Public Accessors
 			assert.Equal(t, tt.id, n.ID())
@@ -103,16 +102,14 @@ func TestBase_Send(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Success_EmptyBuffer", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 		err := n.Send(context.Background(), contract.NewNotification(testMessage))
 		assert.NoError(t, err)
 	})
 
 	t.Run("Context Propagation", func(t *testing.T) {
 		// 전달한 Context가 Consumer에게 그대로 전달되는지 확인
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 
 		key := "req-id"
 		val := "1234"
@@ -130,8 +127,7 @@ func TestBase_Send(t *testing.T) {
 	})
 
 	t.Run("Failure_BufferFull_Timeout", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 0, 10*time.Millisecond) // Short timeout
-		n := &baseVal
+		n := NewBase(testID, true, 0, 10*time.Millisecond) // Short timeout
 
 		// Unbuffered channel with no consumer -> Send will block then timeout
 		start := time.Now()
@@ -143,8 +139,7 @@ func TestBase_Send(t *testing.T) {
 	})
 
 	t.Run("Failure_ContextAlreadyCancelled", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
@@ -153,8 +148,7 @@ func TestBase_Send(t *testing.T) {
 	})
 
 	t.Run("Failure_ContextCancelled_WhileBlocking", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 0, 1*time.Second) // Long timeout
-		n := &baseVal
+		n := NewBase(testID, true, 0, 1*time.Second) // Long timeout
 		ctx, cancel := context.WithCancel(context.Background())
 
 		// Start cancel timer
@@ -173,8 +167,7 @@ func TestBase_Send(t *testing.T) {
 
 	t.Run("Success_PrepareSend_ContextTODO", func(t *testing.T) {
 		// Context가 TODO일 때도 정상 동작해야 함
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 
 		err := n.Send(context.TODO(), contract.NewNotification(testMessage))
 		assert.NoError(t, err)
@@ -189,15 +182,13 @@ func TestBase_TrySend(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Success_SpaceAvailable", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 		err := n.TrySend(context.Background(), contract.NewNotification(testMessage))
 		assert.NoError(t, err)
 	})
 
 	t.Run("Failure_BufferFull_Immediate", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 0, 1*time.Second) // Timeout shouldn't matter
-		n := &baseVal
+		n := NewBase(testID, true, 0, 1*time.Second) // Timeout shouldn't matter
 
 		start := time.Now()
 		err := n.TrySend(context.Background(), contract.NewNotification(testMessage))
@@ -217,8 +208,7 @@ func TestBase_Lifecycle(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Close_Idempotency", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 
 		// First Close
 		n.Close()
@@ -239,8 +229,7 @@ func TestBase_Lifecycle(t *testing.T) {
 	})
 
 	t.Run("Close_Unblocks_PendingSend", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 0, 1*time.Minute)
-		n := &baseVal
+		n := NewBase(testID, true, 0, 1*time.Minute)
 
 		errCh := make(chan error, 1)
 
@@ -270,8 +259,7 @@ func TestBase_PanicRecovery(t *testing.T) {
 	// 강제로 Panic을 유발하기 위해 내부 상태를 비정상적으로 조작합니다.
 
 	t.Run("Send_Recover_From_Panic", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 
 		// 강제 Panic 유발: notificationC 닫기
 		close(n.notificationC)
@@ -284,8 +272,7 @@ func TestBase_PanicRecovery(t *testing.T) {
 	})
 
 	t.Run("TrySend_Recover_From_Panic", func(t *testing.T) {
-		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
-		n := &baseVal
+		n := NewBase(testID, true, 1, testDefaultTimeout)
 
 		// 강제 Panic 유발: notificationC 닫기
 		close(n.notificationC)
@@ -306,8 +293,7 @@ func TestBase_WaitForPendingSends_Integration(t *testing.T) {
 	// Send가 Close에 의해 중단되는 시나리오에서,
 	// WaitForPendingSends가 Race 없이 정상적으로 대기를 수행하는지 검증
 
-	baseVal := NewBase("test-wait-group", true, 0, 1*time.Second)
-	n := &baseVal
+	n := NewBase("test-wait-group", true, 0, 1*time.Second)
 
 	sendErrCh := make(chan error)
 	blockEntered := make(chan struct{})
@@ -355,8 +341,7 @@ func TestBase_WaitForPendingSends_Integration(t *testing.T) {
 
 func TestBase_Concurrent_Send_Close(t *testing.T) {
 	// Hammer Test: Massive concurrent Send/TrySend vs Close
-	baseVal := NewBase("hammer-test", true, 1000, 1*time.Second)
-	n := &baseVal
+	n := NewBase("hammer-test", true, 1000, 1*time.Second)
 
 	var wg sync.WaitGroup
 	start := make(chan struct{})

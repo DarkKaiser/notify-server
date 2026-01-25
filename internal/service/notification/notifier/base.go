@@ -60,8 +60,8 @@ type Base struct {
 }
 
 // NewBase 새로운 Base Notifier 인스턴스를 생성하고 초기화합니다.
-func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueTimeout time.Duration) Base {
-	return Base{
+func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueTimeout time.Duration) *Base {
+	return &Base{
 		id: id,
 
 		supportsHTML: supportsHTML,

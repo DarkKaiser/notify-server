@@ -76,8 +76,8 @@ type Base struct {
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) Base {
-	return Base{
+func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *Base {
+	return &Base{
 		id:         id,
 		commandID:  commandID,
 		instanceID: instanceID,

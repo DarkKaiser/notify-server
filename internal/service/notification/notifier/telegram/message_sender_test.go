@@ -367,6 +367,7 @@ func TestRateLimiter_ContextCancellation(t *testing.T) {
 	limiter := rate.NewLimiter(rate.Every(1*time.Hour), 1)
 
 	n := &telegramNotifier{
+		Base:        notifier.NewBase("test-id", true, 100, 10*time.Second),
 		client:      mockCli,
 		rateLimiter: limiter,
 	}
