@@ -9,6 +9,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -87,7 +88,7 @@ func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.
 	return args.Error(0)
 }
 
-func (m *MockTaskResultStorage) SetStorage(storage TaskResultStorage) {
+func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
 	// Mock에서는 아무것도 하지 않음 or Mock 동작 정의
 }
 

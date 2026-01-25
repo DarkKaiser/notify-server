@@ -14,6 +14,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -301,7 +302,7 @@ func (m *MockTaskResultStorage) Save(taskTaskID contract.TaskID, commandTaskID c
 	return args.Error(0)
 }
 
-func (m *MockTaskResultStorage) SetStorage(storage tasksvc.TaskResultStorage) {
+func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
 	m.Called(storage)
 }
 

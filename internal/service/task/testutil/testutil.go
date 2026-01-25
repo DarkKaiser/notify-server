@@ -14,6 +14,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -36,7 +37,7 @@ func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.
 }
 
 // SetStorage 내부 스토리지를 설정합니다. (Mock에서는 동작하지 않음)
-func (m *MockTaskResultStorage) SetStorage(storage tasksvc.TaskResultStorage) {
+func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
 	// Mock에서는 아무것도 하지 않음
 }
 

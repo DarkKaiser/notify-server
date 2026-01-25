@@ -1,4 +1,4 @@
-package task
+package storage
 
 import (
 	"encoding/json"
@@ -17,12 +17,6 @@ import (
 
 // defaultDataDirectory 기본 데이터 저장 디렉토리 이름
 const defaultDataDirectory = "data"
-
-// TaskResultStorage Task 실행 결과를 저장하고 불러오는 저장소 인터페이스
-type TaskResultStorage interface {
-	Load(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error
-	Save(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error
-}
 
 // FileTaskResultStorage 파일 시스템 기반의 Task 결과 저장소 구현체
 type FileTaskResultStorage struct {

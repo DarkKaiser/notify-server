@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -34,9 +35,9 @@ func (h *MockHandler) GetInstanceID() contract.TaskInstanceID { return h.instanc
 func (h *MockHandler) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *MockHandler) IsCanceled() bool                     { return h.canceled }
-func (h *MockHandler) ElapsedTimeAfterRun() int64           { return 0 }
-func (h *MockHandler) SetStorage(storage TaskResultStorage) {}
+func (h *MockHandler) IsCanceled() bool                             { return h.canceled }
+func (h *MockHandler) ElapsedTimeAfterRun() int64                   { return 0 }
+func (h *MockHandler) SetStorage(storage storage.TaskResultStorage) {}
 
 func (h *MockHandler) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
