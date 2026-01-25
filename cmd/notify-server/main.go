@@ -18,10 +18,10 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier/telegram"
 	"github.com/darkkaiser/notify-server/internal/service/task"
-	_ "github.com/darkkaiser/notify-server/internal/service/task/kurly"
-	_ "github.com/darkkaiser/notify-server/internal/service/task/lotto"
-	_ "github.com/darkkaiser/notify-server/internal/service/task/naver"
-	_ "github.com/darkkaiser/notify-server/internal/service/task/navershopping"
+	_ "github.com/darkkaiser/notify-server/internal/service/task/providers/kurly"
+	_ "github.com/darkkaiser/notify-server/internal/service/task/providers/lotto"
+	_ "github.com/darkkaiser/notify-server/internal/service/task/providers/naver"
+	_ "github.com/darkkaiser/notify-server/internal/service/task/providers/navershopping"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
