@@ -1,4 +1,4 @@
-package internal
+package idgen
 
 import (
 	"sync/atomic"
