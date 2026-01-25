@@ -1,4 +1,4 @@
-package naver
+﻿package naver
 
 import (
 	"context" // Added context import
@@ -196,7 +196,7 @@ type testHelper struct {
 	fetcher     *testutil.MockHTTPFetcher
 	storage     *testutil.MockTaskResultStorage
 	appConfig   *config.AppConfig
-	taskHandler tasksvc.Handler
+	taskHandler tasksvc.Task
 	task        *task
 }
 

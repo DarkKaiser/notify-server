@@ -11,7 +11,7 @@ import (
 )
 
 // NewTaskFunc Task 인스턴스를 생성하는 팩토리 함수입니다.
-type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error)
+type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Task, error)
 
 // NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
 type NewSnapshotFunc func() interface{}

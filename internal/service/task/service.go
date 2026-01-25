@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"context"
@@ -46,7 +46,7 @@ type Service struct {
 	scheduler scheduler
 
 	// handlers는 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
-	handlers map[contract.TaskInstanceID]Handler
+	tasks map[contract.TaskInstanceID]Task
 
 	// idGenerator는 각 Task 실행 인스턴스에 대해 전역적으로 고유한 식별자(InstanceID)를 발급하는 생성기입니다.
 	idGenerator internal.InstanceIDGenerator
@@ -80,7 +80,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		scheduler: scheduler{},
 
-		handlers: make(map[contract.TaskInstanceID]Handler),
+		tasks: make(map[contract.TaskInstanceID]Task),
 
 		idGenerator: internal.InstanceIDGenerator{},
 
@@ -211,7 +211,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	for _, handler := range s.handlers {
+	for _, handler := range s.tasks {
 		if handler.GetID() == req.TaskID && handler.GetCommandID() == req.CommandID && !handler.IsCanceled() {
 			// req.TaskContext = req.TaskContext.WithTaskInstanceID... -> Removed
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
@@ -243,7 +243,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		// 만약 충돌한다면 락 내부에서 재시도하지 않고(Deadlock 위험 방지),
 		// 즉시 락을 해제한 후 루프의 처음으로 돌아가서 새로운 ID를 발급받습니다.
 		s.runningMu.Lock()
-		if _, exists := s.handlers[instanceID]; exists {
+		if _, exists := s.tasks[instanceID]; exists {
 			s.runningMu.Unlock()
 
 			// 로그는 디버그 레벨로 낮춰서 과도한 로깅을 방지합니다 (어차피 재시도하므로)
@@ -282,7 +282,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 
 		// 최종 등록 및 충돌 확인
 		s.runningMu.Lock()
-		if _, exists := s.handlers[instanceID]; exists {
+		if _, exists := s.tasks[instanceID]; exists {
 			s.runningMu.Unlock()
 
 			applog.WithComponentAndFields("task.service", applog.Fields{
@@ -294,7 +294,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 
 			continue // 충돌 발생 시, 루프의 처음으로 돌아가 새로운 ID로 다시 시작합니다.
 		}
-		s.handlers[instanceID] = h
+		s.tasks[instanceID] = h
 		s.runningMu.Unlock()
 
 		// Task 실행
@@ -342,14 +342,14 @@ func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	if handler, exists := s.handlers[instanceID]; exists {
+	if handler, exists := s.tasks[instanceID]; exists {
 		applog.WithComponentAndFields("task.service", applog.Fields{
 			"task_id":     handler.GetID(),
 			"command_id":  handler.GetCommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 완료")
 
-		delete(s.handlers, instanceID)
+		delete(s.tasks, instanceID)
 	} else {
 		applog.WithComponentAndFields("task.service", applog.Fields{
 			"instance_id": instanceID,
@@ -361,7 +361,7 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
-	if handler, exists := s.handlers[instanceID]; exists {
+	if handler, exists := s.tasks[instanceID]; exists {
 		handler.Cancel()
 
 		applog.WithComponentAndFields("task.service", applog.Fields{
@@ -404,7 +404,7 @@ func (s *Service) handleStop() {
 	// (SubmitTask는 runningMu를 획득해야만 진행 가능하므로, 여기서 running=false 설정 시 안전이 보장됨)
 	s.running = false
 	// 현재 작업중인 Task의 작업을 모두 취소한다.
-	for _, handler := range s.handlers {
+	for _, handler := range s.tasks {
 		handler.Cancel()
 	}
 	s.runningMu.Unlock()
@@ -444,7 +444,7 @@ func (s *Service) handleStop() {
 	close(s.taskDoneC)
 
 	s.runningMu.Lock()
-	s.handlers = nil
+	s.tasks = nil
 	s.notificationSender = nil
 	s.runningMu.Unlock()
 

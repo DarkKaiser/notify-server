@@ -53,12 +53,12 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Task, error) {
 	httpFetcher := fetcher.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
 	return createTask(instanceID, req, appConfig, httpFetcher)
 }
 
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, notificationFetcher fetcher.Fetcher) (tasksvc.Handler, error) {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, notificationFetcher fetcher.Fetcher) (tasksvc.Task, error) {
 	if req.TaskID != TaskID {
 		return nil, tasksvc.ErrTaskNotSupported
 	}

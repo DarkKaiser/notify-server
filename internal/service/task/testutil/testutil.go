@@ -1,4 +1,4 @@
-package testutil
+﻿package testutil
 
 import (
 	"bytes"
@@ -169,7 +169,7 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 				NewSnapshot:   func() interface{} { return snapshot },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Task, error) {
 			t := NewMockTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser)
 			return &t, nil
 		},

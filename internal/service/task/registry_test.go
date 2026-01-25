@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
 func dummyNewTask() NewTaskFunc {
-	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
+	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Task, error) {
 		return nil, nil
 	}
 }

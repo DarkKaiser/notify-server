@@ -8,12 +8,12 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 )
 
-// Handler 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
+// Task 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
 //
-// Handler는 Service 레이어와 개별 Task 구현체(Task 구조체) 사이의 계약(Contract)을 정의합니다.
+// Task는 Service 레이어와 개별 Task 구현체(Base 구조체) 사이의 계약(Contract)을 정의합니다.
 // Service는 이 인터페이스를 통해 Task의 구체적인 구현을 알 필요 없이,
 // 표준화된 방식으로 실행(Run), 취소(Cancel), 상태 확인 등을 수행할 수 있습니다.
-type Handler interface {
+type Task interface {
 	GetID() contract.TaskID
 	GetCommandID() contract.TaskCommandID
 	GetInstanceID() contract.TaskInstanceID

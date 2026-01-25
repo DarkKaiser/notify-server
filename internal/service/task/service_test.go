@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"context"
@@ -19,8 +19,8 @@ import (
 // Test Mocks
 // =============================================================================
 
-// MockHandler는 테스트용 Handler 구현체입니다.
-type MockHandler struct {
+// MockTask는 테스트용 Task 구현체입니다.
+type MockTask struct {
 	id         contract.TaskID
 	commandID  contract.TaskCommandID
 	instanceID contract.TaskInstanceID
@@ -29,17 +29,17 @@ type MockHandler struct {
 	cancelOnce sync.Once
 }
 
-func (h *MockHandler) GetID() contract.TaskID                 { return h.id }
-func (h *MockHandler) GetCommandID() contract.TaskCommandID   { return h.commandID }
-func (h *MockHandler) GetInstanceID() contract.TaskInstanceID { return h.instanceID }
-func (h *MockHandler) GetNotifierID() contract.NotifierID {
+func (h *MockTask) GetID() contract.TaskID                 { return h.id }
+func (h *MockTask) GetCommandID() contract.TaskCommandID   { return h.commandID }
+func (h *MockTask) GetInstanceID() contract.TaskInstanceID { return h.instanceID }
+func (h *MockTask) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *MockHandler) IsCanceled() bool                             { return h.canceled }
-func (h *MockHandler) ElapsedTimeAfterRun() int64                   { return 0 }
-func (h *MockHandler) SetStorage(storage storage.TaskResultStorage) {}
+func (h *MockTask) IsCanceled() bool                             { return h.canceled }
+func (h *MockTask) ElapsedTimeAfterRun() int64                   { return 0 }
+func (h *MockTask) SetStorage(storage storage.TaskResultStorage) {}
 
-func (h *MockHandler) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
+func (h *MockTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
 	select {
@@ -50,14 +50,14 @@ func (h *MockHandler) Run(ctx context.Context, notificationSender contract.Notif
 	taskDoneC <- h.instanceID
 }
 
-func (h *MockHandler) Cancel() {
+func (h *MockTask) Cancel() {
 	h.cancelOnce.Do(func() {
 		h.canceled = true
 		close(h.cancelC)
 	})
 }
 
-func init() {
+func registerServiceTestTask() {
 	// 정상 테스트용 Task 등록
 	config := &Config{
 		Commands: []*CommandConfig{
@@ -67,8 +67,8 @@ func init() {
 				NewSnapshot:   func() interface{} { return nil },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (Handler, error) {
-			return &MockHandler{
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (Task, error) {
+			return &MockTask{
 				id:         req.TaskID,
 				commandID:  req.CommandID,
 				instanceID: instanceID,
@@ -88,6 +88,7 @@ func init() {
 //   - CancelFunc: 취소 함수
 //   - WaitGroup: 동기화용 WaitGroup
 func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
+	registerServiceTestTask()
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)
 	mockSender := notificationmocks.NewMockNotificationSender(t)
@@ -129,7 +130,7 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service, "서비스가 생성되어야 합니다")
 	require.Equal(t, appConfig, service.appConfig, "설정이 올바르게 설정되어야 합니다")
 	require.False(t, service.running, "초기 상태에서는 실행 중이 아니어야 합니다")
-	require.NotNil(t, service.handlers, "handlers가 초기화되어야 합니다")
+	require.NotNil(t, service.tasks, "handlers가 초기화되어야 합니다")
 	require.NotNil(t, service.taskSubmitC, "taskSubmitC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskDoneC, "taskDoneC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskCancelC, "taskCancelC 채널이 초기화되어야 합니다")
@@ -315,7 +316,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 
 			// 실행된 Task를 찾아서 취소 시도
 			service.runningMu.Lock()
-			for instanceID := range service.handlers {
+			for instanceID := range service.tasks {
 				go service.Cancel(instanceID)
 			}
 			service.runningMu.Unlock()

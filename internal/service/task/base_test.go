@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"context"
@@ -372,7 +372,7 @@ func registerTestConfig(tID contract.TaskID, cID contract.TaskCommandID) {
 	// Register 대신 RegisterForTest를 사용하여 중복 시 덮어쓰기 허용
 	// 또는 테스트마다 매번 ClearRegistry를 호출해야 하지만, 병렬 실행 등을 고려하여 덮어쓰기가 유리함
 	defaultRegistry.RegisterForTest(tID, &Config{
-		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Handler, error) {
+		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig) (Task, error) {
 			return nil, nil
 		},
 		Commands: []*CommandConfig{

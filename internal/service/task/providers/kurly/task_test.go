@@ -1,4 +1,4 @@
-package kurly
+﻿package kurly
 
 import (
 	"testing"
@@ -100,7 +100,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		appConfig *config.AppConfig
 		wantErr   bool
 		errMsg    string
-		checkTask func(*testing.T, tasksvc.Handler)
+		checkTask func(*testing.T, tasksvc.Task)
 	}{
 		{
 			name: "성공: 정상적인 작업 생성 (WatchProductPrice)",
@@ -110,7 +110,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: validAppConfig,
 			wantErr:   false,
-			checkTask: func(t *testing.T, h tasksvc.Handler) {
+			checkTask: func(t *testing.T, h tasksvc.Task) {
 				assert.NotNil(t, h)
 				// 올바른 타입으로 캐스팅되는지 확인
 				taskImpl, ok := h.(*task)
