@@ -31,7 +31,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 인증 방식\n- **권장**: X-App-Key 헤더로 전달\n- **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)\n\n## 사용 예시 (로컬 환경)\n### 헤더 방식 (권장)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications\" -H \"Content-Type: application/json\" -H \"X-App-Key: your-app-key\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `\n\n### 쿼리 파라미터 방식 (레거시)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `",
+                "description": "외부 애플리케이션에서 텔레그램 등의 메신저로 알림 메시지를 전송합니다.\n\n이 API를 사용하려면 사전에 등록된 애플리케이션 ID와 App Key가 필요합니다.\n설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.\n\n## 인증 방식\n- **권장**: X-App-Key 헤더로 전달\n- **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)\n\n## 사용 예시 (로컬 환경)\n### 헤더 방식 (권장)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications\" -H \"Content-Type: application/json\" -H \"X-App-Key: your-app-key\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `\n\n### 쿼리 파라미터 방식 (레거시)\n` + "`" + `` + "`" + `` + "`" + `bash\ncurl -X POST \"http://localhost:2443/api/v1/notifications?app_key=your-app-key\" -H \"Content-Type: application/json\" -d '{\"application_id\":\"my-app\",\"message\":\"테스트 메시지\",\"error_occurred\":false}'\n` + "`" + `` + "`" + `` + "`" + `\n\n## 응답 예시\n### 성공 (200 OK)\n` + "`" + `` + "`" + `` + "`" + `json\n{\"result_code\":0,\"message\":\"성공\"}\n` + "`" + `` + "`" + `` + "`" + `\n\n### 실패 (400 Bad Request)\n` + "`" + `` + "`" + `` + "`" + `json\n{\"result_code\":400,\"message\":\"애플리케이션 ID는 필수 항목입니다\"}\n` + "`" + `` + "`" + `` + "`" + `",
                 "consumes": [
                     "application/json"
                 ],
@@ -41,7 +41,7 @@ const docTemplate = `{
                 "tags": [
                     "Notification"
                 ],
-                "summary": "알림 메시지 게시",
+                "summary": "알림 메시지 발송",
                 "parameters": [
                     {
                         "type": "string",
@@ -75,19 +75,25 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "잘못된 요청 (필수 필드 누락, JSON 형식 오류 등)",
+                        "description": "잘못된 요청 - 필수 필드 누락, JSON 형식 오류, 메시지 길이 초과(최대 4096자)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "401": {
-                        "description": "인증 실패 (잘못된 App Key 또는 미등록 애플리케이션)",
+                        "description": "인증 실패 - App Key 누락, 잘못된 App Key, 미등록 애플리케이션",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "서버 내부 오류",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "서비스 일시 불가 - 알림 큐 포화 또는 시스템 종료 중",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -97,25 +103,19 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "서버가 정상적으로 동작하는지 확인합니다.\n\n이 엔드포인트는 인증 없이 호출할 수 있으며, 모니터링 시스템에서 서버 상태를 확인하는 데 사용됩니다.\n\n## 응답 필드\n- status: 전체 서버 상태 (healthy, unhealthy)\n- uptime: 서버 가동 시간 (초)\n- dependencies: 의존성 서비스 상태 (notification_service 등)",
+                "description": "서버와 외부 의존성의 상태를 확인합니다.\n인증 없이 호출 가능하며, 모니터링 시스템에서 사용됩니다.\n\n응답 필드:\n- status: 전체 서버 상태 (healthy, unhealthy)\n- uptime: 서버 가동 시간(초)\n- dependencies: 외부 의존성별 상태 (notification_service 등)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "System"
                 ],
-                "summary": "서버 상태 확인",
+                "summary": "서버 헬스체크",
                 "responses": {
                     "200": {
-                        "description": "서버 정상",
+                        "description": "헬스체크 결과",
                         "schema": {
                             "$ref": "#/definitions/system.HealthResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "서버 내부 오류",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -123,7 +123,7 @@ const docTemplate = `{
         },
         "/version": {
             "get": {
-                "description": "서버의 빌드 정보를 반환합니다.\n\nGit 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전 등의 정보를 제공합니다.\n이 정보는 디버깅 및 버전 확인에 유용합니다.",
+                "description": "서버의 Git 커밋 해시, 빌드 날짜, 빌드 번호, Go 버전을 반환합니다.\n디버깅 및 배포 버전 확인에 사용됩니다.",
                 "produces": [
                     "application/json"
                 ],
@@ -136,12 +136,6 @@ const docTemplate = `{
                         "description": "버전 정보",
                         "schema": {
                             "$ref": "#/definitions/system.VersionResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "서버 내부 오류",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -157,17 +151,17 @@ const docTemplate = `{
             ],
             "properties": {
                 "application_id": {
-                    "description": "애플리케이션 ID",
+                    "description": "인증에 사용할 애플리케이션 식별자",
                     "type": "string",
                     "example": "my-app"
                 },
                 "error_occurred": {
-                    "description": "에러 발생 여부 (true인 경우 에러 알림으로 표시됨)",
+                    "description": "에러 발생 여부",
                     "type": "boolean",
                     "example": false
                 },
                 "message": {
-                    "description": "알림 메시지 내용 (최대 4096자, 마크다운 형식 지원)",
+                    "description": "알림 메시지 본문 (Markdown 지원, 최대 4096자)",
                     "type": "string",
                     "maxLength": 4096,
                     "minLength": 1,
@@ -179,17 +173,27 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "message": {
-                    "description": "오류에 대한 상세 메시지입니다.\n발생 원인과 해결을 위한 가이드를 포함할 수 있습니다.",
+                    "description": "Message 에러 메시지",
                     "type": "string",
                     "example": "APP_KEY가 유효하지 않습니다.(ID:my-app)"
+                },
+                "result_code": {
+                    "description": "ResultCode HTTP 상태 코드 (예: 400, 401, 500)",
+                    "type": "integer",
+                    "example": 400
                 }
             }
         },
         "response.SuccessResponse": {
             "type": "object",
             "properties": {
+                "message": {
+                    "description": "Message 성공 메시지",
+                    "type": "string",
+                    "example": "성공"
+                },
                 "result_code": {
-                    "description": "처리 결과 코드입니다.\n0은 성공을 의미하며, 그 외의 값은 정의된 에러 코드를 나타냅니다.",
+                    "description": "ResultCode 처리 결과 코드 (0: 성공)",
                     "type": "integer",
                     "example": 0
                 }
@@ -199,17 +203,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "latency_ms": {
-                    "description": "응답 시간 (밀리초, 선택적)",
+                    "description": "응답 지연시간(ms)",
                     "type": "integer",
                     "example": 5
                 },
                 "message": {
-                    "description": "추가 메시지 (선택적)",
+                    "description": "상태 상세 정보 또는 에러 메시지",
                     "type": "string",
                     "example": "정상 작동 중"
                 },
                 "status": {
-                    "description": "상태 (healthy, unhealthy, unknown)",
+                    "description": "헬스체크 상태: healthy, unhealthy, unknown",
                     "type": "string",
                     "example": "healthy"
                 }
@@ -219,19 +223,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "dependencies": {
-                    "description": "의존성 상태 (선택적)",
+                    "description": "외부 의존성별 헬스체크 결과 (키: 의존성 이름)",
                     "type": "object",
                     "additionalProperties": {
                         "$ref": "#/definitions/system.DependencyStatus"
                     }
                 },
                 "status": {
-                    "description": "서버 상태 (healthy, unhealthy)",
+                    "description": "전체 헬스체크 상태: healthy, unhealthy",
                     "type": "string",
                     "example": "healthy"
                 },
                 "uptime": {
-                    "description": "서버 가동 시간 (초)",
+                    "description": "서버 가동 시간(초)",
                     "type": "integer",
                     "example": 3600
                 }
@@ -241,22 +245,22 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "build_date": {
-                    "description": "빌드 날짜 (UTC)",
+                    "description": "빌드 시간(UTC, RFC3339)",
                     "type": "string",
                     "example": "2025-12-01T14:00:00Z"
                 },
                 "build_number": {
-                    "description": "빌드 번호",
+                    "description": "CI/CD 빌드 번호",
                     "type": "string",
                     "example": "100"
                 },
                 "go_version": {
-                    "description": "Go 버전",
+                    "description": "컴파일러 버전",
                     "type": "string",
                     "example": "go1.24.0"
                 },
                 "version": {
-                    "description": "Git 커밋 해시",
+                    "description": "Git 커밋 해시 (short)",
                     "type": "string",
                     "example": "abc1234"
                 }
