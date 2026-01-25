@@ -185,7 +185,7 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) provider.Base {
-	t := provider.NewBaseTask(taskID, commandID, instanceID, notifierID, runBy)
+	t := provider.NewBase(taskID, commandID, instanceID, notifierID, runBy)
 	t.SetStorage(&MockTaskResultStorage{})
 	return t
 }

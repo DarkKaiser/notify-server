@@ -18,7 +18,7 @@ func TestTask_Log(t *testing.T) {
 		// RemoveHook 기능이 없으므로... (동일)
 	}()
 
-	task := NewBaseTask("TEST_TASK", "TEST_CMD", "instance-1", "test-notifier", contract.TaskRunByScheduler)
+	task := NewBase("TEST_TASK", "TEST_CMD", "instance-1", "test-notifier", contract.TaskRunByScheduler)
 
 	tests := []struct {
 		name      string

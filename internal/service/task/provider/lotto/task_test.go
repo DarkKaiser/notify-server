@@ -203,7 +203,7 @@ func TestTask_Run(t *testing.T) {
 		mockStorage := new(MockTaskResultStorage)
 
 		task := &task{
-			Base:     provider.NewBaseTask(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
+			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}

@@ -787,7 +787,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			}
 
 			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
-			baseTask := provider.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
+			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
 			naverTask := &task{
 				Base: baseTask,
 			}
@@ -908,7 +908,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
-	baseTask := provider.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
+	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
 	naverTask := &task{Base: baseTask}
 	naverTask.SetFetcher(mockFetcher)
 
@@ -998,7 +998,7 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 			}
 
 			// executeFlow
-			baseTask := provider.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
+			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
 			naverTask := &task{Base: baseTask}
 			naverTask.SetFetcher(mockFetcher)
 
@@ -1063,7 +1063,7 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 		}
 	}
 
-	baseTask := provider.NewBaseTask("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
+	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
 	testTask := &task{Base: baseTask}
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}

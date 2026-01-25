@@ -25,7 +25,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	instID := contract.TaskInstanceID("inst_123")
 	notifier := "telegram"
 
-	task := NewBaseTask(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser)
+	task := NewBase(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser)
 	mockStorage := &MockTaskResultStorage{}
 	task.SetStorage(mockStorage)
 
@@ -221,7 +221,7 @@ func TestTask_Run(t *testing.T) {
 			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
 				// 두 번의 알림 모두 완료 후 시점이므로 (하나는 성공 후 저장실패)
 				// 1. notify(성공) -> RunBy=Scheduler(Default) -> False? Test setup uses default.
-				// Wait, setup function doesn't set RunBy. Default NewBaseTask uses provided arg in loop.
+				// Wait, setup function doesn't set RunBy. Default NewBase uses provided arg in loop.
 				// Loop sets RunBy based on test case. Here it is Default (Scheduler).
 				// So Cancelable=False.
 				for _, n := range notifs {
@@ -289,7 +289,7 @@ func TestTask_Run(t *testing.T) {
 			if runBy == contract.TaskRunByUnknown {
 				runBy = contract.TaskRunByScheduler
 			}
-			task := NewBaseTask(tID, cID, "test_inst", "test_notifier", runBy)
+			task := NewBase(tID, cID, "test_inst", "test_notifier", runBy)
 			if store != nil {
 				task.SetStorage(store)
 			}
@@ -417,7 +417,7 @@ func collectAllMessages(sender *notificationmocks.MockNotificationSender) string
 
 // TestConfigNotFound Config가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
-	task := NewBaseTask("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser)
+	task := NewBase("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser)
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
 	task.SetExecute(func(prev interface{}, html bool) (string, interface{}, error) {

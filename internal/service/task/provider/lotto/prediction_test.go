@@ -28,7 +28,7 @@ func setupPredictionTest(t *testing.T) (*task, *MockCommandExecutor, *MockComman
 	mockProcess := new(MockCommandProcess)
 
 	lottoTask := &task{
-		Base:     provider.NewBaseTask(TaskID, PredictionCommand, "instance-1", "notifier-1", contract.TaskRunByUser),
+		Base:     provider.NewBase(TaskID, PredictionCommand, "instance-1", "notifier-1", contract.TaskRunByUser),
 		appPath:  tmpDir,
 		executor: mockExecutor,
 	}
@@ -181,7 +181,7 @@ func TestExecuteCommandIDCheckPredictioncellation(t *testing.T) {
 	// 100ms 후 취소 요청
 	time.Sleep(100 * time.Millisecond)
 	task.Cancel() // 인스턴스 TaskID가 필요하지만 여기선 내부 플래그만 세팅하면 됨 (mocking level)
-	// 하지만 tasksvc.NewBaseTask로 만든 task는 CancelTask 메서드를 통해 canceled 플래그를 세팅함.
+	// 하지만 tasksvc.NewBase로 만든 task는 CancelTask 메서드를 통해 canceled 플래그를 세팅함.
 	// task.CancelTask implementation logic: sets canceled=true.
 	// prediction.go has a polling loop checks t.IsCanceled().
 

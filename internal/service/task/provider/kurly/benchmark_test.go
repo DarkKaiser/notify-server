@@ -56,7 +56,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 
 	// 2. Setup Task
 	tTask := &task{
-		Base: provider.NewBaseTask(TaskID, WatchProductPriceCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base: provider.NewBase(TaskID, WatchProductPriceCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 	}
 	tTask.SetFetcher(mockFetcher)
 
