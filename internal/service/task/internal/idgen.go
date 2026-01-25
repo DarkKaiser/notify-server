@@ -1,4 +1,4 @@
-package task
+package internal
 
 import (
 	"sync/atomic"
@@ -16,15 +16,15 @@ const (
 	base62Len   = int64(len(base62Chars))
 )
 
-// instanceIDGenerator 고유한 InstanceID를 생성합니다.
+// InstanceIDGenerator 고유한 InstanceID를 생성합니다.
 // 타임스탬프(나노초)와 원자적 카운터를 결합하여 동시성 환경에서도 충돌 없는 ID를 보장합니다.
-type instanceIDGenerator struct {
+type InstanceIDGenerator struct {
 	counter uint32
 }
 
 // New 새로운 InstanceID를 생성합니다.
 // 생성된 ID는 시간 순서로 정렬 가능하며(대략적), 단일 프로세스 내에서 유일성을 보장합니다.
-func (g *instanceIDGenerator) New() contract.TaskInstanceID {
+func (g *InstanceIDGenerator) New() contract.TaskInstanceID {
 	// 나노초 단위 타임스탬프
 	now := time.Now().UnixNano()
 
@@ -46,7 +46,7 @@ func (g *instanceIDGenerator) New() contract.TaskInstanceID {
 }
 
 // appendBase62 정수 값을 Base62로 인코딩하여 버퍼에 추가합니다.
-func (g *instanceIDGenerator) appendBase62(dst []byte, num int64) []byte {
+func (g *InstanceIDGenerator) appendBase62(dst []byte, num int64) []byte {
 	if num == 0 {
 		return append(dst, base62Chars[0])
 	}
@@ -68,7 +68,7 @@ func (g *instanceIDGenerator) appendBase62(dst []byte, num int64) []byte {
 
 // appendBase62FixedLength 정수를 Base62로 인코딩하되 고정 길이를 맞춥니다 (앞에 '0' 패딩)
 // 이를 통해 사전순 정렬을 보장합니다.
-func (g *instanceIDGenerator) appendBase62FixedLength(dst []byte, num int64, length int) []byte {
+func (g *InstanceIDGenerator) appendBase62FixedLength(dst []byte, num int64, length int) []byte {
 	startLen := len(dst)
 
 	// 먼저 일반 인코딩
