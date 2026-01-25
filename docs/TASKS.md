@@ -5,8 +5,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 ## 목차
 
 - [Task 목록](#task-목록)
-- [JDC - 전남디지털역량교육](#jdc---전남디지털역량교육)
-- [JYIU - 전남여수산학융합원](#jyiu---전남여수산학융합원)
+
 - [KURLY - 마켓컬리](#kurly---마켓컬리)
 - [LOTTO - 로또 번호 예측](#lotto---로또-번호-예측)
 - [NAVER - 네이버 공연정보](#naver---네이버-공연정보)
@@ -16,137 +15,13 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 ## Task 목록
 
-| Task ID | 설명               | 주요 기능                          | 웹사이트                    |
-| ------- | ------------------ | ---------------------------------- | --------------------------- |
-| JDC     | 전남디지털역량교육 | 신규 온라인 교육 과정 모니터링     | http://전남디지털역량.com/  |
-| JYIU    | 전남여수산학융합원 | 공지사항 및 교육 프로그램 모니터링 | https://www.jyiu.or.kr/     |
-| KURLY   | 마켓컬리           | 상품 가격 변동 추적                | https://www.kurly.com/      |
-| LOTTO   | 로또 번호 예측     | 외부 Java 프로그램 실행            | -                           |
-| NAVER   | 네이버 공연정보    | 공연 정보 검색 및 알림             | https://search.naver.com/   |
-| NS      | 네이버쇼핑         | 상품 최저가 모니터링               | https://shopping.naver.com/ |
+| Task ID | 설명 | 주요 기능 | 웹사이트 |
+| ------- | ---- | --------- | -------- |
 
----
-
-## JDC - 전남디지털역량교육
-
-**웹사이트**: http://전남디지털역량.com/
-
-### 설명
-
-신규 비대면 온라인 특별/정규교육 과정을 모니터링하고 알림을 전송합니다.
-
-### Commands
-
-#### WatchNewOnlineEducation
-
-신규 온라인 교육 과정을 확인합니다.
-
-**설정 예시**
-
-```json
-{
-  "id": "JDC",
-  "title": "전남디지털역량교육",
-  "commands": [
-    {
-      "id": "WatchNewOnlineEducation",
-      "title": "신규 비대면 온라인 특별/정규교육 확인",
-      "scheduler": {
-        "runnable": true,
-        "time_spec": "0 6 9-18 * * *"
-      },
-      "notifier": {
-        "usable": true
-      },
-      "default_notifier_id": "my-telegram"
-    }
-  ]
-}
-```
-
-**설정 옵션**
-
-| 옵션                  | 설명                    | 필수   | 기본값         |
-| --------------------- | ----------------------- | ------ | -------------- |
-| `scheduler.time_spec` | 실행 주기 (Cron 표현식) | 예     | -              |
-| `default_notifier_id` | 알림 채널 ID            | 아니오 | 기본 알림 채널 |
-
-**알림 내용**
-
-- 교육 과정명
-- 교육 기간
-- 신청 링크
-
----
-
-## JYIU - 전남여수산학융합원
-
-**웹사이트**: https://www.jyiu.or.kr/
-
-### 설명
-
-전남여수산학융합원의 공지사항 및 신규 교육 프로그램을 모니터링합니다.
-
-### Commands
-
-#### WatchNewNotice
-
-공지사항의 새 글을 확인합니다.
-
-**설정 예시**
-
-```json
-{
-  "id": "JYIU",
-  "title": "전남여수산학융합원",
-  "commands": [
-    {
-      "id": "WatchNewNotice",
-      "title": "공지사항 새글 확인",
-      "scheduler": {
-        "runnable": true,
-        "time_spec": "0 3 9-18 * * *"
-      },
-      "notifier": {
-        "usable": true
-      },
-      "default_notifier_id": "my-telegram"
-    }
-  ]
-}
-```
-
-#### WatchNewEducation
-
-신규 교육 프로그램을 확인합니다.
-
-**설정 예시**
-
-```json
-{
-  "commands": [
-    {
-      "id": "WatchNewEducation",
-      "title": "신규 교육프로그램 확인",
-      "scheduler": {
-        "runnable": true,
-        "time_spec": "0 4 9-18 * * *"
-      },
-      "notifier": {
-        "usable": true
-      },
-      "default_notifier_id": "my-telegram"
-    }
-  ]
-}
-```
-
-**알림 내용**
-
-- 교육 프로그램명
-- 교육 기간
-- 접수 기간
-- 신청 링크
+| KURLY | 마켓컬리 | 상품 가격 변동 추적 | https://www.kurly.com/ |
+| LOTTO | 로또 번호 예측 | 외부 Java 프로그램 실행 | - |
+| NAVER | 네이버 공연정보 | 공연 정보 검색 및 알림 | https://search.naver.com/ |
+| NS | 네이버쇼핑 | 상품 최저가 모니터링 | https://shopping.naver.com/ |
 
 ---
 
@@ -482,24 +357,6 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
     ]
   },
   "tasks": [
-    {
-      "id": "JDC",
-      "title": "전남디지털역량 교육 모니터링",
-      "commands": [
-        {
-          "id": "WatchNewOnlineEducation",
-          "title": "신규 온라인 교육 확인",
-          "scheduler": {
-            "runnable": true,
-            "time_spec": "0 0 9,18 * * *"
-          },
-          "notifier": {
-            "usable": true
-          },
-          "default_notifier_id": "my-telegram"
-        }
-      ]
-    },
     {
       "id": "KURLY",
       "title": "마켓컬리 가격 모니터링",
