@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 
 	"github.com/stretchr/testify/mock"
@@ -59,15 +60,15 @@ func (h *MockTask) Cancel() {
 
 func registerServiceTestTask() {
 	// 정상 테스트용 Task 등록
-	config := &Config{
-		Commands: []*CommandConfig{
+	config := &provider.Config{
+		Commands: []*provider.CommandConfig{
 			{
 				ID:            "TEST_COMMAND",
 				AllowMultiple: true,
-				NewSnapshot:   func() interface{} { return nil },
+				NewSnapshot:   func() interface{} { return &struct{}{} },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (Task, error) {
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
 			return &MockTask{
 				id:         req.TaskID,
 				commandID:  req.CommandID,
@@ -76,7 +77,7 @@ func registerServiceTestTask() {
 			}, nil
 		},
 	}
-	defaultRegistry.RegisterForTest("TEST_TASK", config)
+	provider.RegisterForTest("TEST_TASK", config)
 }
 
 // setupTestService는 테스트를 위한 공통 설정을 생성합니다.
@@ -87,7 +88,7 @@ func registerServiceTestTask() {
 //   - Context: 컨텍스트
 //   - CancelFunc: 취소 함수
 //   - WaitGroup: 동기화용 WaitGroup
-func setupTestService(t *testing.T) (*Service, *MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
+func setupTestService(t *testing.T) (*Service, *notificationmocks.MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
 	registerServiceTestTask()
 	appConfig := &config.AppConfig{}
 	service := NewService(appConfig)

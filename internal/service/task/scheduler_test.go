@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,13 +19,13 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 	tests := []struct {
 		name         string
 		initialState func(*scheduler) // Setup before action
-		action       func(*scheduler, *config.AppConfig, *MockTaskExecutor, *notificationmocks.MockNotificationSender)
+		action       func(*scheduler, *config.AppConfig, *testutil.MockTaskExecutor, *notificationmocks.MockNotificationSender)
 		verify       func(*testing.T, *scheduler)
 		doubleAction bool // Repeats action to check idempotency logic
 	}{
 		{
 			name: "Start Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -40,7 +41,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 				s.running = true
 				s.cron = nil
 			},
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Stop()
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -49,7 +50,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		},
 		{
 			name: "Restart Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 				s.Start(cfg, exec, sender)
@@ -61,7 +62,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		{
 			name:         "Duplicate Start",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
 			verify: func(t *testing.T, s *scheduler) {
@@ -71,7 +72,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		{
 			name:         "Duplicate Stop",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 			},
@@ -84,7 +85,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
-			mockExe := &MockTaskExecutor{}
+			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{}
 
@@ -179,7 +180,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
-			mockExe := &MockTaskExecutor{}
+			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: tt.tasks}
 
@@ -199,7 +200,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 	tests := []struct {
 		name            string
 		taskConfig      config.TaskConfig
-		mockSetup       func(*MockTaskExecutor, *notificationmocks.MockNotificationSender, *sync.WaitGroup)
+		mockSetup       func(*testutil.MockTaskExecutor, *notificationmocks.MockNotificationSender, *sync.WaitGroup)
 		shouldFailNotif bool
 	}{
 		{
@@ -217,7 +218,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					},
 				},
 			},
-			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
+			mockSetup: func(exe *testutil.MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
@@ -241,7 +242,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 					},
 				},
 			},
-			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
+			mockSetup: func(exe *testutil.MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
 				exe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
@@ -265,7 +266,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
-			mockExe := &MockTaskExecutor{}
+			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: []config.TaskConfig{tt.taskConfig}}
 
@@ -304,7 +305,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// Not easy to table-drive since it's a specific error handling case logged via notification
 	// But we can verify it cleanly.
 	s := &scheduler{}
-	mockExe := &MockTaskExecutor{}
+	mockExe := &testutil.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
 
 	cfg := &config.AppConfig{

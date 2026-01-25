@@ -10,6 +10,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/internal"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -46,7 +47,7 @@ type Service struct {
 	scheduler scheduler
 
 	// handlers는 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
-	tasks map[contract.TaskInstanceID]Task
+	tasks map[contract.TaskInstanceID]provider.Task
 
 	// idGenerator는 각 Task 실행 인스턴스에 대해 전역적으로 고유한 식별자(InstanceID)를 발급하는 생성기입니다.
 	idGenerator internal.InstanceIDGenerator
@@ -80,7 +81,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		scheduler: scheduler{},
 
-		tasks: make(map[contract.TaskInstanceID]Task),
+		tasks: make(map[contract.TaskInstanceID]provider.Task),
 
 		idGenerator: internal.InstanceIDGenerator{},
 
@@ -173,20 +174,20 @@ func (s *Service) handleSubmitRequest(serviceStopCtx context.Context, req *contr
 		"run_by":     req.RunBy,
 	}).Debug("새로운 Task 실행 요청 수신")
 
-	cfg, err := findConfig(req.TaskID, req.CommandID)
+	cfg, err := provider.FindConfig(req.TaskID, req.CommandID)
 	if err != nil {
 		applog.WithComponentAndFields("task.service", applog.Fields{
 			"task_id":    req.TaskID,
 			"command_id": req.CommandID,
 			"error":      err,
-		}).Error(ErrTaskNotSupported.Error())
+		}).Error(provider.ErrTaskNotSupported.Error())
 
 		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
 			NotifierID:    req.NotifierID,
 			TaskID:        req.TaskID,
 			CommandID:     req.CommandID,
 			InstanceID:    "", // InstanceID not yet generated
-			Message:       ErrTaskNotSupported.Error(),
+			Message:       provider.ErrTaskNotSupported.Error(),
 			ElapsedTime:   0,
 			ErrorOccurred: true,
 			Cancelable:    false,
@@ -231,7 +232,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	return false
 }
 
-func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *ConfigLookup) {
+func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ConfigLookup) {
 	// 무한 루프 방지를 위한 최대 재시도 횟수
 	const maxRetries = 3
 
@@ -473,7 +474,7 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 	}()
 
 	// 1. 요청 검증: 요청된 TaskID와 CommandID가 유효한지 먼저 검증합니다.
-	if _, err := findConfig(req.TaskID, req.CommandID); err != nil {
+	if _, err := provider.FindConfig(req.TaskID, req.CommandID); err != nil {
 		return err
 	}
 
