@@ -12,7 +12,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -193,7 +193,7 @@ func (t *task) fetchProductInfo(id int) (*product, error) {
 	// @@@@@
 	// 상품 페이지를 읽어들인다.
 	productPageURL := formatProductPageURL(id)
-	doc, err := tasksvc.FetchHTMLDocument(t.GetFetcher(), productPageURL)
+	doc, err := fetcher.FetchHTMLDocument(t.GetFetcher(), productPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (t *task) fetchProductInfo(id int) (*product, error) {
 	if !product.IsUnavailable {
 		sel := doc.Find("#product-atf > section.css-1ua1wyk")
 		if sel.Length() != 1 {
-			return nil, tasksvc.NewErrHTMLStructureChanged(productPageURL, "상품정보 섹션 추출 실패")
+			return nil, fetcher.NewErrHTMLStructureChanged(productPageURL, "상품정보 섹션 추출 실패")
 		}
 
 		// 상품 이름을 확인한다.

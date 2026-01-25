@@ -1,4 +1,4 @@
-package task
+package fetcher
 
 import (
 	"encoding/json"
@@ -19,8 +19,8 @@ type Fetcher interface {
 
 // FetchHTMLDocument 지정된 URL로 HTTP 요청을 보내 HTML 문서를 가져오고, goquery.Document로 파싱합니다.
 // 응답 헤더의 Content-Type을 분석하여, 비 UTF-8 인코딩(예: EUC-KR) 페이지도 자동으로 UTF-8로 변환하여 처리합니다.
-func FetchHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
-	resp, err := fetcher.Get(url)
+func FetchHTMLDocument(f Fetcher, url string) (*goquery.Document, error) {
+	resp, err := f.Get(url)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.Unavailable, fmt.Sprintf("HTML 페이지(%s) 요청 중 네트워크 또는 클라이언트 에러가 발생했습니다.", url))
 	}
@@ -51,8 +51,8 @@ func FetchHTMLDocument(fetcher Fetcher, url string) (*goquery.Document, error) {
 
 // FetchHTMLSelection 지정된 URL의 HTML 문서에서 CSS 선택자(selector)에 해당하는 요소를 찾습니다.
 // 선택된 요소가 없으면 에러를 반환하여, 변경된 웹 페이지 구조를 조기에 감지할 수 있도록 돕습니다.
-func FetchHTMLSelection(fetcher Fetcher, url string, selector string) (*goquery.Selection, error) {
-	doc, err := FetchHTMLDocument(fetcher, url)
+func FetchHTMLSelection(f Fetcher, url string, selector string) (*goquery.Selection, error) {
+	doc, err := FetchHTMLDocument(f, url)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func FetchHTMLSelection(fetcher Fetcher, url string, selector string) (*goquery.
 }
 
 // FetchJSON HTTP 요청을 수행하고 응답 본문(JSON)을 지정된 구조체(v)로 디코딩합니다.
-func FetchJSON(fetcher Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
+func FetchJSON(f Fetcher, method, url string, header map[string]string, body io.Reader, v interface{}) error {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return apperrors.Wrap(err, apperrors.Internal, fmt.Sprintf("JSON 요청 생성에 실패했습니다. (URL: %s)", url))
@@ -75,7 +75,7 @@ func FetchJSON(fetcher Fetcher, method, url string, header map[string]string, bo
 		req.Header.Set(key, value)
 	}
 
-	resp, err := fetcher.Do(req)
+	resp, err := f.Do(req)
 	if err != nil {
 		return apperrors.Wrap(err, apperrors.Unavailable, fmt.Sprintf("JSON API(%s) 요청 전송 중 에러가 발생했습니다.", url))
 	}
@@ -99,13 +99,13 @@ func FetchJSON(fetcher Fetcher, method, url string, header map[string]string, bo
 }
 
 // ScrapeHTML 지정된 URL의 HTML 문서에서 CSS 선택자에 해당하는 모든 요소를 순회하며 콜백 함수를 실행합니다.
-func ScrapeHTML(fetcher Fetcher, url string, selector string, f func(int, *goquery.Selection) bool) error {
-	sel, err := FetchHTMLSelection(fetcher, url, selector)
+func ScrapeHTML(f Fetcher, url string, selector string, callback func(int, *goquery.Selection) bool) error {
+	sel, err := FetchHTMLSelection(f, url, selector)
 	if err != nil {
 		return err
 	}
 
-	sel.EachWithBreak(f)
+	sel.EachWithBreak(callback)
 
 	return nil
 }

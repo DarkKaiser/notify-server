@@ -7,6 +7,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
@@ -34,11 +35,11 @@ func init() {
 }
 
 func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (tasksvc.Handler, error) {
-	fetcher := tasksvc.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
-	return createTask(instanceID, req, appConfig, fetcher)
+	httpFetcher := fetcher.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
+	return createTask(instanceID, req, appConfig, httpFetcher)
 }
 
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, fetcher tasksvc.Fetcher) (tasksvc.Handler, error) {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, notificationFetcher fetcher.Fetcher) (tasksvc.Handler, error) {
 	if req.TaskID != TaskID {
 		return nil, tasksvc.ErrTaskNotSupported
 	}
@@ -47,7 +48,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 		Task: tasksvc.NewBaseTask(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 	}
 
-	naverTask.SetFetcher(fetcher)
+	naverTask.SetFetcher(notificationFetcher)
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {

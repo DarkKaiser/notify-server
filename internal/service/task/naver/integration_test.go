@@ -8,7 +8,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +35,7 @@ func makeHTMLItem(title, place string) string {
 	return fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">%s</span></div><div class="thumb"><img src="http://example.com/thumb.jpg"></div></div></li>`, title, place)
 }
 
-func setupTestTask(t *testing.T, fetcher tasksvc.Fetcher) (*task, *config.AppConfig) {
+func setupTestTask(t *testing.T, fetcher fetcher.Fetcher) (*task, *config.AppConfig) {
 	req := &contract.TaskSubmitRequest{
 		TaskID:     TaskID,
 		CommandID:  WatchNewPerformancesCommand,

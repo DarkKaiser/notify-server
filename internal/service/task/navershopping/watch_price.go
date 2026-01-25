@@ -11,7 +11,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	tasksvc "github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -202,7 +202,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = tasksvc.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
+		err = fetcher.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}
