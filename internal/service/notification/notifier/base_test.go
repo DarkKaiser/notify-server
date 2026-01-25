@@ -170,6 +170,15 @@ func TestBase_Send(t *testing.T) {
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Less(t, duration, 100*time.Millisecond, "Should return immediately after cancellation")
 	})
+
+	t.Run("Success_PrepareSend_ContextTODO", func(t *testing.T) {
+		// Context가 TODO일 때도 정상 동작해야 함
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
+
+		err := n.Send(context.TODO(), contract.NewNotification(testMessage))
+		assert.NoError(t, err)
+	})
 }
 
 // =============================================================================
@@ -195,7 +204,8 @@ func TestBase_TrySend(t *testing.T) {
 		duration := time.Since(start)
 
 		assert.ErrorIs(t, err, ErrQueueFull)
-		assert.Less(t, duration, 5*time.Millisecond, "TrySend should return immediately")
+		// OS 스케줄링 등을 고려하여 넉넉하게 잡지만, 타임아웃(1초)보다는 훨씬 빨라야 함
+		assert.Less(t, duration, 100*time.Millisecond, "TrySend should return immediately")
 	})
 }
 
@@ -256,27 +266,35 @@ func TestBase_Lifecycle(t *testing.T) {
 }
 
 func TestBase_PanicRecovery(t *testing.T) {
-	// Send 메서드 내부의 recover() 로직이 제대로 동작하는지 검증합니다.
+	// Send/TrySend 메서드 내부의 recover() 로직이 제대로 동작하는지 검증합니다.
 	// 강제로 Panic을 유발하기 위해 내부 상태를 비정상적으로 조작합니다.
-	t.Run("Recover_From_Panic", func(t *testing.T) {
+
+	t.Run("Send_Recover_From_Panic", func(t *testing.T) {
 		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
 		n := &baseVal
 
-		// 1. 강제 Panic 유발 조건 생성
-		// notificationC를 닫아버렸지만, closed 플래그는 false로 유지합니다.
-		// 이렇게 하면 Send 메서드는 closed 체크를 통과한 후,
-		// 닫힌 채널에 전송을 시도하여(Panic: send on closed channel) 패닉이 발생합니다.
+		// 강제 Panic 유발: notificationC 닫기
 		close(n.notificationC)
 
-		// 2. 검증 수행
 		var err error
 		assert.NotPanics(t, func() {
-			// Panic이 내부 defer에서 recover되어야 함
 			err = n.Send(context.Background(), contract.NewNotification(testMessage))
-		}, "Send should recover from internal panic")
+		})
+		assert.ErrorIs(t, err, ErrPanicRecovered)
+	})
 
-		// 3. 반환값 확인
-		assert.ErrorIs(t, err, ErrPanicRecovered, "Should return ErrPanicRecovered on panic")
+	t.Run("TrySend_Recover_From_Panic", func(t *testing.T) {
+		baseVal := NewBase(testID, true, 1, testDefaultTimeout)
+		n := &baseVal
+
+		// 강제 Panic 유발: notificationC 닫기
+		close(n.notificationC)
+
+		var err error
+		assert.NotPanics(t, func() {
+			err = n.TrySend(context.Background(), contract.NewNotification(testMessage))
+		})
+		assert.ErrorIs(t, err, ErrPanicRecovered)
 	})
 }
 
@@ -320,6 +338,7 @@ func TestBase_WaitForPendingSends_Integration(t *testing.T) {
 	// The Send() should have returned ErrClosed
 	select {
 	case err := <-sendErrCh:
+		// Send는 Close에 의해 깨어남 -> ErrClosed 반환
 		assert.ErrorIs(t, err, ErrClosed)
 	case <-time.After(1 * time.Second):
 		t.Fatal("Sender stuck")

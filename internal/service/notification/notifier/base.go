@@ -94,8 +94,53 @@ func (b *Base) ID() contract.NotifierID {
 //
 // 반환값:
 //   - error: 성공 시 nil, 실패 시 에러 반환 (ErrQueueFull, ErrClosed 등)
-func (b *Base) Send(ctx context.Context, notification contract.Notification) error {
-	return b.sendInternal(ctx, notification, true)
+func (b *Base) Send(ctx context.Context, notification contract.Notification) (err error) {
+	req, notificationC, done, enqueueTimeout, cleanup, prepareErr := b.prepareSend(ctx, notification)
+	if prepareErr != nil {
+		return prepareErr
+	}
+	defer cleanup(&err)
+
+	// 타이머 생성
+	// 채널이 가득 찼을 때 무한정 대기하지 않고, 설정된 타임아웃(enqueueTimeout)만큼만 기다립니다.
+	// 이는 시스템 과부하 시 요청을 "실패" 처리함으로써 전체 시스템의 응답성을 보호하는 Backpressure 역할을 합니다.
+	timer := time.NewTimer(enqueueTimeout)
+	defer func() {
+		// 타이머 리소스 정리 가이드 (Go 공식 문서 권장사항):
+		// timer.Stop()이 false를 반환하면 이미 타이머가 만료되어 시간 값(C)이 채널에 전송되었을 수 있습니다.
+		// 이 경우 채널을 비워주지(Drain) 않으면 타이머 고루틴이 메모리에 남을 수 있으므로 비동기로 비워줍니다.
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+	}()
+
+	// 큐에 적재
+	// 큐가 가득 찼을 때, 설정된 타임아웃(enqueueTimeout)까지 대기하며 빈 공간이 생기기를 기다립니다.
+	// 타임아웃 내에 처리되지 않으면 포기(Drop)하여 시스템 전체의 지연을 방지합니다.
+	select {
+	case notificationC <- req:
+		// 성공: 큐에 정상적으로 등록됨
+		return nil
+
+	case <-done:
+		// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
+		// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
+		return ErrClosed
+
+	case <-ctx.Done():
+		// 실패: 요청자(Caller)의 작업이 취소됨
+		// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
+		return ctx.Err()
+
+	case <-timer.C:
+		// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
+		// 시스템 보호를 위해 해당 요청을 드롭(Drop)하고 로그를 남깁니다.
+		b.logQueueFull(notification)
+		return ErrQueueFull
+	}
 }
 
 // TrySend 알림 발송 요청을 내부 큐(채널)에 등록 시도합니다.
@@ -109,13 +154,57 @@ func (b *Base) Send(ctx context.Context, notification contract.Notification) err
 //
 // 반환값:
 //   - error: 성공 시 nil, 큐가 가득 찬 경우 즉시 ErrQueueFull 에러를 반환합니다.
-func (b *Base) TrySend(ctx context.Context, notification contract.Notification) error {
-	return b.sendInternal(ctx, notification, false)
+func (b *Base) TrySend(ctx context.Context, notification contract.Notification) (err error) {
+	req, notificationC, done, _, cleanup, prepareErr := b.prepareSend(ctx, notification)
+	if prepareErr != nil {
+		return prepareErr
+	}
+	defer cleanup(&err)
+
+	// 큐에 적재
+	// 채널이 가득 차 있어도 대기(Block)하지 않고, 즉시 ErrQueueFull을 반환합니다.
+	select {
+	case notificationC <- req:
+		// 성공: 큐에 정상적으로 등록됨
+		return nil
+
+	case <-done:
+		// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
+		// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
+		return ErrClosed
+
+	case <-ctx.Done():
+		// 실패: 요청자(Caller)의 작업이 취소됨
+		// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
+		return ctx.Err()
+
+	default:
+		// 실패: 큐가 가득 차 있음 (즉시 리턴)
+		b.logQueueFull(notification)
+		return ErrQueueFull
+	}
 }
 
-// sendInternal 알림 발송 요청을 처리하는 내부 공통 메서드입니다.
-// block 파라미터에 따라 Blocking(Send) 또는 Non-blocking(TrySend) 모드로 동작합니다.
-func (b *Base) sendInternal(ctx context.Context, notification contract.Notification, blockingMode bool) (err error) {
+// prepareSend 알림 발송을 위한 사전 준비 작업을 수행하는 내부 헬퍼 메서드입니다.
+//
+// 이 메서드는 Send와 TrySend에서 공통으로 사용되며,
+// 실제 큐 전송 전에 필요한 모든 검증과 리소스 확보를 담당합니다.
+//
+// 반환값:
+//   - req: 큐에 전송할 알림 요청 객체
+//   - notificationC: 알림 전송용 채널 (로컬 복사본)
+//   - done: 종료 신호 채널 (로컬 복사본)
+//   - enqueueTimeout: 블로킹 전송 시 사용할 타임아웃 값
+//   - cleanup: 반드시 defer로 호출해야 하는 정리 함수 (WG.Done + Panic Recovery)
+//   - err: 준비 과정에서 발생한 에러 (ErrClosed, context.Canceled 등)
+func (b *Base) prepareSend(ctx context.Context, notification contract.Notification) (
+	req *notificationRequest,
+	notificationC chan *notificationRequest,
+	done chan struct{},
+	enqueueTimeout time.Duration,
+	cleanup func(*error),
+	err error,
+) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -123,7 +212,7 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 	// 0. 컨텍스트 취소 확인
 	// 이미 취소된 컨텍스트인 경우 락 획득 등의 비용을 아끼고 즉시 종료합니다.
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, nil, nil, 0, nil, err
 	}
 
 	b.mu.RLock()
@@ -132,26 +221,27 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 	// 이미 Close()가 호출되었거나 채널이 초기화되지 않았다면 요청을 거부합니다.
 	if b.closed || b.notificationC == nil {
 		b.mu.RUnlock()
-		return ErrClosed
+		return nil, nil, nil, 0, nil, ErrClosed
 	}
 
-	// 2. Pending Sends 카운터 증가 (Race Condition 방지)
+	// 2. Pending Sends 카운터 증가
 	b.pendingSendsWG.Add(1)
-	defer b.pendingSendsWG.Done()
 
 	// 3. 로컬 변수 복사
 	// 채널 전송은 블로킹될 수 있는 작업이므로, 락을 잡은 상태에서 수행하면 성능 병목이 됩니다.
 	// 따라서 필요한 멤버 변수들(notificationC, done, timeout)만 로컬 변수로 복사해두고,
 	// 락은 즉시 해제하여 다른 고루틴들이 상태를 조회하거나 변경할 수 있게 합니다.
-	done := b.done
-	notificationC := b.notificationC
-	enqueueTimeout := b.enqueueTimeout
+	done = b.done
+	notificationC = b.notificationC
+	enqueueTimeout = b.enqueueTimeout
 
 	b.mu.RUnlock()
 
-	// 4. 패닉 복구
-	// 혹시 모를 내부 로직 오류나 채널 이슈로 패닉이 발생해도, 서비스 전체가 죽지 않도록 방어합니다.
-	defer func() {
+	// 4. 리소스 정리 및 패닉 복구용 함수
+	cleanup = func(errPtr *error) {
+		b.pendingSendsWG.Done()
+
+		// 패닉 복구: 혹시 모를 내부 로직 오류나 채널 이슈로 패닉이 발생해도, 서비스 전체가 죽지 않도록 방어합니다.
 		if r := recover(); r != nil {
 			fields := applog.Fields{
 				"notifier_id": b.ID(),
@@ -166,83 +256,19 @@ func (b *Base) sendInternal(ctx context.Context, notification contract.Notificat
 			applog.WithComponentAndFields(component, fields).Error("Notifier 패닉 복구: 알림 전송 중 예기치 않은 오류가 발생했습니다 (서비스 유지됨)")
 
 			// Panic 발생 시 에러 리턴
-			err = ErrPanicRecovered
+			if errPtr != nil {
+				*errPtr = ErrPanicRecovered
+			}
 		}
-	}()
+	}
 
 	// 5. 요청 객체 생성
-	req := &notificationRequest{
+	req = &notificationRequest{
 		Ctx:          ctx,
 		Notification: notification,
 	}
 
-	// 6. 블로킹 모드 확인
-	if blockingMode {
-		// 6-1. 타이머 생성
-		// 채널이 가득 찼을 때 무한정 대기하지 않고, 설정된 타임아웃(enqueueTimeout)만큼만 기다립니다.
-		// 이는 시스템 과부하 시 요청을 "실패" 처리함으로써 전체 시스템의 응답성을 보호하는 Backpressure 역할을 합니다.
-		timer := time.NewTimer(enqueueTimeout)
-		defer func() {
-			// 타이머 리소스 정리 가이드 (Go 공식 문서 권장사항):
-			// timer.Stop()이 false를 반환하면 이미 타이머가 만료되어 시간 값(C)이 채널에 전송되었을 수 있습니다.
-			// 이 경우 채널을 비워주지(Drain) 않으면 타이머 고루틴이 메모리에 남을 수 있으므로 비동기로 비워줍니다.
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-
-				default:
-				}
-			}
-		}()
-
-		// 6-2. 큐에 적재
-		// 큐가 가득 찼을 때, 설정된 타임아웃(enqueueTimeout)까지 대기하며 빈 공간이 생기기를 기다립니다.
-		// 타임아웃 내에 처리되지 않으면 포기(Drop)하여 시스템 전체의 지연을 방지합니다.
-		select {
-		case notificationC <- req:
-			// 성공: 큐에 정상적으로 등록됨
-			return nil
-
-		case <-done:
-			// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
-			// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
-			return ErrClosed
-
-		case <-ctx.Done():
-			// 실패: 요청자(Caller)의 작업이 취소됨
-			// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
-			return ctx.Err()
-
-		case <-timer.C:
-			// 실패: 타임아웃 발생 (큐가 계속 가득 차 있음)
-			// 시스템 보호를 위해 해당 요청을 드롭(Drop)하고 로그를 남깁니다.
-			b.logQueueFull(notification)
-			return ErrQueueFull
-		}
-	} else {
-		// 6-3. 큐에 적재
-		// 채널이 가득 차 있어도 대기(Block)하지 않고, 즉시 ErrQueueFull을 반환합니다.
-		select {
-		case notificationC <- req:
-			// 성공: 큐에 정상적으로 등록됨
-			return nil
-
-		case <-done:
-			// 실패: 대기 중에 Notifier가 종료됨 (Graceful Shutdown)
-			// 락 없이 채널 대기를 하므로, Close()가 호출되면 즉시 감지하여 루프를 탈출할 수 있습니다.
-			return ErrClosed
-
-		case <-ctx.Done():
-			// 실패: 요청자(Caller)의 작업이 취소됨
-			// 작업이 취소되었으므로 더 이상 알림을 큐에 넣을 필요가 없습니다.
-			return ctx.Err()
-
-		default:
-			// 실패: 큐가 가득 차 있음 (즉시 리턴)
-			b.logQueueFull(notification)
-			return ErrQueueFull
-		}
-	}
+	return req, notificationC, done, enqueueTimeout, cleanup, nil
 }
 
 // logQueueFull 발송 대기열(Queue)이 가득 차서 알림 요청이 거부되었을 때 경고 로그를 남깁니다.
