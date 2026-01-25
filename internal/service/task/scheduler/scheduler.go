@@ -1,4 +1,4 @@
-package task
+package scheduler
 
 import (
 	"context"
@@ -12,16 +12,21 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// scheduler 앱 설정(AppConfig)에 정의된 작업을 Cron 스케줄에 맞춰 실행 관리하는 구조체입니다.
-type scheduler struct {
+// Scheduler 앱 설정(AppConfig)에 정의된 작업을 Cron 스케줄에 맞춰 실행 관리하는 구조체입니다.
+type Scheduler struct {
 	cron *cron.Cron
 
 	running   bool
 	runningMu sync.Mutex
 }
 
+// New 새로운 Scheduler 인스턴스를 생성합니다.
+func New() *Scheduler {
+	return &Scheduler{}
+}
+
 // Start 스케줄러를 시작하고 정의된 작업들을 Cron에 등록합니다.
-func (s *scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSubmitter, notificationSender contract.NotificationSender) {
+func (s *Scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSubmitter, notificationSender contract.NotificationSender) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -87,7 +92,7 @@ func (s *scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSu
 }
 
 // Stop 실행 중인 스케줄러를 중지합니다.
-func (s *scheduler) Stop() {
+func (s *Scheduler) Stop() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -108,7 +113,7 @@ func (s *scheduler) Stop() {
 
 // handleError 에러 로깅 및 알림 전송을 처리하는 헬퍼 메서드
 // 에러 발생 시 로그를 남기고, 설정된 Notifier를 통해 담당자에게 알림을 보냅니다.
-func (s *scheduler) handleError(notificationSender contract.NotificationSender, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
+func (s *Scheduler) handleError(notificationSender contract.NotificationSender, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
 	fields := applog.Fields{
 		"task_id":    taskID,
 		"command_id": commandID,

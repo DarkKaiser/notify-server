@@ -1,4 +1,4 @@
-package task
+package scheduler
 
 import (
 	"strings"
@@ -18,65 +18,65 @@ import (
 func TestScheduler_Lifecycle_Table(t *testing.T) {
 	tests := []struct {
 		name         string
-		initialState func(*scheduler) // Setup before action
-		action       func(*scheduler, *config.AppConfig, *testutil.MockTaskExecutor, *notificationmocks.MockNotificationSender)
-		verify       func(*testing.T, *scheduler)
+		initialState func(*Scheduler) // Setup before action
+		action       func(*Scheduler, *config.AppConfig, *testutil.MockTaskExecutor, *notificationmocks.MockNotificationSender)
+		verify       func(*testing.T, *Scheduler)
 		doubleAction bool // Repeats action to check idempotency logic
 	}{
 		{
 			name: "Start Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *Scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
-			verify: func(t *testing.T, s *scheduler) {
+			verify: func(t *testing.T, s *Scheduler) {
 				assert.True(t, s.running)
 				assert.NotNil(t, s.cron)
 			},
 		},
 		{
 			name: "Stop Scheduler Safely",
-			initialState: func(s *scheduler) {
+			initialState: func(s *Scheduler) {
 				// With defensive Stop(), this should not panic even if cron is nil but running is true
 				// (simulating inconsistent state or just testing robustness)
 				s.running = true
 				s.cron = nil
 			},
-			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *Scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Stop()
 			},
-			verify: func(t *testing.T, s *scheduler) {
+			verify: func(t *testing.T, s *Scheduler) {
 				assert.False(t, s.running)
 			},
 		},
 		{
 			name: "Restart Scheduler",
-			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *Scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 				s.Start(cfg, exec, sender)
 			},
-			verify: func(t *testing.T, s *scheduler) {
+			verify: func(t *testing.T, s *Scheduler) {
 				assert.True(t, s.running)
 			},
 		},
 		{
 			name:         "Duplicate Start",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *Scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 			},
-			verify: func(t *testing.T, s *scheduler) {
+			verify: func(t *testing.T, s *Scheduler) {
 				assert.True(t, s.running)
 			},
 		},
 		{
 			name:         "Duplicate Stop",
 			doubleAction: true,
-			action: func(s *scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
+			action: func(s *Scheduler, cfg *config.AppConfig, exec *testutil.MockTaskExecutor, sender *notificationmocks.MockNotificationSender) {
 				s.Start(cfg, exec, sender)
 				s.Stop()
 			},
-			verify: func(t *testing.T, s *scheduler) {
+			verify: func(t *testing.T, s *Scheduler) {
 				assert.False(t, s.running)
 			},
 		},
@@ -84,7 +84,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &scheduler{}
+			s := New()
 			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{}
@@ -179,7 +179,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &scheduler{}
+			s := New()
 			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: tt.tasks}
@@ -265,7 +265,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &scheduler{}
+			s := New()
 			mockExe := &testutil.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: []config.TaskConfig{tt.taskConfig}}
@@ -304,7 +304,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// Not easy to table-drive since it's a specific error handling case logged via notification
 	// But we can verify it cleanly.
-	s := &scheduler{}
+	s := New()
 	mockExe := &testutil.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
 

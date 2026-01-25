@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -44,7 +45,7 @@ type Service struct {
 	runningMu sync.Mutex
 
 	// scheduler는 정해진 일정(Cron)에 따라 Task 실행 트리거를 당기는 내부 스케줄러입니다.
-	scheduler scheduler
+	scheduler *scheduler.Scheduler
 
 	// tasks 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
 	tasks map[contract.TaskInstanceID]provider.Task
@@ -79,7 +80,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		scheduler: scheduler{},
+		scheduler: scheduler.New(),
 
 		tasks: make(map[contract.TaskInstanceID]provider.Task),
 
