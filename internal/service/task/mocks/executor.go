@@ -1,6 +1,8 @@
 package mocks
 
 import (
+	"context"
+
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/stretchr/testify/mock"
 )
@@ -13,8 +15,8 @@ type MockExecutor struct {
 }
 
 // Submit은 Task를 제출합니다.
-func (m *MockExecutor) Submit(req *contract.TaskSubmitRequest) error {
-	args := m.Called(req)
+func (m *MockExecutor) Submit(ctx context.Context, req *contract.TaskSubmitRequest) error {
+	args := m.Called(ctx, req)
 	return args.Error(0)
 }
 

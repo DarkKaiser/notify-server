@@ -2,6 +2,7 @@ package task
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"sync"
@@ -15,8 +16,8 @@ type MockTaskExecutor struct {
 	mock.Mock
 }
 
-func (m *MockTaskExecutor) Submit(req *contract.TaskSubmitRequest) error {
-	args := m.Called(req)
+func (m *MockTaskExecutor) Submit(ctx context.Context, req *contract.TaskSubmitRequest) error {
+	args := m.Called(ctx, req)
 	return args.Error(0)
 }
 
@@ -28,8 +29,6 @@ func (m *MockTaskExecutor) Cancel(instanceID contract.TaskInstanceID) error {
 // Deprecated: Use notificationmocks.MockNotificationSender instead.
 // We keep this alias for compatibility if needed, but optimally should replace usages.
 type MockNotificationSender = notificationmocks.MockNotificationSender
-
-var NewMockNotificationSender = notificationmocks.NewMockNotificationSender
 
 // TestMockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)
 // 여러 테스트 파일에서 공통으로 사용됩니다.

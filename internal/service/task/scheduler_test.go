@@ -85,7 +85,7 @@ func TestScheduler_Lifecycle_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := notificationmocks.NewMockNotificationSender()
+			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{}
 
 			if tt.initialState != nil {
@@ -180,7 +180,7 @@ func TestScheduler_TaskRegistration_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := notificationmocks.NewMockNotificationSender()
+			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: tt.tasks}
 
 			s.Start(cfg, mockExe, mockSend)
@@ -218,12 +218,12 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
-				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+				exe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
 					wg.Done()
 				}).Return(nil).Once()
-				send.On("Notify", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+				send.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 		},
 		{
@@ -242,15 +242,16 @@ func TestScheduler_Execution_Table(t *testing.T) {
 				},
 			},
 			mockSetup: func(exe *MockTaskExecutor, send *notificationmocks.MockNotificationSender, wg *sync.WaitGroup) {
-				exe.On("Submit", mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+				exe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T2" && req.CommandID == "C2" && req.RunBy == contract.TaskRunByScheduler
 				})).Run(func(args mock.Arguments) {
 					// We don't call wg.Done here because we wait for Notify
 				}).Return(assert.AnError).Once()
 
 				// Replace WithNotifyFunc with On().Run() behavior
-				send.On("Notify", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					message := args.Get(2).(string)
+				send.On("Notify", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					notification := args.Get(1).(contract.Notification)
+					message := notification.Message
 					// Simulate logic: if message matches, done
 					if strings.Contains(message, "작업 스케쥴러에서의 작업 실행 요청이 실패하였습니다") {
 						wg.Done()
@@ -265,7 +266,7 @@ func TestScheduler_Execution_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &scheduler{}
 			mockExe := &MockTaskExecutor{}
-			mockSend := notificationmocks.NewMockNotificationSender()
+			mockSend := notificationmocks.NewMockNotificationSender(t)
 			cfg := &config.AppConfig{Tasks: []config.TaskConfig{tt.taskConfig}}
 
 			var wg sync.WaitGroup
@@ -304,7 +305,7 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// But we can verify it cleanly.
 	s := &scheduler{}
 	mockExe := &MockTaskExecutor{}
-	mockSend := notificationmocks.NewMockNotificationSender()
+	mockSend := notificationmocks.NewMockNotificationSender(t)
 
 	cfg := &config.AppConfig{
 		Tasks: []config.TaskConfig{
@@ -331,8 +332,8 @@ func TestScheduler_InvalidCronSpec(t *testing.T) {
 	// We can just check VerifyNotifyCalled after Start.
 
 	// Expect Notify to be called with specific error
-	mockSend.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-		return strings.Contains(msg, "Cron 스케줄 파싱 실패")
+	mockSend.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return strings.Contains(n.Message, "Cron 스케줄 파싱 실패")
 	})).Return(nil).Once()
 
 	s.Start(cfg, mockExe, mockSend)

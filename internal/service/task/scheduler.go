@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -54,10 +55,9 @@ func (s *scheduler) Start(appConfig *config.AppConfig, submitter contract.TaskSu
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
 				// 작업 실행 요청. 실패 시 에러 처리 및 알림 발송
-				if err := submitter.Submit(&contract.TaskSubmitRequest{
+				if err := submitter.Submit(context.Background(), &contract.TaskSubmitRequest{
 					TaskID:        taskID,
 					CommandID:     commandID,
-					TaskContext:   contract.NewTaskContext(),
 					NotifierID:    contract.NotifierID(defaultNotifierID),
 					NotifyOnStart: false,
 					RunBy:         contract.TaskRunByScheduler,
@@ -122,9 +122,12 @@ func (s *scheduler) handleError(notificationSender contract.NotificationSender, 
 
 	applog.WithComponentAndFields("task.scheduler", fields).Error(message)
 
-	notificationSender.Notify(
-		contract.NewTaskContext().WithTask(taskID, commandID).WithError(),
-		notifierID,
-		message,
-	)
+	notificationSender.Notify(context.Background(), contract.Notification{
+		NotifierID:    notifierID,
+		TaskID:        taskID,
+		CommandID:     commandID,
+		Title:         "",
+		Message:       message,
+		ErrorOccurred: true,
+	})
 }

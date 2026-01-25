@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context" // Added context import
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -21,24 +22,12 @@ import (
 
 type mockNotificationSender struct{}
 
-func (m *mockNotificationSender) Notify(taskCtx contract.TaskContext, notifierTaskID contract.NotifierID, message string) error {
-	return nil
-}
-
-func (m *mockNotificationSender) NotifyDefault(message string) error {
+func (m *mockNotificationSender) Notify(ctx context.Context, notification contract.Notification) error {
 	return nil
 }
 
 func (m *mockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID) bool {
 	return true
-}
-
-func (m *mockNotificationSender) NotifyWithTitle(notifierTaskID contract.NotifierID, title string, message string, errorOccurred bool) error {
-	return nil
-}
-
-func (m *mockNotificationSender) NotifyDefaultWithError(message string) error {
-	return nil
 }
 
 // === Tests ===
@@ -192,7 +181,7 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 
 	wg.Add(1)
 	// RunByUser는 한 번 실행 후 종료됨
-	h.task.Run(contract.NewTaskContext(), sender, &wg, quit)
+	h.task.Run(context.Background(), sender, &wg, quit)
 
 	// Verify Storage Interaction
 	h.storage.AssertExpectations(t)
@@ -247,11 +236,10 @@ func newTestHelper(t *testing.T) *testHelper {
 // initTask Task 인스턴스를 생성하고 의존성을 주입합니다.
 func (h *testHelper) initTask(runBy contract.TaskRunBy) {
 	req := &contract.TaskSubmitRequest{
-		TaskID:      TaskID,
-		CommandID:   WatchNewPerformancesCommand,
-		NotifierID:  "test_notifier",
-		RunBy:       runBy, // Scheduler or User
-		TaskContext: contract.NewTaskContext(),
+		TaskID:     TaskID,
+		CommandID:  WatchNewPerformancesCommand,
+		NotifierID: "test_notifier",
+		RunBy:      runBy, // Scheduler or User
 	}
 
 	handler, err := createTask("test_instance", req, h.appConfig, h.fetcher)

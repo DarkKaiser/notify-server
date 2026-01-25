@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -137,7 +138,7 @@ func (t *Task) SetStorage(storage TaskResultStorage) {
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
-func (t *Task) Run(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
+func (t *Task) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
 
 	// [Deep Panic Safety] defer는 역순(LIFO)으로 실행되므로, recover보다 늦게, taskStopWG.Done()보다 먼저 실행되도록 위치시킵니다.
@@ -153,7 +154,7 @@ func (t *Task) Run(taskCtx contract.TaskContext, notificationSender contract.Not
 			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
-			t.handleExecutionResult(taskCtx, notificationSender, "", nil, err)
+			t.handleExecutionResult(ctx, notificationSender, "", nil, err)
 		}
 	}()
 

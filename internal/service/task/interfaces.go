@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"sync"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -36,5 +37,5 @@ type Handler interface {
 	SetStorage(storage TaskResultStorage)
 
 	// Run 작업을 실행하는 메인 메서드입니다.
-	Run(taskCtx contract.TaskContext, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)
+	Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)
 }

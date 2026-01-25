@@ -166,7 +166,7 @@ func TestSenderWorker_PanicRecovery_OuterLoop(t *testing.T) {
 	n, _, _ := setupTestNotifier(t)
 
 	// 테스트 훅 주입: 루프 시작 시 강제 패닉
-	n.testHookSenderPanic = func() {
+	n.testHookInjectSenderPanic = func() {
 		panic("Outer Loop Panic")
 	}
 

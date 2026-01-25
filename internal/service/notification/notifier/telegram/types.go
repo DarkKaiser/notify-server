@@ -96,10 +96,10 @@ type telegramNotifier struct {
 
 	// === 테스트 지원 (Internal) ===
 
-	// testHookSenderPanic 테스트 전용 훅입니다.
-	// Sender 루프 내부에서 강제로 패닉을 유발하여 복구 로직을 검증하기 위해 사용됩니다.
-	// 실제 운영 환경에서는 절대 사용되지 않아야 합니다 (nil 유지).
-	testHookSenderPanic func()
+	// testHookInjectSenderPanic 테스트에서 Sender 고루틴의 패닉 복구 로직을 검증하기 위한 훅입니다.
+	// sender_worker_test.go에서 panic() 함수를 주입하여 defer-recover 동작을 테스트합니다.
+	// 프로덕션 환경에서는 항상 nil이므로 성능 및 안정성에 영향을 주지 않습니다.
+	testHookInjectSenderPanic func()
 }
 
 // 인터페이스 준수 확인

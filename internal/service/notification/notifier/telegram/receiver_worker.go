@@ -134,11 +134,21 @@ func (n *telegramNotifier) receiveAndDispatchCommands(serviceStopCtx context.Con
 			return
 
 		// ═════════════════════════════════════════════════════════════════════
-		// Case C: Notifier 종료 감지 (Zombie State 방지)
+		// Case C: Notifier 종료 감지 (Zombie Receiver 방지)
 		// ═════════════════════════════════════════════════════════════════════
-		// Sender 고루틴이 패닉으로 사망하여 n.Close()가 호출된 경우입니다.
-		// Sender 고루틴이 죽으면 Notifier로서의 기능(발송)이 불가능하므로 Receiver도 함께 종료해야 합니다.
-		// 이를 감지하지 못하면 "Zombie Receiver"가 되어 명령어를 계속받지만 처리하지 못하는 상태가 됩니다.
+		// Sender 고루틴이 패닉으로 비정상 종료되어 n.Close()가 호출된 경우,
+		// 이 Notifier는 더 이상 메시지를 발송할 수 없는 상태가 됩니다.
+		//
+		// 문제 시나리오 (Receiver를 종료하지 않는 경우):
+		//   1. Sender 고루틴이 패닉으로 사망 → n.Close() 호출됨
+		//   2. 하지만 Receiver는 여전히 살아있어 명령어를 계속 수신함
+		//   3. 사용자가 봇 명령어를 입력하면 정상적으로 처리되는 것처럼 보임
+		//   4. 하지만 응답 메시지는 Send()에서 에러가 발생하여 전송되지 않음
+		//   5. 사용자는 명령어가 무시되는지, 처리 중인지 알 수 없음 (Silent Failure)
+		//
+		// 해결 방법:
+		//   n.Done() 채널을 감지하여 Sender가 죽으면 Receiver도 즉시 종료합니다.
+		//   이를 통해 더 이상 명령어를 받지 않으며, 시스템 재시작이 필요함을 명확히 합니다.
 		case <-n.Done():
 			applog.WithComponentAndFields(component, applog.Fields{
 				"notifier_id":     n.ID(),

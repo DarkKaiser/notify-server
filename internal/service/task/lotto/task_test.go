@@ -1,6 +1,7 @@
 package lotto
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -197,7 +198,7 @@ func TestTask_Run(t *testing.T) {
 	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *MockTaskResultStorage) {
 		mockExecutor := new(MockCommandExecutor)
 		mockProcess := new(MockCommandProcess)
-		mockSender := notificationmocks.NewMockNotificationSender()
+		mockSender := notificationmocks.NewMockNotificationSender(t)
 		mockStorage := new(MockTaskResultStorage)
 
 		task := &task{
@@ -236,8 +237,8 @@ func TestTask_Run(t *testing.T) {
 		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
 
 		// Expect Notify for Success
-		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-			return contains(msg, "당첨 확률이 높은 당첨번호 목록")
+		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+			return contains(n.Message, "당첨 확률이 높은 당첨번호 목록")
 		})).Return(nil)
 
 		err := os.WriteFile(fakeLogFile, []byte(fakeAnalysisContent), 0644)
@@ -247,7 +248,7 @@ func TestTask_Run(t *testing.T) {
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(contract.NewTaskContext(), mockSender, &wg, doneC)
+		task.Run(context.Background(), mockSender, &wg, doneC)
 		wg.Wait()
 
 		mockProcess.AssertExpectations(t)
@@ -263,15 +264,15 @@ func TestTask_Run(t *testing.T) {
 		// Expect Notify for Error
 		// Note: The actual implementation might use NotifyDefaultWithError or Notify.
 		// BaseTask.notifyError uses: s.notificationSender.Notify(ctx, s.defaultNotifierID, message)
-		mockSender.On("Notify", mock.Anything, mock.Anything, mock.MatchedBy(func(msg string) bool {
-			return contains(msg, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+			return contains(n.Message, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
 		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(contract.NewTaskContext(), mockSender, &wg, doneC)
+		task.Run(context.Background(), mockSender, &wg, doneC)
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)
