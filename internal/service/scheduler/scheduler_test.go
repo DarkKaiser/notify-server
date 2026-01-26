@@ -269,7 +269,11 @@ func TestScheduler_Execution_ManualTrigger(t *testing.T) {
 		{
 			name: "Success_Submission",
 			setupMock: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
-				exe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+				// Submit 호출 시 Deadline이 설정되어 있는지 검증 (taskSubmitTimeout=5s)
+				exe.On("Submit", mock.MatchedBy(func(ctx context.Context) bool {
+					deadline, ok := ctx.Deadline()
+					return ok && !deadline.IsZero()
+				}), mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
 				})).Return(nil).Once()
 			},
@@ -282,7 +286,11 @@ func TestScheduler_Execution_ManualTrigger(t *testing.T) {
 				exe.On("Submit", mock.Anything, mock.Anything).Return(assert.AnError).Once()
 
 				// 알림 전송 검증
-				send.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+				// Notify 호출 시 Deadline이 설정되어 있는지 검증 (1초 타임아웃)
+				send.On("Notify", mock.MatchedBy(func(ctx context.Context) bool {
+					deadline, ok := ctx.Deadline()
+					return ok && !deadline.IsZero()
+				}), mock.MatchedBy(func(n contract.Notification) bool {
 					return n.ErrorOccurred && strings.Contains(n.Message, "TaskSubmitter 실행 중 오류")
 				})).Return(nil).Once()
 			},
@@ -353,6 +361,90 @@ func TestScheduler_Execution_ManualTrigger(t *testing.T) {
 			s.stop()
 		})
 	}
+}
+
+// TestScheduler_ContextCancellation 서비스 종료 컨텍스트(Graceful Shutdown)가 정상 작동하는지 확인합니다.
+func TestScheduler_ContextCancellation(t *testing.T) {
+	mockExe := &contractmocks.MockTaskExecutor{}
+	mockSend := notificationmocks.NewMockNotificationSender(t)
+	s := NewService([]config.TaskConfig{}, mockExe, mockSend)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	err := s.Start(ctx, &wg)
+	assert.NoError(t, err)
+	assert.True(t, s.running)
+
+	// Context 취소 (시뮬레이션: 서비스 종료 시그널)
+	cancel()
+
+	// WaitGroup이 Done 될 때까지 대기
+	wg.Wait()
+
+	// 서비스가 중지 상태로 변경되었는지 확인
+	// Start 내부의 고루틴이 ctx.Done()을 감지하고 s.stop()을 호출해야 함
+	// 비동기 실행이므로 약간의 지연이 있을 수 있지만, wg.Wait()으로 동기화됨
+	s.runningMu.Lock()
+	isRunning := s.running
+	s.runningMu.Unlock()
+
+	assert.False(t, isRunning, "Context 취소 시 서비스가 중지되어야 합니다")
+}
+
+// TestScheduler_Execution_MultipleTasks 여러 작업이 등록될 때 루프 변수 캡처(Closure Capture) 문제가 없는지 검증합니다.
+func TestScheduler_Execution_MultipleTasks(t *testing.T) {
+	mockExe := &contractmocks.MockTaskExecutor{}
+	mockSend := notificationmocks.NewMockNotificationSender(t)
+
+	// 서로 다른 3개의 태스크 정의
+	tasks := []config.TaskConfig{
+		{ID: "T1", Commands: []config.CommandConfig{{ID: "C1", Scheduler: struct {
+			Runnable bool   `json:"runnable"`
+			TimeSpec string `json:"time_spec"`
+		}{true, "0 0 0 1 1 *"}, DefaultNotifierID: "N"}}},
+		{ID: "T2", Commands: []config.CommandConfig{{ID: "C2", Scheduler: struct {
+			Runnable bool   `json:"runnable"`
+			TimeSpec string `json:"time_spec"`
+		}{true, "0 0 0 1 1 *"}, DefaultNotifierID: "N"}}},
+		{ID: "T3", Commands: []config.CommandConfig{{ID: "C3", Scheduler: struct {
+			Runnable bool   `json:"runnable"`
+			TimeSpec string `json:"time_spec"`
+		}{true, "0 0 0 1 1 *"}, DefaultNotifierID: "N"}}},
+	}
+
+	// 각 태스크가 올바른 ID로 Submit 되는지 검증
+	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+		return req.TaskID == "T1" && req.CommandID == "C1"
+	})).Return(nil).Once()
+	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+		return req.TaskID == "T2" && req.CommandID == "C2"
+	})).Return(nil).Once()
+	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
+		return req.TaskID == "T3" && req.CommandID == "C3"
+	})).Return(nil).Once()
+
+	cfg := &config.AppConfig{Tasks: tasks}
+	s := NewService(cfg.Tasks, mockExe, mockSend)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	err := s.Start(ctx, &wg)
+	assert.NoError(t, err)
+	defer s.stop()
+
+	assert.Equal(t, 3, len(s.cron.Entries()))
+
+	// 등록된 순서와 상관없이, 모든 Job을 한 번씩 수동 실행
+	for _, entry := range s.cron.Entries() {
+		entry.Job.Run()
+	}
+
+	mockExe.AssertExpectations(t)
 }
 
 // TestScheduler_InvalidCronSpec 잘못된 Cron 표현식 테스트
