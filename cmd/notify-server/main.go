@@ -17,6 +17,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier/telegram"
+	"github.com/darkkaiser/notify-server/internal/service/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/kurly"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/lotto"
@@ -166,7 +167,7 @@ func run() error {
 	// Task Service 생성
 	taskService := task.NewService(appConfig)
 
-	// Notification Factory 생성 및 Processor 등록
+	// Notifier Factory 생성 및 Processor 등록
 	notifierFactory := notifier.NewFactory()
 	notifierFactory.Register(telegram.NewCreator())
 
@@ -175,6 +176,9 @@ func run() error {
 
 	// API Service 생성
 	apiService := api.NewService(appConfig, notificationService, buildInfo)
+
+	// Scheduler Service 생성
+	schedulerService := scheduler.NewService(appConfig.Tasks, taskService, notificationService)
 
 	// Task Service에 Notification Service 주입 (순환 참조 해결)
 	taskService.SetNotificationSender(notificationService)
@@ -188,7 +192,7 @@ func run() error {
 	// 9. 서비스 병렬 기동
 	// 준비된 모든 서비스를 별도의 고루틴 또는 비동기 컨텍스트에서 시작합니다.
 	// 하나라도 초기화에 실패하면 즉시 전체 서버 구동을 중단하고 롤백(종료) 절차를 밟습니다.
-	services := []service.Service{taskService, notificationService, apiService}
+	services := []service.Service{taskService, notificationService, apiService, schedulerService}
 	for _, s := range services {
 		serviceStopWG.Add(1)
 		if err := s.Start(serviceStopCtx, serviceStopWG); err != nil {

@@ -11,7 +11,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -43,9 +42,6 @@ type Service struct {
 
 	running   bool
 	runningMu sync.Mutex
-
-	// scheduler는 정해진 일정(Cron)에 따라 Task 실행 트리거를 당기는 내부 스케줄러입니다.
-	scheduler *scheduler.Scheduler
 
 	// tasks 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
 	tasks map[contract.TaskInstanceID]provider.Task
@@ -79,8 +75,6 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		running:   false,
 		runningMu: sync.Mutex{},
-
-		scheduler: scheduler.New(),
 
 		tasks: make(map[contract.TaskInstanceID]provider.Task),
 
@@ -121,8 +115,6 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	go s.run0(serviceStopCtx, serviceStopWG)
 
 	s.running = true
-
-	s.scheduler.Start(s.appConfig, s, s.notificationSender)
 
 	applog.WithComponent("task.service").Info("Task 서비스 시작됨")
 
@@ -392,11 +384,6 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 // handleStop 서비스를 안전하게 중지합니다.
 func (s *Service) handleStop() {
 	applog.WithComponent("task.service").Info("Task 서비스 중지중...")
-
-	// Task 스케줄러를 가장 먼저 중지합니다.
-	// 이는 시스템 종료 과정에서 새로운 작업 요청이 생성되어 유입되는 것을 원천적으로 차단하기 위함입니다.
-	// (소비자인 Service가 종료되기 전에 생산자인 Scheduler를 먼저 끄는 것이 안전합니다.)
-	s.scheduler.Stop()
 
 	s.runningMu.Lock()
 	// SubmitTask가 running 상태를 확인하고 채널에 전송하기(send) 전에,

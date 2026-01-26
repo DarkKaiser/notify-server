@@ -18,6 +18,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task"
 	"github.com/darkkaiser/notify-server/internal/testutil"
 
@@ -36,6 +37,7 @@ type IntegrationTestSuite struct {
 	cancel              context.CancelFunc
 	wg                  sync.WaitGroup
 	taskService         *task.Service
+	schedulerService    *scheduler.Scheduler
 	notificationService *notification.Service
 	apiService          *api.Service
 	mockHandler         *mockNotifierHandler // 최종 도착지 (Telegram 역할)
@@ -96,7 +98,11 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 
 	apiService := api.NewService(appConfig, notificationService, version.Info{Version: "test"})
 
-	// 4. Context Setup
+	// 4. Scheduler Creation
+	// Scheduler depends on TaskService (Submitter) and NotificationSender
+	schedulerService := scheduler.NewService(appConfig.Tasks, taskService, notificationService)
+
+	// 5. Context Setup
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &IntegrationTestSuite{
@@ -105,6 +111,7 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 		ctx:                 ctx,
 		cancel:              cancel,
 		taskService:         taskService,
+		schedulerService:    schedulerService,
 		notificationService: notificationService,
 		apiService:          apiService,
 		mockHandler:         mockHandler,
@@ -113,9 +120,10 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 }
 
 func (s *IntegrationTestSuite) Start() {
-	s.wg.Add(3)
+	s.wg.Add(4)
 	// Start all services
 	go s.taskService.Start(s.ctx, &s.wg)
+	go s.schedulerService.Start(s.ctx, &s.wg)
 	go s.notificationService.Start(s.ctx, &s.wg)
 	go s.apiService.Start(s.ctx, &s.wg)
 
