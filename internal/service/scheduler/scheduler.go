@@ -16,6 +16,9 @@ import (
 // component Scheduler 서비스의 로깅용 컴포넌트 이름
 const component = "scheduler.service"
 
+// taskSubmitTimeout 작업 실행 요청 시 최대 대기 시간 (블로킹 방지)
+const taskSubmitTimeout = 5 * time.Second
+
 // Scheduler 애플리케이션 설정 파일(AppConfig)에 정의된 작업들을 Cron 스케줄에 맞춰 자동으로 실행하는 서비스입니다.
 type Scheduler struct {
 	taskConfigs []config.TaskConfig
@@ -93,7 +96,7 @@ func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wa
 	)
 
 	// 2. 작업 등록
-	s.registerTasks()
+	s.registerTasks(serviceStopCtx)
 
 	// 3. 스케줄러 시작
 	s.cron.Start()
@@ -144,7 +147,7 @@ func (s *Scheduler) Stop() {
 
 // registerTasks 설정 파일에 정의된 모든 작업을 하나씩 살펴보며, "실행 가능(Runnable)" 플래그가 켜진 작업들만
 // Cron 스케줄러에 등록합니다. 등록되지 않은 작업은 건너뛰므로, 필요에 따라 작업을 활성화/비활성화할 수 있습니다.
-func (s *Scheduler) registerTasks() {
+func (s *Scheduler) registerTasks(serviceStopCtx context.Context) {
 	for _, t := range s.taskConfigs {
 		for _, c := range t.Commands {
 			if !c.Scheduler.Runnable {
@@ -160,11 +163,25 @@ func (s *Scheduler) registerTasks() {
 
 			// Cron 스케줄 등록
 			_, err := s.cron.AddFunc(timeSpec, func() {
-				// 작업 실행 요청
-				// 작업 실행 컨텍스트를 스케줄러의 생명주기와 분리하기 위해 context.Background()를 사용합니다.
-				// 이는 Graceful Shutdown 시 cron.Stop()이 실행 중인 모든 작업의 완료를 대기하므로,
-				// 작업 도중 컨텍스트 취소로 인한 강제 중단을 방지하고 정합성을 보장하기 위함입니다.
-				if err := s.taskSubmitter.Submit(context.Background(), &contract.TaskSubmitRequest{
+				// ========================================
+				// 작업 실행 요청 (Task Submission)
+				// ========================================
+				//
+				// [컨텍스트 설계 배경]
+				//
+				// 1. context.Background() 사용 이유:
+				//    - 작업 실행 요청의 생명주기를 스케줄러 서비스의 종료 시그널(serviceStopCtx)과 분리합니다.
+				//    - Graceful Shutdown 시 cron.Stop()이 실행 중인 모든 작업의 완료를 대기하므로,
+				//      작업 도중 컨텍스트 취소로 인한 강제 중단을 방지하고 데이터 정합성을 보장합니다.
+				//
+				// 2. WithTimeout 적용 이유:
+				//    - 작업 큐(Task Queue)가 가득 찼을 때 무한 대기(Hang)를 방지합니다.
+				//    - taskSubmitTimeout(5초) 내에 큐에 자리가 나지 않으면 에러를 반환하여,
+				//      스케줄러가 블로킹되지 않고 다음 스케줄을 정상적으로 처리할 수 있도록 합니다.
+				ctx, cancel := context.WithTimeout(context.Background(), taskSubmitTimeout)
+				defer cancel()
+
+				if err := s.taskSubmitter.Submit(ctx, &contract.TaskSubmitRequest{
 					TaskID:        taskID,
 					CommandID:     commandID,
 					NotifierID:    defaultNotifierID,
@@ -172,14 +189,14 @@ func (s *Scheduler) registerTasks() {
 					RunBy:         contract.TaskRunByScheduler,
 				}); err != nil {
 					message := "작업 요청 실패: TaskSubmitter 실행 중 오류가 발생했습니다"
-					s.logAndNotifyError(defaultNotifierID, taskID, commandID, message, err)
+					s.logAndNotifyError(serviceStopCtx, defaultNotifierID, taskID, commandID, message, err)
 				}
 			})
 
 			if err != nil {
 				// 스케줄 파싱 실패 시 해당 작업만 건너뛰고 계속 진행
 				message := fmt.Sprintf("스케줄 등록 실패: 잘못된 Cron 표현식입니다 (TimeSpec: %s)", timeSpec)
-				s.logAndNotifyError(defaultNotifierID, taskID, commandID, message, err)
+				s.logAndNotifyError(serviceStopCtx, defaultNotifierID, taskID, commandID, message, err)
 				continue
 			}
 		}
@@ -187,7 +204,7 @@ func (s *Scheduler) registerTasks() {
 }
 
 // logAndNotifyError 스케줄러 실행 중 발생한 오류를 로깅하고 관리자에게 알림을 전송합니다.
-func (s *Scheduler) logAndNotifyError(notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
+func (s *Scheduler) logAndNotifyError(serviceStopCtx context.Context, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
 	fields := applog.Fields{
 		"notifier_id": notifierID,
 		"task_id":     taskID,
@@ -203,7 +220,7 @@ func (s *Scheduler) logAndNotifyError(notifierID contract.NotifierID, taskID con
 
 	applog.WithComponentAndFields(component, fields).Error(message)
 
-	s.notificationSender.Notify(context.Background(), contract.Notification{
+	s.notificationSender.Notify(serviceStopCtx, contract.Notification{
 		NotifierID:    notifierID,
 		TaskID:        taskID,
 		CommandID:     commandID,

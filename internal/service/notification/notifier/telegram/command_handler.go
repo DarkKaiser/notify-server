@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -135,9 +136,27 @@ func (n *telegramNotifier) lookupCommand(commandName string) (botCommand, bool) 
 //  2. 제출이 성공하면 사용자에게 "작업이 시작되었습니다" 메시지를 전송합니다.
 //  3. 제출이 실패하면(예: 대기열 포화) 사용자에게 실패 안내 메시지를 전송합니다.
 func (n *telegramNotifier) submitTask(serviceStopCtx context.Context, command botCommand) {
-	// TaskExecutor에게 작업 실행을 요청합니다.
-	// 이 호출은 작업을 대기열에 등록하는 것이며, 실제 작업은 별도의 워커 풀에서 비동기로 실행됩니다.
-	if err := n.executor.Submit(serviceStopCtx, &contract.TaskSubmitRequest{
+	// ========================================
+	// 작업 실행 요청 (Task Submission)
+	// ========================================
+	//
+	// [컨텍스트 설계 배경]
+	//
+	// 1. serviceStopCtx 기반 타임아웃 생성:
+	//    - 부모 컨텍스트(serviceStopCtx)를 상속하여 서비스 종료 시그널을 따릅니다.
+	//    - 서비스가 종료되면 대기 중인 작업 제출도 즉시 취소됩니다.
+	//
+	// 2. 3초 타임아웃 적용 이유:
+	//    - 작업 큐(Task Queue)가 가득 찼을 때 텔레그램 봇 전체가 멈추는(Hang) 것을 방지합니다.
+	//    - 타임아웃 내에 큐에 자리가 나지 않으면 에러를 반환하여,
+	//      봇이 다른 사용자의 명령어(/help, /cancel 등)를 계속 처리할 수 있도록 합니다.
+	//    - 타임아웃 발생 시 사용자에게 "시스템 과부하" 안내 메시지가 전송됩니다.
+	//
+	// [참고] TaskExecutor.Submit()은 작업을 대기열에 등록하는 것이며, 실제 작업은 별도의 워커 풀에서 비동기로 실행됩니다.
+	ctx, cancel := context.WithTimeout(serviceStopCtx, 3*time.Second)
+	defer cancel()
+
+	if err := n.executor.Submit(ctx, &contract.TaskSubmitRequest{
 		TaskID:        command.taskID,
 		CommandID:     command.commandID,
 		NotifierID:    n.ID(),

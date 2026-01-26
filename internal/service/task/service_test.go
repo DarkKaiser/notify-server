@@ -334,3 +334,87 @@ func TestService_CancelConcurrency(t *testing.T) {
 	cancel()
 	serviceStopWG.Wait()
 }
+
+// TestService_Submit_Timeout tests that Submit returns a timeout error when the queue is full
+// and the context deadline is exceeded.
+func TestService_Submit_Timeout(t *testing.T) {
+	// 1. Setup Service with a slow task initializer to simulate a blocked consumer
+	registerServiceTestTask() // Register basic tasks
+
+	// Register a slow task
+	provider.RegisterForTest("SLOW_TASK", &provider.Config{
+		Commands: []*provider.CommandConfig{
+			{ID: "SLOW_CMD", AllowMultiple: true},
+		},
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
+			// Simulate slow initialization to block the consumer (run0 loop)
+			time.Sleep(100 * time.Millisecond)
+			return &MockTask{
+				id:         req.TaskID,
+				commandID:  req.CommandID,
+				instanceID: instanceID,
+				cancelC:    make(chan struct{}),
+			}, nil
+		},
+	})
+
+	appConfig := &config.AppConfig{}
+	service := NewService(appConfig)
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	// mockSender doesn't need expectations as we won't trigger notifications in this short test
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var serviceStopWG sync.WaitGroup
+	serviceStopWG.Add(1)
+
+	err := service.Start(ctx, &serviceStopWG)
+	require.NoError(t, err)
+	defer func() {
+		cancel()
+		serviceStopWG.Wait()
+	}()
+
+	// 2. Fill the buffer (size 10)
+	// We send 12 requests.
+	// Consumer takes 100ms per request.
+	// Filling 10 requests takes negligible time (pushes to channel).
+	// 11th request will block until consumer picks up 1st (starts processing).
+	// But consumer is blocked on "Processing 1st" for 100ms.
+	// So 11th request blocks for ~100ms.
+
+	// Send 11 requests to fill buffer and engage consumer
+	for i := 0; i < 11; i++ {
+		go service.Submit(context.Background(), &contract.TaskSubmitRequest{
+			TaskID:     "SLOW_TASK",
+			CommandID:  "SLOW_CMD",
+			NotifierID: contract.NotifierID("n"),
+			RunBy:      contract.TaskRunByUser,
+		})
+	}
+
+	// Give a moment for the channel to fill up
+	time.Sleep(10 * time.Millisecond)
+
+	// 3. Send the 12th request with a short timeout
+	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer timeoutCancel()
+
+	start := time.Now()
+	err = service.Submit(timeoutCtx, &contract.TaskSubmitRequest{
+		TaskID:     "SLOW_TASK",
+		CommandID:  "SLOW_CMD",
+		NotifierID: contract.NotifierID("n"),
+		RunBy:      contract.TaskRunByUser,
+	})
+	elapsed := time.Since(start)
+
+	// 4. Verify
+	require.Error(t, err, "Submit should coincide with timeout")
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Error should be DeadlineExceeded")
+
+	// Ensure it didn't block forever (should be around 20ms)
+	// We allow some buffer for test execution overhead
+	require.Less(t, elapsed, 200*time.Millisecond, "Submit blocked longer than expected")
+}

@@ -477,8 +477,8 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 	case s.taskSubmitC <- req:
 		return nil
 
-	default:
-		return apperrors.New(apperrors.Internal, "Task 실행 요청 큐가 가득 찼습니다.")
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
