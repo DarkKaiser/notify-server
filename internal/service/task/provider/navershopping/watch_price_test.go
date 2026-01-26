@@ -1,4 +1,4 @@
-﻿package navershopping
+package navershopping
 
 import (
 	"encoding/json"
