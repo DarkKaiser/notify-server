@@ -96,13 +96,15 @@ func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wa
 	)
 
 	// 2. 작업 등록
-	s.registerTasks(serviceStopCtx)
+	if err := s.registerTasks(serviceStopCtx); err != nil {
+		serviceStopWG.Done()
+		return err
+	}
 
 	// 3. 스케줄러 시작
 	s.cron.Start()
 	s.running = true
 
-	// 등록된 스케줄 개수 로깅
 	applog.WithComponentAndFields(component, applog.Fields{
 		"registered_schedules": len(s.cron.Entries()),
 		"total_defined_tasks":  len(s.taskConfigs),
@@ -116,14 +118,14 @@ func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wa
 
 		<-serviceStopCtx.Done()
 
-		s.Stop()
+		s.stop()
 	}()
 
 	return nil
 }
 
-// Stop 실행 중인 스케줄러를 안전하게 중지합니다.
-func (s *Scheduler) Stop() {
+// stop 실행 중인 스케줄러를 안전하게 중지합니다.
+func (s *Scheduler) stop() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -146,8 +148,8 @@ func (s *Scheduler) Stop() {
 }
 
 // registerTasks 설정 파일에 정의된 모든 작업을 하나씩 살펴보며, "실행 가능(Runnable)" 플래그가 켜진 작업들만
-// Cron 스케줄러에 등록합니다. 등록되지 않은 작업은 건너뛰므로, 필요에 따라 작업을 활성화/비활성화할 수 있습니다.
-func (s *Scheduler) registerTasks(serviceStopCtx context.Context) {
+// Cron 스케줄러에 등록합니다.
+func (s *Scheduler) registerTasks(serviceStopCtx context.Context) error {
 	for _, t := range s.taskConfigs {
 		for _, c := range t.Commands {
 			if !c.Scheduler.Runnable {
@@ -170,9 +172,12 @@ func (s *Scheduler) registerTasks(serviceStopCtx context.Context) {
 				// [컨텍스트 설계 배경]
 				//
 				// 1. context.Background() 사용 이유:
-				//    - 작업 실행 요청의 생명주기를 스케줄러 서비스의 종료 시그널(serviceStopCtx)과 분리합니다.
-				//    - Graceful Shutdown 시 cron.Stop()이 실행 중인 모든 작업의 완료를 대기하므로,
-				//      작업 도중 컨텍스트 취소로 인한 강제 중단을 방지하고 데이터 정합성을 보장합니다.
+				//    - 작업 실행 요청의 생명주기를 스케줄러 서비스의 종료 시그널(serviceStopCtx)과 의도적으로 분리합니다.
+				//    - 서비스 종료 시 cron.Stop()은 실행 중인 모든 Cron Job의 완료를 대기합니다.
+				//      따라서 이미 트리거된 작업은 serviceStopCtx 취소와 무관하게 TaskExecutor에게 전달되어야 합니다.
+				//    - 만약 serviceStopCtx를 사용하면, 서비스 종료 시그널과 동시에 Submit이 즉시 실패하여
+				//      스케줄된 작업이 누락될 수 있습니다. Background()를 사용하면 TaskExecutor가 자체 큐 정책에 따라
+				//      작업을 처리할 수 있어, 우아한 종료(Graceful Shutdown) 중에도 데이터 정합성을 보장합니다.
 				//
 				// 2. WithTimeout 적용 이유:
 				//    - 작업 큐(Task Queue)가 가득 찼을 때 무한 대기(Hang)를 방지합니다.
@@ -194,13 +199,12 @@ func (s *Scheduler) registerTasks(serviceStopCtx context.Context) {
 			})
 
 			if err != nil {
-				// 스케줄 파싱 실패 시 해당 작업만 건너뛰고 계속 진행
-				message := fmt.Sprintf("스케줄 등록 실패: 잘못된 Cron 표현식입니다 (TimeSpec: %s)", timeSpec)
-				s.logAndNotifyError(serviceStopCtx, defaultNotifierID, taskID, commandID, message, err)
-				continue
+				return NewErrInvalidCronSpec(string(taskID), timeSpec, err)
 			}
 		}
 	}
+
+	return nil
 }
 
 // logAndNotifyError 스케줄러 실행 중 발생한 오류를 로깅하고 관리자에게 알림을 전송합니다.
@@ -220,12 +224,42 @@ func (s *Scheduler) logAndNotifyError(serviceStopCtx context.Context, notifierID
 
 	applog.WithComponentAndFields(component, fields).Error(message)
 
-	s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+	// ========================================
+	// 에러 알림 전송 (Non-blocking)
+	// ========================================
+	//
+	// [타임아웃 설계 배경]
+	//
+	// 1. 짧은 타임아웃(1초) 적용 이유:
+	//    - NotificationSender.Notify()는 내부적으로 큐에 알림을 추가하는 블로킹 함수입니다.
+	//    - Notification Queue가 가득 찬 상황에서 무한 대기하면 Cron Job 스레드가 블로킹되어
+	//      다음 스케줄 실행이 지연되거나 누락될 수 있습니다.
+	//    - 1초 타임아웃을 설정하여 큐가 가득 찬 경우 빠르게 실패하고, Cron Job이 정상적으로 완료되도록 보장합니다.
+	//
+	// 2. serviceStopCtx 사용 이유:
+	//    - 서비스 종료 시그널(serviceStopCtx)을 상속받아, 서비스가 종료 중일 때는 알림 전송을 즉시 중단합니다.
+	//    - 이를 통해 종료 프로세스가 불필요하게 지연되는 것을 방지합니다.
+	//
+	// 3. 실패 시 처리 방식:
+	//    - 알림 전송이 실패하더라도 에러를 반환하지 않고, 경고 로그만 남긴 후 Cron Job을 정상 완료합니다.
+	//    - 이는 알림 전송 실패가 스케줄러의 핵심 기능(작업 스케줄링)을 방해하지 않도록 하기 위함입니다.
+	ctx, cancel := context.WithTimeout(serviceStopCtx, 1*time.Second)
+	defer cancel()
+
+	if err := s.notificationSender.Notify(ctx, contract.Notification{
 		NotifierID:    notifierID,
 		TaskID:        taskID,
 		CommandID:     commandID,
 		Title:         "",
 		Message:       message,
 		ErrorOccurred: true,
-	})
+	}); err != nil {
+		applog.WithComponentAndFields(component, applog.Fields{
+			"notifier_id": notifierID,
+			"task_id":     taskID,
+			"command_id":  commandID,
+			"run_by":      contract.TaskRunByScheduler,
+			"error":       err,
+		}).Warn("에러 알림 전송 실패: 알림 큐 용량 초과 또는 타임아웃 발생")
+	}
 }
