@@ -1,4 +1,4 @@
-﻿package naver
+package naver
 
 import (
 	"context" // Added context import

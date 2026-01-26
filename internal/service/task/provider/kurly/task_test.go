@@ -1,4 +1,4 @@
-﻿package kurly
+package kurly
 
 import (
 	"testing"
