@@ -31,6 +31,9 @@ type MockTaskResultStorage struct {
 	mock.Mock
 }
 
+// Ensure MockTaskResultStorage implements storage.TaskResultStorage at compile time.
+var _ storage.TaskResultStorage = (*MockTaskResultStorage)(nil)
+
 // Get 저장된 작업 결과를 조회합니다.
 func (m *MockTaskResultStorage) Get(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
 	args := m.Called(taskID, commandID)
@@ -184,8 +187,10 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 }
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
+// NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *provider.Base {
-	t := provider.NewBase(taskID, commandID, instanceID, notifierID, runBy)
+	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
+	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy)
 	t.SetStorage(&MockTaskResultStorage{})
 	return t
 }
