@@ -77,10 +77,7 @@ func TestBase_Initialization(t *testing.T) {
 			require.NotNil(t, n.NotificationC())
 			assert.Equal(t, tt.bufferSize, cap(n.NotificationC()))
 
-			// Assert: Internal Pointer Initialization (Safety Check)
 			// 포인터 필드들이 올바르게 초기화되었는지 확인하여 Nil Pointer Dereference 방지
-			assert.NotNil(t, n.mu, "Mutex must be initialized")
-			assert.NotNil(t, n.pendingSendsWG, "WaitGroup must be initialized")
 			assert.NotNil(t, n.done, "Done channel must be initialized")
 
 			// Verify channel states

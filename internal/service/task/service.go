@@ -67,7 +67,7 @@ type Service struct {
 	taskCancelC chan contract.TaskInstanceID
 
 	// taskStopWG는 실행 중인 모든 Task의 종료를 추적하고 대기하는 동기화 객체입니다.
-	taskStopWG *sync.WaitGroup
+	taskStopWG sync.WaitGroup
 
 	storage storage.TaskResultStorage
 }
@@ -91,8 +91,6 @@ func NewService(appConfig *config.AppConfig) *Service {
 		taskSubmitC: make(chan *contract.TaskSubmitRequest, defaultChannelBufferSize),
 		taskDoneC:   make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
-
-		taskStopWG: &sync.WaitGroup{},
 
 		storage: storage.NewFileTaskResultStorage(config.AppName),
 	}
@@ -303,7 +301,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.taskStopWG.Add(1)
 		// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
 		// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
-		go h.Run(context.Background(), s.notificationSender, s.taskStopWG, s.taskDoneC)
+		go h.Run(context.Background(), s.notificationSender, &s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{

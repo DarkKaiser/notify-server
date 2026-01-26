@@ -34,7 +34,7 @@ type IntegrationTestSuite struct {
 	appConfig           *config.AppConfig
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	wg                  *sync.WaitGroup
+	wg                  sync.WaitGroup
 	taskService         *task.Service
 	notificationService *notification.Service
 	apiService          *api.Service
@@ -98,14 +98,12 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 
 	// 4. Context Setup
 	ctx, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
 
 	return &IntegrationTestSuite{
 		t:                   t,
 		appConfig:           appConfig,
 		ctx:                 ctx,
 		cancel:              cancel,
-		wg:                  wg,
 		taskService:         taskService,
 		notificationService: notificationService,
 		apiService:          apiService,
@@ -117,9 +115,9 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 func (s *IntegrationTestSuite) Start() {
 	s.wg.Add(3)
 	// Start all services
-	go s.taskService.Start(s.ctx, s.wg)
-	go s.notificationService.Start(s.ctx, s.wg)
-	go s.apiService.Start(s.ctx, s.wg)
+	go s.taskService.Start(s.ctx, &s.wg)
+	go s.notificationService.Start(s.ctx, &s.wg)
+	go s.apiService.Start(s.ctx, &s.wg)
 
 	// Wait for API server to be ready using polling
 	require.NoError(s.t, testutil.WaitForServer(s.apiPort, 5*time.Second), "API Server did not start in time")

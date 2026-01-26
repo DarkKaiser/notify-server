@@ -135,7 +135,7 @@ func TestNewService(t *testing.T) {
 	require.NotNil(t, service.taskSubmitC, "taskSubmitC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskDoneC, "taskDoneC 채널이 초기화되어야 합니다")
 	require.NotNil(t, service.taskCancelC, "taskCancelC 채널이 초기화되어야 합니다")
-	require.NotNil(t, service.taskStopWG, "taskStopWG가 초기화되어야 합니다")
+
 }
 
 // =============================================================================

@@ -41,7 +41,7 @@ type Base struct {
 
 	// mu 내부 상태(closed, done, notificationC)와 채널 접근 시 발생하는 경쟁 상태를 방지하기 위한 동기화 객체입니다.
 	// 상태를 읽기만 할 때는 RLock을, 변경할 때는 Lock을 사용하여 성능과 안전성을 최적화합니다.
-	mu *sync.RWMutex
+	mu sync.RWMutex
 
 	// closed Close() 메서드가 호출되어 Notifier가 영구적으로 종료되었는지를 나타내는 상태 플래그입니다.
 	// 이 값이 true가 되면, 더 이상 새로운 알림 요청을 수락하지 않고 거부합니다.
@@ -56,7 +56,7 @@ type Base struct {
 	// 이 필드는 Graceful Shutdown 시 메시지 유실을 방지하기 위한 핵심 동기화 장치입니다.
 	// Close() 호출 후에도 이미 sendInternal()에 진입한 고루틴들이 채널에 메시지를 넣을 기회를 보장하기 위해,
 	// 워커(Consumer) 고루틴은 종료 전 WaitForSenders()를 호출하여 이 카운터가 0이 될 때까지 대기합니다.
-	pendingSendsWG *sync.WaitGroup
+	pendingSendsWG sync.WaitGroup
 }
 
 // NewBase 새로운 Base Notifier 인스턴스를 생성하고 초기화합니다.
@@ -70,11 +70,7 @@ func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueT
 
 		notificationC: make(chan *notificationRequest, bufferSize),
 
-		mu: &sync.RWMutex{},
-
 		done: make(chan struct{}),
-
-		pendingSendsWG: &sync.WaitGroup{},
 	}
 }
 
