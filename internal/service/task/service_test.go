@@ -8,7 +8,10 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+
+	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 
@@ -85,13 +88,19 @@ func registerServiceTestTask() {
 // 반환값:
 //   - Service: 설정된 서비스
 //   - MockNotificationSender: Mock 알림 발송자
+//   - MockIDGenerator: Mock ID 생성자
 //   - Context: 컨텍스트
 //   - CancelFunc: 취소 함수
 //   - WaitGroup: 동기화용 WaitGroup
-func setupTestService(t *testing.T) (*Service, *notificationmocks.MockNotificationSender, context.Context, context.CancelFunc, *sync.WaitGroup) {
+func setupTestService(t *testing.T) (*Service, *notificationmocks.MockNotificationSender, *contractmocks.MockIDGenerator, context.Context, context.CancelFunc, *sync.WaitGroup) {
 	registerServiceTestTask()
 	appConfig := &config.AppConfig{}
-	service := NewService(appConfig)
+
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	// 기본적으로 임의의 ID를 반환하도록 설정 (테스트 편의성)
+	mockIDGen.On("New").Return(contract.TaskInstanceID("mjz7373-test-instance")).Maybe()
+
+	service := NewService(appConfig, mockIDGen)
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// Default expectations for async notifications (Task service is chatty)
 	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -103,11 +112,10 @@ func setupTestService(t *testing.T) (*Service, *notificationmocks.MockNotificati
 	serviceStopWG.Add(1)
 
 	// Start를 동기적으로 호출하여 초기화가 완료될 때까지 대기
-	// 별도의 고루틴(go service.Start)이나 Sleep이 필요하지 않음
 	err := service.Start(ctx, serviceStopWG)
 	require.NoError(t, err, "서비스 시작 실패")
 
-	return service, mockSender, ctx, cancel, serviceStopWG
+	return service, mockSender, mockIDGen, ctx, cancel, serviceStopWG
 }
 
 // =============================================================================
@@ -125,7 +133,8 @@ func TestNewService(t *testing.T) {
 	appConfig := &config.AppConfig{}
 
 	// 서비스 생성
-	service := NewService(appConfig)
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	service := NewService(appConfig, mockIDGen)
 
 	// 검증
 	require.NotNil(t, service, "서비스가 생성되어야 합니다")
@@ -145,7 +154,8 @@ func TestNewService(t *testing.T) {
 // TestService_SetNotificationSender는 알림 발송자 설정을 검증합니다.
 func TestService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
-	service := NewService(appConfig)
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	service := NewService(appConfig, mockIDGen)
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 
@@ -162,7 +172,7 @@ func TestService_SetNotificationSender(t *testing.T) {
 
 // TestService_TaskRun_Success는 Task 정상 실행을 검증합니다.
 func TestService_TaskRun_Success(t *testing.T) {
-	service, _, _, cancel, serviceStopWG := setupTestService(t)
+	service, _, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task 실행 요청
 	err := service.Submit(context.Background(), &contract.TaskSubmitRequest{
@@ -183,7 +193,7 @@ func TestService_TaskRun_Success(t *testing.T) {
 
 // TestService_TaskRunWithContext_Success는 Task Context와 함께 Task 실행을 검증합니다.
 func TestService_TaskRunWithContext_Success(t *testing.T) {
-	service, _, _, cancel, serviceStopWG := setupTestService(t)
+	service, _, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task Context 생성
 	// taskCtx := contract.NewTaskContext().With("test_key", "test_value")
@@ -208,7 +218,7 @@ func TestService_TaskRunWithContext_Success(t *testing.T) {
 
 // TestService_TaskCancel_Success는 Task 취소를 검증합니다.
 func TestService_TaskCancel_Success(t *testing.T) {
-	service, _, _, cancel, serviceStopWG := setupTestService(t)
+	service, _, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// Task 취소 요청
 	instanceID := contract.TaskInstanceID("test_instance_123")
@@ -224,7 +234,7 @@ func TestService_TaskCancel_Success(t *testing.T) {
 
 // TestService_TaskRun_UnsupportedTask는 지원하지 않는 Task 처리를 검증합니다.
 func TestService_TaskRun_UnsupportedTask(t *testing.T) {
-	service, mockSender, _, cancel, serviceStopWG := setupTestService(t)
+	service, mockSender, _, _, cancel, serviceStopWG := setupTestService(t)
 
 	// 지원되지 않는 Task 실행 요청
 	err := service.Submit(context.Background(), &contract.TaskSubmitRequest{
@@ -255,7 +265,25 @@ func TestService_TaskRun_UnsupportedTask(t *testing.T) {
 
 // TestService_Concurrency는 동시성 처리를 검증합니다.
 func TestService_Concurrency(t *testing.T) {
-	service, _, _, cancel, serviceStopWG := setupTestService(t)
+	// 동시성 테스트에서는 고유한 ID 생성이 필수적이므로 Mock 대신 실제 Generator를 사용하거나
+	// 매번 다른 값을 반환하는 Stub을 사용해야 합니다. 여기서는 실제 Generator를 사용합니다.
+	registerServiceTestTask()
+	appConfig := &config.AppConfig{}
+
+	// 실제 ID 생성기 사용
+	service := NewService(appConfig, &idgen.Generator{})
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	// 비동기 알림 허용
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	err := service.Start(ctx, serviceStopWG)
+	require.NoError(t, err)
 
 	// 동시에 여러 Task 실행 요청
 	const numGoroutines = 10
@@ -296,7 +324,21 @@ func TestService_Concurrency(t *testing.T) {
 
 // TestService_CancelConcurrency는 동시 취소 처리를 검증합니다.
 func TestService_CancelConcurrency(t *testing.T) {
-	service, _, _, cancel, serviceStopWG := setupTestService(t)
+	// 동시성 테스트를 위해 실제 Generator 사용
+	registerServiceTestTask()
+	appConfig := &config.AppConfig{}
+	service := NewService(appConfig, &idgen.Generator{})
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	err := service.Start(ctx, serviceStopWG)
+	require.NoError(t, err)
 
 	// Task 실행 후 즉시 취소 반복
 	const numIterations = 100
@@ -359,7 +401,10 @@ func TestService_Submit_Timeout(t *testing.T) {
 	})
 
 	appConfig := &config.AppConfig{}
-	service := NewService(appConfig)
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	mockIDGen.On("New").Return(contract.TaskInstanceID("slow-task-id")).Maybe()
+
+	service := NewService(appConfig, mockIDGen)
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// mockSender doesn't need expectations as we won't trigger notifications in this short test
 	service.SetNotificationSender(mockSender)

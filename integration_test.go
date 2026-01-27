@@ -20,6 +20,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -83,7 +84,8 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 	}
 
 	// 3. Service Creation
-	taskService := task.NewService(appConfig)
+	idGenerator := &idgen.Generator{}
+	taskService := task.NewService(appConfig, idGenerator)
 
 	// Inject Mock Handler into Notification Service
 	mockFactory := (&notificationmocks.MockFactory{}).WithCreateAll([]notifier.Notifier{

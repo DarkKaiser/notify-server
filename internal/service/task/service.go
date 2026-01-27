@@ -9,7 +9,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
@@ -47,7 +46,7 @@ type Service struct {
 	tasks map[contract.TaskInstanceID]provider.Task
 
 	// idGenerator는 각 Task 실행 인스턴스에 대해 전역적으로 고유한 식별자(InstanceID)를 발급하는 생성기입니다.
-	idGenerator idgen.Generator
+	idGenerator contract.IDGenerator
 
 	// notificationSender는 작업의 실행 결과나 중요 이벤트를 외부 시스템(예: Telegram, Slack 등)으로 전파하는
 	// 책임을 가진 추상화된 인터페이스(Interface)입니다.
@@ -69,7 +68,11 @@ type Service struct {
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig) *Service {
+func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator) *Service {
+	if idGenerator == nil {
+		panic("idGenerator must not be nil")
+	}
+
 	return &Service{
 		appConfig: appConfig,
 
@@ -78,7 +81,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 
 		tasks: make(map[contract.TaskInstanceID]provider.Task),
 
-		idGenerator: idgen.Generator{},
+		idGenerator: idGenerator,
 
 		notificationSender: nil,
 
