@@ -38,9 +38,9 @@ func (h *MockTask) GetInstanceID() contract.TaskInstanceID { return h.instanceID
 func (h *MockTask) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *MockTask) IsCanceled() bool                              { return h.canceled }
-func (h *MockTask) ElapsedTimeAfterRun() int64                    { return 0 }
-func (h *MockTask) SetStorage(storage contract.TaskResultStorage) {}
+func (h *MockTask) IsCanceled() bool                            { return h.canceled }
+func (h *MockTask) ElapsedTimeAfterRun() int64                  { return 0 }
+func (h *MockTask) SetStorage(storage contract.TaskResultStore) {}
 
 func (h *MockTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()
@@ -99,7 +99,7 @@ func setupTestService(t *testing.T) (*Service, *notificationmocks.MockNotificati
 	// 기본적으로 임의의 ID를 반환하도록 설정 (테스트 편의성)
 	mockIDGen.On("New").Return(contract.TaskInstanceID("mjz7373-test-instance")).Maybe()
 
-	mockStorage := new(contractmocks.MockTaskResultStorage)
+	mockStorage := new(contractmocks.MockTaskResultStore)
 	service := NewService(appConfig, mockIDGen, mockStorage)
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// Default expectations for async notifications (Task service is chatty)
@@ -134,7 +134,7 @@ func TestNewService(t *testing.T) {
 
 	// 서비스 생성
 	mockIDGen := new(contractmocks.MockIDGenerator)
-	mockStorage := new(contractmocks.MockTaskResultStorage)
+	mockStorage := new(contractmocks.MockTaskResultStore)
 	service := NewService(appConfig, mockIDGen, mockStorage)
 
 	// 검증
@@ -156,7 +156,7 @@ func TestNewService(t *testing.T) {
 func TestService_SetNotificationSender(t *testing.T) {
 	appConfig := &config.AppConfig{}
 	mockIDGen := new(contractmocks.MockIDGenerator)
-	mockStorage := new(contractmocks.MockTaskResultStorage)
+	mockStorage := new(contractmocks.MockTaskResultStore)
 	service := NewService(appConfig, mockIDGen, mockStorage)
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
@@ -273,7 +273,7 @@ func TestService_Concurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 
 	// 실제 ID 생성기 사용
-	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStorage))
+	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStore))
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// 비동기 알림 허용
@@ -329,7 +329,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 	// 동시성 테스트를 위해 실제 Generator 사용
 	registerServiceTestTask()
 	appConfig := &config.AppConfig{}
-	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStorage))
+	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStore))
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -406,7 +406,7 @@ func TestService_Submit_Timeout(t *testing.T) {
 	mockIDGen := new(contractmocks.MockIDGenerator)
 	mockIDGen.On("New").Return(contract.TaskInstanceID("slow-task-id")).Maybe()
 
-	service := NewService(appConfig, mockIDGen, new(contractmocks.MockTaskResultStorage))
+	service := NewService(appConfig, mockIDGen, new(contractmocks.MockTaskResultStore))
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// mockSender doesn't need expectations as we won't trigger notifications in this short test
 	service.SetNotificationSender(mockSender)

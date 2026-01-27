@@ -18,21 +18,21 @@ import (
 // defaultDataDirectory 기본 데이터 저장 디렉토리 이름
 const defaultDataDirectory = "data"
 
-// FileTaskResultStorage 파일 시스템 기반의 Task 결과 저장소 구현체
-type FileTaskResultStorage struct {
+// FileTaskResultStore 파일 시스템 기반의 Task 결과 저장소 구현체
+type FileTaskResultStore struct {
 	appName string
 
-	baseDir string // 데이터 저장 디렉토리
+	baseDir string
 
 	locks *concurrency.KeyedMutex[string] // 파일별 락킹을 위한 KeyedMutex
 }
 
-var _ contract.TaskResultStorage = (*FileTaskResultStorage)(nil)
+var _ contract.TaskResultStore = (*FileTaskResultStore)(nil)
 
-// NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
+// NewFileTaskResultStore 새로운 파일 기반 저장소를 생성합니다.
 // 기본 저장 디렉토리는 "data" 입니다.
-func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
-	s := &FileTaskResultStorage{
+func NewFileTaskResultStore(appName string) *FileTaskResultStore {
+	s := &FileTaskResultStore{
 		appName: appName,
 
 		baseDir: defaultDataDirectory,
@@ -47,12 +47,12 @@ func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {
 }
 
 // SetBaseDir 데이터 저장 디렉토리를 변경합니다.
-func (s *FileTaskResultStorage) SetBaseDir(dir string) {
+func (s *FileTaskResultStore) SetBaseDir(dir string) {
 	s.baseDir = dir
 }
 
 // cleanupTempFiles 작업 도중 비정상 종료 등으로 남겨진 임시 파일(*.tmp)을 정리합니다.
-func (s *FileTaskResultStorage) cleanupTempFiles() {
+func (s *FileTaskResultStore) cleanupTempFiles() {
 	pattern := filepath.Join(s.baseDir, "task-result-*.tmp")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *FileTaskResultStorage) cleanupTempFiles() {
 	}
 }
 
-func (s *FileTaskResultStorage) resolvePath(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
+func (s *FileTaskResultStore) resolvePath(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
 	// 입력값 보안 검증: Path Traversal 문자가 포함되어 있는지 확인
 	// strcase.ToSnake 변환 전에 검증해야 함 (변환 과정에서 위험 문자가 사라질 수 있음)
 	if strings.Contains(string(taskID), "..") || strings.Contains(string(taskID), "/") || strings.Contains(string(taskID), "\\") {
@@ -114,7 +114,7 @@ func (s *FileTaskResultStorage) resolvePath(taskID contract.TaskID, commandID co
 }
 
 // Load 저장된 Task 결과를 파일에서 읽어옵니다.
-func (s *FileTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
+func (s *FileTaskResultStore) Load(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
 	filename, err := s.resolvePath(taskID, commandID)
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func (s *FileTaskResultStorage) Load(taskID contract.TaskID, commandID contract.
 }
 
 // Save Task 결과를 파일에 저장합니다. (Atomic Write 적용)
-func (s *FileTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
+func (s *FileTaskResultStore) Save(taskID contract.TaskID, commandID contract.TaskCommandID, v interface{}) error {
 	filename, err := s.resolvePath(taskID, commandID)
 	if err != nil {
 		return err

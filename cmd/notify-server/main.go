@@ -168,8 +168,8 @@ func run() error {
 
 	// Task Service 생성
 	idGenerator := &idgen.Generator{}
-	storage := storage.NewFileTaskResultStorage(config.AppName)
-	taskService := task.NewService(appConfig, idGenerator, storage)
+	taskResultStore := storage.NewFileTaskResultStore(config.AppName)
+	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
 	// Notifier Factory 생성 및 Processor 등록
 	notifierFactory := notifier.NewFactory()

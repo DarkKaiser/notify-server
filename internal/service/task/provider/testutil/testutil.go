@@ -153,12 +153,12 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *provider.Base {
 	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
 	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy)
-	t.SetStorage(&contractmocks.MockTaskResultStorage{})
+	t.SetStorage(&contractmocks.MockTaskResultStore{})
 	return t
 }
 
-// RegisterMockTask Mock TaskResultStorage에 특정 작업 결과를 미리 등록합니다.
-func RegisterMockTask(storage *contractmocks.MockTaskResultStorage, taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) {
+// RegisterMockTask Mock TaskResultStore에 특정 작업 결과를 미리 등록합니다.
+func RegisterMockTask(storage *contractmocks.MockTaskResultStore, taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) {
 	storage.On("Load", taskID, commandID, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		arg := args.Get(2)
 		if arg != nil && snapshot != nil {

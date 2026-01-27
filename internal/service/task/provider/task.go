@@ -34,7 +34,7 @@ type Task interface {
 
 	// SetStorage 작업 결과를 저장할 스토리지를 주입합니다.
 	// 테스트 시 Mock 스토리지를 주입하거나, 런타임에 동적으로 스토리지를 변경할 때 사용됩니다.
-	SetStorage(storage contract.TaskResultStorage)
+	SetStorage(storage contract.TaskResultStore)
 
 	// Run 작업을 실행하는 메인 메서드입니다.
 	Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)

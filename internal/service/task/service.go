@@ -63,11 +63,11 @@ type Service struct {
 	// taskStopWG는 실행 중인 모든 Task의 종료를 추적하고 대기하는 동기화 객체입니다.
 	taskStopWG sync.WaitGroup
 
-	storage contract.TaskResultStorage
+	taskResultStore contract.TaskResultStore
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, storage contract.TaskResultStorage) *Service {
+func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, taskResultStore contract.TaskResultStore) *Service {
 	if idGenerator == nil {
 		panic("idGenerator must not be nil")
 	}
@@ -88,7 +88,7 @@ func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, s
 		taskDoneC:   make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
-		storage: storage,
+		taskResultStore: taskResultStore,
 	}
 }
 
@@ -272,7 +272,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
 
-		h.SetStorage(s.storage)
+		h.SetStorage(s.taskResultStore)
 
 		// 최종 등록 및 충돌 확인
 		s.runningMu.Lock()

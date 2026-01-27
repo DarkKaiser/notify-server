@@ -17,9 +17,9 @@ import (
 const testAppName = "test-app"
 
 // setupTestStorage 테스트를 위한 helper 함수
-func setupTestStorage(t *testing.T) (*FileTaskResultStorage, string) {
+func setupTestStorage(t *testing.T) (*FileTaskResultStore, string) {
 	t.Helper()
-	storage := NewFileTaskResultStorage(testAppName)
+	storage := NewFileTaskResultStore(testAppName)
 	tempDir := t.TempDir()
 	storage.SetBaseDir(tempDir)
 	return storage, tempDir
@@ -32,8 +32,8 @@ type ComplexData struct {
 	Meta map[string]string `json:"meta"`
 }
 
-// TestFileTaskResultStorage_Basic Table-Driven 방식을 사용한 기본 기능 테스트
-func TestFileTaskResultStorage_Basic(t *testing.T) {
+// TestFileTaskResultStore_Basic Table-Driven 방식을 사용한 기본 기능 테스트
+func TestFileTaskResultStore_Basic(t *testing.T) {
 
 	tests := []struct {
 		name        string
@@ -154,7 +154,7 @@ func getElement(ptr interface{}) interface{} {
 	return val.Interface()
 }
 
-func TestFileTaskResultStorage_Load_NonExistentFile(t *testing.T) {
+func TestFileTaskResultStore_Load_NonExistentFile(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	type TestData struct{ Val string }
@@ -168,7 +168,7 @@ func TestFileTaskResultStorage_Load_NonExistentFile(t *testing.T) {
 	assert.Empty(t, data.Val)
 }
 
-func TestFileTaskResultStorage_Security(t *testing.T) {
+func TestFileTaskResultStore_Security(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	type TestData struct{ Val string }
@@ -210,7 +210,7 @@ func TestFileTaskResultStorage_Security(t *testing.T) {
 	}
 }
 
-func TestFileTaskResultStorage_Cleanup(t *testing.T) {
+func TestFileTaskResultStore_Cleanup(t *testing.T) {
 	storage, tempDir := setupTestStorage(t)
 
 	// 더미 임시 파일 생성
@@ -237,7 +237,7 @@ func TestFileTaskResultStorage_Cleanup(t *testing.T) {
 	assert.FileExists(t, normalFile, "일반 파일은 유지되어야 합니다")
 }
 
-func TestFileTaskResultStorage_Concurrency(t *testing.T) {
+func TestFileTaskResultStore_Concurrency(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	type Data struct {
@@ -299,10 +299,10 @@ func TestFileTaskResultStorage_Concurrency(t *testing.T) {
 
 // Benchmarks
 
-func BenchmarkFileTaskResultStorage_Save(b *testing.B) {
+func BenchmarkFileTaskResultStore_Save(b *testing.B) {
 	// 벤치마크는 각 반복마다 setup을 하면 느려지므로,
 	// 디렉토리 하나를 공유하되 파일명을 다르게 하거나 덮어쓰기 테스트
-	storage := NewFileTaskResultStorage(testAppName)
+	storage := NewFileTaskResultStore(testAppName)
 	tempDir := b.TempDir()
 	storage.SetBaseDir(tempDir)
 
@@ -316,8 +316,8 @@ func BenchmarkFileTaskResultStorage_Save(b *testing.B) {
 	}
 }
 
-func BenchmarkFileTaskResultStorage_Load(b *testing.B) {
-	storage := NewFileTaskResultStorage(testAppName)
+func BenchmarkFileTaskResultStore_Load(b *testing.B) {
+	storage := NewFileTaskResultStore(testAppName)
 	tempDir := b.TempDir()
 	storage.SetBaseDir(tempDir)
 

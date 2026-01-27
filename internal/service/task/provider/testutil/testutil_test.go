@@ -135,9 +135,9 @@ func TestMockHTTPFetcher_Reset(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
-// TestMockTaskResultStorage MockStorage의 기본 동작을 테스트합니다.
-func TestMockTaskResultStorage(t *testing.T) {
-	mockStorage := &contractmocks.MockTaskResultStorage{}
+// TestMockTaskResultStore MockStorage의 기본 동작을 테스트합니다.
+func TestMockTaskResultStore(t *testing.T) {
+	mockStorage := &contractmocks.MockTaskResultStore{}
 	taskID := contract.TaskID("task1")
 	cmdID := contract.TaskCommandID("cmd1")
 	data := "some-data"

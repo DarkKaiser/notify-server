@@ -195,7 +195,7 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 type testHelper struct {
 	t           *testing.T
 	fetcher     *testutil.MockHTTPFetcher
-	storage     *contractmocks.MockTaskResultStorage
+	storage     *contractmocks.MockTaskResultStore
 	appConfig   *config.AppConfig
 	taskHandler provider.Task
 	task        *task
@@ -207,7 +207,7 @@ func newTestHelper(t *testing.T) *testHelper {
 
 	// 모의 객체 생성
 	fetcher := testutil.NewMockHTTPFetcher()
-	storage := &contractmocks.MockTaskResultStorage{}
+	storage := &contractmocks.MockTaskResultStore{}
 
 	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
 	provider.Register(TaskID, &provider.Config{

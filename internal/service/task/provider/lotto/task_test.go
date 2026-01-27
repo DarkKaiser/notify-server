@@ -196,11 +196,11 @@ func TestTask_Run(t *testing.T) {
 	fakeLogFile := filepath.Join(tmpDir, "result_12345.log")
 
 	// Helper to setup fresh environment for each test
-	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *contractmocks.MockTaskResultStorage) {
+	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *contractmocks.MockTaskResultStore) {
 		mockExecutor := new(MockCommandExecutor)
 		mockProcess := new(MockCommandProcess)
 		mockSender := notificationmocks.NewMockNotificationSender(t)
-		mockStorage := new(contractmocks.MockTaskResultStorage)
+		mockStorage := new(contractmocks.MockTaskResultStore)
 
 		task := &task{
 			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
@@ -288,4 +288,4 @@ func contains(s, substr string) bool {
 
 // --- Local Mocks for Test ---
 
-// MockTaskResultStorage removed in favor of contractmocks.MockTaskResultStorage
+// MockTaskResultStore removed in favor of contractmocks.MockTaskResultStore
