@@ -10,7 +10,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -71,7 +70,7 @@ type Base struct {
 	fetcher fetcher.Fetcher
 
 	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
-	storage storage.TaskResultStorage
+	storage contract.TaskResultStorage
 }
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
@@ -135,7 +134,7 @@ func (t *Base) GetFetcher() fetcher.Fetcher {
 	return t.fetcher
 }
 
-func (t *Base) SetStorage(storage storage.TaskResultStorage) {
+func (t *Base) SetStorage(storage contract.TaskResultStorage) {
 	t.storage = storage
 }
 

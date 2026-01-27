@@ -10,7 +10,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -64,11 +63,11 @@ type Service struct {
 	// taskStopWG는 실행 중인 모든 Task의 종료를 추적하고 대기하는 동기화 객체입니다.
 	taskStopWG sync.WaitGroup
 
-	storage storage.TaskResultStorage
+	storage contract.TaskResultStorage
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator) *Service {
+func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, storage contract.TaskResultStorage) *Service {
 	if idGenerator == nil {
 		panic("idGenerator must not be nil")
 	}
@@ -89,7 +88,7 @@ func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator) *
 		taskDoneC:   make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
-		storage: storage.NewFileTaskResultStorage(config.AppName),
+		storage: storage,
 	}
 }
 

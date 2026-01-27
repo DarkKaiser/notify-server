@@ -13,49 +13,11 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
-
-	// "github.com/darkkaiser/notify-server/internal/service/task/provider" // cyclical import prevention?
-	// provider 패키지를 직접 임포트하면 순환 참조가 될 수 있으므로 주의해야 함.
-	// testutil은 provider 패키지의 하위에 있으므로, provider 패키지가 testutil을 임포트하면 순환 참조임.
-	// 하지만 testutil은 보통 _test.go 파일에서만 쓰이므로 괜찮을 수도 있음.
-	// 일단 기존 import "github.com/darkkaiser/notify-server/internal/service/task" 제거
 
 	"github.com/stretchr/testify/mock"
 )
-
-// MockTaskResultStorage 테스트용 Mock Storage 구현체입니다.
-// TaskResultStorage 인터페이스를 만족하며, testify/mock을 사용하여 동작을 모의합니다.
-type MockTaskResultStorage struct {
-	mock.Mock
-}
-
-// Ensure MockTaskResultStorage implements storage.TaskResultStorage at compile time.
-var _ storage.TaskResultStorage = (*MockTaskResultStorage)(nil)
-
-// Get 저장된 작업 결과를 조회합니다.
-func (m *MockTaskResultStorage) Get(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
-	args := m.Called(taskID, commandID)
-	return args.String(0), args.Error(1)
-}
-
-// Save 작업 결과를 저장합니다.
-func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
-	return args.Error(0)
-}
-
-// SetStorage 내부 스토리지를 설정합니다. (Mock에서는 동작하지 않음)
-func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
-	// Mock에서는 아무것도 하지 않음
-}
-
-// Load 저장된 데이터를 불러옵니다.
-func (m *MockTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
-	return args.Error(0)
-}
 
 // MockHTTPFetcher 테스트용 Mock HTTP Fetcher 구현체입니다.
 // URL별 응답을 미리 설정할 수 있으며, 동시성 테스트를 위해 스레드 안전(Thread-safe)하게 설계되었습니다.
@@ -191,15 +153,15 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *provider.Base {
 	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
 	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy)
-	t.SetStorage(&MockTaskResultStorage{})
+	t.SetStorage(&contractmocks.MockTaskResultStorage{})
 	return t
 }
 
 // RegisterMockTask Mock TaskResultStorage에 특정 작업 결과를 미리 등록합니다.
-func RegisterMockTask(storage *MockTaskResultStorage, taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) {
+func RegisterMockTask(storage *contractmocks.MockTaskResultStorage, taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) {
 	storage.On("Load", taskID, commandID, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		arg := args.Get(2)
-		if arg != nil {
+		if arg != nil && snapshot != nil {
 			// Reflect the snapshot into the provided data interface
 			dataBytes, _ := json.Marshal(snapshot)
 			json.Unmarshal(dataBytes, arg)

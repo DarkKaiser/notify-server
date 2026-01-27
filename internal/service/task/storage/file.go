@@ -27,6 +27,8 @@ type FileTaskResultStorage struct {
 	locks *concurrency.KeyedMutex[string] // 파일별 락킹을 위한 KeyedMutex
 }
 
+var _ contract.TaskResultStorage = (*FileTaskResultStorage)(nil)
+
 // NewFileTaskResultStorage 새로운 파일 기반 저장소를 생성합니다.
 // 기본 저장 디렉토리는 "data" 입니다.
 func NewFileTaskResultStorage(appName string) *FileTaskResultStorage {

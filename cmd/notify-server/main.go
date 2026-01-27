@@ -24,6 +24,7 @@ import (
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/lotto"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/naver"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/navershopping"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -167,7 +168,8 @@ func run() error {
 
 	// Task Service 생성
 	idGenerator := &idgen.Generator{}
-	taskService := task.NewService(appConfig, idGenerator)
+	storage := storage.NewFileTaskResultStorage(config.AppName)
+	taskService := task.NewService(appConfig, idGenerator, storage)
 
 	// Notifier Factory 생성 및 Processor 등록
 	notifierFactory := notifier.NewFactory()

@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,22 +137,24 @@ func TestMockHTTPFetcher_Reset(t *testing.T) {
 
 // TestMockTaskResultStorage MockStorage의 기본 동작을 테스트합니다.
 func TestMockTaskResultStorage(t *testing.T) {
-	mockStorage := &MockTaskResultStorage{}
+	mockStorage := &contractmocks.MockTaskResultStorage{}
 	taskID := contract.TaskID("task1")
 	cmdID := contract.TaskCommandID("cmd1")
 	data := "some-data"
+	var loadedData string
 
 	// Expectation 설정
 	mockStorage.On("Save", taskID, cmdID, data).Return(nil)
-	mockStorage.On("Get", taskID, cmdID).Return("saved-data", nil)
+	// Load 호출 시 data 인자에 값을 채워주는 동작(Run)은 여기서는 생략하고,
+	// 단순히 호출 기대값(Expectation)과 반환값만 검증합니다.
+	mockStorage.On("Load", taskID, cmdID, mock.Anything).Return(nil)
 
 	// 실행
 	err := mockStorage.Save(taskID, cmdID, data)
 	assert.NoError(t, err)
 
-	val, err := mockStorage.Get(taskID, cmdID)
+	err = mockStorage.Load(taskID, cmdID, &loadedData)
 	assert.NoError(t, err)
-	assert.Equal(t, "saved-data", val)
 
 	mockStorage.AssertExpectations(t)
 }
