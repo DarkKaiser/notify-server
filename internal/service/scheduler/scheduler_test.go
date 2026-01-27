@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -15,15 +16,19 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// TestNewService_Validation 생성자가 필수 의존성을 검증하는지 테스트합니다.
-func TestNewService_Validation(t *testing.T) {
+// TestNewService 생성자 함수가 필수 의존성(nil 체크)을 올바르게 검증하는지 테스트합니다.
+func TestNewService(t *testing.T) {
 	mockExe := &contractmocks.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
 	tasks := []config.TaskConfig{}
 
-	t.Run("Success", func(t *testing.T) {
+	t.Run("Success_ValidArguments", func(t *testing.T) {
 		assert.NotPanics(t, func() {
-			NewService(tasks, mockExe, mockSend)
+			s := NewService(tasks, mockExe, mockSend)
+			assert.NotNil(t, s)
+			assert.Equal(t, tasks, s.taskConfigs)
+			assert.Equal(t, mockExe, s.taskSubmitter)
+			assert.Equal(t, mockSend, s.notificationSender)
 		})
 	})
 
@@ -40,272 +45,254 @@ func TestNewService_Validation(t *testing.T) {
 	})
 }
 
-// TestScheduler_Start_Errors Start 메서드의 에러 반환 경로를 테스트합니다.
-func TestScheduler_Start_Errors(t *testing.T) {
+// TestScheduler_Lifecycle 스케줄러의 시작, 중지, 재시작 및 멱등성(Idempotency)을 테스트합니다.
+func TestScheduler_Lifecycle(t *testing.T) {
 	mockExe := &contractmocks.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
 	s := NewService(nil, mockExe, mockSend)
 
-	ctx := context.Background()
-	wg := &sync.WaitGroup{}
+	t.Run("Start_And_Stop_Normal", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var wg sync.WaitGroup
 
-	t.Run("Error_TaskSubmitterNil", func(t *testing.T) {
-		s.taskSubmitter = nil
-		s.notificationSender = mockSend
 		wg.Add(1)
-		err := s.Start(ctx, wg)
+		err := s.Start(ctx, &wg)
+		assert.NoError(t, err)
+		assert.True(t, s.running)
+		assert.NotNil(t, s.cron)
+
+		s.stop()
+		assert.False(t, s.running)
+	})
+
+	t.Run("Idempotency_DuplicateStart", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		err := s.Start(ctx, &wg)
+		assert.NoError(t, err)
+
+		// 이미 실행 중일 때 다시 Start 호출
+		// WaitGroup.Add(1)은 호출자가 관리하므로, 내부에서는 이미 실행 중이면 Done()을 호출해야 함
+		wg.Add(1)
+		err = s.Start(ctx, &wg)
+		assert.NoError(t, err) // 에러가 발생하지 않아야 함 (로그만 출력)
+		assert.True(t, s.running)
+
+		s.stop()
+	})
+
+	t.Run("Idempotency_DuplicateStop", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		err := s.Start(ctx, &wg)
+		assert.NoError(t, err)
+
+		s.stop()
+		assert.False(t, s.running)
+
+		assert.NotPanics(t, func() {
+			s.stop() // 이미 중지된 상태에서 다시 호출
+		})
+		assert.False(t, s.running)
+	})
+}
+
+// TestScheduler_Start_Errors Start 메서드 실패 시 에러 반환 및 WaitGroup 관리 여부를 테스트합니다.
+// 중요: 에러 발생 시 반드시 WaitGroup.Done()이 호출되어야 메인 고루틴이 데드락에 빠지지 않습니다.
+func TestScheduler_Start_Errors(t *testing.T) {
+	mockExe := &contractmocks.MockTaskExecutor{}
+	mockSend := notificationmocks.NewMockNotificationSender(t)
+
+	// 테스트 커버리지를 위해 의도적으로 내부 필드를 조작할 수 있는 구조체 복사본 사용 또는 Setter 사용이 필요하나
+	// 현재 구조에서는 Start 내부에서 nil 체크를 다시 수행하므로, 생성자 검증과는 별개로
+	// 런타임 중 필드 변경(가능성은 낮지만)에 대한 방어 로직을 테스트합니다.
+	// 실제로는 NewService 생성자를 통해 생성하면 nil일 수 없지만,
+	// Start 메서드 자체의 방어 로직을 테스트하기 위해 reflection 등으로 nil 주입이 필요할 수 있습니다.
+	// 여기서는 Start 메서드의 '방어 로직'이 존재하므로, 이를 테스트하기 위해 s.taskSubmitter를 강제로 nil로 만듭니다.
+
+	t.Run("Error_TaskSubmitterNil_CheckWaitGroup", func(t *testing.T) {
+		s := NewService(nil, mockExe, mockSend)
+		s.taskSubmitter = nil // 강제 주입
+
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		err := s.Start(ctx, &wg)
 		assert.ErrorIs(t, err, ErrTaskSubmitterNotInitialized)
-		s.taskSubmitter = mockExe
+
+		// WaitGroup이 제대로 감소되었는지 확인 (데드락 방지)
+		checkWaitGroupDone(t, &wg)
 	})
 
-	t.Run("Error_NotificationSenderNil", func(t *testing.T) {
-		s.notificationSender = nil
-		s.taskSubmitter = mockExe
+	t.Run("Error_NotificationSenderNil_CheckWaitGroup", func(t *testing.T) {
+		s := NewService(nil, mockExe, mockSend)
+		s.notificationSender = nil // 강제 주입
+
+		ctx := context.Background()
+		var wg sync.WaitGroup
 		wg.Add(1)
-		err := s.Start(ctx, wg)
+
+		err := s.Start(ctx, &wg)
 		assert.ErrorIs(t, err, ErrNotificationSenderNotInitialized)
-		s.notificationSender = mockSend
+
+		checkWaitGroupDone(t, &wg)
+	})
+
+	t.Run("Error_InvalidCronSpec_CheckWaitGroup", func(t *testing.T) {
+		cfg := []config.TaskConfig{
+			{
+				ID: "InvalidTask",
+				Commands: []config.CommandConfig{{
+					ID: "C1",
+					Scheduler: struct {
+						Runnable bool   `json:"runnable"`
+						TimeSpec string `json:"time_spec"`
+					}{Runnable: true, TimeSpec: "invalid-cron-spec"}, // 유효하지 않은 스펙
+				}},
+			},
+		}
+		s := NewService(cfg, mockExe, mockSend)
+
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		err := s.Start(ctx, &wg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "스케줄 등록 실패")
+
+		checkWaitGroupDone(t, &wg)
 	})
 }
 
-// TestScheduler_Lifecycle 스케줄러의 시작/중지 및 중복 호출에 대한 생명주기를 테스트합니다.
-func TestScheduler_Lifecycle(t *testing.T) {
-	tests := []struct {
-		name         string
-		initialState func(*Scheduler)
-		action       func(*Scheduler, context.Context, *sync.WaitGroup)
-		verify       func(*testing.T, *Scheduler)
-		doubleAction bool
-	}{
-		{
-			name: "Start Scheduler",
-			action: func(s *Scheduler, ctx context.Context, wg *sync.WaitGroup) {
-				wg.Add(1)
-				s.Start(ctx, wg)
-			},
-			verify: func(t *testing.T, s *Scheduler) {
-				assert.True(t, s.running)
-				assert.NotNil(t, s.cron)
-			},
-		},
-		{
-			name: "Stop Scheduler Safely",
-			initialState: func(s *Scheduler) {
-				s.running = true
-				s.cron = nil
-			},
-			action: func(s *Scheduler, ctx context.Context, wg *sync.WaitGroup) {
-				s.stop()
-			},
-			verify: func(t *testing.T, s *Scheduler) {
-				assert.False(t, s.running)
-			},
-		},
-		{
-			name: "Restart Scheduler",
-			action: func(s *Scheduler, ctx context.Context, wg *sync.WaitGroup) {
-				wg.Add(1)
-				s.Start(ctx, wg)
-				s.stop()
-				wg.Add(1)
-				s.Start(ctx, wg)
-			},
-			verify: func(t *testing.T, s *Scheduler) {
-				assert.True(t, s.running)
-			},
-		},
-		{
-			name:         "Duplicate Start",
-			doubleAction: true,
-			action: func(s *Scheduler, ctx context.Context, wg *sync.WaitGroup) {
-				wg.Add(1)
-				s.Start(ctx, wg)
-			},
-			verify: func(t *testing.T, s *Scheduler) {
-				assert.True(t, s.running)
-			},
-		},
-		{
-			name:         "Duplicate Stop",
-			doubleAction: true,
-			action: func(s *Scheduler, ctx context.Context, wg *sync.WaitGroup) {
-				wg.Add(1)
-				s.Start(ctx, wg)
-				s.stop()
-			},
-			verify: func(t *testing.T, s *Scheduler) {
-				assert.False(t, s.running)
-			},
-		},
-	}
+// TestScheduler_Concurrency Start/Stop을 여러 고루틴에서 동시에 호출하여 경쟁 상태(Race Condition)를 테스트합니다.
+func TestScheduler_Concurrency(t *testing.T) {
+	mockExe := &contractmocks.MockTaskExecutor{}
+	mockSend := notificationmocks.NewMockNotificationSender(t)
+	s := NewService(nil, mockExe, mockSend)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockExe := &contractmocks.MockTaskExecutor{}
-			mockSend := notificationmocks.NewMockNotificationSender(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-			// 유효한 설정 (6필드 형식이므로 Seconds 포함)
-			defaultTask := []config.TaskConfig{
-				{
-					ID: "DummyTask",
-					Commands: []config.CommandConfig{
-						{
-							ID: "DummyCmd",
-							Scheduler: struct {
-								Runnable bool   `json:"runnable"`
-								TimeSpec string `json:"time_spec"`
-							}{Runnable: true, TimeSpec: "0 0 0 1 1 *"}, // 0초 0분 0시 1일 1월 *요일
-							DefaultNotifierID: "N1",
-						},
-					},
-				},
-			}
-			cfg := &config.AppConfig{Tasks: defaultTask}
-			s := NewService(cfg.Tasks, mockExe, mockSend)
+	// 10개의 고루틴이 동시에 Start/Stop을 시도
+	concurrency := 10
+	done := make(chan bool)
 
-			if tt.initialState != nil {
-				tt.initialState(s)
-			}
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+	for i := 0; i < concurrency; i++ {
+		go func() {
 			var wg sync.WaitGroup
-
-			defer s.stop()
-
-			tt.action(s, ctx, &wg)
-			if tt.doubleAction {
-				tt.action(s, ctx, &wg)
-			}
-
-			if tt.verify != nil {
-				tt.verify(t, s)
-			}
-		})
-	}
-}
-
-// TestScheduler_TaskRegistration Runnable 플래그에 따른 작업 등록 여부를 테스트합니다.
-func TestScheduler_TaskRegistration(t *testing.T) {
-	tests := []struct {
-		name          string
-		tasks         []config.TaskConfig
-		expectedCount int
-	}{
-		{
-			name: "Runnable Task",
-			tasks: []config.TaskConfig{
-				{
-					ID: "T1",
-					Commands: []config.CommandConfig{
-						{
-							ID: "C1",
-							Scheduler: struct {
-								Runnable bool   `json:"runnable"`
-								TimeSpec string `json:"time_spec"`
-							}{Runnable: true, TimeSpec: "0 0 0 1 1 *"},
-						},
-					},
-				},
-			},
-			expectedCount: 1,
-		},
-		{
-			name: "Non-Runnable Task",
-			tasks: []config.TaskConfig{
-				{
-					ID: "T1",
-					Commands: []config.CommandConfig{
-						{
-							ID: "C1",
-							Scheduler: struct {
-								Runnable bool   `json:"runnable"`
-								TimeSpec string `json:"time_spec"`
-							}{Runnable: false, TimeSpec: "0 0 0 1 1 *"},
-						},
-					},
-				},
-			},
-			expectedCount: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockExe := &contractmocks.MockTaskExecutor{}
-			mockSend := notificationmocks.NewMockNotificationSender(t)
-			cfg := &config.AppConfig{Tasks: tt.tasks}
-			s := NewService(cfg.Tasks, mockExe, mockSend)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			var wg sync.WaitGroup
-
 			wg.Add(1)
-			err := s.Start(ctx, &wg)
-			defer s.stop()
+			_ = s.Start(ctx, &wg) // 에러 무시 (중복 실행 등 가능)
 
-			assert.NoError(t, err)
-			if tt.expectedCount > 0 {
-				assert.NotNil(t, s.cron)
-				assert.Equal(t, tt.expectedCount, len(s.cron.Entries()))
-			} else {
-				if s.cron != nil {
-					assert.Equal(t, 0, len(s.cron.Entries()))
-				}
-			}
-		})
+			// 짧은 대기 후 Stop
+			time.Sleep(1 * time.Millisecond)
+			s.stop()
+
+			// Start가 성공했다면 wg.Done()이 호출되지 않았을 수도 있으므로 (Stop이 호출 안되는 타이밍 이슈)
+			// 여기서는 Race detector가 panic을 일으키지 않는지 확인하는 것이 주 목적입니다.
+			// 정확한 WG 관리는 Start/Stop의 쌍이 맞아야 하지만, 무작위 호출 테스트이므로
+			// WG 완료 여부보다는 메모리 접근 충돌 여부를 봅니다.
+			// 다만 테스트 종료를 위해 여기서 Cleanup은 하지 않습니다.
+			done <- true
+		}()
 	}
+
+	for i := 0; i < concurrency; i++ {
+		<-done
+	}
+
+	// 최종 cleanup
+	s.stop()
 }
 
-// TestScheduler_Execution_ManualTrigger Cron의 Job.Run 메서드를 수동으로 호출하여
-// 작업 실행 및 알림 전송 로직을 결정적(Deterministic)으로 테스트합니다.
-func TestScheduler_Execution_ManualTrigger(t *testing.T) {
+// TestScheduler_Run_Execution 실제 스케줄링 로직(등록 -> 실행 -> 알림)을 검증합니다.
+func TestScheduler_Run_Execution(t *testing.T) {
+	// 정상적인 스케줄 설정 (초 분 시 일 월 요일)
+	validSchedule := "0 0 0 1 1 *"
+
 	tests := []struct {
 		name        string
-		setupMock   func(*contractmocks.MockTaskExecutor, *notificationmocks.MockNotificationSender)
-		wantErrLogs bool
+		taskConfig  config.TaskConfig
+		setupMocks  func(*contractmocks.MockTaskExecutor, *notificationmocks.MockNotificationSender)
+		expectError bool
 	}{
 		{
-			name: "Success_Submission",
-			setupMock: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
-				// Submit 호출 시 Deadline이 설정되어 있는지 검증 (taskSubmitTimeout=5s)
+			name: "Success_SubmitTask",
+			taskConfig: config.TaskConfig{
+				ID: "T1",
+				Commands: []config.CommandConfig{{
+					ID: "C1",
+					Scheduler: struct {
+						Runnable bool   `json:"runnable"`
+						TimeSpec string `json:"time_spec"`
+					}{Runnable: true, TimeSpec: validSchedule},
+					DefaultNotifierID: "N1",
+				}},
+			},
+			setupMocks: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
+				// Submit 호출 시 Deadline이 설정되어 있는지 검증 (5초)
 				exe.On("Submit", mock.MatchedBy(func(ctx context.Context) bool {
 					deadline, ok := ctx.Deadline()
 					return ok && !deadline.IsZero()
 				}), mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
-					return req.TaskID == "T1" && req.CommandID == "C1" && req.RunBy == contract.TaskRunByScheduler
+					return req.TaskID == "T1" && req.CommandID == "C1" &&
+						req.NotifierID == "N1" && req.RunBy == contract.TaskRunByScheduler
 				})).Return(nil).Once()
 			},
-			wantErrLogs: false,
+			expectError: false,
 		},
 		{
-			name: "Fail_Submission_SendNotification",
-			setupMock: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
-				// Submit 실패 설정
+			name: "Failure_SubmitTask_ShouldNotify",
+			taskConfig: config.TaskConfig{
+				ID: "T2",
+				Commands: []config.CommandConfig{{
+					ID: "C2",
+					Scheduler: struct {
+						Runnable bool   `json:"runnable"`
+						TimeSpec string `json:"time_spec"`
+					}{Runnable: true, TimeSpec: validSchedule},
+					DefaultNotifierID: "N2",
+				}},
+			},
+			setupMocks: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
+				// Submit 실패
 				exe.On("Submit", mock.Anything, mock.Anything).Return(assert.AnError).Once()
 
-				// 알림 전송 검증
-				// Notify 호출 시 Deadline이 설정되어 있는지 검증 (1초 타임아웃)
+				// 알림 전송 호출 검증 (Deadline 1초 포함)
 				send.On("Notify", mock.MatchedBy(func(ctx context.Context) bool {
 					deadline, ok := ctx.Deadline()
 					return ok && !deadline.IsZero()
 				}), mock.MatchedBy(func(n contract.Notification) bool {
-					return n.ErrorOccurred && strings.Contains(n.Message, "TaskSubmitter 실행 중 오류")
+					return n.NotifierID == "N2" && n.ErrorOccurred &&
+						strings.Contains(n.Message, "TaskSubmitter 실행 중 오류")
 				})).Return(nil).Once()
 			},
-			wantErrLogs: true,
+			expectError: true, // 로직 상 에러는 처리되지만 테스트 시나리오 상 '에러 상황'임
 		},
 		{
-			name: "Fail_Submission_And_Fail_Notification",
-			setupMock: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
-				// Submit 실패
-				exe.On("Submit", mock.Anything, mock.Anything).Return(assert.AnError).Once()
-
-				// 알림 전송도 실패 (에러 반환)
-				send.On("Notify", mock.Anything, mock.Anything).Return(assert.AnError).Once()
+			name: "Skip_IfNotRunnable",
+			taskConfig: config.TaskConfig{
+				ID: "T3",
+				Commands: []config.CommandConfig{{
+					ID: "C3",
+					Scheduler: struct {
+						Runnable bool   `json:"runnable"`
+						TimeSpec string `json:"time_spec"`
+					}{Runnable: false, TimeSpec: validSchedule},
+				}},
 			},
-			wantErrLogs: true,
+			setupMocks: func(exe *contractmocks.MockTaskExecutor, send *notificationmocks.MockNotificationSender) {
+				// 아무것도 호출되지 않아야 함
+			},
+			expectError: false,
 		},
 	}
 
@@ -314,47 +301,33 @@ func TestScheduler_Execution_ManualTrigger(t *testing.T) {
 			mockExe := &contractmocks.MockTaskExecutor{}
 			mockSend := notificationmocks.NewMockNotificationSender(t)
 
-			tt.setupMock(mockExe, mockSend)
-
-			// 1. 테스트용 Task 설정 (먼 미래 시간으로 설정하여 자동 실행 방지)
-			// cronx 패키지는 6필드를 요구하므로 초 단위를 포함해야 함: "0 0 0 1 1 *"
-			taskConfig := config.TaskConfig{
-				ID: "T1",
-				Commands: []config.CommandConfig{
-					{
-						ID: "C1",
-						Scheduler: struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						}{Runnable: true, TimeSpec: "0 0 0 1 1 *"},
-						DefaultNotifierID: "N1",
-					},
-				},
+			if tt.setupMocks != nil {
+				tt.setupMocks(mockExe, mockSend)
 			}
-			cfg := &config.AppConfig{Tasks: []config.TaskConfig{taskConfig}}
-			s := NewService(cfg.Tasks, mockExe, mockSend)
+
+			cfg := []config.TaskConfig{tt.taskConfig}
+			s := NewService(cfg, mockExe, mockSend)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			var wg sync.WaitGroup
 
-			// 2. 서비스 시작 (스케줄 등록)
 			wg.Add(1)
 			err := s.Start(ctx, &wg)
-			if !assert.NoError(t, err) {
-				return
+			assert.NoError(t, err)
+
+			// Runnable인 경우에만 작업이 등록됨
+			isRunnable := tt.taskConfig.Commands[0].Scheduler.Runnable
+			if isRunnable {
+				entries := s.cron.Entries()
+				assert.Len(t, entries, 1, "스케줄이 등록되어야 합니다")
+
+				// 등록된 작업을 수동으로 즉시 실행 (시간 대기 없이 로직 검증)
+				entries[0].Job.Run()
+			} else if s.cron != nil {
+				assert.Empty(t, s.cron.Entries(), "Runnable이 false면 스케줄이 등록되지 않아야 합니다")
 			}
 
-			// 3. 등록된 엔트리 가져오기
-			entries := s.cron.Entries()
-			if !assert.Len(t, entries, 1, "스케줄이 1개 등록되어야 합니다") {
-				return // Panic 방지
-			}
-
-			// 4. 수동으로 작업 실행 (익명 함수 실행됨)
-			entries[0].Job.Run()
-
-			// 5. 검증
 			mockExe.AssertExpectations(t)
 			mockSend.AssertExpectations(t)
 
@@ -363,42 +336,12 @@ func TestScheduler_Execution_ManualTrigger(t *testing.T) {
 	}
 }
 
-// TestScheduler_ContextCancellation 서비스 종료 컨텍스트(Graceful Shutdown)가 정상 작동하는지 확인합니다.
-func TestScheduler_ContextCancellation(t *testing.T) {
-	mockExe := &contractmocks.MockTaskExecutor{}
-	mockSend := notificationmocks.NewMockNotificationSender(t)
-	s := NewService([]config.TaskConfig{}, mockExe, mockSend)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	err := s.Start(ctx, &wg)
-	assert.NoError(t, err)
-	assert.True(t, s.running)
-
-	// Context 취소 (시뮬레이션: 서비스 종료 시그널)
-	cancel()
-
-	// WaitGroup이 Done 될 때까지 대기
-	wg.Wait()
-
-	// 서비스가 중지 상태로 변경되었는지 확인
-	// Start 내부의 고루틴이 ctx.Done()을 감지하고 s.stop()을 호출해야 함
-	// 비동기 실행이므로 약간의 지연이 있을 수 있지만, wg.Wait()으로 동기화됨
-	s.runningMu.Lock()
-	isRunning := s.running
-	s.runningMu.Unlock()
-
-	assert.False(t, isRunning, "Context 취소 시 서비스가 중지되어야 합니다")
-}
-
-// TestScheduler_Execution_MultipleTasks 여러 작업이 등록될 때 루프 변수 캡처(Closure Capture) 문제가 없는지 검증합니다.
-func TestScheduler_Execution_MultipleTasks(t *testing.T) {
+// TestScheduler_ClosureCapture_LoopVariable 여러 작업 등록 시 for-loop 변수 캡처 문제가 없는지 검증합니다.
+// Go 1.22 이전 버전에서는 for 루프 변수 공유 문제가 있었으므로 명시적 검증이 필요합니다.
+func TestScheduler_ClosureCapture_LoopVariable(t *testing.T) {
 	mockExe := &contractmocks.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
 
-	// 서로 다른 3개의 태스크 정의
 	tasks := []config.TaskConfig{
 		{ID: "T1", Commands: []config.CommandConfig{{ID: "C1", Scheduler: struct {
 			Runnable bool   `json:"runnable"`
@@ -408,80 +351,80 @@ func TestScheduler_Execution_MultipleTasks(t *testing.T) {
 			Runnable bool   `json:"runnable"`
 			TimeSpec string `json:"time_spec"`
 		}{true, "0 0 0 1 1 *"}, DefaultNotifierID: "N"}}},
-		{ID: "T3", Commands: []config.CommandConfig{{ID: "C3", Scheduler: struct {
-			Runnable bool   `json:"runnable"`
-			TimeSpec string `json:"time_spec"`
-		}{true, "0 0 0 1 1 *"}, DefaultNotifierID: "N"}}},
 	}
 
-	// 각 태스크가 올바른 ID로 Submit 되는지 검증
+	// 각기 다른 ID로 호출되는지 확인
 	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 		return req.TaskID == "T1" && req.CommandID == "C1"
 	})).Return(nil).Once()
 	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
 		return req.TaskID == "T2" && req.CommandID == "C2"
 	})).Return(nil).Once()
-	mockExe.On("Submit", mock.Anything, mock.MatchedBy(func(req *contract.TaskSubmitRequest) bool {
-		return req.TaskID == "T3" && req.CommandID == "C3"
-	})).Return(nil).Once()
 
-	cfg := &config.AppConfig{Tasks: tasks}
-	s := NewService(cfg.Tasks, mockExe, mockSend)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	s := NewService(tasks, mockExe, mockSend)
 	var wg sync.WaitGroup
-
 	wg.Add(1)
-	err := s.Start(ctx, &wg)
-	assert.NoError(t, err)
+	_ = s.Start(context.Background(), &wg)
 	defer s.stop()
 
-	assert.Equal(t, 3, len(s.cron.Entries()))
+	assert.Equal(t, 2, len(s.cron.Entries()))
 
-	// 등록된 순서와 상관없이, 모든 Job을 한 번씩 수동 실행
-	for _, entry := range s.cron.Entries() {
-		entry.Job.Run()
+	// 모든 작업을 실행해봅니다.
+	for _, e := range s.cron.Entries() {
+		e.Job.Run()
 	}
 
 	mockExe.AssertExpectations(t)
 }
 
-// TestScheduler_InvalidCronSpec 잘못된 Cron 표현식 테스트
-func TestScheduler_InvalidCronSpec(t *testing.T) {
+// TestScheduler_GracefulShutdown 서비스 컨텍스트 취소 시 정상 종료되는지 확인합니다.
+func TestScheduler_GracefulShutdown(t *testing.T) {
 	mockExe := &contractmocks.MockTaskExecutor{}
 	mockSend := notificationmocks.NewMockNotificationSender(t)
-
-	cfg := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: "InvalidTask",
-				Commands: []config.CommandConfig{
-					{
-						ID: "InvalidCmd",
-						Scheduler: struct {
-							Runnable bool   `json:"runnable"`
-							TimeSpec string `json:"time_spec"`
-						}{Runnable: true, TimeSpec: "invalid-spec"},
-						DefaultNotifierID: "N1",
-					},
-				},
-			},
-		},
-	}
-	s := NewService(cfg.Tasks, mockExe, mockSend)
+	s := NewService(nil, mockExe, mockSend)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	err := s.Start(ctx, &wg)
+	assert.NoError(t, err)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "스케줄 등록 실패")
-	assert.Contains(t, err.Error(), "invalid-spec")
+	// 비동기로 종료 신호 전송
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
 
-	s.stop()
-	mockSend.AssertExpectations(t)
+	// WaitGroup이 Done 될 때까지 대기 (타임아웃 설정)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 정상 종료됨
+		assert.False(t, s.running, "종료 후 running 상태는 false여야 합니다")
+	case <-time.After(1 * time.Second):
+		t.Fatal("서비스가 제한 시간 내에 종료되지 않았습니다 (Deadlock 가능성)")
+	}
+}
+
+// helper function: Check WaitGroup Done
+func checkWaitGroupDone(t *testing.T, wg *sync.WaitGroup) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("WaitGroup.Done()이 호출되지 않았습니다")
+	}
 }

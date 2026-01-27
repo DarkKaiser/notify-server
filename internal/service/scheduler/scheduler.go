@@ -97,6 +97,7 @@ func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wa
 
 	// 2. 작업 등록
 	if err := s.registerTasks(serviceStopCtx); err != nil {
+		s.cron = nil
 		serviceStopWG.Done()
 		return err
 	}
