@@ -167,8 +167,8 @@ func run() error {
 	// 이를 해결하기 위해 생성자 주입(Constructor Injection)과 세터 주입(Setter Injection)을 혼용하여 연결을 완성합니다.
 
 	// Task Service 생성
-	idGenerator := &idgen.Generator{}
 	taskResultStore := storage.NewFileTaskResultStore(config.AppName)
+	idGenerator := idgen.New()
 	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
 	// Notifier Factory 생성 및 Processor 등록

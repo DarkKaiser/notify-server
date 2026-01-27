@@ -273,7 +273,7 @@ func TestService_Concurrency(t *testing.T) {
 	appConfig := &config.AppConfig{}
 
 	// 실제 ID 생성기 사용
-	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStore))
+	service := NewService(appConfig, idgen.New(), new(contractmocks.MockTaskResultStore))
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// 비동기 알림 허용
@@ -329,7 +329,7 @@ func TestService_CancelConcurrency(t *testing.T) {
 	// 동시성 테스트를 위해 실제 Generator 사용
 	registerServiceTestTask()
 	appConfig := &config.AppConfig{}
-	service := NewService(appConfig, &idgen.Generator{}, new(contractmocks.MockTaskResultStore))
+	service := NewService(appConfig, idgen.New(), new(contractmocks.MockTaskResultStore))
 
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()

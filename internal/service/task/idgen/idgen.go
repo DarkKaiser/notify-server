@@ -32,20 +32,25 @@ const (
 	sequenceLen = 6
 )
 
-// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
-var _ contract.IDGenerator = (*Generator)(nil)
-
-// Generator 작업 인스턴스의 고유 식별자 생성을 담당합니다.
+// generator 작업 인스턴스의 고유 식별자 생성을 담당합니다.
 //
 // 생성 전략:
 //   - 타임스탬프(나노초 단위)를 기반으로 시간 순서를 반영합니다.
 //   - 원자적(atomic) 카운터를 결합하여 동일 나노초 내 중복을 방지합니다.
 //   - Base62 인코딩을 사용하여 URL-safe하고 가독성 높은 ID를 생성합니다.
-type Generator struct {
+type generator struct {
 	// counter 동일 나노초 내에서 생성되는 ID의 순번을 추적합니다.
 	// atomic.AddUint32로 안전하게 증가시키며, uint32 범위(약 42억)까지 지원합니다.
 	// 오버플로우 시 0으로 돌아가지만, 타임스탬프가 변경되므로 실질적 충돌 위험은 없습니다.
 	counter uint32
+}
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ contract.IDGenerator = (*generator)(nil)
+
+// New 새로운 IDGenerator를 생성하여 반환합니다.
+func New() contract.IDGenerator {
+	return &generator{}
 }
 
 // New 새로운 TaskInstanceID를 생성합니다.
@@ -64,7 +69,7 @@ type Generator struct {
 //   - 타임스탬프가 앞에 위치하므로 시간 순서가 우선 반영됩니다.
 //   - 시퀀스를 고정 길이로 패딩하여 자릿수 차이로 인한 정렬 오류를 방지합니다.
 //     (예: "1" < "10" 이지만, "000001" < "000010" 로 올바른 순서 유지)
-func (g *Generator) New() contract.TaskInstanceID {
+func (g *generator) New() contract.TaskInstanceID {
 	// 1. 현재 시각을 나노초 단위로 가져옵니다.
 	now := time.Now().UnixNano()
 
