@@ -19,8 +19,8 @@ const component = "scheduler.service"
 // taskSubmitTimeout 작업 실행 요청 시 최대 대기 시간 (블로킹 방지)
 const taskSubmitTimeout = 5 * time.Second
 
-// Scheduler 애플리케이션 설정 파일(AppConfig)에 정의된 작업들을 Cron 스케줄에 맞춰 자동으로 실행하는 서비스입니다.
-type Scheduler struct {
+// Service 애플리케이션 설정 파일(AppConfig)에 정의된 작업들을 Cron 스케줄에 맞춰 자동으로 실행하는 서비스입니다.
+type Service struct {
 	taskConfigs []config.TaskConfig
 
 	cron *cron.Cron
@@ -36,7 +36,7 @@ type Scheduler struct {
 }
 
 // NewService 새로운 Scheduler 서비스 인스턴스를 생성합니다.
-func NewService(taskConfigs []config.TaskConfig, submitter contract.TaskSubmitter, notificationSender contract.NotificationSender) *Scheduler {
+func NewService(taskConfigs []config.TaskConfig, submitter contract.TaskSubmitter, notificationSender contract.NotificationSender) *Service {
 	if submitter == nil {
 		panic("TaskSubmitter는 필수입니다")
 	}
@@ -44,7 +44,7 @@ func NewService(taskConfigs []config.TaskConfig, submitter contract.TaskSubmitte
 		panic("NotificationSender는 필수입니다")
 	}
 
-	return &Scheduler{
+	return &Service{
 		taskConfigs: taskConfigs,
 
 		taskSubmitter: submitter,
@@ -61,7 +61,7 @@ func NewService(taskConfigs []config.TaskConfig, submitter contract.TaskSubmitte
 //
 // 반환값:
 //   - error: taskSubmitter 또는 notificationSender가 nil인 경우
-func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
+func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) error {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -126,7 +126,7 @@ func (s *Scheduler) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wa
 }
 
 // stop 실행 중인 스케줄러를 안전하게 중지합니다.
-func (s *Scheduler) stop() {
+func (s *Service) stop() {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 
@@ -150,7 +150,7 @@ func (s *Scheduler) stop() {
 
 // registerTasks 설정 파일에 정의된 모든 작업을 하나씩 살펴보며, "실행 가능(Runnable)" 플래그가 켜진 작업들만
 // Cron 스케줄러에 등록합니다.
-func (s *Scheduler) registerTasks(serviceStopCtx context.Context) error {
+func (s *Service) registerTasks(serviceStopCtx context.Context) error {
 	for _, t := range s.taskConfigs {
 		for _, c := range t.Commands {
 			if !c.Scheduler.Runnable {
@@ -209,7 +209,7 @@ func (s *Scheduler) registerTasks(serviceStopCtx context.Context) error {
 }
 
 // logAndNotifyError 스케줄러 실행 중 발생한 오류를 로깅하고 관리자에게 알림을 전송합니다.
-func (s *Scheduler) logAndNotifyError(serviceStopCtx context.Context, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
+func (s *Service) logAndNotifyError(serviceStopCtx context.Context, notifierID contract.NotifierID, taskID contract.TaskID, commandID contract.TaskCommandID, message string, err error) {
 	fields := applog.Fields{
 		"notifier_id": notifierID,
 		"task_id":     taskID,

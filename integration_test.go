@@ -39,7 +39,7 @@ type IntegrationTestSuite struct {
 	cancel              context.CancelFunc
 	wg                  sync.WaitGroup
 	taskService         *task.Service
-	schedulerService    *scheduler.Scheduler
+	schedulerService    *scheduler.Service
 	notificationService *notification.Service
 	apiService          *api.Service
 	mockHandler         *mockNotifierHandler // 최종 도착지 (Telegram 역할)
@@ -126,10 +126,10 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 func (s *IntegrationTestSuite) Start() {
 	s.wg.Add(4)
 	// Start all services
-	go s.taskService.Start(s.ctx, &s.wg)
-	go s.schedulerService.Start(s.ctx, &s.wg)
-	go s.notificationService.Start(s.ctx, &s.wg)
-	go s.apiService.Start(s.ctx, &s.wg)
+	s.taskService.Start(s.ctx, &s.wg)
+	s.schedulerService.Start(s.ctx, &s.wg)
+	s.notificationService.Start(s.ctx, &s.wg)
+	s.apiService.Start(s.ctx, &s.wg)
 
 	// Wait for API server to be ready using polling
 	require.NoError(s.t, testutil.WaitForServer(s.apiPort, 5*time.Second), "API Server did not start in time")
