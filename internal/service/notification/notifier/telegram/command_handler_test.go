@@ -256,20 +256,9 @@ func TestTelegramNotifier_DispatchCommand(t *testing.T) {
 					// We just check if it's within [100ms, 10s] to avoid flakiness in slow CI environments.
 					timeLeft := time.Until(deadline)
 					return timeLeft > 100*time.Millisecond && timeLeft < 10*time.Second
-				}), mock.Anything).Return(nil).Once()
-
-				// wg.Done needs to happen, mock Submit implies business success here (no output message expected if success logic handles asynchronously)
-				// Wait, submitTask success sends "Notification" via notifier? No, submitTask function in command_handler.go
-				// calls executor.Submit. If success, it returns.
-				// Oh, the code says:
-				// "1. TaskExecutor.Submit() ... 2. 제출이 성공하면 사용자에게 '작업이 시작되었습니다' 메시지를 전송합니다." (Comments)
-				// BUT in `command_handler.go`:
-				//   if err := n.executor.Submit(...); err != nil { ... error processing ... }
-				//   // No success message sent here!
-				// because SubmitRequest has NotifyOnStart: true passed to Executor.
-				// The EXECUTOR (or Task) sends the "Starting..." notification.
-				// So command handler itself does NOTHING on success.
-				wg.Done()
+				}), mock.Anything).Run(func(args mock.Arguments) {
+					wg.Done()
+				}).Return(nil).Once()
 			},
 		},
 	}

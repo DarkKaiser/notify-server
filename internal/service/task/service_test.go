@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +59,19 @@ func (h *MockTask) Cancel() {
 		h.canceled = true
 		close(h.cancelC)
 	})
+}
+
+// StubIDGenerator 테스트용 단순 ID 생성기 (매번 고유 ID 반환)
+type StubIDGenerator struct {
+	counter int64
+	mu      sync.Mutex
+}
+
+func (s *StubIDGenerator) New() contract.TaskInstanceID {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.counter++
+	return contract.TaskInstanceID(fmt.Sprintf("stub-id-%d", s.counter))
 }
 
 func registerServiceTestTask() {
@@ -403,10 +417,9 @@ func TestService_Submit_Timeout(t *testing.T) {
 	})
 
 	appConfig := &config.AppConfig{}
-	mockIDGen := new(contractmocks.MockIDGenerator)
-	mockIDGen.On("New").Return(contract.TaskInstanceID("slow-task-id")).Maybe()
+	stubIDGen := &StubIDGenerator{}
 
-	service := NewService(appConfig, mockIDGen, new(contractmocks.MockTaskResultStore))
+	service := NewService(appConfig, stubIDGen, new(contractmocks.MockTaskResultStore))
 	mockSender := notificationmocks.NewMockNotificationSender(t)
 	// mockSender doesn't need expectations as we won't trigger notifications in this short test
 	service.SetNotificationSender(mockSender)
