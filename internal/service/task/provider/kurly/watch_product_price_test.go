@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -251,9 +252,13 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			url := fmt.Sprintf(productPageURLFormat, tt.productID)
 
 			if tt.mockFetchErr != nil {
-				mockFetcher.On("Get", mock.Anything, url).Return(nil, tt.mockFetchErr)
+				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == url
+				})).Return(nil, tt.mockFetchErr)
 			} else {
-				mockFetcher.On("Get", mock.Anything, url).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
+				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == url
+				})).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
 			}
 
 			tsk := &task{

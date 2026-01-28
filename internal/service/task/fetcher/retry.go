@@ -1,7 +1,6 @@
 package fetcher
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -63,16 +62,6 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration,
 		retryDelay: retryDelay,
 		maxDelay:   maxDelay,
 	}
-}
-
-// Get 지정된 URL로 HTTP GET 요청을 전송합니다.
-// 내부적으로 Do를 호출하여 재시도 정책이 적용된 안전한 요청을 수행합니다.
-func (f *RetryFetcher) Get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, apperrors.Wrap(err, apperrors.Internal, "failed to create request")
-	}
-	return f.Do(req)
 }
 
 // Do HTTP 요청을 수행하며, 실패 시 설정된 정책에 따라 재시도합니다.
@@ -179,16 +168,8 @@ func (f *RetryFetcher) shouldRetry(resp *http.Response, err error) bool {
 		return true
 	}
 
-	// 500번대 서버 에러는 재시도 (일시적인 장애일 가능성 높음)
-	if resp.StatusCode >= 500 {
-		return true
-	}
-
-	// 429 Too Many Requests는 재시도 (잠시 후 요청하면 성공할 가능성 있음)
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return true
-	}
-
-	// 그 외 (2xx, 4xx 등)는 성공 또는 클라이언트 에러이므로 재시도하지 않음
-	return false
+	// 중앙화된 에러 매핑 함수를 통해 재시도 여부 판단
+	// Unavailable 에러(5xx, 429 등)인 경우에만 재시도 수행
+	statusErr := CheckResponseStatus(resp)
+	return apperrors.Is(statusErr, apperrors.Unavailable)
 }

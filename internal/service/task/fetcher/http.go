@@ -1,7 +1,6 @@
 package fetcher
 
 import (
-	"context"
 	"net/http"
 	"time"
 )
@@ -18,16 +17,6 @@ func NewHTTPFetcher() *HTTPFetcher {
 			Timeout: 30 * time.Second,
 		},
 	}
-}
-
-// Get 지정된 URL로 HTTP GET 요청을 전송합니다.
-// User-Agent 헤더가 설정되지 않은 경우, 크롬 브라우저 값으로 자동 설정됩니다.
-func (h *HTTPFetcher) Get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return h.Do(req)
 }
 
 // Do 커스텀 HTTP 요청을 실행합니다.

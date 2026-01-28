@@ -14,26 +14,30 @@ import (
 
 // Fetcher HTTP 요청을 수행하는 인터페이스
 type Fetcher interface {
-	Get(ctx context.Context, url string) (*http.Response, error)
 	Do(req *http.Request) (*http.Response, error)
+}
+
+// Get 지정된 URL로 HTTP GET 요청을 전송합니다.
+// Fetcher 인터페이스의 구현체가 공통으로 사용할 수 있는 헬퍼 함수입니다.
+func Get(ctx context.Context, f Fetcher, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return f.Do(req)
 }
 
 // FetchHTMLDocument 지정된 URL로 HTTP 요청을 보내 HTML 문서를 가져오고, goquery.Document로 파싱합니다.
 // 응답 헤더의 Content-Type을 분석하여, 비 UTF-8 인코딩(예: EUC-KR) 페이지도 자동으로 UTF-8로 변환하여 처리합니다.
 func FetchHTMLDocument(ctx context.Context, f Fetcher, url string) (*goquery.Document, error) {
-	resp, err := f.Get(ctx, url)
+	resp, err := Get(ctx, f, url)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.Unavailable, fmt.Sprintf("HTML 페이지(%s) 요청 중 네트워크 또는 클라이언트 에러가 발생했습니다.", url))
 	}
 	defer resp.Body.Close() // 응답을 받은 즉시 defer 설정하여 메모리 누수 방지
 
-	if resp.StatusCode != http.StatusOK {
-		errType := apperrors.ExecutionFailed
-		// 5xx (Server Error) or 429 (Too Many Requests) -> Unavailable
-		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
-			errType = apperrors.Unavailable
-		}
-		return nil, apperrors.New(errType, fmt.Sprintf("HTML 페이지(%s) 요청이 실패했습니다. 상태 코드: %s", url, resp.Status))
+	if err := CheckResponseStatus(resp); err != nil {
+		return nil, err
 	}
 
 	// Content-Type 헤더를 기반으로 인코딩을 UTF-8로 변환
@@ -82,13 +86,8 @@ func FetchJSON(ctx context.Context, f Fetcher, method, url string, header map[st
 	}
 	defer resp.Body.Close() // 응답을 받은 즉시 defer 설정하여 메모리 누수 방지
 
-	if resp.StatusCode != http.StatusOK {
-		errType := apperrors.ExecutionFailed
-		// 5xx (Server Error) or 429 (Too Many Requests) -> Unavailable
-		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
-			errType = apperrors.Unavailable
-		}
-		return apperrors.New(errType, fmt.Sprintf("JSON API(%s) 요청이 실패했습니다. 상태 코드: %s", url, resp.Status))
+	if err := CheckResponseStatus(resp); err != nil {
+		return err
 	}
 
 	// json.Decoder를 사용하여 스트림 방식으로 JSON 파싱 (메모리 효율적)

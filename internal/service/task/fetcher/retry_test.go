@@ -148,16 +148,16 @@ func TestRetryFetcher_Get(t *testing.T) {
 	// 1st call: 500 Error
 	// 2nd call: 500 Error
 	// 3rd call: 200 OK
+	resp500 := mocks.NewMockResponse("", 500)
+	resp500.Status = "500 Internal Server Error"
 	mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 		return req.Method == "GET" && req.URL.String() == "http://example.com"
-	})).Return(mocks.NewMockResponse("", 500), nil).Once()
-
-	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("", 500), nil).Once()
+	})).Return(resp500, nil).Twice()
 
 	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("success", 200), nil).Once()
 
 	// Execute
-	resp, err := retryFetcher.Get(context.Background(), "http://example.com")
+	resp, err := fetcher.Get(context.Background(), retryFetcher, "http://example.com")
 
 	// Verification
 	assert.NoError(t, err)

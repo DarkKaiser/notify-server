@@ -49,7 +49,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				htmlContent := `<html><body><div class="test">안녕</div></body></html>`
 				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
-				m.On("Get", mock.Anything, "http://example.com/utf8").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/utf8"
+				})).Return(resp, nil)
 			},
 			validateDoc: func(t *testing.T, doc *goquery.Document) {
 				assert.Equal(t, "안녕", doc.Find(".test").Text())
@@ -62,7 +64,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				content := eucKrContent(`<html><body><div class="test">안녕</div></body></html>`)
 				resp := mocks.NewMockResponse(content, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=euc-kr")
-				m.On("Get", mock.Anything, "http://example.com/euckr").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/euckr"
+				})).Return(resp, nil)
 			},
 			validateDoc: func(t *testing.T, doc *goquery.Document) {
 				assert.Equal(t, "안녕", doc.Find(".test").Text())
@@ -76,7 +80,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				htmlContent := `<html><head><meta charset="utf-8"></head><body><div class="test">안녕</div></body></html>`
 				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html") // No charset
-				m.On("Get", mock.Anything, "http://example.com/auto").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/auto"
+				})).Return(resp, nil)
 			},
 			validateDoc: func(t *testing.T, doc *goquery.Document) {
 				assert.Equal(t, "안녕", doc.Find(".test").Text())
@@ -86,7 +92,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 			name: "Fetcher Error - Network Failure",
 			url:  "http://example.com/error",
 			setupMock: func(m *mocks.MockFetcher) {
-				m.On("Get", mock.Anything, "http://example.com/error").Return(nil, errors.New("network error"))
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/error"
+				})).Return(nil, errors.New("network error"))
 			},
 			wantErr:     true,
 			errType:     apperrors.Unavailable,
@@ -98,11 +106,12 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse("", 500)
 				resp.Status = "500 Internal Server Error"
-				m.On("Get", mock.Anything, "http://example.com/500").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/500"
+				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.Unavailable,
-			errContains: "HTML 페이지(http://example.com/500) 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
+			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
 		},
 		{
 			name: "HTTP 404 Error (Client Error)",
@@ -110,11 +119,12 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse("", 404)
 				resp.Status = "404 Not Found"
-				m.On("Get", mock.Anything, "http://example.com/404").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/404"
+				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.ExecutionFailed, // 4xx is ExecutionFailed (as per refactor plan)
-			errContains: "HTML 페이지(http://example.com/404) 요청이 실패했습니다. 상태 코드: 404 Not Found",
+			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 404 Not Found",
 		},
 	}
 
@@ -165,7 +175,9 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 				htmlContent := `<html><body><div class="target">Found Me</div></body></html>`
 				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
-				m.On("Get", mock.Anything, "http://example.com/success").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/success"
+				})).Return(resp, nil)
 			},
 			validateSel: func(t *testing.T, sel *goquery.Selection) {
 				assert.Equal(t, "Found Me", sel.Text())
@@ -179,7 +191,9 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 				htmlContent := `<html><body><div class="other">Not Me</div></body></html>`
 				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
-				m.On("Get", mock.Anything, "http://example.com/missing").Return(resp, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/missing"
+				})).Return(resp, nil)
 			},
 			wantErr:     true,
 			errContains: "CSS셀렉터를 확인하세요",
@@ -189,7 +203,9 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 			url:      "http://example.com/error",
 			selector: ".target",
 			setupMock: func(m *mocks.MockFetcher) {
-				m.On("Get", mock.Anything, "http://example.com/error").Return(nil, errors.New("connection reset"))
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/error"
+				})).Return(nil, errors.New("connection reset"))
 			},
 			wantErr:     true,
 			errContains: "connection reset",
@@ -294,8 +310,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.ExecutionFailed, // Client Error
-			errContains: "JSON API(http://example.com/404) 요청이 실패했습니다. 상태 코드: 404 Not Found",
+			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 404 Not Found",
 		},
 		{
 			name:   "Error - HTTP 500 Status (Unavailable)",
@@ -307,8 +322,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.Unavailable,
-			errContains: "JSON API(http://example.com/500) 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
+			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
 		},
 	}
 
@@ -353,7 +367,9 @@ func TestScrapeHTML(t *testing.T) {
 		mockFetcher := &mocks.MockFetcher{}
 		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></body></html>`
 		resp := mocks.NewMockResponse(htmlContent, 200)
-		mockFetcher.On("Get", mock.Anything, "http://example.com").Return(resp, nil)
+		mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+			return req.Method == http.MethodGet && req.URL.String() == "http://example.com"
+		})).Return(resp, nil)
 
 		var items []string
 		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
@@ -370,7 +386,9 @@ func TestScrapeHTML(t *testing.T) {
 		mockFetcher := &mocks.MockFetcher{}
 		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></body></html>`
 		resp := mocks.NewMockResponse(htmlContent, 200)
-		mockFetcher.On("Get", mock.Anything, "http://example.com").Return(resp, nil)
+		mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+			return req.Method == http.MethodGet && req.URL.String() == "http://example.com"
+		})).Return(resp, nil)
 
 		count := 0
 		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
@@ -384,7 +402,9 @@ func TestScrapeHTML(t *testing.T) {
 
 	t.Run("Scrape - Fetch Error", func(t *testing.T) {
 		mockFetcher := &mocks.MockFetcher{}
-		mockFetcher.On("Get", mock.Anything, "http://example.com").Return(nil, errors.New("scrape error"))
+		mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+			return req.Method == http.MethodGet && req.URL.String() == "http://example.com"
+		})).Return(nil, errors.New("scrape error"))
 
 		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			return true

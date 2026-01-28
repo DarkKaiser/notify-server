@@ -30,7 +30,6 @@ package mocks
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"net/http"
 	"sync"
@@ -58,14 +57,6 @@ type MockFetcher struct {
 // NewMockFetcher 새로운 MockFetcher 인스턴스를 생성합니다.
 func NewMockFetcher() *MockFetcher {
 	return &MockFetcher{}
-}
-
-func (m *MockFetcher) Get(ctx context.Context, url string) (*http.Response, error) {
-	args := m.Called(ctx, url)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
 }
 
 func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
@@ -179,16 +170,6 @@ func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.delays[url] = d
-}
-
-// Get Mock HTTP Get 요청을 수행합니다.
-// 내부적으로 Do를 호출하여 동작 일관성을 유지합니다.
-func (m *MockHTTPFetcher) Get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return m.Do(req)
 }
 
 // Do Mock HTTP 요청을 수행합니다.

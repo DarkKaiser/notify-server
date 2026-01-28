@@ -42,7 +42,7 @@ func TestHTTPFetcher_Methods_Table(t *testing.T) {
 		{
 			name: "Get Request (Automatic User-Agent)",
 			action: func() (*http.Response, error) {
-				return testFetcher.Get(context.Background(), ts.URL)
+				return fetcher.Get(context.Background(), testFetcher, ts.URL)
 			},
 			expectError: false,
 		},

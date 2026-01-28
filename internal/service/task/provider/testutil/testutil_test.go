@@ -14,6 +14,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,15 +23,15 @@ import (
 
 // TestMockHTTPFetcher_SetAndGet MockHTTPFetcher의 기본 동작(응답 설정 및 조회)을 테스트합니다.
 func TestMockHTTPFetcher_SetAndGet(t *testing.T) {
-	fetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com"
 	expectedBody := []byte("hello world")
 
 	// 응답 설정
-	fetcher.SetResponse(url, expectedBody)
+	mockFetcher.SetResponse(url, expectedBody)
 
 	// Get으로 조회
-	resp, err := fetcher.Get(context.Background(), url)
+	resp, err := fetcher.Get(context.Background(), mockFetcher, url)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -39,30 +40,30 @@ func TestMockHTTPFetcher_SetAndGet(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, expectedBody, body)
-	assert.Contains(t, fetcher.GetRequestedURLs(), url)
+	assert.Contains(t, mockFetcher.GetRequestedURLs(), url)
 }
 
 // TestMockHTTPFetcher_Error 에러 설정 및 조회 동작을 테스트합니다.
 func TestMockHTTPFetcher_Error(t *testing.T) {
-	fetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/error"
 	expectedErr := fmt.Errorf("network error")
 
 	// 에러 설정
-	fetcher.SetError(url, expectedErr)
+	mockFetcher.SetError(url, expectedErr)
 
 	// Get 시 에러 반환 확인
-	_, err := fetcher.Get(context.Background(), url)
+	_, err := fetcher.Get(context.Background(), mockFetcher, url)
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 }
 
 // TestMockHTTPFetcher_NotFound 설정되지 않은 URL 요청 시 404 동작을 테스트합니다.
 func TestMockHTTPFetcher_NotFound(t *testing.T) {
-	fetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/unknown"
 
-	resp, err := fetcher.Get(context.Background(), url)
+	resp, err := fetcher.Get(context.Background(), mockFetcher, url)
 	require.NoError(t, err) // 404는 에러가 아님 (http.Response 반환)
 	defer resp.Body.Close()
 
@@ -72,7 +73,7 @@ func TestMockHTTPFetcher_NotFound(t *testing.T) {
 // TestMockHTTPFetcher_Concurrency 동시성 안전성을 테스트합니다.
 // 여러 고루틴에서 동시에 SetResponse와 Get을 호출하여 Race Condition이 발생하지 않는지 확인합니다.
 func TestMockHTTPFetcher_Concurrency(t *testing.T) {
-	fetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	urlBase := "http://example.com/"
 	concurrency := 100
 	var wg sync.WaitGroup
@@ -83,7 +84,7 @@ func TestMockHTTPFetcher_Concurrency(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			url := fmt.Sprintf("%s%d", urlBase, idx)
-			fetcher.SetResponse(url, []byte("data"))
+			mockFetcher.SetResponse(url, []byte("data"))
 		}(i)
 	}
 
@@ -94,7 +95,7 @@ func TestMockHTTPFetcher_Concurrency(t *testing.T) {
 			defer wg.Done()
 			// 임의의 키에 접근 (Set과 동시에 일어날 수 있음)
 			url := fmt.Sprintf("%s%d", urlBase, idx)
-			_, _ = fetcher.Get(context.Background(), url)
+			_, _ = fetcher.Get(context.Background(), mockFetcher, url)
 		}(i)
 	}
 
@@ -102,7 +103,7 @@ func TestMockHTTPFetcher_Concurrency(t *testing.T) {
 
 	// 모든 요청이 기록되었는지 확인 (Get 호출 횟수에 따라 다름, 최소한 패닉은 없어야 함)
 	// 정확한 카운트는 타이밍에 따라 다르므로 패닉/Race없음만 검증
-	assert.GreaterOrEqual(t, len(fetcher.GetRequestedURLs()), 0)
+	assert.GreaterOrEqual(t, len(mockFetcher.GetRequestedURLs()), 0)
 }
 
 // TestMockHTTPFetcher_Do Do 메서드가 Get과 동일하게 동작하는지 테스트합니다.
@@ -123,17 +124,17 @@ func TestMockHTTPFetcher_Do(t *testing.T) {
 
 // TestMockHTTPFetcher_Reset Reset 메서드가 상태를 초기화하는지 테스트합니다.
 func TestMockHTTPFetcher_Reset(t *testing.T) {
-	fetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com"
-	fetcher.SetResponse(url, []byte("data"))
-	_, _ = fetcher.Get(context.Background(), url)
+	mockFetcher.SetResponse(url, []byte("data"))
+	_, _ = fetcher.Get(context.Background(), mockFetcher, url)
 
-	assert.NotEmpty(t, fetcher.GetRequestedURLs())
+	assert.NotEmpty(t, mockFetcher.GetRequestedURLs())
 
-	fetcher.Reset()
+	mockFetcher.Reset()
 
-	assert.Empty(t, fetcher.GetRequestedURLs())
-	resp, _ := fetcher.Get(context.Background(), url) // 이제 설정이 없으므로 404
+	assert.Empty(t, mockFetcher.GetRequestedURLs())
+	resp, _ := fetcher.Get(context.Background(), mockFetcher, url) // 이제 설정이 없으므로 404
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 

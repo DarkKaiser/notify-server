@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"fmt"
+	"net/http"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 )
@@ -22,4 +23,20 @@ func NewErrHTMLStructureChanged(url, details string) error {
 		message += fmt.Sprintf(": %s", details)
 	}
 	return apperrors.New(apperrors.ExecutionFailed, message)
+}
+
+// CheckResponseStatus HTTP 응답 상태 코드를 분석하여 도메인 에러로 변환합니다.
+// 200 OK가 아닌 경우 상태 코드에 따라 적절한 에러 타입을 반환합니다.
+func CheckResponseStatus(resp *http.Response) error {
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
+	errType := apperrors.ExecutionFailed
+	// 5xx (Server Error) or 429 (Too Many Requests) -> Unavailable
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		errType = apperrors.Unavailable
+	}
+
+	return apperrors.New(errType, fmt.Sprintf("HTTP 요청이 실패했습니다. 상태 코드: %s", resp.Status))
 }
