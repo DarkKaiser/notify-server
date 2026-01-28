@@ -1,4 +1,4 @@
-package fetcher
+package fetcher_test
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -64,16 +66,16 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &TestMockFetcher{}
+			mockFetcher := &mocks.MockFetcher{}
 			// MaxRetries: 3, MinDelay: 1ms (fast test), MaxDelay: 10ms
-			retryFetcher := NewRetryFetcher(mockFetcher, 3, time.Millisecond, 10*time.Millisecond)
+			retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 3, time.Millisecond, 10*time.Millisecond)
 
 			// Setup Mock
 			call := mockFetcher.On("Do", mock.Anything)
 			if tt.respErr != nil {
 				call.Return(nil, tt.respErr)
 			} else {
-				resp := NewMockResponse("", tt.status)
+				resp := mocks.NewMockResponse("", tt.status)
 				call.Return(resp, nil)
 			}
 
@@ -103,12 +105,12 @@ func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
 // TestRetryFetcher_Do_BodyRewind verifies that request body is rewound (via GetBody) on retries.
 // This is critical for POST/PUT requests where the body is consumed.
 func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
-	mockFetcher := &TestMockFetcher{}
+	mockFetcher := &mocks.MockFetcher{}
 	// Retry once
-	retryFetcher := NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond)
+	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond)
 
 	// Mock server always returns 500
-	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("", 500), nil)
+	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("", 500), nil)
 
 	// Create Request with Body
 	payload := []byte(`{"key":"value"}`)
@@ -139,8 +141,8 @@ func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
 
 // TestRetryFetcher_Get verifies that Get method correctly delegates to Do with retry logic.
 func TestRetryFetcher_Get(t *testing.T) {
-	mockFetcher := &TestMockFetcher{}
-	retryFetcher := NewRetryFetcher(mockFetcher, 2, time.Millisecond, 10*time.Millisecond)
+	mockFetcher := &mocks.MockFetcher{}
+	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 2, time.Millisecond, 10*time.Millisecond)
 
 	// Simulate failure then success
 	// 1st call: 500 Error
@@ -148,11 +150,11 @@ func TestRetryFetcher_Get(t *testing.T) {
 	// 3rd call: 200 OK
 	mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 		return req.Method == "GET" && req.URL.String() == "http://example.com"
-	})).Return(NewMockResponse("", 500), nil).Once()
+	})).Return(mocks.NewMockResponse("", 500), nil).Once()
 
-	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("", 500), nil).Once()
+	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("", 500), nil).Once()
 
-	mockFetcher.On("Do", mock.Anything).Return(NewMockResponse("success", 200), nil).Once()
+	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("success", 200), nil).Once()
 
 	// Execute
 	resp, err := retryFetcher.Get("http://example.com")
@@ -166,9 +168,9 @@ func TestRetryFetcher_Get(t *testing.T) {
 
 // TestRetryFetcher_ContextCancel verifies that retry loop aborts immediately on context cancel.
 func TestRetryFetcher_ContextCancel(t *testing.T) {
-	mockFetcher := &TestMockFetcher{}
+	mockFetcher := &mocks.MockFetcher{}
 	// Set a long delay to ensure it would hang if context cancel is ignored
-	retryFetcher := NewRetryFetcher(mockFetcher, 3, 2*time.Second, 10*time.Second)
+	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 3, 2*time.Second, 10*time.Second)
 
 	// Mock always fails
 	mockFetcher.On("Do", mock.Anything).Return(nil, errors.New("fail"))
@@ -200,8 +202,8 @@ func TestRetryFetcher_ContextCancel(t *testing.T) {
 // TestRetryFetcher_BodyClose verifies that response bodies are closed on retry-triggering failures
 // to prevent file descriptor leaks.
 func TestRetryFetcher_BodyClose(t *testing.T) {
-	mockFetcher := &TestMockFetcher{}
-	retryFetcher := NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond) // 1 Retry
+	mockFetcher := &mocks.MockFetcher{}
+	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond) // 1 Retry
 
 	// Mock 500 response with a Body that tracks Close() calls
 	mockBody := &MockReadCloser{data: bytes.NewBufferString("error")}
@@ -264,7 +266,7 @@ func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := NewRetryFetcherFromConfig(tt.configMaxRetries, tt.configRetryDelay)
+			f := fetcher.NewRetryFetcherFromConfig(tt.configMaxRetries, tt.configRetryDelay)
 
 			// 1. Check outer type
 			// f is already *RetryFetcher, no assertion needed
@@ -281,4 +283,19 @@ func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
 			// assert.Equal(t, tt.expectedInternalType, fmt.Sprintf("%T", f.delegate)) -> f.delegate unexported
 		})
 	}
+}
+
+// MockReadCloser tracks calls to Close()
+type MockReadCloser struct {
+	data       *bytes.Buffer
+	closeCount int
+}
+
+func (m *MockReadCloser) Read(p []byte) (n int, err error) {
+	return m.data.Read(p)
+}
+
+func (m *MockReadCloser) Close() error {
+	m.closeCount++
+	return nil
 }

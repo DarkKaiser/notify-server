@@ -1,20 +1,21 @@
-package fetcher
+package mocks
 
 import (
 	"bytes"
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 )
 
-// TestMockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)
-type TestMockFetcher struct {
+// MockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)
+type MockFetcher struct {
 	mock.Mock
 }
 
-func (m *TestMockFetcher) Get(url string) (*http.Response, error) {
+func (m *MockFetcher) Get(url string) (*http.Response, error) {
 	args := m.Called(url)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -22,7 +23,7 @@ func (m *TestMockFetcher) Get(url string) (*http.Response, error) {
 	return args.Get(0).(*http.Response), args.Error(1)
 }
 
-func (m *TestMockFetcher) Do(req *http.Request) (*http.Response, error) {
+func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
 	args := m.Called(req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -40,19 +41,11 @@ func NewMockResponse(body string, statusCode int) *http.Response {
 	}
 }
 
-// MockReadCloser is a helper for tracking Close calls
-type MockReadCloser struct {
-	data       *bytes.Buffer
-	closeCount int
-}
-
-func (m *MockReadCloser) Read(p []byte) (n int, err error) {
-	return m.data.Read(p)
-}
-
-func (m *MockReadCloser) Close() error {
-	m.closeCount++
-	return nil
+// NewMockResponseWithJSON 주어진 JSON body와 status code를 가진 새로운 http.Response를 생성합니다.
+func NewMockResponseWithJSON(jsonBody string, statusCode int) *http.Response {
+	resp := NewMockResponse(jsonBody, statusCode)
+	resp.Header.Set("Content-Type", "application/json")
+	return resp
 }
 
 // ----------------------------------------------------------------------------
@@ -61,13 +54,10 @@ func (m *MockReadCloser) Close() error {
 // ----------------------------------------------------------------------------
 
 type MockHTTPFetcher struct {
-	mu sync.Mutex
-
-	// URL별 응답 설정
-	Responses map[string][]byte // URL -> 응답 바이트
-	Errors    map[string]error  // URL -> 에러
-
-	// 호출 기록
+	mu            sync.Mutex
+	Responses     map[string][]byte
+	Errors        map[string]error
+	Delays        map[string]time.Duration // URL별 지연 시간 설정
 	RequestedURLs []string
 }
 
@@ -76,6 +66,7 @@ func NewMockHTTPFetcher() *MockHTTPFetcher {
 	return &MockHTTPFetcher{
 		Responses:     make(map[string][]byte),
 		Errors:        make(map[string]error),
+		Delays:        make(map[string]time.Duration),
 		RequestedURLs: make([]string, 0),
 	}
 }
@@ -94,28 +85,47 @@ func (m *MockHTTPFetcher) SetError(url string, err error) {
 	m.Errors[url] = err
 }
 
+// SetDelay 특정 URL 요청 시 응답 지연 시간을 설정합니다.
+func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Delays[url] = d
+}
+
 // Get Mock HTTP Get 요청을 수행합니다.
 func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	// 호출 기록 저장
 	m.RequestedURLs = append(m.RequestedURLs, url)
 
-	// 에러가 설정되어 있으면 에러 반환
-	if err, ok := m.Errors[url]; ok {
+	// 에러 설정 확인
+	err := m.Errors[url]
+
+	// 응답 설정 확인
+	responseBody, hasResponse := m.Responses[url]
+
+	// 지연 설정 확인
+	delay, hasDelay := m.Delays[url]
+
+	m.mu.Unlock() // Lock 해제 후 Sleep (동시성 테스트 위해)
+
+	if hasDelay {
+		time.Sleep(delay)
+	}
+
+	if err != nil {
 		return nil, err
 	}
 
-	// 응답이 설정되어 있으면 응답 반환
-	if responseBody, ok := m.Responses[url]; ok {
+	if hasResponse {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(responseBody)),
 		}, nil
 	}
 
-	// 설정되지 않은 URL은 404 반환 (또는 빈 응답)
+	// 설정되지 않은 URL은 404 반환
 	return &http.Response{
 		StatusCode: http.StatusNotFound,
 		Body:       io.NopCloser(bytes.NewReader([]byte{})),
@@ -125,4 +135,25 @@ func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 // Do Mock HTTP 요청을 수행합니다.
 func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 	return m.Get(req.URL.String())
+}
+
+// GetRequestedURLs 요청된 URL 목록을 반환합니다.
+func (m *MockHTTPFetcher) GetRequestedURLs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	urls := make([]string, len(m.RequestedURLs))
+	copy(urls, m.RequestedURLs)
+	return urls
+}
+
+// Reset 모든 설정과 기록을 초기화합니다.
+func (m *MockHTTPFetcher) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.Responses = make(map[string][]byte)
+	m.Errors = make(map[string]error)
+	m.Delays = make(map[string]time.Duration)
+	m.RequestedURLs = make([]string, 0)
 }

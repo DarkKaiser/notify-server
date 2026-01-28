@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +37,7 @@ func generateLargeHTML(count int) string {
 
 // setupBenchmarkTask 벤치마크 수행을 위한 Task와 Config를 초기화합니다.
 func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPerformancesSettings) {
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	query := "뮤지컬"
 
 	htmlContent := generateLargeHTML(performanceCount)

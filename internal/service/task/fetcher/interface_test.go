@@ -1,4 +1,4 @@
-package fetcher
+package fetcher_test
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/text/encoding/korean"
@@ -33,7 +35,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 	tests := []struct {
 		name        string
 		url         string
-		setupMock   func(*TestMockFetcher)
+		setupMock   func(*mocks.MockFetcher)
 		wantErr     bool
 		errType     apperrors.ErrorType
 		errContains string
@@ -42,9 +44,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "Success - UTF-8 Explicit Header",
 			url:  "http://example.com/utf8",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				htmlContent := `<html><body><div class="test">안녕</div></body></html>`
-				resp := NewMockResponse(htmlContent, 200)
+				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 				m.On("Get", "http://example.com/utf8").Return(resp, nil)
 			},
@@ -55,9 +57,9 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "Success - EUC-KR Explicit Header",
 			url:  "http://example.com/euckr",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				content := eucKrContent(`<html><body><div class="test">안녕</div></body></html>`)
-				resp := NewMockResponse(content, 200)
+				resp := mocks.NewMockResponse(content, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=euc-kr")
 				m.On("Get", "http://example.com/euckr").Return(resp, nil)
 			},
@@ -68,10 +70,10 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "Success - Missing Charset Header (Auto Detection)",
 			url:  "http://example.com/auto",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				// No charset in header, but content is valid UTF-8
 				htmlContent := `<html><head><meta charset="utf-8"></head><body><div class="test">안녕</div></body></html>`
-				resp := NewMockResponse(htmlContent, 200)
+				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html") // No charset
 				m.On("Get", "http://example.com/auto").Return(resp, nil)
 			},
@@ -82,7 +84,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "Fetcher Error - Network Failure",
 			url:  "http://example.com/error",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				m.On("Get", "http://example.com/error").Return(nil, errors.New("network error"))
 			},
 			wantErr:     true,
@@ -92,8 +94,8 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "HTTP 500 Error",
 			url:  "http://example.com/500",
-			setupMock: func(m *TestMockFetcher) {
-				resp := NewMockResponse("", 500)
+			setupMock: func(m *mocks.MockFetcher) {
+				resp := mocks.NewMockResponse("", 500)
 				resp.Status = "500 Internal Server Error"
 				m.On("Get", "http://example.com/500").Return(resp, nil)
 			},
@@ -104,8 +106,8 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 		{
 			name: "HTTP 404 Error (Client Error)",
 			url:  "http://example.com/404",
-			setupMock: func(m *TestMockFetcher) {
-				resp := NewMockResponse("", 404)
+			setupMock: func(m *mocks.MockFetcher) {
+				resp := mocks.NewMockResponse("", 404)
 				resp.Status = "404 Not Found"
 				m.On("Get", "http://example.com/404").Return(resp, nil)
 			},
@@ -117,12 +119,12 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &TestMockFetcher{}
+			mockFetcher := &mocks.MockFetcher{}
 			if tt.setupMock != nil {
 				tt.setupMock(mockFetcher)
 			}
 
-			doc, err := FetchHTMLDocument(mockFetcher, tt.url)
+			doc, err := fetcher.FetchHTMLDocument(mockFetcher, tt.url)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -149,7 +151,7 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 		name        string
 		url         string
 		selector    string
-		setupMock   func(*TestMockFetcher)
+		setupMock   func(*mocks.MockFetcher)
 		wantErr     bool
 		errContains string
 		validateSel func(*testing.T, *goquery.Selection)
@@ -158,9 +160,9 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 			name:     "Success - Element Found",
 			url:      "http://example.com/success",
 			selector: ".target",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				htmlContent := `<html><body><div class="target">Found Me</div></body></html>`
-				resp := NewMockResponse(htmlContent, 200)
+				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 				m.On("Get", "http://example.com/success").Return(resp, nil)
 			},
@@ -172,9 +174,9 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 			name:     "Error - Selection Not Found (Wait for structure change detection)",
 			url:      "http://example.com/missing",
 			selector: ".target",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				htmlContent := `<html><body><div class="other">Not Me</div></body></html>`
-				resp := NewMockResponse(htmlContent, 200)
+				resp := mocks.NewMockResponse(htmlContent, 200)
 				resp.Header.Set("Content-Type", "text/html; charset=utf-8")
 				m.On("Get", "http://example.com/missing").Return(resp, nil)
 			},
@@ -185,7 +187,7 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 			name:     "Error - Underlying Fetch Error",
 			url:      "http://example.com/error",
 			selector: ".target",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				m.On("Get", "http://example.com/error").Return(nil, errors.New("connection reset"))
 			},
 			wantErr:     true,
@@ -195,12 +197,12 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &TestMockFetcher{}
+			mockFetcher := &mocks.MockFetcher{}
 			if tt.setupMock != nil {
 				tt.setupMock(mockFetcher)
 			}
 
-			sel, err := FetchHTMLSelection(mockFetcher, tt.url, tt.selector)
+			sel, err := fetcher.FetchHTMLSelection(mockFetcher, tt.url, tt.selector)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -230,7 +232,7 @@ func TestFetchJSON_Table(t *testing.T) {
 		url         string
 		header      map[string]string
 		body        interface{} // Object to serialize to JSON for body
-		setupMock   func(*TestMockFetcher)
+		setupMock   func(*mocks.MockFetcher)
 		wantErr     bool
 		errType     apperrors.ErrorType
 		errContains string
@@ -242,9 +244,9 @@ func TestFetchJSON_Table(t *testing.T) {
 			url:    "http://example.com",
 			header: map[string]string{"X-Custom": "HeaderVal"},
 			body:   map[string]string{"input": "data"},
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				jsonContent := `{"name": "test", "value": 123}`
-				resp := NewMockResponse(jsonContent, 200)
+				resp := mocks.NewMockResponse(jsonContent, 200)
 				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 					// Verify Request Properties
 					if req.Method != "POST" || req.URL.String() != "http://example.com" {
@@ -272,9 +274,9 @@ func TestFetchJSON_Table(t *testing.T) {
 			name:   "Error - JSON Parsing (Invalid Type)",
 			method: "GET",
 			url:    "http://example.com",
-			setupMock: func(m *TestMockFetcher) {
+			setupMock: func(m *mocks.MockFetcher) {
 				jsonContent := `{"name": "test", "value": "invalid"}`
-				resp := NewMockResponse(jsonContent, 200)
+				resp := mocks.NewMockResponse(jsonContent, 200)
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
@@ -285,8 +287,8 @@ func TestFetchJSON_Table(t *testing.T) {
 			name:   "Error - HTTP 404 Status",
 			method: "GET",
 			url:    "http://example.com/404",
-			setupMock: func(m *TestMockFetcher) {
-				resp := NewMockResponse(`{"error": "not found"}`, 404)
+			setupMock: func(m *mocks.MockFetcher) {
+				resp := mocks.NewMockResponse(`{"error": "not found"}`, 404)
 				resp.Status = "404 Not Found"
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
@@ -298,8 +300,8 @@ func TestFetchJSON_Table(t *testing.T) {
 			name:   "Error - HTTP 500 Status (Unavailable)",
 			method: "GET",
 			url:    "http://example.com/500",
-			setupMock: func(m *TestMockFetcher) {
-				resp := NewMockResponse(`error`, 500)
+			setupMock: func(m *mocks.MockFetcher) {
+				resp := mocks.NewMockResponse(`error`, 500)
 				resp.Status = "500 Internal Server Error"
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
@@ -311,7 +313,7 @@ func TestFetchJSON_Table(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &TestMockFetcher{}
+			mockFetcher := &mocks.MockFetcher{}
 			if tt.setupMock != nil {
 				tt.setupMock(mockFetcher)
 			}
@@ -324,7 +326,7 @@ func TestFetchJSON_Table(t *testing.T) {
 			}
 
 			var result TestData
-			err := FetchJSON(mockFetcher, tt.method, tt.url, tt.header, bodyReader, &result)
+			err := fetcher.FetchJSON(mockFetcher, tt.method, tt.url, tt.header, bodyReader, &result)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -347,13 +349,13 @@ func TestFetchJSON_Table(t *testing.T) {
 
 func TestScrapeHTML(t *testing.T) {
 	t.Run("Scrape - Iterate All Elements", func(t *testing.T) {
-		mockFetcher := &TestMockFetcher{}
+		mockFetcher := &mocks.MockFetcher{}
 		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></body></html>`
-		resp := NewMockResponse(htmlContent, 200)
+		resp := mocks.NewMockResponse(htmlContent, 200)
 		mockFetcher.On("Get", "http://example.com").Return(resp, nil)
 
 		var items []string
-		err := ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := fetcher.ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			items = append(items, s.Text())
 			return true
 		})
@@ -364,13 +366,13 @@ func TestScrapeHTML(t *testing.T) {
 	})
 
 	t.Run("Scrape - Early Exit", func(t *testing.T) {
-		mockFetcher := &TestMockFetcher{}
+		mockFetcher := &mocks.MockFetcher{}
 		htmlContent := `<html><body><ul class="list"><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></body></html>`
-		resp := NewMockResponse(htmlContent, 200)
+		resp := mocks.NewMockResponse(htmlContent, 200)
 		mockFetcher.On("Get", "http://example.com").Return(resp, nil)
 
 		count := 0
-		err := ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := fetcher.ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			count++
 			return count < 2 // 2가 되면 false 반환, 3번째 아이템 스킵
 		})
@@ -380,10 +382,10 @@ func TestScrapeHTML(t *testing.T) {
 	})
 
 	t.Run("Scrape - Fetch Error", func(t *testing.T) {
-		mockFetcher := &TestMockFetcher{}
+		mockFetcher := &mocks.MockFetcher{}
 		mockFetcher.On("Get", "http://example.com").Return(nil, errors.New("scrape error"))
 
-		err := ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := fetcher.ScrapeHTML(mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			return true
 		})
 

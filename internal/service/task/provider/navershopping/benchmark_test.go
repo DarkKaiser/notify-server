@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 )
 
 func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	query := "아이폰"
 	encodedQuery := url.QueryEscape(query)
 

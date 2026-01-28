@@ -10,8 +10,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -736,7 +736,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			t.Parallel()
 
 			// Mock Fetcher 설정
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			baseParams := url.Values{}
 			// 기본 파라미터 (watch_new_performances.go 참조)
 			baseParams.Set("key", "kbList")
@@ -905,7 +905,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	t.Parallel()
 
 	// 1. Setup
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 첫 번째 페이지 요청에 500ms 지연을 설정합니다.
 	// 이는 별도 고루틴에서 Cancel()을 호출할 충분한 시간을 벌어줍니다.
@@ -995,7 +995,7 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			for i, body := range tt.mockResponses {
 				page := i + 1
 				u := buildSearchAPIURL("LimitTest", page)

@@ -6,13 +6,14 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	productID := "12345"
@@ -127,7 +128,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
@@ -184,7 +185,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	// 필수 요소가 누락된 HTML
@@ -253,7 +254,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -352,7 +353,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	// 가격 변경 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -458,7 +459,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	// 품절(알 수 없는 상품) 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 

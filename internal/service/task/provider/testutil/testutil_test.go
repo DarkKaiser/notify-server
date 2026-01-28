@@ -13,6 +13,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ import (
 
 // TestMockHTTPFetcher_SetAndGet MockHTTPFetcher의 기본 동작(응답 설정 및 조회)을 테스트합니다.
 func TestMockHTTPFetcher_SetAndGet(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com"
 	expectedBody := []byte("hello world")
 
@@ -42,7 +43,7 @@ func TestMockHTTPFetcher_SetAndGet(t *testing.T) {
 
 // TestMockHTTPFetcher_Error 에러 설정 및 조회 동작을 테스트합니다.
 func TestMockHTTPFetcher_Error(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/error"
 	expectedErr := fmt.Errorf("network error")
 
@@ -57,7 +58,7 @@ func TestMockHTTPFetcher_Error(t *testing.T) {
 
 // TestMockHTTPFetcher_NotFound 설정되지 않은 URL 요청 시 404 동작을 테스트합니다.
 func TestMockHTTPFetcher_NotFound(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/unknown"
 
 	resp, err := fetcher.Get(url)
@@ -70,7 +71,7 @@ func TestMockHTTPFetcher_NotFound(t *testing.T) {
 // TestMockHTTPFetcher_Concurrency 동시성 안전성을 테스트합니다.
 // 여러 고루틴에서 동시에 SetResponse와 Get을 호출하여 Race Condition이 발생하지 않는지 확인합니다.
 func TestMockHTTPFetcher_Concurrency(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	urlBase := "http://example.com/"
 	concurrency := 100
 	var wg sync.WaitGroup
@@ -105,7 +106,7 @@ func TestMockHTTPFetcher_Concurrency(t *testing.T) {
 
 // TestMockHTTPFetcher_Do Do 메서드가 Get과 동일하게 동작하는지 테스트합니다.
 func TestMockHTTPFetcher_Do(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/do"
 	fetcher.SetResponse(url, []byte("ok"))
 
@@ -121,7 +122,7 @@ func TestMockHTTPFetcher_Do(t *testing.T) {
 
 // TestMockHTTPFetcher_Reset Reset 메서드가 상태를 초기화하는지 테스트합니다.
 func TestMockHTTPFetcher_Reset(t *testing.T) {
-	fetcher := NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com"
 	fetcher.SetResponse(url, []byte("data"))
 	_, _ = fetcher.Get(url)

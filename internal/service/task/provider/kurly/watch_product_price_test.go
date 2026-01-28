@@ -3,52 +3,16 @@ package kurly
 import (
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
-
-//
-// Mock Objects
-//
-
-// MockFetcher는 http.Fetcher 인터페이스를 모킹합니다.
-type MockFetcher struct {
-	mock.Mock
-}
-
-func (m *MockFetcher) Get(url string) (*http.Response, error) {
-	args := m.Called(url)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
-}
-
-func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
-	args := m.Called(req)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
-}
-
-// Helper to create a response with body
-func createMockResponse(statusCode int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: statusCode,
-		Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}
-}
 
 //
 // Tests
@@ -281,13 +245,13 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := new(MockFetcher)
+			mockFetcher := new(mocks.MockFetcher)
 			url := fmt.Sprintf(productPageURLFormat, tt.productID)
 
 			if tt.mockFetchErr != nil {
 				mockFetcher.On("Get", url).Return(nil, tt.mockFetchErr)
 			} else {
-				mockFetcher.On("Get", url).Return(createMockResponse(tt.mockStatusCode, tt.mockHTML), nil)
+				mockFetcher.On("Get", url).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
 			}
 
 			tsk := &task{

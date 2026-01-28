@@ -1,4 +1,4 @@
-package fetcher
+package fetcher_test
 
 import (
 	"net/http"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,7 @@ func TestHTTPFetcher_Methods_Table(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	fetcher := NewHTTPFetcher()
+	testFetcher := fetcher.NewHTTPFetcher()
 
 	tests := []struct {
 		name        string
@@ -33,14 +34,14 @@ func TestHTTPFetcher_Methods_Table(t *testing.T) {
 			name: "Do Request (Automatic User-Agent)",
 			action: func() (*http.Response, error) {
 				req, _ := http.NewRequest("GET", ts.URL, nil)
-				return fetcher.Do(req)
+				return testFetcher.Do(req)
 			},
 			expectError: false,
 		},
 		{
 			name: "Get Request (Automatic User-Agent)",
 			action: func() (*http.Response, error) {
-				return fetcher.Get(ts.URL)
+				return testFetcher.Get(ts.URL)
 			},
 			expectError: false,
 		},
@@ -63,6 +64,6 @@ func TestHTTPFetcher_Methods_Table(t *testing.T) {
 
 // TestHTTPFetcher_Timeout checks initialization (Basic check)
 func TestHTTPFetcher_Timeout(t *testing.T) {
-	fetcher := NewHTTPFetcher()
-	assert.NotNil(t, fetcher)
+	testFetcher := fetcher.NewHTTPFetcher()
+	assert.NotNil(t, testFetcher)
 }
