@@ -6,9 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/internal/service/contract"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -58,29 +56,7 @@ func NewMockResponseWithJSON(jsonBody string, statusCode int) *http.Response {
 
 // --------------- Copied for Internal Usage (Avoiding Cyclic Dependency) ----------------
 
-// MockTaskResultStorage 테스트용 Mock Storage
-type MockTaskResultStorage struct {
-	mock.Mock
-}
-
-func (m *MockTaskResultStorage) Get(taskID contract.TaskID, commandID contract.TaskCommandID) (string, error) {
-	args := m.Called(taskID, commandID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockTaskResultStorage) Save(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
-	return args.Error(0)
-}
-
-func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
-	// Mock에서는 아무것도 하지 않음 or Mock 동작 정의
-}
-
-func (m *MockTaskResultStorage) Load(taskID contract.TaskID, commandID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskID, commandID, data)
-	return args.Error(0)
-}
+// --------------- Copied for Internal Usage (Avoiding Cyclic Dependency) ----------------
 
 // MockHTTPFetcher 테스트용 Mock Fetcher (sync.Mutex 기반)
 type MockHTTPFetcher struct {

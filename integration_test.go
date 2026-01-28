@@ -18,7 +18,10 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
+	"github.com/darkkaiser/notify-server/internal/service/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/darkkaiser/notify-server/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
@@ -34,8 +37,9 @@ type IntegrationTestSuite struct {
 	appConfig           *config.AppConfig
 	ctx                 context.Context
 	cancel              context.CancelFunc
-	wg                  *sync.WaitGroup
+	wg                  sync.WaitGroup
 	taskService         *task.Service
+	schedulerService    *scheduler.Service
 	notificationService *notification.Service
 	apiService          *api.Service
 	mockHandler         *mockNotifierHandler // 최종 도착지 (Telegram 역할)
@@ -81,7 +85,10 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 	}
 
 	// 3. Service Creation
-	taskService := task.NewService(appConfig)
+	idGenerator := idgen.New()
+	taskResultStore, err := storage.NewFileTaskResultStore("")
+	require.NoError(t, err)
+	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
 	// Inject Mock Handler into Notification Service
 	mockFactory := (&notificationmocks.MockFactory{}).WithCreateAll([]notifier.Notifier{
@@ -96,17 +103,20 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 
 	apiService := api.NewService(appConfig, notificationService, version.Info{Version: "test"})
 
-	// 4. Context Setup
+	// 4. Scheduler Creation
+	// Scheduler depends on TaskService (Submitter) and NotificationSender
+	schedulerService := scheduler.NewService(appConfig.Tasks, taskService, notificationService)
+
+	// 5. Context Setup
 	ctx, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
 
 	return &IntegrationTestSuite{
 		t:                   t,
 		appConfig:           appConfig,
 		ctx:                 ctx,
 		cancel:              cancel,
-		wg:                  wg,
 		taskService:         taskService,
+		schedulerService:    schedulerService,
 		notificationService: notificationService,
 		apiService:          apiService,
 		mockHandler:         mockHandler,
@@ -115,11 +125,12 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 }
 
 func (s *IntegrationTestSuite) Start() {
-	s.wg.Add(3)
+	s.wg.Add(4)
 	// Start all services
-	go s.taskService.Start(s.ctx, s.wg)
-	go s.notificationService.Start(s.ctx, s.wg)
-	go s.apiService.Start(s.ctx, s.wg)
+	s.taskService.Start(s.ctx, &s.wg)
+	s.schedulerService.Start(s.ctx, &s.wg)
+	s.notificationService.Start(s.ctx, &s.wg)
+	s.apiService.Start(s.ctx, &s.wg)
 
 	// Wait for API server to be ready using polling
 	require.NoError(s.t, testutil.WaitForServer(s.apiPort, 5*time.Second), "API Server did not start in time")

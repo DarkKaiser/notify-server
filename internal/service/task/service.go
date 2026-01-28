@@ -9,10 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scheduler"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -44,14 +41,11 @@ type Service struct {
 	running   bool
 	runningMu sync.Mutex
 
-	// scheduler는 정해진 일정(Cron)에 따라 Task 실행 트리거를 당기는 내부 스케줄러입니다.
-	scheduler *scheduler.Scheduler
-
 	// tasks 현재 활성화(Running) 상태인 모든 Task의 인스턴스를 관리하는 인메모리 저장소입니다.
 	tasks map[contract.TaskInstanceID]provider.Task
 
 	// idGenerator는 각 Task 실행 인스턴스에 대해 전역적으로 고유한 식별자(InstanceID)를 발급하는 생성기입니다.
-	idGenerator idgen.InstanceIDGenerator
+	idGenerator contract.IDGenerator
 
 	// notificationSender는 작업의 실행 결과나 중요 이벤트를 외부 시스템(예: Telegram, Slack 등)으로 전파하는
 	// 책임을 가진 추상화된 인터페이스(Interface)입니다.
@@ -67,24 +61,26 @@ type Service struct {
 	taskCancelC chan contract.TaskInstanceID
 
 	// taskStopWG는 실행 중인 모든 Task의 종료를 추적하고 대기하는 동기화 객체입니다.
-	taskStopWG *sync.WaitGroup
+	taskStopWG sync.WaitGroup
 
-	storage storage.TaskResultStorage
+	taskResultStore contract.TaskResultStore
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
-func NewService(appConfig *config.AppConfig) *Service {
+func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, taskResultStore contract.TaskResultStore) *Service {
+	if idGenerator == nil {
+		panic("idGenerator must not be nil")
+	}
+
 	return &Service{
 		appConfig: appConfig,
 
 		running:   false,
 		runningMu: sync.Mutex{},
 
-		scheduler: scheduler.New(),
-
 		tasks: make(map[contract.TaskInstanceID]provider.Task),
 
-		idGenerator: idgen.InstanceIDGenerator{},
+		idGenerator: idGenerator,
 
 		notificationSender: nil,
 
@@ -92,9 +88,7 @@ func NewService(appConfig *config.AppConfig) *Service {
 		taskDoneC:   make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
-		taskStopWG: &sync.WaitGroup{},
-
-		storage: storage.NewFileTaskResultStorage(config.AppName),
+		taskResultStore: taskResultStore,
 	}
 }
 
@@ -123,8 +117,6 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 	go s.run0(serviceStopCtx, serviceStopWG)
 
 	s.running = true
-
-	s.scheduler.Start(s.appConfig, s, s.notificationSender)
 
 	applog.WithComponent("task.service").Info("Task 서비스 시작됨")
 
@@ -280,7 +272,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
 
-		h.SetStorage(s.storage)
+		h.SetStorage(s.taskResultStore)
 
 		// 최종 등록 및 충돌 확인
 		s.runningMu.Lock()
@@ -303,7 +295,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.taskStopWG.Add(1)
 		// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
 		// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
-		go h.Run(context.Background(), s.notificationSender, s.taskStopWG, s.taskDoneC)
+		go h.Run(context.Background(), s.notificationSender, &s.taskStopWG, s.taskDoneC)
 
 		if req.NotifyOnStart {
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
@@ -394,11 +386,6 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 // handleStop 서비스를 안전하게 중지합니다.
 func (s *Service) handleStop() {
 	applog.WithComponent("task.service").Info("Task 서비스 중지중...")
-
-	// Task 스케줄러를 가장 먼저 중지합니다.
-	// 이는 시스템 종료 과정에서 새로운 작업 요청이 생성되어 유입되는 것을 원천적으로 차단하기 위함입니다.
-	// (소비자인 Service가 종료되기 전에 생산자인 Scheduler를 먼저 끄는 것이 안전합니다.)
-	s.scheduler.Stop()
 
 	s.runningMu.Lock()
 	// SubmitTask가 running 상태를 확인하고 채널에 전송하기(send) 전에,
@@ -492,8 +479,8 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 	case s.taskSubmitC <- req:
 		return nil
 
-	default:
-		return apperrors.New(apperrors.Internal, "Task 실행 요청 큐가 가득 찼습니다.")
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

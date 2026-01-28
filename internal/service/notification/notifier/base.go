@@ -41,7 +41,7 @@ type Base struct {
 
 	// mu 내부 상태(closed, done, notificationC)와 채널 접근 시 발생하는 경쟁 상태를 방지하기 위한 동기화 객체입니다.
 	// 상태를 읽기만 할 때는 RLock을, 변경할 때는 Lock을 사용하여 성능과 안전성을 최적화합니다.
-	mu *sync.RWMutex
+	mu sync.RWMutex
 
 	// closed Close() 메서드가 호출되어 Notifier가 영구적으로 종료되었는지를 나타내는 상태 플래그입니다.
 	// 이 값이 true가 되면, 더 이상 새로운 알림 요청을 수락하지 않고 거부합니다.
@@ -56,7 +56,7 @@ type Base struct {
 	// 이 필드는 Graceful Shutdown 시 메시지 유실을 방지하기 위한 핵심 동기화 장치입니다.
 	// Close() 호출 후에도 이미 sendInternal()에 진입한 고루틴들이 채널에 메시지를 넣을 기회를 보장하기 위해,
 	// 워커(Consumer) 고루틴은 종료 전 WaitForSenders()를 호출하여 이 카운터가 0이 될 때까지 대기합니다.
-	pendingSendsWG *sync.WaitGroup
+	pendingSendsWG sync.WaitGroup
 }
 
 // NewBase 새로운 Base Notifier 인스턴스를 생성하고 초기화합니다.
@@ -70,11 +70,7 @@ func NewBase(id contract.NotifierID, supportsHTML bool, bufferSize int, enqueueT
 
 		notificationC: make(chan *notificationRequest, bufferSize),
 
-		mu: &sync.RWMutex{},
-
 		done: make(chan struct{}),
-
-		pendingSendsWG: &sync.WaitGroup{},
 	}
 }
 
@@ -209,7 +205,14 @@ func (b *Base) prepareSend(ctx context.Context, notification contract.Notificati
 		ctx = context.Background()
 	}
 
-	// 0. 컨텍스트 취소 확인
+	// 0. 알림 유효성 검증
+	// Notifier 내부에서 직접 호출되는 경우(예: 텔레그램 봇 핸들러)에도 데이터 정합성을 보장하기 위해
+	// 전송 전 반드시 유효성 검사를 수행합니다.
+	if err := notification.Validate(); err != nil {
+		return nil, nil, nil, 0, nil, err
+	}
+
+	// 1. 컨텍스트 취소 확인
 	// 이미 취소된 컨텍스트인 경우 락 획득 등의 비용을 아끼고 즉시 종료합니다.
 	if err := ctx.Err(); err != nil {
 		return nil, nil, nil, 0, nil, err
@@ -217,17 +220,17 @@ func (b *Base) prepareSend(ctx context.Context, notification contract.Notificati
 
 	b.mu.RLock()
 
-	// 1. 종료 상태 확인
+	// 2. 종료 상태 확인
 	// 이미 Close()가 호출되었거나 채널이 초기화되지 않았다면 요청을 거부합니다.
 	if b.closed || b.notificationC == nil {
 		b.mu.RUnlock()
 		return nil, nil, nil, 0, nil, ErrClosed
 	}
 
-	// 2. Pending Sends 카운터 증가
+	// 3. Pending Sends 카운터 증가
 	b.pendingSendsWG.Add(1)
 
-	// 3. 로컬 변수 복사
+	// 4. 로컬 변수 복사
 	// 채널 전송은 블로킹될 수 있는 작업이므로, 락을 잡은 상태에서 수행하면 성능 병목이 됩니다.
 	// 따라서 필요한 멤버 변수들(notificationC, done, timeout)만 로컬 변수로 복사해두고,
 	// 락은 즉시 해제하여 다른 고루틴들이 상태를 조회하거나 변경할 수 있게 합니다.
@@ -237,7 +240,7 @@ func (b *Base) prepareSend(ctx context.Context, notification contract.Notificati
 
 	b.mu.RUnlock()
 
-	// 4. 리소스 정리 및 패닉 복구용 함수
+	// 5. 리소스 정리 및 패닉 복구용 함수
 	cleanup = func(errPtr *error) {
 		b.pendingSendsWG.Done()
 
@@ -262,7 +265,7 @@ func (b *Base) prepareSend(ctx context.Context, notification contract.Notificati
 		}
 	}
 
-	// 5. 요청 객체 생성
+	// 6. 요청 객체 생성
 	req = &notificationRequest{
 		Ctx:          ctx,
 		Notification: notification,

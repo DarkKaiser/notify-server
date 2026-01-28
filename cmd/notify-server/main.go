@@ -17,11 +17,14 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/notification"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier"
 	"github.com/darkkaiser/notify-server/internal/service/notification/notifier/telegram"
+	"github.com/darkkaiser/notify-server/internal/service/scheduler"
 	"github.com/darkkaiser/notify-server/internal/service/task"
+	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/kurly"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/lotto"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/naver"
 	_ "github.com/darkkaiser/notify-server/internal/service/task/provider/navershopping"
+	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -164,9 +167,14 @@ func run() error {
 	// 이를 해결하기 위해 생성자 주입(Constructor Injection)과 세터 주입(Setter Injection)을 혼용하여 연결을 완성합니다.
 
 	// Task Service 생성
-	taskService := task.NewService(appConfig)
+	idGenerator := idgen.New()
+	taskResultStore, err := storage.NewFileTaskResultStore("")
+	if err != nil {
+		return fmt.Errorf("Task 저장소를 초기화하는 중 치명적인 오류가 발생했습니다: %w", err)
+	}
+	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
-	// Notification Factory 생성 및 Processor 등록
+	// Notifier Factory 생성 및 Processor 등록
 	notifierFactory := notifier.NewFactory()
 	notifierFactory.Register(telegram.NewCreator())
 
@@ -175,6 +183,9 @@ func run() error {
 
 	// API Service 생성
 	apiService := api.NewService(appConfig, notificationService, buildInfo)
+
+	// Scheduler Service 생성
+	schedulerService := scheduler.NewService(appConfig.Tasks, taskService, notificationService)
 
 	// Task Service에 Notification Service 주입 (순환 참조 해결)
 	taskService.SetNotificationSender(notificationService)
@@ -188,13 +199,13 @@ func run() error {
 	// 9. 서비스 병렬 기동
 	// 준비된 모든 서비스를 별도의 고루틴 또는 비동기 컨텍스트에서 시작합니다.
 	// 하나라도 초기화에 실패하면 즉시 전체 서버 구동을 중단하고 롤백(종료) 절차를 밟습니다.
-	services := []service.Service{taskService, notificationService, apiService}
+	services := []service.Service{taskService, notificationService, apiService, schedulerService}
 	for _, s := range services {
 		serviceStopWG.Add(1)
 		if err := s.Start(serviceStopCtx, serviceStopWG); err != nil {
 			serviceStopCancel()  // 다른 서비스들도 종료
 			serviceStopWG.Wait() // 이미 시작된 서비스들의 종료를 대기
-			return fmt.Errorf("핵심 서비스(%T)를 시작하는 도중 치명적인 오류가 발생했습니다: %w", s, err)
+			return fmt.Errorf("핵심 서비스(%T)를 시작하는 중 치명적인 오류가 발생했습니다: %w", s, err)
 		}
 	}
 

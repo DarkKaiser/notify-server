@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -10,7 +11,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -71,7 +71,7 @@ type Base struct {
 	fetcher fetcher.Fetcher
 
 	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
-	storage storage.TaskResultStorage
+	storage contract.TaskResultStore
 }
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
@@ -135,7 +135,7 @@ func (t *Base) GetFetcher() fetcher.Fetcher {
 	return t.fetcher
 }
 
-func (t *Base) SetStorage(storage storage.TaskResultStorage) {
+func (t *Base) SetStorage(storage contract.TaskResultStore) {
 	t.storage = storage
 }
 
@@ -209,15 +209,21 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 
 	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
 	if err != nil {
-		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-		t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
-		t.notify(ctx, notificationSender, message)
+		if errors.Is(err, contract.ErrTaskResultNotFound) {
+			// 최초 실행 시에는 데이터가 없는 것이 정상입니다.
+			// 경고 로그 대신 Info 로그를 남기고 빈 스냅샷으로 시작합니다.
+			t.LogWithContext("task.executor", applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
+		} else {
+			message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
+			t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
+			t.notify(ctx, notificationSender, message)
+		}
 	}
 
 	return snapshot, nil
 }
 
-// handleExecutionResult 작업 실행 결과를 처리합니다.
+// handleExecutionResult 작업 결과를 처리합니다.
 func (t *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
 	if err == nil {
 		if len(message) > 0 {

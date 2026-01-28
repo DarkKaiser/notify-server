@@ -12,9 +12,9 @@ import (
 
 	appconfig "github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -196,11 +196,11 @@ func TestTask_Run(t *testing.T) {
 	fakeLogFile := filepath.Join(tmpDir, "result_12345.log")
 
 	// Helper to setup fresh environment for each test
-	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *MockTaskResultStorage) {
+	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *contractmocks.MockTaskResultStore) {
 		mockExecutor := new(MockCommandExecutor)
 		mockProcess := new(MockCommandProcess)
 		mockSender := notificationmocks.NewMockNotificationSender(t)
-		mockStorage := new(MockTaskResultStorage)
+		mockStorage := new(contractmocks.MockTaskResultStore)
 
 		task := &task{
 			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
@@ -288,25 +288,4 @@ func contains(s, substr string) bool {
 
 // --- Local Mocks for Test ---
 
-type MockTaskResultStorage struct {
-	mock.Mock
-}
-
-func (m *MockTaskResultStorage) Get(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID) (string, error) {
-	args := m.Called(taskTaskID, commandTaskID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockTaskResultStorage) Save(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskTaskID, commandTaskID, data)
-	return args.Error(0)
-}
-
-func (m *MockTaskResultStorage) SetStorage(storage storage.TaskResultStorage) {
-	m.Called(storage)
-}
-
-func (m *MockTaskResultStorage) Load(taskTaskID contract.TaskID, commandTaskID contract.TaskCommandID, data interface{}) error {
-	args := m.Called(taskTaskID, commandTaskID, data)
-	return args.Error(0)
-}
+// MockTaskResultStore removed in favor of contractmocks.MockTaskResultStore
