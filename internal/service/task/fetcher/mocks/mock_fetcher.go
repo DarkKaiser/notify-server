@@ -157,3 +157,18 @@ func (m *MockHTTPFetcher) Reset() {
 	m.Delays = make(map[string]time.Duration)
 	m.RequestedURLs = make([]string, 0)
 }
+
+// MockReadCloser tracks calls to Close()
+type MockReadCloser struct {
+	Data       *bytes.Buffer
+	CloseCount int
+}
+
+func (m *MockReadCloser) Read(p []byte) (n int, err error) {
+	return m.Data.Read(p)
+}
+
+func (m *MockReadCloser) Close() error {
+	m.CloseCount++
+	return nil
+}
