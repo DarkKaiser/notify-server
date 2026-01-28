@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -208,15 +209,21 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 
 	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
 	if err != nil {
-		message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-		t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
-		t.notify(ctx, notificationSender, message)
+		if errors.Is(err, contract.ErrTaskResultNotFound) {
+			// 최초 실행 시에는 데이터가 없는 것이 정상입니다.
+			// 경고 로그 대신 Info 로그를 남기고 빈 스냅샷으로 시작합니다.
+			t.LogWithContext("task.executor", applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
+		} else {
+			message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
+			t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
+			t.notify(ctx, notificationSender, message)
+		}
 	}
 
 	return snapshot, nil
 }
 
-// handleExecutionResult 작업 실행 결과를 처리합니다.
+// handleExecutionResult 작업 결과를 처리합니다.
 func (t *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
 	if err == nil {
 		if len(message) > 0 {

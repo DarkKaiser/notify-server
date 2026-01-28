@@ -85,8 +85,9 @@ func setupIntegrationTestServices(t *testing.T) *IntegrationTestSuite {
 	}
 
 	// 3. Service Creation
-	taskResultStore := storage.NewFileTaskResultStore(config.AppName)
 	idGenerator := idgen.New()
+	taskResultStore, err := storage.NewFileTaskResultStore("")
+	require.NoError(t, err)
 	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
 	// Inject Mock Handler into Notification Service

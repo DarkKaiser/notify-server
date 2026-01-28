@@ -166,10 +166,7 @@ func appendBase62FixedLength(dst []byte, num int64, length int) []byte {
 	if cap(dst) < bufferEnd {
 		// 새 용량 계산: 기존 용량의 2배로 설정하여 잦은 할당을 방지합니다.
 		// 단, 2배로도 부족하다면 필요한 만큼 딱 맞춰서 늘립니다.
-		newCap := 2 * cap(dst)
-		if newCap < bufferEnd {
-			newCap = bufferEnd
-		}
+		newCap := max(2*cap(dst), bufferEnd)
 
 		// 새 버퍼 할당 및 기존 데이터 이사
 		// 주의: `len`은 기존 데이터만큼만 설정해야 합니다. (아직 새 데이터를 채우지 않았으므로)

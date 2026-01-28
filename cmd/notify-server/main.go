@@ -167,8 +167,11 @@ func run() error {
 	// 이를 해결하기 위해 생성자 주입(Constructor Injection)과 세터 주입(Setter Injection)을 혼용하여 연결을 완성합니다.
 
 	// Task Service 생성
-	taskResultStore := storage.NewFileTaskResultStore(config.AppName)
 	idGenerator := idgen.New()
+	taskResultStore, err := storage.NewFileTaskResultStore("")
+	if err != nil {
+		return fmt.Errorf("Task 저장소를 초기화하는 중 치명적인 오류가 발생했습니다: %w", err)
+	}
 	taskService := task.NewService(appConfig, idGenerator, taskResultStore)
 
 	// Notifier Factory 생성 및 Processor 등록
@@ -202,7 +205,7 @@ func run() error {
 		if err := s.Start(serviceStopCtx, serviceStopWG); err != nil {
 			serviceStopCancel()  // 다른 서비스들도 종료
 			serviceStopWG.Wait() // 이미 시작된 서비스들의 종료를 대기
-			return fmt.Errorf("핵심 서비스(%T)를 시작하는 도중 치명적인 오류가 발생했습니다: %w", s, err)
+			return fmt.Errorf("핵심 서비스(%T)를 시작하는 중 치명적인 오류가 발생했습니다: %w", s, err)
 		}
 	}
 

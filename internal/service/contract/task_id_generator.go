@@ -8,6 +8,6 @@ type IDGenerator interface {
 	// 동시에 여러 고루틴에서 호출되어도 안전해야 합니다.
 	//
 	// 반환값:
-	//   - TaskInstanceID: 생성된 고유 작업 인스턴스 ID
+	//   - TaskInstanceID: 고유한 작업 인스턴스 ID
 	New() TaskInstanceID
 }
