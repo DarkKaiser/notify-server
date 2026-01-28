@@ -14,6 +14,11 @@ var (
 	ErrLoadRequiresPointer = apperrors.New(apperrors.Internal, "내부 시스템 오류: 데이터 로드 대상 객체가 올바른 포인터 타입이 아닙니다")
 )
 
+// NewErrPathResolutionFailed 파일 경로 해석(절대 경로/상대 경로 변환 등)에 실패했을 때 반환하는 에러를 생성합니다.
+func NewErrPathResolutionFailed(err error) error {
+	return apperrors.Wrap(err, apperrors.Internal, "보안 검증 실패: 파일 경로를 해석할 수 없습니다")
+}
+
 // NewErrAbsPathConversionFailed 저장소 초기화 시 디렉토리 경로를 절대 경로로 변환하는 데 실패했을 때 반환하는 에러를 생성합니다.
 func NewErrAbsPathConversionFailed(err error) error {
 	return apperrors.Wrap(err, apperrors.Internal, "저장소 초기화 실패: 절대 경로 변환 불가")
@@ -27,6 +32,11 @@ func NewErrDirectoryAccessFailed(err error, dir string) error {
 // NewErrJSONMarshalFailed 작업 결과 데이터를 JSON으로 직렬화하는 데 실패했을 때 반환하는 에러를 생성합니다.
 func NewErrJSONMarshalFailed(err error) error {
 	return apperrors.Wrap(err, apperrors.Internal, "데이터 처리 실패: 작업 결과 데이터 직렬화(JSON Marshal) 중 오류가 발생했습니다")
+}
+
+// NewErrJSONUnmarshalFailed 작업 결과 데이터를 JSON에서 역직렬화하는 데 실패했을 때 반환하는 에러를 생성합니다.
+func NewErrJSONUnmarshalFailed(err error) error {
+	return apperrors.Wrap(err, apperrors.Internal, "데이터 처리 실패: 작업 결과 데이터 역직렬화(JSON Unmarshal) 중 오류가 발생했습니다")
 }
 
 // NewErrTaskResultReadFailed 작업 결과 파일을 읽는 데 실패했을 때 반환하는 에러를 생성합니다.

@@ -90,7 +90,17 @@ func sanitizeName(s string) string {
 	// 1단계: Kebab-Case 변환으로 기본 정제
 	kebab := strcase.ToKebab(s)
 
-	// 2단계: 파일 시스템 위험 문자 명시적 치환
+	// 2단계: 제어 문자(0x00-0x1F) 및 DEL(0x7F) 제거/치환
+	// Windows 등 일부 파일 시스템은 제어 문자를 파일명에 허용하지 않습니다.
+	// Kebab 변환 후에도 남아있을 수 있는 제어 문자를 검사하여 안전한 문자(하이픈)로 치환합니다.
+	kebab = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7F {
+			return '-'
+		}
+		return r
+	}, kebab)
+
+	// 3단계: 파일 시스템 위험 문자 명시적 치환
 	// ToKebab이 이미 많은 특수문자를 처리해주지만, 보안상 중요한 문자들은 명시적으로 제거
 	return filenameReplacer.Replace(kebab)
 }
@@ -113,18 +123,17 @@ func truncateByBytes(s string, limit int) string {
 	}
 
 	var totalBytes int
-	var endIndex int
+	for i := 0; i < len(s); {
+		_, size := utf8.DecodeRuneInString(s[i:])
 
-	// Rune 단위로 순회하며 안전한 자르기 위치 찾기
-	for i, r := range s {
-		runeLen := utf8.RuneLen(r)
-		if totalBytes+runeLen > limit {
-			// 다음 문자를 포함하면 limit 초과 → 여기서 중단
-			break
+		if totalBytes+size > limit {
+			// 다음 글자를 포함하면 제한을 초과하므로, 현재까지의 길이로 자릅니다.
+			return s[:totalBytes]
 		}
-		totalBytes += runeLen
-		endIndex = i + runeLen
+
+		totalBytes += size
+		i += size
 	}
 
-	return s[:endIndex]
+	return s[:totalBytes]
 }

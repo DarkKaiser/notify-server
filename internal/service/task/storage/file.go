@@ -25,7 +25,7 @@ const tempFilePattern = "task-result-*.tmp"
 // fileTaskResultStore 파일 시스템을 기반으로 작업 결과를 저장하는 저장소 구현체입니다.
 //
 // [파일 구조]
-//   - task_<taskID>_<commandID>.json: 작업 결과가 JSON 형식으로 저장됩니다.
+//   - task-{taskID}-{commandID}-{hash}.json: 작업 결과가 JSON 형식으로 저장됩니다.
 //   - task-result-*.tmp: 파일 저장 중 생성되는 임시 파일입니다.
 type fileTaskResultStore struct {
 	baseDir string
@@ -180,8 +180,9 @@ func (s *fileTaskResultStore) Load(taskID contract.TaskID, commandID contract.Ta
 
 	// 3단계: Lock 획득 후 파일 읽기
 	// 쓰기 작업과의 경합을 방지하기 위해 읽기에도 Lock을 적용합니다.
+	// Windows 등 대소문자를 구분하지 않는 파일 시스템을 위해 Lock 키는 소문자로 정규화합니다.
 	var data []byte
-	err = s.locks.WithLock(filename, func() error {
+	err = s.locks.WithLock(strings.ToLower(filename), func() error {
 		var readErr error
 		data, readErr = os.ReadFile(filename)
 		if readErr != nil {
@@ -200,7 +201,11 @@ func (s *fileTaskResultStore) Load(taskID contract.TaskID, commandID contract.Ta
 	}
 
 	// 4단계: JSON 역직렬화
-	return json.Unmarshal(data, v)
+	if err := json.Unmarshal(data, v); err != nil {
+		return NewErrJSONUnmarshalFailed(err)
+	}
+
+	return nil
 }
 
 // Save 작업 결과를 파일에 저장합니다.
@@ -228,7 +233,8 @@ func (s *fileTaskResultStore) Save(taskID contract.TaskID, commandID contract.Ta
 	}
 
 	// 3단계: 파일별 Lock 획득 후 원자적 쓰기
-	return s.locks.WithLock(filename, func() error {
+	// Windows 등 대소문자를 구분하지 않는 파일 시스템을 위해 Lock 키는 소문자로 정규화합니다.
+	return s.locks.WithLock(strings.ToLower(filename), func() error {
 		return s.writeAtomic(filename, data)
 	})
 }
@@ -256,17 +262,28 @@ func (s *fileTaskResultStore) resolveSafePath(taskID contract.TaskID, commandID 
 	// 3. 보안 검증
 	// 생성된 최종 경로가 BaseDir의 하위 경로인지 확인합니다.
 	//
-	// [보안 핵심] 단순 접두사(Prefix) 일치 여부만 확인하면 '형제 디렉토리 공격(Sibling Directory Attack)'에 취약합니다.
-	// 예: BaseDir="/data" 일 때, "/data-backup" 접근을 허용하면 안 됩니다.
-	// 따라서 경로 구분자를 포함한 Prefix 검사를 수행하여 디렉토리 계층 구조를 확실히 지킵니다.
-	prefix := basePath + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanPath, prefix) && cleanPath != basePath {
+	// [보안 검증 전략]
+	// filepath.Rel을 사용하여 BaseDir 기준의 상대 경로를 계산하여 검증합니다.
+	//
+	// [이점]
+	// 1. 경로 이탈 차단: 상대 경로가 ".."으로 시작하면 상위 디렉토리 접근으로 간주하여 차단합니다.
+	// 2. 정교한 경로 비교: 단순 접두사(Prefix) 비교 취약점(Sibling Directory Attack)을 근본적으로 해결합니다.
+	// 3. 호환성: 루트 디렉토리("C:\")나 경로 구분자 차이와 관계없이 일관된 검증을 보장합니다.
+	rel, err := filepath.Rel(basePath, cleanPath)
+	if err != nil {
+		// 경로 계산 실패면 안전하지 않은 것으로 간주
+		return "", NewErrPathResolutionFailed(err)
+	}
+
+	// 상대 경로가 ".."으로 시작하면 상위 디렉토리로 이탈한 것입니다.
+	if strings.HasPrefix(rel, "..") {
 		applog.WithComponentAndFields(component, applog.Fields{
 			"task_id":    taskID,
 			"command_id": commandID,
 			"filename":   filename,
 			"base_dir":   s.baseDir,
 			"path":       cleanPath,
+			"rel_path":   rel,
 		}).Error("파일 경로 생성 차단: 경로 이탈 시도 감지")
 
 		return "", ErrPathTraversalDetected
@@ -308,10 +325,14 @@ func (s *fileTaskResultStore) writeAtomic(filename string, data []byte) error {
 	}
 	tmpPath := tmpFile.Name()
 
-	// 임시 파일 정리 (defer를 통한 자동 정리)
-	// - 정상 흐름: Rename 성공 시 파일이 이미 이동되었으므로 Remove는 "파일 없음" 에러 반환 (무시됨)
-	// - 에러 흐름: Write/Sync/Close 실패 시 임시 파일이 남아있으므로 Remove가 정리함
+	// [임시 파일 안전 정리: Windows 호환성]
+	// 이 코드는 함수 종료 시 임시 파일을 확실하게 정리하기 위한 안전 장치입니다.
+	//
+	// 특별히 주의할 점은 Windows 운영체제의 파일 잠금 정책입니다.
+	// Windows에서는 파일이 열려있는 상태에서는 삭제(os.Remove)가 불가능합니다.
+	// 따라서 반드시 '파일 닫기(Close)'가 '파일 삭제(Remove)'보다 먼저 실행되어야 합니다.
 	defer os.Remove(tmpPath)
+	defer tmpFile.Close()
 
 	// 3단계: 데이터 쓰기
 	if _, err := tmpFile.Write(data); err != nil {
