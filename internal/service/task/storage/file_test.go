@@ -109,7 +109,7 @@ func TestFileTaskResultStore_SaveAndLoad(t *testing.T) {
 				Name:      "Complex Test",
 				Tags:      []string{"go", "json", "file"},
 				Metadata:  map[string]string{"env": "test"},
-				CreatedAt: time.Now().Truncate(time.Second), // JSON 시간 정밀도 고려
+				CreatedAt: time.Now().UTC().Truncate(time.Second), // JSON 시간 정밀도 고려 및 Local/UTC 불일치 방지
 			},
 			target: new(ComplexData),
 		},
