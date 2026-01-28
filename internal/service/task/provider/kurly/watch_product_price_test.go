@@ -1,6 +1,7 @@
 package kurly
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -249,9 +251,9 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			url := fmt.Sprintf(productPageURLFormat, tt.productID)
 
 			if tt.mockFetchErr != nil {
-				mockFetcher.On("Get", url).Return(nil, tt.mockFetchErr)
+				mockFetcher.On("Get", mock.Anything, url).Return(nil, tt.mockFetchErr)
 			} else {
-				mockFetcher.On("Get", url).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
+				mockFetcher.On("Get", mock.Anything, url).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
 			}
 
 			tsk := &task{
@@ -259,7 +261,7 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			}
 			tsk.SetFetcher(mockFetcher)
 
-			got, err := tsk.fetchProductInfo(tt.productID)
+			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
 
 			if tt.wantErr {
 				require.Error(t, err)

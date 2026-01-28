@@ -1,6 +1,7 @@
 package fetcher_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,7 +42,7 @@ func TestHTTPFetcher_Methods_Table(t *testing.T) {
 		{
 			name: "Get Request (Automatic User-Agent)",
 			action: func() (*http.Response, error) {
-				return testFetcher.Get(ts.URL)
+				return testFetcher.Get(context.Background(), ts.URL)
 			},
 			expectError: false,
 		},

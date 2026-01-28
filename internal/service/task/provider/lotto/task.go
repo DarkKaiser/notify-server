@@ -3,6 +3,7 @@
 package lotto
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -124,7 +125,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case PredictionCommand:
-		lottoTask.SetExecute(func(_ interface{}, _ bool) (string, interface{}, error) {
+		lottoTask.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
 			return lottoTask.executePrediction()
 		})
 	default:

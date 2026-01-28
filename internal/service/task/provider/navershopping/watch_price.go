@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/url"
@@ -113,9 +114,9 @@ type searchResponseItem struct {
 }
 
 // executeWatchPrice 작업을 실행하여 상품 가격 정보를 확인합니다.
-func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
+func (t *task) executeWatchPrice(ctx context.Context, commandSettings *watchPriceSettings, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, interface{}, error) {
 	// 1. 상품 정보를 수집한다.
-	currentProducts, err := t.fetchProducts(commandSettings)
+	currentProducts, err := t.fetchProducts(ctx, commandSettings)
 	if err != nil {
 		return "", nil, err
 	}
@@ -151,7 +152,7 @@ func (t *task) executeWatchPrice(commandSettings *watchPriceSettings, prevSnapsh
 }
 
 // fetchProducts 네이버 쇼핑 검색 API를 호출하여 조건에 맞는 상품 목록을 수집합니다.
-func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, error) {
+func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSettings) ([]*product, error) {
 	var (
 		header = map[string]string{
 			"X-Naver-Client-Id":     t.clientID,
@@ -202,7 +203,7 @@ func (t *task) fetchProducts(commandSettings *watchPriceSettings) ([]*product, e
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = fetcher.FetchJSON(t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
+		err = fetcher.FetchJSON(ctx, t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}

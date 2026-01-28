@@ -208,7 +208,7 @@ func TestTask_Run(t *testing.T) {
 			executor: mockExecutor,
 		}
 		task.SetStorage(mockStorage)
-		task.SetExecute(func(_ interface{}, _ bool) (string, interface{}, error) {
+		task.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
 			return task.executePrediction()
 		})
 

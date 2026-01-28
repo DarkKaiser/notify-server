@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ func TestMockHTTPFetcher_SetAndGet(t *testing.T) {
 	fetcher.SetResponse(url, expectedBody)
 
 	// Get으로 조회
-	resp, err := fetcher.Get(url)
+	resp, err := fetcher.Get(context.Background(), url)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -51,7 +52,7 @@ func TestMockHTTPFetcher_Error(t *testing.T) {
 	fetcher.SetError(url, expectedErr)
 
 	// Get 시 에러 반환 확인
-	_, err := fetcher.Get(url)
+	_, err := fetcher.Get(context.Background(), url)
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
 }
@@ -61,7 +62,7 @@ func TestMockHTTPFetcher_NotFound(t *testing.T) {
 	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com/unknown"
 
-	resp, err := fetcher.Get(url)
+	resp, err := fetcher.Get(context.Background(), url)
 	require.NoError(t, err) // 404는 에러가 아님 (http.Response 반환)
 	defer resp.Body.Close()
 
@@ -93,7 +94,7 @@ func TestMockHTTPFetcher_Concurrency(t *testing.T) {
 			defer wg.Done()
 			// 임의의 키에 접근 (Set과 동시에 일어날 수 있음)
 			url := fmt.Sprintf("%s%d", urlBase, idx)
-			_, _ = fetcher.Get(url)
+			_, _ = fetcher.Get(context.Background(), url)
 		}(i)
 	}
 
@@ -125,14 +126,14 @@ func TestMockHTTPFetcher_Reset(t *testing.T) {
 	fetcher := mocks.NewMockHTTPFetcher()
 	url := "http://example.com"
 	fetcher.SetResponse(url, []byte("data"))
-	_, _ = fetcher.Get(url)
+	_, _ = fetcher.Get(context.Background(), url)
 
 	assert.NotEmpty(t, fetcher.GetRequestedURLs())
 
 	fetcher.Reset()
 
 	assert.Empty(t, fetcher.GetRequestedURLs())
-	resp, _ := fetcher.Get(url) // 이제 설정이 없으므로 404
+	resp, _ := fetcher.Get(context.Background(), url) // 이제 설정이 없으므로 404
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 

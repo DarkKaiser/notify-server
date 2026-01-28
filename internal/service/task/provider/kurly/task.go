@@ -3,6 +3,8 @@
 package kurly
 
 import (
+	"context"
+
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -60,7 +62,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 			return nil, err
 		}
 
-		kurlyTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		kurlyTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchProductPriceSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchProductPriceSnapshot{}, previousSnapshot)
@@ -71,7 +73,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 				FilePath: commandSettings.WatchProductsFile,
 			}
 
-			return kurlyTask.executeWatchProductPrice(loader, prevSnapshot, supportsHTML)
+			return kurlyTask.executeWatchProductPrice(ctx, loader, prevSnapshot, supportsHTML)
 		})
 	default:
 		return nil, provider.NewErrCommandNotSupported(req.CommandID)

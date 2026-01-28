@@ -112,9 +112,9 @@ func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
 	// Mock server always returns 500
 	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("", 500), nil)
 
-	// Create Request with Body
+	// Create Request with Body and Context
 	payload := []byte(`{"key":"value"}`)
-	req, err := http.NewRequest("POST", "http://example.com", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", bytes.NewReader(payload))
 	assert.NoError(t, err)
 
 	// Wrap GetBody to count calls
@@ -125,7 +125,7 @@ func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
 		return originalGetBody()
 	}
 
-	// Execute
+	// Execute - Use Do() instead of Get() to use our prepared request
 	_, err = retryFetcher.Do(req)
 
 	// Verification
@@ -157,7 +157,7 @@ func TestRetryFetcher_Get(t *testing.T) {
 	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("success", 200), nil).Once()
 
 	// Execute
-	resp, err := retryFetcher.Get("http://example.com")
+	resp, err := retryFetcher.Get(context.Background(), "http://example.com")
 
 	// Verification
 	assert.NoError(t, err)

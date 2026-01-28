@@ -3,6 +3,7 @@
 package navershopping
 
 import (
+	"context"
 	"strings"
 
 	"github.com/darkkaiser/notify-server/internal/config"
@@ -101,13 +102,13 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 			return nil, err
 		}
 
-		naverShoppingTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		naverShoppingTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchPriceSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchPriceSnapshot{}, previousSnapshot)
 			}
 
-			return naverShoppingTask.executeWatchPrice(commandSettings, prevSnapshot, supportsHTML)
+			return naverShoppingTask.executeWatchPrice(ctx, commandSettings, prevSnapshot, supportsHTML)
 		})
 	} else {
 		return nil, provider.NewErrCommandNotSupported(req.CommandID)

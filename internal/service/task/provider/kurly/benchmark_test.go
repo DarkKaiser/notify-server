@@ -1,6 +1,7 @@
 package kurly
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -97,7 +98,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// 실행: executeWatchProductPrice
 		// (내부적으로 HTML 파싱, 가격 추출, Diff 연산 등을 수행)
-		_, _, err := tTask.executeWatchProductPrice(loader, resultData, false)
+		_, _, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, false)
 		if err != nil {
 			b.Fatalf("Task execution failed: %v", err)
 		}

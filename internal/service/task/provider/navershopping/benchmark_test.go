@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"testing"
@@ -70,7 +71,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		// 벤치마크 실행
-		_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+		_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 		if err != nil {
 			b.Fatalf("Task run failed: %v", err)
 		}

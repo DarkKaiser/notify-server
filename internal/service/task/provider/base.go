@@ -29,6 +29,7 @@ const (
 // 작업에 필요한 데이터(Snapshot)를 받아 처리한 후 결과 메시지와 변경된 데이터를 반환합니다.
 //
 // 매개변수:
+//   - ctx: 작업 실행 컨텍스트 (취소 및 타임아웃 처리용)
 //   - previousSnapshot: 이전 실행 시 저장된 데이터 (상태 복원용). 최초 실행 시에는 nil 또는 초기값이 전달됩니다.
 //   - supportsHTML: 알림 채널(Notifier)이 HTML 포맷을 지원하는지 여부.
 //
@@ -36,7 +37,7 @@ const (
 //   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
 //   - interface{}: 실행 완료 후 저장할 새로운 데이터. 다음 실행 시 data 인자로 전달됩니다.
 //   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
-type ExecuteFunc func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
+type ExecuteFunc func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
 
 // Base 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
@@ -169,7 +170,7 @@ func (t *Base) Run(ctx context.Context, notificationSender contract.Notification
 	}
 
 	// 2. 작업 실행
-	message, newSnapshot, err := t.execute(previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
+	message, newSnapshot, err := t.execute(ctx, previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
 
 	if t.IsCanceled() {
 		return

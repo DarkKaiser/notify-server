@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -311,7 +312,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			}
 			tsk.SetFetcher(mockFetcher)
 
-			got, err := tsk.fetchProducts(&tt.settings)
+			got, err := tsk.fetchProducts(context.Background(), &tt.settings)
 			tt.checkResult(t, got, err)
 		})
 	}
@@ -368,7 +369,7 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 			}
 			tsk.SetFetcher(mockFetcher)
 
-			_, err := tsk.fetchProducts(&tt.settings)
+			_, err := tsk.fetchProducts(context.Background(), &tt.settings)
 
 			// URL 불일치 시 SetResponse에 없는 URL을 요청하게 되므로 에러 발생 ("no mock response found")
 			// 따라서 에러가 없으면 URL이 정확하다는 뜻입니다.
@@ -987,7 +988,7 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}
 	tsk.SetFetcher(mockFetcher)
 
-	products, err := tsk.fetchProducts(&settings)
+	products, err := tsk.fetchProducts(context.Background(), &settings)
 
 	require.NoError(t, err)
 	assert.Len(t, products, 150, "총 150개의 상품이 수집되어야 합니다")
@@ -1013,7 +1014,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 	// 강제로 취소 상태 주입 (Context Cancel)
 	tsk.Cancel()
 
-	products, err := tsk.fetchProducts(&settings)
+	products, err := tsk.fetchProducts(context.Background(), &settings)
 
 	// 취소되었으므로 nil 반환 체크
 	require.NoError(t, err)

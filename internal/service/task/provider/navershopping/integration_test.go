@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -60,7 +61,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -103,7 +104,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -131,7 +132,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -227,7 +228,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -315,7 +316,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -418,7 +419,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandSettings, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandSettings, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

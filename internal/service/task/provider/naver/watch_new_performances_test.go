@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -800,7 +801,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 
 			// 실행
 			// prevSnapshot은 nil로 가정 (수집 테스트이므로)
-			msg, resultData, err := naverTask.executeWatchNewPerformances(tt.settings, nil, false)
+			msg, resultData, err := naverTask.executeWatchNewPerformances(context.Background(), tt.settings, nil, false)
 
 			// 검증
 			if tt.expectedError != "" {
@@ -926,7 +927,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	// 2. Execution (Async Cancel)
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := naverTask.fetchPerformances(settings)
+		_, err := naverTask.fetchPerformances(context.Background(), settings)
 		errCh <- err
 	}()
 
@@ -1013,7 +1014,7 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 				PageFetchDelay: 0, // No delay
 			}
 
-			items, err := naverTask.fetchPerformances(settings)
+			items, err := naverTask.fetchPerformances(context.Background(), settings)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedItems, len(items))
 

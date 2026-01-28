@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -91,7 +92,7 @@ func BenchmarkNaverTask_Execution(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+			_, _, err := tTask.executeWatchNewPerformances(context.Background(), config, resultData, true)
 			if err != nil {
 				b.Fatalf("Execution failed: %v", err)
 			}
@@ -106,7 +107,7 @@ func BenchmarkNaverTask_Execution(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+			_, _, err := tTask.executeWatchNewPerformances(context.Background(), config, resultData, true)
 			if err != nil {
 				b.Fatalf("Execution failed: %v", err)
 			}
@@ -122,7 +123,7 @@ func BenchmarkNaverTask_Execution(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				_, _, err := tTask.executeWatchNewPerformances(config, resultData, true)
+				_, _, err := tTask.executeWatchNewPerformances(context.Background(), config, resultData, true)
 				if err != nil {
 					b.Fatalf("Execution failed: %v", err)
 				}

@@ -79,7 +79,7 @@ func TestTask_Run(t *testing.T) {
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "성공 메시지", map[string]string{"foo": "bar"}, nil
 				}
 				registerTestConfig(tID, cID)
@@ -103,7 +103,7 @@ func TestTask_Run(t *testing.T) {
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "사용자 요청 완료", map[string]string{"foo": "bar"}, nil
 				}
 				registerTestConfig(tID, cID)
@@ -128,7 +128,7 @@ func TestTask_Run(t *testing.T) {
 				// 메시지가 없어도 Snapshot이 변경되면 저장은 수행될 수 있음
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "", map[string]string{"foo": "bar"}, nil // Empty Message
 				}
 				registerTestConfig(tID, cID)
@@ -157,7 +157,9 @@ func TestTask_Run(t *testing.T) {
 		{
 			name: "실패: Storage 미설정 (방어 코드)",
 			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (*contractmocks.MockTaskResultStore, ExecuteFunc) {
-				exec := func(prev interface{}, html bool) (string, interface{}, error) { return "ok", nil, nil }
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+					return "ok", nil, nil
+				}
 				registerTestConfig(tID, cID)
 				return nil, exec // Storage is nil
 			},
@@ -172,7 +174,7 @@ func TestTask_Run(t *testing.T) {
 				// Run 전에 취소되면 Execute 이후 로직(Save, Notify)은 실행되지 않아야 함
 				// 하지만 prepareExecution(Load)까지는 실행됨
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "실행되면 안됨", nil, nil
 				}
 				registerTestConfig(tID, cID)
@@ -189,7 +191,7 @@ func TestTask_Run(t *testing.T) {
 				store := &contractmocks.MockTaskResultStore{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "", nil, errors.New("API 호출 실패")
 				}
 				registerTestConfig(tID, cID)
@@ -211,7 +213,7 @@ func TestTask_Run(t *testing.T) {
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 				store.On("Save", tID, cID, mock.Anything).Return(errors.New("DB Disk Full"))
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "성공했으나 저장실패", map[string]interface{}{}, nil
 				}
 				registerTestConfig(tID, cID)
@@ -236,7 +238,7 @@ func TestTask_Run(t *testing.T) {
 				store := &contractmocks.MockTaskResultStore{}
 				store.On("Load", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					panic("예기치 못한 닐 포인터 참조")
 				}
 				registerTestConfig(tID, cID)
@@ -255,7 +257,7 @@ func TestTask_Run(t *testing.T) {
 				// Load 실패해도 Execute는 실행되어야 함
 				store.On("Save", tID, cID, mock.Anything).Return(nil)
 
-				exec := func(prev interface{}, html bool) (string, interface{}, error) {
+				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "복구 후 실행", map[string]interface{}{}, nil
 				}
 				registerTestConfig(tID, cID)
@@ -421,7 +423,7 @@ func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
 	task := NewBase("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser)
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
-	task.SetExecute(func(prev interface{}, html bool) (string, interface{}, error) {
+	task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 		return "", nil, nil
 	})
 

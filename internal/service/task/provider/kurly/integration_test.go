@@ -1,6 +1,7 @@
 package kurly
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -103,7 +104,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -176,7 +177,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 4. 실행
-	_, _, err = tTask.executeWatchProductPrice(loader, resultData, true)
+	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -239,7 +240,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 5. Execute Task Logic
 	// -------------------------------------------------------------------------
 	// 상품 코드가 숫자가 아니므로, 파싱 전 단계에서 에러가 반환되어야 합니다.
-	_, _, err = tTask.executeWatchProductPrice(loader, nil, false)
+	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, nil, false)
 
 	// resultData는 본 테스트 케이스에서 사용되지 않으므로 선언 제거가 필요하지만,
 	// 코드 구조상 상단에 선언되어 있어 여기서는 err 검증에 집중합니다.
@@ -343,7 +344,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -442,7 +443,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -526,7 +527,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

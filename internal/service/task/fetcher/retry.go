@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -65,9 +66,9 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, retryDelay time.Duration,
 }
 
 // Get 지정된 URL로 HTTP GET 요청을 전송합니다.
-// 내부적으로 Do 메서드를 호출하여 재시도 정책이 적용된 안전한 요청을 수행합니다.
-func (f *RetryFetcher) Get(url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+// 내부적으로 Do를 호출하여 재시도 정책이 적용된 안전한 요청을 수행합니다.
+func (f *RetryFetcher) Get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.Internal, "failed to create request")
 	}

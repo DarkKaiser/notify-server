@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -221,7 +222,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 
 			// Run
 			prev := &watchNewPerformancesSnapshot{Performances: []*performance{}}
-			msg, data, err := tTask.executeWatchNewPerformances(cmdConfig, prev, true)
+			msg, data, err := tTask.executeWatchNewPerformances(context.Background(), cmdConfig, prev, true)
 
 			// Validate
 			if tt.validate != nil {
