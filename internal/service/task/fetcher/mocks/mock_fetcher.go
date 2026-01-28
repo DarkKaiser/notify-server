@@ -5,10 +5,16 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/mock"
 )
+
+// Ensure MockFetcher and MockHTTPFetcher implement the Fetcher interface at compile-time.
+var _ fetcher.Fetcher = (*MockFetcher)(nil)
+var _ fetcher.Fetcher = (*MockHTTPFetcher)(nil)
 
 // MockFetcher Fetcher 인터페이스의 Mock 구현체 (Testify 사용)
 type MockFetcher struct {
@@ -93,7 +99,19 @@ func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
 }
 
 // Get Mock HTTP Get 요청을 수행합니다.
+// 내부적으로 Do를 호출하여 동작 일관성을 유지합니다.
 func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return m.Do(req)
+}
+
+// Do Mock HTTP 요청을 수행합니다.
+func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
+	url := req.URL.String()
+
 	m.mu.Lock()
 
 	// 호출 기록 저장
@@ -132,11 +150,6 @@ func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
 	}, nil
 }
 
-// Do Mock HTTP 요청을 수행합니다.
-func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
-	return m.Get(req.URL.String())
-}
-
 // GetRequestedURLs 요청된 URL 목록을 반환합니다.
 func (m *MockHTTPFetcher) GetRequestedURLs() []string {
 	m.mu.Lock()
@@ -158,10 +171,17 @@ func (m *MockHTTPFetcher) Reset() {
 	m.RequestedURLs = make([]string, 0)
 }
 
-// MockReadCloser tracks calls to Close()
+// MockReadCloser tracks calls to Close() in a concurrency-safe way.
 type MockReadCloser struct {
 	Data       *bytes.Buffer
-	CloseCount int
+	closeCount int64 // Atomic
+}
+
+// NewMockReadCloser 문자열 데이터를 가진 MockReadCloser를 생성합니다.
+func NewMockReadCloser(data string) *MockReadCloser {
+	return &MockReadCloser{
+		Data: bytes.NewBufferString(data),
+	}
 }
 
 func (m *MockReadCloser) Read(p []byte) (n int, err error) {
@@ -169,6 +189,11 @@ func (m *MockReadCloser) Read(p []byte) (n int, err error) {
 }
 
 func (m *MockReadCloser) Close() error {
-	m.CloseCount++
+	atomic.AddInt64(&m.closeCount, 1)
 	return nil
+}
+
+// GetCloseCount returns the number of times Close() has been called.
+func (m *MockReadCloser) GetCloseCount() int64 {
+	return atomic.LoadInt64(&m.closeCount)
 }

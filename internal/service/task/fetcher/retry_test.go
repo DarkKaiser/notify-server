@@ -206,7 +206,7 @@ func TestRetryFetcher_BodyClose(t *testing.T) {
 	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond) // 1 Retry
 
 	// Mock 500 response with a Body that tracks Close() calls
-	mockBody := &mocks.MockReadCloser{Data: bytes.NewBufferString("error")}
+	mockBody := mocks.NewMockReadCloser("error")
 	resp := &http.Response{
 		StatusCode: 500,
 		Status:     "500 Server Error",
@@ -222,7 +222,7 @@ func TestRetryFetcher_BodyClose(t *testing.T) {
 	// Should be closed twice:
 	// 1. After first attempt fails (500)
 	// 2. After retry attempt fails (500)
-	assert.Equal(t, 2, mockBody.CloseCount)
+	assert.Equal(t, int64(2), mockBody.GetCloseCount())
 }
 
 func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
