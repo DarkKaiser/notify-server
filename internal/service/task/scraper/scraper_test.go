@@ -1,4 +1,4 @@
-package fetcher_test
+package scraper_test
 
 import (
 	"bytes"
@@ -12,8 +12,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/text/encoding/korean"
@@ -135,7 +135,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				tt.setupMock(mockFetcher)
 			}
 
-			doc, err := fetcher.FetchHTMLDocument(context.Background(), mockFetcher, tt.url)
+			doc, err := scraper.FetchHTMLDocument(context.Background(), mockFetcher, tt.url)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -219,7 +219,7 @@ func TestFetchHTMLSelection_Table(t *testing.T) {
 				tt.setupMock(mockFetcher)
 			}
 
-			sel, err := fetcher.FetchHTMLSelection(context.Background(), mockFetcher, tt.url, tt.selector)
+			sel, err := scraper.FetchHTMLSelection(context.Background(), mockFetcher, tt.url, tt.selector)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -341,7 +341,7 @@ func TestFetchJSON_Table(t *testing.T) {
 			}
 
 			var result TestData
-			err := fetcher.FetchJSON(context.Background(), mockFetcher, tt.method, tt.url, tt.header, bodyReader, &result)
+			err := scraper.FetchJSON(context.Background(), mockFetcher, tt.method, tt.url, tt.header, bodyReader, &result)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -372,7 +372,7 @@ func TestScrapeHTML(t *testing.T) {
 		})).Return(resp, nil)
 
 		var items []string
-		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := scraper.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			items = append(items, s.Text())
 			return true
 		})
@@ -391,7 +391,7 @@ func TestScrapeHTML(t *testing.T) {
 		})).Return(resp, nil)
 
 		count := 0
-		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := scraper.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			count++
 			return count < 2 // 2가 되면 false 반환, 3번째 아이템 스킵
 		})
@@ -406,7 +406,7 @@ func TestScrapeHTML(t *testing.T) {
 			return req.Method == http.MethodGet && req.URL.String() == "http://example.com"
 		})).Return(nil, errors.New("scrape error"))
 
-		err := fetcher.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
+		err := scraper.ScrapeHTML(context.Background(), mockFetcher, "http://example.com", ".list li", func(i int, s *goquery.Selection) bool {
 			return true
 		})
 

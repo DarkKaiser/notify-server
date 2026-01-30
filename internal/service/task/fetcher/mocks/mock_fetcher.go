@@ -282,6 +282,7 @@ func (m *MockHTTPFetcher) Reset() {
 type MockReadCloser struct {
 	Data       *bytes.Buffer
 	closeCount int64 // Atomic
+	readCount  int64 // Atomic
 }
 
 // NewMockReadCloser 문자열 데이터를 가진 MockReadCloser를 생성합니다.
@@ -299,7 +300,11 @@ func NewMockReadCloserBytes(data []byte) *MockReadCloser {
 }
 
 func (m *MockReadCloser) Read(p []byte) (n int, err error) {
-	return m.Data.Read(p)
+	n, err = m.Data.Read(p)
+	if n > 0 {
+		atomic.AddInt64(&m.readCount, 1)
+	}
+	return n, err
 }
 
 func (m *MockReadCloser) Close() error {
@@ -310,4 +315,9 @@ func (m *MockReadCloser) Close() error {
 // GetCloseCount Close() 메서드가 호출된 횟수를 반환합니다.
 func (m *MockReadCloser) GetCloseCount() int64 {
 	return atomic.LoadInt64(&m.closeCount)
+}
+
+// WasRead Read() 메서드가 한 번이라도 호출되었는지 여부를 반환합니다.
+func (m *MockReadCloser) WasRead() bool {
+	return atomic.LoadInt64(&m.readCount) > 0
 }

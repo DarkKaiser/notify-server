@@ -12,7 +12,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -214,7 +214,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := fetcher.FetchJSON(ctx, t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
+		err := scraper.FetchJSON(ctx, t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -337,21 +337,21 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	// 제목
 	titleSelection := s.Find(selectorTitle)
 	if titleSelection.Length() != 1 {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorTitle, titleSelection.Length()))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorTitle, titleSelection.Length()))
 	}
 	title := strings.TrimSpace(titleSelection.Text())
 	if title == "" {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목이 비어있습니다 (선택자: %s)", selectorTitle))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목이 비어있습니다 (선택자: %s)", selectorTitle))
 	}
 
 	// 장소
 	placeSelection := s.Find(selectorPlace)
 	if placeSelection.Length() != 1 {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorPlace, placeSelection.Length()))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorPlace, placeSelection.Length()))
 	}
 	place := strings.TrimSpace(placeSelection.Text())
 	if place == "" {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소가 비어있습니다 (선택자: %s)", selectorPlace))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소가 비어있습니다 (선택자: %s)", selectorPlace))
 	}
 
 	// 썸네일 이미지가 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.

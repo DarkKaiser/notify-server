@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -36,6 +37,11 @@ func WithField(key string, value interface{}) *Entry {
 // WithFields 구조화된 필드(Key-Value)를 로그 컨텍스트에 추가합니다.
 func WithFields(fields Fields) *Entry {
 	return logrus.WithFields(fields)
+}
+
+// WithContext 컨텍스트를 로그에 연동합니다. (Trace ID 추적 등에 활용)
+func WithContext(ctx context.Context) *Entry {
+	return logrus.WithContext(ctx)
 }
 
 // WithError 에러를 로그 컨텍스트에 추가합니다. ("error" 필드)

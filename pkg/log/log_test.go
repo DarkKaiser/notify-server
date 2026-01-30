@@ -4,9 +4,12 @@ package log
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -52,6 +55,17 @@ func TestSetFormatter(t *testing.T) {
 	assert.Contains(t, buf.String(), `"level":"info"`)
 }
 
+func TestSetLevel(t *testing.T) {
+	resetForTest()
+	defer resetForTest()
+
+	SetLevel(ErrorLevel)
+	assert.Equal(t, ErrorLevel, logrus.GetLevel())
+
+	SetLevel(DebugLevel)
+	assert.Equal(t, DebugLevel, logrus.GetLevel())
+}
+
 // =============================================================================
 // Helper Functions Verification (Entry Constructors)
 // =============================================================================
@@ -95,9 +109,11 @@ func TestContextHelpers_Construction(t *testing.T) {
 		assert.Equal(t, "data", entry.Data["extra"])
 	})
 
-	// WithContext is not wrapped in log.go but often used with WithTime/WithField.
-	// We check standard logrus behavior compatibility if we add it or just ensure Entry usage is compatible.
-	// log.go doesn't export WithContext wrapper currently.
+	t.Run("WithContext", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), contextKey{}, "val")
+		entry := WithContext(ctx)
+		assert.Equal(t, ctx, entry.Context)
+	})
 }
 
 // =============================================================================
@@ -115,29 +131,28 @@ func TestGlobalLogging_Levels(t *testing.T) {
 	logrus.SetOutput(io.Discard) // prevent stdout noise
 	logrus.SetLevel(logrus.TraceLevel)
 
-	// Call all convenience wrappers
-	Trace("trace msg")
-	Debug("debug msg")
-	Info("info msg")
-	Warn("warn msg")
-	Error("error msg")
+	tests := []struct {
+		name     string
+		logFunc  func(args ...interface{})
+		expected logrus.Level
+		message  string
+	}{
+		{"Trace", Trace, logrus.TraceLevel, "trace msg"},
+		{"Debug", Debug, logrus.DebugLevel, "debug msg"},
+		{"Info", Info, logrus.InfoLevel, "info msg"},
+		{"Warn", Warn, logrus.WarnLevel, "warn msg"},
+		{"Error", Error, logrus.ErrorLevel, "error msg"},
+	}
 
-	// Verify entries captured
-	require.Len(t, hook.entries, 5)
-	assert.Equal(t, logrus.TraceLevel, hook.entries[0].Level)
-	assert.Equal(t, "trace msg", hook.entries[0].Message)
-
-	assert.Equal(t, logrus.DebugLevel, hook.entries[1].Level)
-	assert.Equal(t, "debug msg", hook.entries[1].Message)
-
-	assert.Equal(t, logrus.InfoLevel, hook.entries[2].Level)
-	assert.Equal(t, "info msg", hook.entries[2].Message)
-
-	assert.Equal(t, logrus.WarnLevel, hook.entries[3].Level)
-	assert.Equal(t, "warn msg", hook.entries[3].Message)
-
-	assert.Equal(t, logrus.ErrorLevel, hook.entries[4].Level)
-	assert.Equal(t, "error msg", hook.entries[4].Message)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hook.reset()
+			tt.logFunc(tt.message)
+			require.Len(t, hook.entries, 1)
+			assert.Equal(t, tt.expected, hook.entries[0].Level)
+			assert.Equal(t, tt.message, hook.entries[0].Message)
+		})
+	}
 }
 
 func TestGlobalLogging_Formats(t *testing.T) {
@@ -149,23 +164,86 @@ func TestGlobalLogging_Formats(t *testing.T) {
 	logrus.SetOutput(io.Discard)
 	logrus.SetLevel(logrus.TraceLevel)
 
-	Tracef("trace %d", 1)
-	Debugf("debug %d", 2)
-	Infof("info %d", 3)
-	Warnf("warn %d", 4)
-	Errorf("error %d", 5)
+	tests := []struct {
+		name     string
+		logFunc  func(format string, args ...interface{})
+		expected logrus.Level
+		format   string
+		args     []interface{}
+		message  string
+	}{
+		{"Tracef", Tracef, logrus.TraceLevel, "trace %d", []interface{}{1}, "trace 1"},
+		{"Debugf", Debugf, logrus.DebugLevel, "debug %d", []interface{}{2}, "debug 2"},
+		{"Infof", Infof, logrus.InfoLevel, "info %d", []interface{}{3}, "info 3"},
+		{"Warnf", Warnf, logrus.WarnLevel, "warn %d", []interface{}{4}, "warn 4"},
+		{"Errorf", Errorf, logrus.ErrorLevel, "error %d", []interface{}{5}, "error 5"},
+	}
 
-	require.Len(t, hook.entries, 5)
-	assert.Equal(t, "trace 1", hook.entries[0].Message)
-	assert.Equal(t, "debug 2", hook.entries[1].Message)
-	assert.Equal(t, "info 3", hook.entries[2].Message)
-	assert.Equal(t, "warn 4", hook.entries[3].Message)
-	assert.Equal(t, "error 5", hook.entries[4].Message)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hook.reset()
+			tt.logFunc(tt.format, tt.args...)
+			require.Len(t, hook.entries, 1)
+			assert.Equal(t, tt.expected, hook.entries[0].Level)
+			assert.Equal(t, tt.message, hook.entries[0].Message)
+		})
+	}
+}
+
+func TestGlobals_Panic(t *testing.T) {
+	resetForTest()
+	defer resetForTest()
+	logrus.SetOutput(io.Discard)
+
+	t.Run("Panic", func(t *testing.T) {
+		assert.Panics(t, func() {
+			Panic("panic msg")
+		})
+	})
+
+	t.Run("Panicf", func(t *testing.T) {
+		assert.Panics(t, func() {
+			Panicf("panic code %d", 500)
+		})
+	})
+}
+
+// TestGlobals_Fatal uses a subprocess to verify os.Exit(1)
+func TestGlobals_Fatal(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		logrus.SetOutput(io.Discard)
+		Fatal("fatal msg")
+		return
+	}
+	if os.Getenv("BE_CRASHER") == "2" {
+		logrus.SetOutput(io.Discard)
+		Fatalf("fatal code %d", 1)
+		return
+	}
+
+	t.Run("Fatal", func(t *testing.T) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestGlobals_Fatal")
+		cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+		err := cmd.Run()
+		if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+			return // Expected exit status 1
+		}
+		t.Fatalf("process ran with err %v, want exit status 1", err)
+	})
+
+	t.Run("Fatalf", func(t *testing.T) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestGlobals_Fatal")
+		cmd.Env = append(os.Environ(), "BE_CRASHER=2")
+		err := cmd.Run()
+		if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+			return // Expected exit status 1
+		}
+		t.Fatalf("process ran with err %v, want exit status 1", err)
+	})
 }
 
 func TestCallerReporting_Integration(t *testing.T) {
 	// Ensures that wrapper functions don't obscure caller information when ReportCaller is true.
-	// This is critical for function wrappers.
 	resetForTest()
 	tempDir := t.TempDir()
 
@@ -187,25 +265,26 @@ func TestCallerReporting_Integration(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(tempDir, "caller-test.log"))
 	require.NoError(t, err)
 
-	// The log should point to THIS function (TestCallerReporting_Integration),
-	// NOT the wrapper function in log.go.
-	// If wrappers are not marked as helper or logrus depth isn't handled (logrus handles it via expensive stack walk finding first non-logrus),
-	// wrapper in another package might be issue?
-	// logrus generally attempts to skip its own frames. Since pkg/log wrappers calls logrus.*,
-	// logrus sees pkg/log as the caller.
-	// However, standard logrus wrappers usually work because user calls pkg/log.Info -> logrus.Info.
-	// Setup sets CallerPrettyfier.
-
-	// In Setup, we configure CallerPrettyfier.
-	// Logrus ReportCaller logic: finds first stack frame outside of logrus package.
-	// Since our wrappers are in `github.com/darkkaiser/notify-server/pkg/log`,
-	// and we are calling from `.../pkg/log/log_test.go` (same package!),
-	// distincting wrapping vs calling is tricky if they are in same package.
-	// BUT, usually `pkg/log` is imported by `main` or `internal/service`.
-	// Testing inside `pkg/log` (same package) might report `log_test.go` correctly.
-
-	// Let's check expectation.
 	assert.Contains(t, string(content), "TestCallerReporting_Integration", "Should report the test function as caller")
+}
+
+func TestConcurrentLogging(t *testing.T) {
+	resetForTest()
+	defer resetForTest()
+	logrus.SetOutput(io.Discard)
+
+	var wg sync.WaitGroup
+	count := 100
+	wg.Add(count)
+
+	for i := 0; i < count; i++ {
+		go func(i int) {
+			defer wg.Done()
+			Info(fmt.Sprintf("log %d", i))
+			WithField("idx", i).Debug("debug log")
+		}(i)
+	}
+	wg.Wait()
 }
 
 // =============================================================================
@@ -226,10 +305,27 @@ func (h *testHook) Fire(e *logrus.Entry) error {
 	defer h.mu.Unlock()
 	// Copy entry to avoid mutation issues if reused (though logrus usually creates new)
 	// We just store reference for simple verify
-	// But entry.Data map is mutable.
-	h.entries = append(h.entries, e)
+
+	// Create a partial copy to safely store data
+	newEntry := &logrus.Entry{
+		Level:   e.Level,
+		Message: e.Message,
+		Data:    make(logrus.Fields),
+		Time:    e.Time,
+	}
+	for k, v := range e.Data {
+		newEntry.Data[k] = v
+	}
+
+	h.entries = append(h.entries, newEntry)
 	return nil
 }
 
-// contextKey is for testing WithContext (if valid)
+func (h *testHook) reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.entries = nil
+}
+
+// contextKey is for testing WithContext
 type contextKey struct{}
