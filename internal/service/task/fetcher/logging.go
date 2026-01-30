@@ -57,7 +57,7 @@ func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		fields["error"] = err.Error()
 
-		// 에러가 발생했더라도 응답 객체가 있을 수 있음 (예: 상태 코드 에러)
+		// 에러가 발생했더라도 응답 객체가 있을 수 있음 (예: 상태 코드 에러, 리다이렉트 에러)
 		if resp != nil {
 			fields["status"] = resp.Status
 			fields["status_code"] = resp.StatusCode

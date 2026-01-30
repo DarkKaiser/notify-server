@@ -15,7 +15,7 @@ const component = "task.fetcher"
 //
 // 구현 시 주의사항:
 //   - 반환된 응답 객체의 Body는 반드시 호출자가 닫아야 합니다.
-//   - 에러가 발생해도 응답 객체가 nil이 아닐 수 있습니다 (예: HTTP 상태 코드 에러).
+//   - 에러가 발생해도 응답 객체가 nil이 아닐 수 있습니다 (예: 상태 코드 에러, 리다이렉트 에러).
 //   - Context 취소 시 즉시 요청을 중단하고 적절한 에러를 반환해야 합니다.
 type Fetcher interface {
 	Do(req *http.Request) (*http.Response, error)

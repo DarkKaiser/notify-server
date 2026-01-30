@@ -98,23 +98,31 @@ type mockResponse struct {
 	header     http.Header
 }
 
+// RequestRecord MockHTTPFetcher에 요청된 HTTP 요청의 상세 정보를 기록합니다.
+type RequestRecord struct {
+	Method string
+	URL    string
+	Header http.Header
+	Body   []byte
+}
+
 // MockHTTPFetcher 테스트용 Mock Fetcher (sync.Mutex 기반)
 // 복잡한 동작(응답 지연, 에러 주입, 상태 코드 등)을 시뮬레이션하기 위해 사용됩니다.
 type MockHTTPFetcher struct {
-	mu            sync.Mutex
-	responses     map[string]mockResponse
-	errors        map[string]error
-	delays        map[string]time.Duration
-	requestedURLs []string
+	mu        sync.Mutex
+	responses map[string]mockResponse
+	errors    map[string]error
+	delays    map[string]time.Duration
+	requests  []RequestRecord
 }
 
 // NewMockHTTPFetcher 새로운 MockHTTPFetcher를 생성합니다.
 func NewMockHTTPFetcher() *MockHTTPFetcher {
 	return &MockHTTPFetcher{
-		responses:     make(map[string]mockResponse),
-		errors:        make(map[string]error),
-		delays:        make(map[string]time.Duration),
-		requestedURLs: make([]string, 0),
+		responses: make(map[string]mockResponse),
+		errors:    make(map[string]error),
+		delays:    make(map[string]time.Duration),
+		requests:  make([]RequestRecord, 0),
 	}
 }
 
@@ -176,7 +184,7 @@ func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
 //
 // 기능:
 // - Context 취소 감지
-// - 요청 URL 기록
+// - 요청 상세 정보 기록 (Method, URL, Header, Body)
 // - 설정된 지연(Delay) 시뮬레이션
 // - 설정된 에러 반환
 // - 설정된 응답(Body, Status, Header) 반환
@@ -188,9 +196,26 @@ func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 
 	url := req.URL.String()
 
+	// 요청 바디 읽기 및 저장 (동시성 안전하게 수행)
+	var bodyBytes []byte
+	if req.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		// 읽은 바디 다시 설정 (다른 미들웨어 등에서 읽을 수 있도록)
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+
 	m.mu.Lock()
 	// 호출 기록
-	m.requestedURLs = append(m.requestedURLs, url)
+	m.requests = append(m.requests, RequestRecord{
+		Method: req.Method,
+		URL:    url,
+		Header: resultHeader(req.Header),
+		Body:   bodyBytes,
+	})
 
 	// 설정 조회
 	errVal := m.errors[url]
@@ -240,13 +265,26 @@ func resultHeader(h http.Header) http.Header {
 }
 
 // GetRequestedURLs 요청된 URL 목록을 반환합니다.
+// (호환성을 위해 유지)
 func (m *MockHTTPFetcher) GetRequestedURLs() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	urls := make([]string, len(m.requestedURLs))
-	copy(urls, m.requestedURLs)
+	urls := make([]string, len(m.requests))
+	for i, req := range m.requests {
+		urls[i] = req.URL
+	}
 	return urls
+}
+
+// GetRequests 기록된 모든 요청 상세 정보를 반환합니다.
+func (m *MockHTTPFetcher) GetRequests() []RequestRecord {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	records := make([]RequestRecord, len(m.requests))
+	copy(records, m.requests)
+	return records
 }
 
 // GetCallCount 특정 URL이 호출된 횟수를 반환합니다.
@@ -255,8 +293,8 @@ func (m *MockHTTPFetcher) GetCallCount(url string) int {
 	defer m.mu.Unlock()
 
 	count := 0
-	for _, reqURL := range m.requestedURLs {
-		if reqURL == url {
+	for _, req := range m.requests {
+		if req.URL == url {
 			count++
 		}
 	}
@@ -271,7 +309,7 @@ func (m *MockHTTPFetcher) Reset() {
 	m.responses = make(map[string]mockResponse)
 	m.errors = make(map[string]error)
 	m.delays = make(map[string]time.Duration)
-	m.requestedURLs = make([]string, 0)
+	m.requests = make([]RequestRecord, 0)
 }
 
 // ----------------------------------------------------------------------------
@@ -279,28 +317,32 @@ func (m *MockHTTPFetcher) Reset() {
 // ----------------------------------------------------------------------------
 
 // MockReadCloser io.ReadCloser 인터페이스를 구현하며, Close() 호출 여부를 추적합니다.
+// 또한 Close 시 에러 반환을 시뮬레이션할 수 있습니다.
 type MockReadCloser struct {
-	Data       *bytes.Buffer
+	Reader     *bytes.Reader
 	closeCount int64 // Atomic
 	readCount  int64 // Atomic
+
+	// CloseErr 설정 시 Close() 호출에서 이 에러를 반환합니다.
+	CloseErr error
 }
 
 // NewMockReadCloser 문자열 데이터를 가진 MockReadCloser를 생성합니다.
 func NewMockReadCloser(data string) *MockReadCloser {
 	return &MockReadCloser{
-		Data: bytes.NewBufferString(data),
+		Reader: bytes.NewReader([]byte(data)),
 	}
 }
 
 // NewMockReadCloserBytes 바이트 슬라이스 데이터를 가진 MockReadCloser를 생성합니다.
 func NewMockReadCloserBytes(data []byte) *MockReadCloser {
 	return &MockReadCloser{
-		Data: bytes.NewBuffer(data),
+		Reader: bytes.NewReader(data),
 	}
 }
 
 func (m *MockReadCloser) Read(p []byte) (n int, err error) {
-	n, err = m.Data.Read(p)
+	n, err = m.Reader.Read(p)
 	if n > 0 {
 		atomic.AddInt64(&m.readCount, 1)
 	}
@@ -309,7 +351,7 @@ func (m *MockReadCloser) Read(p []byte) (n int, err error) {
 
 func (m *MockReadCloser) Close() error {
 	atomic.AddInt64(&m.closeCount, 1)
-	return nil
+	return m.CloseErr
 }
 
 // GetCloseCount Close() 메서드가 호출된 횟수를 반환합니다.

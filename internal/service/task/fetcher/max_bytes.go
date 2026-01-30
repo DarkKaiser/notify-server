@@ -47,7 +47,6 @@ func (r *maxBytesReader) Close() error {
 // 주요 기능:
 //   - Content-Length 헤더 기반 조기 차단 (네트워크 대역폭 절약)
 //   - 실제 읽기 시점의 바이트 수 제한 (악의적인 Content-Length 조작 방어)
-//   - OOM(Out Of Memory) 방지
 type MaxBytesFetcher struct {
 	delegate Fetcher
 
@@ -80,9 +79,9 @@ func NewMaxBytesFetcher(delegate Fetcher, limit int64) Fetcher {
 //   - 에러 (요청 처리 중 발생한 에러)
 //
 // 주의사항:
-//   - 반환된 응답의 Body는 반드시 호출자가 닫아야 합니다.
+//   - 반환된 응답 객체의 Body는 반드시 호출자가 닫아야 합니다.
 //   - Body를 읽는 도중 제한 초과 시 에러가 발생할 수 있습니다.
-//   - Content-Length가 없는 응답도 2차 방어로 보호됩니다.
+//   - Content-Length 헤더가 없는 응답도 2차 방어로 보호됩니다.
 func (f *MaxBytesFetcher) Do(req *http.Request) (*http.Response, error) {
 	resp, err := f.delegate.Do(req)
 	if err != nil {
@@ -117,7 +116,7 @@ func (f *MaxBytesFetcher) Do(req *http.Request) (*http.Response, error) {
 	// 주의사항:
 	//   - MaxBytesReader는 제한 초과 시 에러를 반환하지만 Body를 자동으로 닫지 않습니다.
 	//   - 호출자는 반드시 defer resp.Body.Close()를 사용해야 합니다.
-	//   - 이는 일반적인 HTTP 응답 Body 처리 규칙과 동일합니다.
+	//   - 이는 일반적인 HTTP 응답 객체의 Body 처리 규칙과 동일합니다.
 	resp.Body = &maxBytesReader{
 		rc:    http.MaxBytesReader(nil, resp.Body, f.limit),
 		limit: f.limit,

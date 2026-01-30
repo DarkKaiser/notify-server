@@ -55,7 +55,7 @@ func init() {
 }
 
 func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-	httpFetcher := fetcher.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0)
+	httpFetcher := fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0)
 	return createTask(instanceID, req, appConfig, httpFetcher)
 }
 
