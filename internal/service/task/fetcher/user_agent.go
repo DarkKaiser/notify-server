@@ -28,7 +28,6 @@ var commonUserAgents = []string{
 //   - 이미 User-Agent가 설정된 요청은 수정하지 않고 그대로 전달합니다.
 //   - 무작위 User-Agent 선택을 통해 웹 스크래핑 시 차단을 회피할 수 있습니다.
 type UserAgentFetcher struct {
-	// delegate User-Agent 주입 후 실제 HTTP 요청을 처리할 다음 단계의 Fetcher입니다.
 	delegate Fetcher
 
 	// userAgents 무작위로 선택할 User-Agent 문자열 목록입니다.

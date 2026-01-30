@@ -12,7 +12,7 @@ type Options struct {
 	Level Level  // 로그 레벨
 
 	MaxAge     int // 오래된 로그 삭제 기준일 (일 단위, 0: 삭제 안 함)
-	MaxSizeMB  int // 로그 파일 최대 크기 (MB, 0: 기본값 100MB 사용)
+	MaxSizeMB  int // 로그 파일 최대 크기 (MB, 0: 기본값 10MB 사용)
 	MaxBackups int // 최대 백업 파일 수 (0: 기본값 20개 사용)
 
 	EnableCriticalLog bool // ERROR 이상(ERROR, FATAL, PANIC)의 치명적 로그를 별도 파일로 분리 저장할지 여부

@@ -16,7 +16,6 @@ import (
 //   - 요청 처리 소요 시간
 //   - 에러 메시지 (에러 발생 시)
 type LoggingFetcher struct {
-	// delegate 로깅 후 실제 HTTP 요청을 처리할 다음 단계의 Fetcher입니다.
 	delegate Fetcher
 }
 
@@ -64,7 +63,10 @@ func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
 			fields["status_code"] = resp.StatusCode
 		}
 
-		applog.WithComponent(component).WithContext(req.Context()).WithFields(fields).Error("HTTP 요청 처리 실패")
+		applog.WithComponent(component).
+			WithContext(req.Context()).
+			WithFields(fields).
+			Error("HTTP 요청 실패: 요청 처리 중 에러 발생")
 
 		return resp, err
 	}
@@ -75,7 +77,10 @@ func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
 		fields["status_code"] = resp.StatusCode
 	}
 
-	applog.WithComponent(component).WithContext(req.Context()).WithFields(fields).Debug("HTTP 요청 처리 완료")
+	applog.WithComponent(component).
+		WithContext(req.Context()).
+		WithFields(fields).
+		Debug("HTTP 요청 성공: 정상 처리 완료")
 
 	return resp, nil
 }

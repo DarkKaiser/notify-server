@@ -46,10 +46,8 @@ func Get(ctx context.Context, f Fetcher, url string) (*http.Response, error) {
 
 	resp, err := f.Do(req)
 	if err != nil {
-		if resp != nil && resp.Body != nil {
-			// HTTP Keep-Alive 커넥션 재사용을 위해 응답 객체의 Body를 읽어서 버리고 닫습니다.
-			// Body를 읽지 않고 닫으면 커넥션이 재사용되지 않아 매번 새 TCP 연결이 필요하므로,
-			// 일정량을 읽어서 버린 후 닫아 커넥션 풀에 반환합니다.
+		if resp != nil {
+			// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
 			drainAndCloseBody(resp.Body)
 		}
 

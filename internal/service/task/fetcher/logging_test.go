@@ -39,7 +39,7 @@ func TestLoggingFetcher_Do(t *testing.T) {
 				}, nil)
 			},
 			expectedLevel: logrus.DebugLevel,
-			expectedMsg:   "HTTP 요청 처리 완료",
+			expectedMsg:   "HTTP 요청 성공: 정상 처리 완료",
 			checkFields: func(t *testing.T, f logrus.Fields) {
 				assert.Equal(t, "GET", f["method"])
 				assert.Equal(t, "http://example.com/ok", f["url"])
@@ -57,7 +57,7 @@ func TestLoggingFetcher_Do(t *testing.T) {
 				m.On("Do", mock.Anything).Return(nil, errors.New("network fail"))
 			},
 			expectedLevel: logrus.ErrorLevel,
-			expectedMsg:   "HTTP 요청 처리 실패",
+			expectedMsg:   "HTTP 요청 실패: 요청 처리 중 에러 발생",
 			expectedError: "network fail",
 			checkFields: func(t *testing.T, f logrus.Fields) {
 				assert.Equal(t, "POST", f["method"])
@@ -76,7 +76,7 @@ func TestLoggingFetcher_Do(t *testing.T) {
 				}, errors.New("server error"))
 			},
 			expectedLevel: logrus.ErrorLevel,
-			expectedMsg:   "HTTP 요청 처리 실패",
+			expectedMsg:   "HTTP 요청 실패: 요청 처리 중 에러 발생",
 			expectedError: "server error",
 			checkFields: func(t *testing.T, f logrus.Fields) {
 				assert.Equal(t, 500, f["status_code"])
@@ -93,7 +93,7 @@ func TestLoggingFetcher_Do(t *testing.T) {
 				}, nil)
 			},
 			expectedLevel: logrus.DebugLevel,
-			expectedMsg:   "HTTP 요청 처리 완료",
+			expectedMsg:   "HTTP 요청 성공: 정상 처리 완료",
 			checkFields: func(t *testing.T, f logrus.Fields) {
 				// Assert that password and query params are redacted
 				assert.NotContains(t, f["url"], "pass")
