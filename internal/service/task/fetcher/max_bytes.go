@@ -30,7 +30,7 @@ func (r *maxBytesReader) Read(p []byte) (n int, err error) {
 		// 문자열 비교 대신 타입 검사를 사용하여 더 견고하게 처리합니다.
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			return n, NewErrResponseBodyTooLarge(r.limit)
+			return n, newErrResponseBodyTooLarge(r.limit)
 		}
 	}
 
@@ -102,7 +102,7 @@ func (f *MaxBytesFetcher) Do(req *http.Request) (*http.Response, error) {
 			drainAndCloseBody(resp.Body)
 		}
 
-		return nil, NewErrResponseBodyTooLargeByContentLength(resp.ContentLength, f.limit)
+		return nil, newErrResponseBodyTooLargeByContentLength(resp.ContentLength, f.limit)
 	}
 
 	// 2차 방어: 실제 읽기 시점의 바이트 수 제한

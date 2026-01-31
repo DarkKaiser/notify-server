@@ -36,7 +36,7 @@ func NewLoggingFetcher(delegate Fetcher) *LoggingFetcher {
 //   - 에러 (요청 처리 중 발생한 에러)
 //
 // 주의사항:
-//   - URL은 RedactURL()을 통해 민감 정보(비밀번호, 쿼리 파라미터 등)가 마스킹됩니다.
+//   - URL은 redactURL()을 통해 민감 정보(비밀번호, 쿼리 파라미터 등)가 마스킹됩니다.
 //   - Context를 통해 요청별 로그 추적이 가능합니다.
 //   - 에러가 발생했더라도 응답 객체가 있다면 상태 코드를 함께 로깅합니다.
 func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
@@ -50,7 +50,7 @@ func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
 	// 기본 로그 필드 준비
 	fields := applog.Fields{
 		"method":   req.Method,
-		"url":      RedactURL(req.URL), // 민감 정보 마스킹
+		"url":      redactURL(req.URL), // 민감 정보 마스킹
 		"duration": duration.String(),
 	}
 

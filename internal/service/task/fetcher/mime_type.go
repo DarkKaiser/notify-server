@@ -82,7 +82,7 @@ func (f *MimeTypeFetcher) Do(req *http.Request) (*http.Response, error) {
 			WithContext(req.Context()).
 			WithFields(applog.Fields{
 				"content_type": contentType,
-				"url":          RedactURL(req.URL),
+				"url":          redactURL(req.URL),
 				"error":        err.Error(),
 			}).
 			Warn("Content-Type 파싱 경고: 표준 형식이 아니어서 폴백 처리함")
@@ -104,7 +104,7 @@ func (f *MimeTypeFetcher) Do(req *http.Request) (*http.Response, error) {
 		// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
 		drainAndCloseBody(resp.Body)
 
-		return nil, NewErrUnsupportedMediaType(mediaType, f.allowedMimeTypes)
+		return nil, newErrUnsupportedMediaType(mediaType, f.allowedMimeTypes)
 	}
 
 	return resp, nil

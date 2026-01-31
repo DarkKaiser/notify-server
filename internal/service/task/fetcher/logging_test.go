@@ -98,7 +98,7 @@ func TestLoggingFetcher_Do(t *testing.T) {
 				// Assert that password and query params are redacted
 				assert.NotContains(t, f["url"], "pass")
 				assert.NotContains(t, f["url"], "secret")
-				assert.Contains(t, f["url"], "xxxxx") // RedactURL uses "xxxxx" for masking
+				assert.Contains(t, f["url"], "xxxxx") // redactURL uses "xxxxx" for masking
 			},
 		},
 	}
