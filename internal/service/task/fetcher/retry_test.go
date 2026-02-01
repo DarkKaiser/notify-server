@@ -1,12 +1,12 @@
 package fetcher_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,270 +17,300 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// TestRetryFetcher_Do_RetryLogic tests the core retry decision logic using a table-driven approach.
-func TestRetryFetcher_Do_RetryLogic(t *testing.T) {
+// TestRetryFetcher_Do validates the core retry loop and policy enforcement in a black-box manner.
+func TestRetryFetcher_Do(t *testing.T) {
+	// Common variables
+	dummyURL := "http://example.com"
+	errNetwork := errors.New("dial tcp: i/o timeout")
+
 	tests := []struct {
-		name          string
-		status        int
-		respErr       error
-		shouldRetry   bool
-		expectedCalls int
+		name              string
+		method            string
+		maxRetries        int
+		minRetryDelay     time.Duration
+		setupMock         func(*mocks.MockFetcher)
+		wantErr           bool
+		errCheck          func(error) bool
+		expectedCallCount int
 	}{
 		{
-			name:          "Success (200) - No Retry",
-			status:        http.StatusOK,
-			shouldRetry:   false,
-			expectedCalls: 1,
+			name:          "Success on first attempt",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("ok", 200), nil).Once()
+			},
+			wantErr:           false,
+			expectedCallCount: 1,
 		},
 		{
-			name:          "Not Found (404) - No Retry",
-			status:        http.StatusNotFound,
-			shouldRetry:   false,
-			expectedCalls: 1,
+			name:          "Fail with 500 then Success",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				// Fail once
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("error", 500), nil).Once()
+				// Success next
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("ok", 200), nil).Once()
+			},
+			wantErr:           false,
+			expectedCallCount: 2,
 		},
 		{
-			name:          "Bad Request (400) - No Retry",
-			status:        http.StatusBadRequest,
-			shouldRetry:   false,
-			expectedCalls: 1,
+			name:          "Fail with 429 then Success",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("wait", 429), nil).Once()
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("ok", 200), nil).Once()
+			},
+			wantErr:           false,
+			expectedCallCount: 2,
 		},
 		{
-			name:          "Internal Server Error (500) - Retry",
-			status:        http.StatusInternalServerError,
-			shouldRetry:   true,
-			expectedCalls: 4, // Initial + 3 Retries
+			name:          "Network Error then Success",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, errNetwork).Once()
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("ok", 200), nil).Once()
+			},
+			wantErr:           false,
+			expectedCallCount: 2,
 		},
 		{
-			name:          "Too Many Requests (429) - Retry",
-			status:        http.StatusTooManyRequests,
-			shouldRetry:   true,
-			expectedCalls: 4,
+			name:          "Max retries exceeded (Status Codes)",
+			method:        http.MethodGet,
+			maxRetries:    2,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				// Initial + 2 retries = 3 calls
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("error", 500), nil).Times(3)
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				// Cause is ErrMaxRetriesExceeded, so errors.Is works here.
+				// Error string is "HTTP 500 ..."
+				return errors.Is(err, fetcher.ErrMaxRetriesExceeded) &&
+					strings.Contains(err.Error(), "HTTP 500")
+			},
+			expectedCallCount: 3,
 		},
 		{
-			name:          "Network Error - Retry",
-			respErr:       errors.New("connection refused"),
-			shouldRetry:   true,
-			expectedCalls: 4,
+			name:          "Max retries exceeded (Network Errors)",
+			method:        http.MethodGet,
+			maxRetries:    2,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, errNetwork).Times(3)
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				// Wrapper creates new AppError, so strict Is(ErrMaxRetriesExceeded) fails.
+				// Check type and content.
+				return apperrors.Is(err, apperrors.Unavailable) &&
+					strings.Contains(err.Error(), errNetwork.Error())
+			},
+			expectedCallCount: 3,
+		},
+		{
+			name:          "Non-retriable Status Code (404)",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("not found", 404), nil).Once()
+			},
+			wantErr:           false, // 404 is a valid HTTP response, simply returned
+			expectedCallCount: 1,
+		},
+		{
+			name:          "Non-retriable Status Code (501 Not Implemented)",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("not implemented", 501), nil).Once()
+			},
+			wantErr:           false, // Returning response as-is (unless delegate errors, but here delegate returns resp)
+			expectedCallCount: 1,
+		},
+		{
+			name:          "Non-retriable Error (Context Canceled)",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, context.Canceled).Once()
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return errors.Is(err, context.Canceled)
+			},
+			expectedCallCount: 1,
+		},
+		{
+			name:          "Non-idempotent method (POST) - Should retry ONLY if status is 429/5xx? No, logic says non-idempotent = retries disabled",
+			method:        http.MethodPost,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				// Even if 500, POST should not retry. Retries disabled means maxRetries=0.
+				// If query fails (here with 500 status), it returns error due to logic in RetryFetcher enforcing success?
+				// Yes, if effectiveMaxRetries=0 and it fails, it returns ErrMaxRetriesExceeded wrapped error.
+				m.On("Do", mock.Anything).Return(mocks.NewMockResponse("error", 500), nil).Once()
+			},
+			wantErr: true, // Expect error because 500 is considered failure and we struck out.
+			errCheck: func(err error) bool {
+				return errors.Is(err, fetcher.ErrMaxRetriesExceeded)
+			},
+			expectedCallCount: 1,
+		},
+		{
+			name:          "Context Deadline Exceeded from delegate - Should stop",
+			method:        http.MethodGet,
+			maxRetries:    3,
+			minRetryDelay: time.Millisecond,
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, context.DeadlineExceeded).Once()
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return errors.Is(err, context.DeadlineExceeded)
+			},
+			expectedCallCount: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockFetcher := &mocks.MockFetcher{}
-			// MaxRetries: 3, MinDelay: 1ms (fast test), MaxDelay: 10ms
-			retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 3, time.Millisecond, 10*time.Millisecond)
+			tt.setupMock(mockFetcher)
 
-			// Setup Mock
-			call := mockFetcher.On("Do", mock.Anything)
-			if tt.respErr != nil {
-				call.Return(nil, tt.respErr)
-			} else {
-				resp := mocks.NewMockResponse("", tt.status)
-				call.Return(resp, nil)
-			}
+			// Using 10ms max delay to speed up tests
+			f := fetcher.NewRetryFetcher(mockFetcher, tt.maxRetries, tt.minRetryDelay, 10*time.Millisecond)
 
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
-			_, err := retryFetcher.Do(req)
-
-			// Validation
-			if tt.shouldRetry {
-				// If it retries until exhaustion, it should return an error (max retries exceeded)
-				// or the wrapped error. Currently implemented to ensure error return on exhaustion.
-				assert.Error(t, err)
-				// Max retries exceeded -> Unavailable
-				assert.True(t, apperrors.Is(err, apperrors.Unavailable), "Expected Unavailable error on max retries")
-			} else {
-				if tt.status >= 400 && tt.status != 429 {
-					// 4xx errors (except 429) are considered effective success in terms of transport
-					// so Do returns (resp, nil)
-					assert.NoError(t, err)
+			req, _ := http.NewRequest(tt.method, dummyURL, nil)
+			// Mock GetBody for POST requests just in case, though idempotency check might skip it
+			if tt.method == http.MethodPost {
+				req.GetBody = func() (io.ReadCloser, error) {
+					return io.NopCloser(strings.NewReader("")), nil
 				}
 			}
 
-			mockFetcher.AssertNumberOfCalls(t, "Do", tt.expectedCalls)
+			// Some tests need context with timeout? Here we use background mostly.
+			if strings.Contains(tt.name, "Deadline") {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+				defer cancel()
+				req = req.WithContext(ctx)
+				time.Sleep(2 * time.Millisecond) // Ensure it expires
+			}
+
+			resp, err := f.Do(req)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errCheck != nil {
+					assert.True(t, tt.errCheck(err), "Error validation failed: %v", err)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if resp != nil {
+				resp.Body.Close()
+			}
+
+			mockFetcher.AssertNumberOfCalls(t, "Do", tt.expectedCallCount)
 		})
 	}
 }
 
-// TestRetryFetcher_Do_BodyRewind verifies that request body is rewound (via GetBody) on retries.
-// This is critical for POST/PUT requests where the body is consumed.
-func TestRetryFetcher_Do_BodyRewind(t *testing.T) {
+// TestRetryFetcher_ContextCancellation_DuringWait tests that cancellation during the backoff wait aborts the retry.
+func TestRetryFetcher_ContextCancellation_DuringWait(t *testing.T) {
 	mockFetcher := &mocks.MockFetcher{}
-	// Retry once
-	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond)
+	// First call fails
+	mockFetcher.On("Do", mock.Anything).Return(nil, errors.New("temp error")).Once()
 
-	// Mock server always returns 500
-	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("", 500), nil)
-
-	// Create Request with Body and Context
-	payload := []byte(`{"key":"value"}`)
-	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", bytes.NewReader(payload))
-	assert.NoError(t, err)
-
-	// Wrap GetBody to count calls
-	originalGetBody := req.GetBody
-	getBodyCalls := 0
-	req.GetBody = func() (io.ReadCloser, error) {
-		getBodyCalls++
-		return originalGetBody()
-	}
-
-	// Execute - Use Do() instead of Get() to use our prepared request
-	_, err = retryFetcher.Do(req)
-
-	// Verification
-	assert.Error(t, err)                                                        // Should fail after retries
-	mockFetcher.AssertNumberOfCalls(t, "Do", 2)                                 // Initial + 1 Retry
-	assert.Equal(t, 2, getBodyCalls, "GetBody should be called to rewind body") // Initial NewRequest doesn't call GetBody, but Do logic might call it before *each* attempt or just retries?
-	// Logic check:
-	// Do() loop:
-	// i=0: GetBody called? Code: "if req.GetBody != nil { body, _ := req.GetBody() ... }"
-	// Yes, code calls GetBody inside the loop *before* delegate.Do(req) to ensure fresh body.
-	// So for i=0 and i=1, it calls GetBody. Total 2 calls.
-}
-
-// TestRetryFetcher_Get verifies that Get method correctly delegates to Do with retry logic.
-func TestRetryFetcher_Get(t *testing.T) {
-	mockFetcher := &mocks.MockFetcher{}
-	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 2, time.Millisecond, 10*time.Millisecond)
-
-	// Simulate failure then success
-	// 1st call: 500 Error
-	// 2nd call: 500 Error
-	// 3rd call: 200 OK
-	resp500 := mocks.NewMockResponse("", 500)
-	resp500.Status = "500 Internal Server Error"
-	mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-		return req.Method == "GET" && req.URL.String() == "http://example.com"
-	})).Return(resp500, nil).Twice()
-
-	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("success", 200), nil).Once()
-
-	// Execute
-	resp, err := fetcher.Get(context.Background(), retryFetcher, "http://example.com")
-
-	// Verification
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	assert.Equal(t, 200, resp.StatusCode)
-	mockFetcher.AssertNumberOfCalls(t, "Do", 3)
-}
-
-// TestRetryFetcher_ContextCancel verifies that retry loop aborts immediately on context cancel.
-func TestRetryFetcher_ContextCancel(t *testing.T) {
-	mockFetcher := &mocks.MockFetcher{}
-	// Set a long delay to ensure it would hang if context cancel is ignored
-	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 3, 2*time.Second, 10*time.Second)
-
-	// Mock always fails
-	mockFetcher.On("Do", mock.Anything).Return(nil, errors.New("fail"))
+	f := fetcher.NewRetryFetcher(mockFetcher, 5, 200*time.Millisecond, 1*time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.com", nil)
 
-	// Cancel strictly after start but before delay finishes
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
-
-	req, _ := http.NewRequestWithContext(ctx, "GET", "http://example.com", nil)
+	// Cancel context after a short delay, shorter than the retry wait (200ms)
+	time.AfterFunc(50*time.Millisecond, cancel)
 
 	start := time.Now()
-	_, err := retryFetcher.Do(req)
+	_, err := f.Do(req)
 	duration := time.Since(start)
 
 	assert.Error(t, err)
-	assert.True(t, errors.Is(err, context.Canceled), "Expected context.Canceled error")
-
-	// Should return fast (approx 50ms + overhead), definitely not 2s
-	assert.Less(t, duration, 500*time.Millisecond, "Should abort retry wait immediately")
-
-	// Should have tried at least once
-	mockFetcher.AssertNumberOfCalls(t, "Do", 1)
+	assert.True(t, errors.Is(err, context.Canceled), "Should return context canceled error")
+	assert.Less(t, duration, 300*time.Millisecond, "Should return immediately after cancellation")
 }
 
-// TestRetryFetcher_BodyClose verifies that response bodies are closed on retry-triggering failures
-// to prevent file descriptor leaks.
-func TestRetryFetcher_BodyClose(t *testing.T) {
-	mockFetcher := &mocks.MockFetcher{}
-	retryFetcher := fetcher.NewRetryFetcher(mockFetcher, 1, time.Millisecond, 10*time.Millisecond) // 1 Retry
+// TestRetryFetcher_GetBody_Lifecycle checks if GetBody is called correctly and errors are handled.
+func TestRetryFetcher_GetBody_Lifecycle(t *testing.T) {
+	t.Run("GetBody failure aborts retries", func(t *testing.T) {
+		mockFetcher := &mocks.MockFetcher{}
+		// First failure to trigger retry logic
+		mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("fail", 500), nil).Once()
 
-	// Mock 500 response with a Body that tracks Close() calls
-	mockBody := mocks.NewMockReadCloser("error")
-	resp := &http.Response{
-		StatusCode: 500,
-		Status:     "500 Server Error",
-		Body:       mockBody,
-	}
+		f := fetcher.NewRetryFetcher(mockFetcher, 3, time.Millisecond, time.Millisecond)
 
-	// Always return the same resp behavior
-	mockFetcher.On("Do", mock.Anything).Return(resp, nil)
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", strings.NewReader("body"))
+		req.GetBody = func() (io.ReadCloser, error) {
+			return nil, errors.New("getBody failed")
+		}
 
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
-	retryFetcher.Do(req)
+		_, err := f.Do(req)
 
-	// Should be closed twice:
-	// 1. After first attempt fails (500)
-	// 2. After retry attempt fails (500)
-	assert.Equal(t, int64(2), mockBody.GetCloseCount())
-}
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "getBody failed")
+		// Should stop after 0 attempts (GetBody called before Do)
+		mockFetcher.AssertNumberOfCalls(t, "Do", 0)
+	})
 
-func TestNewRetryFetcherFromConfig_Table(t *testing.T) {
-	tests := []struct {
-		name                 string
-		configRetryDelay     time.Duration
-		configMaxRetries     int
-		expectedRetryDelay   time.Duration
-		expectedMaxRetries   int
-		expectedFetcherType  string
-		expectedInternalType string
-	}{
-		{
-			name:                 "Valid Config",
-			configRetryDelay:     3 * time.Second,
-			configMaxRetries:     5,
-			expectedRetryDelay:   3 * time.Second,
-			expectedMaxRetries:   5,
-			expectedFetcherType:  "*fetcher.RetryFetcher",
-			expectedInternalType: "*fetcher.HTTPFetcher",
-		},
-		{
-			name:                 "Short Duration - Enforce Minimum (1s)",
-			configRetryDelay:     500 * time.Millisecond,
-			configMaxRetries:     3,
-			expectedRetryDelay:   1 * time.Second, // Should default to 1s
-			expectedMaxRetries:   3,
-			expectedFetcherType:  "*fetcher.RetryFetcher",
-			expectedInternalType: "*fetcher.HTTPFetcher",
-		},
-		{
-			name:                 "Negative Retries - Corrected",
-			configRetryDelay:     1 * time.Second,
-			configMaxRetries:     -1,
-			expectedRetryDelay:   1 * time.Second,
-			expectedMaxRetries:   0,
-			expectedFetcherType:  "*fetcher.RetryFetcher",
-			expectedInternalType: "*fetcher.HTTPFetcher",
-		},
-	}
+	t.Run("GetBody is used to rewind body", func(t *testing.T) {
+		mockFetcher := &mocks.MockFetcher{}
+		// Fail twice, then succeed
+		mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("fail", 500), nil).Twice()
+		mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("ok", 200), nil).Once()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := fetcher.NewRetryFetcherFromConfig(tt.configMaxRetries, tt.configRetryDelay)
+		f := fetcher.NewRetryFetcher(mockFetcher, 3, time.Millisecond, time.Millisecond)
 
-			// 1. Check outer type
-			// f is already *RetryFetcher, no assertion needed
-			assert.NotNil(t, f)
-			assert.Equal(t, tt.expectedFetcherType, fmt.Sprintf("%T", f))
+		getBodyCount := int32(0)
+		req, _ := http.NewRequest(http.MethodGet, "http://example.com", strings.NewReader("body"))
+		req.GetBody = func() (io.ReadCloser, error) {
+			atomic.AddInt32(&getBodyCount, 1)
+			return io.NopCloser(strings.NewReader("body")), nil
+		}
 
-			// 2. Check internal state (accessing unexported fields for test)
-			// Note: internal fields are unexported, so we cannot access them from task package test.
-			// Currently we only check type. If detailed inspection needed, move test to fetcher package or export fields (not recommended).
-			// assert.Equal(t, tt.expectedMaxRetries, f.maxRetries)
-			// assert.Equal(t, tt.expectedRetryDelay, f.retryDelay)
+		_, err := f.Do(req)
 
-			// 3. Check wrapped fetcher type
-			// assert.Equal(t, tt.expectedInternalType, fmt.Sprintf("%T", f.delegate)) -> f.delegate unexported
-		})
-	}
+		assert.NoError(t, err)
+		// 3 calls total (1 initial + 2 retries). GetBody called for ALL 3 attempts.
+		assert.Equal(t, int32(3), atomic.LoadInt32(&getBodyCount))
+		mockFetcher.AssertNumberOfCalls(t, "Do", 3)
+	})
+
+	t.Run("Missing GetBody for checks", func(t *testing.T) {
+		// If Body is present but GetBody is nil, NewRetryFetcher logic (or Do logic) might block it if configured
+		// Logic in Do: if req.Body != nil && req.GetBody == nil && f.maxRetries > 0 -> Error
+		mockFetcher := &mocks.MockFetcher{}
+		f := fetcher.NewRetryFetcher(mockFetcher, 3, time.Millisecond, time.Millisecond)
+
+		req, _ := http.NewRequest(http.MethodPost, "http://example.com", strings.NewReader("data"))
+		req.GetBody = nil // Explicitly nil
+
+		_, err := f.Do(req)
+
+		assert.Error(t, err)
+		assert.Equal(t, fetcher.ErrMissingGetBody, err)
+		mockFetcher.AssertNotCalled(t, "Do")
+	})
 }

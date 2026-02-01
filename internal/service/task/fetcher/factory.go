@@ -16,12 +16,12 @@ type Config struct {
 	// - 보정: 0 미만은 0으로, 10 초과는 10으로 자동 조정됩니다.
 	MaxRetries int
 
-	// RetryDelay 재시도 간 기본 대기 시간입니다.
+	// RetryDelay 재시도 대기 시간의 최소값입니다.
 	// 지수 백오프(Exponential Backoff)의 시작 대기 시간으로 사용됩니다.
 	// - 최소값: 1초 (1초 미만 설정 시 1초로 자동 보정)
 	RetryDelay time.Duration
 
-	// MaxRetryDelay 재시도 시 최대 대기 시간(Max Delay)입니다.
+	// MaxRetryDelay 재시도 대기 시간의 최대값입니다.
 	// 지수 백오프 적용 시 대기 시간이 이 값을 초과하지 않도록 제한합니다.
 	// - 0: 미설정으로 간주하여 기본값(30초) 적용
 	// - RetryDelay보다 작은 값(음수 포함): RetryDelay 값으로 자동 보정
@@ -45,13 +45,13 @@ type Config struct {
 	// Timeout HTTP 요청 전체에 대한 타임아웃입니다.
 	// 연결(Dial), 요청 전송, 응답 수신 등 전체 과정을 포함하는 시간 제한입니다.
 	// - 0: 기본값(30초) 적용
-	// - 음수: 타임아웃 없음(무제한)
+	// - 음수: 타임아웃 없음(무한 대기)
 	// - 양수: 지정된 시간으로 설정
 	Timeout time.Duration
 
-	// ResponseHeaderTimeout 서버로부터 응답 헤더를 완전히 수신할 때까지의 대기 시간입니다.
+	// ResponseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
 	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
-	// - 0: 별도 제한 없음 (전체 Timeout 설정에 따름)
+	// - 0: 별도 제한 없음 (HTTP 요청 전체에 대한 타임아웃 설정에 따름)
 	// - 양수: 지정된 시간으로 설정
 	ResponseHeaderTimeout time.Duration
 
@@ -84,7 +84,7 @@ type Config struct {
 	// - 값 지정: 매 요청마다 목록 중 하나를 무작위로 선택하여 사용 (Fingerprinting 회피용)
 	UserAgents []string
 
-	// MaxRedirects 허용할 최대 리다이렉트(3xx) 횟수입니다.
+	// MaxRedirects HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수입니다.
 	// - 0: 기본값 사용 (net/http 기본 정책, 통상 10회)
 	// - 양수: 지정된 횟수만큼 리다이렉트 허용
 	MaxRedirects int
@@ -108,7 +108,7 @@ type Config struct {
 	// - 0: 기본값(DefaultIdleConnTimeout=90초) 적용
 	IdleConnTimeout time.Duration
 
-	// TLSHandshakeTimeout TLS 핸드셰이크 제한 시간입니다.
+	// TLSHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
 	// - 0: 기본값(DefaultTLSHandshakeTimeout=10초) 적용
 	TLSHandshakeTimeout time.Duration
 
@@ -118,9 +118,9 @@ type Config struct {
 	// - 양수: 지정된 개수로 제한
 	MaxConnsPerHost int
 
-	// DisableTransportCache Transport 객체 재사용(캐싱) 비활성화 여부입니다.
-	// - false (기본값/권장): Transport를 재사용하여 TCP 연결 수립 비용 절감
-	// - true: 매 요청마다 새로운 Transport 생성 (IP 회전 프록시 등 특수 목적)
+	// DisableTransportCache Transport 캐시 사용 여부입니다.
+	// - false (기본값/권장): 캐시 사용
+	// - true: 캐시 비활성화
 	DisableTransportCache bool
 
 	// ========================================
@@ -139,17 +139,17 @@ func (cfg *Config) ApplyDefaults() {
 	// 음수는 의미가 없으므로 최소 재시도 횟수(0)로, 최대 재시도 횟수(10)를 초과하면 과도한 재시도로 인한 지연을 방지하기 위해 10으로 제한
 	if cfg.MaxRetries < minRetries {
 		cfg.MaxRetries = minRetries
-	} else if cfg.MaxRetries > maxRetriesLimit {
-		cfg.MaxRetries = maxRetriesLimit
+	}
+	if cfg.MaxRetries > maxAllowedRetries {
+		cfg.MaxRetries = maxAllowedRetries
 	}
 
-	// 재시도 간 기본 대기 시간 검증
-	// 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 설정
+	// 재시도 대기 시간의 최소값 검증
 	if cfg.RetryDelay < time.Second {
-		cfg.RetryDelay = 1 * time.Second
+		cfg.RetryDelay = 1 * time.Second // 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 설정
 	}
 
-	// 재시도 시 최대 대기 시간 검증
+	// 재시도 대기 시간의 최대값 검증
 	// MaxRetryDelay는 지수 백오프(exponential backoff) 시 상한선 역할을 하므로 RetryDelay보다 작을 수 없음!
 	if cfg.MaxRetryDelay < cfg.RetryDelay {
 		if cfg.MaxRetryDelay == 0 {
@@ -170,12 +170,12 @@ func (cfg *Config) ApplyDefaults() {
 
 	// HTTP 요청 전체에 대한 타임아웃 검증
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
-	// 음수는 "무제한"을 의미하므로 호출자가 명시적으로 설정한 경우 그대로 유지
+	// 음수는 "무한 대기"를 의미하므로 호출자가 명시적으로 설정한 경우 그대로 유지
 	if cfg.Timeout == 0 {
 		cfg.Timeout = DefaultTimeout
 	}
 
-	// 최대 유휴(Idle) 연결의 최대 개수 검증
+	// 전체 유휴(Idle) 연결의 최대 개수 검증
 	// 0은 "무제한"을 의미하므로 그대로 유지
 	// 음수는 설정 오류로 간주하여 기본값(DefaultMaxIdleConns)으로 보정
 	if cfg.MaxIdleConns < 0 {
@@ -188,7 +188,7 @@ func (cfg *Config) ApplyDefaults() {
 		cfg.IdleConnTimeout = DefaultIdleConnTimeout
 	}
 
-	// TLS 핸드셰이크 제한 시간 검증
+	// TLS 핸드셰이크 타임아웃 검증
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
 	if cfg.TLSHandshakeTimeout == 0 {
 		cfg.TLSHandshakeTimeout = DefaultTLSHandshakeTimeout
@@ -263,10 +263,10 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	if cfg.Timeout > 0 {
 		mergedOpts = append(mergedOpts, WithTimeout(cfg.Timeout))
 	} else if cfg.Timeout < 0 {
-		mergedOpts = append(mergedOpts, WithTimeout(0)) // 0은 무제한을 의미
+		mergedOpts = append(mergedOpts, WithTimeout(0)) // 0은 무한 대기를 의미
 	}
 
-	// 서버로부터 응답 헤더를 완전히 수신할 때까지의 대기 시간 설정
+	// HTTP 응답 헤더 대기 타임아웃 설정
 	if cfg.ResponseHeaderTimeout > 0 {
 		mergedOpts = append(mergedOpts, WithResponseHeaderTimeout(cfg.ResponseHeaderTimeout))
 	}
@@ -276,7 +276,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithProxy(cfg.ProxyURL))
 	}
 
-	// 허용할 최대 리다이렉트(3xx) 횟수 설정
+	// HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수 설정
 	if cfg.MaxRedirects > 0 {
 		mergedOpts = append(mergedOpts, WithMaxRedirects(cfg.MaxRedirects))
 	}
@@ -289,7 +289,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithIdleConnTimeout(cfg.IdleConnTimeout))
 	}
 
-	// TLS 핸드셰이크 제한 시간 설정
+	// TLS 핸드셰이크 타임아웃 설정
 	if cfg.TLSHandshakeTimeout > 0 {
 		mergedOpts = append(mergedOpts, WithTLSHandshakeTimeout(cfg.TLSHandshakeTimeout))
 	}
@@ -299,7 +299,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithMaxConnsPerHost(cfg.MaxConnsPerHost))
 	}
 
-	// Transport 객체 재사용(캐싱) 비활성화 설정
+	// Transport 캐시 사용 여부 설정
 	if cfg.DisableTransportCache {
 		mergedOpts = append(mergedOpts, WithDisableTransportCache(true))
 	}

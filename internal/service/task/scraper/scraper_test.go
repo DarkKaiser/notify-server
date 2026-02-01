@@ -111,7 +111,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
+			errContains: "HTTP 요청 처리 실패 (Status: 500 Internal Server Error",
 		},
 		{
 			name: "HTTP 404 Error (Client Error)",
@@ -124,7 +124,7 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 404 Not Found",
+			errContains: "HTTP 요청 처리 실패 (Status: 404 Not Found",
 		},
 	}
 
@@ -310,7 +310,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 404 Not Found",
+			errContains: "HTTP 요청 처리 실패 (Status: 404 Not Found",
 		},
 		{
 			name:   "Error - HTTP 500 Status (Unavailable)",
@@ -322,7 +322,7 @@ func TestFetchJSON_Table(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청이 실패했습니다. 상태 코드: 500 Internal Server Error",
+			errContains: "HTTP 요청 처리 실패 (Status: 500 Internal Server Error",
 		},
 	}
 

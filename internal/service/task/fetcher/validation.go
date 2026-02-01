@@ -131,10 +131,10 @@ func checkResponseStatus(resp *http.Response, reconstruct bool, allowedStatusCod
 		urlStr = redactURL(resp.Request.URL)
 	}
 
-	// 4. 응답 본문의 일부만 읽기 (디버깅 정보용)
+	// 4. 응답 객체의 Body 일부만 읽기 (디버깅 정보용)
 	var bodySnippet string
 	if resp.Body != nil {
-		// 응답 본문의 일부만 읽어서 메모리 효율성 유지
+		// 응답 객체의 Body 일부만 읽어서 메모리 효율성 유지
 		lr := io.LimitReader(resp.Body, 4096)
 		bodyBytes, err := io.ReadAll(lr)
 		if err == nil && len(bodyBytes) > 0 {

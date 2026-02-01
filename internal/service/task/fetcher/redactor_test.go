@@ -16,17 +16,17 @@ func Test_redactHeaders(t *testing.T) {
 		expected http.Header
 	}{
 		{
-			name:     "Nil header",
+			name:     "Nil header returns nil",
 			input:    nil,
 			expected: nil,
 		},
 		{
-			name:     "Empty header",
+			name:     "Empty header returns empty",
 			input:    http.Header{},
 			expected: http.Header{},
 		},
 		{
-			name: "No sensitive headers",
+			name: "No sensitive headers are preserved",
 			input: http.Header{
 				"Content-Type": []string{"application/json"},
 				"Accept":       []string{"*/*"},
@@ -37,28 +37,28 @@ func Test_redactHeaders(t *testing.T) {
 			},
 		},
 		{
-			name: "With sensitive headers",
+			name: "Sensitive headers are redacted",
 			input: http.Header{
 				"Authorization":       []string{"Bearer secret-token"},
 				"Proxy-Authorization": []string{"Basic user:pass"},
 				"Cookie":              []string{"session=abc"},
 				"Set-Cookie":          []string{"id=123"},
-				"Content-Type":        []string{"text/html"},
+				"X-Custom-Header":     []string{"value"},
 			},
 			expected: http.Header{
 				"Authorization":       []string{"***"},
 				"Proxy-Authorization": []string{"***"},
 				"Cookie":              []string{"***"},
 				"Set-Cookie":          []string{"***"},
-				"Content-Type":        []string{"text/html"},
+				"X-Custom-Header":     []string{"value"},
 			},
 		},
 		{
-			name: "Case sensitivity check",
+			name: "Headers are case-insensitive (canonicalization)",
 			input: func() http.Header {
 				h := http.Header{}
-				h.Set("authorization", "Bearer lower") // Set() canonicalizes the key
-				h.Set("COOKIE", "session=upper")       // Set() canonicalizes the key
+				h.Set("authorization", "Bearer lower") // Set() canonicalizes keys
+				h.Set("COOKIE", "session=upper")
 				return h
 			}(),
 			expected: http.Header{
@@ -71,16 +71,10 @@ func Test_redactHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := redactHeaders(tt.input)
+			assert.Equal(t, tt.expected, result)
 
-			if tt.expected == nil {
-				assert.Nil(t, result)
-			} else {
-				assert.Equal(t, tt.expected, result)
-			}
-
-			// Immutability check
 			if tt.input != nil {
-				// Modify result and check input is not affected
+				// Immutability check: modifying result should not affect input
 				result.Set("New-Header", "value")
 				assert.Empty(t, tt.input.Get("New-Header"), "Original header should not be modified")
 			}
@@ -91,72 +85,129 @@ func Test_redactHeaders(t *testing.T) {
 func Test_redactURL(t *testing.T) {
 	tests := []struct {
 		name     string
-		urlStr   string
+		input    string // String input for convenience, parsed in test
 		expected string
 	}{
 		{
-			name:     "Nil URL",
-			urlStr:   "", // handled by code logic, though method takes *url.URL
+			name:     "Nil URL returns empty string",
+			input:    "", // handled specially
 			expected: "",
 		},
 		{
-			name:     "Simple URL",
-			urlStr:   "https://example.com/path",
+			name:     "Simple URL without secrets",
+			input:    "https://example.com/path",
 			expected: "https://example.com/path",
 		},
 		{
-			name:     "URL with UserPass",
-			urlStr:   "https://user:pass@example.com/path",
+			name:     "URL with user info (password)",
+			input:    "https://user:password@example.com/path",
 			expected: "https://user:xxxxx@example.com/path",
 		},
 		{
-			name:     "URL with Query",
-			urlStr:   "https://example.com/path?token=secret123&user=admin",
-			expected: "https://example.com/path?token=xxxxx&user=xxxxx",
+			name:     "URL with user info (no password)",
+			input:    "https://user@example.com/path",
+			expected: "https://user@example.com/path", // url.Redacted behavior (no password to redact)
 		},
 		{
-			name:     "URL with UserPass and Query",
-			urlStr:   "https://user:pass@example.com/path?key=val",
+			name:     "URL with query parameters",
+			input:    "https://example.com/path?token=secret&id=123",
+			expected: "https://example.com/path?id=xxxxx&token=xxxxx", // Sorted by key
+		},
+		{
+			name:     "URL with user info and query parameters",
+			input:    "https://user:pass@example.com/path?key=value",
 			expected: "https://user:xxxxx@example.com/path?key=xxxxx",
 		},
 		{
-			name:     "Fragment should be preserved",
-			urlStr:   "https://example.com/path?k=v#fragment",
-			expected: "https://example.com/path?k=xxxxx#fragment",
-		},
-		{
-			// Query parameters are sorted by key during encoding
-			name:     "Complex Query",
-			urlStr:   "https://example.com/search?q=hello&lang=en&page=1",
-			expected: "https://example.com/search?lang=xxxxx&page=xxxxx&q=xxxxx",
+			name:     "URL with fragment preserved",
+			input:    "https://example.com/path?q=v#fragment",
+			expected: "https://example.com/path?q=xxxxx#fragment",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "Nil URL" {
+			if tt.name == "Nil URL returns empty string" {
 				assert.Equal(t, "", redactURL(nil))
 				return
 			}
 
-			u, err := url.Parse(tt.urlStr)
+			u, err := url.Parse(tt.input)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expected, redactURL(u))
+
+			result := redactURL(u)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func Test_redactURL_ParseFailureFallback(t *testing.T) {
-	// url.Parse handles most strings, but we want to verify fallback logic.
-	// However, since url.Redacted() returns a valid string usually, parse failure is rare.
-	// But if Redacted() returns a string that url.Parse fails on, we should return Redacted() string.
-	// Since redactURL is internal and relies on stdlib, it's hard to force parse failure on valid inputs.
-	// This test simply ensures no panic on typical complex inputs.
+func Test_redactRawURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// 1. Valid URLs (Delegates to redactURL)
+		{
+			name:     "Valid URL with sensitive info",
+			input:    "https://user:pass@example.com/resource?token=secret",
+			expected: "https://user:xxxxx@example.com/resource?token=xxxxx",
+		},
+		{
+			name:     "Valid URL plain",
+			input:    "https://example.com",
+			expected: "https://example.com",
+		},
 
-	// Example of a URL that might be valid initially but problematic after redaction?
-	// Actually, url.Redacted() typically returns valid URL strings.
-	// We'll trust the main tests for coverage, but explicitly test a case where Redacted() is valid.
-	u, _ := url.Parse("https://user:pass@example.com")
-	result := redactURL(u)
-	assert.Equal(t, "https://user:xxxxx@example.com", result)
+		// 2. Fallback Logic: Invalid/Special URLs
+		{
+			name:     "Scheme-less proxy URL (parse fails or treated as path)",
+			input:    "user:pass@proxy.example.com:8080",
+			expected: "xxxxx:xxxxx@proxy.example.com:8080",
+		},
+		{
+			name:     "Scheme-less proxy URL with no port",
+			input:    "user:pass@proxy.example.com",
+			expected: "xxxxx:xxxxx@proxy.example.com",
+		},
+		{
+			name:     "Invalid control characters (Parser failure)",
+			input:    "http://user:pass@exam\nple.com",
+			expected: "http://xxxxx:xxxxx@exam\nple.com", // Fallback logic kicks in
+		},
+		{
+			name:     "Multiple @ signs (Greedy match - Parsed as valid URL)",
+			input:    "https://user:p@ss@example.com",
+			expected: "https://user:xxxxx@example.com", // url.Parse handles this, masking only password
+		},
+
+		// 3. Fallback Logic: No sensitive info patterns
+		{
+			name:     "String without @ or scheme",
+			input:    "just-a-string",
+			expected: "just-a-string",
+		},
+		{
+			name:     "String with scheme but no @",
+			input:    "http://example.com",
+			expected: "http://example.com",
+		},
+		{
+			name:     "String with @ but no scheme (treated as auth)",
+			input:    "no-scheme@domain.com",
+			expected: "xxxxx:xxxxx@domain.com",
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := redactRawURL(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
