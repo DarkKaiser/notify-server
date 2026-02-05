@@ -160,6 +160,6 @@ func checkResponseStatus(resp *http.Response, reconstruct bool, allowedStatusCod
 		URL:         urlStr,
 		Header:      redactHeaders(resp.Header),
 		BodySnippet: bodySnippet,
-		Cause:       newErrHTTPStatus(errType, resp.Status, urlStr),
+		Cause:       newErrUnexpectedHTTPStatus(errType, resp.Status, urlStr),
 	}
 }

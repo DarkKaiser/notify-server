@@ -14,7 +14,7 @@ import (
 // It verifies both the HTTPFetcher internal state and the resulting http.Transport configuration.
 func TestHTTPOptions_Table(t *testing.T) {
 	// Helper to get http.Transport from fetcher for verification
-	getTransport := func(f *HTTPFetcher) *http.Transport {
+	transport := func(f *HTTPFetcher) *http.Transport {
 		if f.client == nil || f.client.Transport == nil {
 			return nil
 		}
@@ -53,9 +53,9 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithResponseHeaderTimeout",
 			options: []Option{WithResponseHeaderTimeout(5 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 5*time.Second, f.headerTimeout)
+				assert.Equal(t, 5*time.Second, f.responseHeaderTimeout)
 				// Transport verification
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 5*time.Second, tr.ResponseHeaderTimeout)
 			},
@@ -65,7 +65,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithTLSHandshakeTimeout(3 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 3*time.Second, f.tlsHandshakeTimeout)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 3*time.Second, tr.TLSHandshakeTimeout)
 			},
@@ -75,7 +75,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithIdleConnTimeout(45 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 45*time.Second, f.idleConnTimeout)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 45*time.Second, tr.IdleConnTimeout)
 			},
@@ -89,7 +89,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithMaxIdleConns(50)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 50, f.maxIdleConns)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 50, tr.MaxIdleConns)
 				assert.Equal(t, 50, tr.MaxIdleConnsPerHost) // Should sync with global limit
@@ -100,7 +100,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithMaxIdleConns(0)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 0, f.maxIdleConns)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 0, tr.MaxIdleConns) // 0 means no limit in http.Transport
 			},
@@ -110,7 +110,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithMaxIdleConns(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, -1, f.maxIdleConns) // Field set to -1
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				// Logic in createTransport: if maxIdle >= 0 { set }
 				// So if -1, it should retain default (which is defaultTransport.MaxIdleConns = 100)
@@ -123,7 +123,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithMaxConnsPerHost(10)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 10, f.maxConnsPerHost)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 10, tr.MaxConnsPerHost)
 			},
@@ -133,7 +133,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithMaxConnsPerHost(0)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, 0, f.maxConnsPerHost)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 0, tr.MaxConnsPerHost)
 			},
@@ -147,7 +147,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithProxy("http://proxy.example.com:8080")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, "http://proxy.example.com:8080", f.proxyURL)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 
 				// Verify Proxy function works
@@ -163,7 +163,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithProxy("")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, "", f.proxyURL)
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				// Default transport proxy is usually nil or FromEnvironment
 				// Here we explicit check if our createTransport handles "" correctly (usually nil)
@@ -179,7 +179,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 				req, _ := http.NewRequest("GET", "http://example.com", nil)
 				_, err := f.Do(req)
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "invalid proxy URL")
+				assert.Contains(t, err.Error(), "제공된 프록시 URL의 형식이 올바르지 않습니다")
 			},
 			expectError: true,
 		},
@@ -229,7 +229,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithDisableTransportCache",
 			options: []Option{WithDisableTransportCache(true)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.True(t, f.disableCache)
+				assert.True(t, f.disableTransportCache)
 				// When cache is disabled, Do() creates a new transport every time (not cached)
 				// Implementation detail: createTransport is called directly.
 			},
@@ -240,7 +240,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 				WithTransport(&http.Transport{DisableKeepAlives: true}),
 			},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				tr := getTransport(f)
+				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.True(t, tr.DisableKeepAlives)
 				// WithTransport should disable internal caching mechanism preference if it was set?
@@ -282,7 +282,7 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 		// When Proxy is set, it should use a cached transport for that proxy, OR create a new one.
 		// It should NOT use the default global transport.
 		f := NewHTTPFetcher(WithProxy("http://proxy.local:8080"))
-		tr := f.GetTransport() // Public method to get transport/client.Transport
+		tr := f.transport() // Public method to get transport/client.Transport
 
 		assert.NotNil(t, tr)
 		// It should be a *http.Transport
@@ -306,13 +306,12 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 			WithMaxIdleConns(999),
 		)
 
-		currentTr := f.GetTransport()
-		// It should be a clone, so not equal pointer to customTr (unless no options changed)
-		// Here we changed MaxIdleConns, so it should be a new instance (clone)
-		assert.NotEqual(t, customTr, currentTr, "Should clone transport when modifying settings")
+		currentTr := f.transport()
+		// It should be the same pointer because WithTransport takes precedence and ignores options
+		assert.Equal(t, customTr, currentTr, "Spec: WithTransport should NOT cloned, other options ignored")
 
 		httpTr := currentTr.(*http.Transport)
-		assert.Equal(t, 999, httpTr.MaxIdleConns, "Options should be applied even when WithTransport is used")
+		assert.Equal(t, 0, httpTr.MaxIdleConns, "Options should be IGNORED when WithTransport is used")
 	})
 
 	t.Run("WithProxy with Custom Non-HTTP Transport", func(t *testing.T) {
@@ -327,7 +326,7 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 		req, _ := http.NewRequest("GET", "http://example.com", nil)
 		_, err := f.Do(req)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot apply special settings to non-http.Transport")
+		assert.Contains(t, err.Error(), "지원되지 않는 Transport 형식입니다")
 	})
 }
 

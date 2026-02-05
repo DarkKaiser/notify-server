@@ -7,27 +7,26 @@ import (
 )
 
 const (
-	// defaultMaxBytes 응답 본문의 기본 크기 제한값입니다 (10MB).
-	defaultMaxBytes = 10 * 1024 * 1024
-
-	// NoLimit 응답 본문에 대한 크기 제한을 적용하지 않음을 나타내는 특수 상수입니다.
+	// NoLimit 응답 본문의 크기 제한을 적용하지 않음을 나타내는 값입니다.
 	NoLimit = -1
+
+	// defaultMaxBytes 응답 본문의 최대 허용 크기입니다. (10MB)
+	defaultMaxBytes int64 = 10 * 1024 * 1024
 )
 
 // maxBytesReader http.MaxBytesReader를 래핑하여 apperrors 형식의 에러 메시지를 제공하는 내부 헬퍼 구조체입니다.
 type maxBytesReader struct {
 	rc io.ReadCloser
 
-	// 바이트 수 제한값 (에러 메시지에 포함하기 위해 저장)
+	// 응답 본문의 최대 허용 크기입니다. (에러 메시지 출력용)
 	limit int64
 }
 
-// Read 데이터를 읽으며, 크기 제한 초과 시 apperrors로 변환합니다.
+// Read 데이터를 읽으며, 크기 제한 초과 시 도메인 전용 에러(apperrors.AppError)로 변환하여 반환합니다.
 func (r *maxBytesReader) Read(p []byte) (n int, err error) {
 	n, err = r.rc.Read(p)
 	if err != nil {
-		// http.MaxBytesReader는 제한 초과 시 *http.MaxBytesError를 반환합니다.
-		// 문자열 비교 대신 타입 검사를 사용하여 더 견고하게 처리합니다.
+		// http.MaxBytesReader는 크기 제한 초과 시 *http.MaxBytesError를 반환합니다.
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			return n, newErrResponseBodyTooLarge(r.limit)
@@ -50,18 +49,24 @@ func (r *maxBytesReader) Close() error {
 type MaxBytesFetcher struct {
 	delegate Fetcher
 
-	// 응답 본문의 최대 허용 바이트 수
+	// limit 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
+	//
+	// 이 값은 normalizeByteLimit 함수를 통해 정규화되며, 항상 양수값만 저장됩니다.
+	// (NoLimit(-1)인 경우 NewMaxBytesFetcher가 미들웨어를 우회하므로 이 필드에 저장되지 않음)
 	limit int64
 }
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Fetcher = (*MaxBytesFetcher)(nil)
 
 // NewMaxBytesFetcher 새로운 MaxBytesFetcher 인스턴스를 생성합니다.
 func NewMaxBytesFetcher(delegate Fetcher, limit int64) Fetcher {
 	if limit == NoLimit {
 		return delegate
 	}
-	if limit <= 0 {
-		limit = defaultMaxBytes
-	}
+
+	// 응답 본문의 최대 허용 크기 정규화
+	limit = normalizeByteLimit(limit)
 
 	return &MaxBytesFetcher{
 		delegate: delegate,
@@ -123,4 +128,26 @@ func (f *MaxBytesFetcher) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+func (f *MaxBytesFetcher) Close() error {
+	return f.delegate.Close()
+}
+
+// normalizeByteLimit 응답 본문의 최대 허용 크기를 정규화합니다.
+//
+// 정규화 규칙:
+//   - NoLimit(-1): 제한 없음을 의미하며 그대로 반환
+//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(10MB)으로 보정
+//   - 양수: 사용자 설정값으로 그대로 반환
+func normalizeByteLimit(limit int64) int64 {
+	if limit == NoLimit {
+		return NoLimit
+	}
+
+	if limit <= 0 {
+		return defaultMaxBytes
+	}
+
+	return limit
 }

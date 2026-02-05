@@ -1,38 +1,31 @@
 package fetcher
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 )
 
-// @@@@@
 const (
-	// DefaultTimeout HTTP 클라이언트의 기본 타임아웃 (30초)
-	// 요청 시작부터 응답 완료까지의 전체 시간 제한
+	// DefaultTimeout HTTP 클라이언트의 전체 요청 타임아웃
 	DefaultTimeout = 30 * time.Second
 
-	// DefaultMaxIdleConns 전역 최대 유휴 연결 수 (100개)
-	// 모든 호스트에 대한 유휴 연결의 총합 제한
-	// 값이 클수록 연결 재사용률이 높아지지만 메모리 사용량 증가
-	DefaultMaxIdleConns = 100
-
-	// DefaultIdleConnTimeout 유휴 연결 타임아웃 (90초)
-	// 사용되지 않는 연결을 유지할 최대 시간
-	// 이 시간이 지나면 연결이 자동으로 닫힘
-	DefaultIdleConnTimeout = 90 * time.Second
-
-	// DefaultTLSHandshakeTimeout TLS 핸드셰이크 타임아웃 (10초)
-	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간
+	// DefaultTLSHandshakeTimeout TLS 핸드셰이크 타임아웃
 	DefaultTLSHandshakeTimeout = 10 * time.Second
 
-	// DefaultMaxTransportCacheSize 캐싱할 최대 Transport 개수 기본값 (100개)
-	// LRU 정책으로 관리되며, 초과 시 가장 오래된 Transport 제거
+	// DefaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃
+	DefaultIdleConnTimeout = 90 * time.Second
+
+	// DefaultMaxIdleConns 전체 유휴(Idle) 연결의 최대 개수
+	DefaultMaxIdleConns = 100
+
+	// DefaultMaxTransportCacheSize Transport 캐시의 최대 개수
 	DefaultMaxTransportCacheSize = 100
+
+	// DefaultMaxRedirects HTTP 리다이렉트 최대 횟수
+	DefaultMaxRedirects = 10
 )
 
-// @@@@@
-// HTTPFetcher 기본 HTTP 클라이언트 구현체입니다.
+// HTTPFetcher 기본 HTTP 클라이언트 미들웨어입니다.
 //
 // 주요 기능:
 //   - 타임아웃 관리: 전체 요청 타임아웃, 헤더 응답 타임아웃, TLS 핸드셰이크 타임아웃
@@ -40,28 +33,71 @@ const (
 //   - 프록시 지원: HTTP/HTTPS 프록시 서버 설정
 //   - Transport 캐싱: 동일한 설정의 요청들이 Transport를 공유하여 성능 최적화
 //   - User-Agent 관리: 기본 User-Agent 설정 및 요청별 커스터마이징
-//
-// 사용 예시:
-//
-//	fetcher := NewHTTPFetcher(
-//	    WithTimeout(30*time.Second),
-//	    WithProxy("http://proxy.example.com:8080"),
-//	    WithMaxIdleConns(100),
-//	)
 type HTTPFetcher struct {
-	client              *http.Client  // 실제 HTTP 요청을 수행하는 클라이언트
-	defaultUA           string        // 기본 User-Agent 문자열
-	proxyURL            string        // 프록시 서버 URL (빈 문자열이면 프록시 미사용)
-	headerTimeout       time.Duration // 응답 헤더 대기 타임아웃
-	maxIdleConns        int           // 전역 최대 유휴 연결 수
-	idleConnTimeout     time.Duration // 유휴 연결 타임아웃
-	tlsHandshakeTimeout time.Duration // TLS 핸드셰이크 타임아웃
-	maxConnsPerHost     int           // 호스트당 최대 연결 수
-	disableCache        bool          // Transport 캐시 비활성화 여부
-	initErr             error         // 초기화 중 발생한 에러 (있으면 Do 호출 시 반환)
+	// ========================================
+	// 코어(Core)
+	// ========================================
+
+	// client 실제 HTTP 요청을 수행하는 클라이언트입니다.
+	client *http.Client
+
+	// initErr 초기화 중 발생한 에러입니다.
+	// NewHTTPFetcher 실행 시 옵션 검증이나 Transport 설정 과정에서 에러가 발생하면 여기에 저장됩니다.
+	// Do 메서드 호출 시 이 값이 nil이 아니면 즉시 반환하여 잘못된 설정으로 요청을 시도하는 것을 방지합니다.
+	initErr error
+
+	// ========================================
+	// 타임아웃(Timeout) 설정
+	// ========================================
+
+	// tlsHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
+	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
+	tlsHandshakeTimeout time.Duration
+
+	// responseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
+	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
+	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
+	responseHeaderTimeout time.Duration
+
+	// idleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
+	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
+	idleConnTimeout time.Duration
+
+	// ========================================
+	// 네트워크 및 연결 풀(Connection Pool) 설정
+	// ========================================
+
+	// proxyURL 프록시 서버 주소입니다.
+	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
+	// 형식: "http://host:port" 또는 "https://user:pass@host:port"
+	proxyURL string
+
+	// maxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
+	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
+	// 0이면 무제한입니다.
+	maxIdleConns int
+
+	// maxConnsPerHost 호스트(도메인)당 최대 연결 개수입니다.
+	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
+	// 0이면 무제한입니다.
+	maxConnsPerHost int
+
+	// disableTransportCache Transport 캐시 사용 여부입니다.
+	// true이면 매번 새로운 Transport를 생성하고, false이면 동일한 설정의 Transport를 재사용합니다.
+	disableTransportCache bool
+
+	// ========================================
+	// HTTP 클라이언트 동작 옵션
+	// ========================================
+
+	// defaultUA 기본 User-Agent 문자열입니다.
+	// 요청 헤더에 User-Agent가 설정되지 않은 경우 이 값이 자동으로 사용됩니다.
+	defaultUA string
 }
 
-// @@@@@
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Fetcher = (*HTTPFetcher)(nil)
+
 // NewHTTPFetcher 새로운 HTTPFetcher 인스턴스를 생성합니다.
 //
 // 이 함수는 Functional Options 패턴을 사용하여 유연한 설정을 지원합니다.
@@ -73,160 +109,168 @@ type HTTPFetcher struct {
 // 반환값:
 //   - *HTTPFetcher: 설정이 적용된 HTTPFetcher 인스턴스
 //
-// 기본 설정:
-//   - Timeout: 30초
-//   - Transport: 공유 defaultTransport (연결 풀링 활성화)
-//   - MaxRedirects: 10회 (Referer 헤더 자동 설정)
-//   - User-Agent: Chrome 120 (Windows 10)
-//   - MaxIdleConns: 100개
-//   - IdleConnTimeout: 90초
-//   - TLSHandshakeTimeout: 10초
-//
-// 초기화 과정:
-//  1. 기본값으로 HTTPFetcher 생성
-//  2. 제공된 옵션들 순차 적용
-//  3. Transport 설정 (필요 시 캐시에서 가져오거나 새로 생성)
-//
 // 주의사항:
-//   - 초기화 중 에러 발생 시 initErr 필드에 저장되며, Do 호출 시 반환됨
-//   - Transport 캐싱은 성능 최적화를 위해 기본적으로 활성화됨
+//   - 초기화 중 에러 발생 시 initErr 필드에 저장되며, Do 호출 시 반환됨!
+//   - Transport 캐싱은 성능 최적화를 위해 기본적으로 활성화됨!
 func NewHTTPFetcher(opts ...Option) *HTTPFetcher {
 	f := &HTTPFetcher{
 		client: &http.Client{
-			Timeout:   DefaultTimeout,
-			Transport: defaultTransport, // 기본적으로 공유 Transport 사용 (연결 풀링)
+			Timeout: DefaultTimeout,
+
+			// 연결 풀 공유 (여러 HTTPFetcher가 연결 풀을 공유하여 성능 최적화)
+			Transport: defaultTransport,
+
+			// 리다이렉트 정책: 최대 10회까지 허용하며 Referer 헤더를 자동 설정
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 { // 기본 최대 10회 리다이렉트
+				if len(via) >= DefaultMaxRedirects {
 					return http.ErrUseLastResponse
 				}
+
 				// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
-				if len(via) > 0 {
+				if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
 					req.Header.Set("Referer", via[len(via)-1].URL.String())
 				}
+
 				return nil
 			},
 		},
-		defaultUA:           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		maxIdleConns:        DefaultMaxIdleConns,
-		idleConnTimeout:     DefaultIdleConnTimeout,
+
 		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
+		idleConnTimeout:     DefaultIdleConnTimeout,
+
+		maxIdleConns: DefaultMaxIdleConns,
+
+		defaultUA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 
-	// [1단계] 옵션 적용
+	// 설정 옵션 적용 (일부 옵션은 검증 실패 시 initErr을 설정할 수 있음)
 	for _, opt := range opts {
 		opt(f)
 	}
 
-	// [2단계] Transport 설정 (필요 시 캐시에서 가져오거나 새로 생성)
+	// Transport 설정: 캐시 정책에 따라 공유 Transport 재사용 또는 새로운 Transport 생성
 	if f.initErr == nil {
-		f.initErr = f.configureTransport()
+		f.initErr = f.setupTransport()
 	}
 
 	return f
 }
 
-// @@@@@
-// Do 커스텀 HTTP 요청을 실행합니다.
+// Do HTTP 요청을 수행합니다.
 //
 // 이 메서드는 표준 http.Client.Do와 유사하지만, 다음과 같은 추가 기능을 제공합니다:
+//
 //  1. 초기화 에러 확인: NewHTTPFetcher에서 발생한 에러가 있으면 즉시 반환
-//  2. 요청 복제: 원본 요청을 보호하기 위해 복제본 사용 (방어적 프로그래밍)
-//  3. 기본 헤더 설정: Accept, Accept-Language, User-Agent 자동 설정
+//  2. 요청 객체 복제: 원본 요청 객체를 보호하기 위해 복제본 사용
+//  3. 기본 헤더 자동 추가: Accept, Accept-Language, User-Agent
 //
 // 매개변수:
-//   - req: 실행할 HTTP 요청 (*http.Request)
+//   - req: 처리할 HTTP 요청
 //
 // 반환값:
-//   - *http.Response: HTTP 응답 (성공 시)
-//   - error: 초기화 에러 또는 요청 실행 실패 시 에러
-//
-// 기본 헤더:
-//   - Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-//   - Accept-Language: "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
-//   - User-Agent: 설정된 기본 User-Agent (없으면 설정 안 함)
+//   - HTTP 응답 객체 (성공 시)
+//   - 에러 (요청 처리 중 발생한 에러)
 //
 // 주의사항:
-//   - 원본 요청은 수정되지 않음 (복제본 사용)
-//   - 요청에 이미 헤더가 설정되어 있으면 덮어쓰지 않음
-//   - 반환된 응답의 Body는 호출자가 반드시 닫아야 함
+//   - 원본 요청 객체는 수정되지 않음 (복제본 사용)
+//   - 요청 객체에 이미 헤더가 설정되어 있으면 덮어쓰지 않음
+//   - 반환된 응답 객체의 Body는 호출자가 반드시 닫아야 함
 func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
-	// [1단계] 초기화 에러 확인
+	// 초기화 에러 조기 반환
+	// NewHTTPFetcher에서 Transport 설정 실패 등의 에러가 발생했다면 여기서 즉시 반환
 	if h.initErr != nil {
 		return nil, h.initErr
 	}
 
-	// [2단계] 원본 요청을 오염시키지 않기 위해 복제본 생성
-	// 방어적 프로그래밍: 원본 요청을 수정하면 호출자에게 예상치 못한 부작용 발생 가능
+	// 요청 객체 복제: 원본 요청 객체 보호
+	// 헤더 수정이 호출자의 원본 요청 객체에 영향을 주지 않도록 복제본 사용
+	// Context는 원본과 동일하게 유지하여 취소/타임아웃 전파 보장
 	clonedReq := req.Clone(req.Context())
 
-	// [3단계] 기본 헤더 설정 (요청에 이미 설정되어 있으면 스킵)
-	// Accept 헤더: 브라우저처럼 보이도록 다양한 MIME 타입 지원 명시
+	// 기본 HTTP 헤더 설정: 실제 브라우저처럼 동작하도록 표준 헤더 자동 추가
 	if clonedReq.Header.Get("Accept") == "" {
+		// 다양한 MIME 타입 지원 명시 (HTML, XML, 이미지 등)
 		clonedReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
 	}
-	// Accept-Language 헤더: 한국어 우선, 영어 대체
 	if clonedReq.Header.Get("Accept-Language") == "" {
+		// 한국어 우선, 영어 대체 (q값으로 우선순위 지정)
 		clonedReq.Header.Set("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7")
 	}
 
-	// [4단계] User-Agent 설정 (기본값이 있고, 요청에 설정되지 않은 경우)
+	// User-Agent 헤더 설정: 봇 차단 회피 및 실제 브라우저 모방
 	if clonedReq.Header.Get("User-Agent") == "" && h.defaultUA != "" {
 		clonedReq.Header.Set("User-Agent", h.defaultUA)
 	}
 
-	// [5단계] HTTP 요청 실행
+	// HTTP 요청 실행: 설정된 Transport, 타임아웃, 리다이렉트 정책 적용
 	return h.client.Do(clonedReq)
 }
 
-// @@@@@
-// Close HTTPFetcher가 사용 중인 리소스(유휴 커넥션 등)를 명시적으로 정리합니다.
+// Close HTTPFetcher가 사용 중인 네트워크 리소스를 정리합니다.
 //
-// 이 메서드는 Transport 캐싱 전략에 따라 다르게 동작합니다:
-//  1. 공유 Transport (기본): 닫지 않음 (다른 HTTPFetcher와 공유 중)
-//  2. 캐시된 Transport: 닫지 않음 (getSharedTransport를 통해 공유 중)
-//  3. 전용 Transport: 닫음 (DisableTransportCache 또는 외부 주입 후 복제)
+// 이 메서드는 HTTPFetcher가 더 이상 필요하지 않을 때 호출하여 메모리 누수를 방지합니다.
+// 하지만 모든 리소스를 무조건 정리하는 것이 아니라, 안전하게 정리할 수 있는 것만 선별적으로 처리합니다.
+//
+// 왜 선별적으로 정리할까요?
+//
+//	Transport는 여러 HTTPFetcher가 공유할 수 있는 리소스입니다.
+//	만약 다른 곳에서 사용 중인 Transport를 닫아버리면, 그곳의 네트워크 연결이 끊어지는 문제가 발생합니다.
+//	따라서 이 메서드는 "내가 독점적으로 사용하는 리소스"만 정리합니다.
+//
+// 동작 방식:
+//
+//  1. 전역 기본 Transport (defaultTransport)
+//     - 정리하지 않음
+//     - 이유: 애플리케이션 전체에서 공유하는 싱글톤 리소스이므로, 닫으면 다른 모든 클라이언트의 연결이 끊어집니다.
+//
+//  2. 공유 Transport (캐시에 등록된 Transport)
+//     - 정리하지 않음
+//     - 이유: 동일한 설정을 가진 다른 HTTPFetcher들이 함께 사용 중일 수 있으므로, 닫으면 다른 인스턴스에 영향을 줍니다.
+//
+//  3. 격리된 Transport (DisableTransportCache 옵션으로 생성된 전용 Transport)
+//     - 정리함 (CloseIdleConnections 호출)
+//     - 이유: 이 HTTPFetcher만 사용하는 독립적인 리소스이므로, 안전하게 유휴 연결을 닫을 수 있습니다.
 //
 // 반환값:
-//   - error: 항상 nil (현재 구현에서는 에러 발생하지 않음)
+//   - error: 항상 nil (인터페이스 호환성을 위해 유지)
 //
 // 주의사항:
-//   - 공유 Transport를 닫으면 다른 HTTPFetcher의 연결도 끊김
-//   - 전용 Transport만 안전하게 닫을 수 있음
-//   - Close 후에는 Do 메서드를 호출하지 말 것 (새 연결 생성됨)
-//
-// 사용 예시:
-//
-//	fetcher := NewHTTPFetcher(WithDisableTransportCache(true))
-//	defer fetcher.Close() // 전용 Transport이므로 안전하게 닫힘
+//   - Close 호출 후 Do 메서드를 다시 호출하는 것은 권장하지 않습니다.
+//   - 공유 리소스는 Go의 가비지 컬렉터(GC)가 자동으로 관리하므로, 수동으로 정리할 필요가 없습니다.
 func (h *HTTPFetcher) Close() error {
+	// 1단계: 기본 검증
+	// 클라이언트나 Transport가 없으면 정리할 것이 없으므로 즉시 반환합니다.
 	if h.client == nil || h.client.Transport == nil {
 		return nil
 	}
 
-	// [검사 1] 기본 공유 Transport인 경우: 닫지 않음
-	// defaultTransport는 전역 싱글톤이므로 다른 인스턴스와 공유됨
+	// 2단계: 전역 기본 Transport 확인
 	if h.client.Transport == defaultTransport {
 		return nil
 	}
 
-	// [검사 2] 캐시된 Transport인 경우: 공유 여부 확인 후 결정
-	// DisableTransportCache가 true여서 전용으로 생성된 경우나
-	// 외부에서 주입되어 Clone된 경우에는 닫아야 함
+	// 3단계: 사용자 정의 Transport 처리
+	// *http.Transport 타입인 경우에만 정리 가능 여부를 판단합니다.
+	// (다른 타입의 RoundTripper는 정리 방법을 알 수 없으므로 무시합니다)
 	if tr, ok := h.client.Transport.(*http.Transport); ok {
-		// 공유 캐시에 존재하는지 확인
+		// 3-1단계: 공유 여부 확인
+		// Transport 캐시를 순회하여 현재 Transport가 캐시에 등록되어 있는지 확인합니다.
+		// 캐시에 있다면 다른 HTTPFetcher들도 이 Transport를 사용 중일 수 있습니다.
 		isShared := false
-		if !h.disableCache {
-			transportMu.RLock()
-			for _, el := range transportCache {
-				if el.Value.(*transportCacheEntry).transport == tr {
+		if !h.disableTransportCache {
+			transportCacheMu.RLock()
+			for _, entry := range transportCache {
+				if entry.Value.(*transportCacheEntry).transport == tr {
 					isShared = true
 					break
 				}
 			}
-			transportMu.RUnlock()
+			transportCacheMu.RUnlock()
 		}
 
-		// 공유되지 않은 전용 Transport만 닫음
+		// 3-2단계: 격리된 Transport만 정리
+		// 공유되지 않는 독립적인 Transport인 경우에만 유휴 연결을 닫습니다.
+		// CloseIdleConnections는 사용 중이지 않은 연결만 닫으므로, 진행 중인 요청에는 영향을 주지 않습니다.
 		if !isShared {
 			tr.CloseIdleConnections()
 		}
@@ -235,185 +279,27 @@ func (h *HTTPFetcher) Close() error {
 	return nil
 }
 
-// @@@@@
-// configureTransport Transport 설정이 필요한 경우 적절한 Transport를 구성합니다.
+// transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.
 //
-// 이 함수는 HTTPFetcher의 설정에 따라 Transport를 선택하거나 생성합니다.
-// 기본 설정이면 공유 Transport를 사용하고, 특수 설정이 필요하면 캐시에서 가져오거나 새로 생성합니다.
+// 이 메서드는 내부 상태 검증 및 디버깅을 위한 진단(Diagnostic) 목적으로 설계되었습니다.
+// 반환된 인터페이스를 실제 구현체(예: *http.Transport)로 타입 단언(Type Assertion)하여
+// 타임아웃, 프록시, 커넥션 풀 등의 세부 설정을 확인할 수 있습니다.
 //
-// 처리 흐름:
-//  1. 특수 설정 필요 여부 확인 (프록시, 타임아웃 등)
-//  2. 기본 Transport인 경우: setupDefaultTransport 호출
-//  3. 외부 주입 Transport인 경우: setupCustomTransport 호출
-//  4. 기타 RoundTripper: 에러 반환
+// 주요 활용:
+//   - 단위 테스트(Unit Test)에서 설정 값 검증
+//   - 런타임 구성(Configuration) 상태 모니터링
+//   - Mock RoundTripper 주입 여부 확인
 //
-// 반환값:
-//   - error: Transport 설정 실패 시 에러
+// 예제:
 //
-// 주의사항:
-//   - *http.Transport가 아닌 RoundTripper는 설정 적용 불가
-func (f *HTTPFetcher) configureTransport() error {
-	// [검사 1] Transport 설정이 필요한지 확인
-	if !f.needsSpecialTransport() {
-		// 기본 설정 그대로 사용 (공유 defaultTransport)
-		return nil
-	}
-
-	// [검사 2] 기본 Transport인 경우
-	if f.client.Transport == defaultTransport {
-		return f.setupDefaultTransport()
-	}
-
-	// [검사 3] 외부 주입 Transport인 경우 (*http.Transport 타입 확인)
-	if tr, ok := f.client.Transport.(*http.Transport); ok {
-		return f.setupCustomTransport(tr)
-	}
-
-	// [검사 4] RoundTripper가 *http.Transport가 아닌 경우 (모의 객체, 커스텀 구현체 등)
-	return fmt.Errorf("fetcher: cannot apply special settings to non-http.Transport")
-}
-
-// @@@@@
-// needsSpecialTransport 특별한 Transport 설정이 필요한지 확인합니다.
-//
-// 다음 중 하나라도 해당하면 특수 설정이 필요합니다:
-//   - 프록시 설정
-//   - 응답 헤더 타임아웃 설정
-//   - 기본값과 다른 유휴 연결 수
-//   - 기본값과 다른 유휴 연결 타임아웃
-//   - 기본값과 다른 TLS 핸드셰이크 타임아웃
-//   - 호스트당 최대 연결 수 설정
-//
-// 반환값:
-//   - bool: 특수 설정 필요 여부
-func (f *HTTPFetcher) needsSpecialTransport() bool {
-	return f.proxyURL != "" || f.headerTimeout > 0 ||
-		f.maxIdleConns != DefaultMaxIdleConns ||
-		f.idleConnTimeout != DefaultIdleConnTimeout ||
-		f.tlsHandshakeTimeout != DefaultTLSHandshakeTimeout ||
-		f.maxConnsPerHost > 0
-}
-
-// @@@@@
-// setupDefaultTransport 기본 Transport를 설정합니다.
-//
-// DisableTransportCache 옵션에 따라 두 가지 방식으로 동작합니다:
-//  1. 캐시 활성화 (기본): 공유 캐시에서 Transport 가져오기 (성능 최적화)
-//  2. 캐시 비활성화: 전용 Transport 생성 (격리된 연결 풀)
-//
-// 캐시 사용 시 장점:
-//   - 동일한 설정의 HTTPFetcher들이 Transport를 공유하여 연결 재사용률 극대화
-//   - 메모리 사용량 감소
-//
-// 캐시 미사용 시 장점:
-//   - 독립적인 연결 풀 유지 (다른 HTTPFetcher와 격리)
-//   - 테스트 환경에서 유용
-//
-// 반환값:
-//   - error: Transport 생성 또는 가져오기 실패 시 에러
-func (f *HTTPFetcher) setupDefaultTransport() error {
-	if f.disableCache {
-		// [캐시 우회] 전용 Transport 생성
-		tr, err := createTransport(nil, f.proxyURL, f.headerTimeout,
-			f.maxIdleConns, f.idleConnTimeout, f.tlsHandshakeTimeout, f.maxConnsPerHost)
-		if err != nil {
-			return fmt.Errorf("fetcher: %w", err)
-		}
-		f.client.Transport = tr
-		return nil
-	}
-
-	// [캐시 사용] 공유 캐시에서 Transport 가져오기 (연결 재사용 극대화)
-	tr, err := getSharedTransport(f.proxyURL, f.headerTimeout,
-		f.maxIdleConns, f.idleConnTimeout, f.tlsHandshakeTimeout, f.maxConnsPerHost)
-	if err != nil {
-		return fmt.Errorf("fetcher: %w", err)
-	}
-	f.client.Transport = tr
-	return nil
-}
-
-// @@@@@
-// setupCustomTransport 외부에서 주입된 Transport를 설정합니다.
-//
-// WithTransport 옵션으로 제공된 Transport를 처리합니다.
-// 설정 변경이 필요한 경우에만 복제(Clone)하여 적용하고, 그렇지 않으면 원본을 그대로 사용합니다.
-//
-// 처리 방식:
-//  1. 설정 변경 필요 여부 확인 (shouldCloneTransport)
-//  2. 변경 불필요: 원본 Transport 사용 (커넥션 풀 공유)
-//  3. 변경 필요: 복제 후 설정 적용 (원본 보호)
-//
-// 매개변수:
-//   - tr: 외부에서 주입된 *http.Transport
-//
-// 반환값:
-//   - error: Transport 복제 또는 설정 실패 시 에러
-//
-// 주의사항:
-//   - 원본 Transport를 직접 수정하지 않고 복제하여 사용 (방어적 프로그래밍)
-func (f *HTTPFetcher) setupCustomTransport(tr *http.Transport) error {
-	if !f.shouldCloneTransport(tr) {
-		// 기본값 그대로이므로 원본 사용 (커넥션 풀 공유)
-		return nil
-	}
-
-	// 설정 변경이 필요하므로 복제하여 적용 (원본 보호)
-	cloned, err := createTransport(tr, f.proxyURL, f.headerTimeout,
-		f.maxIdleConns, f.idleConnTimeout, f.tlsHandshakeTimeout, f.maxConnsPerHost)
-	if err != nil {
-		return fmt.Errorf("fetcher: %w", err)
-	}
-	f.client.Transport = cloned
-	return nil
-}
-
-// @@@@@
-// shouldCloneTransport Transport를 복제해야 하는지 확인합니다.
-//
-// 다음 중 하나라도 해당하면 복제가 필요합니다:
-//   - 프록시 설정이 있는 경우
-//   - 응답 헤더 타임아웃이 다른 경우
-//   - 최대 유휴 연결 수가 다른 경우
-//   - 유휴 연결 타임아웃이 다른 경우
-//   - TLS 핸드셰이크 타임아웃이 다른 경우
-//   - 호스트당 최대 연결 수가 다른 경우
-//
-// 매개변수:
-//   - tr: 확인할 *http.Transport
-//
-// 반환값:
-//   - bool: 복제 필요 여부
-//
-// 목적:
-//   - 불필요한 복제를 방지하여 메모리 사용량 최소화
-//   - 원본 Transport의 연결 풀을 최대한 재사용
-func (f *HTTPFetcher) shouldCloneTransport(tr *http.Transport) bool {
-	return f.proxyURL != "" ||
-		(f.headerTimeout > 0 && tr.ResponseHeaderTimeout != f.headerTimeout) ||
-		(f.maxIdleConns >= 0 && tr.MaxIdleConns != f.maxIdleConns) ||
-		(f.idleConnTimeout != DefaultIdleConnTimeout && tr.IdleConnTimeout != f.idleConnTimeout) ||
-		(f.tlsHandshakeTimeout != DefaultTLSHandshakeTimeout && tr.TLSHandshakeTimeout != f.tlsHandshakeTimeout) ||
-		(f.maxConnsPerHost > 0 && tr.MaxConnsPerHost != f.maxConnsPerHost)
-}
-
-// @@@@@
-// GetTransport 현재 사용 중인 http.RoundTripper를 반환합니다.
-//
-// 이 메서드는 주로 테스트 및 검증 용도로 사용됩니다.
-// Transport 설정이 올바르게 적용되었는지 확인하거나, 모의 객체(mock)를 주입했는지 검증할 때 유용합니다.
-//
-// 반환값:
-//   - http.RoundTripper: 현재 사용 중인 Transport (nil일 수 있음)
-//
-// 사용 예시:
-//
-//	if tr, ok := fetcher.GetTransport().(*http.Transport); ok {
-//	    fmt.Println("MaxIdleConns:", tr.MaxIdleConns)
+//	if tr, ok := f.transport().(*http.Transport); ok {
+//	    // *http.Transport의 세부 필드 접근 가능
+//	    fmt.Printf("MaxIdleConns: %d\n", tr.MaxIdleConns)
 //	}
-func (h *HTTPFetcher) GetTransport() http.RoundTripper {
+func (h *HTTPFetcher) transport() http.RoundTripper {
 	if h.client == nil {
 		return nil
 	}
+
 	return h.client.Transport
 }

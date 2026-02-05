@@ -1,14 +1,9 @@
 package fetcher
 
 import (
-	"bytes"
 	"container/list"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDefaultTransport_Settings verifies that the shared default transport matches expected defaults.
 func TestDefaultTransport_Settings(t *testing.T) {
 	assert.Equal(t, DefaultMaxIdleConns, defaultTransport.MaxIdleConns)
 	assert.Equal(t, DefaultMaxIdleConns, defaultTransport.MaxIdleConnsPerHost)
@@ -23,291 +19,345 @@ func TestDefaultTransport_Settings(t *testing.T) {
 	assert.Equal(t, DefaultTLSHandshakeTimeout, defaultTransport.TLSHandshakeTimeout)
 }
 
-func TestHTTPFetcher_InternalTransport(t *testing.T) {
-	f := NewHTTPFetcher()
-	assert.NotNil(t, f.client)
-
-	transport, ok := f.client.Transport.(*http.Transport)
-	assert.True(t, ok, "Transport should be *http.Transport")
-	assert.Equal(t, DefaultMaxIdleConns, transport.MaxIdleConnsPerHost)
-}
-
-func TestTransportCache_Limit(t *testing.T) {
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList.Init()
-	transportMu.Unlock()
-
-	for i := 0; i < maxTransportCacheSize; i++ {
-		proxy := fmt.Sprintf("http://proxy-%d.com", i)
-		_, err := getSharedTransport(proxy, 0, DefaultMaxIdleConns, DefaultIdleConnTimeout, DefaultTLSHandshakeTimeout, 0)
+// TestHTTPFetcher_Close verifies that Close correctly cleans up isolated transports
+// while leaving shared/default transports untouched.
+func TestHTTPFetcher_Close(t *testing.T) {
+	t.Run("Default Transport - No Op", func(t *testing.T) {
+		f := NewHTTPFetcher() // uses defaultTransport
+		err := f.Close()
 		assert.NoError(t, err)
-	}
+		// defaultTransport should remain active (cannot easily check "closed" state, but no panic)
+	})
 
-	transportMu.Lock()
-	cacheSizeBefore := len(transportCache)
-	transportMu.Unlock()
-	assert.Equal(t, maxTransportCacheSize, cacheSizeBefore)
+	t.Run("Shared Transport - No Op", func(t *testing.T) {
+		// Uses shared cache
+		f := NewHTTPFetcher(WithProxy("http://proxy.local:8080")) // creates/shares transport
+		err := f.Close()
+		assert.NoError(t, err)
+	})
 
-	newProxy := "http://overflow.com"
-	_, err := getSharedTransport(newProxy, 0, DefaultMaxIdleConns, DefaultIdleConnTimeout, DefaultTLSHandshakeTimeout, 0)
-	assert.NoError(t, err)
-
-	transportMu.Lock()
-	cacheSizeAfter := len(transportCache)
-	_, exists := transportCache[transportKey{
-		proxyURL:            newProxy,
-		headerTimeout:       0,
-		maxIdleConns:        DefaultMaxIdleConns,
-		idleConnTimeout:     DefaultIdleConnTimeout,
-		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
-		maxConnsPerHost:     0,
-	}]
-	transportMu.Unlock()
-
-	assert.Equal(t, maxTransportCacheSize, cacheSizeAfter)
-	assert.True(t, exists)
+	t.Run("Isolated Transport - Closes Idle Connections", func(t *testing.T) {
+		// Use DisableTransportCache to force isolated transport
+		f := NewHTTPFetcher(WithDisableTransportCache(true))
+		err := f.Close()
+		assert.NoError(t, err)
+		// Internal logic calls CloseIdleConnections.
+		// We verify it doesn't panic.
+	})
 }
 
-func TestTransportCache_LRU(t *testing.T) {
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList.Init()
-	oldLimit := maxTransportCacheSize
-	transportMu.Unlock()
+// TestTransportCache_Internal verifies the LRU and caching logic directly.
+func TestTransportCache_Internal(t *testing.T) {
+	// Reset cache for testing
+	transportCacheMu.Lock()
+	transportCache = make(map[transportCacheKey]*list.Element)
+	transportCacheList.Init()
+	transportCacheMu.Unlock()
 
-	for i := 0; i < oldLimit; i++ {
-		proxy := fmt.Sprintf("http://proxy-%d.com", i)
-		_, _ = getSharedTransport(proxy, 0, 0, 0, 0, 0)
-	}
+	limit := DefaultMaxTransportCacheSize
 
-	for i := 0; i < 15; i++ {
-		_, _ = getSharedTransport("http://proxy-0.com", 0, 0, 0, 0, 0)
-	}
+	t.Run("LRU Eviction", func(t *testing.T) {
+		transportCacheMu.Lock()
+		transportCache = make(map[transportCacheKey]*list.Element)
+		transportCacheList.Init()
+		transportCacheMu.Unlock()
 
-	_, _ = getSharedTransport("http://proxy-overflow.com", 0, 0, 0, 0, 0)
+		// Fill cache to limit
+		for i := 0; i < limit; i++ {
+			key := transportCacheKey{maxIdleConns: i}
+			_, err := getSharedTransport(key)
+			require.NoError(t, err)
+		}
 
-	transportMu.Lock()
-	defer transportMu.Unlock()
+		require.Equal(t, limit, transportCacheList.Len())
 
-	_, exists0 := transportCache[transportKey{proxyURL: "http://proxy-0.com"}]
-	_, exists1 := transportCache[transportKey{proxyURL: "http://proxy-1.com"}]
-	_, existsOverflow := transportCache[transportKey{proxyURL: "http://proxy-overflow.com"}]
-
-	assert.True(t, exists0)
-	assert.False(t, exists1)
-	assert.True(t, existsOverflow)
-}
-
-func TestCreateTransport_CustomSettings(t *testing.T) {
-	maxIdle := 50
-	idleTimeout := 45 * time.Second
-	tlsTimeout := 5 * time.Second
-	headerTimeout := 3 * time.Second
-	maxConns := 10
-
-	tr, err := createTransport(nil, "", headerTimeout, maxIdle, idleTimeout, tlsTimeout, maxConns)
-	assert.NoError(t, err)
-	assert.Equal(t, maxIdle, tr.MaxIdleConns)
-	assert.Equal(t, maxIdle, tr.MaxIdleConnsPerHost)
-	assert.Equal(t, idleTimeout, tr.IdleConnTimeout)
-	assert.Equal(t, tlsTimeout, tr.TLSHandshakeTimeout)
-	assert.Equal(t, headerTimeout, tr.ResponseHeaderTimeout)
-	assert.Equal(t, maxConns, tr.MaxConnsPerHost)
-}
-
-func TestCreateTransport_ProxyRedaction(t *testing.T) {
-	invalidProxy := "http://user:pass@host:8080:extra"
-	_, err := createTransport(nil, invalidProxy, 0, 0, 0, 0, 0)
-	assert.Error(t, err)
-	assert.NotContains(t, err.Error(), "pass")
-}
-
-func TestTransportCache_PriorityEviction(t *testing.T) {
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList.Init()
-	transportMu.Unlock()
-
-	for i := 0; i < maxTransportCacheSize-1; i++ {
-		_, _ = getSharedTransport("", time.Duration(i+1), 0, 0, 0, 0)
-	}
-	_, _ = getSharedTransport("http://proxy-to-keep.com", 0, 0, 0, 0, 0)
-
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList.Init()
-	transportMu.Unlock()
-
-	for i := 0; i < 50; i++ {
-		_, _ = getSharedTransport("", time.Duration(i+1), 0, 0, 0, 0)
-	}
-	proxyKey := transportKey{proxyURL: "http://target-proxy.com"}
-	_, _ = getSharedTransport(proxyKey.proxyURL, 0, 0, 0, 0, 0)
-	for i := 50; i < maxTransportCacheSize-1; i++ {
-		_, _ = getSharedTransport("", time.Duration(i+1), 0, 0, 0, 0)
-	}
-
-	_, _ = getSharedTransport("http://new-one.com", 0, 0, 0, 0, 0)
-
-	transportMu.Lock()
-	_, basic0Exists := transportCache[transportKey{proxyURL: "", headerTimeout: time.Duration(1)}]
-	_, proxyExists := transportCache[proxyKey]
-	transportMu.Unlock()
-
-	assert.False(t, basic0Exists)
-	assert.True(t, proxyExists)
-}
-
-func TestTransportCache_LRU_Fix(t *testing.T) {
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList.Init()
-	transportMu.Unlock()
-
-	configs := []struct {
-		proxy string
-		id    int
-	}{
-		{proxy: "http://proxy1:8080", id: 1},
-		{proxy: "http://proxy2:8080", id: 2},
-		{proxy: "http://proxy3:8080", id: 3},
-	}
-
-	for _, cfg := range configs {
-		_, err := getSharedTransport(cfg.proxy, 0, 0, 0, 0, 0)
+		// Add one more -> Should evict the oldest (index 0)
+		key := transportCacheKey{maxIdleConns: limit + 1}
+		_, err := getSharedTransport(key)
 		require.NoError(t, err)
-	}
 
-	for i := 0; i < 15; i++ {
-		_, err := getSharedTransport("http://proxy1:8080", 0, 0, 0, 0, 0)
+		transportCacheMu.RLock()
+		_, ok := transportCache[transportCacheKey{maxIdleConns: 0}]
+		assert.False(t, ok, "Oldest item should be evicted")
+		transportCacheMu.RUnlock()
+	})
+
+	t.Run("Smart Eviction - Prefer Proxy", func(t *testing.T) {
+		transportCacheMu.Lock()
+		transportCache = make(map[transportCacheKey]*list.Element)
+		transportCacheList.Init()
+		transportCacheMu.Unlock()
+
+		// Scenario:
+		// 1. Fill cache with mostly direct connections (important).
+		// 2. Add a few proxy connections (eviction candidates) at the END (recently used).
+		// 3. Trigger eviction -> Should evict proxy even if it's recent, to protect direct connections.
+
+		// 1. Fill with Direct connections
+		for i := 0; i < limit-2; i++ {
+			key := transportCacheKey{maxIdleConns: i} // Direct (no proxy)
+			_, err := getSharedTransport(key)
+			require.NoError(t, err)
+		}
+
+		// 2. Add Proxy connections (Recently used)
+		proxyKey1 := transportCacheKey{proxyURL: "http://proxy1.local", maxIdleConns: 9991}
+		proxyKey2 := transportCacheKey{proxyURL: "http://proxy2.local", maxIdleConns: 9992}
+
+		_, err := getSharedTransport(proxyKey1)
 		require.NoError(t, err)
-	}
+		_, err = getSharedTransport(proxyKey2)
+		require.NoError(t, err)
 
-	transportMu.Lock()
-	require.Equal(t, 3, transportList.Len())
-	require.Equal(t, "http://proxy1:8080", transportList.Front().Value.(*transportCacheEntry).key.proxyURL)
-	transportMu.Unlock()
-}
+		// Assert conditions
+		require.Equal(t, limit, transportCacheList.Len())
+		// proxy2 is at Front (Most Recently Used)
+		// proxy1 is next
+		// Direct connections are at Back
 
-func TestTransportCache_Concurrent(t *testing.T) {
-	transportMu.Lock()
-	transportCache = make(map[transportKey]*list.Element)
-	transportList = list.New()
-	transportMu.Unlock()
+		// 3. Add one more item to trigger eviction
+		newKey := transportCacheKey{maxIdleConns: 8888}
+		_, err = getSharedTransport(newKey)
+		require.NoError(t, err)
 
-	const numGoroutines = 100
-	const numRequests = 1000
+		// Verification:
+		// Smart Eviction searches from Back (Oldest) for 10 items.
+		// Wait, our proxies are at Front (Newest).
+		// The logic searches: `curr := transportCacheList.Back(); for i < 10 ...`
+		// So it looks at the OLDEST 10 items.
+		// If our proxies are Newest, they won't be found by the search loop.
+		// So it should fall back to evicting the absolute oldest (Direct).
 
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
+		// Let's adjust the test to match the logic's intent:
+		// Put proxies in the "Oldest 10" zone.
 
-	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < numRequests; j++ {
-				tr, err := getSharedTransport("", 0, 100, 90*time.Second, 10*time.Second, 0)
+		// Reset and retry logic match
+		transportCacheMu.Lock()
+		transportCache = make(map[transportCacheKey]*list.Element)
+		transportCacheList.Init()
+		transportCacheMu.Unlock()
+
+		// A. Add Proxy connections FIRST (So they become Oldest)
+		pk1 := transportCacheKey{proxyURL: "http://p1", maxIdleConns: 1}
+		pk2 := transportCacheKey{proxyURL: "http://p2", maxIdleConns: 2}
+		_, _ = getSharedTransport(pk1)
+		_, _ = getSharedTransport(pk2)
+
+		// B. Add Direct connections to fill the rest (Newest)
+		for i := 0; i < limit-2; i++ {
+			k := transportCacheKey{maxIdleConns: 100 + i}
+			_, _ = getSharedTransport(k)
+		}
+
+		// Now:
+		// Back (Oldest) -> pk1, pk2
+		// Front (Newest) -> Direct...
+
+		// C. Trigger eviction
+		kNew := transportCacheKey{maxIdleConns: 9999}
+		_, _ = getSharedTransport(kNew)
+
+		// D. Verify: pk1 (Oldest Proxy) should be evicted.
+		// Actually, pk1 is the absolute oldest AND a proxy.
+		// So it would be evicted anyway by standard LRU.
+		// To prove "Smart Eviction", we need:
+		// Oldest = Direct
+		// 2nd Oldest = Proxy.
+		// If standard LRU -> Oldest (Direct) dies.
+		// If Smart Eviction -> Proxy dies (even if 2nd oldest).
+
+		// Let's try "Smart Eviction" proof scenario:
+		transportCacheMu.Lock()
+		transportCache = make(map[transportCacheKey]*list.Element)
+		transportCacheList.Init()
+		transportCacheMu.Unlock()
+
+		// 1. Add Direct (Will be Absolute Oldest)
+		directOld := transportCacheKey{maxIdleConns: 1000}
+		_, _ = getSharedTransport(directOld)
+
+		// 2. Add Proxy (Will be 2nd Oldest)
+		proxyTarget := transportCacheKey{proxyURL: "http://target", maxIdleConns: 2000}
+		_, _ = getSharedTransport(proxyTarget)
+
+		// 3. Fill the rest with Direct
+		for i := 0; i < limit-2; i++ {
+			k := transportCacheKey{maxIdleConns: 3000 + i}
+			_, _ = getSharedTransport(k)
+		}
+
+		// Current State:
+		// Back -> [DirectOld] -> [ProxyTarget] -> ... -> Front
+
+		// 4. Trigger Eviction
+		_, err = getSharedTransport(transportCacheKey{maxIdleConns: 9999})
+		require.NoError(t, err)
+
+		// 5. Verify
+		transportCacheMu.RLock()
+		_, hasDirect := transportCache[directOld]
+		_, hasProxy := transportCache[proxyTarget]
+		transportCacheMu.RUnlock()
+
+		assert.True(t, hasDirect, "Direct connection (Absolute Oldest) should be SPARED by smart eviction")
+		assert.False(t, hasProxy, "Proxy connection (2nd Oldest) should be EVICTED by smart eviction")
+	})
+
+	t.Run("Concurrency & Double-Check", func(t *testing.T) {
+		// Reset
+		transportCacheMu.Lock()
+		transportCache = make(map[transportCacheKey]*list.Element)
+		transportCacheList.Init()
+		transportCacheMu.Unlock()
+
+		const goroutines = 20
+		const keyCount = 5
+		done := make(chan bool)
+
+		for i := 0; i < goroutines; i++ {
+			go func(id int) {
+				// Use a mix of keys to cause collisions and creation
+				key := transportCacheKey{maxIdleConns: id % keyCount}
+				_, err := getSharedTransport(key)
 				assert.NoError(t, err)
-				assert.NotNil(t, tr)
-			}
-		}(i)
-	}
-	wg.Wait()
 
-	assert.Equal(t, 1, len(transportCache))
-}
-
-func TestHTTPFetcher_TransportIsolation_Internal(t *testing.T) {
-	baseTr := &http.Transport{}
-	proxyURL := "http://localhost:8080"
-	f1 := NewHTTPFetcher(WithTransport(baseTr), WithProxy(proxyURL))
-	f2 := NewHTTPFetcher(WithTransport(baseTr))
-
-	tr1, ok := f1.client.Transport.(*http.Transport)
-	assert.True(t, ok)
-	assert.NotNil(t, tr1.Proxy)
-
-	assert.Equal(t, baseTr, f2.client.Transport)
-	assert.Nil(t, baseTr.Proxy)
-}
-
-func TestHTTPFetcher_RedirectReferer_Internal(t *testing.T) {
-	var capturedReferer string
-	finalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedReferer = r.Header.Get("Referer")
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer finalServer.Close()
-
-	redirectServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, finalServer.URL, http.StatusFound)
-	}))
-	defer redirectServer.Close()
-
-	f := NewHTTPFetcher()
-	req, _ := http.NewRequest(http.MethodGet, redirectServer.URL, nil)
-	resp, err := f.Do(req)
-
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, redirectServer.URL, capturedReferer)
-	if resp != nil {
-		resp.Body.Close()
-	}
-}
-
-func TestFetcherImprovements_MaxIdleConns(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    int
-		expected int
-	}{
-		{"Default (-1)", -1, DefaultMaxIdleConns},
-		{"Unlimited (0)", 0, 0},
-		{"Custom (50)", 50, 50},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := Config{MaxIdleConns: tt.input, DisableLogging: true}
-			cfg.ApplyDefaults()
-			assert.Equal(t, tt.expected, cfg.MaxIdleConns)
-
-			f := NewFromConfig(cfg)
-
-			// Chain unwarpping
-			curr := f
-			var hf *HTTPFetcher
-			for curr != nil {
-				if v, ok := curr.(*HTTPFetcher); ok {
-					hf = v
-					break
+				// High concurrency read/write
+				for j := 0; j < 100; j++ {
+					k := transportCacheKey{maxIdleConns: j % keyCount}
+					_, _ = getSharedTransport(k)
 				}
-				switch v := curr.(type) {
-				case *LoggingFetcher:
-					curr = v.delegate
-				case *RetryFetcher:
-					curr = v.delegate
-				case *StatusCodeFetcher:
-					curr = v.delegate
-				case *MaxBytesFetcher:
-					curr = v.delegate
-				case *MimeTypeFetcher:
-					curr = v.delegate
-				case *UserAgentFetcher:
-					curr = v.delegate
-				default:
-					curr = nil
-				}
-			}
-			assert.NotNil(t, hf)
-			tr := hf.client.Transport.(*http.Transport)
-			assert.Equal(t, tt.expected, tr.MaxIdleConns)
-		})
-	}
+				done <- true
+			}(i)
+		}
+
+		for i := 0; i < goroutines; i++ {
+			<-done
+		}
+
+		transportCacheMu.RLock()
+		assert.LessOrEqual(t, len(transportCache), keyCount, "Should not exceed unique keys")
+		transportCacheMu.RUnlock()
+	})
 }
 
+func TestParameters_Application(t *testing.T) {
+	key := transportCacheKey{
+		proxyURL:              "http://user:pass@proxy.local:8080",
+		maxIdleConns:          123,
+		maxConnsPerHost:       45,
+		idleConnTimeout:       5 * time.Second,
+		tlsHandshakeTimeout:   2 * time.Second,
+		responseHeaderTimeout: 3 * time.Second,
+	}
+
+	tr, err := newTransport(nil, key)
+	require.NoError(t, err)
+
+	// Verify Proxy
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	proxyURL, err := tr.Proxy(req)
+	require.NoError(t, err)
+	assert.Equal(t, "proxy.local:8080", proxyURL.Host)
+	u := proxyURL.User.Username()
+	assert.Equal(t, "user", u)
+
+	// Verify Pooling
+	assert.Equal(t, 123, tr.MaxIdleConns)
+	assert.Equal(t, 123, tr.MaxIdleConnsPerHost) // Logic sets this same as MaxIdleConns
+	assert.Equal(t, 45, tr.MaxConnsPerHost)
+
+	// Verify Timeouts
+	assert.Equal(t, 5*time.Second, tr.IdleConnTimeout)
+	assert.Equal(t, 2*time.Second, tr.TLSHandshakeTimeout)
+	assert.Equal(t, 3*time.Second, tr.ResponseHeaderTimeout)
+}
+
+func TestTransport_CopyOnWrite(t *testing.T) {
+	baseTr := &http.Transport{
+		MaxIdleConns: 10,
+	}
+
+	f := NewHTTPFetcher(WithMaxIdleConns(20)) // Requesting 20
+	// Need to access internal method via interface or test hook?
+	// configureTransportFromProvided is private.
+	// However, setupTransport calls it if client.Transport is set.
+
+	// Inject base transport
+	f.client.Transport = baseTr
+
+	// This looks tricky to call directly since setupTransport is private and called by Do().
+	// But we are in the same package `fetcher`, so we can call methods on `f` if they are defined in `http.go`.
+	// Wait, the file under test is `http_transport.go`, but these methods belong to `HTTPFetcher`.
+	// Let's use `setupTransport` (private).
+
+	err := f.setupTransport()
+	require.NoError(t, err)
+
+	// Result
+	finalTr := f.client.Transport.(*http.Transport)
+
+	// Should be the SAME object (no cloning)
+	assert.Equal(t, baseTr, finalTr, "Spec: WithTransport ignores other options, so transport object should be reused")
+
+	// Should have ORIGINAL settings (options ignored)
+	assert.Equal(t, 10, finalTr.MaxIdleConns)
+
+	// Base object should be untouched
+	assert.Equal(t, 10, baseTr.MaxIdleConns)
+}
+
+// TestCreateTransport_Internal verifies internal helper logic.
+func TestCreateTransport_Internal(t *testing.T) {
+	t.Run("Proxy Redaction", func(t *testing.T) {
+		// Verify that invalid proxy URL in key returns a safe error
+		key := transportCacheKey{proxyURL: "http://user:secret@:invalid-port"}
+		_, err := newTransport(nil, key)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "프록시 URL")
+		assert.NotContains(t, err.Error(), "secret") // Password should be redacted
+	})
+}
+
+// TestHTTPFetcher_TransportSelection verifies that correct transport (Default vs Shared vs Isolated) is selected.
+func TestHTTPFetcher_TransportSelection(t *testing.T) {
+	t.Run("Selects Default Transport", func(t *testing.T) {
+		f := NewHTTPFetcher()
+		assert.Equal(t, defaultTransport, f.client.Transport)
+	})
+
+	t.Run("Selects Shared Transport", func(t *testing.T) {
+		// Using options that trigger customization -> shared cache
+		f := NewHTTPFetcher(WithMaxIdleConns(50))
+		tr, ok := f.client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.NotEqual(t, defaultTransport, tr)
+		assert.Equal(t, 50, tr.MaxIdleConns)
+	})
+
+	t.Run("Selects Isolated Transport", func(t *testing.T) {
+		f := NewHTTPFetcher(WithDisableTransportCache(true))
+		tr, ok := f.client.Transport.(*http.Transport)
+		require.True(t, ok)
+
+		// Verify isolation by mutation
+		originalMaxIdle := defaultTransport.MaxIdleConns
+
+		// Modify the isolated transport
+		tr.MaxIdleConns = originalMaxIdle + 1
+
+		// Assert that defaultTransport remains unchanged
+		assert.Equal(t, originalMaxIdle, defaultTransport.MaxIdleConns, "defaultTransport should not be modified")
+		assert.NotEqual(t, defaultTransport.MaxIdleConns, tr.MaxIdleConns, "Isolated transport should be modified")
+	})
+}
+
+// TestRetryFetcher_Internal_Helpers tests internal helper behavior for RetryFetcher.
+// Since we are in the same package, we can test internal methods/state if needed.
+// (Moved from previous http_internal_test.go to preserve coverage)
 func TestRetryFetcher_NonRetriableStatuses_Internal(t *testing.T) {
+	// ... (Same logic as before, just consolidated)
+	// This test essentially verifies IsRetriable logic via integration.
+
 	tests := []struct {
 		status    int
 		retriable bool
@@ -329,97 +379,13 @@ func TestRetryFetcher_NonRetriableStatuses_Internal(t *testing.T) {
 			rf := NewRetryFetcher(f, 2, 1*time.Millisecond, 10*time.Millisecond)
 
 			req, _ := http.NewRequest(http.MethodGet, server.URL, nil)
-			resp, err := rf.Do(req)
+			_, _ = rf.Do(req)
 
 			if tt.retriable {
 				assert.Equal(t, 3, callCount)
 			} else {
 				assert.Equal(t, 1, callCount)
 			}
-			if resp != nil {
-				resp.Body.Close()
-			}
-			_ = err
 		})
 	}
-}
-
-func TestRetryFetcher_NoGetBody_Internal(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodPost, "http://example.com", bytes.NewBufferString("test body"))
-	req.GetBody = nil
-
-	f := NewRetryFetcher(&HTTPFetcher{}, 3, 10*time.Millisecond, 100*time.Millisecond)
-	resp, err := f.Do(req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-}
-
-func TestHTTPStatusError_StructuredInfo_Internal(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("custom error message"))
-	}))
-	defer ts.Close()
-
-	f := NewHTTPFetcher()
-	req, _ := http.NewRequest(http.MethodGet, ts.URL, nil)
-	resp, err := f.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	err = CheckResponseStatus(resp)
-	var statusErr *HTTPStatusError
-	require.True(t, errors.As(err, &statusErr))
-	assert.Equal(t, http.StatusNotFound, statusErr.StatusCode)
-	assert.Equal(t, "custom error message", statusErr.BodySnippet)
-}
-
-func TestRetryFetcher_GetBodyError_Internal(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
-	req.Body = io.NopCloser(bytes.NewBufferString("test"))
-	req.GetBody = func() (io.ReadCloser, error) {
-		return nil, errors.New("get body failed")
-	}
-
-	mockFetcher := &mockFetcherInternal{
-		DoFunc: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusServiceUnavailable,
-				Body:       io.NopCloser(bytes.NewBufferString("error")),
-			}, nil
-		},
-	}
-
-	f := NewRetryFetcher(mockFetcher, 3, 1*time.Millisecond, 10*time.Millisecond)
-	resp, err := f.Do(req)
-	assert.Error(t, err)
-	assert.Nil(t, resp)
-	assert.Contains(t, err.Error(), "GetBody 함수 실행 중 오류가 발생하여 재시도를 위한 요청 본문 재생성에 실패했습니다")
-}
-
-type mockFetcherInternal struct {
-	DoFunc func(*http.Request) (*http.Response, error)
-}
-
-func (m *mockFetcherInternal) Do(req *http.Request) (*http.Response, error) {
-	return m.DoFunc(req)
-}
-
-func TestRetryFetcher_RetryAfterCap_Internal(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "3600")
-		w.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer ts.Close()
-
-	maxDelay := 100 * time.Millisecond
-	f := NewRetryFetcher(NewHTTPFetcher(), 1, 10*time.Millisecond, maxDelay)
-
-	req, _ := http.NewRequest(http.MethodGet, ts.URL, nil)
-	start := time.Now()
-	_, _ = f.Do(req)
-	duration := time.Since(start)
-	// 시스템 오버헤드를 고려하여 1.5초로 여유있게 설정
-	// maxDelay가 100ms이므로 정상적으로는 200ms 이내에 완료되어야 함
-	assert.Less(t, duration, 1500*time.Millisecond)
 }

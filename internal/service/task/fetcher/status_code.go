@@ -18,6 +18,9 @@ type StatusCodeFetcher struct {
 	allowedStatusCodes []int
 }
 
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Fetcher = (*StatusCodeFetcher)(nil)
+
 // NewStatusCodeFetcher 200 OK만 허용하는 StatusCodeFetcher 인스턴스를 생성합니다.
 func NewStatusCodeFetcher(delegate Fetcher) *StatusCodeFetcher {
 	return &StatusCodeFetcher{
@@ -70,4 +73,8 @@ func (f *StatusCodeFetcher) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+func (f *StatusCodeFetcher) Close() error {
+	return f.delegate.Close()
 }

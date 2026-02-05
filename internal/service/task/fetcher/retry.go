@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	// minRetries 재시도 횟수의 최소값입니다.
+	// minRetries 설정 가능한 최소 재시도 횟수입니다. (0: 재시도 안 함)
 	minRetries = 0
 
-	// maxAllowedRetries 재시도 횟수의 최대값입니다.
+	// maxAllowedRetries 설정 가능한 최대 재시도 횟수입니다.
 	maxAllowedRetries = 10
 
-	// defaultMaxRetryDelay 재시도 대기 시간의 최대값에 대한 기본값입니다 (30초).
+	// defaultMaxRetryDelay 사용자가 재시도 대기 시간의 최대값을 지정하지 않았을 때 사용되는 기본값(30초)입니다.
 	defaultMaxRetryDelay = 30 * time.Second
 )
 
@@ -38,43 +38,33 @@ const (
 type RetryFetcher struct {
 	delegate Fetcher
 
-	// 최대 재시도 횟수 (0이면 재시도 없음)
+	// maxRetries 최대 재시도 횟수입니다.
+	//
+	// 이 값은 normalizeMaxRetries 함수를 통해 정규화되며,
+	// minRetries(0) ~ maxAllowedRetries(10) 사이의 값만 저장됩니다.
 	maxRetries int
 
-	// 재시도 대기 시간의 최소값 (지수 백오프의 시작점)
+	// minRetryDelay 재시도 대기 시간의 최소값입니다. (지수 백오프의 시작점)
+	//
+	// 이 값은 normalizeRetryDelays 함수를 통해 정규화되며, 항상 1초 이상의 값으로 보정됩니다.
 	minRetryDelay time.Duration
 
-	// 재시도 대기 시간의 최대값 (지수 백오프 증가 시 상한선)
+	// maxRetryDelay 재시도 대기 시간의 최대값입니다. (지수 백오프 증가 시 상한선)
+	//
+	// 이 값은 normalizeRetryDelays 함수를 통해 정규화되며, 항상 minRetryDelay 이상의 값으로 보정됩니다.
 	maxRetryDelay time.Duration
 }
 
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Fetcher = (*RetryFetcher)(nil)
+
 // NewRetryFetcher 새로운 RetryFetcher 인스턴스를 생성합니다.
 func NewRetryFetcher(delegate Fetcher, maxRetries int, minRetryDelay time.Duration, maxRetryDelay time.Duration) *RetryFetcher {
-	// 최대 재시도 횟수 검증
-	// 음수는 의미가 없으므로 최소 재시도 횟수(0)로, 최대 재시도 횟수(10)를 초과하면 과도한 재시도로 인한 지연을 방지하기 위해 10으로 제한
-	if maxRetries < minRetries {
-		maxRetries = minRetries
-	}
-	if maxRetries > maxAllowedRetries {
-		maxRetries = maxAllowedRetries
-	}
+	// 최대 재시도 횟수 정규화
+	maxRetries = normalizeMaxRetries(maxRetries)
 
-	// 재시도 대기 시간의 최소값 검증
-	if minRetryDelay < time.Second {
-		minRetryDelay = 1 * time.Second // 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 설정
-	}
-
-	// 재시도 대기 시간의 최대값 검증
-	// maxRetryDelay는 지수 백오프(exponential backoff) 시 상한선 역할을 하므로 minRetryDelay보다 작을 수 없음!
-	if maxRetryDelay < minRetryDelay {
-		if maxRetryDelay == 0 {
-			// 값을 설정하지 않은 경우 기본값(defaultMaxRetryDelay) 적용
-			maxRetryDelay = defaultMaxRetryDelay
-		} else {
-			// 명시적으로 설정했지만 minRetryDelay보다 작은 경우, minRetryDelay와 동일하게 설정
-			maxRetryDelay = minRetryDelay
-		}
-	}
+	// 재시도 대기 시간 정규화
+	minRetryDelay, maxRetryDelay = normalizeRetryDelays(minRetryDelay, maxRetryDelay)
 
 	return &RetryFetcher{
 		delegate:      delegate,
@@ -94,7 +84,7 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, minRetryDelay time.Durati
 //     - Thundering Herd 문제 방지: 여러 클라이언트가 동시에 재시도하는 것을 분산
 //  3. Retry-After 헤더 우선 처리:
 //     - 서버가 Retry-After 헤더를 제공하면 해당 시간을 우선 사용
-//     - 단, 재시도 대기 시간의 최대값(maxRetryDelay)을 초과하지 않도록 제한
+//     - 단, 재시도 대기 시간의 최대값(maxRetryDelay)을 초과하면 재시도하지 않고 에러 반환
 //  4. 멱등성 검증:
 //     - GET, HEAD, PUT, DELETE, OPTIONS, TRACE: 재시도 허용
 //     - POST, PATCH: 재시도 제외 (데이터 중복 생성/수정 위험)
@@ -108,8 +98,8 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, minRetryDelay time.Durati
 //   - 408 Request Timeout
 //
 // 재시도 제외:
-//   - 4xx 클라이언트 에러 (400, 401, 403, 404 등)
 //   - 컨텍스트 취소 (context.Canceled)
+//   - 4xx 클라이언트 에러 (400, 401, 403, 404 등)
 //   - 비즈니스 로직 에러 (apperrors.ExecutionFailed, InvalidInput, Forbidden, NotFound)
 //
 // 매개변수:
@@ -124,24 +114,26 @@ func NewRetryFetcher(delegate Fetcher, maxRetries int, minRetryDelay time.Durati
 //   - 비멱등 메서드(POST, PATCH)는 자동으로 재시도가 제외됩니다.
 //   - 반환된 응답 객체의 Body는 호출자가 반드시 닫아야 합니다.
 func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
-	// [사전 검증 1] 요청 객체의 Body 재구성 가능 여부 확인
-	// 재시도 시 요청 객체의 Body를 다시 읽어야 하므로, GetBody가 없으면 데이터 유실 위험!
+	effectiveMaxRetries := f.maxRetries
+
+	// [사전 검증 1] 멱등성 확인
+	// 비멱등 메서드(POST, PATCH)는 재시도 시 데이터 중복 생성/수정 위험이 있으므로 재시도 비활성화!!
+	isIdempotent := isIdempotentMethod(req.Method)
+	if !isIdempotent {
+		effectiveMaxRetries = 0
+	}
+
+	// [사전 검증 2] 요청 객체의 Body 재구성 가능 여부 확인
+	// 재시도 시 요청 객체의 Body를 다시 읽어야 하므로, GetBody가 없으면 데이터 유실 위험이 있습니다.
+	// 따라서 재시도 기능만 비활성화하고 요청 처리는 계속 진행합니다.
 	if req.Body != nil && req.GetBody == nil && f.maxRetries > 0 {
 		applog.WithComponent(component).WithContext(req.Context()).WithFields(applog.Fields{
-			"url":            req.URL.Redacted(),
+			"url":            redactURL(req.URL),
 			"method":         req.Method,
 			"max_retries":    f.maxRetries,
 			"content_length": req.ContentLength,
-		}).Error(ErrMissingGetBody.Error())
+		}).Warn("재시도 비활성화: 요청 본문 재생성 불가 (GetBody nil)")
 
-		return nil, ErrMissingGetBody
-	}
-
-	// [사전 검증 2] 멱등성 확인
-	// 비멱등 메서드(POST, PATCH)는 재시도 시 데이터 중복 생성/수정 위험이 있으므로 재시도 비활성화!
-	isIdempotent := isIdempotentMethod(req.Method)
-	effectiveMaxRetries := f.maxRetries
-	if !isIdempotent {
 		effectiveMaxRetries = 0
 	}
 
@@ -163,15 +155,19 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 
 			// [단계 2: 지터(Jitter) 적용]
 			// 모든 클라이언트가 동시에 재시도하는 것을 방지하기 위해 무작위성을 추가합니다.
-			// 0부터 계산된 delay 사이의 값을 무작위로 선택합니다.
+			// 0 ~ 계산된 delay 사이의 값을 무작위로 선택합니다.
 			if delay > 0 {
 				delay = time.Duration(rand.Int64N(int64(delay) + 1))
 			}
 
 			// [단계 3: Retry-After 헤더 우선 적용]
-			// 서버가 명시적으로 "언제 다시 요청하라"고 지정한 경우(Retry-After), 그 값을 최우선으로 적용합니다.
-			// 단, 설정된 최대 재시도 대기 시간(maxRetryDelay)을 초과하지 않는 범위 내에서 적용합니다.
+			// 서버가 응답 헤더(Retry-After)를 통해 재시도 가능한 시점을 명시한 경우,
+			// 계산된 지수 백오프 시간 대신 해당 값을 우선적으로 사용하여 서버의 요청 제어 정책을 준수합니다.
+			// 단, 요구된 대기 시간이 설정된 최대 재시도 대기 시간(maxRetryDelay)을 초과하는 경우는,
+			// 과도한 지연을 방지하기 위해 재시도를 포기하고 즉시 에러를 반환합니다.
 			var retryAfter string
+			var explicitDelayFound bool // 서버가 명시한 재시도 대기 시간(Retry-After) 확보 여부
+
 			if lastResp != nil {
 				retryAfter = lastResp.Header.Get("Retry-After")
 			} else if lastErr != nil {
@@ -184,28 +180,39 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 
 			if retryAfter != "" {
 				if retryAfterDelay, ok := parseRetryAfter(retryAfter); ok {
-					// Retry-After 값도 최대 재시도 대기 시간(maxRetryDelay)을 초과하지 않도록 제한
+					// Retry-After 값이 설정된 최대 재시도 대기 시간(maxRetryDelay)을 초과하는 경우입니다.
+					// 이를 공격적인 재시도로 간주할 수 있으므로, 요청을 중단하고 에러를 반환합니다.
 					if retryAfterDelay > f.maxRetryDelay {
-						retryAfterDelay = f.maxRetryDelay
+						if lastResp != nil && lastResp.Body != nil {
+							// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
+							drainAndCloseBody(lastResp.Body)
+						}
+
+						return nil, newErrRetryAfterExceeded(retryAfterDelay.String(), f.maxRetryDelay.String())
 					}
 
-					// 이미 계산된 대기 시간(지수 백오프 + 지터)과 Retry-After 값 중 더 큰 시간을 선택하여 대기합니다.
-					if retryAfterDelay > delay {
-						delay = retryAfterDelay
-					}
+					// 서버가 명시한 Retry-After 값이 유효하고 정책 범위 내에 있으므로,
+					// 앞서 계산한 지수 백오프 및 지터 값을 무시하고 이 값을 최종 대기 시간으로 적용합니다. (0초 가능)
+					delay = retryAfterDelay
+
+					// 서버가 명시한 재시도 대기 시간(Retry-After)을 확보했음을 기록 (최소 재시도 대기 시간 보장 로직 건너뛰기 위함)
+					explicitDelayFound = true
 				}
 			}
 
 			// [단계 4: 최소 재시도 대기 시간 보장]
-			// 계산된 대기 시간이 너무 짧으면(1ms 미만), 설정된 최소 재시도 대기 시간을 사용합니다.
-			if delay < time.Millisecond {
-				delay = f.minRetryDelay
+			// 서버가 명시한 재시도 대기 시간(Retry-After)이 없는 경우, 계산된 대기 시간(지터 포함)이 너무 짧으면 서버에 부담이 될 수 있습니다.
+			// 따라서 최소한의 대기 시간(1ms 미만인 경우 minRetryDelay로 보정)을 보장하여 너무 빠른 재시도를 방지합니다.
+			if !explicitDelayFound {
+				if delay < time.Millisecond {
+					delay = f.minRetryDelay
+				}
 			}
 
 			// [단계 5: 로깅]
 			// 재시도 대기 시작을 알리는 경고 로그를 출력합니다.
 			fields := applog.Fields{
-				"url":               req.URL.Redacted(),
+				"url":               redactURL(req.URL),
 				"retry":             i,
 				"max_retries":       f.maxRetries,
 				"remaining_retries": effectiveMaxRetries - i,
@@ -235,7 +242,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			applog.WithComponent(component).
 				WithContext(req.Context()).
 				WithFields(fields).
-				Warn("요청 재시도 대기: 일시적 오류 발생")
+				Warn("재시도 대기 중: 일시적 오류로 인해 요청 재시도를 준비합니다")
 
 			// [단계 6: 재시도 대기 및 취소 감지]
 			// 계산된 시간만큼 대기하되, 요청이 취소되면 즉시 중단합니다.
@@ -243,24 +250,31 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 
 			select {
 			case <-req.Context().Done():
-				timer.Stop()
+				// 타이머를 중지하고 채널을 비움 (리소스 정리)
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 
 				// 컨텍스트 취소 시 리소스 정리
 				if lastResp != nil && lastResp.Body != nil {
-					// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
-					drainAndCloseBody(lastResp.Body)
+					// 컨텍스트가 취소된 경우, 빠른 반환을 위해 drain 과정을 생략하고 즉시 닫습니다.
+					// (커넥션 재사용보다 응답성 우선)
+					lastResp.Body.Close()
 				}
 
 				return nil, req.Context().Err()
 
 			case <-timer.C:
-				// 대기 완료, 재시도 진행
+				// 대기 완료: 설정된 대기 시간이 경과하였으므로, 재시도 로직(Body 재생성 등)을 진행합니다.
 			}
 		}
 
-		// [요청 객체의 Body 복구] 재시도 시 Body를 다시 읽을 수 있도록 복구
+		// [요청 본문 재생성] 이전 시도에서 소진된 Body를 다시 읽을 수 있도록 복구
 		// GetBody를 통해 새로운 Body를 생성하고, 원본 요청 객체를 변경하지 않기 위해 복제본 사용
-		if req.GetBody != nil {
+		if i > 0 && req.GetBody != nil {
 			body, err := req.GetBody()
 			if err != nil {
 				// GetBody 실패 시 더 이상 재시도 불가 (데이터 무결성 보호)
@@ -285,7 +299,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 		// 에러 유무와 응답 객체의 상태 코드를 기반으로 재시도 수행 여부를 결정합니다.
 		//
 		// 1. 응답 객체의 상태 코드 검사 (응답이 있는 경우):
-		//    - 429 (Too Many Requests): 무조건 재시도 대상입니다.
+		//    - 429 (Too Many Requests), 408 (Request Timeout): 무조건 재시도 대상입니다.
 		//    - 5xx (Server Errors): 501, 505, 511을 제외하고 재시도 대상입니다.
 		//
 		// 2. 에러 검사 (에러가 있는 경우):
@@ -293,8 +307,16 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 		shouldRetry := false
 
 		// 응답 객체의 상태 코드 검사 (응답이 있는 경우)
+		// =========================================================================================
+		// [주의: 방어적 코드 유지]
+		// 현재 미들웨어 체인 구성상 StatusCodeFetcher가 먼저 실행되어 5xx 등의 에러 응답은
+		// 이미 error로 변환되어 전달됩니다. (Unreachable Code 가능성 있음)
+		//
+		// 하지만 추후 미들웨어 순서 변경이나 StatusCodeFetcher가 없는 환경에서의 독립적 사용을
+		// 대비하여 아래 로직을 '의도적으로 유지'합니다.
+		// =========================================================================================
 		if resp != nil {
-			if resp.StatusCode == http.StatusTooManyRequests {
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusRequestTimeout {
 				shouldRetry = true
 			} else if resp.StatusCode >= 500 {
 				// 501: Not Implemented, 505: HTTP Version Not Supported, 511: Network Authentication Required는
@@ -314,45 +336,55 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 			// [에러 처리 1: 컨텍스트 타임아웃 확인]
 			// 전체 요청 제한 시간(Deadline)이 초과된 경우, 재시도를 해도 성공할 수 없으므로 즉시 중단합니다.
 			if errors.Is(err, context.DeadlineExceeded) && req.Context().Err() != nil {
-				if resp != nil {
-					// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
-					drainAndCloseBody(resp.Body)
+				if resp != nil && resp.Body != nil {
+					// 컨텍스트 타임아웃 발생 시 빠른 반환을 위해 drain 과정을 생략하고 즉시 닫습니다.
+					// (커넥션 재사용보다 응답성 우선)
+					resp.Body.Close()
 				}
 
 				return nil, err
 			}
 
 			// [에러 처리 2: 재시도 가능성 판단]
-			// 발생한 에러가 일시적 오류(네트워크 지연, 서버 과부하 등)인지, 영구적인 문제인지 확인합니다.
+			// 발생한 에러가 일시적인 오류(네트워크 지연, 서버 과부하 등)인지, 아니면 영구적인 문제인지 확인합니다.
 			// isRetriable 함수가 true를 반환해야만 재시도를 수행합니다.
 			if !isRetriable(err) {
-				if resp != nil {
-					// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
-					drainAndCloseBody(resp.Body)
+				if resp != nil && resp.Body != nil {
+					if errors.Is(err, context.Canceled) {
+						// 컨텍스트가 취소된 경우, 빠른 반환을 위해 drain 과정을 생략하고 즉시 닫습니다.
+						// (커넥션 재사용보다 응답성 우선)
+						resp.Body.Close()
+					} else {
+						// 그 외 에러는 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
+						drainAndCloseBody(resp.Body)
+					}
 				}
 
 				return nil, err
 			}
 		} else if !shouldRetry {
-			// [HTTP 요청 성공]
-			// 에러가 없고, 재시도 대상 상태 코드(예: 429, 5xx)도 아니므로 정상 응답을 반환합니다.
+			// [재시도 루프 종료]
+			// 현재 응답이 재시도 대상이 아니라고 판단되었으므로 결과를 반환하고 종료합니다.
+			//
+			// 반환되는 경우:
+			// 1. 요청이 성공적으로 처리된 경우 (예: 2xx Success)
+			// 2. 재시도를 해도 해결되지 않는 영구적인 오류인 경우 (예: 501 Not Implemented)
 			return resp, nil
 		}
 
 		// [재시도 준비: 상태 저장 및 리소스 정리]
-		// 다음 루프(재시도)에서 참조하기 위해 현재 에러를 저장하고,
+		// 다음 재시도를 수행하기 위해 현재 에러를 저장하고,
 		// 커넥션 누수를 방지하기 위해 사용이 끝난 응답 객체의 Body를 닫습니다.
 		lastErr = err
 		if resp != nil {
 			if i == effectiveMaxRetries {
-				// [최종 실패: 최대 재시도 횟수 초과]
+				// [최종 실패: 모든 재시도 횟수 소진]
 				// 마지막 재시도까지 실패했으므로, 상세한 디버깅 정보를 포함하여 에러를 반환합니다.
 				finalErr := lastErr
 				if finalErr == nil {
 					// 디버깅 편의를 위해 응답 객체의 Body 일부만 읽어서 에러 객체에 포함시킵니다.
 					var bodySnippet string
 					if resp.Body != nil {
-						// 응답 객체의 Body 일부만 읽어서 메모리 효율성 유지
 						lr := io.LimitReader(resp.Body, 4096)
 						bodyBytes, _ := io.ReadAll(lr)
 						if len(bodyBytes) > 0 {
@@ -365,7 +397,7 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 					finalErr = &HTTPStatusError{
 						StatusCode:  resp.StatusCode,
 						Status:      resp.Status,
-						URL:         req.URL.Redacted(),
+						URL:         redactURL(req.URL),
 						Header:      redactHeaders(resp.Header),
 						BodySnippet: bodySnippet,
 						Cause:       ErrMaxRetriesExceeded,
@@ -380,18 +412,66 @@ func (f *RetryFetcher) Do(req *http.Request) (*http.Response, error) {
 				return nil, finalErr
 			}
 
-			// [다음 시도 준비: 리소스 정리]
-			// 다음 재시도를 수행하기 위해, 현재 응답 객체의 Body를 읽어 비우고(drain) 닫습니다(close).
-			// 이는 HTTP 커넥션을 재사용(Keep-Alive)하기 위한 필수 절차입니다.
+			// 커넥션 재사용을 위해 응답 객체의 Body를 안전하게 비우고 닫음
 			drainAndCloseBody(resp.Body)
 		}
 	}
 
 	// [최종 실패: 응답 없음]
-	// 최대 재시도 횟수를 초과했으나, 서버 응답을 받지 못하고 재시도 가능한 에러(예: 타임아웃)만 발생한 경우입니다.
-	// 응답 객체가 있는 경우(5xx 등)는 루프 내부에서 처리되어 반환되지만,
+	// 모든 재시도 횟수를 소진했으나, 서버로부터 응답을 받지 못한 경우(예: 타임아웃, 연결 거부)입니다.
+	// 참고: 응답이 있는 실패(예: 5xx 에러)는 루프 내부에서 이미 처리되어 반환되었습니다.
 	// 응답이 없는 경우(resp == nil)는 루프가 종료된 후 이 지점에서 에러를 반환합니다.
 	return nil, newErrMaxRetriesExceeded(lastErr)
+}
+
+func (f *RetryFetcher) Close() error {
+	return f.delegate.Close()
+}
+
+// normalizeMaxRetries 최대 재시도 횟수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - minRetries 미만: 최소 재시도 횟수로 보정
+//   - maxAllowedRetries 초과: 최대 재시도 횟수로 제한
+//   - 그 외: 사용자 설정값 그대로 반환
+func normalizeMaxRetries(maxRetries int) int {
+	// 설정된 최소값보다 작으면 최소 재시도 횟수로 보정
+	if maxRetries < minRetries {
+		return minRetries
+	}
+
+	// 과도한 재시도로 인한 지연을 방지하기 위해 최대 재시도 횟수로 제한
+	if maxRetries > maxAllowedRetries {
+		return maxAllowedRetries
+	}
+
+	return maxRetries
+}
+
+// normalizeRetryDelays 재시도 대기 시간의 최소값과 최대값을 정규화합니다.
+//
+// 정규화 규칙:
+//   - minRetryDelay 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
+//   - maxRetryDelay 0: 기본값(30초) 적용
+//   - maxRetryDelay < minRetryDelay: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 minRetryDelay로 보정
+func normalizeRetryDelays(minRetryDelay, maxRetryDelay time.Duration) (time.Duration, time.Duration) {
+	if minRetryDelay < time.Second {
+		// 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 보정
+		minRetryDelay = 1 * time.Second
+	}
+
+	if maxRetryDelay == 0 {
+		// 값을 설정하지 않았거나 0으로 잘못 설정된 경우 기본값 적용
+		maxRetryDelay = defaultMaxRetryDelay
+	}
+
+	// 최대 재시도 대기 시간(maxRetryDelay)은 최소 재시도 대기 시간(minRetryDelay)보다 작을 수 없음!
+	if maxRetryDelay < minRetryDelay {
+		// 설정값 오류(max < min) 또는 기본값이 min보다 작은 경우 minRetryDelay로 자동 보정
+		maxRetryDelay = minRetryDelay
+	}
+
+	return minRetryDelay, maxRetryDelay
 }
 
 // isRetriable 발생한 에러가 재시도 가능한 일시적인 오류인지 판단합니다.
@@ -551,8 +631,8 @@ func isIdempotentMethod(method string) bool {
 //   - value: Retry-After 헤더 값 (예: "60" 또는 "Wed, 21 Oct 2015 07:28:00 GMT")
 //
 // 반환값:
-//   - time.Duration: 대기해야 할 시간
-//   - bool: 파싱 성공 여부 (true: 성공, false: 실패)
+//   - time.Duration: 대기해야 할 시간 (초 단위 정수)
+//   - bool: 파싱 성공 여부 (true: 성공, false: 실패 - 실패 시 duration은 0)
 func parseRetryAfter(value string) (time.Duration, bool) {
 	if value == "" {
 		return 0, false

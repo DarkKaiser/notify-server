@@ -6,17 +6,17 @@ import (
 )
 
 const (
-	// maxDrainBytes 커넥션 재사용을 위해 응답 객체의 Body를 비울 때 읽을 최대 바이트 수 (64KB)
+	// maxDrainBytes 커넥션 재사용을 위해 응답 객체의 Body를 비울 때 읽을 최대 바이트 수입니다. (64KB)
 	// HTTP 커넥션 풀링을 위해 응답 객체의 Body를 완전히 읽어야 하지만,
-	// 너무 큰 응답은 성능 저하를 유발하므로 64KB로 제한
+	// 너무 큰 응답은 성능 저하를 유발하므로 64KB로 제한합니다.
 	maxDrainBytes = 64 * 1024
 )
 
 var (
-	// drainBufPool drainAndCloseBody에서 사용할 바이트 버퍼 풀
+	// drainBufPool drainAndCloseBody에서 사용할 바이트 버퍼 풀입니다.
 	//
-	// HTTP 커넥션 재사용을 위해 응답 객체의 Body를 읽어야 하는데, 매번 새로운 버퍼를 할당하면 GC 부담이 증가합니다.
-	// sync.Pool을 사용하여 버퍼를 재사용함으로써 메모리 할당 최소화
+	// HTTP 커넥션 풀링을 위해 응답 객체의 Body를 읽어야 하는데, 매번 새로운 버퍼를 할당하면 GC 부담이 증가합니다.
+	// sync.Pool을 사용하여 버퍼를 재사용함으로써 메모리 할당을 최적화 합니다.
 	drainBufPool = sync.Pool{
 		New: func() any {
 			b := make([]byte, 32*1024) // 32KB 버퍼 (대부분의 응답 처리에 충분)
@@ -43,7 +43,7 @@ func drainAndCloseBody(body io.ReadCloser) {
 	}
 	defer body.Close()
 
-	// sync.Pool에서 버퍼를 빌려와서 사용 (메모리 할당 최적화)
+	// sync.Pool에서 버퍼를 빌려와서 사용
 	bufPtr := drainBufPool.Get().(*[]byte)
 	defer drainBufPool.Put(bufPtr)
 

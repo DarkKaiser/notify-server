@@ -147,6 +147,7 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
 			},
 		},
+		// ... (existing test cases)
 		{
 			name: "MaxConnsPerHost negative correction",
 			input: Config{
@@ -161,6 +162,22 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
 				MaxConnsPerHost:     0, // Corrected to 0
+			},
+		},
+		{
+			name: "Large RetryDelay should bump MaxRetryDelay",
+			input: Config{
+				RetryDelay:    60 * time.Second,
+				MaxRetryDelay: 0, // Default (30s)
+			},
+			expected: Config{
+				MaxRetries:          0,
+				RetryDelay:          60 * time.Second,
+				MaxRetryDelay:       60 * time.Second, // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
+				MaxBytes:            expectedDefaultMaxBytes,
+				Timeout:             expectedDefaultTimeout,
+				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
+				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
 			},
 		},
 	}

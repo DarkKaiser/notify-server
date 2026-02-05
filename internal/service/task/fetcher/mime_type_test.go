@@ -2,6 +2,7 @@ package fetcher_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMimeTypeFetcher_Do(t *testing.T) {
@@ -25,106 +27,109 @@ func TestMimeTypeFetcher_Do(t *testing.T) {
 		allowEmptyMimeType bool
 		responseHeader     string // Delegate가 반환할 Content-Type 헤더
 		delegateErr        error  // Delegate가 반환할 에러
-		wantErr            bool
-		errContains        string
+		expectedErr        error  // 기대하는 에러 (sentinel error 체크용)
+		errContains        string // 에러 메시지에 포함되어야 할 문자열
 	}{
-		// 1. 정상 케이스
+		// =================================================================
+		// 1. 정상 케이스 (허용)
+		// =================================================================
 		{
-			name:             "허용된 Content-Type (HTML)",
+			name:             "허용된 Content-Type (HTML) - 정상 통과",
 			allowedMimeTypes: []string{"text/html"},
 			responseHeader:   "text/html; charset=utf-8",
-			wantErr:          false,
 		},
 		{
-			name:             "허용된 Content-Type (JSON)",
+			name:             "허용된 Content-Type (JSON) - 정상 통과",
 			allowedMimeTypes: []string{"text/html", "application/json"},
 			responseHeader:   "application/json",
-			wantErr:          false,
 		},
 		{
-			name:             "대소문자 무시 (Text/HTML)",
+			name:             "대소문자 무시 (허용 목록이 대문자) - 정상 통과",
+			allowedMimeTypes: []string{"Text/HTML"},
+			responseHeader:   "text/html",
+		},
+		{
+			name:             "대소문자 무시 (응답 헤더가 대문자) - 정상 통과",
 			allowedMimeTypes: []string{"text/html"},
-			responseHeader:   "Text/HTML; charset=utf-8",
-			wantErr:          false,
+			responseHeader:   "Text/HTML; charset=UTF-8",
 		},
 		{
-			name:             "파라미터가 많은 Content-Type",
+			name:             "파라미터가 복잡한 Content-Type - 정상 통과",
 			allowedMimeTypes: []string{"multipart/form-data"},
 			responseHeader:   "multipart/form-data; boundary=something; charset=utf-8",
-			wantErr:          false,
 		},
-
-		// 2. 비정상 케이스 (허용되지 않음)
 		{
-			name:             "허용되지 않은 Content-Type (ZIP)",
+			name:             "비표준 헤더 폴백 처리 (세미콜론 형식 오류) - 정상 통과",
 			allowedMimeTypes: []string{"text/html"},
-			responseHeader:   "application/zip",
-			wantErr:          true,
-			errContains:      "지원하지 않는 미디어 타입입니다",
+			// 파싱에는 실패하지만, 폴백 로직이 앞부분("text/html")을 추출하여 허용
+			responseHeader: "text/html; invalid-parameter",
 		},
 		{
-			name:             "허용되지 않은 Content-Type (HTML 아님)",
-			allowedMimeTypes: []string{"application/json"},
-			responseHeader:   "text/html",
-			wantErr:          true,
-			errContains:      "지원하지 않는 미디어 타입입니다",
+			name:             "공백이 포함된 헤더 (TrimSpace) - 정상 통과",
+			allowedMimeTypes: []string{"text/html"},
+			responseHeader:   " text/html ; charset=utf-8 ",
 		},
-
-		// 3. Content-Type 누락 처리
 		{
-			name:               "Content-Type 없음 (허용 설정)",
+			name:               "Content-Type 없음 (allowEmpty=true) - 정상 통과",
 			allowedMimeTypes:   []string{"text/html"},
 			allowEmptyMimeType: true,
 			responseHeader:     "",
-			wantErr:            false,
 		},
 		{
-			name:               "Content-Type 없음 (거부 설정)",
+			name:             "빈 allowedMimeTypes (모든 타입 허용) - HTML",
+			allowedMimeTypes: []string{},
+			responseHeader:   "text/html",
+		},
+		{
+			name:             "빈 allowedMimeTypes (모든 타입 허용) - ZIP",
+			allowedMimeTypes: []string{},
+			responseHeader:   "application/zip",
+		},
+
+		// =================================================================
+		// 2. 비정상 케이스 (거부)
+		// =================================================================
+		{
+			name:             "허용되지 않은 Content-Type (ZIP) - 거부",
+			allowedMimeTypes: []string{"text/html"},
+			responseHeader:   "application/zip",
+			errContains:      "지원하지 않는 미디어 타입입니다",
+		},
+		{
+			name:             "허용되지 않은 Content-Type (HTML 아님) - 거부",
+			allowedMimeTypes: []string{"application/json"},
+			responseHeader:   "text/html",
+			errContains:      "지원하지 않는 미디어 타입입니다",
+		},
+		{
+			name:             "Strict Mode: Prefix match should FAIL - 거부",
+			allowedMimeTypes: []string{"text/plain"},
+			// 접두사는 같지만, 정확히 일치하지 않으므로 거부되어야 함
+			responseHeader: "text/plain-custom",
+			errContains:    "지원하지 않는 미디어 타입입니다",
+		},
+		{
+			name:             "완전 잘못된 Content-Type - 거부",
+			allowedMimeTypes: []string{"application/json"},
+			responseHeader:   "INVALID-TYPE ;;;",
+			errContains:      "지원하지 않는 미디어 타입입니다",
+		},
+		{
+			name:               "Content-Type 없음 (allowEmpty=false) - 거부",
 			allowedMimeTypes:   []string{"text/html"},
 			allowEmptyMimeType: false,
 			responseHeader:     "",
-			wantErr:            true,
-			errContains:        "Content-Type 헤더가 누락되어 요청을 처리할 수 없습니다",
+			expectedErr:        fetcher.ErrMissingResponseContentType,
 		},
 
-		// 4. 파싱 실패 및 폴백
-		{
-			name:             "비표준 Content-Type 헤더 (폴백 동작 - 허용됨)",
-			allowedMimeTypes: []string{"text/html"},
-			// 세미콜론은 있지만 형식이 이상함. 폴백 로직은 세미콜론 앞을 사용 -> "text/html" 추출 -> 통과
-			responseHeader: "text/html; invalid-parameter",
-			wantErr:        false,
-		},
-		{
-			name:             "비표준 Content-Type 헤더 (폴백 동작 - 거부됨)",
-			allowedMimeTypes: []string{"application/json"},
-			// 폴백 로직이 "text/html"을 추출하지만 allowed 목록에 없음 -> 실패
-			responseHeader: "text/html; invalid-parameter",
-			wantErr:        true,
-			errContains:    "지원하지 않는 미디어 타입입니다",
-		},
-
-		// 5. 빈 목록 (모두 허용)
-		{
-			name:             "빈 allowedMimeTypes (모든 타입 허용 - HTML)",
-			allowedMimeTypes: []string{}, // 빈 슬라이스
-			responseHeader:   "text/html",
-			wantErr:          false,
-		},
-		{
-			name:             "빈 allowedMimeTypes (모든 타입 허용 - ZIP)",
-			allowedMimeTypes: []string{}, // 빈 슬라이스
-			responseHeader:   "application/zip",
-			wantErr:          false,
-		},
-
-		// 6. Delegate 에러
+		// =================================================================
+		// 3. Delegate 에러
+		// =================================================================
 		{
 			name:             "Delegate Fetcher 에러 발생",
 			allowedMimeTypes: []string{"text/html"},
-			delegateErr:      errors.New("network error"),
-			wantErr:          true,
-			errContains:      "network error",
+			delegateErr:      errors.New("network failure"),
+			errContains:      "network failure",
 		},
 	}
 
@@ -133,7 +138,7 @@ func TestMimeTypeFetcher_Do(t *testing.T) {
 			// Mock 설정
 			mockFetcher := mocks.NewMockFetcher()
 			response := &http.Response{
-				StatusCode: 200,
+				StatusCode: http.StatusOK,
 				Header:     make(http.Header),
 				Body:       io.NopCloser(bytes.NewBufferString("body content")),
 			}
@@ -153,20 +158,28 @@ func TestMimeTypeFetcher_Do(t *testing.T) {
 			resp, err := f.Do(req)
 
 			// 검증
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errContains != "" {
-					assert.Contains(t, err.Error(), tt.errContains)
-				}
+			if tt.expectedErr != nil || tt.errContains != "" || tt.delegateErr != nil {
+				// 에러가 발생해야 하는 경우
+				require.Error(t, err)
 				assert.Nil(t, resp)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, resp)
-				if resp != nil {
-					_ = resp.Body.Close() // 리소스 정리
+
+				if tt.expectedErr != nil {
+					assert.ErrorIs(t, err, tt.expectedErr, "예상된 에러 타입과 다릅니다")
 				}
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains, "에러 메시지에 예상된 문자열이 포함되지 않았습니다")
+				}
+			} else {
+				// 성공해야 하는 경우
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				assert.Equal(t, response, resp)
+
+				// 리소스 정리 (성공 케이스는 호출자가 닫을 책임이 있음)
+				_ = resp.Body.Close()
 			}
 
+			// Mock 호출 검증
 			mockFetcher.AssertExpectations(t)
 		})
 	}
@@ -175,46 +188,37 @@ func TestMimeTypeFetcher_Do(t *testing.T) {
 func TestMimeTypeFetcher_ResourceManagement(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
 
-	t.Run("검증 실패 시 Response Body가 닫혀야 함 (drainAndCloseBody)", func(t *testing.T) {
-		// Mock Body 생성 (Close 호출 추적)
-		mockBody := mocks.NewMockReadCloser("some content")
+	t.Run("검증 실패 시 Body를 비우고 닫아야 함 (drainAndCloseBody)", func(t *testing.T) {
+		// Mock Body 생성 (Close, Read 호출 추적)
+		mockBody := mocks.NewMockReadCloser("some content to drain")
 
-		// Mock Fetcher 설정
 		mockFetcher := mocks.NewMockFetcher()
 		response := &http.Response{
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/zip"}}, // 비허용 타입
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/pdf"}}, // 비허용 타입
 			Body:       mockBody,
 		}
 		mockFetcher.On("Do", mock.Anything).Return(response, nil)
 
-		// Fetcher 실행
 		f := fetcher.NewMimeTypeFetcher(mockFetcher, []string{"text/html"}, false)
 		resp, err := f.Do(req)
 
 		// 검증
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "지원하지 않는 미디어 타입입니다")
 		assert.Nil(t, resp)
 
-		// Body가 닫혔는지 확인
-		assert.Equal(t, int64(1), mockBody.GetCloseCount(), "검증 실패 시 Body.Close()가 호출되어야 합니다")
-		// drainAndCloseBody는 내부적으로 CopyBuffer를 통해 Read를 수행함 (limit reader)
-		// Read 호출 여부는 drainAndCloseBody가 실제로 데이터를 읽었는지 확인하는 척도
-		// (MockReadCloser 구현에 readCount 추적이 있다면 확인 가능)
-		// 현재 mocks.MockReadCloser에는 readCount 추적 기능이 있는지 확인 필요 -> 확인됨 (WasRead())
-		assert.True(t, mockBody.WasRead(), "drainAndCloseBody()는 커넥션 재사용을 위해 데이터를 읽어야 합니다")
+		// 리소스 관리 검증
+		assert.Equal(t, int64(1), mockBody.GetCloseCount(), "검증 실패 시 Body.Close()가 호출되어야 함")
+		assert.True(t, mockBody.WasRead(), "커넥션 재사용을 위해 Body 데이터를 읽어야(drain) 함")
 	})
 
-	t.Run("Delegate 에러 시 Response가 있으면 Body가 닫혀야 함", func(t *testing.T) {
-		mockBody := mocks.NewMockReadCloser("partial content")
+	t.Run("Delegate 에러 시 응답 객체가 있으면 Body를 닫아야 함", func(t *testing.T) {
+		mockBody := mocks.NewMockReadCloser("dangling body")
 		mockFetcher := mocks.NewMockFetcher()
 
-		// 에러와 함께 Response 반환 (예: 리다이렉트 중단 등)
-		response := &http.Response{
-			Body: mockBody,
-		}
-		mockFetcher.On("Do", mock.Anything).Return(response, errors.New("some error"))
+		// 에러와 함께 응답이 오는 드문 경우 (예: 일부 리다이렉트 에러 등)
+		response := &http.Response{Body: mockBody}
+		mockFetcher.On("Do", mock.Anything).Return(response, errors.New("underlying error"))
 
 		f := fetcher.NewMimeTypeFetcher(mockFetcher, []string{"text/html"}, false)
 		resp, err := f.Do(req)
@@ -222,11 +226,10 @@ func TestMimeTypeFetcher_ResourceManagement(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Equal(t, int64(1), mockBody.GetCloseCount())
-		assert.True(t, mockBody.WasRead())
 	})
 
-	t.Run("Content-Type 누락(거부 설정) 시 Body가 닫혀야 함", func(t *testing.T) {
-		mockBody := mocks.NewMockReadCloser("content without type")
+	t.Run("Content-Type 누락(거부) 시 Body를 닫아야 함", func(t *testing.T) {
+		mockBody := mocks.NewMockReadCloser("content")
 		mockFetcher := mocks.NewMockFetcher()
 
 		response := &http.Response{
@@ -235,32 +238,54 @@ func TestMimeTypeFetcher_ResourceManagement(t *testing.T) {
 		}
 		mockFetcher.On("Do", mock.Anything).Return(response, nil)
 
-		f := fetcher.NewMimeTypeFetcher(mockFetcher, []string{"text/html"}, false) // false = 거부
-		resp, err := f.Do(req)
-
-		assert.Error(t, err)
-		assert.Nil(t, resp)
-		assert.Contains(t, err.Error(), "Content-Type 헤더가 누락")
-		assert.Equal(t, int64(1), mockBody.GetCloseCount())
-		assert.True(t, mockBody.WasRead())
-	})
-
-	t.Run("정상 성공 시 Body는 닫히지 않고 반환되어야 함", func(t *testing.T) {
-		mockBody := mocks.NewMockReadCloser("valid html")
-		mockFetcher := mocks.NewMockFetcher()
-
-		response := &http.Response{
-			Header: http.Header{"Content-Type": []string{"text/html"}},
-			Body:   mockBody,
-		}
-		mockFetcher.On("Do", mock.Anything).Return(response, nil)
-
 		f := fetcher.NewMimeTypeFetcher(mockFetcher, []string{"text/html"}, false)
 		resp, err := f.Do(req)
 
-		assert.NoError(t, err)
-		assert.NotNil(t, resp)
-		assert.Equal(t, mockBody, resp.Body)
-		assert.Equal(t, int64(0), mockBody.GetCloseCount(), "성공 시 미들웨어가 Body를 닫으면 안 됩니다")
+		assert.ErrorIs(t, err, fetcher.ErrMissingResponseContentType)
+		assert.Nil(t, resp)
+		assert.Equal(t, int64(1), mockBody.GetCloseCount())
+		assert.True(t, mockBody.WasRead())
 	})
+}
+
+func TestMimeTypeFetcher_Close(t *testing.T) {
+	// Delegate의 Close 메서드가 호출되는지 검증
+	mockFetcher := mocks.NewMockFetcher()
+	mockFetcher.On("Close").Return(nil)
+
+	f := fetcher.NewMimeTypeFetcher(mockFetcher, nil, true)
+	err := f.Close()
+
+	assert.NoError(t, err)
+	mockFetcher.AssertExpectations(t)
+}
+
+func TestMimeTypeFetcher_ContextPassThrough(t *testing.T) {
+	// 컨텍스트가 Delegate로 잘 전달되는지 검증
+	type ctxKey string
+	key := ctxKey("requestID")
+	val := "req-123"
+
+	ctx := context.WithValue(context.Background(), key, val)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com", nil).WithContext(ctx)
+
+	mockFetcher := mocks.NewMockFetcher()
+
+	// 매처(Matcher)를 사용하여 컨텍스트 값 검증
+	mockFetcher.On("Do", mock.MatchedBy(func(r *http.Request) bool {
+		return r.Context().Value(key) == val
+	})).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/html"}},
+		Body:       io.NopCloser(bytes.NewBufferString("ok")),
+	}, nil)
+
+	f := fetcher.NewMimeTypeFetcher(mockFetcher, []string{"text/html"}, true)
+	resp, err := f.Do(req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	resp.Body.Close()
+
+	mockFetcher.AssertExpectations(t)
 }

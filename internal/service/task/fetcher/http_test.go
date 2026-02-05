@@ -4,140 +4,205 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestHTTPFetcher_Methods_Table consolidates generic HTTPFetcher method tests (Do, Get, User-Agent behavior)
-func TestHTTPFetcher_Methods_Table(t *testing.T) {
-	// Setup a test server that validates User-Agent and default headers
+// TestHTTPFetcher_Do verifies the standard behavior of the Do method.
+// It covers success scenarios, error handling, context cancellation, and header injection.
+func TestHTTPFetcher_Do(t *testing.T) {
+	// Mock server to simulate various responses
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userAgent := r.Header.Get("User-Agent")
-		accept := r.Header.Get("Accept")
-		acceptLang := r.Header.Get("Accept-Language")
-
-		if userAgent == "" || !strings.Contains(userAgent, "Mozilla/5.0") {
-			w.WriteHeader(http.StatusBadRequest)
-			return
+		// Header Verification
+		if r.URL.Path == "/verify-headers" {
+			if r.Header.Get("User-Agent") == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte("Missing User-Agent"))
+				return
+			}
+			if r.Header.Get("Accept") == "" || r.Header.Get("Accept-Language") == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte("Missing Standard Headers"))
+				return
+			}
 		}
-		if accept == "" || acceptLang == "" {
-			w.WriteHeader(http.StatusForbidden)
+
+		// Timeout Simulation
+		if r.URL.Path == "/timeout" {
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		// Echo path
+		if r.URL.Path == "/verify-path" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("path-ok"))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
 	}))
 	defer ts.Close()
 
-	testFetcher := fetcher.NewHTTPFetcher()
-
 	tests := []struct {
-		name        string
-		action      func() (*http.Response, error)
-		expectError bool
+		name          string
+		fetcherOpts   []fetcher.Option
+		reqFunc       func() *http.Request
+		ctxTimeout    time.Duration
+		expectedError string // Substring match
+		validateResp  func(t *testing.T, resp *http.Response)
 	}{
 		{
-			name: "Do Request (Automatic User-Agent)",
-			action: func() (*http.Response, error) {
+			name: "Success - Basic Request",
+			reqFunc: func() *http.Request {
 				req, _ := http.NewRequest("GET", ts.URL, nil)
-				return testFetcher.Do(req)
+				return req
 			},
-			expectError: false,
+			validateResp: func(t *testing.T, resp *http.Response) {
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			},
 		},
 		{
-			name: "Get Request (Automatic User-Agent)",
-			action: func() (*http.Response, error) {
-				return fetcher.Get(context.Background(), testFetcher, ts.URL)
+			name: "Success - Header Injection",
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL+"/verify-headers", nil)
+				return req
 			},
-			expectError: false,
+			validateResp: func(t *testing.T, resp *http.Response) {
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			},
+		},
+		{
+			name: "Success - Custom User-Agent Preserved",
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL+"/verify-headers", nil)
+				req.Header.Set("User-Agent", "CustomBot/1.0")
+				return req
+			},
+			validateResp: func(t *testing.T, resp *http.Response) {
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+				// Note: Server logic checks if UA exists, assumes if it returns 200, it passed.
+				// Ideally server should echo it back for strict verification, but this verify logic
+				// combined with server logic (400 if missing) covers the "it's sent" part.
+			},
+		},
+		{
+			name: "Error - Context Timeout",
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL+"/timeout", nil)
+				return req
+			},
+			ctxTimeout:    100 * time.Millisecond,
+			expectedError: "context deadline exceeded",
+		},
+		{
+			name: "Error - Context Canceled",
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL+"/timeout", nil)
+				ctx, cancel := context.WithCancel(context.Background())
+				req = req.WithContext(ctx)
+				cancel() // Cancel immediately
+				return req
+			},
+			expectedError: "context canceled",
+		},
+		{
+			name: "Error - Invalid URL",
+			reqFunc: func() *http.Request {
+				// Use port 0 to force immediate connection refused on most systems,
+				// avoiding slow DNS lookups for non-existent domains.
+				req, _ := http.NewRequest("GET", "http://127.0.0.1:0", nil)
+				return req
+			},
+			expectedError: "dial tcp",
+		},
+		{
+			name: "Error - Init Error Propagation",
+			fetcherOpts: []fetcher.Option{
+				fetcher.WithProxy(" ://invalid-proxy"), // This causes init error
+			},
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL, nil)
+				return req
+			},
+			expectedError: "제공된 프록시 URL의 형식이 올바르지 않습니다",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := tt.action()
-			if tt.expectError {
-				assert.Error(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := fetcher.NewHTTPFetcher(tc.fetcherOpts...)
+			req := tc.reqFunc()
+
+			if tc.ctxTimeout > 0 {
+				ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
+				defer cancel()
+				req = req.WithContext(ctx)
+			}
+
+			resp, err := f.Do(req)
+
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedError)
+				assert.Nil(t, resp)
 			} else {
-				assert.NoError(t, err)
-				if resp != nil {
-					defer resp.Body.Close()
-					assert.Equal(t, http.StatusOK, resp.StatusCode)
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				defer resp.Body.Close()
+
+				if tc.validateResp != nil {
+					tc.validateResp(t, resp)
 				}
 			}
 		})
 	}
 }
 
-// TestCheckResponseStatus_ErrorMessage verifies URL and Status in error message.
-func TestCheckResponseStatus_ErrorMessage(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer ts.Close()
+// TestHTTPFetcher_RequestCloning ensures that the fetcher does not mutate the original request.
+func TestHTTPFetcher_RequestCloning(t *testing.T) {
+	f := fetcher.NewHTTPFetcher()
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
 
-	// URL.Redacted()는 쿼리 파라미터를 마스킹하지 않고UserInfo를 마스킹함
-	testURL := "http://user:pass@example.com/path?query=secret"
-	req, _ := http.NewRequest("GET", testURL, nil)
+	// Ensure original headers are empty
+	assert.Empty(t, req.Header.Get("User-Agent"))
+	assert.Empty(t, req.Header.Get("Accept"))
 
-	// 수동으로 응답 객체 생성 (실제 서버 요청 없이 CheckResponseStatus만 테스트)
-	resp := &http.Response{
-		StatusCode: http.StatusServiceUnavailable,
-		Status:     "503 Service Unavailable",
-		Request:    req,
-	}
+	// We use an invalid URL to fail fast, but the cloning logic happens BEFORE the request execution
+	// check. However, Do() might return initErr or URL error.
+	// To safely test this without external calls, we can inspect if Do modifies it.
+	// Even if Do returns an error, we check the original req.
 
-	appErr := fetcher.CheckResponseStatus(resp)
-	assert.Error(t, appErr)
-	assert.Contains(t, appErr.Error(), "503 Service Unavailable")
-	// redactURL은 user:password 뿐만 아니라 쿼리 파라미터 값도 마스킹함
-	assert.Contains(t, appErr.Error(), "http://user:xxxxx@example.com/path?query=xxxxx")
-	assert.NotContains(t, appErr.Error(), "pass", "Sensitive Info (password) should be redacted")
-	assert.NotContains(t, appErr.Error(), "secret", "Query parameter values should be redacted")
-}
-
-// TestHTTPFetcher_Do_CloneRequest verifies that the original request is not mutated by Do.
-func TestHTTPFetcher_Do_CloneRequest(t *testing.T) {
+	// Using a mock server ensures Do proceeds deeper into logic
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
 
-	f := fetcher.NewHTTPFetcher()
-	req, _ := http.NewRequest("GET", ts.URL, nil)
+	validReq, _ := http.NewRequest("GET", ts.URL, nil)
+	_, _ = f.Do(validReq)
 
-	// 초기 헤더 상태 확인 (비어있음)
-	assert.Empty(t, req.Header.Get("User-Agent"))
-	assert.Empty(t, req.Header.Get("Accept"))
-
-	resp, err := f.Do(req)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
-
-	// Do 실행 후에도 원본 요청의 헤더는 비어있어야 함 (clonedReq만 수정되었으므로)
-	assert.Empty(t, req.Header.Get("User-Agent"), "Original request User-Agent should remain empty")
-	assert.Empty(t, req.Header.Get("Accept"), "Original request Accept should remain empty")
+	assert.Empty(t, validReq.Header.Get("User-Agent"), "Original User-Agent should remain empty")
+	assert.Empty(t, validReq.Header.Get("Accept"), "Original Accept should remain empty")
 }
 
-func TestHTTPFetcher_NoCloneOnSameConfig(t *testing.T) {
-	customTr := &http.Transport{
-		MaxIdleConns: 50, // Not default (100)
+// TestCheckResponseStatus verified the error formatting helper.
+func TestCheckResponseStatus(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://user:pass@example.com/api?token=secret", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusTeapot,
+		Status:     "418 I'm a teapot",
+		Request:    req,
 	}
 
-	// Case 1: Same config -> No clone
-	f1 := fetcher.NewHTTPFetcher(
-		fetcher.WithTransport(customTr),
-		fetcher.WithMaxIdleConns(50),
-	)
-	assert.True(t, f1.GetTransport() == customTr, "Injected transport should be used directly if settings match")
-
-	// Case 2: Different config -> Clone
-	f2 := fetcher.NewHTTPFetcher(
-		fetcher.WithTransport(customTr),
-		fetcher.WithMaxIdleConns(60), // Different
-	)
-	assert.True(t, f2.GetTransport() != customTr, "Injected transport should be cloned if settings differ")
+	err := fetcher.CheckResponseStatus(resp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "418 I'm a teapot")
+	assert.Contains(t, err.Error(), "http://user:xxxxx@example.com/api?token=xxxxx") // Redacted
+	assert.NotContains(t, err.Error(), "pass")
+	assert.NotContains(t, err.Error(), "secret")
 }

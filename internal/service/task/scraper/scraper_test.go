@@ -106,12 +106,15 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse("", 500)
 				resp.Status = "500 Internal Server Error"
+				// Request is needed for URL redaction in error message
+				req, _ := http.NewRequest(http.MethodGet, "http://example.com/500", nil)
+				resp.Request = req
 				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/500"
 				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청 처리 실패 (Status: 500 Internal Server Error",
+			errContains: "HTTP 요청을 처리하는 과정에서 실패하였습니다 (상태 코드: 500 Internal Server Error",
 		},
 		{
 			name: "HTTP 404 Error (Client Error)",
@@ -119,12 +122,15 @@ func TestFetchHTMLDocument_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse("", 404)
 				resp.Status = "404 Not Found"
+				// Request is needed for URL redaction in error message
+				req, _ := http.NewRequest(http.MethodGet, "http://example.com/404", nil)
+				resp.Request = req
 				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 					return req.Method == http.MethodGet && req.URL.String() == "http://example.com/404"
 				})).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청 처리 실패 (Status: 404 Not Found",
+			errContains: "HTTP 요청을 처리하는 과정에서 실패하였습니다 (상태 코드: 404 Not Found",
 		},
 	}
 
@@ -307,10 +313,13 @@ func TestFetchJSON_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse(`{"error": "not found"}`, 404)
 				resp.Status = "404 Not Found"
+				// Request is needed for URL redaction in error message
+				req, _ := http.NewRequest(http.MethodGet, "http://example.com/404", nil)
+				resp.Request = req
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청 처리 실패 (Status: 404 Not Found",
+			errContains: "HTTP 요청을 처리하는 과정에서 실패하였습니다 (상태 코드: 404 Not Found",
 		},
 		{
 			name:   "Error - HTTP 500 Status (Unavailable)",
@@ -319,10 +328,13 @@ func TestFetchJSON_Table(t *testing.T) {
 			setupMock: func(m *mocks.MockFetcher) {
 				resp := mocks.NewMockResponse(`error`, 500)
 				resp.Status = "500 Internal Server Error"
+				// Request is needed for URL redaction in error message
+				req, _ := http.NewRequest(http.MethodGet, "http://example.com/500", nil)
+				resp.Request = req
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "HTTP 요청 처리 실패 (Status: 500 Internal Server Error",
+			errContains: "HTTP 요청을 처리하는 과정에서 실패하였습니다 (상태 코드: 500 Internal Server Error",
 		},
 	}
 

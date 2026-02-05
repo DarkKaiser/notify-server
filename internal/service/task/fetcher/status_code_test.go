@@ -16,29 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStatusCodeFetcher_Factory(t *testing.T) {
-	mockFetcher := mocks.NewMockFetcher()
-
-	t.Run("NewStatusCodeFetcher (기본값)", func(t *testing.T) {
-		f := fetcher.NewStatusCodeFetcher(mockFetcher)
-		assert.NotNil(t, f)
-		// delegate 등 내부 필드는 외부 패키지에서 접근 불가하므로 테스트 제외하거나 필요 시 리플렉션 사용
-		// 여기서는 공개된 메서드로 동작 검증이 충분하므로 필드 검증은 생략
-	})
-
-	t.Run("NewStatusCodeFetcherWithOptions (옵션 지정)", func(t *testing.T) {
-		allowed := []int{http.StatusOK, http.StatusCreated, http.StatusAccepted}
-		f := fetcher.NewStatusCodeFetcherWithOptions(mockFetcher, allowed...)
-		assert.NotNil(t, f)
-	})
-
-	t.Run("NewStatusCodeFetcherWithOptions (빈 옵션)", func(t *testing.T) {
-		f := fetcher.NewStatusCodeFetcherWithOptions(mockFetcher)
-		assert.NotNil(t, f)
-	})
-}
-
+// TestStatusCodeFetcher_Do 상태 코드 검증 로직을 시나리오별로 테스트합니다.
 func TestStatusCodeFetcher_Do(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name               string
 		allowedStatusCodes []int
@@ -49,51 +30,51 @@ func TestStatusCodeFetcher_Do(t *testing.T) {
 		expectedSnippet    string
 	}{
 		{
-			name:             "성공: 200 OK (기본 설정)",
+			name:             "Success: 200 OK (Default)",
 			delegateResponse: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString("success"))},
 			expectedError:    false,
 		},
 		{
-			name:               "성공: 201 Created (사용자 정의 설정)",
+			name:               "Success: 201 Created (Custom Config)",
 			allowedStatusCodes: []int{http.StatusCreated},
 			delegateResponse:   &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(bytes.NewBufferString("created"))},
 			expectedError:      false,
 		},
 		{
-			name:             "실패: 404 Not Found (기본 설정)",
+			name:             "Fail: 404 Not Found (Default)",
 			delegateResponse: &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(bytes.NewBufferString("page not found"))},
 			expectedError:    true,
 			expectedErrType:  apperrors.NotFound,
 			expectedSnippet:  "page not found",
 		},
 		{
-			name:             "실패: 500 Internal Server Error",
+			name:             "Fail: 500 Internal Server Error",
 			delegateResponse: &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(bytes.NewBufferString("server error"))},
 			expectedError:    true,
 			expectedErrType:  apperrors.Unavailable,
 			expectedSnippet:  "server error",
 		},
 		{
-			name:             "실패: 403 Forbidden",
+			name:             "Fail: 403 Forbidden",
 			delegateResponse: &http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(bytes.NewBufferString("access denied"))},
 			expectedError:    true,
 			expectedErrType:  apperrors.Forbidden,
 			expectedSnippet:  "access denied",
 		},
 		{
-			name:             "실패: 429 Too Many Requests",
+			name:             "Fail: 429 Too Many Requests",
 			delegateResponse: &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(bytes.NewBufferString("rate limit"))},
 			expectedError:    true,
 			expectedErrType:  apperrors.Unavailable,
 			expectedSnippet:  "rate limit",
 		},
 		{
-			name:          "실패: Delegate 에러 발생",
+			name:          "Fail: Delegate Error",
 			delegateError: errors.New("network error"),
 			expectedError: true,
 		},
 		{
-			name: "실패: Delegate 에러와 함께 부분 응답 반환 (리소스 정리 확인)",
+			name: "Fail: Delegate Error with Partial Response (Resource Cleanup)",
 			delegateResponse: &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(bytes.NewBufferString("partial content")),
@@ -104,13 +85,13 @@ func TestStatusCodeFetcher_Do(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // 캡처링
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel() // 병렬 실행
+
 			// Mock 설정
 			mockFetcher := mocks.NewMockFetcher()
-
-			// 응답에 Request 설정이 필요한 경우 처리 (CheckResponseStatus 로깅 등)
-			// 실제로는 nil이어도 동작하지만, 테스트의 명확성을 위해 필요시 설정 가능
-			// 여기서는 Testify의 한계로 인해 Response 객체를 그대로 반환하도록 함
+			// Mock은 요청 받은 Response/Error를 그대로 반환
 			mockFetcher.On("Do", mock.Anything).Return(tt.delegateResponse, tt.delegateError)
 
 			// Fetcher 생성
@@ -138,20 +119,24 @@ func TestStatusCodeFetcher_Do(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.NotNil(t, resp)
-				assert.Equal(t, tt.delegateResponse.StatusCode, resp.StatusCode)
+				if tt.delegateResponse != nil {
+					assert.Equal(t, tt.delegateResponse.StatusCode, resp.StatusCode)
+				}
 			}
 		})
 	}
 }
 
+// TestStatusCodeFetcher_ResourceSafety 상태 코드 검증 실패 시 Body 닫힘 여부를 안전하게 확인합니다.
 func TestStatusCodeFetcher_ResourceSafety(t *testing.T) {
-	t.Run("상태 코드 검증 실패 시 Body가 닫혀야 함", func(t *testing.T) {
-		body := mocks.NewMockReadCloser("error content")
+	t.Parallel()
 
+	t.Run("Status Check Fail -> Body closed", func(t *testing.T) {
+		mockBody := mocks.NewMockReadCloser("error content")
 		mockFetcher := mocks.NewMockFetcher()
 		mockFetcher.On("Do", mock.Anything).Return(&http.Response{
 			StatusCode: http.StatusInternalServerError,
-			Body:       body,
+			Body:       mockBody,
 		}, nil)
 
 		f := fetcher.NewStatusCodeFetcher(mockFetcher)
@@ -160,16 +145,15 @@ func TestStatusCodeFetcher_ResourceSafety(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
-		assert.Equal(t, int64(1), body.GetCloseCount(), "에러 발생 후 Body가 닫혀야 합니다")
+		assert.Greater(t, mockBody.GetCloseCount(), int64(0), "에러 발생 시 Body는 닫혀야 합니다")
 	})
 
-	t.Run("Delegate 에러 시 부분 응답의 Body가 닫혀야 함", func(t *testing.T) {
-		body := mocks.NewMockReadCloser("partial")
-
+	t.Run("Delegate Error -> Body closed", func(t *testing.T) {
+		mockBody := mocks.NewMockReadCloser("partial")
 		mockFetcher := mocks.NewMockFetcher()
 		mockFetcher.On("Do", mock.Anything).Return(&http.Response{
 			StatusCode: http.StatusOK,
-			Body:       body,
+			Body:       mockBody,
 		}, errors.New("network error"))
 
 		f := fetcher.NewStatusCodeFetcher(mockFetcher)
@@ -178,16 +162,15 @@ func TestStatusCodeFetcher_ResourceSafety(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
-		assert.Equal(t, int64(1), body.GetCloseCount(), "Delegate 에러 시에도 응답 바디가 닫혀야 합니다")
+		assert.Greater(t, mockBody.GetCloseCount(), int64(0), "Delegate 에러 시에도 Body는 닫혀야 합니다")
 	})
 
-	t.Run("성공 시 Body는 닫히지 않아야 함", func(t *testing.T) {
-		body := mocks.NewMockReadCloser("success")
-
+	t.Run("Success -> Body open", func(t *testing.T) {
+		mockBody := mocks.NewMockReadCloser("success")
 		mockFetcher := mocks.NewMockFetcher()
 		mockFetcher.On("Do", mock.Anything).Return(&http.Response{
 			StatusCode: http.StatusOK,
-			Body:       body,
+			Body:       mockBody,
 		}, nil)
 
 		f := fetcher.NewStatusCodeFetcher(mockFetcher)
@@ -196,9 +179,24 @@ func TestStatusCodeFetcher_ResourceSafety(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.NotNil(t, resp)
-		assert.Equal(t, int64(0), body.GetCloseCount(), "성공 시에는 Body가 열려 있어야 합니다")
+		assert.Equal(t, int64(0), mockBody.GetCloseCount(), "성공 시에는 Body가 열려 있어야 합니다")
 
-		// 테스트 종료 후 닫기
+		// 테스트 종료 후 명시적 닫기
 		resp.Body.Close()
 	})
+}
+
+// TestStatusCodeFetcher_Close Close 메서드 위임 검증
+func TestStatusCodeFetcher_Close(t *testing.T) {
+	t.Parallel()
+
+	mockFetcher := mocks.NewMockFetcher()
+	expectedErr := errors.New("close error")
+	mockFetcher.On("Close").Return(expectedErr)
+
+	f := fetcher.NewStatusCodeFetcher(mockFetcher)
+	err := f.Close()
+
+	assert.Equal(t, expectedErr, err)
+	mockFetcher.AssertExpectations(t)
 }

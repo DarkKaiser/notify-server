@@ -19,6 +19,9 @@ type LoggingFetcher struct {
 	delegate Fetcher
 }
 
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Fetcher = (*LoggingFetcher)(nil)
+
 // NewLoggingFetcher 새로운 LoggingFetcher 인스턴스를 생성합니다.
 func NewLoggingFetcher(delegate Fetcher) *LoggingFetcher {
 	return &LoggingFetcher{
@@ -83,4 +86,8 @@ func (f *LoggingFetcher) Do(req *http.Request) (*http.Response, error) {
 		Debug("HTTP 요청 성공: 정상 처리 완료")
 
 	return resp, nil
+}
+
+func (f *LoggingFetcher) Close() error {
+	return f.delegate.Close()
 }

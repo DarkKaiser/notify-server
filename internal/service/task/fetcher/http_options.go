@@ -27,6 +27,23 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
+// WithTLSHandshakeTimeout TLS 핸드셰이크 타임아웃을 설정합니다.
+//
+// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
+// 네트워크가 느리거나 서버 부하가 높을 때 타임아웃이 발생할 수 있습니다.
+//
+// 매개변수:
+//   - timeout: TLS 핸드셰이크 타임아웃 (기본값: 10초)
+//
+// 권장값:
+//   - 일반적으로 5~10초 권장
+//   - 모바일 네트워크나 느린 환경에서는 15~20초 고려
+func WithTLSHandshakeTimeout(timeout time.Duration) Option {
+	return func(h *HTTPFetcher) {
+		h.tlsHandshakeTimeout = timeout
+	}
+}
+
 // WithResponseHeaderTimeout HTTP 응답 헤더 대기 타임아웃을 설정합니다.
 //
 // 이 타임아웃은 요청을 보낸 후 응답 헤더를 받을 때까지의 시간을 제한합니다.
@@ -40,48 +57,25 @@ func WithTimeout(timeout time.Duration) Option {
 //   - 느린 서버로부터 빠르게 타임아웃하여 재시도
 func WithResponseHeaderTimeout(timeout time.Duration) Option {
 	return func(h *HTTPFetcher) {
-		h.headerTimeout = timeout
+		h.responseHeaderTimeout = timeout
 	}
 }
 
-// WithUserAgent 기본 User-Agent를 설정합니다.
+// WithIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃을 설정합니다.
 //
-// 요청에 User-Agent 헤더가 없으면 이 값이 자동으로 설정됩니다.
-// 요청별로 User-Agent를 커스터마이징하려면 요청 헤더에 직접 설정하세요.
-//
-// 매개변수:
-//   - ua: User-Agent 문자열 (예: "MyBot/1.0")
-func WithUserAgent(ua string) Option {
-	return func(h *HTTPFetcher) {
-		h.defaultUA = ua
-	}
-}
-
-// WithMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수를 설정합니다.
-//
-// 기본적으로 Go HTTP 클라이언트는 최대 10번까지 리다이렉트를 따라갑니다.
-// 이 옵션으로 제한을 변경할 수 있으며, 리다이렉트 시 Referer 헤더를 자동으로 설정합니다.
+// 사용되지 않는 연결을 유지할 최대 시간입니다.
+// 이 시간이 지나면 연결이 자동으로 닫히고 풀에서 제거됩니다.
 //
 // 매개변수:
-//   - max: 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
+//   - timeout: 유휴 연결이 닫히기 전 유지되는 타임아웃 (기본값: 90초)
 //
-// 동작:
-//   - 제한 초과 시 http.ErrUseLastResponse 반환 (마지막 응답 사용)
-//   - 리다이렉트 시 이전 URL을 Referer로 설정하여 일부 사이트의 차단 방지
-func WithMaxRedirects(max int) Option {
+// 권장값:
+//   - 일반적으로 30~90초 권장
+//   - 너무 짧으면 연결 재사용률 감소
+//   - 너무 길면 서버 측에서 먼저 연결을 끊을 수 있음
+func WithIdleConnTimeout(timeout time.Duration) Option {
 	return func(h *HTTPFetcher) {
-		h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			if len(via) >= max {
-				return http.ErrUseLastResponse
-			}
-
-			// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
-			if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
-				req.Header.Set("Referer", via[len(via)-1].URL.String())
-			}
-
-			return nil
-		}
+		h.idleConnTimeout = timeout
 	}
 }
 
@@ -91,7 +85,7 @@ func WithMaxRedirects(max int) Option {
 // 프록시 서버 URL 형식: "http://proxy.example.com:8080" 또는 "http://user:pass@proxy.example.com:8080"
 //
 // 매개변수:
-//   - proxyURL: 프록시 서버 주소 (빈 문자열이면 프록시 서버 미사용)
+//   - proxyURL: 프록시 서버 주소 (빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따름)
 //
 // 주의사항:
 //   - 잘못된 URL 형식은 초기화 시 에러 발생
@@ -118,41 +112,6 @@ func WithProxy(proxyURL string) Option {
 func WithMaxIdleConns(max int) Option {
 	return func(h *HTTPFetcher) {
 		h.maxIdleConns = max
-	}
-}
-
-// WithIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 최대 시간을 설정합니다.
-//
-// 사용되지 않는 연결을 유지할 최대 시간입니다.
-// 이 시간이 지나면 연결이 자동으로 닫히고 풀에서 제거됩니다.
-//
-// 매개변수:
-//   - timeout: 유휴 연결이 닫히기 전 유지되는 최대 시간 (기본값: 90초)
-//
-// 권장값:
-//   - 일반적으로 30~90초 권장
-//   - 너무 짧으면 연결 재사용률 감소
-//   - 너무 길면 서버 측에서 먼저 연결을 끊을 수 있음
-func WithIdleConnTimeout(timeout time.Duration) Option {
-	return func(h *HTTPFetcher) {
-		h.idleConnTimeout = timeout
-	}
-}
-
-// WithTLSHandshakeTimeout TLS 핸드셰이크 타임아웃을 설정합니다.
-//
-// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-// 네트워크가 느리거나 서버 부하가 높을 때 타임아웃이 발생할 수 있습니다.
-//
-// 매개변수:
-//   - timeout: TLS 핸드셰이크 타임아웃 (기본값: 10초)
-//
-// 권장값:
-//   - 일반적으로 5~10초 권장
-//   - 모바일 네트워크나 느린 환경에서는 15~20초 고려
-func WithTLSHandshakeTimeout(timeout time.Duration) Option {
-	return func(h *HTTPFetcher) {
-		h.tlsHandshakeTimeout = timeout
 	}
 }
 
@@ -195,7 +154,48 @@ func WithMaxConnsPerHost(max int) Option {
 //   - 각 HTTPFetcher가 독립적인 연결 풀을 유지하므로 메모리 사용량 증가
 func WithDisableTransportCache(disable bool) Option {
 	return func(h *HTTPFetcher) {
-		h.disableCache = disable
+		h.disableTransportCache = disable
+	}
+}
+
+// WithUserAgent 기본 User-Agent를 설정합니다.
+//
+// 요청에 User-Agent 헤더가 없으면 이 값이 자동으로 설정됩니다.
+// 요청별로 User-Agent를 커스터마이징하려면 요청 헤더에 직접 설정하세요.
+//
+// 매개변수:
+//   - ua: User-Agent 문자열 (예: "MyBot/1.0")
+func WithUserAgent(ua string) Option {
+	return func(h *HTTPFetcher) {
+		h.defaultUA = ua
+	}
+}
+
+// WithMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수를 설정합니다.
+//
+// 기본적으로 Go HTTP 클라이언트는 최대 10번까지 리다이렉트를 따라갑니다.
+// 이 옵션으로 제한을 변경할 수 있으며, 리다이렉트 시 Referer 헤더를 자동으로 설정합니다.
+//
+// 매개변수:
+//   - max: 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
+//
+// 동작:
+//   - 제한 초과 시 http.ErrUseLastResponse 반환 (마지막 응답 사용)
+//   - 리다이렉트 시 이전 URL을 Referer로 설정하여 일부 사이트의 차단 방지
+func WithMaxRedirects(max int) Option {
+	return func(h *HTTPFetcher) {
+		h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if len(via) >= max {
+				return http.ErrUseLastResponse
+			}
+
+			// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
+			if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
+				req.Header.Set("Referer", via[len(via)-1].URL.String())
+			}
+
+			return nil
+		}
 	}
 }
 

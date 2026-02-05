@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"io"
 	"net/http"
 )
 
@@ -18,6 +19,8 @@ const component = "task.fetcher"
 //   - 에러가 발생해도 응답 객체가 nil이 아닐 수 있습니다 (예: 상태 코드 에러, 리다이렉트 에러).
 //   - Context 취소 시 즉시 요청을 중단하고 적절한 에러를 반환해야 합니다.
 type Fetcher interface {
+	io.Closer
+
 	Do(req *http.Request) (*http.Response, error)
 }
 

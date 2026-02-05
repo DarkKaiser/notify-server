@@ -67,6 +67,11 @@ func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
 	return args.Get(0).(*http.Response), args.Error(1)
 }
 
+func (m *MockFetcher) Close() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 // NewMockResponse 주어진 body와 status code를 가진 새로운 http.Response를 생성합니다.
 //
 // 이 함수는 테스트에서 간단한 HTTP 응답을 생성할 때 사용됩니다.
@@ -312,6 +317,10 @@ func (m *MockHTTPFetcher) Reset() {
 	m.requests = make([]RequestRecord, 0)
 }
 
+func (m *MockHTTPFetcher) Close() error {
+	return nil
+}
+
 // ----------------------------------------------------------------------------
 // MockReadCloser (io.ReadCloser 구현체)
 // ----------------------------------------------------------------------------
@@ -325,6 +334,9 @@ type MockReadCloser struct {
 
 	// CloseErr 설정 시 Close() 호출에서 이 에러를 반환합니다.
 	CloseErr error
+
+	// ReadErr 설정 시 Read() 호출에서 이 에러를 반환합니다.
+	ReadErr error
 }
 
 // NewMockReadCloser 문자열 데이터를 가진 MockReadCloser를 생성합니다.
@@ -342,6 +354,9 @@ func NewMockReadCloserBytes(data []byte) *MockReadCloser {
 }
 
 func (m *MockReadCloser) Read(p []byte) (n int, err error) {
+	if m.ReadErr != nil {
+		return 0, m.ReadErr
+	}
 	n, err = m.Reader.Read(p)
 	if n > 0 {
 		atomic.AddInt64(&m.readCount, 1)
