@@ -50,6 +50,13 @@ func TestHTTPOptions_Table(t *testing.T) {
 			},
 		},
 		{
+			name:    "WithTimeout - Negative (Infinite)",
+			options: []Option{WithTimeout(-1)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Equal(t, time.Duration(0), f.client.Timeout)
+			},
+		},
+		{
 			name:    "WithResponseHeaderTimeout",
 			options: []Option{WithResponseHeaderTimeout(5 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
@@ -58,6 +65,16 @@ func TestHTTPOptions_Table(t *testing.T) {
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 5*time.Second, tr.ResponseHeaderTimeout)
+			},
+		},
+		{
+			name:    "WithResponseHeaderTimeout - Negative (Infinite)",
+			options: []Option{WithResponseHeaderTimeout(-1)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Equal(t, time.Duration(-1), f.responseHeaderTimeout) // Signal value preserved
+				tr := transport(f)
+				require.NotNil(t, tr)
+				assert.Equal(t, time.Duration(0), tr.ResponseHeaderTimeout) // Result is Infinite
 			},
 		},
 		{
@@ -71,6 +88,16 @@ func TestHTTPOptions_Table(t *testing.T) {
 			},
 		},
 		{
+			name:    "WithTLSHandshakeTimeout - Negative (Infinite)",
+			options: []Option{WithTLSHandshakeTimeout(-1)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Equal(t, time.Duration(-1), f.tlsHandshakeTimeout) // Signal value preserved
+				tr := transport(f)
+				require.NotNil(t, tr)
+				assert.Equal(t, time.Duration(0), tr.TLSHandshakeTimeout)
+			},
+		},
+		{
 			name:    "WithIdleConnTimeout",
 			options: []Option{WithIdleConnTimeout(45 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
@@ -78,6 +105,16 @@ func TestHTTPOptions_Table(t *testing.T) {
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 45*time.Second, tr.IdleConnTimeout)
+			},
+		},
+		{
+			name:    "WithIdleConnTimeout - Negative (Infinite)",
+			options: []Option{WithIdleConnTimeout(-1)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Equal(t, time.Duration(-1), f.idleConnTimeout) // Signal value preserved
+				tr := transport(f)
+				require.NotNil(t, tr)
+				assert.Equal(t, time.Duration(0), tr.IdleConnTimeout)
 			},
 		},
 
@@ -92,7 +129,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 50, tr.MaxIdleConns)
-				assert.Equal(t, 50, tr.MaxIdleConnsPerHost) // Should sync with global limit
+				assert.Equal(t, 0, tr.MaxIdleConnsPerHost) // Should remain default (0 -> 2) as it is not explicitly set
 			},
 		},
 		{
@@ -243,21 +280,9 @@ func TestHTTPOptions_Table(t *testing.T) {
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.True(t, tr.DisableKeepAlives)
-				// WithTransport should disable internal caching mechanism preference if it was set?
-				// Actually WithTransport sets client.Transport directly.
-				// But HTTPFetcher.Do() logic might override it if not careful.
-				// Current implementation: if client.Transport is set, we use it?
-				// Let's check HTTPFetcher.configureTransport -- it skips if client.Transport is set?
-				// No, configureTransport logic:
-				// if f.client.Transport == nil { ... setup default ... }
-				// So if WithTransport sets it, configureTransport preserves it?
-				// Let's check needsSpecialTransport logic.
-
-				// CAUTION: The current implementation of configureTransport needs to be compatible with WithTransport!
-				// If `needsSpecialTransport()` returns true (which checks options), it might try to overwrite.
-				// However, `WithTransport` is an Option. Options run BEFORE configureTransport.
-				// If WithTransport sets f.client.Transport, configureTransport should respect it?
-				// Let's verify this behavior. Ideally `WithTransport` disables other transport logic.
+				// When WithTransport is used, we treat it as an isolated/custom transport setup.
+				// Thus, transport cache should be disabled to prevent sharing/leaking config.
+				assert.True(t, f.disableTransportCache, "Resource Leak Protection: Cloned transport MUST be isolated (disableTransportCache=true)")
 			},
 		},
 	}
@@ -307,11 +332,14 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 		)
 
 		currentTr := f.transport()
-		// It should be the same pointer because WithTransport takes precedence and ignores options
-		assert.Equal(t, customTr, currentTr, "Spec: WithTransport should NOT cloned, other options ignored")
+		// It should be a NEW object (cloned) because we applied WithMaxIdleConns
+		assert.NotEqual(t, customTr, currentTr, "Spec: WithTransport + Options should trigger cloning")
 
 		httpTr := currentTr.(*http.Transport)
-		assert.Equal(t, 0, httpTr.MaxIdleConns, "Options should be IGNORED when WithTransport is used")
+		assert.Equal(t, 999, httpTr.MaxIdleConns, "Options should be APPLIED even when WithTransport is used")
+
+		// Verify disableTransportCache is set because cloning occurred
+		assert.True(t, f.disableTransportCache, "Resource Leak Protection: disableTransportCache must be true after cloning")
 	})
 
 	t.Run("WithProxy with Custom Non-HTTP Transport", func(t *testing.T) {

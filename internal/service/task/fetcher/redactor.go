@@ -213,6 +213,72 @@ func redactRawURL(rawURL string) string {
 	return redactURL(u)
 }
 
+// redactRefererURL URL에서 사용자 자격 증명(Userinfo)을 제거하고,
+// 쿼리 파라미터 내 민감한 정보를 마스킹하여 Referer 헤더에 안전하게 사용할 수 있는 문자열을 반환합니다.
+//
+// # 목적
+//
+// HTTP 리다이렉트 시 Referer 헤더를 설정할 때, RFC 7231 섹션 5.5.2를 준수하고
+// 민감한 정보가 노출되지 않도록 URL을 정제합니다.
+//
+// # 마스킹 대상
+//
+// 1. **사용자 인증 정보**: `https://user:password@example.com` → `https://example.com` (완전 제거)
+// 2. **민감한 쿼리 파라미터 값**: `?token=secret&id=123` → `?token=xxxxx&id=123`
+//
+// # 동작 방식
+//
+// 1. URL의 User 정보(Username, Password)를 완전히 제거 (RFC 7231 준수)
+// 2. 쿼리 파라미터 중 지정된 민감한 키(Sensitive Key)의 값만 선별적으로 "xxxxx"로 치환
+// 3. 그 외 Path나 Fragment(#) 정보는 변경 없이 그대로 유지
+//
+// # 사용 예시
+//
+//	u, _ := url.Parse("https://admin:secret@api.example.com/v1/users?token=abc123&id=456")
+//	safe := redactRefererURL(u)
+//	// 결과: "https://api.example.com/v1/users?token=xxxxx&id=456"
+//
+// 매개변수:
+//   - u: 마스킹할 URL (nil 허용)
+//
+// 반환값:
+//   - Referer 헤더에 안전하게 사용할 수 있는 URL 문자열 (입력이 nil이면 빈 문자열 반환)
+//
+// 주의사항:
+//   - 원본 URL 객체는 변경되지 않습니다 (불변성 보장)
+func redactRefererURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+
+	// 1. URL 구조체 복제 (얕은 복사)
+	// 원본 URL을 변경하지 않기 위해 복사본을 만들어 작업합니다.
+	ru := *u
+
+	// 2. 사용자 자격 증명(Userinfo) 완전 제거 (RFC 7231 준수)
+	ru.User = nil
+
+	// 3. 쿼리 파라미터 값 선별적 마스킹 (민감한 키만 마스킹)
+	if u.RawQuery != "" {
+		masked := false
+
+		query := ru.Query()
+		for key := range query {
+			if isSensitiveKey(key) {
+				query.Set(key, "xxxxx")
+
+				masked = true
+			}
+		}
+
+		if masked {
+			ru.RawQuery = query.Encode()
+		}
+	}
+
+	return ru.String()
+}
+
 // isSensitiveKey 주어진 키가 민감한 정보를 나타내는 키워드인지 확인합니다.
 //
 // 매개변수:

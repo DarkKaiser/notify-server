@@ -160,11 +160,11 @@ func WithDisableTransportCache(disable bool) Option {
 
 // WithUserAgent 기본 User-Agent를 설정합니다.
 //
-// 요청에 User-Agent 헤더가 없으면 이 값이 자동으로 설정됩니다.
-// 요청별로 User-Agent를 커스터마이징하려면 요청 헤더에 직접 설정하세요.
+// 이 옵션으로 설정한 User-Agent는 요청 헤더에 User-Agent가 없을 때만 자동으로 추가됩니다.
+// 요청 헤더에 이미 User-Agent가 설정되어 있으면 그 값이 우선적으로 사용됩니다.
 //
 // 매개변수:
-//   - ua: User-Agent 문자열 (예: "MyBot/1.0")
+//   - ua: User-Agent 문자열 (예: "MyBot/1.0", "Mozilla/5.0 ...")
 func WithUserAgent(ua string) Option {
 	return func(h *HTTPFetcher) {
 		h.defaultUA = ua
@@ -178,24 +178,12 @@ func WithUserAgent(ua string) Option {
 //
 // 매개변수:
 //   - max: 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
-//
-// 동작:
-//   - 제한 초과 시 http.ErrUseLastResponse 반환 (마지막 응답 사용)
-//   - 리다이렉트 시 이전 URL을 Referer로 설정하여 일부 사이트의 차단 방지
 func WithMaxRedirects(max int) Option {
+	// 최대 리다이렉트 횟수를 정규화합니다.
+	max = normalizeMaxRedirects(max)
+
 	return func(h *HTTPFetcher) {
-		h.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			if len(via) >= max {
-				return http.ErrUseLastResponse
-			}
-
-			// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
-			if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
-				req.Header.Set("Referer", via[len(via)-1].URL.String())
-			}
-
-			return nil
-		}
+		h.client.CheckRedirect = newCheckRedirectPolicy(max)
 	}
 }
 

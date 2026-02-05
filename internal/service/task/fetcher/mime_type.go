@@ -41,7 +41,7 @@ func NewMimeTypeFetcher(delegate Fetcher, allowedMimeTypes []string, allowMissin
 	}
 }
 
-// Do HTTP 요청을 수행하고 응답의 MIME 타입을 검증합니다.
+// Do HTTP 요청을 수행하고 MIME 타입을 검증합니다.
 //
 // 매개변수:
 //   - req: 처리할 HTTP 요청

@@ -8,7 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfig_ApplyDefaults(t *testing.T) {
+// longPtr는 int64 값의 포인터를 반환하는 헬퍼 함수입니다.
+func longPtr(v int64) *int64 {
+	return &v
+}
+
+// intPtr는 int 값의 포인터를 반환하는 헬퍼 함수입니다.
+func intPtr(v int) *int {
+	return &v
+}
+
+// durationPtr는 time.Duration 값의 포인터를 반환하는 헬퍼 함수입니다.
+func durationPtr(v time.Duration) *time.Duration {
+	return &v
+}
+
+func TestConfig_applyDefaults(t *testing.T) {
 	// 상수가 비공개이므로 테스트에서 직접 검증 값으로 사용
 	const (
 		expectedDefaultRetryDelay          = 1 * time.Second
@@ -29,91 +44,134 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 			name:  "Zero values should be replaced with defaults",
 			input: Config{},
 			expected: Config{
-				MaxRetries:          0, // minRetries
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0), // minRetries
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				MaxIdleConns:        0, // 0 means unlimited
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
 				MaxConnsPerHost:     0,
+				MaxIdleConnsPerHost: 0,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "MaxRetries clamping",
 			input: Config{
-				MaxRetries: -5, // Should populate to 0
+				MaxRetries: intPtr(-5), // Should populate to 0
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "MaxRetries upper bound clamping",
 			input: Config{
-				MaxRetries: 100, // Should cap at 10
+				MaxRetries: intPtr(100), // Should cap at 10
 			},
 			expected: Config{
-				MaxRetries:          10,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(10),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
+			},
+		},
+		{
+			name: "TLSHandshakeTimeout negative (unlimited)",
+			input: Config{
+				TLSHandshakeTimeout: -1,
+			},
+			expected: Config{
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				Timeout:             expectedDefaultTimeout,
+				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
+				TLSHandshakeTimeout: -1, // Kept as -1
+				MaxConnsPerHost:     0,
+				MaxIdleConnsPerHost: 0,
+				MaxRedirects:        intPtr(10),
+			},
+		},
+		{
+			name: "IdleConnTimeout negative (unlimited)",
+			input: Config{
+				IdleConnTimeout: -1,
+			},
+			expected: Config{
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				Timeout:             expectedDefaultTimeout,
+				IdleConnTimeout:     -1, // Kept as -1
+				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxConnsPerHost:     0,
+				MaxIdleConnsPerHost: 0,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "RetryDelay minimum clamping",
 			input: Config{
-				RetryDelay: 500 * time.Millisecond, // Should round up to 1s
+				MinRetryDelay: durationPtr(500 * time.Millisecond), // Should round up to 1s
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          1 * time.Second,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(1 * time.Second),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "MaxRetryDelay logic (less than RetryDelay)",
 			input: Config{
-				RetryDelay:    5 * time.Second,
-				MaxRetryDelay: 2 * time.Second, // Should be bumped to RetryDelay
+				MinRetryDelay: durationPtr(5 * time.Second),
+				MaxRetryDelay: durationPtr(2 * time.Second), // Should be bumped to RetryDelay
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          5 * time.Second,
-				MaxRetryDelay:       5 * time.Second,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(5 * time.Second),
+				MaxRetryDelay:       durationPtr(5 * time.Second),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "MaxBytes NoLimit",
 			input: Config{
-				MaxBytes: -1, // NoLimit
+				MaxBytes: longPtr(-1), // NoLimit
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            -1, // Kept as -1
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(-1), // Kept as -1
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
@@ -122,13 +180,14 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 				Timeout: -1,
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             -1, // Kept as -1
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
@@ -137,14 +196,15 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 				MaxIdleConns: -1, // Trigger default
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
-				MaxIdleConns:        expectedDefaultMaxIdleConns, // 100
+				MaxIdleConns:        -1, // Kept as -1 (default)
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		// ... (existing test cases)
@@ -154,30 +214,32 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 				MaxConnsPerHost: -5,
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          expectedDefaultRetryDelay,
-				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
+				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxConnsPerHost:     0, // Corrected to 0
+				MaxConnsPerHost:     -1, // Corrected to -1 (default)
+				MaxRedirects:        intPtr(10),
 			},
 		},
 		{
 			name: "Large RetryDelay should bump MaxRetryDelay",
 			input: Config{
-				RetryDelay:    60 * time.Second,
-				MaxRetryDelay: 0, // Default (30s)
+				MinRetryDelay: durationPtr(60 * time.Second),
+				MaxRetryDelay: durationPtr(0), // Default (30s)
 			},
 			expected: Config{
-				MaxRetries:          0,
-				RetryDelay:          60 * time.Second,
-				MaxRetryDelay:       60 * time.Second, // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
-				MaxBytes:            expectedDefaultMaxBytes,
+				MaxRetries:          intPtr(0),
+				MinRetryDelay:       durationPtr(60 * time.Second),
+				MaxRetryDelay:       durationPtr(60 * time.Second), // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
+				MaxBytes:            longPtr(expectedDefaultMaxBytes),
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
+				MaxRedirects:        intPtr(10),
 			},
 		},
 	}
@@ -185,7 +247,7 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.input
-			cfg.ApplyDefaults()
+			cfg.applyDefaults()
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
@@ -194,12 +256,13 @@ func TestConfig_ApplyDefaults(t *testing.T) {
 func TestNewFromConfig_ChainConstruction(t *testing.T) {
 	// Full configuration to enable all middlewares
 	cfg := Config{
-		MaxRetries:          3,
-		AllowedContentTypes: []string{"application/json"},
-		UserAgents:          []string{"test-agent"},
-		DisableLogging:      false,
+		MaxRetries:            intPtr(3),
+		AllowedMimeTypes:      []string{"application/json"},
+		UserAgents:            []string{"test-agent"},
+		EnableRandomUserAgent: true,
+		DisableLogging:        false,
 	}
-	cfg.ApplyDefaults()
+	cfg.applyDefaults()
 
 	f := NewFromConfig(cfg)
 	require.NotNil(t, f)
@@ -246,7 +309,7 @@ func TestNewFromConfig_MinimalChain(t *testing.T) {
 	cfg := Config{
 		DisableLogging: true,
 	}
-	cfg.ApplyDefaults()
+	cfg.applyDefaults()
 
 	f := NewFromConfig(cfg)
 	require.NotNil(t, f)
@@ -283,10 +346,46 @@ func TestNewFromConfig_MinimalChain(t *testing.T) {
 	require.True(t, ok, "Delegate of MaxBytes should be HTTPFetcher")
 }
 
+func TestNewFromConfig_RandomUserAgent(t *testing.T) {
+	// Case 1: UseRandomUserAgent = true, UserAgents empty
+	// Should enable UserAgentFetcher with default agents
+	cfg := Config{
+		EnableRandomUserAgent: true,
+	}
+	cfg.applyDefaults()
+
+	f := NewFromConfig(cfg)
+	require.NotNil(t, f)
+
+	// Unwrap chain to find UserAgentFetcher
+	// Chain: Logging(maybe) -> UserAgent -> Retry ...
+	// Since DisableLogging is false by default, LoggingFetcher is first.
+	loggingFetcher, ok := f.(*LoggingFetcher)
+	require.True(t, ok, "Outermost should be LoggingFetcher")
+
+	// Next should be UserAgentFetcher
+	uaFetcher, ok := loggingFetcher.delegate.(*UserAgentFetcher)
+	require.True(t, ok, "UserAgentFetcher should be enabled when UseRandomUserAgent is true")
+	assert.NotNil(t, uaFetcher.delegate)
+
+	// Case 2: UseRandomUserAgent = false (default), UserAgents empty
+	// Should NOT enable UserAgentFetcher
+	cfg2 := Config{
+		EnableRandomUserAgent: false,
+	}
+	cfg2.applyDefaults()
+
+	f2 := NewFromConfig(cfg2)
+	loggingFetcher2, _ := f2.(*LoggingFetcher)
+	// Next should be RetryFetcher (UA skipped)
+	_, isUA := loggingFetcher2.delegate.(*UserAgentFetcher)
+	assert.False(t, isUA, "UserAgentFetcher should be disabled when UseRandomUserAgent is false and list is empty")
+}
+
 func TestNewFromConfig_TransportCache(t *testing.T) {
 	// Case 1: Cache Enabled (Default)
 	cfg1 := Config{DisableTransportCache: false}
-	cfg1.ApplyDefaults()
+	cfg1.applyDefaults()
 	f1 := NewFromConfig(cfg1)
 	httpF1 := getHTTPFetcher(t, f1)
 	// We can't easily check the internal transport instance equality without valid upstream mocks or complex reflection,
@@ -299,7 +398,28 @@ func TestNewFromConfig_TransportCache(t *testing.T) {
 
 	// Case 2: Cache Disabled
 	cfg2 := Config{DisableTransportCache: true}
-	cfg2.ApplyDefaults()
+	cfg2.applyDefaults()
+	f2 := NewFromConfig(cfg2)
+	httpF2 := getHTTPFetcher(t, f2)
+	assert.NotNil(t, httpF2)
+}
+
+func TestNewFromConfig_ProxySettings(t *testing.T) {
+	// Case 1: Proxy set (Standard)
+	cfg1 := Config{ProxyURL: "http://proxy.example.com"}
+	cfg1.applyDefaults()
+	f1 := NewFromConfig(cfg1)
+	httpF1 := getHTTPFetcher(t, f1)
+	assert.NotNil(t, httpF1)
+
+	// Since we cannot easily inspect internal Transport, we verify no panic and instance creation.
+	// Real verification of logic needs http_transport_test.go which has access to internals or
+	// inspecting the *http.Transport via reflection if needed.
+	// But valid configuration construction is a good smoke test here.
+
+	// Case 2: NoProxy
+	cfg2 := Config{ProxyURL: NoProxy}
+	cfg2.applyDefaults()
 	f2 := NewFromConfig(cfg2)
 	httpF2 := getHTTPFetcher(t, f2)
 	assert.NotNil(t, httpF2)
@@ -340,7 +460,7 @@ func TestNewFromConfig_OptionPropagation(t *testing.T) {
 		MaxIdleConns:    50,
 		MaxConnsPerHost: 20,
 	}
-	cfg.ApplyDefaults()
+	cfg.applyDefaults()
 
 	f := NewFromConfig(cfg)
 

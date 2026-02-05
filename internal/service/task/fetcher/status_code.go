@@ -7,13 +7,13 @@ import (
 // StatusCodeFetcher HTTP 응답의 상태 코드를 검증하는 미들웨어입니다.
 //
 // 주요 목적:
-//   - 허용된 HTTP 상태 코드만 성공으로 처리
-//   - 허용되지 않은 상태 코드 조기 감지 및 에러 반환
+//   - 허용된 HTTP 응답 상태 코드만 성공으로 처리
+//   - 허용되지 않은 응답 상태 코드 조기 감지 및 에러 반환
 //   - 실패한 응답의 리소스를 안전하게 정리하여 커넥션 재사용 보장
 type StatusCodeFetcher struct {
 	delegate Fetcher
 
-	// allowedStatusCodes 허용할 HTTP 상태 코드 목록입니다.
+	// allowedStatusCodes 허용할 HTTP 응답 상태 코드 목록입니다.
 	// nil 또는 빈 슬라이스인 경우 200 OK만 허용합니다.
 	allowedStatusCodes []int
 }
@@ -28,7 +28,7 @@ func NewStatusCodeFetcher(delegate Fetcher) *StatusCodeFetcher {
 	}
 }
 
-// NewStatusCodeFetcherWithOptions 특정 HTTP 상태 코드들을 허용하는 StatusCodeFetcher 인스턴스를 생성합니다.
+// NewStatusCodeFetcherWithOptions 특정 HTTP 응답 상태 코드들을 허용하는 StatusCodeFetcher 인스턴스를 생성합니다.
 func NewStatusCodeFetcherWithOptions(delegate Fetcher, allowedStatusCodes ...int) *StatusCodeFetcher {
 	return &StatusCodeFetcher{
 		delegate:           delegate,
@@ -46,8 +46,8 @@ func NewStatusCodeFetcherWithOptions(delegate Fetcher, allowedStatusCodes ...int
 //   - 에러 (요청 처리 중 발생한 에러)
 //
 // 주의사항:
-//   - 상태 코드 검증 실패 시 nil Response를 반환하므로, 호출자는 에러 체크 후 Response를 사용해야 합니다.
-//   - 에러 발생 시(Delegate 에러 또는 상태 코드 검증 실패) 응답 객체의 Body는 이 함수 내부에서 자동으로 정리되므로,
+//   - 응답 상태 코드 검증 실패 시 nil Response를 반환하므로, 호출자는 에러 체크 후 Response를 사용해야 합니다.
+//   - 에러 발생 시(Delegate 에러 또는 응답 상태 코드 검증 실패) 응답 객체의 Body는 이 함수 내부에서 자동으로 정리되므로,
 //     호출자가 별도로 닫을 필요가 없습니다.
 //   - 성공 시에는 호출자가 반드시 응답 객체의 Body를 닫아야 합니다.
 func (f *StatusCodeFetcher) Do(req *http.Request) (*http.Response, error) {

@@ -7,19 +7,19 @@ import (
 // Config Fetcher 체인을 구성하기 위한 모든 설정 옵션을 정의하는 구조체입니다.
 type Config struct {
 	// ========================================
-	// 타임아웃(Timeout) 설정
+	// 네트워크 연결 설정
 	// ========================================
 
 	// Timeout HTTP 요청 전체에 대한 타임아웃입니다.
 	// 연결(Dial), 요청 전송, 응답 수신 등 전체 과정을 포함하는 시간 제한입니다.
-	// - 0: 기본값(30초) 적용
+	// - 0: 기본값(DefaultTimeout) 적용
 	// - 음수: 타임아웃 없음(무한 대기)
 	// - 양수: 지정된 시간으로 설정
 	Timeout time.Duration
 
 	// TLSHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
 	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-	// - 0: 기본값(DefaultTLSHandshakeTimeout=10초) 적용
+	// - 0: 기본값(DefaultTLSHandshakeTimeout) 적용
 	// - 양수: 지정된 시간으로 설정
 	TLSHandshakeTimeout time.Duration
 
@@ -32,23 +32,23 @@ type Config struct {
 
 	// IdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
-	// - 0: 기본값(DefaultIdleConnTimeout=90초) 적용
+	// - 0: 기본값(DefaultIdleConnTimeout) 적용
 	// - 양수: 지정된 시간으로 설정
 	IdleConnTimeout time.Duration
-
-	// ========================================
-	// 네트워크 및 연결 풀(Connection Pool) 설정
-	// ========================================
 
 	// ProxyURL 프록시 서버 주소입니다.
 	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
 	// - 형식: "http://host:port", "https://user:pass@host:port" 등
 	ProxyURL string
 
+	// ========================================
+	// 연결 풀(Connection Pool) 관리
+	// ========================================
+
 	// MaxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
 	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
 	// - 0: 무제한 (표준 라이브러리 규칙)
-	// - 음수: 기본값(DefaultMaxIdleConns=100) 적용
+	// - 음수: 기본값(DefaultMaxIdleConns) 적용
 	// - 양수: 지정된 개수로 제한
 	MaxIdleConns int
 
@@ -59,16 +59,12 @@ type Config struct {
 	// - 양수: 지정된 개수로 제한
 	MaxConnsPerHost int
 
-	// DisableTransportCache Transport 캐시 사용 여부입니다.
-	// - false (기본값/권장): 캐시 사용
-	// - true: 캐시 비활성화
-	DisableTransportCache bool
 
 	// ========================================
 	// HTTP 클라이언트 동작
 	// ========================================
 
-	// EnableRandomUserAgent 요청 시마다 User-Agent를 랜덤으로 선택하여 주입하는 기능을 활성화합니다.
+	// EnableRandomUserAgent HTTP 요청 시마다 User-Agent를 랜덤으로 선택하여 주입하는 기능을 활성화합니다.
 	//
 	// 설정 값:
 	//   - false (기본값): 기능 비활성화 (원본 요청의 User-Agent를 그대로 사용)
@@ -83,9 +79,12 @@ type Config struct {
 	UserAgents []string
 
 	// MaxRedirects HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수입니다.
-	// - 0: 기본값 사용 (net/http 기본 정책, 통상 10회)
-	// - 양수: 지정된 횟수만큼 리다이렉트 허용
-	MaxRedirects int
+	//
+	// 설정 규칙:
+	//   - nil 또는 음수: 기본값(defaultMaxRedirects) 적용
+	//   - 0: 리다이렉트를 허용하지 않음 (발생 시 응답을 즉시 반환)
+	//   - 양수: 지정된 횟수만큼 리다이렉트 허용
+	MaxRedirects *int
 
 	// ========================================
 	// 재시도(Retry) 정책
@@ -103,7 +102,7 @@ type Config struct {
 	//
 	// 설정 규칙:
 	//   - nil 또는 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
-	//   - 1초 이상: 지수 백오프(Exponential Backoff)의 시작 대기 시간으로 사용
+	//   - 1초 이상: 별도의 보정 없이 설정값을 그대로 적용
 	MinRetryDelay *time.Duration
 
 	// MaxRetryDelay 재시도 대기 시간의 최대값입니다.
@@ -111,40 +110,40 @@ type Config struct {
 	// 설정 규칙:
 	//   - nil 또는 0: 기본값(defaultMaxRetryDelay) 적용
 	//   - MinRetryDelay보다 작은 값: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 MinRetryDelay로 보정
-	//   - 그 외: 재시도 대기 시간이 이 값을 초과하지 않도록 제한
+	//   - 그 외: 지수 백오프가 진행되더라도 재시도 대기 시간이 이 설정값을 초과하지 않도록 제한
 	MaxRetryDelay *time.Duration
 
 	// ========================================
 	// 응답 검증 및 제한
 	// ========================================
 
-	// DisableStatusCodeCheck HTTP 상태 코드 검증을 비활성화할지 여부입니다.
+	// DisableStatusCodeCheck HTTP 응답 상태 코드 검증을 비활성화할지 여부입니다.
 	//
 	// 설정 값:
-	//   - false (기본값): 상태 코드 검증 수행 (200 OK 또는 AllowedStatusCodes만 허용)
+	//   - false (기본값): 응답 상태 코드 검증 수행 (200 OK 또는 AllowedStatusCodes만 허용)
 	//   - true: 검증 비활성화 (모든 상태 코드 허용)
 	DisableStatusCodeCheck bool
 
-	// AllowedStatusCodes 허용할 HTTP 상태 코드 목록입니다.
+	// AllowedStatusCodes 허용할 HTTP 응답 상태 코드 목록입니다.
 	//
 	// 설정 값:
 	//   - nil/빈 슬라이스: 200 OK만 허용
 	//   - 값 지정: 지정된 코드들만 허용
 	AllowedStatusCodes []int
 
-	// AllowedMimeTypes 응답으로 허용할 MIME 타입 목록입니다.
+	// AllowedMimeTypes 허용할 HTTP 응답의 MIME 타입 목록입니다.
 	//
 	// 설정 값:
 	//   - nil/빈 슬라이스: MIME 타입 검증 생략
 	//   - 값 지정: "text/html" 같이 파라미터를 제외한 순수 MIME 타입만 허용 (대소문자 구분 안 함)
 	AllowedMimeTypes []string
 
-	// MaxBytes 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
+	// MaxBytes HTTP 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
 	//
 	// 설정 규칙:
 	//   - NoLimit(-1): 크기 제한을 적용하지 않음 (주의: 메모리 고갈 위험 있음)
 	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(defaultMaxBytes)으로 보정
-	//   - 양수: 지정된 크기만큼 응답 본문의 허용 크기를 제한
+	//   - 양수: 지정된 크기만큼 HTTP 응답 본문의 허용 크기를 제한
 	MaxBytes *int64
 
 	// ========================================
@@ -159,8 +158,8 @@ type Config struct {
 	DisableLogging bool
 }
 
-// ApplyDefaults Config의 설정값을 검증하고, 잘못된 값이나 미설정된 값을 안전한 기본값으로 보정합니다.
-func (cfg *Config) ApplyDefaults() {
+// applyDefaults Config의 설정값들을 검증하고, 미설정되거나 유효하지 않은 값을 안전한 기본값으로 보정합니다.
+func (cfg *Config) applyDefaults() {
 	// HTTP 요청 전체에 대한 타임아웃 검증
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
 	// 음수는 "무한 대기"를 의미하므로 호출자가 명시적으로 설정한 경우 그대로 유지
@@ -196,71 +195,79 @@ func (cfg *Config) ApplyDefaults() {
 
 	}
 
+	// 최대 리다이렉트 횟수를 정규화합니다.
+	normalizePtr(&cfg.MaxRedirects, defaultMaxRedirects, normalizeMaxRedirects)
+
 	// 최대 재시도 횟수를 정규화합니다.
-	normalizePtr1(&cfg.MaxRetries, normalizeMaxRetries)
+	normalizePtr(&cfg.MaxRetries, 0, normalizeMaxRetries)
 
 	// 재시도 대기 시간을 정규화합니다.
-	normalizePtrs2(&cfg.MinRetryDelay, &cfg.MaxRetryDelay, normalizeRetryDelays)
+	normalizePtrPair(&cfg.MinRetryDelay, &cfg.MaxRetryDelay, 0, defaultMaxRetryDelay, normalizeRetryDelays)
 
 	// 응답 본문의 최대 허용 크기를 정규화합니다.
-	normalizePtr1(&cfg.MaxBytes, normalizeByteLimit)
+	normalizePtr(&cfg.MaxBytes, defaultMaxBytes, normalizeByteLimit)
 }
 
-// New 간단한 설정값(재시도 횟수, 지연 시간, 본문 크기 제한)과 추가 옵션을 기반으로 최적화된 Fetcher 체인을 생성합니다.
+// New 주요 설정값(재시도 횟수, 지연 시간, 본문 크기 제한)만으로 빠르고 간편하게 Fetcher를 생성합니다.
 //
-// 이 함수는 내부적으로 Config를 생성하고 ApplyDefaults()를 호출하여 안전한 기본값으로 보정한 후,
-// NewFromConfig()를 통해 최적화된 Fetcher 체인을 구성합니다.
+// 이 함수는 내부적으로 Config를 생성하고 applyDefaults()를 통해 안전한 기본값을 적용한 후,
+// NewFromConfig()를 호출하여 최적화된 Fetcher 체인을 구성합니다.
 //
-// 더 많은 설정 옵션이 필요한 경우 NewFromConfig를 직접 사용하는 것을 권장합니다.
+// 복잡한 설정(타임아웃, 프록시, 유효성 검사 등)이 필요한 경우에는 NewFromConfig 함수를 직접 사용하는 것을 권장합니다.
 //
 // 매개변수:
-//   - maxRetries: 최대 재시도 횟수 (권장: 0-10, 범위 초과 시 자동 보정)
-//   - retryDelay: 재시도 간 기본 대기 시간 (최소: 1초, 1초 미만이면 1초로 보정)
-//   - maxBytes: 응답 본문 최대 크기 (0: 기본 10MB, -1: 무제한, 양수: 지정 크기)
-//   - opts: HTTPFetcher 추가 옵션 (예: WithTimeout, WithProxy, WithMaxRedirects)
+//   - maxRetries: 최대 재시도 횟수 (권장: 0~10회, 범위 초과 시 내부 정책에 따라 자동 보정됨)
+//   - minRetryDelay: 최소 재시도 대기 시간 (최소: 1초, 서버 부하 방지를 위해 1초 미만은 1초로 자동 보정됨)
+//   - maxBytes: 응답 본문의 최대 허용 크기 (0: 기본값 사용, -1: 제한 없음, 양수: 지정된 바이트로 제한)
+//   - opts: HTTPFetcher 추가 설정 옵션 (예: WithTimeout, WithProxy)
 //
 // 반환값:
-//   - Fetcher 체인
-func New(maxRetries int, retryDelay time.Duration, maxBytes int64, opts ...Option) Fetcher {
+//   - Fetcher: 구성된 Fetcher 체인 인터페이스
+func New(maxRetries int, minRetryDelay time.Duration, maxBytes int64, opts ...Option) Fetcher {
 	config := Config{
-		MaxRetries: maxRetries,
-		RetryDelay: retryDelay,
-		MaxBytes:   maxBytes,
+		// @@@@@
+		MaxIdleConns: -1, // 기본값 사용 (안전한 기본값 100)
+		// @@@@@
+		MaxConnsPerHost: -1, // 기본값 사용 (무제한)
+		// @@@@@
+		MaxIdleConnsPerHost: -1, // 기본값 사용 (기본 2)
+		MaxRetries:          &maxRetries,
+		MinRetryDelay:       &minRetryDelay,
+		MaxBytes:            &maxBytes,
 	}
-	config.ApplyDefaults()
+	config.applyDefaults()
 
 	return NewFromConfig(config, opts...)
 }
 
-// NewFromConfig Config와 추가 옵션을 기반으로 최적화된 Fetcher 체인을 생성합니다.
+// NewFromConfig Config 기반 옵션과 추가 옵션을 기반으로 최적화된 Fetcher 실행 체인을 생성합니다.
 //
-// Fetcher 체인 구성 순서 (바깥쪽 -> 안쪽):
+// Fetcher 체인은 책임 연쇄 패턴(Chain of Responsibility)을 따르며, 다음과 같은 순서로 미들웨어가 구성됩니다 (바깥쪽 -> 안쪽):
 //
-//	LoggingFetcher               (6단계) - 전체 요청/응답 과정 로깅
-//	  -> UserAgentFetcher        (5단계) - User-Agent 헤더 설정
-//	    -> RetryFetcher          (4단계) - 재시도 로직 (지수 백오프)
-//	      -> MimeTypeFetcher     (3단계) - Content-Type 검증 (선택적)
-//	        -> StatusCodeFetcher (2단계) - HTTP 상태 코드 검증
-//	          -> MaxBytesFetcher (1단계) - 응답 크기 제한
-//	            -> HTTPFetcher   (0단계) - 실제 HTTP 요청 수행
+//  1. [관찰] LoggingFetcher    (최외곽): 모든 시도와 지연을 포함한 전체 요청 생애주기를 기록합니다.
+//  2. [보조] UserAgentFetcher  (보조): 각 요청에 매번 새로운 User-Agent를 부여합니다.
+//  3. [제어] RetryFetcher      (핵심): 실패 시 지수 백오프 전략에 따라 재시도를 총괄 제어합니다.
+//  4. [검증] MimeTypeFetcher   (검증): 서버가 반환한 Content-Type의 유효성을 검사합니다.
+//  5. [검증] StatusCodeFetcher (검증): HTTP 응답 상태 코드의 유효성을 검사합니다.
+//  6. [제한] MaxBytesFetcher   (보호): 응답 본문의 크기를 실시간으로 감시하여 메모리 고갈을 방지합니다.
+//  7. [전송] HTTPFetcher       (최내곽): 최하단에서 실제 네트워크 I/O 및 패킷 전송을 담당합니다.
 //
-// 이러한 순서는 다음과 같은 이유로 설계되었습니다:
-//   - LoggingFetcher가 가장 바깥쪽에 위치하여 재시도를 포함한 전체 과정을 로깅
-//   - UserAgentFetcher가 RetryFetcher 바깥에 위치하여 재시도 시에도 동일한 UA 유지
-//   - RetryFetcher가 검증 로직(StatusCodeFetcher, MimeTypeFetcher) 바깥에 위치하여 실패 시 재시도 가능
-//   - 검증 로직(StatusCodeFetcher, MimeTypeFetcher)이 안쪽에 위치하여 각 시도마다 검증 수행
+// 설계 의도:
+//   - LoggingFetcher는 재시도를 포함한 전체 흐름을 기록하기 위해 가장 바깥에 위치합니다.
+//   - RetryFetcher는 하위 검증 로직(상태 코드, MimeType) 실패 시에도 재시도를 수행해야 하므로 검증 미들웨어보다 바깥에 위치합니다.
+//   - 검증 로직(StatusCode, MimeType)은 각 시도(Attempt)마다 수행되어야 하므로 RetryFetcher 안쪽에 위치합니다.
 //
 // 매개변수:
-//   - cfg: Fetcher 체인 구성을 위한 설정값
-//   - opts: HTTPFetcher 추가 옵션 (예: WithTimeout, WithProxy, WithMaxRedirects)
+//   - cfg: Fetcher 체인 구성을 위한 상세 설정값
+//   - opts: HTTPFetcher 내부 동작을 제어하기 위한 추가 옵션
 //
 // 반환값:
-//   - Fetcher 체인
+//   - Fetcher: 구성된 Fetcher 체인 인터페이스
 func NewFromConfig(cfg Config, opts ...Option) Fetcher {
-	cfg.ApplyDefaults()
+	cfg.applyDefaults()
 
 	// ========================================
-	// 0단계: 기본 옵션 및 Config 기반 옵션 통합
+	// 0단계: Config 기반 옵션 및 추가 옵션 통합
 	// ========================================
 	var mergedOpts []Option
 
@@ -305,25 +312,25 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	}
 
 	// HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수 설정
-	if cfg.MaxRedirects > 0 {
-		mergedOpts = append(mergedOpts, WithMaxRedirects(cfg.MaxRedirects))
+	if cfg.MaxRedirects != nil {
+		mergedOpts = append(mergedOpts, WithMaxRedirects(*cfg.MaxRedirects))
 	}
 
-	// 사용자 제공 옵션을 마지막에 추가하여 Config 기반 옵션을 덮어쓸 수 있도록 함!!
+	// 추가 옵션을 마지막에 추가하여 Config 기반 옵션을 덮어쓸 수 있도록 함!!
 	mergedOpts = append(mergedOpts, opts...)
 
 	// ========================================
-	// 기본 HTTPFetcher 생성 (체인의 가장 안쪽)
+	// 1단계: 기본 HTTPFetcher 생성 (체인의 가장 안쪽)
 	// ========================================
 	var f Fetcher = NewHTTPFetcher(mergedOpts...)
 
 	// ========================================
-	// 1단계: 응답 본문의 크기 제한 미들웨어
+	// 2단계: HTTP 응답 본문의 크기 제한 미들웨어
 	// ========================================
 	f = NewMaxBytesFetcher(f, *cfg.MaxBytes)
 
 	// ========================================
-	// 2단계: 상태 코드 검증 미들웨어
+	// 3단계: HTTP 응답 상태 코드 검증 미들웨어
 	// ========================================
 	if !cfg.DisableStatusCodeCheck {
 		if len(cfg.AllowedStatusCodes) > 0 {
@@ -336,19 +343,19 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	}
 
 	// ========================================
-	// 3단계: MIME 타입 검증 미들웨어
+	// 4단계: HTTP 응답 MIME 타입 검증 미들웨어
 	// ========================================
 	if len(cfg.AllowedMimeTypes) > 0 {
 		f = NewMimeTypeFetcher(f, cfg.AllowedMimeTypes, true)
 	}
 
 	// ========================================
-	// 4단계: 재시도 수행 미들웨어
+	// 5단계: HTTP 요청 재시도 수행 미들웨어
 	// ========================================
 	f = NewRetryFetcher(f, *cfg.MaxRetries, *cfg.MinRetryDelay, *cfg.MaxRetryDelay)
 
 	// ========================================
-	// 5단계: User-Agent 주입 미들웨어
+	// 6단계: User-Agent 주입 미들웨어
 	// ========================================
 	// RetryFetcher 바깥에 위치하여 재시도 시에도 동일한 User-Agent를 유지합니다.
 	if cfg.EnableRandomUserAgent {
@@ -356,7 +363,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	}
 
 	// ========================================
-	// 6단계: 로깅 미들웨어 (체인의 가장 바깥쪽)
+	// 7단계: 로깅 미들웨어 (체인의 가장 바깥쪽)
 	// ========================================
 	// 가장 바깥쪽에 위치하여 모든 미들웨어의 동작을 포함한 전체 과정을 로깅
 	if !cfg.DisableLogging {
@@ -366,16 +373,20 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	return f
 }
 
-// normalizePtr1 포인터 필드의 값을 안전하게 꺼내어 정규화(보정)한 뒤, 다시 포인터에 담아주는 제네릭 헬퍼 함수입니다.
+// normalizePtr 포인터 필드의 값을 안전하게 꺼내어 정규화(보정)한 뒤, 다시 포인터에 담아주는 제네릭 헬퍼 함수입니다.
 //
-// 주요 특징:
-//   - Nil 안전성: 포인터가 nil인 경우, 해당 타입의 기본값(Zero Value)을 사용하여 패닉을 방지합니다.
-//   - 값 보정: 사용자가 전달한 정규화 로직(normalizer)을 통해 값을 검증하고 올바른 범위로 맞춥니다.
-//   - 불변성 보장: 원본 값을 수정하는 대신, 보정된 새로운 값의 주소를 할당합니다.
-func normalizePtr1[T any](ptr **T, normalizer func(T) T) {
+// 이 함수는 Config의 선택적 필드(포인터 타입)들을 일관된 방식으로 초기화하고 검증할 때 사용됩니다.
+//
+// 작동 방식:
+//  1. Nil 안전성: 입력받은 포인터가 nil인 경우, 시스템 전체의 일관성을 위해 제공된 기본값(defaultValue)을 사용합니다.
+//  2. 값 정규화: 사용자가 정의한 로직(normalizer)을 호출하여 값이 유효한 범위 내에 있는지 검증하고 필요시 보정합니다.
+//  3. 불변성 유지: 기존 메모리 값을 직접 수정하는 대신, 정규화된 새로운 결과값의 주소를 할당하여 부수 효과를 최소화합니다.
+func normalizePtr[T any](ptr **T, defaultValue T, normalizer func(T) T) {
 	var val T
 	if *ptr != nil {
 		val = **ptr
+	} else {
+		val = defaultValue
 	}
 
 	result := normalizer(val)
@@ -383,19 +394,25 @@ func normalizePtr1[T any](ptr **T, normalizer func(T) T) {
 	*ptr = &result
 }
 
-// normalizePtrs2 서로 연관된 두 개의 포인터 필드 값을 함께 꺼내어, 상호 의존성을 고려해 정규화하는 제네릭 헬퍼 함수입니다.
+// normalizePtrPair 서로 논리적으로 결합된 두 개의 포인터 필드 값을 함께 정규화하는 제네릭 헬퍼 함수입니다.
 //
-// 주요 특징:
-//   - 상호 보정: 두 값을 비교하여 모순되는 설정(예: 최소값이 최대값보다 큰 경우)을 안전하게 조정합니다.
-//   - Nil 안전성: 포인터가 nil인 경우, 기본값(Zero Value)으로 취급하여 로직을 단순화합니다.
-//   - 일관성 유지: 두 값이 항상 논리적으로 모순되지 않도록 동시에 업데이트합니다.
-func normalizePtrs2[T any](ptr1 **T, ptr2 **T, normalizer func(T, T) (T, T)) {
+// 주로 '최소값'과 '최대값'처럼 하나의 설정이 다른 설정에 영향을 미치는(상호 의존적인) 관계를 처리할 때 유용합니다.
+//
+// 작동 방식:
+//  1. 개별 기본값 적용: 두 포인터가 각각 nil인 경우를 처리하여 모두 유효한 값을 가지도록 준비합니다.
+//  2. 원자적(Atomic) 상호 보정: 두 값을 동시에 normalizer에 전달하여, 논리적 모순(예: 최소값이 최대값보다 큰 경우)이 없는지 확인하고 교정합니다.
+//  3. 일관된 상태 보장: 보정된 두 결과를 동시에 각 포인터 필드에 업데이트하여 설정의 일관성을 즉각적으로 확보합니다.
+func normalizePtrPair[T any](ptr1 **T, ptr2 **T, defaultValue1, defaultValue2 T, normalizer func(T, T) (T, T)) {
 	var val1, val2 T
 	if *ptr1 != nil {
 		val1 = **ptr1
+	} else {
+		val1 = defaultValue1
 	}
 	if *ptr2 != nil {
 		val2 = **ptr2
+	} else {
+		val2 = defaultValue2
 	}
 
 	result1, result2 := normalizer(val1, val2)

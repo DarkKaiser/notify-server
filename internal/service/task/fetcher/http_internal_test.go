@@ -13,10 +13,10 @@ import (
 
 // TestDefaultTransport_Settings verifies that the shared default transport matches expected defaults.
 func TestDefaultTransport_Settings(t *testing.T) {
-	assert.Equal(t, DefaultMaxIdleConns, defaultTransport.MaxIdleConns)
-	assert.Equal(t, DefaultMaxIdleConns, defaultTransport.MaxIdleConnsPerHost)
-	assert.Equal(t, DefaultIdleConnTimeout, defaultTransport.IdleConnTimeout)
-	assert.Equal(t, DefaultTLSHandshakeTimeout, defaultTransport.TLSHandshakeTimeout)
+	assert.Equal(t, 100, defaultTransport.MaxIdleConns)
+	assert.Equal(t, 0, defaultTransport.MaxIdleConnsPerHost) // Default value (0 means 2 in http.Transport)
+	assert.Equal(t, 90*time.Second, defaultTransport.IdleConnTimeout)
+	assert.Equal(t, 10*time.Second, defaultTransport.TLSHandshakeTimeout)
 }
 
 // TestHTTPFetcher_Close verifies that Close correctly cleans up isolated transports
@@ -54,7 +54,7 @@ func TestTransportCache_Internal(t *testing.T) {
 	transportCacheList.Init()
 	transportCacheMu.Unlock()
 
-	limit := DefaultMaxTransportCacheSize
+	limit := 100 // DefaultMaxTransportCacheSize
 
 	t.Run("LRU Eviction", func(t *testing.T) {
 		transportCacheMu.Lock()
@@ -263,7 +263,7 @@ func TestParameters_Application(t *testing.T) {
 
 	// Verify Pooling
 	assert.Equal(t, 123, tr.MaxIdleConns)
-	assert.Equal(t, 123, tr.MaxIdleConnsPerHost) // Logic sets this same as MaxIdleConns
+	assert.Equal(t, 0, tr.MaxIdleConnsPerHost) // Should remain default (0 -> 2) as it is not explicitly set
 	assert.Equal(t, 45, tr.MaxConnsPerHost)
 
 	// Verify Timeouts
@@ -272,38 +272,64 @@ func TestParameters_Application(t *testing.T) {
 	assert.Equal(t, 3*time.Second, tr.ResponseHeaderTimeout)
 }
 
-func TestTransport_CopyOnWrite(t *testing.T) {
+func TestTransport_MergesOptions(t *testing.T) {
 	baseTr := &http.Transport{
 		MaxIdleConns: 10,
 	}
 
-	f := NewHTTPFetcher(WithMaxIdleConns(20)) // Requesting 20
-	// Need to access internal method via interface or test hook?
-	// configureTransportFromProvided is private.
-	// However, setupTransport calls it if client.Transport is set.
+	// Requesting 20, which is different from baseTr's 10.
+	// Previously, this option would be ignored. Now it should be applied.
+	f := NewHTTPFetcher(WithMaxIdleConns(20))
 
 	// Inject base transport
 	f.client.Transport = baseTr
 
-	// This looks tricky to call directly since setupTransport is private and called by Do().
-	// But we are in the same package `fetcher`, so we can call methods on `f` if they are defined in `http.go`.
-	// Wait, the file under test is `http_transport.go`, but these methods belong to `HTTPFetcher`.
-	// Let's use `setupTransport` (private).
-
+	// Trigger setup
 	err := f.setupTransport()
 	require.NoError(t, err)
 
 	// Result
 	finalTr := f.client.Transport.(*http.Transport)
 
-	// Should be the SAME object (no cloning)
-	assert.Equal(t, baseTr, finalTr, "Spec: WithTransport ignores other options, so transport object should be reused")
+	// Should be a NEW object (cloned) because we requested a change (20 != 10)
+	assert.NotEqual(t, baseTr, finalTr, "Spec: WithTransport + Options should trigger cloning")
 
-	// Should have ORIGINAL settings (options ignored)
-	assert.Equal(t, 10, finalTr.MaxIdleConns)
+	// Should have NEW settings applied
+	assert.Equal(t, 20, finalTr.MaxIdleConns)
+	assert.Equal(t, 0, finalTr.MaxIdleConnsPerHost) // Should NOT be changed (preserved from baseTr)
 
-	// Base object should be untouched
-	assert.Equal(t, 10, baseTr.MaxIdleConns)
+	// Sentinel Value Check:
+	// We didn't set Proxy, so it should remain nil (default of baseTr)
+	assert.Nil(t, finalTr.Proxy)
+}
+
+func TestTransport_Sentinels_DoNotOverride(t *testing.T) {
+	// Scenario: User supplies a transport with specific settings,
+	// and does NOT provide any overriding options.
+	// The transport should be preserved as-is (or cloned without changes).
+
+	baseTr := &http.Transport{
+		MaxIdleConns:    55,
+		IdleConnTimeout: 123 * time.Second,
+		MaxConnsPerHost: 99,
+	}
+
+	f := NewHTTPFetcher() // No options -> All sentinels (-1, 0)
+	f.client.Transport = baseTr
+
+	err := f.setupTransport()
+	require.NoError(t, err)
+
+	finalTr := f.client.Transport.(*http.Transport)
+
+	// Since SENTINELs are used, shouldCloneTransport(tr) should return false.
+	// Optimization: Reuse original object
+	assert.Equal(t, baseTr, finalTr)
+
+	// Verify values are preserved
+	assert.Equal(t, 55, finalTr.MaxIdleConns)
+	assert.Equal(t, 123*time.Second, finalTr.IdleConnTimeout)
+	assert.Equal(t, 99, finalTr.MaxConnsPerHost)
 }
 
 // TestCreateTransport_Internal verifies internal helper logic.
@@ -315,6 +341,14 @@ func TestCreateTransport_Internal(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "프록시 URL")
 		assert.NotContains(t, err.Error(), "secret") // Password should be redacted
+	})
+
+	t.Run("NoProxy Constant", func(t *testing.T) {
+		// Verify that NoProxy constant results in nil Proxy field
+		key := transportCacheKey{proxyURL: NoProxy}
+		tr, err := newTransport(nil, key)
+		require.NoError(t, err)
+		assert.Nil(t, tr.Proxy, "Transport.Proxy should be nil when NoProxy is used")
 	})
 }
 
@@ -341,6 +375,9 @@ func TestHTTPFetcher_TransportSelection(t *testing.T) {
 
 		// Verify isolation by mutation
 		originalMaxIdle := defaultTransport.MaxIdleConns
+
+		// Verify that isolation sets default values correctly even if fetcher has sentinels
+		assert.Equal(t, 100, tr.MaxIdleConns)
 
 		// Modify the isolated transport
 		tr.MaxIdleConns = originalMaxIdle + 1
@@ -388,4 +425,53 @@ func TestRetryFetcher_NonRetriableStatuses_Internal(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRegression_NeedsCustomTransport verifies that MaxIdleConnsPerHost is correctly checked.
+func TestRegression_NeedsCustomTransport(t *testing.T) {
+	// Scenario: ONLY MaxIdleConnsPerHost is changed from default.
+	// Previously, this leaked defaultTransport settings because checking this field was missed.
+	f := NewHTTPFetcher(WithMaxIdleConnsPerHost(50))
+
+	// This should be TRUE
+	assert.True(t, f.needsCustomTransport(), "needsCustomTransport should return true when MaxIdleConnsPerHost is set")
+
+	// Verify effect in Setup
+	err := f.setupTransport()
+	assert.NoError(t, err)
+
+	tr, ok := f.client.Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Equal(t, 50, tr.MaxIdleConnsPerHost) // If false, this would likely be default (2) or MaxIdleConns
+}
+
+// TestRegression_ConfigureTransportFromProvided_PreservesHostLimit verifies that
+// setting MaxIdleConns does NOT aggressively override MaxIdleConnsPerHost in provided transport.
+func TestRegression_ConfigureTransportFromProvided_PreservesHostLimit(t *testing.T) {
+	// Scenario: User provides a transport with explicit Host Limit (Low),
+	// but wraps it with a Fetcher that sets MaxIdleConns (High).
+	// Logic should NOT overwrite the Host Limit with the High value unless explicitly requested.
+
+	baseTr := &http.Transport{
+		MaxIdleConns:        1, // Ignored/Overridden
+		MaxIdleConnsPerHost: 2, // IMPORTANT: Should remain 2
+	}
+
+	// Fetcher configures MaxIdleConns = 100
+	// It does NOT configure MaxIdleConnsPerHost (Sentinel -1)
+	f := NewHTTPFetcher(WithMaxIdleConns(100))
+	f.client.Transport = baseTr
+
+	// Trigger setup
+	err := f.setupTransport()
+	require.NoError(t, err)
+
+	finalTr := f.client.Transport.(*http.Transport)
+
+	// MaxIdleConns should be updated to 100
+	assert.Equal(t, 100, finalTr.MaxIdleConns)
+
+	// MaxIdleConnsPerHost should REMAIN 2 (from baseTr)
+	// OLD BUG: It was forcefully updated to 100
+	assert.Equal(t, 2, finalTr.MaxIdleConnsPerHost, "Should preserve original MaxIdleConnsPerHost when not explicitly overridden")
 }

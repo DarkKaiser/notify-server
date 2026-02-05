@@ -21,8 +21,8 @@ const (
 	// DefaultMaxTransportCacheSize Transport 캐시의 최대 개수
 	DefaultMaxTransportCacheSize = 100
 
-	// DefaultMaxRedirects HTTP 리다이렉트 최대 횟수
-	DefaultMaxRedirects = 10
+	// defaultMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수
+	defaultMaxRedirects = 10
 )
 
 // HTTPFetcher 기본 HTTP 클라이언트 미들웨어입니다.
@@ -121,18 +121,7 @@ func NewHTTPFetcher(opts ...Option) *HTTPFetcher {
 			Transport: defaultTransport,
 
 			// 리다이렉트 정책: 최대 10회까지 허용하며 Referer 헤더를 자동 설정
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= DefaultMaxRedirects {
-					return http.ErrUseLastResponse
-				}
-
-				// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
-				if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
-					req.Header.Set("Referer", via[len(via)-1].URL.String())
-				}
-
-				return nil
-			},
+			CheckRedirect: newCheckRedirectPolicy(defaultMaxRedirects),
 		},
 
 		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
@@ -238,40 +227,28 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 //   - Close 호출 후 Do 메서드를 다시 호출하는 것은 권장하지 않습니다.
 //   - 공유 리소스는 Go의 가비지 컬렉터(GC)가 자동으로 관리하므로, 수동으로 정리할 필요가 없습니다.
 func (h *HTTPFetcher) Close() error {
-	// 1단계: 기본 검증
+	// 1. 기본 검증
 	// 클라이언트나 Transport가 없으면 정리할 것이 없으므로 즉시 반환합니다.
 	if h.client == nil || h.client.Transport == nil {
 		return nil
 	}
 
-	// 2단계: 전역 기본 Transport 확인
+	// 2. 전역 기본 Transport 확인
 	if h.client.Transport == defaultTransport {
 		return nil
 	}
 
-	// 3단계: 사용자 정의 Transport 처리
+	// 3. 사용자 정의 Transport 처리
 	// *http.Transport 타입인 경우에만 정리 가능 여부를 판단합니다.
 	// (다른 타입의 RoundTripper는 정리 방법을 알 수 없으므로 무시합니다)
 	if tr, ok := h.client.Transport.(*http.Transport); ok {
-		// 3-1단계: 공유 여부 확인
-		// Transport 캐시를 순회하여 현재 Transport가 캐시에 등록되어 있는지 확인합니다.
-		// 캐시에 있다면 다른 HTTPFetcher들도 이 Transport를 사용 중일 수 있습니다.
-		isShared := false
-		if !h.disableTransportCache {
-			transportCacheMu.RLock()
-			for _, entry := range transportCache {
-				if entry.Value.(*transportCacheEntry).transport == tr {
-					isShared = true
-					break
-				}
-			}
-			transportCacheMu.RUnlock()
-		}
-
-		// 3-2단계: 격리된 Transport만 정리
-		// 공유되지 않는 독립적인 Transport인 경우에만 유휴 연결을 닫습니다.
-		// CloseIdleConnections는 사용 중이지 않은 연결만 닫으므로, 진행 중인 요청에는 영향을 주지 않습니다.
-		if !isShared {
+		// 3-1. 격리된 Transport만 정리
+		// 격리된 Transport인 경우에만 리소스를 독점하고 있다고 확신할 수 있으므로 정리합니다.
+		//
+		// ⚠️ 주의: 공유 Transport는 절대 닫으면 안 됩니다!
+		//    공유 모드(disableTransportCache=false)에서는 캐시에서 퇴출되었다고 하더라도
+		//    다른 Fetcher가 여전히 참조하고 있을 수 있으므로 GC에 맡겨야 합니다.
+		if h.disableTransportCache {
 			tr.CloseIdleConnections()
 		}
 	}
@@ -279,6 +256,21 @@ func (h *HTTPFetcher) Close() error {
 	return nil
 }
 
+// normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 유효하지 않은 값으로 간주하여 기본값(defaultMaxRedirects)으로 보정
+//   - 0: 리다이렉트를 허용하지 않음 (그대로 반환)
+//   - 양수: 지정된 횟수만큼 리다이렉트 허용 (그대로 반환)
+func normalizeMaxRedirects(maxRedirects int) int {
+	if maxRedirects < 0 {
+		return defaultMaxRedirects
+	}
+
+	return maxRedirects
+}
+
+// @@@@@
 // transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.
 //
 // 이 메서드는 내부 상태 검증 및 디버깅을 위한 진단(Diagnostic) 목적으로 설계되었습니다.
@@ -302,4 +294,49 @@ func (h *HTTPFetcher) transport() http.RoundTripper {
 	}
 
 	return h.client.Transport
+}
+
+// newCheckRedirectPolicy HTTP 리다이렉트 처리를 위한 정책 함수를 생성합니다.
+//
+// # 목적
+//
+// HTTP 클라이언트가 3xx 리다이렉트 응답을 받았을 때 어떻게 처리할지 결정하는 함수를 생성합니다.
+// 무한 리다이렉트 루프를 방지하고, Referer 헤더를 안전하게 설정하여 사이트 차단을 우회하면서도
+// 보안을 유지합니다.
+//
+// # 적용되는 보안 정책
+//
+// 1. **리다이렉트 횟수 제한**: 지정된 최대 횟수를 초과하면 리다이렉트를 중단하고 마지막 응답을 반환
+// 2. **Referer 헤더 자동 설정**: 이전 요청의 URL을 Referer로 설정하여 일부 사이트의 차단을 방지
+// 3. **HTTPS → HTTP 다운그레이드 방지**: 보안 수준이 낮아지는 경우 Referer 전송을 차단 (RFC 7231 준수)
+// 4. **인증 정보 제거**: Referer 헤더에서 사용자 자격 증명(ID/Password)과 민감한 쿼리 파라미터를 마스킹
+//
+// 매개변수:
+//   - maxRedirects: 허용할 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
+//
+// 반환값:
+//   - http.Client.CheckRedirect에 할당할 수 있는 정책 함수
+func newCheckRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return http.ErrUseLastResponse
+		}
+
+		// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
+		if len(via) > 0 {
+			prevReq := via[len(via)-1]
+			if prevReq != nil && prevReq.URL != nil {
+				// [보안 강화 1] HTTPS -> HTTP 다운그레이드 시 Referer 전송 방지
+				if prevReq.URL.Scheme == "https" && req.URL.Scheme != "https" {
+					// 보안 수준이 낮아지므로 Referer를 설정하지 않음
+				} else {
+					// [보안 강화 2] Referer 헤더 설정 시 사용자 자격 증명(ID/Password) 제거
+					referer := redactRefererURL(prevReq.URL)
+					req.Header.Set("Referer", referer)
+				}
+			}
+		}
+
+		return nil
+	}
 }

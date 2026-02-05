@@ -49,7 +49,7 @@ func (r *maxBytesReader) Close() error {
 type MaxBytesFetcher struct {
 	delegate Fetcher
 
-	// limit 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
+	// limit HTTP 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
 	//
 	// 이 값은 normalizeByteLimit 함수를 통해 정규화되며, 항상 양수값만 저장됩니다.
 	// (NoLimit(-1)인 경우 NewMaxBytesFetcher가 미들웨어를 우회하므로 이 필드에 저장되지 않음)
@@ -74,7 +74,7 @@ func NewMaxBytesFetcher(delegate Fetcher, limit int64) Fetcher {
 	}
 }
 
-// Do HTTP 요청을 수행하고, 응답 본문에 크기 제한을 적용합니다.
+// Do HTTP 요청을 수행하고, 응답 본문의 크기를 제한합니다.
 //
 // 매개변수:
 //   - req: 처리할 HTTP 요청
@@ -84,7 +84,7 @@ func NewMaxBytesFetcher(delegate Fetcher, limit int64) Fetcher {
 //   - 에러 (요청 처리 중 발생한 에러)
 //
 // 주의사항:
-//   - 반환된 응답 객체의 Body는 반드시 호출자가 닫아야 합니다.
+//   - 응답 객체의 Body는 반드시 호출자가 닫아야 합니다.
 //   - Body를 읽는 도중 제한 초과 시 에러가 발생할 수 있습니다.
 //   - Content-Length 헤더가 없는 응답도 2차 방어로 보호됩니다.
 func (f *MaxBytesFetcher) Do(req *http.Request) (*http.Response, error) {
@@ -134,12 +134,12 @@ func (f *MaxBytesFetcher) Close() error {
 	return f.delegate.Close()
 }
 
-// normalizeByteLimit 응답 본문의 최대 허용 크기를 정규화합니다.
+// normalizeByteLimit HTTP 응답 본문의 최대 허용 크기를 정규화합니다.
 //
 // 정규화 규칙:
-//   - NoLimit(-1): 제한 없음을 의미하며 그대로 반환
-//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(10MB)으로 보정
-//   - 양수: 사용자 설정값으로 그대로 반환
+//   - NoLimit(-1): 제한 없음 (그대로 반환)
+//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(defaultMaxBytes)으로 보정
+//   - 양수: 지정된 크기만큼 응답 본문 크기 제한 (그대로 반환)
 func normalizeByteLimit(limit int64) int64 {
 	if limit == NoLimit {
 		return NoLimit

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -205,4 +206,63 @@ func TestCheckResponseStatus(t *testing.T) {
 	assert.Contains(t, err.Error(), "http://user:xxxxx@example.com/api?token=xxxxx") // Redacted
 	assert.NotContains(t, err.Error(), "pass")
 	assert.NotContains(t, err.Error(), "secret")
+}
+
+// TestHTTPFetcher_RefererLeak verifies that credentials and sensitive query parameters are redacted from the Referer header
+// during redirects.
+func TestHTTPFetcher_RefererLeak(t *testing.T) {
+	// 1. Redirect Target Server (Where credentials might be leaked)
+	var capturedReferer string
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedReferer = r.Header.Get("Referer")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer targetServer.Close()
+
+	// 2. Initial Server (Redirects to Target)
+	// We access this server with credentials
+	initialServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetServer.URL, http.StatusFound)
+	}))
+	defer initialServer.Close()
+
+	t.Run("Credential Leak in Referer", func(t *testing.T) {
+		// Construct URL with credentials
+		// e.g. http://admin:secret123@127.0.0.1:xxx/
+		u, _ := url.Parse(initialServer.URL)
+		u.User = url.UserPassword("admin", "secret123")
+		initialURL := u.String()
+
+		f := fetcher.NewHTTPFetcher()
+		req, _ := http.NewRequest(http.MethodGet, initialURL, nil)
+
+		resp, err := f.Do(req.WithContext(context.Background()))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Verify captured Referer
+		assert.NotEmpty(t, capturedReferer, "Referer should be present")
+		assert.NotContains(t, capturedReferer, "secret123", "Password leaked in Referer!")
+		assert.NotContains(t, capturedReferer, "admin", "Username leaked in Referer!")
+		assert.Contains(t, capturedReferer, u.Host, "Referer should contain host")
+	})
+
+	t.Run("Query Param Redaction in Referer", func(t *testing.T) {
+		// Reset capture
+		capturedReferer = ""
+
+		initialURL := initialServer.URL + "?token=secret_token_value&public=value"
+
+		f := fetcher.NewHTTPFetcher()
+		req, _ := http.NewRequest(http.MethodGet, initialURL, nil)
+
+		resp, err := f.Do(req.WithContext(context.Background()))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.NotEmpty(t, capturedReferer)
+		assert.NotContains(t, capturedReferer, "secret_token_value", "Sensitive value leaked in Referer!")
+		assert.Contains(t, capturedReferer, "token=xxxxx", "Sensitive value should be masked")
+		assert.Contains(t, capturedReferer, "public=value", "Non-sensitive value should remain")
+	})
 }
