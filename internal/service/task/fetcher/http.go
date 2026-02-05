@@ -6,22 +6,26 @@ import (
 )
 
 const (
-	// DefaultTimeout HTTP 클라이언트의 전체 요청 타임아웃
-	DefaultTimeout = 30 * time.Second
+	// @@@@@
+	// defaultTimeout HTTP 클라이언트의 전체 요청 타임아웃
+	defaultTimeout = 30 * time.Second
 
-	// DefaultTLSHandshakeTimeout TLS 핸드셰이크 타임아웃
-	DefaultTLSHandshakeTimeout = 10 * time.Second
+	// @@@@@
+	// defaultTLSHandshakeTimeout TLS 핸드셰이크 타임아웃
+	defaultTLSHandshakeTimeout = 10 * time.Second
 
-	// DefaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃
-	DefaultIdleConnTimeout = 90 * time.Second
+	// @@@@@
+	// defaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃
+	defaultIdleConnTimeout = 90 * time.Second
 
-	// DefaultMaxIdleConns 전체 유휴(Idle) 연결의 최대 개수
-	DefaultMaxIdleConns = 100
+	// @@@@@
+	// defaultMaxIdleConns 전체 유휴(Idle) 연결의 최대 개수
+	defaultMaxIdleConns = 100
 
-	// DefaultMaxTransportCacheSize Transport 캐시의 최대 개수
-	DefaultMaxTransportCacheSize = 100
+	// defaultMaxTransportCacheSize Transport 재사용 캐시의 최대 개수입니다.
+	defaultMaxTransportCacheSize = 100
 
-	// defaultMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수
+	// defaultMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수입니다.
 	defaultMaxRedirects = 10
 )
 
@@ -35,11 +39,15 @@ const (
 //   - User-Agent 관리: 기본 User-Agent 설정 및 요청별 커스터마이징
 type HTTPFetcher struct {
 	// ========================================
-	// 코어(Core)
+	// 핵심 컴포넌트
 	// ========================================
 
 	// client 실제 HTTP 요청을 수행하는 클라이언트입니다.
 	client *http.Client
+
+	// ========================================
+	// 초기화 상태
+	// ========================================
 
 	// initErr 초기화 중 발생한 에러입니다.
 	// NewHTTPFetcher 실행 시 옵션 검증이나 Transport 설정 과정에서 에러가 발생하면 여기에 저장됩니다.
@@ -50,44 +58,64 @@ type HTTPFetcher struct {
 	// 타임아웃(Timeout) 설정
 	// ========================================
 
+	// @@@@@
 	// tlsHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
 	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
 	tlsHandshakeTimeout time.Duration
 
+	// @@@@@
 	// responseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
 	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
 	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
 	responseHeaderTimeout time.Duration
 
+	// @@@@@
 	// idleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
 	idleConnTimeout time.Duration
 
 	// ========================================
-	// 네트워크 및 연결 풀(Connection Pool) 설정
+	// 네트워크 라우팅
 	// ========================================
 
+	// @@@@@
 	// proxyURL 프록시 서버 주소입니다.
 	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
 	// 형식: "http://host:port" 또는 "https://user:pass@host:port"
 	proxyURL string
 
+	// ========================================
+	// 연결 풀(Connection Pool) 설정
+	// ========================================
+
+	// @@@@@
 	// maxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
 	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
 	// 0이면 무제한입니다.
 	maxIdleConns int
 
+	// @@@@@
 	// maxConnsPerHost 호스트(도메인)당 최대 연결 개수입니다.
 	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
 	// 0이면 무제한입니다.
 	maxConnsPerHost int
 
+	// @@@@@
+	// maxIdleConnsPerHost 호스트(도메인)당 최대 유휴(Idle) 연결 개수입니다.
+	// 0이면 기본값(2)을 사용하거나 maxIdleConns를 따릅니다.
+	maxIdleConnsPerHost int
+
+	// ========================================
+	// 성능 최적화 (Performance Optimization)
+	// ========================================
+
+	// @@@@@
 	// disableTransportCache Transport 캐시 사용 여부입니다.
 	// true이면 매번 새로운 Transport를 생성하고, false이면 동일한 설정의 Transport를 재사용합니다.
 	disableTransportCache bool
 
 	// ========================================
-	// HTTP 클라이언트 동작 옵션
+	// 요청 헤더 설정
 	// ========================================
 
 	// defaultUA 기본 User-Agent 문자열입니다.
@@ -115,7 +143,7 @@ var _ Fetcher = (*HTTPFetcher)(nil)
 func NewHTTPFetcher(opts ...Option) *HTTPFetcher {
 	f := &HTTPFetcher{
 		client: &http.Client{
-			Timeout: DefaultTimeout,
+			Timeout: defaultTimeout,
 
 			// 연결 풀 공유 (여러 HTTPFetcher가 연결 풀을 공유하여 성능 최적화)
 			Transport: defaultTransport,

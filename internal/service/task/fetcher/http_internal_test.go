@@ -51,15 +51,15 @@ func TestTransportCache_Internal(t *testing.T) {
 	// Reset cache for testing
 	transportCacheMu.Lock()
 	transportCache = make(map[transportCacheKey]*list.Element)
-	transportCacheList.Init()
+	transportCacheLRU.Init()
 	transportCacheMu.Unlock()
 
-	limit := 100 // DefaultMaxTransportCacheSize
+	limit := 100 // defaultMaxTransportCacheSize
 
 	t.Run("LRU Eviction", func(t *testing.T) {
 		transportCacheMu.Lock()
 		transportCache = make(map[transportCacheKey]*list.Element)
-		transportCacheList.Init()
+		transportCacheLRU.Init()
 		transportCacheMu.Unlock()
 
 		// Fill cache to limit
@@ -69,7 +69,7 @@ func TestTransportCache_Internal(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		require.Equal(t, limit, transportCacheList.Len())
+		require.Equal(t, limit, transportCacheLRU.Len())
 
 		// Add one more -> Should evict the oldest (index 0)
 		key := transportCacheKey{maxIdleConns: limit + 1}
@@ -85,7 +85,7 @@ func TestTransportCache_Internal(t *testing.T) {
 	t.Run("Smart Eviction - Prefer Proxy", func(t *testing.T) {
 		transportCacheMu.Lock()
 		transportCache = make(map[transportCacheKey]*list.Element)
-		transportCacheList.Init()
+		transportCacheLRU.Init()
 		transportCacheMu.Unlock()
 
 		// Scenario:
@@ -110,7 +110,7 @@ func TestTransportCache_Internal(t *testing.T) {
 		require.NoError(t, err)
 
 		// Assert conditions
-		require.Equal(t, limit, transportCacheList.Len())
+		require.Equal(t, limit, transportCacheLRU.Len())
 		// proxy2 is at Front (Most Recently Used)
 		// proxy1 is next
 		// Direct connections are at Back
@@ -134,7 +134,7 @@ func TestTransportCache_Internal(t *testing.T) {
 		// Reset and retry logic match
 		transportCacheMu.Lock()
 		transportCache = make(map[transportCacheKey]*list.Element)
-		transportCacheList.Init()
+		transportCacheLRU.Init()
 		transportCacheMu.Unlock()
 
 		// A. Add Proxy connections FIRST (So they become Oldest)
@@ -169,7 +169,7 @@ func TestTransportCache_Internal(t *testing.T) {
 		// Let's try "Smart Eviction" proof scenario:
 		transportCacheMu.Lock()
 		transportCache = make(map[transportCacheKey]*list.Element)
-		transportCacheList.Init()
+		transportCacheLRU.Init()
 		transportCacheMu.Unlock()
 
 		// 1. Add Direct (Will be Absolute Oldest)
@@ -207,7 +207,7 @@ func TestTransportCache_Internal(t *testing.T) {
 		// Reset
 		transportCacheMu.Lock()
 		transportCache = make(map[transportCacheKey]*list.Element)
-		transportCacheList.Init()
+		transportCacheLRU.Init()
 		transportCacheMu.Unlock()
 
 		const goroutines = 20

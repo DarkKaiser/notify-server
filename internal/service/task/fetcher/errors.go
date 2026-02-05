@@ -65,7 +65,7 @@ func newErrResponseBodyTooLargeByContentLength(contentLength, limit int64) error
 // Transport 관련 에러
 
 // ErrUnsupportedTransport 사용자가 제공한 Transport가 표준 *http.Transport 타입이 아닐 때 반환하는 에러입니다.
-var ErrUnsupportedTransport = apperrors.New(apperrors.Internal, "지원되지 않는 Transport 형식입니다: 표준 *http.Transport 타입에만 설정을 적용할 수 있습니다")
+var ErrUnsupportedTransport = apperrors.New(apperrors.Internal, "지원하지 않는 Transport 형식입니다: 표준 *http.Transport 타입만 설정을 적용할 수 있습니다")
 
 // newErrIsolatedTransportCreateFailed 격리된(Isolated) Transport 인스턴스 생성 과정에서 오류가 발생했을 때 반환하는 에러를 생성합니다.
 func newErrIsolatedTransportCreateFailed(err error) error {

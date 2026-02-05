@@ -12,14 +12,14 @@ type Config struct {
 
 	// Timeout HTTP 요청 전체에 대한 타임아웃입니다.
 	// 연결(Dial), 요청 전송, 응답 수신 등 전체 과정을 포함하는 시간 제한입니다.
-	// - 0: 기본값(DefaultTimeout) 적용
+	// - 0: 기본값(defaultTimeout) 적용
 	// - 음수: 타임아웃 없음(무한 대기)
 	// - 양수: 지정된 시간으로 설정
 	Timeout time.Duration
 
 	// TLSHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
 	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-	// - 0: 기본값(DefaultTLSHandshakeTimeout) 적용
+	// - 0: 기본값(defaultTLSHandshakeTimeout) 적용
 	// - 양수: 지정된 시간으로 설정
 	TLSHandshakeTimeout time.Duration
 
@@ -32,7 +32,7 @@ type Config struct {
 
 	// IdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
-	// - 0: 기본값(DefaultIdleConnTimeout) 적용
+	// - 0: 기본값(defaultIdleConnTimeout) 적용
 	// - 양수: 지정된 시간으로 설정
 	IdleConnTimeout time.Duration
 
@@ -48,7 +48,7 @@ type Config struct {
 	// MaxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
 	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
 	// - 0: 무제한 (표준 라이브러리 규칙)
-	// - 음수: 기본값(DefaultMaxIdleConns) 적용
+	// - 음수: 기본값(defaultMaxIdleConns) 적용
 	// - 양수: 지정된 개수로 제한
 	MaxIdleConns int
 
@@ -164,19 +164,19 @@ func (cfg *Config) applyDefaults() {
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
 	// 음수는 "무한 대기"를 의미하므로 호출자가 명시적으로 설정한 경우 그대로 유지
 	if cfg.Timeout == 0 {
-		cfg.Timeout = DefaultTimeout
+		cfg.Timeout = defaultTimeout
 	}
 
 	// TLS 핸드셰이크 타임아웃 검증
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
 	if cfg.TLSHandshakeTimeout == 0 {
-		cfg.TLSHandshakeTimeout = DefaultTLSHandshakeTimeout
+		cfg.TLSHandshakeTimeout = defaultTLSHandshakeTimeout
 	}
 
 	// 유휴 연결이 닫히기 전 유지되는 타임아웃 검증
 	// 0은 "미설정" 상태로 간주하여 기본값 적용
 	if cfg.IdleConnTimeout == 0 {
-		cfg.IdleConnTimeout = DefaultIdleConnTimeout
+		cfg.IdleConnTimeout = defaultIdleConnTimeout
 	}
 
 	// 전체 유휴(Idle) 연결의 최대 개수 검증

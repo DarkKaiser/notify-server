@@ -152,7 +152,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 				// Logic in createTransport: if maxIdle >= 0 { set }
 				// So if -1, it should retain default (which is defaultTransport.MaxIdleConns = 100)
 				// OR it is cloned from defaultTransport
-				assert.Equal(t, DefaultMaxIdleConns, tr.MaxIdleConns)
+				assert.Equal(t, 100, tr.MaxIdleConns)
 			},
 		},
 		{
@@ -354,7 +354,7 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 		req, _ := http.NewRequest("GET", "http://example.com", nil)
 		_, err := f.Do(req)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "지원되지 않는 Transport 형식입니다")
+		assert.Contains(t, err.Error(), "지원하지 않는 Transport 형식입니다")
 	})
 }
 

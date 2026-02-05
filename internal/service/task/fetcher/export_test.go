@@ -38,7 +38,7 @@ func ResetTransportCache() {
 	transportCacheMu.Lock()
 	defer transportCacheMu.Unlock()
 	transportCache = make(map[transportCacheKey]*list.Element)
-	transportCacheList.Init()
+	transportCacheLRU.Init()
 }
 
 // SetDefaultUserAgents allows overwriting the default UA list for deterministic testing.
