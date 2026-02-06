@@ -433,7 +433,11 @@ func (f *RetryFetcher) Close() error {
 // 정규화 규칙:
 //   - minRetries 미만: 최소 재시도 횟수로 보정
 //   - maxAllowedRetries 초과: 최대 재시도 횟수로 제한
-//   - 그 외: 사용자 설정값 그대로 반환
+//   - 그 외: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 재시도 안 함
+//   - 1~10: 지정된 횟수만큼 재시도
 func normalizeMaxRetries(maxRetries int) int {
 	// 설정된 최소값보다 작으면 최소 재시도 횟수로 보정
 	if maxRetries < minRetries {
@@ -451,9 +455,13 @@ func normalizeMaxRetries(maxRetries int) int {
 // normalizeRetryDelays 재시도 대기 시간의 최소값과 최대값을 정규화합니다.
 //
 // 정규화 규칙:
-//   - minRetryDelay 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
-//   - maxRetryDelay 0: 기본값(30초) 적용
-//   - maxRetryDelay < minRetryDelay: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 minRetryDelay로 보정
+//   - minRetryDelay 1초 미만: 최소 시간(1초)으로 보정
+//   - maxRetryDelay 0: 기본값(30초)으로 보정
+//   - maxRetryDelay < minRetryDelay: minRetryDelay로 보정
+//
+// 동작 방식:
+//   - minRetryDelay: 재시도 전 최소 대기 시간
+//   - maxRetryDelay: 재시도 전 최대 대기 시간 (지수 백오프 상한)
 func normalizeRetryDelays(minRetryDelay, maxRetryDelay time.Duration) (time.Duration, time.Duration) {
 	if minRetryDelay < time.Second {
 		// 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 보정

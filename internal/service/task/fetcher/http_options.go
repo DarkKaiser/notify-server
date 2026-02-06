@@ -96,65 +96,51 @@ func WithProxy(proxyURL string) Option {
 	}
 }
 
-// WithMaxIdleConns 전체 유휴(Idle) 연결의 최대 개수를 설정합니다.
-//
-// 유휴 연결은 재사용 가능한 상태로 유지되는 연결입니다.
-// 값이 클수록 연결 재사용률이 높아져 성능이 향상되지만, 메모리 사용량이 증가합니다.
+// WithMaxIdleConns 전체 유휴 연결의 최대 개수를 설정합니다.
 //
 // 매개변수:
-//   - max: 전체 유휴 연결의 최대 개수 (기본값: 100)
-//     · 0: 무제한 (메모리 사용량 주의)
-//     · 음수: 설정 무시 (기본값 100 사용)
-//
-// 주의사항:
-//   - 이 값은 모든 호스트에 대한 유휴 연결의 총합을 제한함
-//   - 호스트당 제한은 동일한 값으로 자동 설정됨
+//   - max: 전체 유휴 연결의 최대 개수
+//     · 0: 무제한
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
 func WithMaxIdleConns(max int) Option {
+	// 전체 유휴 연결의 최대 개수를 정규화합니다.
+	max = normalizeMaxIdleConns(max)
+
 	return func(h *HTTPFetcher) {
 		h.maxIdleConns = max
 	}
 }
 
-// WithMaxConnsPerHost 호스트당 최대 연결 개수를 설정합니다.
-//
-// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
-// 이는 유휴 연결과 활성 연결을 모두 포함합니다.
+// WithMaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수를 설정합니다.
 //
 // 매개변수:
-//   - max: 호스트당 최대 연결 개수 (기본값: 0 = 무제한)
-//
-// 사용 시나리오:
-//   - 서버 부하 제한: 특정 서버에 대한 동시 요청 수 제한
-//   - 공정한 리소스 사용: 여러 호스트에 균등하게 연결 분배
-//
-// 주의사항:
-//   - 0이면 무제한 (기본값)
-//   - 너무 작은 값은 동시 요청 시 대기 시간 증가
-func WithMaxConnsPerHost(max int) Option {
+//   - max: 호스트당 유휴 연결의 최대 개수
+//     · 0: net/http가 기본값 2로 해석
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
+func WithMaxIdleConnsPerHost(max int) Option {
+	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
+	max = normalizeMaxIdleConnsPerHost(max)
+
 	return func(h *HTTPFetcher) {
-		h.maxConnsPerHost = max
+		h.maxIdleConnsPerHost = max
 	}
 }
 
-// WithDisableTransportCache Transport 캐시 사용 여부를 설정합니다.
-//
-// 기본적으로 동일한 설정의 요청들은 Transport를 공유하여 성능을 최적화합니다.
-// 이 옵션으로 캐싱을 비활성화하면 매번 새로운 Transport를 생성합니다.
+// WithMaxConnsPerHost 호스트당 최대 연결 개수를 설정합니다.
 //
 // 매개변수:
-//   - disable: true이면 캐시 비활성화, false이면 캐시 사용 (기본값)
-//
-// 캐시 비활성화가 필요한 경우:
-//   - 테스트 환경에서 격리된 Transport 필요
-//   - Transport 설정을 동적으로 자주 변경
-//   - 메모리 사용량을 최소화해야 하는 환경
-//
-// 주의사항:
-//   - 캐시를 비활성화하면 성능이 저하될 수 있음
-//   - 각 HTTPFetcher가 독립적인 연결 풀을 유지하므로 메모리 사용량 증가
-func WithDisableTransportCache(disable bool) Option {
+//   - max: 호스트당 최대 연결 개수
+//     · 0: 무제한
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
+func WithMaxConnsPerHost(max int) Option {
+	// 호스트당 최대 연결 개수를 정규화합니다.
+	max = normalizeMaxConnsPerHost(max)
+
 	return func(h *HTTPFetcher) {
-		h.disableTransportCache = disable
+		h.maxConnsPerHost = max
 	}
 }
 
@@ -177,7 +163,10 @@ func WithUserAgent(ua string) Option {
 // 이 옵션으로 제한을 변경할 수 있으며, 리다이렉트 시 Referer 헤더를 자동으로 설정합니다.
 //
 // 매개변수:
-//   - max: 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
+//   - max: 최대 리다이렉트 횟수
+//     · 0: 리다이렉트 허용 안 함
+//     · 양수: 지정된 횟수만큼 리다이렉트 허용
+//     · 음수: 기본값으로 보정
 func WithMaxRedirects(max int) Option {
 	// 최대 리다이렉트 횟수를 정규화합니다.
 	max = normalizeMaxRedirects(max)

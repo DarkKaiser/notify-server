@@ -137,9 +137,13 @@ func (f *MaxBytesFetcher) Close() error {
 // normalizeByteLimit HTTP 응답 본문의 최대 허용 크기를 정규화합니다.
 //
 // 정규화 규칙:
-//   - NoLimit(-1): 제한 없음 (그대로 반환)
-//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(defaultMaxBytes)으로 보정
-//   - 양수: 지정된 크기만큼 응답 본문 크기 제한 (그대로 반환)
+//   - NoLimit(-1): 그대로 유지
+//   - 0 이하: 기본값(defaultMaxBytes)으로 보정
+//   - 양수: 그대로 유지
+//
+// 동작 방식:
+//   - NoLimit(-1): 크기 제한 없음
+//   - 양수: 지정된 크기만큼 응답 본문 크기 제한
 func normalizeByteLimit(limit int64) int64 {
 	if limit == NoLimit {
 		return NoLimit

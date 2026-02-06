@@ -45,20 +45,34 @@ type Config struct {
 	// 연결 풀(Connection Pool) 관리
 	// ========================================
 
-	// MaxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
+	// MaxIdleConns 전체 유휴 연결의 최대 개수입니다.
 	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
-	// - 0: 무제한 (표준 라이브러리 규칙)
-	// - 음수: 기본값(defaultMaxIdleConns) 적용
-	// - 양수: 지정된 개수로 제한
-	MaxIdleConns int
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxIdleConns *int
 
-	// MaxConnsPerHost 호스트(도메인)당 최대 연결 개수입니다.
+	// MaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: net/http가 기본값 2로 해석
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxIdleConnsPerHost *int
+
+	// MaxConnsPerHost 호스트당 최대 연결 개수입니다.
 	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
-	// - 0: 무제한
-	// - 음수: 무제한으로 보정 (0으로 변경됨)
-	// - 양수: 지정된 개수로 제한
-	MaxConnsPerHost int
-
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxConnsPerHost *int
 
 	// ========================================
 	// HTTP 클라이언트 동작
@@ -81,9 +95,10 @@ type Config struct {
 	// MaxRedirects HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수입니다.
 	//
 	// 설정 규칙:
-	//   - nil 또는 음수: 기본값(defaultMaxRedirects) 적용
-	//   - 0: 리다이렉트를 허용하지 않음 (발생 시 응답을 즉시 반환)
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 리다이렉트 허용 안 함
 	//   - 양수: 지정된 횟수만큼 리다이렉트 허용
+	//   - 음수: 기본값으로 보정
 	MaxRedirects *int
 
 	// ========================================
@@ -93,25 +108,25 @@ type Config struct {
 	// MaxRetries 최대 재시도 횟수입니다.
 	//
 	// 설정 규칙:
-	//   - nil 또는 0 (기본값): 재시도 안 함
+	//   - 0: 재시도 안 함
 	//   - 양수: 실패 시(5xx 에러 또는 네트워크 오류 등) 지정된 횟수만큼 재시도
 	//   - 보정: 최소값(minRetries) 미만은 최소값으로, 최대값(maxAllowedRetries) 초과는 최대값으로 보정
-	MaxRetries *int
+	MaxRetries int
 
 	// MinRetryDelay 재시도 대기 시간의 최소값입니다.
 	//
 	// 설정 규칙:
-	//   - nil 또는 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
+	//   - 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
 	//   - 1초 이상: 별도의 보정 없이 설정값을 그대로 적용
-	MinRetryDelay *time.Duration
+	MinRetryDelay time.Duration
 
 	// MaxRetryDelay 재시도 대기 시간의 최대값입니다.
 	//
 	// 설정 규칙:
-	//   - nil 또는 0: 기본값(defaultMaxRetryDelay) 적용
-	//   - MinRetryDelay보다 작은 값: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 MinRetryDelay로 보정
+	//   - 0: 기본값으로 보정
+	//   - MinRetryDelay 미만: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 MinRetryDelay로 보정
 	//   - 그 외: 지수 백오프가 진행되더라도 재시도 대기 시간이 이 설정값을 초과하지 않도록 제한
-	MaxRetryDelay *time.Duration
+	MaxRetryDelay time.Duration
 
 	// ========================================
 	// 응답 검증 및 제한
@@ -142,9 +157,9 @@ type Config struct {
 	//
 	// 설정 규칙:
 	//   - NoLimit(-1): 크기 제한을 적용하지 않음 (주의: 메모리 고갈 위험 있음)
-	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값(defaultMaxBytes)으로 보정
+	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값으로 보정
 	//   - 양수: 지정된 크기만큼 HTTP 응답 본문의 허용 크기를 제한
-	MaxBytes *int64
+	MaxBytes int64
 
 	// ========================================
 	// 미들웨어 체인 구성
@@ -179,33 +194,34 @@ func (cfg *Config) applyDefaults() {
 		cfg.IdleConnTimeout = defaultIdleConnTimeout
 	}
 
-	// 전체 유휴(Idle) 연결의 최대 개수 검증
-	// 0은 "무제한"을 의미하므로 그대로 유지
-	// 음수는 설정 오류로 간주하여 기본값(DefaultMaxIdleConns)으로 보정
-	if cfg.MaxIdleConns < 0 {
-		cfg.MaxIdleConns = DefaultMaxIdleConns
+	// 전체 유휴 연결의 최대 개수를 정규화합니다.
+	if cfg.MaxIdleConns != nil {
+		normalizePtr(&cfg.MaxIdleConns, defaultMaxIdleConns, normalizeMaxIdleConns)
 	}
 
-	// 호스트(도메인)당 최대 연결 개수 검증
-	// 음수는 의미가 없으므로 0(무제한)으로 보정
-	if cfg.MaxConnsPerHost < 0 {
-		cfg.MaxConnsPerHost = 0
-	}
+	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
+	if cfg.MaxIdleConnsPerHost != nil {
+		normalizePtr(&cfg.MaxIdleConnsPerHost, 0, normalizeMaxIdleConnsPerHost)
 	}
 
+	// 호스트당 최대 연결 개수를 정규화합니다.
+	if cfg.MaxConnsPerHost != nil {
+		normalizePtr(&cfg.MaxConnsPerHost, 0, normalizeMaxConnsPerHost)
 	}
 
 	// 최대 리다이렉트 횟수를 정규화합니다.
-	normalizePtr(&cfg.MaxRedirects, defaultMaxRedirects, normalizeMaxRedirects)
+	if cfg.MaxRedirects != nil {
+		normalizePtr(&cfg.MaxRedirects, defaultMaxRedirects, normalizeMaxRedirects)
+	}
 
 	// 최대 재시도 횟수를 정규화합니다.
-	normalizePtr(&cfg.MaxRetries, 0, normalizeMaxRetries)
+	cfg.MaxRetries = normalizeMaxRetries(cfg.MaxRetries)
 
-	// 재시도 대기 시간을 정규화합니다.
-	normalizePtrPair(&cfg.MinRetryDelay, &cfg.MaxRetryDelay, 0, defaultMaxRetryDelay, normalizeRetryDelays)
+	// 재시도 대기 시간의 최소값과 최대값을 정규화합니다.
+	cfg.MinRetryDelay, cfg.MaxRetryDelay = normalizeRetryDelays(cfg.MinRetryDelay, cfg.MaxRetryDelay)
 
-	// 응답 본문의 최대 허용 크기를 정규화합니다.
-	normalizePtr(&cfg.MaxBytes, defaultMaxBytes, normalizeByteLimit)
+	// HTTP 응답 본문의 최대 허용 크기를 정규화합니다.
+	cfg.MaxBytes = normalizeByteLimit(cfg.MaxBytes)
 }
 
 // New 주요 설정값(재시도 횟수, 지연 시간, 본문 크기 제한)만으로 빠르고 간편하게 Fetcher를 생성합니다.
@@ -216,8 +232,8 @@ func (cfg *Config) applyDefaults() {
 // 복잡한 설정(타임아웃, 프록시, 유효성 검사 등)이 필요한 경우에는 NewFromConfig 함수를 직접 사용하는 것을 권장합니다.
 //
 // 매개변수:
-//   - maxRetries: 최대 재시도 횟수 (권장: 0~10회, 범위 초과 시 내부 정책에 따라 자동 보정됨)
-//   - minRetryDelay: 최소 재시도 대기 시간 (최소: 1초, 서버 부하 방지를 위해 1초 미만은 1초로 자동 보정됨)
+//   - maxRetries: 최대 재시도 횟수 (권장: 0~10회, 범위 초과 시 내부 정책에 따라 자동 보정)
+//   - minRetryDelay: 최소 재시도 대기 시간 (최소: 1초, 서버 부하 방지를 위해 1초 미만은 1초로 자동 보정)
 //   - maxBytes: 응답 본문의 최대 허용 크기 (0: 기본값 사용, -1: 제한 없음, 양수: 지정된 바이트로 제한)
 //   - opts: HTTPFetcher 추가 설정 옵션 (예: WithTimeout, WithProxy)
 //
@@ -225,15 +241,10 @@ func (cfg *Config) applyDefaults() {
 //   - Fetcher: 구성된 Fetcher 체인 인터페이스
 func New(maxRetries int, minRetryDelay time.Duration, maxBytes int64, opts ...Option) Fetcher {
 	config := Config{
-		// @@@@@
-		MaxIdleConns: -1, // 기본값 사용 (안전한 기본값 100)
-		// @@@@@
-		MaxConnsPerHost: -1, // 기본값 사용 (무제한)
-		// @@@@@
-		MaxIdleConnsPerHost: -1, // 기본값 사용 (기본 2)
-		MaxRetries:          &maxRetries,
-		MinRetryDelay:       &minRetryDelay,
-		MaxBytes:            &maxBytes,
+		MaxRetries:    maxRetries,
+		MinRetryDelay: minRetryDelay,
+
+		MaxBytes: maxBytes,
 	}
 	config.applyDefaults()
 
@@ -298,17 +309,19 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithProxy(cfg.ProxyURL))
 	}
 
-	// 전체 유휴(Idle) 연결의 최대 개수 설정
-	mergedOpts = append(mergedOpts, WithMaxIdleConns(cfg.MaxIdleConns))
-
-	// 호스트(도메인)당 최대 연결 개수 설정
-	if cfg.MaxConnsPerHost > 0 {
-		mergedOpts = append(mergedOpts, WithMaxConnsPerHost(cfg.MaxConnsPerHost))
+	// 전체 유휴 연결의 최대 개수 설정
+	if cfg.MaxIdleConns != nil {
+		mergedOpts = append(mergedOpts, WithMaxIdleConns(*cfg.MaxIdleConns))
 	}
 
-	// Transport 캐시 사용 여부 설정
-	if cfg.DisableTransportCache {
-		mergedOpts = append(mergedOpts, WithDisableTransportCache(true))
+	// 호스트당 유휴 연결의 최대 개수 설정
+	if cfg.MaxIdleConnsPerHost != nil {
+		mergedOpts = append(mergedOpts, WithMaxIdleConnsPerHost(*cfg.MaxIdleConnsPerHost))
+	}
+
+	// 호스트당 최대 연결 개수 설정
+	if cfg.MaxConnsPerHost != nil {
+		mergedOpts = append(mergedOpts, WithMaxConnsPerHost(*cfg.MaxConnsPerHost))
 	}
 
 	// HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수 설정
@@ -327,7 +340,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	// 2단계: HTTP 응답 본문의 크기 제한 미들웨어
 	// ========================================
-	f = NewMaxBytesFetcher(f, *cfg.MaxBytes)
+	f = NewMaxBytesFetcher(f, cfg.MaxBytes)
 
 	// ========================================
 	// 3단계: HTTP 응답 상태 코드 검증 미들웨어
@@ -352,7 +365,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	// 5단계: HTTP 요청 재시도 수행 미들웨어
 	// ========================================
-	f = NewRetryFetcher(f, *cfg.MaxRetries, *cfg.MinRetryDelay, *cfg.MaxRetryDelay)
+	f = NewRetryFetcher(f, cfg.MaxRetries, cfg.MinRetryDelay, cfg.MaxRetryDelay)
 
 	// ========================================
 	// 6단계: User-Agent 주입 미들웨어

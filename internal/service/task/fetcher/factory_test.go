@@ -8,18 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// longPtr는 int64 값의 포인터를 반환하는 헬퍼 함수입니다.
-func longPtr(v int64) *int64 {
-	return &v
-}
-
 // intPtr는 int 값의 포인터를 반환하는 헬퍼 함수입니다.
 func intPtr(v int) *int {
-	return &v
-}
-
-// durationPtr는 time.Duration 값의 포인터를 반환하는 헬퍼 함수입니다.
-func durationPtr(v time.Duration) *time.Duration {
 	return &v
 }
 
@@ -44,49 +34,55 @@ func TestConfig_applyDefaults(t *testing.T) {
 			name:  "Zero values should be replaced with defaults",
 			input: Config{},
 			expected: Config{
-				MaxRetries:          intPtr(0), // minRetries
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0, // minRetries
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
-				MaxIdleConns:        0, // 0 means unlimited
+				MaxIdleConns:        nil,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxConnsPerHost:     0,
-				MaxIdleConnsPerHost: 0,
-				MaxRedirects:        intPtr(10),
+				MaxConnsPerHost:     nil,
+				MaxIdleConnsPerHost: nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "MaxRetries clamping",
 			input: Config{
-				MaxRetries: intPtr(-5), // Should populate to 0
+				MaxRetries: -5, // Should populate to 0
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "MaxRetries upper bound clamping",
 			input: Config{
-				MaxRetries: intPtr(100), // Should cap at 10
+				MaxRetries: 100, // Should cap at 10
 			},
 			expected: Config{
-				MaxRetries:          intPtr(10),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          10,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
@@ -95,16 +91,17 @@ func TestConfig_applyDefaults(t *testing.T) {
 				TLSHandshakeTimeout: -1,
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: -1, // Kept as -1
-				MaxConnsPerHost:     0,
-				MaxIdleConnsPerHost: 0,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxConnsPerHost:     nil,
+				MaxIdleConnsPerHost: nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
@@ -113,65 +110,75 @@ func TestConfig_applyDefaults(t *testing.T) {
 				IdleConnTimeout: -1,
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     -1, // Kept as -1
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxConnsPerHost:     0,
-				MaxIdleConnsPerHost: 0,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxConnsPerHost:     nil,
+				MaxIdleConnsPerHost: nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "RetryDelay minimum clamping",
 			input: Config{
-				MinRetryDelay: durationPtr(500 * time.Millisecond), // Should round up to 1s
+				MinRetryDelay: 500 * time.Millisecond, // Should round up to 1s
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(1 * time.Second),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       1 * time.Second,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "MaxRetryDelay logic (less than RetryDelay)",
 			input: Config{
-				MinRetryDelay: durationPtr(5 * time.Second),
-				MaxRetryDelay: durationPtr(2 * time.Second), // Should be bumped to RetryDelay
+				MinRetryDelay: 5 * time.Second,
+				MaxRetryDelay: 2 * time.Second, // Should be bumped to RetryDelay
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(5 * time.Second),
-				MaxRetryDelay:       durationPtr(5 * time.Second),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       5 * time.Second,
+				MaxRetryDelay:       5 * time.Second,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "MaxBytes NoLimit",
 			input: Config{
-				MaxBytes: longPtr(-1), // NoLimit
+				MaxBytes: -1, // NoLimit
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(-1), // Kept as -1
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            -1, // Kept as -1
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
@@ -180,66 +187,76 @@ func TestConfig_applyDefaults(t *testing.T) {
 				Timeout: -1,
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             -1, // Kept as -1
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "MaxIdleConns default trigger",
 			input: Config{
-				MaxIdleConns: -1, // Trigger default
+				MaxIdleConns: intPtr(-1), // Trigger default
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
-				MaxIdleConns:        -1, // Kept as -1 (default)
+				MaxIdleConns:        intPtr(defaultMaxIdleConns), // Corrected from -1
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 		// ... (existing test cases)
 		{
 			name: "MaxConnsPerHost negative correction",
 			input: Config{
-				MaxConnsPerHost: -5,
+				MaxConnsPerHost: intPtr(-5),
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(expectedDefaultRetryDelay),
-				MaxRetryDelay:       durationPtr(expectedDefaultMaxRetryDelay),
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       expectedDefaultRetryDelay,
+				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxConnsPerHost:     -1, // Corrected to -1 (default)
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     intPtr(0), // Corrected to 0 (unlimited)
+				MaxRedirects:        nil,
 			},
 		},
 		{
 			name: "Large RetryDelay should bump MaxRetryDelay",
 			input: Config{
-				MinRetryDelay: durationPtr(60 * time.Second),
-				MaxRetryDelay: durationPtr(0), // Default (30s)
+				MinRetryDelay: 60 * time.Second,
+				MaxRetryDelay: 0, // Default (30s)
 			},
 			expected: Config{
-				MaxRetries:          intPtr(0),
-				MinRetryDelay:       durationPtr(60 * time.Second),
-				MaxRetryDelay:       durationPtr(60 * time.Second), // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
-				MaxBytes:            longPtr(expectedDefaultMaxBytes),
+				MaxRetries:          0,
+				MinRetryDelay:       60 * time.Second,
+				MaxRetryDelay:       60 * time.Second, // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
+				MaxBytes:            expectedDefaultMaxBytes,
 				Timeout:             expectedDefaultTimeout,
 				IdleConnTimeout:     expectedDefaultIdleConnTimeout,
 				TLSHandshakeTimeout: expectedDefaultTLSHandshakeTimeout,
-				MaxRedirects:        intPtr(10),
+				MaxIdleConns:        nil,
+				MaxIdleConnsPerHost: nil,
+				MaxConnsPerHost:     nil,
+				MaxRedirects:        nil,
 			},
 		},
 	}
@@ -256,7 +273,7 @@ func TestConfig_applyDefaults(t *testing.T) {
 func TestNewFromConfig_ChainConstruction(t *testing.T) {
 	// Full configuration to enable all middlewares
 	cfg := Config{
-		MaxRetries:            intPtr(3),
+		MaxRetries:            3,
 		AllowedMimeTypes:      []string{"application/json"},
 		UserAgents:            []string{"test-agent"},
 		EnableRandomUserAgent: true,
@@ -457,8 +474,8 @@ func TestNewFromConfig_OptionPropagation(t *testing.T) {
 	// We verify specific fields that are only settable via options or config mapping
 	cfg := Config{
 		Timeout:         5 * time.Second,
-		MaxIdleConns:    50,
-		MaxConnsPerHost: 20,
+		MaxIdleConns:    intPtr(50),
+		MaxConnsPerHost: intPtr(20),
 	}
 	cfg.applyDefaults()
 

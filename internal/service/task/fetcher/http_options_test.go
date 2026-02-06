@@ -146,12 +146,9 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithMaxIdleConns - Negative (Ignore/Default)",
 			options: []Option{WithMaxIdleConns(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, -1, f.maxIdleConns) // Field set to -1
+				assert.Equal(t, 100, f.maxIdleConns) // Normalized to defaultMaxIdleConns
 				tr := transport(f)
 				require.NotNil(t, tr)
-				// Logic in createTransport: if maxIdle >= 0 { set }
-				// So if -1, it should retain default (which is defaultTransport.MaxIdleConns = 100)
-				// OR it is cloned from defaultTransport
 				assert.Equal(t, 100, tr.MaxIdleConns)
 			},
 		},
