@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	// minRetries 설정 가능한 최소 재시도 횟수입니다. (0: 재시도 안 함)
-	minRetries = 0
+	// minAllowedRetries 허용 가능한 최소 재시도 횟수입니다. (0: 재시도 안 함)
+	minAllowedRetries = 0
 
-	// maxAllowedRetries 설정 가능한 최대 재시도 횟수입니다.
+	// maxAllowedRetries 허용 가능한 최대 재시도 횟수입니다.
 	maxAllowedRetries = 10
 
 	// defaultMaxRetryDelay 사용자가 재시도 대기 시간의 최대값을 지정하지 않았을 때 사용되는 기본값(30초)입니다.
@@ -41,7 +41,7 @@ type RetryFetcher struct {
 	// maxRetries 최대 재시도 횟수입니다.
 	//
 	// 이 값은 normalizeMaxRetries 함수를 통해 정규화되며,
-	// minRetries(0) ~ maxAllowedRetries(10) 사이의 값만 저장됩니다.
+	// minAllowedRetries(0) ~ maxAllowedRetries(10) 사이의 값만 저장됩니다.
 	maxRetries int
 
 	// minRetryDelay 재시도 대기 시간의 최소값입니다. (지수 백오프의 시작점)
@@ -431,20 +431,20 @@ func (f *RetryFetcher) Close() error {
 // normalizeMaxRetries 최대 재시도 횟수를 정규화합니다.
 //
 // 정규화 규칙:
-//   - minRetries 미만: 최소 재시도 횟수로 보정
-//   - maxAllowedRetries 초과: 최대 재시도 횟수로 제한
-//   - 그 외: 그대로 유지
+//   - 허용 범위 미만: 최소값으로 보정
+//   - 허용 범위 초과: 최대값으로 제한
+//   - 허용 범위 내: 그대로 유지
 //
 // 동작 방식:
 //   - 0: 재시도 안 함
 //   - 1~10: 지정된 횟수만큼 재시도
 func normalizeMaxRetries(maxRetries int) int {
-	// 설정된 최소값보다 작으면 최소 재시도 횟수로 보정
-	if maxRetries < minRetries {
-		return minRetries
+	// 허용 범위 미만의 값은 최소값으로 보정
+	if maxRetries < minAllowedRetries {
+		return minAllowedRetries
 	}
 
-	// 과도한 재시도로 인한 지연을 방지하기 위해 최대 재시도 횟수로 제한
+	// 허용 범위 초과 시 최대값으로 제한 (과도한 재시도로 인한 지연 방지)
 	if maxRetries > maxAllowedRetries {
 		return maxAllowedRetries
 	}
@@ -455,16 +455,16 @@ func normalizeMaxRetries(maxRetries int) int {
 // normalizeRetryDelays 재시도 대기 시간의 최소값과 최대값을 정규화합니다.
 //
 // 정규화 규칙:
-//   - minRetryDelay 1초 미만: 최소 시간(1초)으로 보정
+//   - minRetryDelay 1초 미만: 1초로 보정
 //   - maxRetryDelay 0: 기본값(30초)으로 보정
 //   - maxRetryDelay < minRetryDelay: minRetryDelay로 보정
 //
 // 동작 방식:
-//   - minRetryDelay: 재시도 전 최소 대기 시간
-//   - maxRetryDelay: 재시도 전 최대 대기 시간 (지수 백오프 상한)
+//   - minRetryDelay: 지수 백오프 시작값
+//   - maxRetryDelay: 지수 백오프 상한값
 func normalizeRetryDelays(minRetryDelay, maxRetryDelay time.Duration) (time.Duration, time.Duration) {
 	if minRetryDelay < time.Second {
-		// 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 최소 1초로 보정
+		// 너무 짧은 대기 시간(1초 미만)은 서버에 부담을 줄 수 있으므로 1초로 보정
 		minRetryDelay = 1 * time.Second
 	}
 

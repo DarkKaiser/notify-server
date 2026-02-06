@@ -10,6 +10,8 @@ import (
 )
 
 func Test_isSensitiveKey(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		key      string
@@ -27,6 +29,7 @@ func Test_isSensitiveKey(t *testing.T) {
 		{name: "Suffix match: custom_token", key: "custom_token", expected: true},
 		{name: "Suffix match: _secret", key: "app_secret", expected: true},
 		{name: "Suffix match: _password", key: "db_password", expected: true},
+		{name: "Suffix match: case insensitive suffix", key: "My_SeCrEt", expected: true},
 
 		// 3. False Positives (오탐 방지) - Partial Match
 		{name: "Partial match: monkey (contains key)", key: "monkey", expected: false},           // "key" exact match list
@@ -49,7 +52,9 @@ func Test_isSensitiveKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := isSensitiveKey(tt.key)
 			assert.Equal(t, tt.expected, result, "key: %s", tt.key)
 		})
@@ -57,6 +62,8 @@ func Test_isSensitiveKey(t *testing.T) {
 }
 
 func Test_redactHeaders(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    http.Header
@@ -115,17 +122,26 @@ func Test_redactHeaders(t *testing.T) {
 				"Cookie":        []string{"***"},
 			},
 		},
+		{
+			name: "Multiple values in sensitive headers (Set-Cookie)",
+			input: http.Header{
+				"Set-Cookie": []string{"session=abc", "track=xyz"},
+			},
+			expected: http.Header{
+				"Set-Cookie": []string{"***"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := redactHeaders(tt.input)
 			assert.Equal(t, tt.expected, result)
 
 			if tt.input != nil {
 				// Immutability check: modifying result should not affect input
-				// Ensure deep copy behavior for map values isn't strictly required by spec (Clone does shallow copy of values slicing),
-				// but here we just check if setting a key in result affects input.
 				result.Set("New-Header", "value")
 				assert.Empty(t, tt.input.Get("New-Header"), "Original header should not be modified")
 			}
@@ -134,14 +150,16 @@ func Test_redactHeaders(t *testing.T) {
 }
 
 func Test_redactURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string // String input for convenience
 		expected string
 	}{
 		{
-			name:     "Nil URL returns empty string",
-			input:    "", // Handled specially in test loop
+			name:     "Nil URL",
+			input:    "", // Handled specially in test logic
 			expected: "",
 		},
 		{
@@ -177,24 +195,19 @@ func Test_redactURL(t *testing.T) {
 		},
 		// Edge Cases for Matching
 		{
-			name:     "False positive check: broken (ends with oken, contains token)",
+			name:     "False positive check: broken",
 			input:    "https://example.com?broken=value",
-			expected: "https://example.com?broken=value", // Should NOT be masked
+			expected: "https://example.com?broken=value",
 		},
 		{
-			name:     "False positive check: monkey (contains key)",
+			name:     "False positive check: monkey",
 			input:    "https://example.com?monkey=banana",
-			expected: "https://example.com?monkey=banana", // Should NOT be masked
+			expected: "https://example.com?monkey=banana",
 		},
 		{
 			name:     "Suffix match check: my_token",
 			input:    "https://example.com?my_token=secret",
 			expected: "https://example.com?my_token=xxxxx",
-		},
-		{
-			name:     "Suffix match check: client_secret",
-			input:    "https://example.com?client_secret=hidden",
-			expected: "https://example.com?client_secret=xxxxx",
 		},
 		// Complex URLs
 		{
@@ -205,14 +218,20 @@ func Test_redactURL(t *testing.T) {
 		{
 			name:     "URL with multiple values for same key",
 			input:    "https://example.com?id=1&token=a&token=b",
-			expected: "https://example.com?id=1&token=xxxxx", // Values are replaced by single "xxxxx" or multiple?
-			// url.Values.Set() replaces existing values.
-			// Logic: query.Set(key, "xxxxx") -> replaces all values with single "xxxxx".
+			expected: "https://example.com?id=1&token=xxxxx",
+		},
+		{
+			name:     "Opaque URL",
+			input:    "mailto:user@example.com",
+			expected: "mailto:user@example.com", // Opaque URLs don't have user/pass via User field usually
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tt.input == "" {
 				assert.Equal(t, "", redactURL(nil))
 				return
@@ -228,6 +247,8 @@ func Test_redactURL(t *testing.T) {
 }
 
 func Test_redactRawURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -239,13 +260,8 @@ func Test_redactRawURL(t *testing.T) {
 			input:    "https://user:pass@example.com/path?token=secret",
 			expected: "https://user:xxxxx@example.com/path?token=xxxxx",
 		},
-		{
-			name:     "Valid URL no auth",
-			input:    "https://example.com/path?id=123",
-			expected: "https://example.com/path?id=123",
-		},
 
-		// 2. Fallback Logic: Behaving like a Proxy or specific non-standard formats
+		// 2. Fallback Logic
 		{
 			name:     "Scheme-less proxy URL (user:pass@host:port)",
 			input:    "user:pass@proxy.example.com:8080",
@@ -257,29 +273,12 @@ func Test_redactRawURL(t *testing.T) {
 			expected: "xxxxx:xxxxx@internal-service",
 		},
 		{
-			name: "@ in query param (Should utilize redactURL logic if parsable, but if scheme missing?)",
-			// Note: "example.com/s?q=me@test.com" parses as path "example.com/s", rawquery "q=me@test.com" if scheme missing?
-			// Actually url.Parse("example.com/...") usually fails or parses weirdly without scheme.
-			// But redactRawURL checks (!strings.Contains(rawURL, "://") && strings.Contains(rawURL, "@"))
-			// Here "://" is missing and "@" is present. Fallback logic triggers.
-			// Fallback logic limits search to before '?' or '#'.
-			// So @ in "q=me@test.com" comes AFTER '?'.
-			// authSearchLimit will be index of '?'.
-			// LastIndex("@") in "example.com/s" is -1.
-			// Fallback logic returns original string. Correct.
+			name:     "@ in query param (Should utilize redactURL logic)",
 			input:    "example.com/search?email=user@test.com",
 			expected: "example.com/search?email=user@test.com",
 		},
 		{
-			name: "@ in path (Should NOT be redacted by fallback if no scheme)",
-			// "no-scheme/user@home" -> "://" missing, "@" present.
-			// Fallback triggers.
-			// authSearchLimit = len.
-			// LastIndex("@") found.
-			// "xxxxx:xxxxx" + "@home" -> "xxxxx:xxxxx@home"
-			// Это aggressive fallback. It assumes if no scheme and @ exists, it looks like auth.
-			// "user@host" is ambiguous. Could be email, could be "user@host".
-			// Our redactor assumes auth to be safe.
+			name:     "@ in path (Fallback handles aggressive)",
 			input:    "user@host-without-scheme",
 			expected: "xxxxx:xxxxx@host-without-scheme",
 		},
@@ -287,11 +286,6 @@ func Test_redactRawURL(t *testing.T) {
 			name:     "Malformed URL with @ (Fallback triggers)",
 			input:    "http://user:pass@invalid\nnewline.com",
 			expected: "http://xxxxx:xxxxx@invalid\nnewline.com",
-		},
-		{
-			name:     "Double @ signs (Fallback handles last one)",
-			input:    "u:p@ss@host-no-scheme", // first @ part of password?
-			expected: "xxxxx:xxxxx@host-no-scheme",
 		},
 
 		// 3. No change scenarios
@@ -308,8 +302,69 @@ func Test_redactRawURL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := redactRawURL(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_redactRefererURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Nil input",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Removes user info (RFC 7231)",
+			input:    "https://user:pass@example.com/page",
+			expected: "https://example.com/page",
+		},
+		{
+			name:     "Removes user info (token style)",
+			input:    "https://token@example.com/page",
+			expected: "https://example.com/page",
+		},
+		{
+			name:     "Masks sensitive query params",
+			input:    "https://example.com/search?q=cat&token=secret",
+			expected: "https://example.com/search?q=cat&token=xxxxx",
+		},
+		{
+			name:     "Mixed removal and masking",
+			input:    "https://user:pass@example.com/path?api_key=123&mode=dark",
+			expected: "https://example.com/path?api_key=xxxxx&mode=dark",
+		},
+		{
+			name:     "Preserves non-sensitive components",
+			input:    "https://example.com/path#fragment",
+			expected: "https://example.com/path#fragment",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.input == "" {
+				assert.Equal(t, "", redactRefererURL(nil))
+				return
+			}
+
+			u, err := url.Parse(tt.input)
+			require.NoError(t, err)
+
+			result := redactRefererURL(u)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

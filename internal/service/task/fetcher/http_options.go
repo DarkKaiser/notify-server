@@ -18,10 +18,13 @@ type Option func(*HTTPFetcher)
 //
 // 매개변수:
 //   - timeout: 요청 전체에 대한 타임아웃 (예: 30*time.Second)
-//
-// 주의사항:
-//   - 0 또는 음수 값을 설정하면 타임아웃이 비활성화됨 (무한 대기)
+//     · 0: 타임아웃 없음 (무한 대기)
+//     · 양수: 지정된 시간으로 제한
+//     · 음수: 기본값으로 보정
 func WithTimeout(timeout time.Duration) Option {
+	// HTTP 요청 전체에 대한 타임아웃을 정규화합니다.
+	timeout = normalizeTimeout(timeout)
+
 	return func(h *HTTPFetcher) {
 		h.client.Timeout = timeout
 	}
@@ -33,12 +36,14 @@ func WithTimeout(timeout time.Duration) Option {
 // 네트워크가 느리거나 서버 부하가 높을 때 타임아웃이 발생할 수 있습니다.
 //
 // 매개변수:
-//   - timeout: TLS 핸드셰이크 타임아웃 (기본값: 10초)
-//
-// 권장값:
-//   - 일반적으로 5~10초 권장
-//   - 모바일 네트워크나 느린 환경에서는 15~20초 고려
+//   - timeout: TLS 핸드셰이크 타임아웃
+//     · 0: 타임아웃 없음 (무한 대기)
+//     · 양수: 지정된 시간으로 제한
+//     · 음수: 기본값으로 보정
 func WithTLSHandshakeTimeout(timeout time.Duration) Option {
+	// TLS 핸드셰이크 타임아웃을 정규화합니다.
+	timeout = normalizeTLSHandshakeTimeout(timeout)
+
 	return func(h *HTTPFetcher) {
 		h.tlsHandshakeTimeout = timeout
 	}
@@ -50,30 +55,33 @@ func WithTLSHandshakeTimeout(timeout time.Duration) Option {
 // 응답 본문 읽기 시간은 포함되지 않으므로, 전체 타임아웃(WithTimeout)과 함께 사용하세요.
 //
 // 매개변수:
-//   - timeout: 응답 헤더 대기 타임아웃 (예: 10*time.Second)
-//
-// 사용 시나리오:
-//   - 서버가 연결은 수락했지만 응답을 보내지 않는 경우 감지
-//   - 느린 서버로부터 빠르게 타임아웃하여 재시도
+//   - timeout: 응답 헤더 대기 타임아웃
+//     · 0: 타임아웃 없음 (무한 대기)
+//     · 양수: 지정된 시간으로 제한
+//     · 음수: 0으로 보정
 func WithResponseHeaderTimeout(timeout time.Duration) Option {
+	// HTTP 응답 헤더 대기 타임아웃을 정규화합니다.
+	timeout = normalizeResponseHeaderTimeout(timeout)
+
 	return func(h *HTTPFetcher) {
 		h.responseHeaderTimeout = timeout
 	}
 }
 
-// WithIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃을 설정합니다.
+// WithIdleConnTimeout 유휴 연결 타임아웃을 설정합니다.
 //
 // 사용되지 않는 연결을 유지할 최대 시간입니다.
 // 이 시간이 지나면 연결이 자동으로 닫히고 풀에서 제거됩니다.
 //
 // 매개변수:
-//   - timeout: 유휴 연결이 닫히기 전 유지되는 타임아웃 (기본값: 90초)
-//
-// 권장값:
-//   - 일반적으로 30~90초 권장
-//   - 너무 짧으면 연결 재사용률 감소
-//   - 너무 길면 서버 측에서 먼저 연결을 끊을 수 있음
+//   - timeout: 유휴 연결 타임아웃
+//     · 0: 제한 없음 (연결이 무기한 유지)
+//     · 양수: 지정된 시간 후 연결 종료
+//     · 음수: 기본값으로 보정
 func WithIdleConnTimeout(timeout time.Duration) Option {
+	// 유휴 연결 타임아웃을 정규화합니다.
+	timeout = normalizeIdleConnTimeout(timeout)
+
 	return func(h *HTTPFetcher) {
 		h.idleConnTimeout = timeout
 	}
@@ -173,6 +181,24 @@ func WithMaxRedirects(max int) Option {
 
 	return func(h *HTTPFetcher) {
 		h.client.CheckRedirect = newCheckRedirectPolicy(max)
+	}
+}
+
+// WithDisableTransportCaching Transport 캐싱 사용 여부를 설정합니다.
+//
+// 기본적으로 동일한 설정의 요청들은 Transport를 공유하여 성능을 최적화합니다.
+// 캐싱을 비활성화하면 매번 새로운 Transport를 생성하여 완전히 격리된 환경을 제공합니다.
+//
+// 매개변수:
+//   - disable: Transport 캐싱 비활성화 여부
+//     · false (기본값): 캐시 사용 (성능 최적화)
+//     · true: 캐시 비활성화 (격리된 환경, 테스트에 유용)
+//
+// 주의사항:
+//   - 캐시 비활성화 시 성능 저하 및 메모리 사용량 증가 가능
+func WithDisableTransportCaching(disable bool) Option {
+	return func(h *HTTPFetcher) {
+		h.disableTransportCaching = disable
 	}
 }
 

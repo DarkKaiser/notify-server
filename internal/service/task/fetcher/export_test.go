@@ -8,7 +8,7 @@ import (
 const (
 	MaxDrainBytes        = maxDrainBytes
 	DefaultMaxBytes      = defaultMaxBytes
-	MinRetries           = minRetries
+	MinRetries           = minAllowedRetries
 	MaxAllowedRetries    = maxAllowedRetries
 	DefaultMaxRetryDelay = defaultMaxRetryDelay
 )

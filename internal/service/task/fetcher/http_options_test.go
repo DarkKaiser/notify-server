@@ -260,10 +260,10 @@ func TestHTTPOptions_Table(t *testing.T) {
 		// Transport Control Options
 		// =================================================================================
 		{
-			name:    "WithDisableTransportCache",
-			options: []Option{WithDisableTransportCache(true)},
+			name:    "WithDisableTransportCaching",
+			options: []Option{WithDisableTransportCaching(true)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.True(t, f.disableTransportCache)
+				assert.True(t, f.disableTransportCaching)
 				// When cache is disabled, Do() creates a new transport every time (not cached)
 				// Implementation detail: createTransport is called directly.
 			},
@@ -279,7 +279,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 				assert.True(t, tr.DisableKeepAlives)
 				// When WithTransport is used, we treat it as an isolated/custom transport setup.
 				// Thus, transport cache should be disabled to prevent sharing/leaking config.
-				assert.True(t, f.disableTransportCache, "Resource Leak Protection: Cloned transport MUST be isolated (disableTransportCache=true)")
+				assert.True(t, f.disableTransportCaching, "Resource Leak Protection: Cloned transport MUST be isolated (disableTransportCaching=true)")
 			},
 		},
 	}
@@ -335,8 +335,8 @@ func TestHTTPOptions_Interaction(t *testing.T) {
 		httpTr := currentTr.(*http.Transport)
 		assert.Equal(t, 999, httpTr.MaxIdleConns, "Options should be APPLIED even when WithTransport is used")
 
-		// Verify disableTransportCache is set because cloning occurred
-		assert.True(t, f.disableTransportCache, "Resource Leak Protection: disableTransportCache must be true after cloning")
+		// Verify disableTransportCaching is set because cloning occurred
+		assert.True(t, f.disableTransportCaching, "Resource Leak Protection: disableTransportCaching must be true after cloning")
 	})
 
 	t.Run("WithProxy with Custom Non-HTTP Transport", func(t *testing.T) {

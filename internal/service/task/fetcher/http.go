@@ -6,22 +6,19 @@ import (
 )
 
 const (
-	// @@@@@
-	// defaultTimeout HTTP 클라이언트의 전체 요청 타임아웃
+	// defaultTimeout HTTP 요청 전체에 대한 기본 타임아웃입니다.
 	defaultTimeout = 30 * time.Second
 
-	// @@@@@
-	// defaultTLSHandshakeTimeout TLS 핸드셰이크 타임아웃
+	// defaultTLSHandshakeTimeout TLS 핸드셰이크 기본 타임아웃입니다.
 	defaultTLSHandshakeTimeout = 10 * time.Second
 
-	// @@@@@
-	// defaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃
+	// defaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 기본 타임아웃입니다.
 	defaultIdleConnTimeout = 90 * time.Second
 
 	// defaultMaxIdleConns 전체 유휴 연결의 기본 최대 개수입니다.
 	defaultMaxIdleConns = 100
 
-	// defaultMaxTransportCacheSize Transport 재사용 캐시의 기본 최대 개수입니다.
+	// defaultMaxTransportCacheSize Transport 캐시의 기본 최대 개수입니다.
 	defaultMaxTransportCacheSize = 100
 
 	// defaultMaxRedirects HTTP 클라이언트의 기본 최대 리다이렉트 횟수입니다.
@@ -69,7 +66,7 @@ type HTTPFetcher struct {
 	responseHeaderTimeout time.Duration
 
 	// @@@@@
-	// idleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
+	// idleConnTimeout 유휴 연결 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
 	idleConnTimeout time.Duration
 
@@ -109,9 +106,9 @@ type HTTPFetcher struct {
 	// ========================================
 
 	// @@@@@
-	// disableTransportCache Transport 캐시 사용 여부입니다.
+	// disableTransportCaching Transport 캐싱 사용 여부입니다.
 	// true이면 매번 새로운 Transport를 생성하고, false이면 동일한 설정의 Transport를 재사용합니다.
-	disableTransportCache bool
+	disableTransportCaching bool
 
 	// ========================================
 	// 요청 헤더 설정
@@ -243,7 +240,7 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 //     - 정리하지 않음
 //     - 이유: 동일한 설정을 가진 다른 HTTPFetcher들이 함께 사용 중일 수 있으므로, 닫으면 다른 인스턴스에 영향을 줍니다.
 //
-//  3. 격리된 Transport (DisableTransportCache 옵션으로 생성된 전용 Transport)
+//  3. 격리된 Transport (DisableTransportCaching 옵션으로 생성된 전용 Transport)
 //     - 정리함 (CloseIdleConnections 호출)
 //     - 이유: 이 HTTPFetcher만 사용하는 독립적인 리소스이므로, 안전하게 유휴 연결을 닫을 수 있습니다.
 //
@@ -273,9 +270,9 @@ func (h *HTTPFetcher) Close() error {
 		// 격리된 Transport인 경우에만 리소스를 독점하고 있다고 확신할 수 있으므로 정리합니다.
 		//
 		// ⚠️ 주의: 공유 Transport는 절대 닫으면 안 됩니다!
-		//    공유 모드(disableTransportCache=false)에서는 캐시에서 퇴출되었다고 하더라도
+		//    공유 모드(disableTransportCaching=false)에서는 캐시에서 퇴출되었다고 하더라도
 		//    다른 Fetcher가 여전히 참조하고 있을 수 있으므로 GC에 맡겨야 합니다.
-		if h.disableTransportCache {
+		if h.disableTransportCaching {
 			tr.CloseIdleConnections()
 		}
 	}
@@ -283,20 +280,68 @@ func (h *HTTPFetcher) Close() error {
 	return nil
 }
 
-// normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
+// normalizeTimeout HTTP 요청 전체에 대한 타임아웃을 정규화합니다.
 //
 // 정규화 규칙:
-//   - 음수: 기본값(defaultMaxRedirects)으로 보정
+//   - 음수: 기본값(defaultTimeout)으로 보정
 //   - 0 이상: 그대로 유지
 //
 // 동작 방식:
-//   - 0: 리다이렉트 허용 안 함
-//   - 양수: 지정된 횟수만큼 리다이렉트 허용
-func normalizeMaxRedirects(maxRedirects int) int {
-	if maxRedirects < 0 {
-		return defaultMaxRedirects
+//   - 0: 타임아웃 없음 (무한 대기)
+//   - 양수: 지정된 시간으로 제한
+func normalizeTimeout(val time.Duration) time.Duration {
+	if val < 0 {
+		return defaultTimeout
 	}
-	return maxRedirects
+	return val
+}
+
+// normalizeTLSHandshakeTimeout TLS 핸드셰이크 타임아웃을 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 기본값(defaultTLSHandshakeTimeout)으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 타임아웃 없음 (무한 대기)
+//   - 양수: 지정된 시간으로 제한
+func normalizeTLSHandshakeTimeout(val time.Duration) time.Duration {
+	if val < 0 {
+		return defaultTLSHandshakeTimeout
+	}
+	return val
+}
+
+// normalizeResponseHeaderTimeout HTTP 응답 헤더 대기 타임아웃을 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 0으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 타임아웃 없음 (무한 대기)
+//   - 양수: 지정된 시간으로 제한
+func normalizeResponseHeaderTimeout(val time.Duration) time.Duration {
+	if val < 0 {
+		return 0
+	}
+	return val
+}
+
+// normalizeIdleConnTimeout 유휴 연결 타임아웃을 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 기본값(defaultIdleConnTimeout)으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 제한 없음 (연결이 무기한 유지)
+//   - 양수: 지정된 시간 후 유휴 연결 종료
+func normalizeIdleConnTimeout(val time.Duration) time.Duration {
+	if val < 0 {
+		return defaultIdleConnTimeout
+	}
+	return val
 }
 
 // normalizeMaxIdleConns 전체 유휴 연결 최대 개수를 정규화합니다.
@@ -347,7 +392,22 @@ func normalizeMaxConnsPerHost(val int) int {
 	return val
 }
 
-// @@@@@
+// normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 기본값(defaultMaxRedirects)으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 리다이렉트 허용 안 함
+//   - 양수: 지정된 횟수만큼 리다이렉트 허용
+func normalizeMaxRedirects(maxRedirects int) int {
+	if maxRedirects < 0 {
+		return defaultMaxRedirects
+	}
+	return maxRedirects
+}
+
 // transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.
 //
 // 이 메서드는 내부 상태 검증 및 디버깅을 위한 진단(Diagnostic) 목적으로 설계되었습니다.

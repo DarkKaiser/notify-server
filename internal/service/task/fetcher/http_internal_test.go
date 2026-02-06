@@ -37,8 +37,8 @@ func TestHTTPFetcher_Close(t *testing.T) {
 	})
 
 	t.Run("Isolated Transport - Closes Idle Connections", func(t *testing.T) {
-		// Use DisableTransportCache to force isolated transport
-		f := NewHTTPFetcher(WithDisableTransportCache(true))
+		// Use DisableTransportCaching to force isolated transport
+		f := NewHTTPFetcher(WithDisableTransportCaching(true))
 		err := f.Close()
 		assert.NoError(t, err)
 		// Internal logic calls CloseIdleConnections.
@@ -369,7 +369,7 @@ func TestHTTPFetcher_TransportSelection(t *testing.T) {
 	})
 
 	t.Run("Selects Isolated Transport", func(t *testing.T) {
-		f := NewHTTPFetcher(WithDisableTransportCache(true))
+		f := NewHTTPFetcher(WithDisableTransportCaching(true))
 		tr, ok := f.client.Transport.(*http.Transport)
 		require.True(t, ok)
 

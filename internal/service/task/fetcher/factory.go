@@ -11,30 +11,45 @@ type Config struct {
 	// ========================================
 
 	// Timeout HTTP 요청 전체에 대한 타임아웃입니다.
-	// 연결(Dial), 요청 전송, 응답 수신 등 전체 과정을 포함하는 시간 제한입니다.
-	// - 0: 기본값(defaultTimeout) 적용
-	// - 음수: 타임아웃 없음(무한 대기)
-	// - 양수: 지정된 시간으로 설정
-	Timeout time.Duration
+	// 요청 전송부터 응답 본문(Body)까지 모두 읽는 전체 과정에 대한 제한 시간입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 타임아웃 없음 (무한 대기)
+	//   - 양수: 지정된 시간으로 제한
+	//   - 음수: 기본값으로 보정
+	Timeout *time.Duration
 
 	// TLSHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
-	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-	// - 0: 기본값(defaultTLSHandshakeTimeout) 적용
-	// - 양수: 지정된 시간으로 설정
-	TLSHandshakeTimeout time.Duration
+	// TLS 연결 수립 과정에서 핸드셰이크가 완료되기까지 허용되는 최대 시간입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 타임아웃 없음 (무한 대기)
+	//   - 양수: 지정된 시간으로 제한
+	//   - 음수: 기본값으로 보정
+	TLSHandshakeTimeout *time.Duration
 
 	// ResponseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
 	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
 	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
-	// - 0: 별도 제한 없음 (HTTP 요청 전체에 대한 타임아웃 설정에 따름)
-	// - 양수: 지정된 시간으로 설정
-	ResponseHeaderTimeout time.Duration
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 타임아웃 없음 (무한 대기)
+	//   - 양수: 지정된 시간으로 제한
+	//   - 음수: 타임아웃 없음(0)으로 보정
+	ResponseHeaderTimeout *time.Duration
 
-	// IdleConnTimeout 유휴 연결이 닫히기 전 유지되는 타임아웃입니다.
+	// IdleConnTimeout 유휴 연결 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
-	// - 0: 기본값(defaultIdleConnTimeout) 적용
-	// - 양수: 지정된 시간으로 설정
-	IdleConnTimeout time.Duration
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 제한 없음 (연결 무기한 유지)
+	//   - 양수: 지정된 시간 후 유휴 연결 종료
+	//   - 음수: 기본값으로 보정
+	IdleConnTimeout *time.Duration
 
 	// ProxyURL 프록시 서버 주소입니다.
 	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
@@ -78,12 +93,12 @@ type Config struct {
 	// HTTP 클라이언트 동작
 	// ========================================
 
-	// EnableRandomUserAgent HTTP 요청 시마다 User-Agent를 랜덤으로 선택하여 주입하는 기능을 활성화합니다.
+	// EnableUserAgentRandomization 요청마다 User-Agent를 랜덤으로 변경할지 여부를 제어합니다.
 	//
 	// 설정 값:
-	//   - false (기본값): 기능 비활성화 (원본 요청의 User-Agent를 그대로 사용)
-	//   - true: UserAgents가 있으면 해당 목록에서 랜덤으로 선택하여 주입, 없으면 내장된 User-Agent 목록에서 랜덤으로 선택하여 주입
-	EnableRandomUserAgent bool
+	//   - false (기본값): 기능 비활성화 (원본 요청의 User-Agent 사용)
+	//   - true: 기능 활성화 (UserAgents 또는 내장 목록에서 랜덤 선택, 봇 차단 우회에 유용)
+	EnableUserAgentRandomization bool
 
 	// UserAgents User-Agent를 랜덤으로 선택하여 주입할 때 사용할 User-Agent 문자열 목록입니다.
 	//
@@ -110,7 +125,7 @@ type Config struct {
 	// 설정 규칙:
 	//   - 0: 재시도 안 함
 	//   - 양수: 실패 시(5xx 에러 또는 네트워크 오류 등) 지정된 횟수만큼 재시도
-	//   - 보정: 최소값(minRetries) 미만은 최소값으로, 최대값(maxAllowedRetries) 초과는 최대값으로 보정
+	//   - 보정: 최소값(minAllowedRetries) 미만은 최소값으로, 최대값(maxAllowedRetries) 초과는 최대값으로 보정
 	MaxRetries int
 
 	// MinRetryDelay 재시도 대기 시간의 최소값입니다.
@@ -132,12 +147,12 @@ type Config struct {
 	// 응답 검증 및 제한
 	// ========================================
 
-	// DisableStatusCodeCheck HTTP 응답 상태 코드 검증을 비활성화할지 여부입니다.
+	// DisableStatusCodeValidation HTTP 응답 상태 코드 검증 사용 여부를 제어합니다.
 	//
 	// 설정 값:
-	//   - false (기본값): 응답 상태 코드 검증 수행 (200 OK 또는 AllowedStatusCodes만 허용)
-	//   - true: 검증 비활성화 (모든 상태 코드 허용)
-	DisableStatusCodeCheck bool
+	//   - false (기본값): 검증 활성화 (200 OK 또는 AllowedStatusCodes만 허용)
+	//   - true: 검증 비활성화 (모든 상태 코드 허용, 커스텀 에러 처리가 필요한 경우)
+	DisableStatusCodeValidation bool
 
 	// AllowedStatusCodes 허용할 HTTP 응답 상태 코드 목록입니다.
 	//
@@ -165,33 +180,41 @@ type Config struct {
 	// 미들웨어 체인 구성
 	// ========================================
 
-	// DisableLogging HTTP 요청/응답 로깅을 비활성화할지 여부입니다.
+	// DisableLogging HTTP 요청/응답 로깅 사용 여부를 제어합니다.
 	//
 	// 설정 값:
-	//   - false (기본값): 로깅을 활성화하여 URL, 상태 코드, 실행 시간 등을 기록
-	//   - true: 로깅 비활성화
+	//   - false (기본값): 로깅 활성화 (URL, 상태 코드, 실행 시간 등을 기록)
+	//   - true: 로깅 비활성화 (성능 향상 또는 민감한 정보 보호가 필요한 경우)
 	DisableLogging bool
+
+	// DisableTransportCaching Transport 캐싱 사용 여부를 제어합니다.
+	//
+	// 설정 값:
+	//   - false (기본값/권장): 캐시 활성화 (성능 최적화)
+	//   - true: 캐시 비활성화 (테스트 또는 완전한 격리가 필요한 경우)
+	DisableTransportCaching bool
 }
 
 // applyDefaults Config의 설정값들을 검증하고, 미설정되거나 유효하지 않은 값을 안전한 기본값으로 보정합니다.
 func (cfg *Config) applyDefaults() {
-	// HTTP 요청 전체에 대한 타임아웃 검증
-	// 0은 "미설정" 상태로 간주하여 기본값 적용
-	// 음수는 "무한 대기"를 의미하므로 호출자가 명시적으로 설정한 경우 그대로 유지
-	if cfg.Timeout == 0 {
-		cfg.Timeout = defaultTimeout
+	// HTTP 요청 전체에 대한 타임아웃을 정규화합니다.
+	if cfg.Timeout != nil {
+		normalizePtr(&cfg.Timeout, defaultTimeout, normalizeTimeout)
 	}
 
-	// TLS 핸드셰이크 타임아웃 검증
-	// 0은 "미설정" 상태로 간주하여 기본값 적용
-	if cfg.TLSHandshakeTimeout == 0 {
-		cfg.TLSHandshakeTimeout = defaultTLSHandshakeTimeout
+	// TLS 핸드셰이크 타임아웃을 정규화합니다.
+	if cfg.TLSHandshakeTimeout != nil {
+		normalizePtr(&cfg.TLSHandshakeTimeout, defaultTLSHandshakeTimeout, normalizeTLSHandshakeTimeout)
 	}
 
-	// 유휴 연결이 닫히기 전 유지되는 타임아웃 검증
-	// 0은 "미설정" 상태로 간주하여 기본값 적용
-	if cfg.IdleConnTimeout == 0 {
-		cfg.IdleConnTimeout = defaultIdleConnTimeout
+	// HTTP 응답 헤더 대기 타임아웃을 정규화합니다.
+	if cfg.ResponseHeaderTimeout != nil {
+		normalizePtr(&cfg.ResponseHeaderTimeout, 0, normalizeResponseHeaderTimeout)
+	}
+
+	// 유휴 연결 타임아웃을 정규화합니다.
+	if cfg.IdleConnTimeout != nil {
+		normalizePtr(&cfg.IdleConnTimeout, defaultIdleConnTimeout, normalizeIdleConnTimeout)
 	}
 
 	// 전체 유휴 연결의 최대 개수를 정규화합니다.
@@ -283,25 +306,23 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	var mergedOpts []Option
 
 	// HTTP 요청 전체에 대한 타임아웃 설정
-	if cfg.Timeout > 0 {
-		mergedOpts = append(mergedOpts, WithTimeout(cfg.Timeout))
-	} else if cfg.Timeout < 0 {
-		mergedOpts = append(mergedOpts, WithTimeout(0)) // 0은 무한 대기를 의미
+	if cfg.Timeout != nil {
+		mergedOpts = append(mergedOpts, WithTimeout(*cfg.Timeout))
 	}
 
 	// TLS 핸드셰이크 타임아웃 설정
-	if cfg.TLSHandshakeTimeout > 0 {
-		mergedOpts = append(mergedOpts, WithTLSHandshakeTimeout(cfg.TLSHandshakeTimeout))
+	if cfg.TLSHandshakeTimeout != nil {
+		mergedOpts = append(mergedOpts, WithTLSHandshakeTimeout(*cfg.TLSHandshakeTimeout))
 	}
 
 	// HTTP 응답 헤더 대기 타임아웃 설정
-	if cfg.ResponseHeaderTimeout > 0 {
-		mergedOpts = append(mergedOpts, WithResponseHeaderTimeout(cfg.ResponseHeaderTimeout))
+	if cfg.ResponseHeaderTimeout != nil {
+		mergedOpts = append(mergedOpts, WithResponseHeaderTimeout(*cfg.ResponseHeaderTimeout))
 	}
 
-	// 유휴 연결이 닫히기 전 유지되는 타임아웃 설정
-	if cfg.IdleConnTimeout > 0 {
-		mergedOpts = append(mergedOpts, WithIdleConnTimeout(cfg.IdleConnTimeout))
+	// 유휴 연결 타임아웃 설정
+	if cfg.IdleConnTimeout != nil {
+		mergedOpts = append(mergedOpts, WithIdleConnTimeout(*cfg.IdleConnTimeout))
 	}
 
 	// 프록시 서버 주소 설정
@@ -329,6 +350,9 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithMaxRedirects(*cfg.MaxRedirects))
 	}
 
+	// Transport 캐싱 사용 여부 설정
+	mergedOpts = append(mergedOpts, WithDisableTransportCaching(cfg.DisableTransportCaching))
+
 	// 추가 옵션을 마지막에 추가하여 Config 기반 옵션을 덮어쓸 수 있도록 함!!
 	mergedOpts = append(mergedOpts, opts...)
 
@@ -345,7 +369,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	// 3단계: HTTP 응답 상태 코드 검증 미들웨어
 	// ========================================
-	if !cfg.DisableStatusCodeCheck {
+	if !cfg.DisableStatusCodeValidation {
 		if len(cfg.AllowedStatusCodes) > 0 {
 			// 성공으로 간주할 상태 코드를 사용자가 명시한 경우
 			f = NewStatusCodeFetcherWithOptions(f, cfg.AllowedStatusCodes...)
@@ -371,7 +395,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// 6단계: User-Agent 주입 미들웨어
 	// ========================================
 	// RetryFetcher 바깥에 위치하여 재시도 시에도 동일한 User-Agent를 유지합니다.
-	if cfg.EnableRandomUserAgent {
+	if cfg.EnableUserAgentRandomization {
 		f = NewUserAgentFetcher(f, cfg.UserAgents)
 	}
 

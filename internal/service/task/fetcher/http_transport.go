@@ -423,7 +423,7 @@ func (f *HTTPFetcher) setupTransport() error {
 //
 // 판단 기준:
 //   - 다음 중 하나라도 기본값과 다르게 설정되었다면 true를 반환합니다:
-//   - Transport 캐시 비활성화 (disableTransportCache)
+//   - Transport 캐시 비활성화 (disableTransportCaching)
 //   - 프록시 서버 설정 (proxyURL)
 //   - 연결 풀 크기 조정 (maxIdleConns, maxConnsPerHost, maxIdleConnsPerHost)
 //   - 네트워크 타임아웃 변경 (idleConnTimeout, tlsHandshakeTimeout, responseHeaderTimeout)
@@ -454,12 +454,12 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 //
 //  2. 운영 모드 선택:
 //
-//     a) 격리 모드 (disableTransportCache = true):
+//     a) 격리 모드 (disableTransportCaching = true):
 //     - 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
 //     - 다른 Fetcher와 완전히 격리되어 리소스를 공유하지 않습니다.
 //     - 사용 시나리오: 테스트 환경, 특수한 격리 요구사항
 //
-//     b) 공유 모드 (disableTransportCache = false, 기본값):
+//     b) 공유 모드 (disableTransportCaching = false, 기본값):
 //     - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다.
 //     - TCP 연결 풀을 재사용하여 메모리와 핸드셰이크 비용을 절약합니다.
 //     - 사용 시나리오: 일반적인 프로덕션 환경 (권장)
@@ -478,7 +478,7 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 	}
 
 	// 2단계: 운영 모드에 따라 Transport를 생성합니다.
-	if f.disableTransportCache {
+	if f.disableTransportCaching {
 		// 격리 모드: 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
 		tr, err := newTransport(nil, key)
 		if err != nil {
