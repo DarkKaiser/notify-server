@@ -49,13 +49,20 @@ type HTTPFetcher struct {
 	// 초기화 상태
 	// ========================================
 
-	// initErr 초기화 중 발생한 에러입니다.
-	// NewHTTPFetcher 실행 시 옵션 검증이나 Transport 설정 과정에서 에러가 발생하면 여기에 저장됩니다.
-	// Do 메서드 호출 시 이 값이 nil이 아니면 즉시 반환하여 잘못된 설정으로 요청을 시도하는 것을 방지합니다.
+	// initErr 초기화 중 발생한 에러를 저장합니다.
+	//
+	// 지연 에러 처리(Lazy Error Handling) 패턴:
+	//   - NewHTTPFetcher는 에러가 발생해도 nil을 반환하지 않고, 대신 이 필드에 에러를 저장합니다.
+	//   - Do() 메서드 호출 시 이 값을 확인하여 nil이 아니면 즉시 반환합니다.
+	//
+	// 에러 발생 시나리오:
+	//   - Transport 설정 실패 (예: 캐시 생성 오류)
+	//   - 잘못된 프록시 URL 파싱 실패 (예: "invalid://proxy")
+	//   - 커스텀 RoundTripper 타입 불일치 (ErrUnsupportedTransport)
 	initErr error
 
 	// ========================================
-	// 타임아웃(Timeout) 설정
+	// 네트워크 타임아웃(Timeout)
 	// ========================================
 
 	// @@@@@
@@ -75,7 +82,7 @@ type HTTPFetcher struct {
 	idleConnTimeout time.Duration
 
 	// ========================================
-	// 네트워크 라우팅
+	// 프록시 설정
 	// ========================================
 
 	// @@@@@
@@ -106,12 +113,22 @@ type HTTPFetcher struct {
 	maxIdleConnsPerHost int
 
 	// ========================================
-	// 성능 최적화
+	// 최적화 설정
 	// ========================================
 
-	// @@@@@
-	// disableTransportCaching Transport 캐싱 사용 여부입니다.
-	// true이면 매번 새로운 Transport를 생성하고, false이면 동일한 설정의 Transport를 재사용합니다.
+	// disableTransportCaching Transport 캐싱 사용 여부를 제어합니다.
+	//
+	// 동작 방식:
+	//   - false (기본값, 공유 모드): 동일한 설정(프록시, 타임아웃, 연결 풀 등)을 가진 HTTPFetcher들이
+	//     하나의 Transport를 공유하여 TCP 연결 풀을 재사용합니다. 이를 통해 핸드셰이크 비용을 줄이고
+	//     메모리 사용량을 최소화하여 성능을 최적화합니다.
+	//
+	//   - true (격리 모드): 각 HTTPFetcher가 독립적인 Transport를 생성하여 완전히 격리된 환경에서 동작합니다.
+	//     다른 Fetcher와 연결 풀을 공유하지 않으며, Close() 호출 시 해당 Transport의 유휴 연결이 정리됩니다.
+	//
+	// 사용 시나리오:
+	//   - false (권장): 일반적인 프로덕션 환경에서 성능과 리소스 효율성을 위해 사용
+	//   - true: 단위 테스트, 완전한 리소스 격리가 필요한 경우, 또는 Transport 생명주기를 명시적으로 제어해야 하는 경우
 	disableTransportCaching bool
 
 	// ========================================
@@ -119,7 +136,13 @@ type HTTPFetcher struct {
 	// ========================================
 
 	// defaultUA 기본 User-Agent 문자열입니다.
-	// 요청 헤더에 User-Agent가 설정되지 않은 경우 이 값이 자동으로 사용됩니다.
+	//
+	// 목적:
+	//   - 실제 브라우저처럼 동작하여 봇 차단(Bot Detection)을 우회합니다.
+	//   - 요청 헤더에 User-Agent가 명시되지 않은 경우 자동으로 주입됩니다.
+	//
+	// 참고:
+	//   - UserAgentFetcher 미들웨어가 활성화된 경우, 이 값은 무시되고 랜덤으로 선택된 User-Agent가 사용됩니다.
 	defaultUA string
 }
 
