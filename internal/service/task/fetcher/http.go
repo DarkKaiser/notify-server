@@ -23,6 +23,10 @@ const (
 
 	// defaultMaxRedirects HTTP 클라이언트의 기본 최대 리다이렉트 횟수입니다.
 	defaultMaxRedirects = 10
+
+	// NoProxy 프록시를 명시적으로 비활성화하는 특수 상수입니다.
+	// WithProxy(NoProxy) 호출 시 환경 변수를 무시하고 직접 연결합니다.
+	NoProxy = "DIRECT"
 )
 
 // HTTPFetcher 기본 HTTP 클라이언트 미들웨어입니다.
@@ -102,7 +106,7 @@ type HTTPFetcher struct {
 	maxIdleConnsPerHost int
 
 	// ========================================
-	// 성능 최적화 (Performance Optimization)
+	// 성능 최적화
 	// ========================================
 
 	// @@@@@

@@ -87,17 +87,14 @@ func WithIdleConnTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithProxy HTTP 클라이언트에 프록시 서버를 설정합니다.
+// WithProxy 프록시 URL을 설정합니다.
 //
 // 모든 HTTP/HTTPS 요청이 지정된 프록시 서버를 통해 전송됩니다.
-// 프록시 서버 URL 형식: "http://proxy.example.com:8080" 또는 "http://user:pass@proxy.example.com:8080"
 //
 // 매개변수:
-//   - proxyURL: 프록시 서버 주소 (빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따름)
-//
-// 주의사항:
-//   - 잘못된 URL 형식은 초기화 시 에러 발생
-//   - 프록시 서버 인증 정보(비밀번호)는 로그에 마스킹되어 출력됨
+//   - proxyURL: 프록시 URL
+//     · URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+//     · "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
 func WithProxy(proxyURL string) Option {
 	return func(h *HTTPFetcher) {
 		h.proxyURL = proxyURL
@@ -204,18 +201,38 @@ func WithDisableTransportCaching(disable bool) Option {
 
 // WithTransport HTTP 클라이언트의 Transport를 직접 설정합니다.
 //
-// 이 옵션을 사용하면 Transport 캐싱이 비활성화되고 제공된 Transport가 그대로 사용됩니다.
-// 고급 설정(커스텀 Dialer, TLS 설정 등)이 필요한 경우에만 사용하세요.
+// 이 옵션은 고급 사용자를 위한 것으로, 표준 옵션으로 제공되지 않는 특수한 Transport 설정이 필요할 때 사용합니다.
+// 예를 들어, 커스텀 Dialer, 특수한 TLS 설정, 또는 테스트용 모의(Mock) Transport를 주입할 수 있습니다.
+//
+// 타입별 동작 방식:
+//
+//  1. *http.Transport 타입 (일반적인 경우):
+//     - 원본을 복제한 후, 사용자가 설정한 Transport 관련 옵션들을 선택적으로 덮어씁니다.
+//     - WithProxy, WithMaxIdleConns 등의 옵션이 정상적으로 적용됩니다.
+//
+//  2. 다른 RoundTripper 타입 (Mock 등):
+//     - 제공된 객체를 그대로 사용하며, Transport 관련 옵션은 적용되지 않습니다.
+//     - 설정 변경이 불가능한 타입이므로 사용자 옵션을 무시합니다.
+//     - Transport 캐싱이 자동으로 비활성화되어 완전히 격리된 환경에서 동작합니다.
+//
+// 캐싱 비활성화 이유:
+//   - 외부에서 주입된 Transport는 소유권과 생명주기를 fetcher가 제어할 수 없습니다.
+//   - 다른 곳에서도 동일한 Transport를 사용 중일 수 있어, 캐시 관리 로직이 리소스를 정리하면 예상치 못한 부작용이 발생할 수 있습니다.
+//   - 따라서 격리 모드로 동작하여 사용자가 직접 Transport의 생명주기를 관리하도록 합니다.
 //
 // 매개변수:
-//   - transport: 사용할 http.RoundTripper 구현체 (일반적으로 *http.Transport)
+//   - transport: 사용할 http.RoundTripper 구현체 (일반적으로 *http.Transport 또는 테스트용 Mock)
 //
 // 주의사항:
-//   - 이 옵션을 사용하면 다른 Transport 관련 옵션(WithMaxIdleConns 등)이 무시됨
-//   - Transport 캐싱이 비활성화되므로 성능이 저하될 수 있음
+//   - *http.Transport가 아닌 RoundTripper를 제공하면, 사용자가 설정한 Transport 관련 옵션(WithProxy, WithMaxIdleConns 등)이 적용되지 않습니다.
+//   - Transport 캐싱이 비활성화되므로 성능 최적화 효과가 감소할 수 있습니다.
+//   - 일반적인 경우에는 표준 옵션(WithProxy, WithMaxIdleConns 등)을 사용하는 것을 권장합니다.
 func WithTransport(transport http.RoundTripper) Option {
 	return func(h *HTTPFetcher) {
 		h.client.Transport = transport
+
+		// 외부에서 주입된 Transport는 소유권이 불명확하므로 캐시를 비활성화하여 격리 모드로 동작합니다.
+		h.disableTransportCaching = true
 	}
 }
 

@@ -51,10 +51,13 @@ type Config struct {
 	//   - 음수: 기본값으로 보정
 	IdleConnTimeout *time.Duration
 
-	// ProxyURL 프록시 서버 주소입니다.
-	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
-	// - 형식: "http://host:port", "https://user:pass@host:port" 등
-	ProxyURL string
+	// ProxyURL 프록시 URL입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (환경 변수 HTTP_PROXY, HTTPS_PROXY를 따름)
+	//   - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+	//   - "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
+	ProxyURL *string
 
 	// ========================================
 	// 연결 풀(Connection Pool) 관리
@@ -325,9 +328,9 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 		mergedOpts = append(mergedOpts, WithIdleConnTimeout(*cfg.IdleConnTimeout))
 	}
 
-	// 프록시 서버 주소 설정
-	if cfg.ProxyURL != "" {
-		mergedOpts = append(mergedOpts, WithProxy(cfg.ProxyURL))
+	// 프록시 URL 설정
+	if cfg.ProxyURL != nil {
+		mergedOpts = append(mergedOpts, WithProxy(*cfg.ProxyURL))
 	}
 
 	// 전체 유휴 연결의 최대 개수 설정

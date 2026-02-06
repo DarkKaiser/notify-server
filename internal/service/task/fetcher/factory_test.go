@@ -18,6 +18,11 @@ func durationPtr(v time.Duration) *time.Duration {
 	return &v
 }
 
+// stringPtr는 string 값의 포인터를 반환하는 헬퍼 함수입니다.
+func stringPtr(v string) *string {
+	return &v
+}
+
 func TestConfig_applyDefaults(t *testing.T) {
 	// 상수가 비공개이므로 테스트에서 직접 검증 값으로 사용
 	const (
@@ -43,10 +48,10 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
+				Timeout:             nil, // Not set, remains nil
 				MaxIdleConns:        nil,
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				IdleConnTimeout:     nil, // Not set, remains nil
+				TLSHandshakeTimeout: nil, // Not set, remains nil
 				MaxConnsPerHost:     nil,
 				MaxIdleConnsPerHost: nil,
 				MaxRedirects:        nil,
@@ -62,9 +67,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -81,9 +86,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -100,9 +105,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(0), // -1 is normalized to 0
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout), // -1 is normalized to default (10s)
 				MaxIdleConns:        nil,
 				MaxConnsPerHost:     nil,
 				MaxIdleConnsPerHost: nil,
@@ -119,9 +124,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(0), // -1 is normalized to 0
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,                                         // Not set, remains nil
+				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout), // -1 is normalized to default (90s)
+				TLSHandshakeTimeout: nil,                                         // Not set, remains nil
 				MaxIdleConns:        nil,
 				MaxConnsPerHost:     nil,
 				MaxIdleConnsPerHost: nil,
@@ -138,9 +143,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       1 * time.Second,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -158,9 +163,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       5 * time.Second,
 				MaxRetryDelay:       5 * time.Second,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -177,9 +182,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            -1, // Kept as -1
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -196,9 +201,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(0), // -1 is normalized to 0
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             durationPtr(expectedDefaultTimeout), // -1 is normalized to default (30s)
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -215,10 +220,10 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
+				Timeout:             nil,
 				MaxIdleConns:        intPtr(defaultMaxIdleConns), // Corrected from -1
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
 				MaxRedirects:        nil,
@@ -235,9 +240,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       expectedDefaultRetryDelay,
 				MaxRetryDelay:       expectedDefaultMaxRetryDelay,
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     intPtr(0), // Corrected to 0 (unlimited)
@@ -255,9 +260,9 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MinRetryDelay:       60 * time.Second,
 				MaxRetryDelay:       60 * time.Second, // Should be bumped to RetryDelay (60s) instead of staying at default (30s)
 				MaxBytes:            expectedDefaultMaxBytes,
-				Timeout:             durationPtr(expectedDefaultTimeout),
-				IdleConnTimeout:     durationPtr(expectedDefaultIdleConnTimeout),
-				TLSHandshakeTimeout: durationPtr(expectedDefaultTLSHandshakeTimeout),
+				Timeout:             nil,
+				IdleConnTimeout:     nil,
+				TLSHandshakeTimeout: nil,
 				MaxIdleConns:        nil,
 				MaxIdleConnsPerHost: nil,
 				MaxConnsPerHost:     nil,
@@ -428,7 +433,7 @@ func TestNewFromConfig_TransportCache(t *testing.T) {
 
 func TestNewFromConfig_ProxySettings(t *testing.T) {
 	// Case 1: Proxy set (Standard)
-	cfg1 := Config{ProxyURL: "http://proxy.example.com"}
+	cfg1 := Config{ProxyURL: stringPtr("http://proxy.example.com")}
 	cfg1.applyDefaults()
 	f1 := NewFromConfig(cfg1)
 	httpF1 := getHTTPFetcher(t, f1)
@@ -440,11 +445,25 @@ func TestNewFromConfig_ProxySettings(t *testing.T) {
 	// But valid configuration construction is a good smoke test here.
 
 	// Case 2: NoProxy
-	cfg2 := Config{ProxyURL: NoProxy}
+	cfg2 := Config{ProxyURL: stringPtr(NoProxy)}
 	cfg2.applyDefaults()
 	f2 := NewFromConfig(cfg2)
 	httpF2 := getHTTPFetcher(t, f2)
 	assert.NotNil(t, httpF2)
+
+	// Case 3: nil (환경 변수 따름)
+	cfg3 := Config{ProxyURL: nil}
+	cfg3.applyDefaults()
+	f3 := NewFromConfig(cfg3)
+	httpF3 := getHTTPFetcher(t, f3)
+	assert.NotNil(t, httpF3)
+
+	// Case 4: 빈 문자열 (프록시 비활성화)
+	cfg4 := Config{ProxyURL: stringPtr("")}
+	cfg4.applyDefaults()
+	f4 := NewFromConfig(cfg4)
+	httpF4 := getHTTPFetcher(t, f4)
+	assert.NotNil(t, httpF4)
 }
 
 // Helper to drill down to HTTPFetcher (assuming full or partial chain)

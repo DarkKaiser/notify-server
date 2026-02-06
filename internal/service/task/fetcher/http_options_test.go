@@ -53,7 +53,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithTimeout - Negative (Infinite)",
 			options: []Option{WithTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, time.Duration(0), f.client.Timeout)
+				assert.Equal(t, 30*time.Second, f.client.Timeout) // -1 is normalized to default (30s)
 			},
 		},
 		{
@@ -71,7 +71,7 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithResponseHeaderTimeout - Negative (Infinite)",
 			options: []Option{WithResponseHeaderTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, time.Duration(-1), f.responseHeaderTimeout) // Signal value preserved
+				assert.Equal(t, time.Duration(0), f.responseHeaderTimeout) // -1 is normalized to 0
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, time.Duration(0), tr.ResponseHeaderTimeout) // Result is Infinite
@@ -91,10 +91,10 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithTLSHandshakeTimeout - Negative (Infinite)",
 			options: []Option{WithTLSHandshakeTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, time.Duration(-1), f.tlsHandshakeTimeout) // Signal value preserved
+				assert.Equal(t, 10*time.Second, f.tlsHandshakeTimeout) // -1 is normalized to default (10s)
 				tr := transport(f)
 				require.NotNil(t, tr)
-				assert.Equal(t, time.Duration(0), tr.TLSHandshakeTimeout)
+				assert.Equal(t, 10*time.Second, tr.TLSHandshakeTimeout) // -1 is normalized to default (10s)
 			},
 		},
 		{
@@ -111,10 +111,10 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithIdleConnTimeout - Negative (Infinite)",
 			options: []Option{WithIdleConnTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, time.Duration(-1), f.idleConnTimeout) // Signal value preserved
+				assert.Equal(t, 90*time.Second, f.idleConnTimeout) // -1 is normalized to default (90s)
 				tr := transport(f)
 				require.NotNil(t, tr)
-				assert.Equal(t, time.Duration(0), tr.IdleConnTimeout)
+				assert.Equal(t, 90*time.Second, tr.IdleConnTimeout) // -1 is normalized to default (90s)
 			},
 		},
 
