@@ -240,6 +240,9 @@ func WithTransport(transport http.RoundTripper) Option {
 
 		// 외부에서 주입된 Transport는 소유권이 불명확하므로 캐시를 비활성화하여 격리 모드로 동작합니다.
 		h.disableTransportCaching = true
+
+		// 외부에서 주입된 Transport는 Fetcher가 소유하지 않으므로 Close() 시 닫지 않습니다.
+		h.ownsTransport = false
 	}
 }
 

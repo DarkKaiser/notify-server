@@ -157,6 +157,17 @@ type HTTPFetcher struct {
 	disableTransportCaching bool
 
 	// ========================================
+	// 리소스 소유권 관리
+	// ========================================
+
+	// ownsTransport Transport의 생명주기 관리 권한을 나타냅니다.
+	//
+	// 값의 의미:
+	//   - true: 이 Fetcher가 Transport를 생성했거나 독점적으로 소유하고 있음 -> Close() 시 정리 대상
+	//   - false: 외부에서 주입받았거나(WithTransport), 공유 캐시에서 빌려씀 -> Close() 시 정리하지 않음
+	ownsTransport bool
+
+	// ========================================
 	// 요청 헤더 설정
 	// ========================================
 
@@ -321,12 +332,12 @@ func (h *HTTPFetcher) Close() error {
 	// (다른 타입의 RoundTripper는 정리 방법을 알 수 없으므로 무시합니다)
 	if tr, ok := h.client.Transport.(*http.Transport); ok {
 		// 3-1. 격리된 Transport만 정리
-		// 격리된 Transport인 경우에만 리소스를 독점하고 있다고 확신할 수 있으므로 정리합니다.
+		// 격리된 Transport이면서 동시에 "내가 소유한(직접 만든)" 경우에만 리소스를 독점하고 있다고 확신할 수 있으므로 정리합니다.
 		//
-		// ⚠️ 주의: 공유 Transport는 절대 닫으면 안 됩니다!
-		//    공유 모드(disableTransportCaching=false)에서는 캐시에서 퇴출되었다고 하더라도
-		//    다른 Fetcher가 여전히 참조하고 있을 수 있으므로 GC에 맡겨야 합니다.
-		if h.disableTransportCaching {
+		// ⚠️ 주의: 공유 Transport나 외부에서 주입된 Transport는 절대 닫으면 안 됩니다!
+		//    - 공유 모드(disableTransportCaching=false): 다른 Fetcher가 여전히 참조 중일 수 있습니다.
+		//    - 외부 주입(WithTransport): 소유권이 외부에 있으므로 Fetcher가 임의로 닫으면 안 됩니다.
+		if h.disableTransportCaching && h.ownsTransport {
 			tr.CloseIdleConnections()
 		}
 	}

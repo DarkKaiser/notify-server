@@ -603,10 +603,10 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 // 반환값:
 //   - error: Transport 생성 실패 시 에러 (예: 잘못된 프록시 URL)
 func (f *HTTPFetcher) configureTransportFromOptions() error {
-	// 1단계: Transport 설정 객체 생성
+	// Transport 설정 객체 생성
 	cfg := f.toTransportConfig()
 
-	// 2단계: 운영 모드 선택
+	// 운영 모드 선택
 	if f.disableTransportCaching {
 		// 격리 모드:
 		// - 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
@@ -618,6 +618,9 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 		}
 
 		f.client.Transport = newTr
+
+		// 격리 모드에서 생성한 Transport는 이 Fetcher가 독점적으로 소유합니다.
+		f.ownsTransport = true
 
 		return nil
 	}
@@ -632,6 +635,9 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 	}
 
 	f.client.Transport = tr
+
+	// 공유 Transport는 캐시가 소유하므로, 개별 Fetcher는 소유권을 갖지 않습니다.
+	f.ownsTransport = false
 
 	return nil
 }
@@ -659,17 +665,20 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 // 반환값:
 //   - error: 프록시 URL 파싱 실패 시 에러
 func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
-	// 1단계: 복제 필요성 검사
+	// 복제 필요성 검사
 	// 외부에서 주입된 Transport의 현재 설정이 사용자가 요청한 설정과 이미 일치하는지 확인합니다.
 	// 일치한다면 복제 없이 원본을 그대로 사용하여 불필요한 메모리 사용과 처리 비용을 절약합니다.
 	if !f.shouldCloneTransport(tr) {
+		// 외부에서 주입된 Transport를 그대로 사용하므로 소유권은 외부에 있습니다.
+		f.ownsTransport = false
+
 		return nil
 	}
 
-	// 2단계: Transport 설정 객체 생성
+	// Transport 설정 객체 생성
 	cfg := f.toTransportConfig()
 
-	// 3단계: Copy-on-Write (CoW) 전략 적용
+	// Copy-on-Write (CoW) 전략 적용
 	// 외부에서 주입된 Transport를 복제하고, 복제본에만 사용자 설정을 적용합니다.
 	// 이를 통해 원본 Transport는 변경되지 않고 보호되며, 새로운 독립적인 Transport가 생성됩니다.
 	newTr, err := newTransport(tr, cfg)
@@ -677,12 +686,15 @@ func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
 		return newErrIsolatedTransportCreateFailed(err)
 	}
 
-	// 4단계: 격리 모드로 전환
+	// 격리 모드로 전환
 	// 복제된 Transport는 다른 Fetcher와 공유되지 않는 격리된 리소스입니다.
 	// Close() 호출 시 안전하게 정리할 수 있도록 캐싱을 비활성화합니다.
 	f.disableTransportCaching = true
 
 	f.client.Transport = newTr
+
+	// 복제된 Transport는 이 Fetcher가 생성했으므로 소유권을 가집니다.
+	f.ownsTransport = true
 
 	return nil
 }
