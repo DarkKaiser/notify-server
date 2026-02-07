@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -11,7 +12,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -115,9 +116,9 @@ type keywordMatchers struct {
 }
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
-func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// 1. 최신 공연 정보를 수집한다.
-	currentPerformances, err := t.fetchPerformances(commandSettings)
+	currentPerformances, err := t.fetchPerformances(ctx, commandSettings)
 	if err != nil {
 		return "", nil, err
 	}
@@ -152,8 +153,8 @@ func (t *task) executeWatchNewPerformances(commandSettings *watchNewPerformances
 	return message, nil, nil
 }
 
-// fetchPerformances 네이버 통합검색 API를 페이지네이션하여 순회하며 신규 공연 정보를 수집합니다.
-func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
+// fetchPerformances 네이버 검색 API를 호출하여 조건에 맞는 공연 목록을 수집합니다.
+func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewPerformancesSettings) ([]*performance, error) {
 	// 매 페이지 순회 시마다 문자열 분할 연산이 반복되는 것을 방지하기 위해,
 	// 루프 진입 전 1회만 수행하여 불변(Invariant) 데이터를 최적화된 Matcher 형태로 변환합니다.
 	matchers := &keywordMatchers{
@@ -213,7 +214,7 @@ func (t *task) fetchPerformances(commandSettings *watchNewPerformancesSettings) 
 		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := fetcher.FetchJSON(t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
+		err := scraper.FetchJSON(ctx, t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -336,21 +337,21 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	// 제목
 	titleSelection := s.Find(selectorTitle)
 	if titleSelection.Length() != 1 {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorTitle, titleSelection.Length()))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorTitle, titleSelection.Length()))
 	}
 	title := strings.TrimSpace(titleSelection.Text())
 	if title == "" {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목이 비어있습니다 (선택자: %s)", selectorTitle))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 제목이 비어있습니다 (선택자: %s)", selectorTitle))
 	}
 
 	// 장소
 	placeSelection := s.Find(selectorPlace)
 	if placeSelection.Length() != 1 {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorPlace, placeSelection.Length()))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소 추출 실패 (선택자: %s, 발견된 요소 수: %d)", selectorPlace, placeSelection.Length()))
 	}
 	place := strings.TrimSpace(placeSelection.Text())
 	if place == "" {
-		return nil, fetcher.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소가 비어있습니다 (선택자: %s)", selectorPlace))
+		return nil, scraper.NewErrHTMLStructureChanged("", fmt.Sprintf("공연 장소가 비어있습니다 (선택자: %s)", selectorPlace))
 	}
 
 	// 썸네일 이미지가 없더라도 제목과 장소 정보가 있다면 수집하는 것이 운영상 유리하므로 에러를 반환하지 않습니다.

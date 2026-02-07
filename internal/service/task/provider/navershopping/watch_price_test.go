@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,8 +10,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -92,13 +93,13 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 	tests := []struct {
 		name        string
 		settings    watchPriceSettings
-		mockSetup   func(*testutil.MockHTTPFetcher)
+		mockSetup   func(*mocks.MockHTTPFetcher)
 		checkResult func(*testing.T, []*product, error)
 	}{
 		{
 			name:     "성공: 정상적인 데이터 수집 및 키워드 매칭",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{
 					Total: 3, Items: []*searchResponseItem{
 						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
@@ -119,7 +120,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 제외 키워드 적용",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("Exclude").Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{
 					Total: 2, Items: []*searchResponseItem{
 						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
@@ -137,7 +138,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 가격 쉼표 파싱",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Comma", LowPrice: "1,500", ProductID: "1"}}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
@@ -150,7 +151,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 빈 결과",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{Total: 0, Items: []*searchResponseItem{}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
@@ -162,7 +163,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "실패: API 호출 에러",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				m.SetError(expectedURL, errors.New("network fail"))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -173,7 +174,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 잘못된 가격 형식 무시",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "BadPrice", LowPrice: "Free", ProductID: "1"}}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
@@ -185,7 +186,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: HTML 태그가 포함된 로우 데이터 키워드 매칭",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("S25 FE").Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				resp := searchResponse{
 					Total: 2, Items: []*searchResponseItem{
 						{Title: "Galaxy <b>S25</b> <b>FE</b>", Link: "L1", LowPrice: "10000", ProductID: "1"}, // 제외 대상
@@ -203,7 +204,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "실패: 잘못된 JSON 응답 (Malformed)",
 			settings: defaultSettings,
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				m.SetResponse(expectedURL, []byte(`{invalid_json`))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -214,7 +215,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: URL 인코딩 검증 (특수문자 쿼리)",
 			settings: NewSettingsBuilder().WithQuery("아이폰 & 케이스").WithPriceLessThan(20000).Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				// 예상되는 인코딩된 URL
 				encodedURL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%EC%95%84%EC%9D%B4%ED%8F%B0+%26+%EC%BC%80%EC%9D%B4%EC%8A%A4&sort=sim&start=1"
 				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Case", LowPrice: "5000", ProductID: "1"}}}
@@ -228,7 +229,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 키워드 매칭 (OR 조건 - A 또는 B 포함)",
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Galaxy|iPhone").WithPriceLessThan(999999).Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
 				resp := searchResponse{
 					Total: 3, Items: []*searchResponseItem{
@@ -249,7 +250,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 키워드 매칭 (복합 조건 - 포함 AND 제외)",
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Case").WithExcludedKeywords("Silicon,Hard").WithPriceLessThan(999999).Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
 				resp := searchResponse{
 					Total: 4, Items: []*searchResponseItem{
@@ -270,7 +271,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		{
 			name:     "성공: 키워드 매칭 (대소문자 혼합 및 공백 처리)",
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords(" apple watch | galaxy TAB ").WithPriceLessThan(999999).Build(),
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
 				resp := searchResponse{
 					Total: 3, Items: []*searchResponseItem{
@@ -293,7 +294,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			if tt.mockSetup != nil {
 				tt.mockSetup(mockFetcher)
 			}
@@ -311,7 +312,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			}
 			tsk.SetFetcher(mockFetcher)
 
-			got, err := tsk.fetchProducts(&tt.settings)
+			got, err := tsk.fetchProducts(context.Background(), &tt.settings)
 			tt.checkResult(t, got, err)
 		})
 	}
@@ -351,7 +352,7 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			// 어떤 URL이든 성공 응답을 주도록 설정 (URL 검증이 목적이므로 내용은 무관)
 			mockFetcher.SetResponse(tt.expectedURL, defaultResponse)
 
@@ -368,7 +369,7 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 			}
 			tsk.SetFetcher(mockFetcher)
 
-			_, err := tsk.fetchProducts(&tt.settings)
+			_, err := tsk.fetchProducts(context.Background(), &tt.settings)
 
 			// URL 불일치 시 SetResponse에 없는 URL을 요청하게 되므로 에러 발생 ("no mock response found")
 			// 따라서 에러가 없으면 URL이 정확하다는 뜻입니다.
@@ -952,7 +953,7 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 
 	settings := NewSettingsBuilder().WithQuery("paging").WithPriceLessThan(999999).Build()
 
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// Page 1 Setup
 	page1URL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=paging&sort=sim&start=1"
@@ -987,7 +988,7 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}
 	tsk.SetFetcher(mockFetcher)
 
-	products, err := tsk.fetchProducts(&settings)
+	products, err := tsk.fetchProducts(context.Background(), &settings)
 
 	require.NoError(t, err)
 	assert.Len(t, products, 150, "총 150개의 상품이 수집되어야 합니다")
@@ -997,7 +998,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 	t.Parallel()
 
 	settings := NewSettingsBuilder().WithQuery("cancel").WithPriceLessThan(999999).Build()
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 1페이지 응답 설정 (Total이 많아서 다음 페이지가 필요하도록 설정)
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=cancel&sort=sim&start=1"
@@ -1013,7 +1014,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 	// 강제로 취소 상태 주입 (Context Cancel)
 	tsk.Cancel()
 
-	products, err := tsk.fetchProducts(&settings)
+	products, err := tsk.fetchProducts(context.Background(), &settings)
 
 	// 취소되었으므로 nil 반환 체크
 	require.NoError(t, err)

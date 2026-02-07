@@ -1,6 +1,7 @@
 package naver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -9,7 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,12 +71,12 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 	tests := []struct {
 		name           string
 		configModifier func(*watchNewPerformancesSettings)
-		mockSetup      func(*testutil.MockHTTPFetcher)
+		mockSetup      func(*mocks.MockHTTPFetcher)
 		validate       func(*testing.T, string, interface{}, error)
 	}{
 		{
 			name: "Success_SinglePage",
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				html := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("Cats", "Broadway"))
 				b, _ := json.Marshal(html)
 				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b))))
@@ -92,7 +93,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 		},
 		{
 			name: "Success_MultiPage",
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				html1 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("Item1", "Place1"))
 				b1, _ := json.Marshal(html1)
 				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b1))))
@@ -117,7 +118,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 			configModifier: func(c *watchNewPerformancesSettings) {
 				c.MaxPages = 2 // Limit to 2 pages
 			},
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				html1 := fmt.Sprintf("<ul>%s</ul>", makeHTMLItem("P1", "L"))
 				b1, _ := json.Marshal(html1)
 				m.SetResponse(makeMockSearchURL(query, 1), []byte(fmt.Sprintf(`{"html": %s}`, string(b1))))
@@ -145,7 +146,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 				c.Filters.Title.IncludedKeywords = "Cats"
 				c.Filters.Place.ExcludedKeywords = "Seoul"
 			},
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				items := []string{
 					makeHTMLItem("Cats Musical", "Busan"),
 					makeHTMLItem("Dogs Musical", "Busan"),
@@ -172,7 +173,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 			// Page 1: [Item A, Item B]
 			// Page 2: [Item B, Item C] (Item B is duplicated due to pagination drift)
 			// Expected: [Item A, Item B, Item C] (Total 3, not 4)
-			mockSetup: func(m *testutil.MockHTTPFetcher) {
+			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				// Page 1
 				html1 := fmt.Sprintf("<ul>%s%s</ul>", makeHTMLItem("Item A", "Place A"), makeHTMLItem("Item B", "Place B"))
 				b1, _ := json.Marshal(html1)
@@ -201,7 +202,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			if tt.mockSetup != nil {
 				tt.mockSetup(mockFetcher)
 			}
@@ -221,7 +222,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 
 			// Run
 			prev := &watchNewPerformancesSnapshot{Performances: []*performance{}}
-			msg, data, err := tTask.executeWatchNewPerformances(cmdConfig, prev, true)
+			msg, data, err := tTask.executeWatchNewPerformances(context.Background(), cmdConfig, prev, true)
 
 			// Validate
 			if tt.validate != nil {

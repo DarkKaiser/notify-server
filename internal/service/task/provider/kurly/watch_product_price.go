@@ -1,6 +1,7 @@
 package kurly
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"regexp"
@@ -12,7 +13,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -75,7 +76,7 @@ type productDiff struct {
 }
 
 // executeWatchProductPrice 감시 대상 상품들의 최신 가격을 조회하고, 이전 상태와 비교하여 변동이 있으면 알림을 생성합니다.
-func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoader, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
 	// @@@@@
 	//
 	// 감시할 상품 목록을 읽어들인다. (추상화된 Loader 사용)
@@ -108,7 +109,7 @@ func (t *task) executeWatchProductPrice(loader WatchListLoader, prevSnapshot *wa
 
 		// 상품 페이지를 읽어들이고 파싱하여 정보를 추출한다.
 		// 상세 페이지에서 상품 정보를 조회 (Fetch + Parse)
-		product, err := t.fetchProductInfo(id)
+		product, err := t.fetchProductInfo(ctx, id)
 		if err != nil {
 			return "", nil, err
 		}
@@ -189,11 +190,11 @@ func (t *task) extractDuplicateRecords(records [][]string) ([][]string, [][]stri
 //  2. Price Parsing (DOM):
 //     HTML DOM 구조를 직접 탐색하여 실제 사용자에게 노출되는 '최종 가격(Pricing)'을 추출합니다.
 //     할인 정책(Rate, Discounted)에 따른 동적 구조 변화를 처리합니다.
-func (t *task) fetchProductInfo(id int) (*product, error) {
+func (t *task) fetchProductInfo(ctx context.Context, id int) (*product, error) {
 	// @@@@@
 	// 상품 페이지를 읽어들인다.
 	productPageURL := formatProductPageURL(id)
-	doc, err := fetcher.FetchHTMLDocument(t.GetFetcher(), productPageURL)
+	doc, err := scraper.FetchHTMLDocument(ctx, t.GetFetcher(), productPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +229,7 @@ func (t *task) fetchProductInfo(id int) (*product, error) {
 	if !product.IsUnavailable {
 		sel := doc.Find("#product-atf > section.css-1ua1wyk")
 		if sel.Length() != 1 {
-			return nil, fetcher.NewErrHTMLStructureChanged(productPageURL, "상품정보 섹션 추출 실패")
+			return nil, scraper.NewErrHTMLStructureChanged(productPageURL, "상품정보 섹션 추출 실패")
 		}
 
 		// 상품 이름을 확인한다.

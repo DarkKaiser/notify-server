@@ -12,8 +12,8 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -125,7 +125,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 
 			// Execution
 			cmdConfig, _ := findCommandSettings(h.appConfig, TaskID, WatchNewPerformancesCommand)
-			msg, newSnapshot, err := h.task.executeWatchNewPerformances(cmdConfig, tt.prevSnapshot, true)
+			msg, newSnapshot, err := h.task.executeWatchNewPerformances(context.Background(), cmdConfig, tt.prevSnapshot, true)
 
 			// Verification
 			if tt.expectError {
@@ -194,7 +194,7 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 
 type testHelper struct {
 	t           *testing.T
-	fetcher     *testutil.MockHTTPFetcher
+	fetcher     *mocks.MockHTTPFetcher
 	storage     *contractmocks.MockTaskResultStore
 	appConfig   *config.AppConfig
 	taskHandler provider.Task
@@ -206,7 +206,7 @@ func newTestHelper(t *testing.T) *testHelper {
 	provider.ClearForTest()
 
 	// 모의 객체 생성
-	fetcher := testutil.NewMockHTTPFetcher()
+	fetcher := mocks.NewMockHTTPFetcher()
 	storage := &contractmocks.MockTaskResultStore{}
 
 	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
@@ -254,12 +254,12 @@ func (h *testHelper) initTask(runBy contract.TaskRunBy) {
 // === Mock Response Builder ===
 
 type mockResponseBuilder struct {
-	fetcher *testutil.MockHTTPFetcher
+	fetcher *mocks.MockHTTPFetcher
 	baseURL string
 	params  url.Values
 }
 
-func newMockResponseBuilder(fetcher *testutil.MockHTTPFetcher) *mockResponseBuilder {
+func newMockResponseBuilder(fetcher *mocks.MockHTTPFetcher) *mockResponseBuilder {
 	// 기본 파라미터 설정
 	params := url.Values{}
 	params.Set("where", "nexearch")

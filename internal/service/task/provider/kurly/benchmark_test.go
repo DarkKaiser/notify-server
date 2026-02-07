@@ -1,18 +1,19 @@
 package kurly
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 )
 
 func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	// 1. Setup Mock Fetcher with a realistic HTML response
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productTaskID := 12345 // Change productTaskID to int
 	url := fmt.Sprintf(productPageURLFormat, productTaskID)
 
@@ -97,7 +98,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// 실행: executeWatchProductPrice
 		// (내부적으로 HTML 파싱, 가격 추출, Diff 연산 등을 수행)
-		_, _, err := tTask.executeWatchProductPrice(loader, resultData, false)
+		_, _, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, false)
 		if err != nil {
 			b.Fatalf("Task execution failed: %v", err)
 		}

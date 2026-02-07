@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -22,57 +22,6 @@ import (
 // =============================================================================
 // Test Mocks
 // =============================================================================
-
-// MockTask는 테스트용 Task 구현체입니다.
-type MockTask struct {
-	id         contract.TaskID
-	commandID  contract.TaskCommandID
-	instanceID contract.TaskInstanceID
-	canceled   bool
-	cancelC    chan struct{}
-	cancelOnce sync.Once
-}
-
-func (h *MockTask) GetID() contract.TaskID                 { return h.id }
-func (h *MockTask) GetCommandID() contract.TaskCommandID   { return h.commandID }
-func (h *MockTask) GetInstanceID() contract.TaskInstanceID { return h.instanceID }
-func (h *MockTask) GetNotifierID() contract.NotifierID {
-	return contract.NotifierID("test-notifier")
-}
-func (h *MockTask) IsCanceled() bool                            { return h.canceled }
-func (h *MockTask) ElapsedTimeAfterRun() int64                  { return 0 }
-func (h *MockTask) SetStorage(storage contract.TaskResultStore) {}
-
-func (h *MockTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
-	defer taskStopWG.Done()
-
-	select {
-	case <-ctx.Done():
-	case <-h.cancelC:
-	}
-
-	taskDoneC <- h.instanceID
-}
-
-func (h *MockTask) Cancel() {
-	h.cancelOnce.Do(func() {
-		h.canceled = true
-		close(h.cancelC)
-	})
-}
-
-// StubIDGenerator 테스트용 단순 ID 생성기 (매번 고유 ID 반환)
-type StubIDGenerator struct {
-	counter int64
-	mu      sync.Mutex
-}
-
-func (s *StubIDGenerator) New() contract.TaskInstanceID {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.counter++
-	return contract.TaskInstanceID(fmt.Sprintf("stub-id-%d", s.counter))
-}
 
 func registerServiceTestTask() {
 	// 정상 테스트용 Task 등록
@@ -85,12 +34,7 @@ func registerServiceTestTask() {
 			},
 		},
 		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-			return &MockTask{
-				id:         req.TaskID,
-				commandID:  req.CommandID,
-				instanceID: instanceID,
-				cancelC:    make(chan struct{}),
-			}, nil
+			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
 		},
 	}
 	provider.RegisterForTest("TEST_TASK", config)
@@ -407,17 +351,12 @@ func TestService_Submit_Timeout(t *testing.T) {
 		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
 			// Simulate slow initialization to block the consumer (run0 loop)
 			time.Sleep(100 * time.Millisecond)
-			return &MockTask{
-				id:         req.TaskID,
-				commandID:  req.CommandID,
-				instanceID: instanceID,
-				cancelC:    make(chan struct{}),
-			}, nil
+			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
 		},
 	})
 
 	appConfig := &config.AppConfig{}
-	stubIDGen := &StubIDGenerator{}
+	stubIDGen := &testutil.StubIDGenerator{}
 
 	service := NewService(appConfig, stubIDGen, new(contractmocks.MockTaskResultStore))
 	mockSender := notificationmocks.NewMockNotificationSender(t)

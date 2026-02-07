@@ -1,15 +1,10 @@
 package testutil
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -18,113 +13,6 @@ import (
 
 	"github.com/stretchr/testify/mock"
 )
-
-// MockHTTPFetcher 테스트용 Mock HTTP Fetcher 구현체입니다.
-// URL별 응답을 미리 설정할 수 있으며, 동시성 테스트를 위해 스레드 안전(Thread-safe)하게 설계되었습니다.
-type MockHTTPFetcher struct {
-	mu            sync.Mutex
-	Responses     map[string][]byte
-	Errors        map[string]error
-	Delays        map[string]time.Duration
-	RequestedURLs []string
-}
-
-// NewMockHTTPFetcher 새로운 MockHTTPFetcher 인스턴스를 생성합니다.
-func NewMockHTTPFetcher() *MockHTTPFetcher {
-	return &MockHTTPFetcher{
-		Responses:     make(map[string][]byte),
-		Errors:        make(map[string]error),
-		Delays:        make(map[string]time.Duration),
-		RequestedURLs: make([]string, 0),
-	}
-}
-
-// SetDelay 특정 URL 요청 시 응답 지연 시간을 설정합니다.
-func (m *MockHTTPFetcher) SetDelay(url string, d time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Delays[url] = d
-}
-
-// SetResponse 특정 URL에 대한 응답 바이트를 설정합니다.
-func (m *MockHTTPFetcher) SetResponse(url string, response []byte) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Responses[url] = response
-}
-
-// SetError 특정 URL 요청 시 반환할 에러를 설정합니다.
-func (m *MockHTTPFetcher) SetError(url string, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Errors[url] = err
-}
-
-// Get 설정된 Mock 응답을 반환합니다. 요청된 URL은 기록됩니다.
-func (m *MockHTTPFetcher) Get(url string) (*http.Response, error) {
-	m.mu.Lock()
-
-	// 호출 기록 저장
-	m.RequestedURLs = append(m.RequestedURLs, url)
-
-	// 에러 설정 확인
-	err := m.Errors[url]
-
-	// 응답 설정 확인
-	responseBody, hasResponse := m.Responses[url]
-
-	// 지연 설정 확인
-	delay, hasDelay := m.Delays[url]
-
-	m.mu.Unlock()
-
-	if hasDelay {
-		time.Sleep(delay)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	if hasResponse {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewReader(responseBody)),
-		}, nil
-	}
-
-	// 설정되지 않은 URL은 404 Not Found 반환
-	return &http.Response{
-		StatusCode: http.StatusNotFound,
-		Body:       io.NopCloser(bytes.NewReader([]byte{})),
-	}, nil
-}
-
-// Do http.Request를 받아 Get과 동일하게 처리합니다.
-func (m *MockHTTPFetcher) Do(req *http.Request) (*http.Response, error) {
-	return m.Get(req.URL.String())
-}
-
-// GetRequestedURLs 지금까지 요청된 모든 URL 목록을 반환합니다.
-func (m *MockHTTPFetcher) GetRequestedURLs() []string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	urls := make([]string, len(m.RequestedURLs))
-	copy(urls, m.RequestedURLs)
-	return urls
-}
-
-// Reset 모든 응답 설정과 요청 기록을 초기화합니다.
-func (m *MockHTTPFetcher) Reset() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.Responses = make(map[string][]byte)
-	m.Errors = make(map[string]error)
-	m.Delays = make(map[string]time.Duration)
-	m.RequestedURLs = make([]string, 0)
-}
 
 // NewMockTaskConfig 테스트를 위한 기본 Task Config 인스턴스를 생성합니다.
 func NewMockTaskConfig(taskID contract.TaskID, commandID contract.TaskCommandID) *provider.Config {

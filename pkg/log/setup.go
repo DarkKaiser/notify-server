@@ -20,8 +20,8 @@ const (
 	fileExt = "log"
 
 	// 기본 로그 로테이션 정책
-	defaultMaxSizeMB  = 100 // 로그 파일 하나당 최대 크기 (단위: MB)
-	defaultMaxBackups = 20  // 로테이션 된 로그 파일의 최대 보관 개수
+	defaultMaxSizeMB  = 10 // 로그 파일 하나당 최대 크기 (단위: MB)
+	defaultMaxBackups = 20 // 로테이션 된 로그 파일의 최대 보관 개수
 )
 
 var (

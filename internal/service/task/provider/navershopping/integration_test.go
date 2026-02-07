@@ -1,12 +1,14 @@
 package navershopping
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/require"
@@ -14,7 +16,7 @@ import (
 
 func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 테스트용 JSON 응답 생성
 	productTitle := "테스트 상품"
@@ -59,7 +61,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 	}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -83,7 +85,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
 
@@ -102,7 +104,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -111,7 +113,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
 	mockFetcher.SetResponse(url, []byte(`{invalid json`))
 
@@ -130,7 +132,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 	resultData := &watchPriceSnapshot{}
 
 	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -141,7 +143,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	productTitle := "테스트 상품"
 	productLprice := "10000"
@@ -226,7 +228,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -236,7 +238,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 
 func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	// 가격 변경 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	productTitle := "테스트 상품"
 	newPrice := "8000" // 가격 하락
@@ -314,7 +316,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandConfig, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -330,7 +332,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 
 func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	// 키워드 매칭 적용 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	jsonContent := `{
 		"total": 3,
@@ -417,7 +419,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 	}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(commandSettings, resultData, true)
+	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandSettings, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

@@ -5,8 +5,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -188,7 +188,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockFetcher := testutil.NewMockHTTPFetcher()
+			mockFetcher := mocks.NewMockHTTPFetcher()
 			got, err := createTask("test_instance", tt.req, tt.appConfig, mockFetcher)
 
 			if tt.wantErr {

@@ -1,18 +1,20 @@
 package kurly
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 테스트용 HTML 응답 생성
 	productID := "12345"
@@ -102,7 +104,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 4. 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 5. 검증
 	require.NoError(t, err)
@@ -127,7 +129,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	mockFetcher.SetError(url, fmt.Errorf("network error"))
@@ -175,7 +177,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 4. 실행
-	_, _, err = tTask.executeWatchProductPrice(loader, resultData, true)
+	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 5. 검증
 	require.Error(t, err)
@@ -184,7 +186,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 1. Mock 설정
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	url := fmt.Sprintf(productPageURLFormat, productID)
 	// 필수 요소가 누락된 HTML
@@ -238,7 +240,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 5. Execute Task Logic
 	// -------------------------------------------------------------------------
 	// 상품 코드가 숫자가 아니므로, 파싱 전 단계에서 에러가 반환되어야 합니다.
-	_, _, err = tTask.executeWatchProductPrice(loader, nil, false)
+	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, nil, false)
 
 	// resultData는 본 테스트 케이스에서 사용되지 않으므로 선언 제거가 필요하지만,
 	// 코드 구조상 상단에 선언되어 있어 여기서는 err 검증에 집중합니다.
@@ -253,7 +255,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -342,7 +344,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -352,7 +354,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	// 가격 변경 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 	price := "10,000"
@@ -441,7 +443,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)
@@ -458,7 +460,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 
 func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	// 품절(알 수 없는 상품) 시나리오
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 	productID := "12345"
 	productName := "Test Product"
 
@@ -525,7 +527,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
 
 	// 실행
-	message, newResultData, err := tTask.executeWatchProductPrice(loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
 	// 검증
 	require.NoError(t, err)

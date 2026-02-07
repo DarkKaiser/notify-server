@@ -3,6 +3,8 @@
 package naver
 
 import (
+	"context"
+
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -35,7 +37,7 @@ func init() {
 }
 
 func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-	httpFetcher := fetcher.NewRetryFetcherFromConfig(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay)
+	httpFetcher := fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0)
 	return createTask(instanceID, req, appConfig, httpFetcher)
 }
 
@@ -58,13 +60,13 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 			return nil, err
 		}
 
-		naverTask.SetExecute(func(previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		naverTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchNewPerformancesSnapshot{}, previousSnapshot)
 			}
 
-			return naverTask.executeWatchNewPerformances(commandSettings, prevSnapshot, supportsHTML)
+			return naverTask.executeWatchNewPerformances(ctx, commandSettings, prevSnapshot, supportsHTML)
 		})
 	default:
 		return nil, provider.NewErrCommandNotSupported(req.CommandID)

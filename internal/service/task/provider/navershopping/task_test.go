@@ -5,8 +5,8 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,7 +81,7 @@ func TestTaskSettings_Validate_TableDriven(t *testing.T) {
 func TestCreateTask_TableDriven(t *testing.T) {
 	t.Parallel()
 
-	mockFetcher := testutil.NewMockHTTPFetcher()
+	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// 공통적으로 사용될 Constants
 	const (
