@@ -65,48 +65,77 @@ type HTTPFetcher struct {
 	// 프록시 설정
 	// ========================================
 
-	// @@@@@
-	// proxyURL 프록시 서버 주소입니다.
-	// 빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따릅니다.
-	// 형식: "http://host:port" 또는 "https://user:pass@host:port"
-	proxyURL string
+	// proxyURL 프록시 URL입니다.
+	//
+	// 값의 의미:
+	//   - nil: 기본 설정을 따릅니다.
+	//     · 기본 Transport(전역/공유): 환경 변수(HTTP_PROXY, HTTPS_PROXY)를 사용합니다.
+	//     · 외부 Transport(주입된 경우): 기존에 설정된 Proxy 정책을 그대로 유지합니다.
+	//   - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+	//   - NoProxy(또는 "DIRECT") 또는 빈 문자열(""): 프록시 비활성화 (환경 변수 무시, 직접 연결)
+	proxyURL *string
 
 	// ========================================
 	// 연결 풀(Connection Pool) 관리
 	// ========================================
 
-	// @@@@@
-	// maxIdleConns 전체 유휴(Idle) 연결의 최대 개수입니다.
+	// maxIdleConns 전체 유휴 연결의 최대 개수입니다.
 	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
-	// 0이면 무제한입니다.
-	maxIdleConns int
+	//
+	// 값의 의미:
+	//   - nil: 기본값(100) 사용
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	maxIdleConns *int
 
-	// maxIdleConnsPerHost 호스트(도메인)당 최대 유휴(Idle) 연결 개수입니다.
-	// 0이면 기본값(2)을 사용하거나 maxIdleConns를 따릅니다.
-	maxIdleConnsPerHost int
+	// maxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수입니다.
+	//
+	// 값의 의미:
+	//   - nil: 기본값(0) 사용 → net/http가 2개로 설정
+	//   - 0: net/http 기본값(2) 사용
+	//   - 양수: 지정된 개수로 제한
+	maxIdleConnsPerHost *int
 
-	// @@@@@
-	// maxConnsPerHost 호스트(도메인)당 최대 연결 개수입니다.
+	// maxConnsPerHost 호스트당 최대 연결 개수입니다.
 	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
-	// 0이면 무제한입니다.
-	maxConnsPerHost int
+	//
+	// 값의 의미:
+	//   - nil: 기본값(0) 사용 → 무제한
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	maxConnsPerHost *int
 
 	// ========================================
 	// 네트워크 타임아웃(Timeout)
 	// ========================================
 
 	// tlsHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
-	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-	tlsHandshakeTimeout time.Duration
+	// TLS 연결 수립 과정에서 핸드셰이크가 완료되기까지 허용되는 최대 시간입니다.
+	//
+	// 값의 의미:
+	//   - nil: 기본값(10초) 사용
+	//   - 0: 타임아웃 없음
+	//   - 양수: 지정된 시간으로 제한
+	tlsHandshakeTimeout *time.Duration
 
 	// responseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
 	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
 	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
-	responseHeaderTimeout time.Duration
+	//
+	// 값의 의미:
+	//   - nil: 타임아웃 없음
+	//   - 0: 타임아웃 없음
+	//   - 양수: 지정된 시간으로 제한
+	responseHeaderTimeout *time.Duration
 
 	// idleConnTimeout 유휴 연결 타임아웃입니다.
 	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
-	idleConnTimeout time.Duration
+	//
+	// 값의 의미:
+	//   - nil: 기본값(90초) 사용
+	//   - 0: 제한 없음
+	//   - 양수: 지정된 시간 후 연결 종료
+	idleConnTimeout *time.Duration
 
 	// ========================================
 	// 최적화 설정
@@ -177,11 +206,6 @@ func NewHTTPFetcher(opts ...Option) *HTTPFetcher {
 			// - HTTPS → HTTP 다운그레이드 시 Referer 전송을 차단하여 보안을 유지합니다.
 			CheckRedirect: newCheckRedirectPolicy(defaultMaxRedirects),
 		},
-
-		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
-		idleConnTimeout:     DefaultIdleConnTimeout,
-
-		maxIdleConns: DefaultMaxIdleConns,
 
 		defaultUA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
@@ -310,6 +334,76 @@ func (h *HTTPFetcher) Close() error {
 	return nil
 }
 
+// transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.
+//
+// 이 메서드는 내부 상태 검증 및 디버깅을 위한 진단(Diagnostic) 목적으로 설계되었습니다.
+// 반환된 인터페이스를 실제 구현체(예: *http.Transport)로 타입 단언(Type Assertion)하여
+// 타임아웃, 프록시, 커넥션 풀 등의 세부 설정을 확인할 수 있습니다.
+//
+// 주요 활용:
+//   - 단위 테스트(Unit Test)에서 설정 값 검증
+//   - 런타임 구성(Configuration) 상태 모니터링
+//   - Mock RoundTripper 주입 여부 확인
+//
+// 예제:
+//
+//	if tr, ok := f.transport().(*http.Transport); ok {
+//	    // *http.Transport의 세부 필드 접근 가능
+//	    fmt.Printf("MaxIdleConns: %d\n", tr.MaxIdleConns)
+//	}
+func (h *HTTPFetcher) transport() http.RoundTripper {
+	if h.client == nil {
+		return nil
+	}
+
+	return h.client.Transport
+}
+
+// newCheckRedirectPolicy HTTP 리다이렉트 처리를 위한 정책 함수를 생성합니다.
+//
+// # 목적
+//
+// HTTP 클라이언트가 3xx 리다이렉트 응답을 받았을 때 어떻게 처리할지 결정하는 함수를 생성합니다.
+// 무한 리다이렉트 루프를 방지하고, Referer 헤더를 안전하게 설정하여 사이트 차단을 우회하면서도
+// 보안을 유지합니다.
+//
+// # 적용되는 보안 정책
+//
+// 1. **리다이렉트 횟수 제한**: 지정된 최대 횟수를 초과하면 리다이렉트를 중단하고 마지막 응답을 반환
+// 2. **Referer 헤더 자동 설정**: 이전 요청의 URL을 Referer로 설정하여 일부 사이트의 차단을 방지
+// 3. **HTTPS → HTTP 다운그레이드 방지**: 보안 수준이 낮아지는 경우 Referer 전송을 차단 (RFC 7231 준수)
+// 4. **인증 정보 제거**: Referer 헤더에서 사용자 자격 증명(ID/Password)과 민감한 쿼리 파라미터를 마스킹
+//
+// 매개변수:
+//   - maxRedirects: 허용할 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
+//
+// 반환값:
+//   - http.Client.CheckRedirect에 할당할 수 있는 정책 함수
+func newCheckRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return http.ErrUseLastResponse
+		}
+
+		// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
+		if len(via) > 0 {
+			prevReq := via[len(via)-1]
+			if prevReq != nil && prevReq.URL != nil {
+				// [보안 강화 1] HTTPS -> HTTP 다운그레이드 시 Referer 전송 방지
+				if prevReq.URL.Scheme == "https" && req.URL.Scheme != "https" {
+					// 보안 수준이 낮아지므로 Referer를 설정하지 않음
+				} else {
+					// [보안 강화 2] Referer 헤더 설정 시 사용자 자격 증명(ID/Password) 제거
+					referer := redactRefererURL(prevReq.URL)
+					req.Header.Set("Referer", referer)
+				}
+			}
+		}
+
+		return nil
+	}
+}
+
 // normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
 //
 // 정규화 규칙:
@@ -436,74 +530,4 @@ func normalizeIdleConnTimeout(val time.Duration) time.Duration {
 		return defaultIdleConnTimeout
 	}
 	return val
-}
-
-// transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.
-//
-// 이 메서드는 내부 상태 검증 및 디버깅을 위한 진단(Diagnostic) 목적으로 설계되었습니다.
-// 반환된 인터페이스를 실제 구현체(예: *http.Transport)로 타입 단언(Type Assertion)하여
-// 타임아웃, 프록시, 커넥션 풀 등의 세부 설정을 확인할 수 있습니다.
-//
-// 주요 활용:
-//   - 단위 테스트(Unit Test)에서 설정 값 검증
-//   - 런타임 구성(Configuration) 상태 모니터링
-//   - Mock RoundTripper 주입 여부 확인
-//
-// 예제:
-//
-//	if tr, ok := f.transport().(*http.Transport); ok {
-//	    // *http.Transport의 세부 필드 접근 가능
-//	    fmt.Printf("MaxIdleConns: %d\n", tr.MaxIdleConns)
-//	}
-func (h *HTTPFetcher) transport() http.RoundTripper {
-	if h.client == nil {
-		return nil
-	}
-
-	return h.client.Transport
-}
-
-// newCheckRedirectPolicy HTTP 리다이렉트 처리를 위한 정책 함수를 생성합니다.
-//
-// # 목적
-//
-// HTTP 클라이언트가 3xx 리다이렉트 응답을 받았을 때 어떻게 처리할지 결정하는 함수를 생성합니다.
-// 무한 리다이렉트 루프를 방지하고, Referer 헤더를 안전하게 설정하여 사이트 차단을 우회하면서도
-// 보안을 유지합니다.
-//
-// # 적용되는 보안 정책
-//
-// 1. **리다이렉트 횟수 제한**: 지정된 최대 횟수를 초과하면 리다이렉트를 중단하고 마지막 응답을 반환
-// 2. **Referer 헤더 자동 설정**: 이전 요청의 URL을 Referer로 설정하여 일부 사이트의 차단을 방지
-// 3. **HTTPS → HTTP 다운그레이드 방지**: 보안 수준이 낮아지는 경우 Referer 전송을 차단 (RFC 7231 준수)
-// 4. **인증 정보 제거**: Referer 헤더에서 사용자 자격 증명(ID/Password)과 민감한 쿼리 파라미터를 마스킹
-//
-// 매개변수:
-//   - maxRedirects: 허용할 최대 리다이렉트 횟수 (0이면 리다이렉트 비활성화)
-//
-// 반환값:
-//   - http.Client.CheckRedirect에 할당할 수 있는 정책 함수
-func newCheckRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
-	return func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxRedirects {
-			return http.ErrUseLastResponse
-		}
-
-		// 리다이렉트 시 이전 요청의 URL을 Referer로 설정하여 사이트 차단 방지
-		if len(via) > 0 {
-			prevReq := via[len(via)-1]
-			if prevReq != nil && prevReq.URL != nil {
-				// [보안 강화 1] HTTPS -> HTTP 다운그레이드 시 Referer 전송 방지
-				if prevReq.URL.Scheme == "https" && req.URL.Scheme != "https" {
-					// 보안 수준이 낮아지므로 Referer를 설정하지 않음
-				} else {
-					// [보안 강화 2] Referer 헤더 설정 시 사용자 자격 증명(ID/Password) 제거
-					referer := redactRefererURL(prevReq.URL)
-					req.Header.Set("Referer", referer)
-				}
-			}
-		}
-
-		return nil
-	}
 }

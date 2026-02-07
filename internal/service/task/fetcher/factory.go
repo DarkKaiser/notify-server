@@ -13,9 +13,11 @@ type Config struct {
 	// ProxyURL 프록시 URL입니다.
 	//
 	// 설정 규칙:
-	//   - nil: 설정하지 않음 (환경 변수 HTTP_PROXY, HTTPS_PROXY를 따름)
+	//   - nil: 기본 설정을 따릅니다.
+	//     · 일반적인 경우: 환경 변수(HTTP_PROXY, HTTPS_PROXY)를 사용합니다.
+	//     · HTTP 클라이언트를 직접 주입한 경우: 해당 클라이언트의 기존 Proxy 정책을 그대로 유지합니다.
 	//   - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
-	//   - "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
+	//   - NoProxy(또는 "DIRECT") 또는 빈 문자열(""): 프록시 비활성화 (환경 변수 무시, 직접 연결)
 	ProxyURL *string
 
 	// ========================================

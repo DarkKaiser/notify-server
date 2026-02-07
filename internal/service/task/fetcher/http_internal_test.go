@@ -484,3 +484,113 @@ func TestRegression_ConfigureTransportFromProvided_PreservesHostLimit(t *testing
 	// OLD BUG: It was forcefully updated to 100
 	assert.Equal(t, 2, finalTr.MaxIdleConnsPerHost, "Should preserve original MaxIdleConnsPerHost when not explicitly overridden")
 }
+
+// TestTransportConfig_ToCacheKey verifies the normalization logic of ToCacheKey.
+func TestTransportConfig_ToCacheKey(t *testing.T) {
+	t.Run("Normalizes Nil Pointers to Defaults", func(t *testing.T) {
+		cfg := transportConfig{} // All nil
+		key := cfg.ToCacheKey()
+
+		assert.Equal(t, "", key.proxyURL)
+		assert.Equal(t, defaultMaxIdleConns, key.maxIdleConns)
+		assert.Equal(t, 0, key.maxIdleConnsPerHost) // Normalized to 0 (default 2 logic handled elsewhere)
+		assert.Equal(t, 0, key.maxConnsPerHost)     // unlimited
+		assert.Equal(t, defaultTLSHandshakeTimeout, key.tlsHandshakeTimeout)
+		assert.Equal(t, 0*time.Second, key.responseHeaderTimeout) // unlimited
+		assert.Equal(t, defaultIdleConnTimeout, key.idleConnTimeout)
+	})
+
+	t.Run("Normalizes Proxy Configuration", func(t *testing.T) {
+		// Case 1: Nil -> ""
+		cfg1 := transportConfig{proxyURL: nil}
+		assert.Equal(t, "", cfg1.ToCacheKey().proxyURL)
+
+		// Case 2: "" -> NoProxy (Normalization for cache sharing)
+		cfg2 := transportConfig{proxyURL: stringPtr("")}
+		assert.Equal(t, NoProxy, cfg2.ToCacheKey().proxyURL)
+
+		// Case 3: NoProxy -> NoProxy
+		cfg3 := transportConfig{proxyURL: stringPtr(NoProxy)}
+		assert.Equal(t, NoProxy, cfg3.ToCacheKey().proxyURL)
+
+		// Case 4: URL -> URL
+		cfg4 := transportConfig{proxyURL: stringPtr("http://proxy")}
+		assert.Equal(t, "http://proxy", cfg4.ToCacheKey().proxyURL)
+	})
+
+	t.Run("Normalizes Explicit Values", func(t *testing.T) {
+		cfg := transportConfig{
+			maxIdleConns:        intPtr(50),
+			tlsHandshakeTimeout: durationPtr(5 * time.Second),
+		}
+		key := cfg.ToCacheKey()
+
+		assert.Equal(t, 50, key.maxIdleConns)
+		assert.Equal(t, 5*time.Second, key.tlsHandshakeTimeout)
+		// Others should be defaults
+		assert.Equal(t, defaultIdleConnTimeout, key.idleConnTimeout)
+	})
+}
+
+// TestHTTPFetcher_shouldCloneTransport verifies the CoW optimization logic.
+func TestHTTPFetcher_shouldCloneTransport(t *testing.T) {
+	baseTr := &http.Transport{
+		MaxIdleConns:        100,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
+
+	t.Run("Returns False when Settings Match (Optimization)", func(t *testing.T) {
+		// User sets SAME values as base transport
+		f := NewHTTPFetcher(
+			WithMaxIdleConns(100),
+			WithTLSHandshakeTimeout(10*time.Second),
+		)
+		// Should NOT clone
+		assert.False(t, f.shouldCloneTransport(baseTr))
+	})
+
+	t.Run("Returns False when User Settings are Nil", func(t *testing.T) {
+		f := NewHTTPFetcher() // No options
+		assert.False(t, f.shouldCloneTransport(baseTr))
+	})
+
+	t.Run("Returns True when Settings Differ", func(t *testing.T) {
+		f := NewHTTPFetcher(WithMaxIdleConns(101))
+		assert.True(t, f.shouldCloneTransport(baseTr))
+	})
+
+	t.Run("Returns True when Proxy is Set", func(t *testing.T) {
+		// Even if baseTr has a proxy, we don't check for equality of proxy URL deeply in shouldCloneTransport
+		// because f.proxyURL being non-nil is a trigger for creating a NEW transport with that proxy.
+		// (Current logic: f.proxyURL != nil -> true)
+		f := NewHTTPFetcher(WithProxy("http://proxy"))
+		assert.True(t, f.shouldCloneTransport(baseTr))
+	})
+}
+
+// TestHTTPFetcher_needsCustomTransport_Exhaustive validates all triggers for custom transport.
+func TestHTTPFetcher_needsCustomTransport_Exhaustive(t *testing.T) {
+	tests := []struct {
+		name     string
+		opts     []Option
+		expected bool
+	}{
+		{"No Options", nil, false},
+		{"DisableTransportCaching", []Option{WithDisableTransportCaching(true)}, true},
+		{"WithProxy", []Option{WithProxy("http://p")}, true},
+		{"WithMaxIdleConns", []Option{WithMaxIdleConns(10)}, true},
+		{"WithMaxIdleConnsPerHost", []Option{WithMaxIdleConnsPerHost(10)}, true},
+		{"WithMaxConnsPerHost", []Option{WithMaxConnsPerHost(10)}, true},
+		{"WithTimeout (Note: Affects Client, not Transport, so SHOULD BE FALSE for Transport)", []Option{WithTimeout(10 * time.Second)}, false},
+		{"WithTLSHandshakeTimeout", []Option{WithTLSHandshakeTimeout(10 * time.Second)}, true},
+		{"WithResponseHeaderTimeout", []Option{WithResponseHeaderTimeout(10 * time.Second)}, true},
+		{"WithIdleConnTimeout", []Option{WithIdleConnTimeout(10 * time.Second)}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := NewHTTPFetcher(tc.opts...)
+			assert.Equal(t, tc.expected, f.needsCustomTransport())
+		})
+	}
+}

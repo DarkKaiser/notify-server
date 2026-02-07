@@ -44,23 +44,28 @@ func ResetTransportCache() {
 }
 
 // SetDefaultUserAgents allows overwriting the default UA list for deterministic testing.
-func SetDefaultUserAgents(uas []string) {
+// It returns a restore function to revert the changes.
+func SetDefaultUserAgents(uas []string) (restore func()) {
+	original := defaultUserAgents
 	defaultUserAgents = uas
+	return func() {
+		defaultUserAgents = original
+	}
 }
 
 // =========================================================================
 // Inspector Helpers for White-box Testing
 // =========================================================================
 
-// UnwrapLoggingFetcher returns the delegate of a LoggingFetcher.
-func UnwrapLoggingFetcher(f Fetcher) Fetcher {
+// InspectLoggingFetcher returns the delegate of a LoggingFetcher.
+func InspectLoggingFetcher(f Fetcher) Fetcher {
 	if lf, ok := f.(*LoggingFetcher); ok {
 		return lf.delegate
 	}
 	return nil
 }
 
-// UnwrapUserAgentFetcher returns the delegate and config of a UserAgentFetcher.
+// InspectUserAgentFetcher returns the delegate and config of a UserAgentFetcher.
 func InspectUserAgentFetcher(f Fetcher) (delegate Fetcher, userAgents []string) {
 	if uaf, ok := f.(*UserAgentFetcher); ok {
 		return uaf.delegate, uaf.userAgents
@@ -102,13 +107,14 @@ func InspectMaxBytesFetcher(f Fetcher) (delegate Fetcher, maxBytes int64) {
 
 // HTTPFetcherOptions exposes internal configuration of an HTTPFetcher for testing.
 type HTTPFetcherOptions struct {
-	ProxyURL              string
-	MaxIdleConns          int
-	MaxIdleConnsPerHost   int
-	MaxConnsPerHost       int
-	IdleConnTimeout       time.Duration
-	TLSHandshakeTimeout   time.Duration
-	ResponseHeaderTimeout time.Duration
+	ProxyURL              *string
+	MaxIdleConns          *int
+	MaxIdleConnsPerHost   *int
+	MaxConnsPerHost       *int
+	IdleConnTimeout       *time.Duration
+	TLSHandshakeTimeout   *time.Duration
+	ResponseHeaderTimeout *time.Duration
+	Timeout               time.Duration // Client.Timeout (Value type for safety)
 	DisableCaching        bool
 }
 
@@ -127,6 +133,7 @@ func InspectHTTPFetcher(f Fetcher) *HTTPFetcherOptions {
 		IdleConnTimeout:       hf.idleConnTimeout,
 		TLSHandshakeTimeout:   hf.tlsHandshakeTimeout,
 		ResponseHeaderTimeout: hf.responseHeaderTimeout,
+		Timeout:               hf.client.Timeout,
 		DisableCaching:        hf.disableTransportCaching,
 	}
 }

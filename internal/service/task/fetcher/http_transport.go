@@ -75,7 +75,7 @@ var (
 	//   - Back (맨 뒤): 가장 오래전에 사용된 항목 (LRU - Least Recently Used)
 	//   - 캐시가 가득 차면 Back부터 제거하여 공간 확보
 	//
-	// transportCache(map)와의 관계:
+	// transportCache와의 관계:
 	//   - transportCache: 빠른 조회를 위한 해시맵 (키 → 리스트 노드)
 	//   - transportCacheLRU: 퇴출 순서 관리를 위한 연결 리스트 (사용 순서 추적)
 	transportCacheLRU = list.New()
@@ -89,9 +89,11 @@ var (
 // 필드별 설명:
 //
 //  1. 프록시 설정 (proxyURL *string)
-//     - nil 또는 "": 환경 변수(HTTP_PROXY, HTTPS_PROXY) 사용, 없으면 직접 연결
-//     - NoProxy: 직접 연결 (프록시 사용 안 함)
-//     - "http://...": 지정된 프록시 사용 (인증: "http://user:pass@host:port")
+//     - nil: 기본 설정을 따릅니다.
+//     └ · 기본 Transport(전역/공유): 환경 변수(HTTP_PROXY, HTTPS_PROXY)를 사용합니다.
+//     └ · 외부 Transport(주입된 경우): 기존에 설정된 Proxy 정책을 그대로 유지합니다.
+//     - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+//     - NoProxy(또는 "DIRECT") 또는 빈 문자열(""): 프록시 비활성화 (환경 변수 무시, 직접 연결)
 //
 //  2. 연결 풀 관리 (maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost *int)
 //     - nil: 시스템 기본값
@@ -138,7 +140,7 @@ type transportConfig struct {
 //     - 예: maxIdleConns가 &200 → 200 사용
 //
 //  3. 특수 케이스 (nil일 때 0 또는 빈 문자열로 정규화):
-//     - proxyURL: 빈 문자열로 정규화 (환경 변수 사용)
+//     - proxyURL: 빈 문자열로 정규화 (환경 변수 또는 기본 설정 사용)
 //     - maxIdleConnsPerHost: 0으로 정규화 (Go 기본값 2 사용)
 //     - maxConnsPerHost: 0으로 정규화 (무제한)
 //     - responseHeaderTimeout: 0으로 정규화 (무제한)
@@ -146,6 +148,66 @@ type transportConfig struct {
 // 반환값:
 //
 //	transportCacheKey: 정규화된 캐시 키 (모든 필드가 값 타입으로 변환됨)
+func (c transportConfig) ToCacheKey() transportCacheKey {
+	key := transportCacheKey{}
+
+	// 1. 프록시 설정
+	if c.proxyURL != nil {
+		if *c.proxyURL == NoProxy || *c.proxyURL == "" {
+			// NoProxy 또는 빈 문자열("")은 모두 "프록시 비활성화"를 의미합니다.
+			// 캐시 키에서는 NoProxy 상수로 통일하여 동일한 설정으로 인식되도록 합니다.
+			key.proxyURL = NoProxy
+		} else {
+			key.proxyURL = *c.proxyURL
+		}
+	} else {
+		// nil인 경우: 빈 문자열("")로 저장되며, 환경 변수 또는 기본 설정을 따릅니다.
+	}
+
+	// 2. 연결 풀 관리
+	if c.maxIdleConns != nil {
+		key.maxIdleConns = *c.maxIdleConns
+	} else {
+		// nil인 경우: 시스템 기본값(100)을 사용합니다.
+		key.maxIdleConns = defaultMaxIdleConns
+	}
+
+	if c.maxIdleConnsPerHost != nil {
+		key.maxIdleConnsPerHost = *c.maxIdleConnsPerHost
+	} else {
+		// nil인 경우: 0으로 저장하여 Go의 기본값(2)을 사용합니다.
+	}
+
+	if c.maxConnsPerHost != nil {
+		key.maxConnsPerHost = *c.maxConnsPerHost
+	} else {
+		// nil인 경우: 0으로 저장하여 무제한 연결을 허용합니다.
+	}
+
+	// 3. 네트워크 타임아웃
+	if c.tlsHandshakeTimeout != nil {
+		key.tlsHandshakeTimeout = *c.tlsHandshakeTimeout
+	} else {
+		// nil인 경우: 시스템 기본값(10초)을 사용합니다.
+		key.tlsHandshakeTimeout = defaultTLSHandshakeTimeout
+	}
+
+	if c.responseHeaderTimeout != nil {
+		key.responseHeaderTimeout = *c.responseHeaderTimeout
+	} else {
+		// nil인 경우: 0으로 저장하여 타임아웃 없음(무한 대기)을 의미합니다.
+	}
+
+	if c.idleConnTimeout != nil {
+		key.idleConnTimeout = *c.idleConnTimeout
+	} else {
+		// nil인 경우: 시스템 기본값(90초)을 사용합니다.
+		key.idleConnTimeout = defaultIdleConnTimeout
+	}
+
+	return key
+}
+
 // transportCacheKey Transport 캐시의 식별자입니다.
 //
 // 목적:
@@ -209,16 +271,16 @@ type transportCacheEntry struct {
 //     - baseTr이 제공되면 해당 Transport를 복제하고, nil이면 defaultTransport를 복제합니다.
 //     - 복제를 통해 원본 Transport의 설정을 보존하면서 독립적인 인스턴스를 생성합니다.
 //
-//  2. 프록시 설정 적용:
+//  2. 프록시 설정:
 //     - 프록시 URL 문자열을 파싱하여 *url.URL로 변환합니다.
 //     - 파싱 실패 시 비밀번호를 마스킹한 에러를 반환하여 로그 노출을 방지합니다.
 //
-//  3. 연결 풀 관리 적용:
+//  3. 연결 풀 관리:
 //     - MaxIdleConns: 전체 유휴 연결 최대 개수 (모든 호스트 통합)
 //     - MaxIdleConnsPerHost: 호스트당 유휴 연결 최대 개수 (Keep-Alive 효율 제어)
 //     - MaxConnsPerHost: 호스트당 최대 연결 개수 (동시 연결 제한)
 //
-//  4. 네트워크 타임아웃 적용:
+//  4. 네트워크 타임아웃:
 //     - TLSHandshakeTimeout: TLS 핸드셰이크 완료 대기 시간
 //     - ResponseHeaderTimeout: 응답 헤더 수신 대기 시간
 //     - IdleConnTimeout: 유휴 연결 유지 시간 (연결 풀 관리)
@@ -243,37 +305,49 @@ func newTransport(baseTr *http.Transport, cfg transportConfig) (*http.Transport,
 		newTr = defaultTransport.Clone()
 	}
 
-	// 2단계: 프록시 설정 적용
-	if key.proxyURL != "" {
-		proxyURL, err := url.Parse(key.proxyURL)
-		if err != nil {
-			// URL 파싱 실패 시, URL에서 민감한 정보를 마스킹하여 안전한 문자열로 변환합니다.
-			redactedURL := redactRawURL(key.proxyURL)
+	// 2단계: 프록시 설정
+	if cfg.proxyURL != nil {
+		if *cfg.proxyURL == NoProxy || *cfg.proxyURL == "" {
+			// 프록시 비활성화:
+			// NoProxy("DIRECT") 또는 빈 문자열("")이 설정된 경우, 프록시를 완전히 비활성화합니다.
+			// Transport.Proxy를 nil로 설정하여 환경 변수(HTTP_PROXY, HTTPS_PROXY)도 무시하고,
+			// 모든 요청이 프록시 없이 대상 서버로 직접 연결되도록 합니다.
+			newTr.Proxy = nil
+		} else {
+			// 프록시 URL 설정:
+			// - 제공된 URL을 파싱하여 프록시 서버로 설정합니다.
+			proxyURL, err := url.Parse(*cfg.proxyURL)
+			if err != nil {
+				// 보안 처리: 파싱 실패 시 URL의 비밀번호를 마스킹하여 로그 노출을 방지합니다.
+				redactedURL := redactRawURL(*cfg.proxyURL)
 
-			return nil, newErrInvalidProxyURL(redactedURL)
+				return nil, newErrInvalidProxyURL(redactedURL)
+			}
+
+			newTr.Proxy = http.ProxyURL(proxyURL)
 		}
-
-		newTr.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	// 3단계: 연결 풀 설정 적용
-	if key.maxIdleConns >= 0 {
-		newTr.MaxIdleConns = key.maxIdleConns
-		newTr.MaxIdleConnsPerHost = key.maxIdleConns
+	// 3단계: 연결 풀 관리
+	if cfg.maxIdleConns != nil {
+		newTr.MaxIdleConns = normalizeMaxIdleConns(*cfg.maxIdleConns)
 	}
-	if key.maxConnsPerHost > 0 {
-		newTr.MaxConnsPerHost = key.maxConnsPerHost
+	if cfg.maxIdleConnsPerHost != nil {
+		newTr.MaxIdleConnsPerHost = normalizeMaxIdleConnsPerHost(*cfg.maxIdleConnsPerHost)
+	}
+	if cfg.maxConnsPerHost != nil {
+		newTr.MaxConnsPerHost = normalizeMaxConnsPerHost(*cfg.maxConnsPerHost)
 	}
 
-	// 4단계: 타임아웃 설정 적용
-	if key.idleConnTimeout > 0 {
-		newTr.IdleConnTimeout = key.idleConnTimeout
+	// 4단계: 네트워크 타임아웃
+	if cfg.tlsHandshakeTimeout != nil {
+		newTr.TLSHandshakeTimeout = normalizeTLSHandshakeTimeout(*cfg.tlsHandshakeTimeout)
 	}
-	if key.tlsHandshakeTimeout > 0 {
-		newTr.TLSHandshakeTimeout = key.tlsHandshakeTimeout
+	if cfg.responseHeaderTimeout != nil {
+		newTr.ResponseHeaderTimeout = normalizeResponseHeaderTimeout(*cfg.responseHeaderTimeout)
 	}
-	if key.responseHeaderTimeout > 0 {
-		newTr.ResponseHeaderTimeout = key.responseHeaderTimeout
+	if cfg.idleConnTimeout != nil {
+		newTr.IdleConnTimeout = normalizeIdleConnTimeout(*cfg.idleConnTimeout)
 	}
 
 	return newTr, nil
@@ -494,13 +568,14 @@ func (f *HTTPFetcher) setupTransport() error {
 //   - true: 사용자 설정이 존재하므로 이를 반영한 새로운 Transport를 생성해야 함
 //   - false: 사용자 설정이 없으므로(모두 nil) 현재 Transport를 변형 없이 그대로 사용 가능
 func (f *HTTPFetcher) needsCustomTransport() bool {
-	return f.disableTransportCache ||
-		f.proxyURL != "" ||
-		f.maxIdleConns != DefaultMaxIdleConns ||
-		f.maxConnsPerHost > 0 ||
-		f.idleConnTimeout != DefaultIdleConnTimeout ||
-		f.tlsHandshakeTimeout != DefaultTLSHandshakeTimeout ||
-		f.responseHeaderTimeout > 0
+	return f.disableTransportCaching ||
+		f.proxyURL != nil ||
+		f.maxIdleConns != nil ||
+		f.maxIdleConnsPerHost != nil ||
+		f.maxConnsPerHost != nil ||
+		f.tlsHandshakeTimeout != nil ||
+		f.responseHeaderTimeout != nil ||
+		f.idleConnTimeout != nil
 }
 
 // configureTransportFromOptions 사용자가 설정한 옵션을 기반으로 최적의 Transport를 구성합니다.
@@ -520,57 +595,51 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 //     a) 격리 모드 (disableTransportCaching = true):
 //     - 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
 //     - 다른 Fetcher와 완전히 격리되어 리소스를 공유하지 않습니다.
-//     - 사용 시나리오: 테스트 환경, 특수한 격리 요구사항
 //
 //     b) 공유 모드 (disableTransportCaching = false, 기본값):
-//     - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다. (getSharedTransport)
+//     - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다.
 //     - TCP 연결 풀을 재사용하여 메모리와 핸드셰이크 비용을 절약합니다.
-//     - 사용 시나리오: 일반적인 프로덕션 환경 (권장)
 //
 // 반환값:
 //   - error: Transport 생성 실패 시 에러 (예: 잘못된 프록시 URL)
 func (f *HTTPFetcher) configureTransportFromOptions() error {
-	// 1단계: 사용자 설정을 transportCacheKey로 변환합니다.
-	key := transportCacheKey{
-		proxyURL:              f.proxyURL,
-		maxIdleConns:          f.maxIdleConns,
-		maxConnsPerHost:       f.maxConnsPerHost,
-		idleConnTimeout:       f.idleConnTimeout,
-		tlsHandshakeTimeout:   f.tlsHandshakeTimeout,
-		responseHeaderTimeout: f.responseHeaderTimeout,
-	}
+	// 1단계: Transport 설정 객체 생성
+	cfg := f.toTransportConfig()
 
-	// 2단계: 운영 모드에 따라 Transport를 생성합니다.
+	// 2단계: 운영 모드 선택
 	if f.disableTransportCaching {
-		// 격리 모드: 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
-		tr, err := newTransport(nil, key)
+		// 격리 모드:
+		// - 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
+		// - defaultTransport를 복제한 후 사용자 설정을 적용합니다.
+		// - 다른 Fetcher와 연결 풀을 공유하지 않습니다.
+		newTr, err := newTransport(nil, cfg)
 		if err != nil {
 			return newErrIsolatedTransportCreateFailed(err)
 		}
 
-		// 생성된 Transport를 클라이언트에 설정합니다.
-		f.client.Transport = tr
+		f.client.Transport = newTr
 
 		return nil
 	}
 
-	// 공유 모드: 캐시에서 동일한 설정의 Transport를 찾거나 새로 생성합니다.
-	// 이를 통해 여러 Fetcher가 연결 풀을 공유하여 리소스를 절약합니다.
-	tr, err := getSharedTransport(key)
+	// 공유 모드 (기본값):
+	// - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다.
+	// - 캐시에서 기존 Transport를 찾거나, 없으면 새로 생성하여 캐시에 등록합니다.
+	// - TCP 연결 풀을 재사용하여 메모리와 핸드셰이크 비용을 절약합니다.
+	tr, err := getSharedTransport(cfg)
 	if err != nil {
 		return newErrSharedTransportCreateFailed(err)
 	}
 
-	// 준비된 Transport를 클라이언트에 설정합니다.
 	f.client.Transport = tr
 
 	return nil
 }
 
-// configureTransportFromExternal 외부에서 제공된 Transport를 기반으로 사용자가 설정한 옵션이 적용된 새로운 Transport를 구성합니다.
+// configureTransportFromExternal 외부에서 주입된 Transport에 사용자 설정을 적용하여 새로운 Transport를 구성합니다.
 //
 // 목적:
-//   - WithTransport 옵션으로 제공된 Transport에 사용자가 설정한 옵션을 안전하게 적용합니다.
+//   - WithTransport 옵션으로 외부에서 주입된 Transport에 사용자가 설정한 옵션을 안전하게 적용합니다.
 //   - Copy-on-Write(CoW) 전략을 사용하여 원본 Transport의 손상을 방지합니다.
 //   - 불필요한 복제를 방지하여 리소스를 절약합니다.
 //
@@ -585,47 +654,89 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 //     - 복제된 Transport는 격리 모드로 전환되어 Close() 시 안전하게 정리됩니다.
 //
 // 매개변수:
-//   - tr: 외부에서 제공된 Transport (WithTransport 옵션으로 주입됨)
+//   - tr: 외부에서 주입된 Transport (WithTransport 옵션으로 주입됨)
 //
 // 반환값:
 //   - error: 프록시 URL 파싱 실패 시 에러
 func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
-	// 1단계: 설정 변경이 필요한지 확인합니다.
+	// 1단계: 복제 필요성 검사
+	// 외부에서 주입된 Transport의 현재 설정이 사용자가 요청한 설정과 이미 일치하는지 확인합니다.
+	// 일치한다면 복제 없이 원본을 그대로 사용하여 불필요한 메모리 사용과 처리 비용을 절약합니다.
 	if !f.shouldCloneTransport(tr) {
-		// 외부에서 제공된 Transport가 이미 원하는 설정과 일치하므로 그대로 사용합니다.
-		// 이를 통해 원본의 연결 풀을 공유하여 리소스를 절약합니다.
 		return nil
 	}
 
-	// 2단계: 원본을 보호하기 위해 복제본을 생성합니다.
-	key := transportCacheKey{
-		proxyURL:              f.proxyURL,
-		maxIdleConns:          f.maxIdleConns,
-		maxConnsPerHost:       f.maxConnsPerHost,
-		idleConnTimeout:       f.idleConnTimeout,
-		tlsHandshakeTimeout:   f.tlsHandshakeTimeout,
-		responseHeaderTimeout: f.responseHeaderTimeout,
-	}
+	// 2단계: Transport 설정 객체 생성
+	cfg := f.toTransportConfig()
 
-	cloned, err := newTransport(tr, key)
+	// 3단계: Copy-on-Write (CoW) 전략 적용
+	// 외부에서 주입된 Transport를 복제하고, 복제본에만 사용자 설정을 적용합니다.
+	// 이를 통해 원본 Transport는 변경되지 않고 보호되며, 새로운 독립적인 Transport가 생성됩니다.
+	newTr, err := newTransport(tr, cfg)
 	if err != nil {
-		return newErrTransportCloneFailed(err)
+		return newErrIsolatedTransportCreateFailed(err)
 	}
 
-	// 3단계: 복제된 Transport를 클라이언트에 설정합니다.
-	f.client.Transport = cloned
+	// 4단계: 격리 모드로 전환
+	// 복제된 Transport는 다른 Fetcher와 공유되지 않는 격리된 리소스입니다.
+	// Close() 호출 시 안전하게 정리할 수 있도록 캐싱을 비활성화합니다.
+	f.disableTransportCaching = true
+
+	f.client.Transport = newTr
 
 	return nil
 }
 
-// shouldCloneTransport 외부에서 제공된 Transport를 복제해야 하는지 판단합니다.
+// toTransportConfig HTTPFetcher의 Transport 관련 설정을 transportConfig 구조체로 변환합니다.
+//
+// 이 함수는 HTTPFetcher에 설정된 프록시, 연결 풀, 타임아웃 등의 옵션을 transportConfig 형식으로 변환하여
+// newTransport 함수에 전달할 수 있도록 준비합니다.
+//
+// 동작 방식:
+//   - 각 설정 필드를 1:1로 매핑하며, 포인터를 그대로 전달합니다.
+//   - nil 값은 "설정 안 함"을 의미하며, non-nil 값은 "사용자가 명시적으로 설정함"을 의미합니다.
+//   - 값의 정규화(유효성 검증, 기본값 적용 등)는 이 함수에서 수행하지 않고, newTransport에서 처리합니다.
+func (f *HTTPFetcher) toTransportConfig() transportConfig {
+	cfg := transportConfig{}
+
+	// 프록시 설정
+	if f.proxyURL != nil {
+		cfg.proxyURL = f.proxyURL
+	}
+
+	// 연결 풀 관리
+	if f.maxIdleConns != nil {
+		cfg.maxIdleConns = f.maxIdleConns
+	}
+	if f.maxIdleConnsPerHost != nil {
+		cfg.maxIdleConnsPerHost = f.maxIdleConnsPerHost
+	}
+	if f.maxConnsPerHost != nil {
+		cfg.maxConnsPerHost = f.maxConnsPerHost
+	}
+
+	// 네트워크 타임아웃
+	if f.tlsHandshakeTimeout != nil {
+		cfg.tlsHandshakeTimeout = f.tlsHandshakeTimeout
+	}
+	if f.responseHeaderTimeout != nil {
+		cfg.responseHeaderTimeout = f.responseHeaderTimeout
+	}
+	if f.idleConnTimeout != nil {
+		cfg.idleConnTimeout = f.idleConnTimeout
+	}
+
+	return cfg
+}
+
+// shouldCloneTransport 외부에서 주입된 Transport를 복제해야 하는지 판단합니다.
 //
 // 목적:
-//   - 외부 Transport의 설정과 사용자가 설정한 옵션을 비교하여 복제 필요 여부를 결정합니다.
+//   - 외부에서 주입된 Transport의 설정과 사용자가 설정한 옵션을 비교하여 복제 필요 여부를 결정합니다.
 //   - 불필요한 복제를 방지하여 메모리 사용량을 최소화하고 연결 풀 재사용을 극대화합니다.
 //
 // 판단 기준:
-//   - 사용자가 설정한 옵션(f.*)과 외부 Transport의 현재 설정(tr.*)을 비교합니다.
+//   - 사용자가 설정한 옵션(f.*)과 외부에서 주입된 Transport의 현재 설정(tr.*)을 비교합니다.
 //   - 값이 서로 다르다면 true를 반환하여 복제 및 설정 적용을 수행합니다.
 //   - 값이 같다면(또는 사용자가 설정한 옵션이 없다면) 복제 없이 기존 Transport를 재사용합니다.
 //
@@ -635,16 +746,17 @@ func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
 //   - 네트워크 타임아웃 (tlsHandshakeTimeout, responseHeaderTimeout, idleConnTimeout)
 //
 // 매개변수:
-//   - tr: 외부에서 제공된 Transport (WithTransport 옵션으로 주입됨)
+//   - tr: 외부에서 주입된 Transport (WithTransport 옵션으로 주입됨)
 //
 // 반환값:
 //   - true: 복제 필요 (설정이 다름)
 //   - false: 복제 불필요 (설정이 일치하거나 사용자가 변경을 요청하지 않음)
 func (f *HTTPFetcher) shouldCloneTransport(tr *http.Transport) bool {
-	return f.proxyURL != "" ||
-		(f.maxIdleConns >= 0 && tr.MaxIdleConns != f.maxIdleConns) ||
-		(f.maxConnsPerHost > 0 && tr.MaxConnsPerHost != f.maxConnsPerHost) ||
-		(f.idleConnTimeout != DefaultIdleConnTimeout && tr.IdleConnTimeout != f.idleConnTimeout) ||
-		(f.tlsHandshakeTimeout != DefaultTLSHandshakeTimeout && tr.TLSHandshakeTimeout != f.tlsHandshakeTimeout) ||
-		(f.responseHeaderTimeout > 0 && tr.ResponseHeaderTimeout != f.responseHeaderTimeout)
+	return f.proxyURL != nil ||
+		(f.maxIdleConns != nil && tr.MaxIdleConns != *f.maxIdleConns) ||
+		(f.maxIdleConnsPerHost != nil && tr.MaxIdleConnsPerHost != *f.maxIdleConnsPerHost) ||
+		(f.maxConnsPerHost != nil && tr.MaxConnsPerHost != *f.maxConnsPerHost) ||
+		(f.tlsHandshakeTimeout != nil && tr.TLSHandshakeTimeout != *f.tlsHandshakeTimeout) ||
+		(f.responseHeaderTimeout != nil && tr.ResponseHeaderTimeout != *f.responseHeaderTimeout) ||
+		(f.idleConnTimeout != nil && tr.IdleConnTimeout != *f.idleConnTimeout)
 }

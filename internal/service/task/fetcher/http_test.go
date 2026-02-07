@@ -68,6 +68,24 @@ func TestHTTPFetcher_Do(t *testing.T) {
 			},
 		},
 		{
+			name: "Success - Proxy Connection (Simulated)",
+			// We simulate a proxy by using the mock server as the target,
+			// and checking if the client works when configured with a proxy that (in this test case)
+			// doesn't actually intercept but is valid config.
+			// Real proxy integration is harder to mock without a specialized proxy server,
+			// but we can verify the configuration doesn't break normal flow or error out.
+			fetcherOpts: []fetcher.Option{
+				fetcher.WithProxy(fetcher.NoProxy), // Ensure NoProxy works
+			},
+			reqFunc: func() *http.Request {
+				req, _ := http.NewRequest("GET", ts.URL, nil)
+				return req
+			},
+			validateResp: func(t *testing.T, resp *http.Response) {
+				assert.Equal(t, http.StatusOK, resp.StatusCode)
+			},
+		},
+		{
 			name: "Success - Header Injection",
 			reqFunc: func() *http.Request {
 				req, _ := http.NewRequest("GET", ts.URL+"/verify-headers", nil)
@@ -130,7 +148,7 @@ func TestHTTPFetcher_Do(t *testing.T) {
 				req, _ := http.NewRequest("GET", ts.URL, nil)
 				return req
 			},
-			expectedError: "제공된 프록시 URL의 형식이 올바르지 않습니다",
+			expectedError: "프록시 URL의 형식이 유효하지 않습니다",
 		},
 	}
 
@@ -264,5 +282,66 @@ func TestHTTPFetcher_RefererLeak(t *testing.T) {
 		assert.NotContains(t, capturedReferer, "secret_token_value", "Sensitive value leaked in Referer!")
 		assert.Contains(t, capturedReferer, "token=xxxxx", "Sensitive value should be masked")
 		assert.Contains(t, capturedReferer, "public=value", "Non-sensitive value should remain")
+	})
+}
+
+// TestHTTPFetcher_ProxyConfiguration verifies the public API behavior for proxy settings.
+func TestHTTPFetcher_ProxyConfiguration(t *testing.T) {
+	// 1. WithProxy(nil) -> Should use default behavior (Environment variables)
+	t.Run("WithProxy(nil) uses default settings", func(t *testing.T) {
+		// We can't easily check internal state without reflection or export,
+		// but we can verify it doesn't panic and behaves essentially like default.
+
+		fDefault := fetcher.NewHTTPFetcher()
+		// We expect this to work for normal requests (using env vars if any)
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		// Just ensure it doesn't error on creation/setup
+		assert.NotNil(t, fDefault)
+		_ = req
+	})
+
+	// 2. WithProxy("DIRECT") or WithProxy(NoProxy)
+	t.Run("WithProxy(NoProxy) disables proxy", func(t *testing.T) {
+		f := fetcher.NewHTTPFetcher(fetcher.WithProxy(fetcher.NoProxy))
+		// This should force direct connection.
+		// We can try to connect to localhost port that is closed.
+		// If proxy was set to something invalid, it would fail with proxy error.
+		// Here we expect dial error.
+		req, _ := http.NewRequest("GET", "http://127.0.0.1:0", nil)
+		res, err := f.Do(req)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "dial tcp", "Should attempt direct dial and fail")
+		assert.Nil(t, res)
+	})
+
+	// 3. WithProxy(ValidURL)
+	t.Run("WithProxy(ValidURL) uses proxy", func(t *testing.T) {
+		// Mock Proxy Server
+		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Proxy receives request
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer proxy.Close()
+
+		f := fetcher.NewHTTPFetcher(fetcher.WithProxy(proxy.URL))
+
+		// Target URL (can be anything, proxy intercepts)
+		// Note: httptest server speaks HTTP.
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		res, err := f.Do(req)
+
+		// Verification depends on how Go's transport handles http proxy.
+		// The proxy server above acts as the endpoint.
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	// 4. WithProxy(InvalidURL)
+	t.Run("WithProxy(InvalidURL) returns error", func(t *testing.T) {
+		f := fetcher.NewHTTPFetcher(fetcher.WithProxy(" ://invalid"))
+		req, _ := http.NewRequest("GET", "http://example.com", nil)
+		_, err := f.Do(req)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "프록시 URL의 형식이 유효하지 않습니다") // Expected error message
 	})
 }

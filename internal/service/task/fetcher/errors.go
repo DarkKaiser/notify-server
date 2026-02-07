@@ -67,22 +67,25 @@ func newErrResponseBodyTooLargeByContentLength(contentLength, limit int64) error
 // ErrUnsupportedTransport 사용자가 제공한 Transport가 표준 *http.Transport 타입이 아닐 때 반환하는 에러입니다.
 var ErrUnsupportedTransport = apperrors.New(apperrors.Internal, "지원하지 않는 Transport 형식입니다: 표준 *http.Transport 타입만 설정을 적용할 수 있습니다")
 
-// newErrIsolatedTransportCreateFailed 격리된(Isolated) Transport 인스턴스 생성 과정에서 오류가 발생했을 때 반환하는 에러를 생성합니다.
-func newErrIsolatedTransportCreateFailed(err error) error {
-	return apperrors.Wrap(err, apperrors.Internal, "격리된(Isolated) Transport 인스턴스를 생성하는 과정에서 오류가 발생하였습니다")
-}
-
-// newErrSharedTransportCreateFailed 공유 Transport 리소스의 초기화 또는 캐시 조회 과정에서 오류가 발생했을 때 반환하는 에러를 생성합니다.
-func newErrSharedTransportCreateFailed(err error) error {
-	return apperrors.Wrap(err, apperrors.Internal, "공유 Transport 리소스를 초기화하거나 조회하는 과정에서 오류가 발생하였습니다")
-}
-
-// newErrTransportCloneFailed Transport 객체 복제 및 설정 적용 과정에서 오류가 발생했을 때 반환하는 에러를 생성합니다.
-func newErrTransportCloneFailed(err error) error {
-	return apperrors.Wrap(err, apperrors.Internal, "Transport 객체를 복제하고 설정을 적용하는 과정에서 오류가 발생하였습니다")
-}
-
-// newErrInvalidProxyURL 제공된 프록시 URL의 형식이 올바르지 않을 때 반환하는 에러를 생성합니다.
+// newErrInvalidProxyURL 제공된 프록시 URL이 유효한 형식이 아니어서 파싱할 수 없을 때 반환하는 에러를 생성합니다.
 func newErrInvalidProxyURL(urlStr string) error {
-	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("제공된 프록시 URL의 형식이 올바르지 않습니다 (URL: %s)", urlStr))
+	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("프록시 URL의 형식이 유효하지 않습니다 (제공된 URL: %s)", urlStr))
+}
+
+// newErrIsolatedTransportCreateFailed 격리된 Transport 인스턴스 생성 중 오류가 발생했을 때 반환하는 에러를 생성합니다.
+func newErrIsolatedTransportCreateFailed(err error) error {
+	errType := apperrors.Internal
+	if apperrors.Is(err, apperrors.InvalidInput) {
+		errType = apperrors.InvalidInput
+	}
+	return apperrors.Wrap(err, errType, "격리된 Transport 인스턴스 생성 중 오류가 발생했습니다")
+}
+
+// newErrSharedTransportCreateFailed 공유 Transport 리소스 초기화 또는 캐시 조회 중 오류가 발생했을 때 반환하는 에러를 생성합니다.
+func newErrSharedTransportCreateFailed(err error) error {
+	errType := apperrors.Internal
+	if apperrors.Is(err, apperrors.InvalidInput) {
+		errType = apperrors.InvalidInput
+	}
+	return apperrors.Wrap(err, errType, "공유 Transport 리소스 초기화 또는 조회 중 오류가 발생했습니다")
 }

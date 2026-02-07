@@ -18,10 +18,10 @@ type Option func(*HTTPFetcher)
 // 매개변수:
 //   - proxyURL: 프록시 URL
 //     · URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
-//     · "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
+//     · NoProxy(또는 "DIRECT") 또는 빈 문자열(""): 프록시 비활성화 (환경 변수 무시, 직접 연결)
 func WithProxy(proxyURL string) Option {
 	return func(h *HTTPFetcher) {
-		h.proxyURL = proxyURL
+		h.proxyURL = &proxyURL
 	}
 }
 
@@ -69,7 +69,7 @@ func WithMaxIdleConns(max int) Option {
 	max = normalizeMaxIdleConns(max)
 
 	return func(h *HTTPFetcher) {
-		h.maxIdleConns = max
+		h.maxIdleConns = &max
 	}
 }
 
@@ -85,7 +85,7 @@ func WithMaxIdleConnsPerHost(max int) Option {
 	max = normalizeMaxIdleConnsPerHost(max)
 
 	return func(h *HTTPFetcher) {
-		h.maxIdleConnsPerHost = max
+		h.maxIdleConnsPerHost = &max
 	}
 }
 
@@ -101,7 +101,7 @@ func WithMaxConnsPerHost(max int) Option {
 	max = normalizeMaxConnsPerHost(max)
 
 	return func(h *HTTPFetcher) {
-		h.maxConnsPerHost = max
+		h.maxConnsPerHost = &max
 	}
 }
 
@@ -139,7 +139,7 @@ func WithTLSHandshakeTimeout(timeout time.Duration) Option {
 	timeout = normalizeTLSHandshakeTimeout(timeout)
 
 	return func(h *HTTPFetcher) {
-		h.tlsHandshakeTimeout = timeout
+		h.tlsHandshakeTimeout = &timeout
 	}
 }
 
@@ -158,7 +158,7 @@ func WithResponseHeaderTimeout(timeout time.Duration) Option {
 	timeout = normalizeResponseHeaderTimeout(timeout)
 
 	return func(h *HTTPFetcher) {
-		h.responseHeaderTimeout = timeout
+		h.responseHeaderTimeout = &timeout
 	}
 }
 
@@ -177,7 +177,7 @@ func WithIdleConnTimeout(timeout time.Duration) Option {
 	timeout = normalizeIdleConnTimeout(timeout)
 
 	return func(h *HTTPFetcher) {
-		h.idleConnTimeout = timeout
+		h.idleConnTimeout = &timeout
 	}
 }
 

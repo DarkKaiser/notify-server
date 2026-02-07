@@ -248,6 +248,18 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MaxBytes:      defaultMaxBytes,
 			},
 		},
+		{
+			name: "RetryDelay logic (Max 0 -> Default)",
+			input: Config{
+				MaxRetryDelay: 0,
+			},
+			expected: Config{
+				MaxRetries:    0,
+				MinRetryDelay: defaultRetryDelay,
+				MaxRetryDelay: defaultMaxRetryDelay,
+				MaxBytes:      defaultMaxBytes,
+			},
+		},
 
 		// 3. Timeout Logic Tests (Negative -> Special Handling)
 		{
@@ -269,10 +281,29 @@ func TestConfig_applyDefaults(t *testing.T) {
 				ResponseHeaderTimeout: durationPtr(0),                          // 0 (No Timeout)
 			},
 		},
-
-		// 4. Connection Limits Tests (Negative -> Special Handling)
 		{
-			name: "Connection limits negative values",
+			name: "Timeouts explicit values (should be kept)",
+			input: Config{
+				Timeout:               durationPtr(5 * time.Second),
+				TLSHandshakeTimeout:   durationPtr(2 * time.Second),
+				IdleConnTimeout:       durationPtr(10 * time.Second),
+				ResponseHeaderTimeout: durationPtr(1 * time.Second),
+			},
+			expected: Config{
+				MaxRetries:            0,
+				MinRetryDelay:         defaultRetryDelay,
+				MaxRetryDelay:         defaultMaxRetryDelay,
+				MaxBytes:              defaultMaxBytes,
+				Timeout:               durationPtr(5 * time.Second),
+				TLSHandshakeTimeout:   durationPtr(2 * time.Second),
+				IdleConnTimeout:       durationPtr(10 * time.Second),
+				ResponseHeaderTimeout: durationPtr(1 * time.Second),
+			},
+		},
+
+		// 4. Connection Limits Tests
+		{
+			name: "Connection limits negative values (use default or zero)",
 			input: Config{
 				MaxIdleConns:        intPtr(-1),
 				MaxIdleConnsPerHost: intPtr(-1),
@@ -288,6 +319,25 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MaxIdleConnsPerHost: intPtr(0), // Default 0 (uses net/http default 2)
 				MaxConnsPerHost:     intPtr(0), // 0 (Unlimited)
 				MaxRedirects:        intPtr(defaultMaxRedirects),
+			},
+		},
+		{
+			name: "Connection limits explicit values",
+			input: Config{
+				MaxIdleConns:        intPtr(500),
+				MaxIdleConnsPerHost: intPtr(10),
+				MaxConnsPerHost:     intPtr(20),
+				MaxRedirects:        intPtr(5),
+			},
+			expected: Config{
+				MaxRetries:          0,
+				MinRetryDelay:       defaultRetryDelay,
+				MaxRetryDelay:       defaultMaxRetryDelay,
+				MaxBytes:            defaultMaxBytes,
+				MaxIdleConns:        intPtr(500),
+				MaxIdleConnsPerHost: intPtr(10),
+				MaxConnsPerHost:     intPtr(20),
+				MaxRedirects:        intPtr(5),
 			},
 		},
 
@@ -316,6 +366,18 @@ func TestConfig_applyDefaults(t *testing.T) {
 				MaxBytes:      defaultMaxBytes,
 			},
 		},
+		{
+			name: "MaxBytes Explicit Value",
+			input: Config{
+				MaxBytes: 2048,
+			},
+			expected: Config{
+				MaxRetries:    0,
+				MinRetryDelay: defaultRetryDelay,
+				MaxRetryDelay: defaultMaxRetryDelay,
+				MaxBytes:      2048,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -337,6 +399,10 @@ func TestNewFromConfig_ValuePropagation(t *testing.T) {
 	explicitProxy := "http://user:pass@proxy.example.com:8080"
 	explicitMaxIdle := 50
 	explicitMaxBytes := int64(2048)
+	explicitRedirects := 3
+	explicitMimeTypes := []string{"application/json", "text/xml"}
+	explicitStatusCodes := []int{200, 201, 204}
+	explicitUserAgents := []string{"TestAgent/1.0", "TestAgent/2.0"}
 
 	cfg := Config{
 		// Network
@@ -351,19 +417,19 @@ func TestNewFromConfig_ValuePropagation(t *testing.T) {
 
 		// Retry
 		MaxRetries:    5,
-		MinRetryDelay: 100 * time.Millisecond, // Should normalize to 1s
+		MinRetryDelay: 100 * time.Millisecond,
 		MaxRetryDelay: 5 * time.Second,
 
 		// Validation
 		DisableStatusCodeValidation: false,
-		AllowedStatusCodes:          []int{200, 201, 204},
-		AllowedMimeTypes:            []string{"application/json", "text/xml"},
+		AllowedStatusCodes:          explicitStatusCodes,
+		AllowedMimeTypes:            explicitMimeTypes,
 		MaxBytes:                    explicitMaxBytes,
-		MaxRedirects:                intPtr(3),
+		MaxRedirects:                intPtr(explicitRedirects),
 
 		// Middleware
 		EnableUserAgentRandomization: true,
-		UserAgents:                   []string{"TestAgent/1.0", "TestAgent/2.0"},
+		UserAgents:                   explicitUserAgents,
 		DisableLogging:               false,
 		DisableTransportCaching:      true,
 	}
@@ -373,60 +439,132 @@ func TestNewFromConfig_ValuePropagation(t *testing.T) {
 	require.NotNil(t, f)
 
 	// 3. 체인 순서 및 값 검증 (Outer -> Inner)
+	// Chain: Logging -> UserAgent -> Retry -> MimeType -> StatusCode -> MaxBytes -> HTTP
+
+	curr := f
 
 	// Layer 1: LoggingFetcher
-	// LoggingFetcher는 단순히 delegate만 가짐
-	curr := f
-	delegate := UnwrapLoggingFetcher(curr)
-	require.NotNil(t, delegate, "Outermost should be LoggingFetcher")
-	curr = delegate
+	if logDelegate := InspectLoggingFetcher(curr); logDelegate != nil {
+		curr = logDelegate
+	} else {
+		assert.Fail(t, "LoggingFetcher should be present")
+	}
 
 	// Layer 2: UserAgentFetcher
+	var uaDelegate Fetcher
 	var uaList []string
-	curr, uaList = InspectUserAgentFetcher(curr)
-	require.NotNil(t, curr, "Second layer should be UserAgentFetcher")
-	assert.ElementsMatch(t, []string{"TestAgent/1.0", "TestAgent/2.0"}, uaList, "UserAgents passed correctly")
+	if uaDelegate, uaList = InspectUserAgentFetcher(curr); uaDelegate != nil {
+		curr = uaDelegate
+		assert.ElementsMatch(t, explicitUserAgents, uaList, "UserAgents passed correctly")
+	} else {
+		assert.Fail(t, "UserAgentFetcher should be present")
+	}
 
 	// Layer 3: RetryFetcher
+	var retryDelegate Fetcher
 	var maxRetries int
 	var minDelay, maxDelay time.Duration
-	curr, maxRetries, minDelay, maxDelay = InspectRetryFetcher(curr)
-	require.NotNil(t, curr, "Third layer should be RetryFetcher")
-	assert.Equal(t, 5, maxRetries, "MaxRetries passed correctly")
-	assert.Equal(t, 1*time.Second, minDelay, "MinRetryDelay normalized correctly (min 1s)")
-	assert.Equal(t, 5*time.Second, maxDelay, "MaxRetryDelay passes correctly")
+	if retryDelegate, maxRetries, minDelay, maxDelay = InspectRetryFetcher(curr); retryDelegate != nil {
+		curr = retryDelegate
+		assert.Equal(t, 5, maxRetries, "MaxRetries passed correctly")
+		assert.Equal(t, 1*time.Second, minDelay, "MinRetryDelay normalized correctly")
+		assert.Equal(t, 5*time.Second, maxDelay, "MaxRetryDelay passed correctly")
+	} else {
+		assert.Fail(t, "RetryFetcher should be present")
+	}
 
 	// Layer 4: MimeTypeFetcher
+	var mimeDelegate Fetcher
 	var allowedMimes []string
-	curr, allowedMimes, _ = InspectMimeTypeFetcher(curr)
-	require.NotNil(t, curr, "Fourth layer should be MimeTypeFetcher")
-	assert.ElementsMatch(t, []string{"application/json", "text/xml"}, allowedMimes, "AllowedMimeTypes passed correctly")
+	if mimeDelegate, allowedMimes, _ = InspectMimeTypeFetcher(curr); mimeDelegate != nil {
+		curr = mimeDelegate
+		assert.ElementsMatch(t, explicitMimeTypes, allowedMimes, "AllowedMimeTypes passed correctly")
+	} else {
+		assert.Fail(t, "MimeTypeFetcher should be present")
+	}
 
 	// Layer 5: StatusCodeFetcher
+	var statusDelegate Fetcher
 	var allowedCodes []int
-	curr, allowedCodes = InspectStatusCodeFetcher(curr)
-	require.NotNil(t, curr, "Fifth layer should be StatusCodeFetcher")
-	assert.ElementsMatch(t, []int{200, 201, 204}, allowedCodes, "AllowedStatusCodes passed correctly")
+	if statusDelegate, allowedCodes = InspectStatusCodeFetcher(curr); statusDelegate != nil {
+		curr = statusDelegate
+		assert.ElementsMatch(t, explicitStatusCodes, allowedCodes, "AllowedStatusCodes passed correctly")
+	} else {
+		assert.Fail(t, "StatusCodeFetcher should be present")
+	}
 
 	// Layer 6: MaxBytesFetcher
+	var bytesDelegate Fetcher
 	var maxBytes int64
-	curr, maxBytes = InspectMaxBytesFetcher(curr)
-	require.NotNil(t, curr, "Sixth layer should be MaxBytesFetcher")
-	assert.Equal(t, explicitMaxBytes, maxBytes, "MaxBytes passed correctly")
+	if bytesDelegate, maxBytes = InspectMaxBytesFetcher(curr); bytesDelegate != nil {
+		curr = bytesDelegate
+		assert.Equal(t, explicitMaxBytes, maxBytes, "MaxBytes passed correctly")
+	} else {
+		assert.Fail(t, "MaxBytesFetcher should be present")
+	}
 
 	// Layer 7: HTTPFetcher (Innermost)
 	httpOpts := InspectHTTPFetcher(curr)
 	require.NotNil(t, httpOpts, "Innermost should be HTTPFetcher")
 
 	// HTTPFetcher Configuration Check
-	assert.Equal(t, explicitProxy, httpOpts.ProxyURL, "ProxyURL passed correctly")
-	assert.Equal(t, explicitMaxIdle, httpOpts.MaxIdleConns, "MaxIdleConns passed correctly")
-	assert.Equal(t, 10, httpOpts.MaxIdleConnsPerHost, "MaxIdleConnsPerHost passed correctly")
-	assert.Equal(t, 20, httpOpts.MaxConnsPerHost, "MaxConnsPerHost passed correctly")
-	assert.Equal(t, 4*time.Second, httpOpts.IdleConnTimeout, "IdleConnTimeout passed correctly")
-	assert.Equal(t, 2*time.Second, httpOpts.TLSHandshakeTimeout, "TLSHandshakeTimeout passed correctly")
-	assert.Equal(t, 3*time.Second, httpOpts.ResponseHeaderTimeout, "ResponseHeaderTimeout passed correctly")
+	assert.Equal(t, explicitProxy, *httpOpts.ProxyURL, "ProxyURL passed correctly")
+	assert.Equal(t, explicitMaxIdle, *httpOpts.MaxIdleConns, "MaxIdleConns passed correctly")
+	assert.Equal(t, 10, *httpOpts.MaxIdleConnsPerHost, "MaxIdleConnsPerHost passed correctly")
+	assert.Equal(t, 20, *httpOpts.MaxConnsPerHost, "MaxConnsPerHost passed correctly")
+	assert.Equal(t, 4*time.Second, *httpOpts.IdleConnTimeout, "IdleConnTimeout passed correctly")
+	assert.Equal(t, 2*time.Second, *httpOpts.TLSHandshakeTimeout, "TLSHandshakeTimeout passed correctly")
+	assert.Equal(t, 3*time.Second, *httpOpts.ResponseHeaderTimeout, "ResponseHeaderTimeout passed correctly")
+	assert.Equal(t, explicitTimeout, httpOpts.Timeout, "Timeout passed correctly")
 	assert.True(t, httpOpts.DisableCaching, "DisableTransportCaching passed correctly")
+}
+
+func TestNewFromConfig_CustomUserAgents(t *testing.T) {
+	// 기본 UserAgent 목록 덮어쓰기 테스트
+	// Config에 UserAgent를 명시하면 기본 목록 대신 해당 목록이 사용되어야 함
+
+	customUA := []string{"MyBot/1.0", "MyBot/2.0"}
+	cfg := Config{
+		EnableUserAgentRandomization: true,
+		UserAgents:                   customUA,
+		DisableLogging:               true, // Simplify chain
+	}
+
+	f := NewFromConfig(cfg)
+
+	// Chain: UserAgent -> Retry -> ...
+	// Logging is disabled, so Outer is UserAgent
+
+	_, uaList := InspectUserAgentFetcher(f)
+	require.NotNil(t, uaList)
+	assert.ElementsMatch(t, customUA, uaList)
+}
+
+func TestNewFromConfig_DefaultsUA(t *testing.T) {
+	// UserAgent 활성화, 목록 없음 -> 기본 목록 사용 확인
+	cfg := Config{
+		EnableUserAgentRandomization: true,
+		UserAgents:                   nil, // Empty
+		DisableLogging:               true,
+	}
+
+	// Set default UA for test determinism
+	testDefaults := []string{"Default/1.0", "Default/2.0"}
+	restore := SetDefaultUserAgents(testDefaults)
+	defer restore()
+
+	f := NewFromConfig(cfg)
+
+	// Chain: UserAgent -> Retry -> ... (Logging Disabled)
+	curr := f
+	// Unwind Logging if present (though disabled in config, good to be safe)
+	if logDelegate := InspectLoggingFetcher(curr); logDelegate != nil {
+		curr = logDelegate
+	}
+
+	_, uaList := InspectUserAgentFetcher(curr)
+	require.NotNil(t, curr, "UserAgentFetcher should be present")
+	assert.Empty(t, uaList, "Should be empty/nil to indicate using internal defaults")
 }
 
 func TestNewFromConfig_MiddlewareToggling(t *testing.T) {
@@ -472,7 +610,7 @@ func TestNewFromConfig_MiddlewareToggling(t *testing.T) {
 			},
 			checkChain: func(t *testing.T, f Fetcher) {
 				// If logging enabled: Logging -> Retry (Skip UA)
-				delegate := UnwrapLoggingFetcher(f)
+				delegate := InspectLoggingFetcher(f)
 				_, ok := delegate.(*UserAgentFetcher)
 				assert.False(t, ok, "UserAgentFetcher should be absent is disabled")
 				_, ok = delegate.(*RetryFetcher)
@@ -504,30 +642,97 @@ func TestNewFromConfig_MiddlewareToggling(t *testing.T) {
 	}
 }
 
+func TestNewFromConfig_OptionOverride(t *testing.T) {
+	// 1. Config 설정 (기본값)
+	cfg := Config{
+		Timeout:      durationPtr(10 * time.Second),
+		MaxIdleConns: intPtr(50),
+		MaxRetries:   3,
+	}
+
+	// 2. Option 설정 (덮어쓰기 값)
+	// Config 값과 다른 값을 설정하여 Option이 우선순위를 갖는지 확인
+	overrideTimeout := 20 * time.Second
+	overrideMaxIdle := 100
+
+	// 3. Fetcher 생성 (Config + Option)
+	f := NewFromConfig(cfg,
+		WithTimeout(overrideTimeout),
+		WithMaxIdleConns(overrideMaxIdle),
+	)
+
+	// 4. 검증
+	// HTTPFetcher까지 내려가서 값 확인
+	// Chain: Logging -> Retry -> StatusCode -> MaxBytes -> HTTP
+
+	curr := f
+
+	// Layer 1: Logging (Default enabled in Config)
+	if logDelegate := InspectLoggingFetcher(curr); logDelegate != nil {
+		curr = logDelegate
+	}
+
+	// Layer 2: RetryFetcher 검증
+	retryDelegate, maxRetries, _, _ := InspectRetryFetcher(curr)
+	require.NotNil(t, retryDelegate, "Should find RetryFetcher")
+	assert.Equal(t, 3, maxRetries, "MaxRetries should come from Config")
+
+	curr = retryDelegate
+
+	// Layer 3: StatusCodeFetcher (Default enabled)
+	if statusDelegate, _ := InspectStatusCodeFetcher(curr); statusDelegate != nil {
+		curr = statusDelegate
+	}
+
+	// Layer 4: MaxBytesFetcher (Always present)
+	if bytesDelegate, _ := InspectMaxBytesFetcher(curr); bytesDelegate != nil {
+		curr = bytesDelegate
+	}
+
+	// Layer 5: HTTPFetcher 검증
+	httpOpts := InspectHTTPFetcher(curr)
+	require.NotNil(t, httpOpts, "Should find HTTPFetcher at the core")
+
+	assert.Equal(t, overrideTimeout, httpOpts.Timeout, "Timeout option should override Config")
+	assert.Equal(t, overrideMaxIdle, *httpOpts.MaxIdleConns, "MaxIdleConns option should override Config")
+}
+
 func TestNew(t *testing.T) {
 	// New() 편의 함수 검증
 	// New(maxRetries, minDelay, maxBytes, opts...)
 
-	f := New(5, 500*time.Millisecond, 1024)
+	f := New(5, 500*time.Millisecond, 1024, WithMaxIdleConns(999))
 
 	// 1. Defaults applied?
 	// MinDelay 500ms -> 1s normalized
 	// Includes Logging by default
-	delegate := UnwrapLoggingFetcher(f)
-	require.NotNil(t, delegate)
+
+	curr := f
+	if logDelegate := InspectLoggingFetcher(curr); logDelegate != nil {
+		curr = logDelegate
+	}
 
 	// Retry Fetcher Check
-	_, maxRetries, minDelay, _ := InspectRetryFetcher(delegate)
+	retryDelegate, maxRetries, minDelay, _ := InspectRetryFetcher(curr)
+	require.NotNil(t, retryDelegate)
 	assert.Equal(t, 5, maxRetries)
 	assert.Equal(t, 1*time.Second, minDelay, "Should apply normalization through applyDefaults")
 
-	// MaxBytes Check (Drill down)
-	// Retry -> StatusCode -> MaxBytes
-	retryDelegate, _, _, _ := InspectRetryFetcher(delegate)
-	statusDelegate, _ := InspectStatusCodeFetcher(retryDelegate)
-	_, maxBytes := InspectMaxBytesFetcher(statusDelegate)
+	// Chain: Retry -> StatusCode -> MaxBytes -> HTTP
+	curr = retryDelegate
+	if statusDelegate, _ := InspectStatusCodeFetcher(curr); statusDelegate != nil {
+		curr = statusDelegate
+	}
 
+	// MaxBytes Check
+	bytesDelegate, maxBytes := InspectMaxBytesFetcher(curr)
+	require.NotNil(t, bytesDelegate)
 	assert.Equal(t, int64(1024), maxBytes)
+
+	// HTTPFetcher Check (Option Override)
+	httpOpts := InspectHTTPFetcher(bytesDelegate)
+	require.NotNil(t, httpOpts)
+	assert.Equal(t, 999, *httpOpts.MaxIdleConns, "Option should be applied")
 }
 
 func TestNewFromConfig_Proxy(t *testing.T) {
@@ -539,11 +744,23 @@ func TestNewFromConfig_Proxy(t *testing.T) {
 	f := NewFromConfig(cfg)
 
 	// Drill down to HTTPFetcher
-	// Retry -> StatusCode -> MaxBytes -> HTTP
-	d1, _, _, _ := InspectRetryFetcher(f)
-	d2, _ := InspectStatusCodeFetcher(d1)
-	d3, _ := InspectMaxBytesFetcher(d2)
-	opts := InspectHTTPFetcher(d3)
+	// Chain: Retry -> StatusCode -> MaxBytes -> HTTP
 
-	assert.Equal(t, "http://127.0.0.1:8080", opts.ProxyURL)
+	curr := f
+	if retryDelegate, _, _, _ := InspectRetryFetcher(curr); retryDelegate != nil {
+		curr = retryDelegate
+	}
+
+	if statusDelegate, _ := InspectStatusCodeFetcher(curr); statusDelegate != nil {
+		curr = statusDelegate
+	}
+
+	if bytesDelegate, _ := InspectMaxBytesFetcher(curr); bytesDelegate != nil {
+		curr = bytesDelegate
+	}
+
+	opts := InspectHTTPFetcher(curr)
+	require.NotNil(t, opts)
+
+	assert.Equal(t, "http://127.0.0.1:8080", *opts.ProxyURL)
 }

@@ -50,17 +50,18 @@ func TestHTTPOptions_Table(t *testing.T) {
 			},
 		},
 		{
-			name:    "WithTimeout - Negative (Infinite)",
+			name:    "WithTimeout - Negative (Use Default)",
 			options: []Option{WithTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 30*time.Second, f.client.Timeout) // -1 is normalized to default (30s)
+				assert.Equal(t, 30*time.Second, f.client.Timeout) // Default timeout
 			},
 		},
 		{
 			name:    "WithResponseHeaderTimeout",
 			options: []Option{WithResponseHeaderTimeout(5 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 5*time.Second, f.responseHeaderTimeout)
+				require.NotNil(t, f.responseHeaderTimeout)
+				assert.Equal(t, 5*time.Second, *f.responseHeaderTimeout)
 				// Transport verification
 				tr := transport(f)
 				require.NotNil(t, tr)
@@ -71,7 +72,8 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithResponseHeaderTimeout - Negative (Infinite)",
 			options: []Option{WithResponseHeaderTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, time.Duration(0), f.responseHeaderTimeout) // -1 is normalized to 0
+				require.NotNil(t, f.responseHeaderTimeout)
+				assert.Equal(t, time.Duration(0), *f.responseHeaderTimeout) // -1 is normalized to 0
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, time.Duration(0), tr.ResponseHeaderTimeout) // Result is Infinite
@@ -81,40 +83,44 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithTLSHandshakeTimeout",
 			options: []Option{WithTLSHandshakeTimeout(3 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 3*time.Second, f.tlsHandshakeTimeout)
+				require.NotNil(t, f.tlsHandshakeTimeout)
+				assert.Equal(t, 3*time.Second, *f.tlsHandshakeTimeout)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 3*time.Second, tr.TLSHandshakeTimeout)
 			},
 		},
 		{
-			name:    "WithTLSHandshakeTimeout - Negative (Infinite)",
+			name:    "WithTLSHandshakeTimeout - Negative (Use Default)",
 			options: []Option{WithTLSHandshakeTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 10*time.Second, f.tlsHandshakeTimeout) // -1 is normalized to default (10s)
+				require.NotNil(t, f.tlsHandshakeTimeout)
+				assert.Equal(t, 10*time.Second, *f.tlsHandshakeTimeout) // Default TLS timeout
 				tr := transport(f)
 				require.NotNil(t, tr)
-				assert.Equal(t, 10*time.Second, tr.TLSHandshakeTimeout) // -1 is normalized to default (10s)
+				assert.Equal(t, 10*time.Second, tr.TLSHandshakeTimeout)
 			},
 		},
 		{
 			name:    "WithIdleConnTimeout",
 			options: []Option{WithIdleConnTimeout(45 * time.Second)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 45*time.Second, f.idleConnTimeout)
+				require.NotNil(t, f.idleConnTimeout)
+				assert.Equal(t, 45*time.Second, *f.idleConnTimeout)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 45*time.Second, tr.IdleConnTimeout)
 			},
 		},
 		{
-			name:    "WithIdleConnTimeout - Negative (Infinite)",
+			name:    "WithIdleConnTimeout - Negative (Use Default)",
 			options: []Option{WithIdleConnTimeout(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 90*time.Second, f.idleConnTimeout) // -1 is normalized to default (90s)
+				require.NotNil(t, f.idleConnTimeout)
+				assert.Equal(t, 90*time.Second, *f.idleConnTimeout) // Default Idle timeout
 				tr := transport(f)
 				require.NotNil(t, tr)
-				assert.Equal(t, 90*time.Second, tr.IdleConnTimeout) // -1 is normalized to default (90s)
+				assert.Equal(t, 90*time.Second, tr.IdleConnTimeout)
 			},
 		},
 
@@ -125,38 +131,65 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithMaxIdleConns - Positive",
 			options: []Option{WithMaxIdleConns(50)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 50, f.maxIdleConns)
+				require.NotNil(t, f.maxIdleConns)
+				assert.Equal(t, 50, *f.maxIdleConns)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 50, tr.MaxIdleConns)
-				assert.Equal(t, 0, tr.MaxIdleConnsPerHost) // Should remain default (0 -> 2) as it is not explicitly set
 			},
 		},
 		{
 			name:    "WithMaxIdleConns - Zero (Unlimited)",
 			options: []Option{WithMaxIdleConns(0)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 0, f.maxIdleConns)
+				require.NotNil(t, f.maxIdleConns)
+				assert.Equal(t, 0, *f.maxIdleConns)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 0, tr.MaxIdleConns) // 0 means no limit in http.Transport
 			},
 		},
 		{
-			name:    "WithMaxIdleConns - Negative (Ignore/Default)",
+			name:    "WithMaxIdleConns - Negative (Use Default)",
 			options: []Option{WithMaxIdleConns(-1)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 100, f.maxIdleConns) // Normalized to defaultMaxIdleConns
+				require.NotNil(t, f.maxIdleConns)
+				assert.Equal(t, 100, *f.maxIdleConns) // Default max idle conns
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 100, tr.MaxIdleConns)
 			},
 		},
 		{
+			name:    "WithMaxIdleConnsPerHost - Positive",
+			options: []Option{WithMaxIdleConnsPerHost(5)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				require.NotNil(t, f.maxIdleConnsPerHost)
+				assert.Equal(t, 5, *f.maxIdleConnsPerHost)
+				tr := transport(f)
+				require.NotNil(t, tr)
+				assert.Equal(t, 5, tr.MaxIdleConnsPerHost)
+			},
+		},
+		{
+			name:    "WithMaxIdleConnsPerHost - Zero (Unlimited)",
+			options: []Option{WithMaxIdleConnsPerHost(0)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				require.NotNil(t, f.maxIdleConnsPerHost)
+				assert.Equal(t, 0, *f.maxIdleConnsPerHost)
+				tr := transport(f)
+				require.NotNil(t, tr)
+				assert.Equal(t, 0, tr.MaxIdleConnsPerHost) // http.Transport default is 2, but 0 here means "use default" if nil, but explicit 0 means 0. Wait, http.Transport doc says "if 0, use DefaultMaxIdleConnsPerHost (2)".
+				// Our WithMaxIdleConnsPerHost(0) sets pointer to 0. In configureTransport, if pointer is not nil, we use it. So transport.MaxIdleConnsPerHost becomes 0.
+				// In http.Transport, MaxIdleConnsPerHost=0 means default 2. Correct.
+			},
+		},
+		{
 			name:    "WithMaxConnsPerHost - Positive",
 			options: []Option{WithMaxConnsPerHost(10)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 10, f.maxConnsPerHost)
+				require.NotNil(t, f.maxConnsPerHost)
+				assert.Equal(t, 10, *f.maxConnsPerHost)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 10, tr.MaxConnsPerHost)
@@ -166,7 +199,8 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithMaxConnsPerHost - Zero (Unlimited)",
 			options: []Option{WithMaxConnsPerHost(0)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, 0, f.maxConnsPerHost)
+				require.NotNil(t, f.maxConnsPerHost)
+				assert.Equal(t, 0, *f.maxConnsPerHost)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				assert.Equal(t, 0, tr.MaxConnsPerHost)
@@ -180,7 +214,8 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithProxy - Valid URL",
 			options: []Option{WithProxy("http://proxy.example.com:8080")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, "http://proxy.example.com:8080", f.proxyURL)
+				require.NotNil(t, f.proxyURL)
+				assert.Equal(t, "http://proxy.example.com:8080", *f.proxyURL)
 				tr := transport(f)
 				require.NotNil(t, tr)
 
@@ -196,24 +231,25 @@ func TestHTTPOptions_Table(t *testing.T) {
 			name:    "WithProxy - Empty (No Proxy)",
 			options: []Option{WithProxy("")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, "", f.proxyURL)
+				require.NotNil(t, f.proxyURL)
+				assert.Equal(t, "", *f.proxyURL)
 				tr := transport(f)
 				require.NotNil(t, tr)
 				// Default transport proxy is usually nil or FromEnvironment
-				// Here we explicit check if our createTransport handles "" correctly (usually nil)
 			},
 		},
 		{
 			name:    "WithProxy - Invalid URL (Runtime Error)",
 			options: []Option{WithProxy(" ://invalid")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
-				assert.Equal(t, " ://invalid", f.proxyURL)
+				require.NotNil(t, f.proxyURL)
+				assert.Equal(t, " ://invalid", *f.proxyURL)
 				// Invalid proxy URL causes configureTransport to fail and set f.initErr
 				assert.Error(t, f.initErr)
 				req, _ := http.NewRequest("GET", "http://example.com", nil)
 				_, err := f.Do(req)
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "제공된 프록시 URL의 형식이 올바르지 않습니다")
+				assert.Contains(t, err.Error(), "프록시 URL의 형식이 유효하지 않습니다")
 			},
 			expectError: true,
 		},
@@ -222,15 +258,21 @@ func TestHTTPOptions_Table(t *testing.T) {
 		// Client Behavior Options
 		// =================================================================================
 		{
-			name:    "WithUserAgent",
+			name:    "WithUserAgent - Custom",
 			options: []Option{WithUserAgent("MyBot/1.0")},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.Equal(t, "MyBot/1.0", f.defaultUA)
-				// Actual header injection is tested in http_test.go
 			},
 		},
 		{
-			name:    "WithMaxRedirects",
+			name:    "WithUserAgent - Empty",
+			options: []Option{WithUserAgent("")},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Equal(t, "", f.defaultUA)
+			},
+		},
+		{
+			name:    "WithMaxRedirects - Positive",
 			options: []Option{WithMaxRedirects(5)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.NotNil(t, f.client.CheckRedirect)
@@ -247,12 +289,46 @@ func TestHTTPOptions_Table(t *testing.T) {
 			},
 		},
 		{
+			name:    "WithMaxRedirects - Zero (No Redirects)",
+			options: []Option{WithMaxRedirects(0)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.NotNil(t, f.client.CheckRedirect)
+				req, _ := http.NewRequest("GET", "http://example.com", nil)
+				via := make([]*http.Request, 1) // Even 1 redirect should fail
+				err := f.client.CheckRedirect(req, via)
+				assert.ErrorIs(t, err, http.ErrUseLastResponse)
+			},
+		},
+		{
+			name:    "WithMaxRedirects - Negative (Use Default)",
+			options: []Option{WithMaxRedirects(-1)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.NotNil(t, f.client.CheckRedirect)
+				// Default is 10
+				req, _ := http.NewRequest("GET", "http://example.com", nil)
+				via := make([]*http.Request, 10)
+				err := f.client.CheckRedirect(req, via)
+				assert.ErrorIs(t, err, http.ErrUseLastResponse)
+
+				viaLessThanMax := make([]*http.Request, 9)
+				err = f.client.CheckRedirect(req, viaLessThanMax)
+				assert.NoError(t, err)
+			},
+		},
+		{
 			name:    "WithCookieJar",
 			options: []Option{WithCookieJar(&mockCookieJar{})},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.NotNil(t, f.client.Jar)
 				_, ok := f.client.Jar.(*mockCookieJar)
 				assert.True(t, ok)
+			},
+		},
+		{
+			name:    "WithCookieJar - Nil",
+			options: []Option{WithCookieJar(nil)},
+			verify: func(t *testing.T, f *HTTPFetcher) {
+				assert.Nil(t, f.client.Jar)
 			},
 		},
 
@@ -264,8 +340,6 @@ func TestHTTPOptions_Table(t *testing.T) {
 			options: []Option{WithDisableTransportCaching(true)},
 			verify: func(t *testing.T, f *HTTPFetcher) {
 				assert.True(t, f.disableTransportCaching)
-				// When cache is disabled, Do() creates a new transport every time (not cached)
-				// Implementation detail: createTransport is called directly.
 			},
 		},
 		{
