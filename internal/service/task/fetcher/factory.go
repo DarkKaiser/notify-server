@@ -132,25 +132,28 @@ type Config struct {
 	// MaxRetries 최대 재시도 횟수입니다.
 	//
 	// 설정 규칙:
+	//   - nil: 기본값으로 보정
 	//   - 0: 재시도 안 함
 	//   - 양수: 실패 시(5xx 에러 또는 네트워크 오류 등) 지정된 횟수만큼 재시도
 	//   - 보정: 최소값(minAllowedRetries) 미만은 최소값으로, 최대값(maxAllowedRetries) 초과는 최대값으로 보정
-	MaxRetries int
+	MaxRetries *int
 
 	// MinRetryDelay 재시도 대기 시간의 최소값입니다.
 	//
 	// 설정 규칙:
+	//   - nil: 기본값으로 보정
 	//   - 1초 미만: 서버 부하 방지를 위해 최소 시간(1초)으로 보정
 	//   - 1초 이상: 별도의 보정 없이 설정값을 그대로 적용
-	MinRetryDelay time.Duration
+	MinRetryDelay *time.Duration
 
 	// MaxRetryDelay 재시도 대기 시간의 최대값입니다.
 	//
 	// 설정 규칙:
+	//   - nil: 기본값으로 보정
 	//   - 0: 기본값으로 보정
 	//   - MinRetryDelay 미만: 최대 재시도 대기 시간은 최소 재시도 대기 시간보다 작을 수 없으므로 MinRetryDelay로 보정
 	//   - 그 외: 지수 백오프가 진행되더라도 재시도 대기 시간이 이 설정값을 초과하지 않도록 제한
-	MaxRetryDelay time.Duration
+	MaxRetryDelay *time.Duration
 
 	// ========================================
 	// 응답 검증 및 제한
@@ -159,10 +162,11 @@ type Config struct {
 	// MaxBytes HTTP 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
 	//
 	// 설정 규칙:
+	//   - nil: 기본값으로 보정
 	//   - NoLimit(-1): 크기 제한을 적용하지 않음 (주의: 메모리 고갈 위험 있음)
 	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값으로 보정
 	//   - 양수: 지정된 크기만큼 HTTP 응답 본문의 허용 크기를 제한
-	MaxBytes int64
+	MaxBytes *int64
 
 	// DisableStatusCodeValidation HTTP 응답 상태 코드 검증 사용 여부를 제어합니다.
 	//
@@ -247,13 +251,13 @@ func (cfg *Config) applyDefaults() {
 	}
 
 	// 최대 재시도 횟수를 정규화합니다.
-	cfg.MaxRetries = normalizeMaxRetries(cfg.MaxRetries)
+	normalizePtr(&cfg.MaxRetries, 0, normalizeMaxRetries)
 
 	// 재시도 대기 시간의 최소값과 최대값을 정규화합니다.
-	cfg.MinRetryDelay, cfg.MaxRetryDelay = normalizeRetryDelays(cfg.MinRetryDelay, cfg.MaxRetryDelay)
+	normalizePtrPair(&cfg.MinRetryDelay, &cfg.MaxRetryDelay, 1*time.Second, defaultMaxRetryDelay, normalizeRetryDelays)
 
 	// HTTP 응답 본문의 최대 허용 크기를 정규화합니다.
-	cfg.MaxBytes = normalizeByteLimit(cfg.MaxBytes)
+	normalizePtr(&cfg.MaxBytes, defaultMaxBytes, normalizeByteLimit)
 }
 
 // New 주요 설정값(재시도 횟수, 지연 시간, 본문 크기 제한)만으로 빠르고 간편하게 Fetcher를 생성합니다.
@@ -273,10 +277,10 @@ func (cfg *Config) applyDefaults() {
 //   - Fetcher: 구성된 Fetcher 체인 인터페이스
 func New(maxRetries int, minRetryDelay time.Duration, maxBytes int64, opts ...Option) Fetcher {
 	config := Config{
-		MaxRetries:    maxRetries,
-		MinRetryDelay: minRetryDelay,
+		MaxRetries:    &maxRetries,
+		MinRetryDelay: &minRetryDelay,
 
-		MaxBytes: maxBytes,
+		MaxBytes: &maxBytes,
 	}
 	config.applyDefaults()
 
@@ -373,7 +377,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	// 2단계: HTTP 응답 본문의 크기 제한 미들웨어
 	// ========================================
-	f = NewMaxBytesFetcher(f, cfg.MaxBytes)
+	f = NewMaxBytesFetcher(f, *cfg.MaxBytes)
 
 	// ========================================
 	// 3단계: HTTP 응답 상태 코드 검증 미들웨어
@@ -398,7 +402,7 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	// 5단계: HTTP 요청 재시도 수행 미들웨어
 	// ========================================
-	f = NewRetryFetcher(f, cfg.MaxRetries, cfg.MinRetryDelay, cfg.MaxRetryDelay)
+	f = NewRetryFetcher(f, *cfg.MaxRetries, *cfg.MinRetryDelay, *cfg.MaxRetryDelay)
 
 	// ========================================
 	// 6단계: User-Agent 주입 미들웨어
