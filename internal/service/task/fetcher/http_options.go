@@ -204,6 +204,27 @@ func WithDisableTransportCaching(disable bool) Option {
 // 이 옵션은 고급 사용자를 위한 것으로, 표준 옵션으로 제공되지 않는 특수한 Transport 설정이 필요할 때 사용합니다.
 // 예를 들어, 커스텀 Dialer, 특수한 TLS 설정, 또는 테스트용 모의(Mock) Transport를 주입할 수 있습니다.
 //
+// ⚠️ 중요: 커넥션 풀링 성능 저하 주의
+//
+// WithTransport와 다른 Transport 설정 옵션(WithProxy, WithMaxIdleConns, WithTLSHandshakeTimeout 등)을
+// 함께 사용하면 매번 새로운 커넥션 풀이 생성되어 성능이 크게 저하됩니다.
+//
+// 권장 사용법:
+//   - Transport 설정이 필요하면 WithTransport 없이 옵션만 사용 (내부 캐싱 활용)
+//   - WithTransport 사용 시 모든 설정을 완료한 Transport를 주입
+//
+// 참고: WithTimeout은 http.Client 설정이므로 이 제약에 해당하지 않습니다.
+//
+// 매개변수:
+//   - transport: 사용할 http.RoundTripper 구현체 (일반적으로 *http.Transport 또는 테스트용 Mock)
+//
+// 주의사항:
+//   - *http.Transport가 아닌 RoundTripper를 제공하면서 Transport 관련 옵션을 함께 사용하면,
+//     Do() 호출 시 ErrUnsupportedTransport 에러가 반환됩니다.
+//   - 옵션 없이 사용하면 제공된 RoundTripper를 그대로 사용하며 정상 동작합니다.
+//   - Transport 캐싱이 비활성화되므로 성능 최적화 효과가 감소할 수 있습니다.
+//   - 일반적인 경우에는 표준 옵션(WithProxy, WithMaxIdleConns 등)을 사용하는 것을 권장합니다.
+//
 // 타입별 동작 방식:
 //
 //  1. *http.Transport 타입 (일반적인 경우):
@@ -224,16 +245,6 @@ func WithDisableTransportCaching(disable bool) Option {
 //   - 외부에서 주입된 Transport는 소유권과 생명주기를 fetcher가 제어할 수 없습니다.
 //   - 다른 곳에서도 동일한 Transport를 사용 중일 수 있어, 캐시 관리 로직이 리소스를 정리하면 예상치 못한 부작용이 발생할 수 있습니다.
 //   - 따라서 격리 모드로 동작하여 사용자가 직접 Transport의 생명주기를 관리하도록 합니다.
-//
-// 매개변수:
-//   - transport: 사용할 http.RoundTripper 구현체 (일반적으로 *http.Transport 또는 테스트용 Mock)
-//
-// 주의사항:
-//   - *http.Transport가 아닌 RoundTripper를 제공하면서 Transport 관련 옵션을 함께 사용하면,
-//     Do() 호출 시 ErrUnsupportedTransport 에러가 반환됩니다.
-//   - 옵션 없이 사용하면 제공된 RoundTripper를 그대로 사용하며 정상 동작합니다.
-//   - Transport 캐싱이 비활성화되므로 성능 최적화 효과가 감소할 수 있습니다.
-//   - 일반적인 경우에는 표준 옵션(WithProxy, WithMaxIdleConns 등)을 사용하는 것을 권장합니다.
 func WithTransport(transport http.RoundTripper) Option {
 	return func(h *HTTPFetcher) {
 		h.client.Transport = transport

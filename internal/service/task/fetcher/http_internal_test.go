@@ -4,6 +4,8 @@ import (
 	"container/list"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -353,11 +355,48 @@ func TestCreateTransport_Internal(t *testing.T) {
 	})
 
 	t.Run("NoProxy Constant", func(t *testing.T) {
-		// Verify that NoProxy constant results in nil Proxy field
+		// [수정됨] NoProxy 설정 시 Transport.Proxy는 nil이 아니어야 함 (환경 변수 무시를 위해)
+		// 대신 호출 시 nil을 반환하는 함수여야 합니다.
 		cfg := transportConfig{proxyURL: stringPtr(NoProxy)}
+
+		// 환경 변수 설정 (테스트를 위해 잠시 설정)
+		os.Setenv("HTTP_PROXY", "http://env-proxy-should-be-ignored:8080")
+		defer os.Unsetenv("HTTP_PROXY")
+
 		tr, err := newTransport(nil, cfg)
 		require.NoError(t, err)
-		assert.Nil(t, tr.Proxy, "Transport.Proxy should be nil when NoProxy is used")
+
+		// 1. Proxy 필드 자체가 nil이면 안 됨 (nil이면 환경 변수 사용함)
+		assert.NotNil(t, tr.Proxy, "Transport.Proxy 함수는 nil이 아니어야 합니다 (환경 변수 무시 설정)")
+
+		// 2. Proxy 함수 호출 결과가 nil이어야 함 (직접 연결)
+		reqUrl, _ := url.Parse("http://example.com")
+		proxyUrl, err := tr.Proxy(&http.Request{URL: reqUrl})
+		require.NoError(t, err)
+		assert.Nil(t, proxyUrl, "NoProxy 설정 시 ProxyURL은 nil이어야 합니다")
+	})
+
+	t.Run("Environment Fallback", func(t *testing.T) {
+		// 시나리오: ProxyURL 설정을 안 했을 때(nil), 환경 변수를 따라가는지 확인
+		os.Setenv("HTTP_PROXY", "http://env-fallback:8080")
+		defer os.Unsetenv("HTTP_PROXY")
+
+		cfg := transportConfig{proxyURL: nil}
+		tr, err := newTransport(nil, cfg)
+		require.NoError(t, err)
+
+		// 기본값(nil)이어야 환경 변수 동작이 활성화됨
+		if tr.Proxy != nil {
+			// Proxy 필드가 nil이 아닐 수도 있음 (Go 버전에 따라 다를 수 있으나, 보통 nil임)
+			// 핵심은 동작 여부
+		}
+
+		reqUrl, _ := url.Parse("http://example.com")
+		proxyUrl, err := tr.Proxy(&http.Request{URL: reqUrl})
+		require.NoError(t, err)
+
+		require.NotNil(t, proxyUrl, "환경 변수가 설정되어 있으면 프록시 URL이 반환되어야 합니다")
+		assert.Equal(t, "http://env-fallback:8080", proxyUrl.String())
 	})
 }
 

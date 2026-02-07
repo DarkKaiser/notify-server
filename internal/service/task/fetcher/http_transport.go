@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 var (
@@ -310,9 +312,11 @@ func newTransport(baseTr *http.Transport, cfg transportConfig) (*http.Transport,
 		if *cfg.proxyURL == NoProxy || *cfg.proxyURL == "" {
 			// 프록시 비활성화:
 			// NoProxy("DIRECT") 또는 빈 문자열("")이 설정된 경우, 프록시를 완전히 비활성화합니다.
-			// Transport.Proxy를 nil로 설정하여 환경 변수(HTTP_PROXY, HTTPS_PROXY)도 무시하고,
-			// 모든 요청이 프록시 없이 대상 서버로 직접 연결되도록 합니다.
-			newTr.Proxy = nil
+			//
+			// [주의] Transport.Proxy를 nil로 설정하면 Go 기본 동작에 따라 환경 변수(HTTP_PROXY 등)를 참조하게 됩니다.
+			// 따라서 환경 변수마저 무시하고 강제로 Direct 연결을 하려면, 항상 nil을 반환하는 함수를 할당해야 합니다.
+			// http.ProxyURL(nil)이 바로 이러한 함수(항상 nil 반환)를 생성해줍니다.
+			newTr.Proxy = http.ProxyURL(nil)
 		} else {
 			// 프록시 URL 설정:
 			// - 제공된 URL을 파싱하여 프록시 서버로 설정합니다.
@@ -674,6 +678,40 @@ func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
 
 		return nil
 	}
+
+	// ⚠️ 성능 경고 로그
+	//
+	// WithTransport + 다른 Transport 설정 옵션 동시 사용 시 성능 경고:
+	//   - 원본 보호를 위해 Transport 복제 → 매번 새로운 커넥션 풀 생성 (캐싱 비활성화)
+	//   - 해결: WithTransport 없이 옵션만 사용 또는 모든 설정 완료 후 Transport 주입
+	//   - 로그 필드로 어떤 설정이 복제를 유발했는지 추적
+	fields := applog.Fields{}
+	if f.proxyURL != nil {
+		fields["proxy_changed"] = true
+	}
+	if f.maxIdleConns != nil && tr.MaxIdleConns != *f.maxIdleConns {
+		fields["max_idle_conns_changed"] = true
+	}
+	if f.maxIdleConnsPerHost != nil && tr.MaxIdleConnsPerHost != *f.maxIdleConnsPerHost {
+		fields["max_idle_conns_per_host_changed"] = true
+	}
+	if f.maxConnsPerHost != nil && tr.MaxConnsPerHost != *f.maxConnsPerHost {
+		fields["max_conns_per_host_changed"] = true
+	}
+	if f.tlsHandshakeTimeout != nil && tr.TLSHandshakeTimeout != *f.tlsHandshakeTimeout {
+		fields["tls_handshake_timeout_changed"] = true
+	}
+	if f.responseHeaderTimeout != nil && tr.ResponseHeaderTimeout != *f.responseHeaderTimeout {
+		fields["response_header_timeout_changed"] = true
+	}
+	if f.idleConnTimeout != nil && tr.IdleConnTimeout != *f.idleConnTimeout {
+		fields["idle_conn_timeout_changed"] = true
+	}
+	applog.WithComponent(component).
+		WithFields(fields).
+		Warn("외부 Transport 주입 시 추가 설정 옵션 적용으로 인한 성능 저하 감지: " +
+			"Copy-on-Write 전략에 따라 Transport가 복제되어 커넥션 풀 재사용이 불가능합니다. " +
+			"권장 사항: 내부 캐싱 활용을 위해 WithTransport 옵션 제거 또는 사전 구성된 Transport 주입")
 
 	// Transport 설정 객체 생성
 	cfg := f.toTransportConfig()
