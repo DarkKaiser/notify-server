@@ -7,7 +7,79 @@ import (
 // Config Fetcher 체인을 구성하기 위한 모든 설정 옵션을 정의하는 구조체입니다.
 type Config struct {
 	// ========================================
-	// 네트워크 연결 설정
+	// 프록시 설정
+	// ========================================
+
+	// ProxyURL 프록시 URL입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (환경 변수 HTTP_PROXY, HTTPS_PROXY를 따름)
+	//   - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+	//   - "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
+	ProxyURL *string
+
+	// ========================================
+	// HTTP 클라이언트 동작
+	// ========================================
+
+	// MaxRedirects HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 리다이렉트 허용 안 함
+	//   - 양수: 지정된 횟수만큼 리다이렉트 허용
+	//   - 음수: 기본값으로 보정
+	MaxRedirects *int
+
+	// EnableUserAgentRandomization 요청마다 User-Agent를 랜덤으로 변경할지 여부를 제어합니다.
+	//
+	// 설정 값:
+	//   - false (기본값): 기능 비활성화 (원본 요청의 User-Agent 사용)
+	//   - true: 기능 활성화 (UserAgents 또는 내장 목록에서 랜덤 선택, 봇 차단 우회에 유용)
+	EnableUserAgentRandomization bool
+
+	// UserAgents User-Agent를 랜덤으로 선택하여 주입할 때 사용할 User-Agent 문자열 목록입니다.
+	//
+	// 설정 값:
+	//   - nil/빈 슬라이스: 내장된 User-Agent 목록에서 랜덤으로 선택하여 주입
+	//   - 값 지정: 지정된 목록에서 랜덤으로 선택하여 주입
+	UserAgents []string
+
+	// ========================================
+	// 연결 풀(Connection Pool) 관리
+	// ========================================
+
+	// MaxIdleConns 전체 유휴 연결의 최대 개수입니다.
+	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxIdleConns *int
+
+	// MaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수입니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: net/http가 기본값 2로 해석
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxIdleConnsPerHost *int
+
+	// MaxConnsPerHost 호스트당 최대 연결 개수입니다.
+	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
+	//
+	// 설정 규칙:
+	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
+	//   - 0: 무제한
+	//   - 양수: 지정된 개수로 제한
+	//   - 음수: 기본값으로 보정
+	MaxConnsPerHost *int
+
+	// ========================================
+	// 네트워크 타임아웃
 	// ========================================
 
 	// Timeout HTTP 요청 전체에 대한 타임아웃입니다.
@@ -51,74 +123,6 @@ type Config struct {
 	//   - 음수: 기본값으로 보정
 	IdleConnTimeout *time.Duration
 
-	// ProxyURL 프록시 URL입니다.
-	//
-	// 설정 규칙:
-	//   - nil: 설정하지 않음 (환경 변수 HTTP_PROXY, HTTPS_PROXY를 따름)
-	//   - URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
-	//   - "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
-	ProxyURL *string
-
-	// ========================================
-	// 연결 풀(Connection Pool) 관리
-	// ========================================
-
-	// MaxIdleConns 전체 유휴 연결의 최대 개수입니다.
-	// 모든 호스트에 대해 유지할 수 있는 유휴 연결의 최대 개수를 제한합니다.
-	//
-	// 설정 규칙:
-	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
-	//   - 0: 무제한
-	//   - 양수: 지정된 개수로 제한
-	//   - 음수: 기본값으로 보정
-	MaxIdleConns *int
-
-	// MaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수입니다.
-	//
-	// 설정 규칙:
-	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
-	//   - 0: net/http가 기본값 2로 해석
-	//   - 양수: 지정된 개수로 제한
-	//   - 음수: 기본값으로 보정
-	MaxIdleConnsPerHost *int
-
-	// MaxConnsPerHost 호스트당 최대 연결 개수입니다.
-	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
-	//
-	// 설정 규칙:
-	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
-	//   - 0: 무제한
-	//   - 양수: 지정된 개수로 제한
-	//   - 음수: 기본값으로 보정
-	MaxConnsPerHost *int
-
-	// ========================================
-	// HTTP 클라이언트 동작
-	// ========================================
-
-	// EnableUserAgentRandomization 요청마다 User-Agent를 랜덤으로 변경할지 여부를 제어합니다.
-	//
-	// 설정 값:
-	//   - false (기본값): 기능 비활성화 (원본 요청의 User-Agent 사용)
-	//   - true: 기능 활성화 (UserAgents 또는 내장 목록에서 랜덤 선택, 봇 차단 우회에 유용)
-	EnableUserAgentRandomization bool
-
-	// UserAgents User-Agent를 랜덤으로 선택하여 주입할 때 사용할 User-Agent 문자열 목록입니다.
-	//
-	// 설정 값:
-	//   - nil/빈 슬라이스: 내장된 User-Agent 목록에서 랜덤으로 선택하여 주입
-	//   - 값 지정: 지정된 목록에서 랜덤으로 선택하여 주입
-	UserAgents []string
-
-	// MaxRedirects HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수입니다.
-	//
-	// 설정 규칙:
-	//   - nil: 설정하지 않음 (HTTPFetcher 기본값 사용)
-	//   - 0: 리다이렉트 허용 안 함
-	//   - 양수: 지정된 횟수만큼 리다이렉트 허용
-	//   - 음수: 기본값으로 보정
-	MaxRedirects *int
-
 	// ========================================
 	// 재시도(Retry) 정책
 	// ========================================
@@ -150,6 +154,14 @@ type Config struct {
 	// 응답 검증 및 제한
 	// ========================================
 
+	// MaxBytes HTTP 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
+	//
+	// 설정 규칙:
+	//   - NoLimit(-1): 크기 제한을 적용하지 않음 (주의: 메모리 고갈 위험 있음)
+	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값으로 보정
+	//   - 양수: 지정된 크기만큼 HTTP 응답 본문의 허용 크기를 제한
+	MaxBytes int64
+
 	// DisableStatusCodeValidation HTTP 응답 상태 코드 검증 사용 여부를 제어합니다.
 	//
 	// 설정 값:
@@ -170,14 +182,6 @@ type Config struct {
 	//   - nil/빈 슬라이스: MIME 타입 검증 생략
 	//   - 값 지정: "text/html" 같이 파라미터를 제외한 순수 MIME 타입만 허용 (대소문자 구분 안 함)
 	AllowedMimeTypes []string
-
-	// MaxBytes HTTP 응답 본문의 최대 허용 크기입니다. (단위: 바이트)
-	//
-	// 설정 규칙:
-	//   - NoLimit(-1): 크기 제한을 적용하지 않음 (주의: 메모리 고갈 위험 있음)
-	//   - 0 이하: 유효하지 않은 값으로 간주하여 기본값으로 보정
-	//   - 양수: 지정된 크기만큼 HTTP 응답 본문의 허용 크기를 제한
-	MaxBytes int64
 
 	// ========================================
 	// 미들웨어 체인 구성
@@ -200,6 +204,26 @@ type Config struct {
 
 // applyDefaults Config의 설정값들을 검증하고, 미설정되거나 유효하지 않은 값을 안전한 기본값으로 보정합니다.
 func (cfg *Config) applyDefaults() {
+	// 최대 리다이렉트 횟수를 정규화합니다.
+	if cfg.MaxRedirects != nil {
+		normalizePtr(&cfg.MaxRedirects, defaultMaxRedirects, normalizeMaxRedirects)
+	}
+
+	// 전체 유휴 연결의 최대 개수를 정규화합니다.
+	if cfg.MaxIdleConns != nil {
+		normalizePtr(&cfg.MaxIdleConns, defaultMaxIdleConns, normalizeMaxIdleConns)
+	}
+
+	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
+	if cfg.MaxIdleConnsPerHost != nil {
+		normalizePtr(&cfg.MaxIdleConnsPerHost, 0, normalizeMaxIdleConnsPerHost)
+	}
+
+	// 호스트당 최대 연결 개수를 정규화합니다.
+	if cfg.MaxConnsPerHost != nil {
+		normalizePtr(&cfg.MaxConnsPerHost, 0, normalizeMaxConnsPerHost)
+	}
+
 	// HTTP 요청 전체에 대한 타임아웃을 정규화합니다.
 	if cfg.Timeout != nil {
 		normalizePtr(&cfg.Timeout, defaultTimeout, normalizeTimeout)
@@ -218,26 +242,6 @@ func (cfg *Config) applyDefaults() {
 	// 유휴 연결 타임아웃을 정규화합니다.
 	if cfg.IdleConnTimeout != nil {
 		normalizePtr(&cfg.IdleConnTimeout, defaultIdleConnTimeout, normalizeIdleConnTimeout)
-	}
-
-	// 전체 유휴 연결의 최대 개수를 정규화합니다.
-	if cfg.MaxIdleConns != nil {
-		normalizePtr(&cfg.MaxIdleConns, defaultMaxIdleConns, normalizeMaxIdleConns)
-	}
-
-	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
-	if cfg.MaxIdleConnsPerHost != nil {
-		normalizePtr(&cfg.MaxIdleConnsPerHost, 0, normalizeMaxIdleConnsPerHost)
-	}
-
-	// 호스트당 최대 연결 개수를 정규화합니다.
-	if cfg.MaxConnsPerHost != nil {
-		normalizePtr(&cfg.MaxConnsPerHost, 0, normalizeMaxConnsPerHost)
-	}
-
-	// 최대 리다이렉트 횟수를 정규화합니다.
-	if cfg.MaxRedirects != nil {
-		normalizePtr(&cfg.MaxRedirects, defaultMaxRedirects, normalizeMaxRedirects)
 	}
 
 	// 최대 재시도 횟수를 정규화합니다.
@@ -308,6 +312,31 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// ========================================
 	var mergedOpts []Option
 
+	// 프록시 URL 설정
+	if cfg.ProxyURL != nil {
+		mergedOpts = append(mergedOpts, WithProxy(*cfg.ProxyURL))
+	}
+
+	// HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수 설정
+	if cfg.MaxRedirects != nil {
+		mergedOpts = append(mergedOpts, WithMaxRedirects(*cfg.MaxRedirects))
+	}
+
+	// 전체 유휴 연결의 최대 개수 설정
+	if cfg.MaxIdleConns != nil {
+		mergedOpts = append(mergedOpts, WithMaxIdleConns(*cfg.MaxIdleConns))
+	}
+
+	// 호스트당 유휴 연결의 최대 개수 설정
+	if cfg.MaxIdleConnsPerHost != nil {
+		mergedOpts = append(mergedOpts, WithMaxIdleConnsPerHost(*cfg.MaxIdleConnsPerHost))
+	}
+
+	// 호스트당 최대 연결 개수 설정
+	if cfg.MaxConnsPerHost != nil {
+		mergedOpts = append(mergedOpts, WithMaxConnsPerHost(*cfg.MaxConnsPerHost))
+	}
+
 	// HTTP 요청 전체에 대한 타임아웃 설정
 	if cfg.Timeout != nil {
 		mergedOpts = append(mergedOpts, WithTimeout(*cfg.Timeout))
@@ -326,31 +355,6 @@ func NewFromConfig(cfg Config, opts ...Option) Fetcher {
 	// 유휴 연결 타임아웃 설정
 	if cfg.IdleConnTimeout != nil {
 		mergedOpts = append(mergedOpts, WithIdleConnTimeout(*cfg.IdleConnTimeout))
-	}
-
-	// 프록시 URL 설정
-	if cfg.ProxyURL != nil {
-		mergedOpts = append(mergedOpts, WithProxy(*cfg.ProxyURL))
-	}
-
-	// 전체 유휴 연결의 최대 개수 설정
-	if cfg.MaxIdleConns != nil {
-		mergedOpts = append(mergedOpts, WithMaxIdleConns(*cfg.MaxIdleConns))
-	}
-
-	// 호스트당 유휴 연결의 최대 개수 설정
-	if cfg.MaxIdleConnsPerHost != nil {
-		mergedOpts = append(mergedOpts, WithMaxIdleConnsPerHost(*cfg.MaxIdleConnsPerHost))
-	}
-
-	// 호스트당 최대 연결 개수 설정
-	if cfg.MaxConnsPerHost != nil {
-		mergedOpts = append(mergedOpts, WithMaxConnsPerHost(*cfg.MaxConnsPerHost))
-	}
-
-	// HTTP 클라이언트의 최대 리다이렉트(3xx) 횟수 설정
-	if cfg.MaxRedirects != nil {
-		mergedOpts = append(mergedOpts, WithMaxRedirects(*cfg.MaxRedirects))
 	}
 
 	// Transport 캐싱 사용 여부 설정

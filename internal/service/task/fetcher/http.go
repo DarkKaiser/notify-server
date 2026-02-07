@@ -6,6 +6,16 @@ import (
 )
 
 const (
+	// NoProxy 프록시를 명시적으로 비활성화하는 특수 상수입니다.
+	// WithProxy(NoProxy) 호출 시 환경 변수를 무시하고 직접 연결합니다.
+	NoProxy = "DIRECT"
+
+	// defaultMaxRedirects HTTP 클라이언트의 기본 최대 리다이렉트 횟수입니다.
+	defaultMaxRedirects = 10
+
+	// defaultMaxIdleConns 전체 유휴 연결의 기본 최대 개수입니다.
+	defaultMaxIdleConns = 100
+
 	// defaultTimeout HTTP 요청 전체에 대한 기본 타임아웃입니다.
 	defaultTimeout = 30 * time.Second
 
@@ -15,18 +25,8 @@ const (
 	// defaultIdleConnTimeout 유휴 연결이 닫히기 전 유지되는 기본 타임아웃입니다.
 	defaultIdleConnTimeout = 90 * time.Second
 
-	// defaultMaxIdleConns 전체 유휴 연결의 기본 최대 개수입니다.
-	defaultMaxIdleConns = 100
-
 	// defaultMaxTransportCacheSize Transport 캐시의 기본 최대 개수입니다.
 	defaultMaxTransportCacheSize = 100
-
-	// defaultMaxRedirects HTTP 클라이언트의 기본 최대 리다이렉트 횟수입니다.
-	defaultMaxRedirects = 10
-
-	// NoProxy 프록시를 명시적으로 비활성화하는 특수 상수입니다.
-	// WithProxy(NoProxy) 호출 시 환경 변수를 무시하고 직접 연결합니다.
-	NoProxy = "DIRECT"
 )
 
 // HTTPFetcher 기본 HTTP 클라이언트 미들웨어입니다.
@@ -62,26 +62,6 @@ type HTTPFetcher struct {
 	initErr error
 
 	// ========================================
-	// 네트워크 타임아웃(Timeout)
-	// ========================================
-
-	// @@@@@
-	// tlsHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
-	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
-	tlsHandshakeTimeout time.Duration
-
-	// @@@@@
-	// responseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
-	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
-	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
-	responseHeaderTimeout time.Duration
-
-	// @@@@@
-	// idleConnTimeout 유휴 연결 타임아웃입니다.
-	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
-	idleConnTimeout time.Duration
-
-	// ========================================
 	// 프록시 설정
 	// ========================================
 
@@ -92,7 +72,7 @@ type HTTPFetcher struct {
 	proxyURL string
 
 	// ========================================
-	// 연결 풀(Connection Pool) 설정
+	// 연결 풀(Connection Pool) 관리
 	// ========================================
 
 	// @@@@@
@@ -101,16 +81,32 @@ type HTTPFetcher struct {
 	// 0이면 무제한입니다.
 	maxIdleConns int
 
+	// maxIdleConnsPerHost 호스트(도메인)당 최대 유휴(Idle) 연결 개수입니다.
+	// 0이면 기본값(2)을 사용하거나 maxIdleConns를 따릅니다.
+	maxIdleConnsPerHost int
+
 	// @@@@@
 	// maxConnsPerHost 호스트(도메인)당 최대 연결 개수입니다.
 	// 동일한 호스트에 대해 동시에 유지할 수 있는 최대 연결 개수를 제한합니다.
 	// 0이면 무제한입니다.
 	maxConnsPerHost int
 
-	// @@@@@
-	// maxIdleConnsPerHost 호스트(도메인)당 최대 유휴(Idle) 연결 개수입니다.
-	// 0이면 기본값(2)을 사용하거나 maxIdleConns를 따릅니다.
-	maxIdleConnsPerHost int
+	// ========================================
+	// 네트워크 타임아웃(Timeout)
+	// ========================================
+
+	// tlsHandshakeTimeout TLS 핸드셰이크 타임아웃입니다.
+	// HTTPS 연결 시 SSL/TLS 협상에 허용되는 최대 시간입니다.
+	tlsHandshakeTimeout time.Duration
+
+	// responseHeaderTimeout HTTP 응답 헤더 대기 타임아웃입니다.
+	// 요청 전송 후 서버로부터 응답 헤더를 받을 때까지 허용되는 최대 시간입니다.
+	// 본문(Body) 데이터 수신 시간은 포함되지 않습니다.
+	responseHeaderTimeout time.Duration
+
+	// idleConnTimeout 유휴 연결 타임아웃입니다.
+	// 연결 풀에서 사용되지 않는 연결이 닫히기 전까지 유지되는 최대 시간입니다.
+	idleConnTimeout time.Duration
 
 	// ========================================
 	// 최적화 설정
@@ -165,13 +161,20 @@ var _ Fetcher = (*HTTPFetcher)(nil)
 //   - Transport 캐싱은 성능 최적화를 위해 기본적으로 활성화됨!
 func NewHTTPFetcher(opts ...Option) *HTTPFetcher {
 	f := &HTTPFetcher{
+		// HTTP 클라이언트 초기화: 기본 설정으로 시작하며, 이후 옵션 적용을 통해 커스터마이징됩니다.
 		client: &http.Client{
+			// 전체 요청 타임아웃 (기본값: 30초)
 			Timeout: defaultTimeout,
 
-			// 연결 풀 공유 (여러 HTTPFetcher가 연결 풀을 공유하여 성능 최적화)
+			// 전역 Transport 사용:
+			// 여러 HTTPFetcher 인스턴스가 동일한 Transport를 공유하여 TCP 연결 풀을 재사용합니다.
+			// 참고: setupTransport()에서 설정 옵션에 따라 재설정될 수 있습니다.
 			Transport: defaultTransport,
 
-			// 리다이렉트 정책: 최대 10회까지 허용하며 Referer 헤더를 자동 설정
+			// 리다이렉트 정책: 3xx 응답 처리 방식을 정의합니다.
+			// - 최대 10회까지 자동으로 리다이렉트를 따라갑니다.
+			// - 각 리다이렉트마다 이전 URL을 Referer 헤더에 자동으로 설정하여 사이트 차단을 방지합니다.
+			// - HTTPS → HTTP 다운그레이드 시 Referer 전송을 차단하여 보안을 유지합니다.
 			CheckRedirect: newCheckRedirectPolicy(defaultMaxRedirects),
 		},
 
@@ -259,7 +262,7 @@ func (h *HTTPFetcher) Do(req *http.Request) (*http.Response, error) {
 //
 // 동작 방식:
 //
-//  1. 전역 기본 Transport (defaultTransport)
+//  1. 전역 Transport (defaultTransport)
 //     - 정리하지 않음
 //     - 이유: 애플리케이션 전체에서 공유하는 싱글톤 리소스이므로, 닫으면 다른 모든 클라이언트의 연결이 끊어집니다.
 //
@@ -284,7 +287,7 @@ func (h *HTTPFetcher) Close() error {
 		return nil
 	}
 
-	// 2. 전역 기본 Transport 확인
+	// 2. 전역 Transport 확인
 	if h.client.Transport == defaultTransport {
 		return nil
 	}
@@ -305,6 +308,70 @@ func (h *HTTPFetcher) Close() error {
 	}
 
 	return nil
+}
+
+// normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 기본값(defaultMaxRedirects)으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 리다이렉트 허용 안 함
+//   - 양수: 지정된 횟수만큼 리다이렉트 허용
+func normalizeMaxRedirects(maxRedirects int) int {
+	if maxRedirects < 0 {
+		return defaultMaxRedirects
+	}
+	return maxRedirects
+}
+
+// normalizeMaxIdleConns 전체 유휴 연결 최대 개수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 기본값(defaultMaxIdleConns)으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 무제한
+//   - 양수: 지정된 개수로 제한
+func normalizeMaxIdleConns(val int) int {
+	if val < 0 {
+		return defaultMaxIdleConns
+	}
+	return val
+}
+
+// normalizeMaxIdleConnsPerHost 호스트당 유휴 연결 최대 개수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 0으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: net/http가 기본값 2로 해석
+//   - 양수: 지정된 개수로 제한
+func normalizeMaxIdleConnsPerHost(val int) int {
+	if val < 0 {
+		return 0
+	}
+	return val
+}
+
+// normalizeMaxConnsPerHost 호스트당 최대 연결 개수를 정규화합니다.
+//
+// 정규화 규칙:
+//   - 음수: 0으로 보정
+//   - 0 이상: 그대로 유지
+//
+// 동작 방식:
+//   - 0: 무제한
+//   - 양수: 지정된 개수로 제한
+func normalizeMaxConnsPerHost(val int) int {
+	if val < 0 {
+		return 0
+	}
+	return val
 }
 
 // normalizeTimeout HTTP 요청 전체에 대한 타임아웃을 정규화합니다.
@@ -369,70 +436,6 @@ func normalizeIdleConnTimeout(val time.Duration) time.Duration {
 		return defaultIdleConnTimeout
 	}
 	return val
-}
-
-// normalizeMaxIdleConns 전체 유휴 연결 최대 개수를 정규화합니다.
-//
-// 정규화 규칙:
-//   - 음수: 기본값(defaultMaxIdleConns)으로 보정
-//   - 0 이상: 그대로 유지
-//
-// 동작 방식:
-//   - 0: 무제한
-//   - 양수: 지정된 개수로 제한
-func normalizeMaxIdleConns(val int) int {
-	if val < 0 {
-		return defaultMaxIdleConns
-	}
-	return val
-}
-
-// normalizeMaxIdleConnsPerHost 호스트당 유휴 연결 최대 개수를 정규화합니다.
-//
-// 정규화 규칙:
-//   - 음수: 0으로 보정
-//   - 0 이상: 그대로 유지
-//
-// 동작 방식:
-//   - 0: net/http가 기본값 2로 해석
-//   - 양수: 지정된 개수로 제한
-func normalizeMaxIdleConnsPerHost(val int) int {
-	if val < 0 {
-		return 0
-	}
-	return val
-}
-
-// normalizeMaxConnsPerHost 호스트당 최대 연결 개수를 정규화합니다.
-//
-// 정규화 규칙:
-//   - 음수: 0으로 보정
-//   - 0 이상: 그대로 유지
-//
-// 동작 방식:
-//   - 0: 무제한
-//   - 양수: 지정된 개수로 제한
-func normalizeMaxConnsPerHost(val int) int {
-	if val < 0 {
-		return 0
-	}
-	return val
-}
-
-// normalizeMaxRedirects 최대 리다이렉트 횟수를 정규화합니다.
-//
-// 정규화 규칙:
-//   - 음수: 기본값(defaultMaxRedirects)으로 보정
-//   - 0 이상: 그대로 유지
-//
-// 동작 방식:
-//   - 0: 리다이렉트 허용 안 함
-//   - 양수: 지정된 횟수만큼 리다이렉트 허용
-func normalizeMaxRedirects(maxRedirects int) int {
-	if maxRedirects < 0 {
-		return defaultMaxRedirects
-	}
-	return maxRedirects
 }
 
 // transport 현재 HTTPFetcher가 사용 중인 Transport(http.RoundTripper)를 반환합니다.

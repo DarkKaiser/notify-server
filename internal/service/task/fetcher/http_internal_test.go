@@ -64,20 +64,26 @@ func TestTransportCache_Internal(t *testing.T) {
 
 		// Fill cache to limit
 		for i := 0; i < limit; i++ {
-			key := transportCacheKey{maxIdleConns: i}
-			_, err := getSharedTransport(key)
+			cfg := transportConfig{maxIdleConns: intPtr(i)}
+			_, err := getSharedTransport(cfg)
 			require.NoError(t, err)
 		}
 
 		require.Equal(t, limit, transportCacheLRU.Len())
 
 		// Add one more -> Should evict the oldest (index 0)
-		key := transportCacheKey{maxIdleConns: limit + 1}
-		_, err := getSharedTransport(key)
+		cfg := transportConfig{maxIdleConns: intPtr(limit + 1)}
+		_, err := getSharedTransport(cfg)
 		require.NoError(t, err)
 
+		// Check eviction (Oldest was 0)
+		// checkKey removed as it was unused and replaced by oldestKey logic below.
+
+		oldestCfg := transportConfig{maxIdleConns: intPtr(0)}
+		oldestKey := oldestCfg.ToCacheKey()
+
 		transportCacheMu.RLock()
-		_, ok := transportCache[transportCacheKey{maxIdleConns: 0}]
+		_, ok := transportCache[oldestKey]
 		assert.False(t, ok, "Oldest item should be evicted")
 		transportCacheMu.RUnlock()
 	})
@@ -95,18 +101,18 @@ func TestTransportCache_Internal(t *testing.T) {
 
 		// 1. Fill with Direct connections
 		for i := 0; i < limit-2; i++ {
-			key := transportCacheKey{maxIdleConns: i} // Direct (no proxy)
-			_, err := getSharedTransport(key)
+			cfg := transportConfig{maxIdleConns: intPtr(i)} // Direct (no proxy)
+			_, err := getSharedTransport(cfg)
 			require.NoError(t, err)
 		}
 
 		// 2. Add Proxy connections (Recently used)
-		proxyKey1 := transportCacheKey{proxyURL: "http://proxy1.local", maxIdleConns: 9991}
-		proxyKey2 := transportCacheKey{proxyURL: "http://proxy2.local", maxIdleConns: 9992}
+		proxyCfg1 := transportConfig{proxyURL: stringPtr("http://proxy1.local"), maxIdleConns: intPtr(9991)}
+		proxyCfg2 := transportConfig{proxyURL: stringPtr("http://proxy2.local"), maxIdleConns: intPtr(9992)}
 
-		_, err := getSharedTransport(proxyKey1)
+		_, err := getSharedTransport(proxyCfg1)
 		require.NoError(t, err)
-		_, err = getSharedTransport(proxyKey2)
+		_, err = getSharedTransport(proxyCfg2)
 		require.NoError(t, err)
 
 		// Assert conditions
@@ -116,8 +122,8 @@ func TestTransportCache_Internal(t *testing.T) {
 		// Direct connections are at Back
 
 		// 3. Add one more item to trigger eviction
-		newKey := transportCacheKey{maxIdleConns: 8888}
-		_, err = getSharedTransport(newKey)
+		newCfg := transportConfig{maxIdleConns: intPtr(8888)}
+		_, err = getSharedTransport(newCfg)
 		require.NoError(t, err)
 
 		// Verification:
@@ -138,15 +144,15 @@ func TestTransportCache_Internal(t *testing.T) {
 		transportCacheMu.Unlock()
 
 		// A. Add Proxy connections FIRST (So they become Oldest)
-		pk1 := transportCacheKey{proxyURL: "http://p1", maxIdleConns: 1}
-		pk2 := transportCacheKey{proxyURL: "http://p2", maxIdleConns: 2}
-		_, _ = getSharedTransport(pk1)
-		_, _ = getSharedTransport(pk2)
+		pCfg1 := transportConfig{proxyURL: stringPtr("http://p1"), maxIdleConns: intPtr(1)}
+		pCfg2 := transportConfig{proxyURL: stringPtr("http://p2"), maxIdleConns: intPtr(2)}
+		_, _ = getSharedTransport(pCfg1)
+		_, _ = getSharedTransport(pCfg2)
 
 		// B. Add Direct connections to fill the rest (Newest)
 		for i := 0; i < limit-2; i++ {
-			k := transportCacheKey{maxIdleConns: 100 + i}
-			_, _ = getSharedTransport(k)
+			cfg := transportConfig{maxIdleConns: intPtr(100 + i)}
+			_, _ = getSharedTransport(cfg)
 		}
 
 		// Now:
@@ -154,8 +160,8 @@ func TestTransportCache_Internal(t *testing.T) {
 		// Front (Newest) -> Direct...
 
 		// C. Trigger eviction
-		kNew := transportCacheKey{maxIdleConns: 9999}
-		_, _ = getSharedTransport(kNew)
+		kNewCfg := transportConfig{maxIdleConns: intPtr(9999)}
+		_, _ = getSharedTransport(kNewCfg)
 
 		// D. Verify: pk1 (Oldest Proxy) should be evicted.
 		// Actually, pk1 is the absolute oldest AND a proxy.
@@ -173,30 +179,33 @@ func TestTransportCache_Internal(t *testing.T) {
 		transportCacheMu.Unlock()
 
 		// 1. Add Direct (Will be Absolute Oldest)
-		directOld := transportCacheKey{maxIdleConns: 1000}
-		_, _ = getSharedTransport(directOld)
+		directOldCfg := transportConfig{maxIdleConns: intPtr(1000)}
+		_, _ = getSharedTransport(directOldCfg)
 
 		// 2. Add Proxy (Will be 2nd Oldest)
-		proxyTarget := transportCacheKey{proxyURL: "http://target", maxIdleConns: 2000}
-		_, _ = getSharedTransport(proxyTarget)
+		proxyTargetCfg := transportConfig{proxyURL: stringPtr("http://target"), maxIdleConns: intPtr(2000)}
+		_, _ = getSharedTransport(proxyTargetCfg)
 
 		// 3. Fill the rest with Direct
 		for i := 0; i < limit-2; i++ {
-			k := transportCacheKey{maxIdleConns: 3000 + i}
-			_, _ = getSharedTransport(k)
+			cfg := transportConfig{maxIdleConns: intPtr(3000 + i)}
+			_, _ = getSharedTransport(cfg)
 		}
 
 		// Current State:
 		// Back -> [DirectOld] -> [ProxyTarget] -> ... -> Front
 
 		// 4. Trigger Eviction
-		_, err = getSharedTransport(transportCacheKey{maxIdleConns: 9999})
+		_, err = getSharedTransport(transportConfig{maxIdleConns: intPtr(9999)})
 		require.NoError(t, err)
 
 		// 5. Verify
+		directOldKey := directOldCfg.ToCacheKey()
+		proxyTargetKey := proxyTargetCfg.ToCacheKey()
+
 		transportCacheMu.RLock()
-		_, hasDirect := transportCache[directOld]
-		_, hasProxy := transportCache[proxyTarget]
+		_, hasDirect := transportCache[directOldKey]
+		_, hasProxy := transportCache[proxyTargetKey]
 		transportCacheMu.RUnlock()
 
 		assert.True(t, hasDirect, "Direct connection (Absolute Oldest) should be SPARED by smart eviction")
@@ -217,14 +226,14 @@ func TestTransportCache_Internal(t *testing.T) {
 		for i := 0; i < goroutines; i++ {
 			go func(id int) {
 				// Use a mix of keys to cause collisions and creation
-				key := transportCacheKey{maxIdleConns: id % keyCount}
-				_, err := getSharedTransport(key)
+				cfg := transportConfig{maxIdleConns: intPtr(id % keyCount)}
+				_, err := getSharedTransport(cfg)
 				assert.NoError(t, err)
 
 				// High concurrency read/write
 				for j := 0; j < 100; j++ {
-					k := transportCacheKey{maxIdleConns: j % keyCount}
-					_, _ = getSharedTransport(k)
+					c := transportConfig{maxIdleConns: intPtr(j % keyCount)}
+					_, _ = getSharedTransport(c)
 				}
 				done <- true
 			}(i)
@@ -241,16 +250,16 @@ func TestTransportCache_Internal(t *testing.T) {
 }
 
 func TestParameters_Application(t *testing.T) {
-	key := transportCacheKey{
-		proxyURL:              "http://user:pass@proxy.local:8080",
-		maxIdleConns:          123,
-		maxConnsPerHost:       45,
-		idleConnTimeout:       5 * time.Second,
-		tlsHandshakeTimeout:   2 * time.Second,
-		responseHeaderTimeout: 3 * time.Second,
+	cfg := transportConfig{
+		proxyURL:              stringPtr("http://user:pass@proxy.local:8080"),
+		maxIdleConns:          intPtr(123),
+		maxConnsPerHost:       intPtr(45),
+		idleConnTimeout:       durationPtr(5 * time.Second),
+		tlsHandshakeTimeout:   durationPtr(2 * time.Second),
+		responseHeaderTimeout: durationPtr(3 * time.Second),
 	}
 
-	tr, err := newTransport(nil, key)
+	tr, err := newTransport(nil, cfg)
 	require.NoError(t, err)
 
 	// Verify Proxy
@@ -336,8 +345,8 @@ func TestTransport_Sentinels_DoNotOverride(t *testing.T) {
 func TestCreateTransport_Internal(t *testing.T) {
 	t.Run("Proxy Redaction", func(t *testing.T) {
 		// Verify that invalid proxy URL in key returns a safe error
-		key := transportCacheKey{proxyURL: "http://user:secret@:invalid-port"}
-		_, err := newTransport(nil, key)
+		cfg := transportConfig{proxyURL: stringPtr("http://user:secret@:invalid-port")}
+		_, err := newTransport(nil, cfg)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "프록시 URL")
 		assert.NotContains(t, err.Error(), "secret") // Password should be redacted
@@ -345,8 +354,8 @@ func TestCreateTransport_Internal(t *testing.T) {
 
 	t.Run("NoProxy Constant", func(t *testing.T) {
 		// Verify that NoProxy constant results in nil Proxy field
-		key := transportCacheKey{proxyURL: NoProxy}
-		tr, err := newTransport(nil, key)
+		cfg := transportConfig{proxyURL: stringPtr(NoProxy)}
+		tr, err := newTransport(nil, cfg)
 		require.NoError(t, err)
 		assert.Nil(t, tr.Proxy, "Transport.Proxy should be nil when NoProxy is used")
 	})

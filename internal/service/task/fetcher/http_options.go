@@ -11,6 +11,100 @@ import (
 // 각 Option 함수는 HTTPFetcher의 특정 필드를 수정합니다.
 type Option func(*HTTPFetcher)
 
+// WithProxy 프록시 URL을 설정합니다.
+//
+// 모든 HTTP/HTTPS 요청이 지정된 프록시 서버를 통해 전송됩니다.
+//
+// 매개변수:
+//   - proxyURL: 프록시 URL
+//     · URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
+//     · "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
+func WithProxy(proxyURL string) Option {
+	return func(h *HTTPFetcher) {
+		h.proxyURL = proxyURL
+	}
+}
+
+// WithMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수를 설정합니다.
+//
+// 기본적으로 Go HTTP 클라이언트는 최대 10번까지 리다이렉트를 따라갑니다.
+// 이 옵션으로 제한을 변경할 수 있으며, 리다이렉트 시 Referer 헤더를 자동으로 설정합니다.
+//
+// 매개변수:
+//   - max: 최대 리다이렉트 횟수
+//     · 0: 리다이렉트 허용 안 함
+//     · 양수: 지정된 횟수만큼 리다이렉트 허용
+//     · 음수: 기본값으로 보정
+func WithMaxRedirects(max int) Option {
+	// 최대 리다이렉트 횟수를 정규화합니다.
+	max = normalizeMaxRedirects(max)
+
+	return func(h *HTTPFetcher) {
+		h.client.CheckRedirect = newCheckRedirectPolicy(max)
+	}
+}
+
+// WithUserAgent 기본 User-Agent를 설정합니다.
+//
+// 이 옵션으로 설정한 User-Agent는 요청 헤더에 User-Agent가 없을 때만 자동으로 추가됩니다.
+// 요청 헤더에 이미 User-Agent가 설정되어 있으면 그 값이 우선적으로 사용됩니다.
+//
+// 매개변수:
+//   - ua: User-Agent 문자열 (예: "MyBot/1.0", "Mozilla/5.0 ...")
+func WithUserAgent(ua string) Option {
+	return func(h *HTTPFetcher) {
+		h.defaultUA = ua
+	}
+}
+
+// WithMaxIdleConns 전체 유휴 연결의 최대 개수를 설정합니다.
+//
+// 매개변수:
+//   - max: 전체 유휴 연결의 최대 개수
+//     · 0: 무제한
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
+func WithMaxIdleConns(max int) Option {
+	// 전체 유휴 연결의 최대 개수를 정규화합니다.
+	max = normalizeMaxIdleConns(max)
+
+	return func(h *HTTPFetcher) {
+		h.maxIdleConns = max
+	}
+}
+
+// WithMaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수를 설정합니다.
+//
+// 매개변수:
+//   - max: 호스트당 유휴 연결의 최대 개수
+//     · 0: net/http가 기본값 2로 해석
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
+func WithMaxIdleConnsPerHost(max int) Option {
+	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
+	max = normalizeMaxIdleConnsPerHost(max)
+
+	return func(h *HTTPFetcher) {
+		h.maxIdleConnsPerHost = max
+	}
+}
+
+// WithMaxConnsPerHost 호스트당 최대 연결 개수를 설정합니다.
+//
+// 매개변수:
+//   - max: 호스트당 최대 연결 개수
+//     · 0: 무제한
+//     · 양수: 지정된 개수로 제한
+//     · 음수: 기본값으로 보정
+func WithMaxConnsPerHost(max int) Option {
+	// 호스트당 최대 연결 개수를 정규화합니다.
+	max = normalizeMaxConnsPerHost(max)
+
+	return func(h *HTTPFetcher) {
+		h.maxConnsPerHost = max
+	}
+}
+
 // WithTimeout HTTP 요청 전체에 대한 타임아웃을 설정합니다.
 //
 // 이 타임아웃은 요청 시작부터 응답 완료까지의 전체 시간을 제한합니다.
@@ -87,100 +181,6 @@ func WithIdleConnTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithProxy 프록시 URL을 설정합니다.
-//
-// 모든 HTTP/HTTPS 요청이 지정된 프록시 서버를 통해 전송됩니다.
-//
-// 매개변수:
-//   - proxyURL: 프록시 URL
-//     · URL: 지정된 프록시 서버 사용 (예: "http://proxy:8080")
-//     · "" 또는 NoProxy: 프록시 비활성화 (환경 변수 무시, 직접 연결)
-func WithProxy(proxyURL string) Option {
-	return func(h *HTTPFetcher) {
-		h.proxyURL = proxyURL
-	}
-}
-
-// WithMaxIdleConns 전체 유휴 연결의 최대 개수를 설정합니다.
-//
-// 매개변수:
-//   - max: 전체 유휴 연결의 최대 개수
-//     · 0: 무제한
-//     · 양수: 지정된 개수로 제한
-//     · 음수: 기본값으로 보정
-func WithMaxIdleConns(max int) Option {
-	// 전체 유휴 연결의 최대 개수를 정규화합니다.
-	max = normalizeMaxIdleConns(max)
-
-	return func(h *HTTPFetcher) {
-		h.maxIdleConns = max
-	}
-}
-
-// WithMaxIdleConnsPerHost 호스트당 유휴 연결의 최대 개수를 설정합니다.
-//
-// 매개변수:
-//   - max: 호스트당 유휴 연결의 최대 개수
-//     · 0: net/http가 기본값 2로 해석
-//     · 양수: 지정된 개수로 제한
-//     · 음수: 기본값으로 보정
-func WithMaxIdleConnsPerHost(max int) Option {
-	// 호스트당 유휴 연결의 최대 개수를 정규화합니다.
-	max = normalizeMaxIdleConnsPerHost(max)
-
-	return func(h *HTTPFetcher) {
-		h.maxIdleConnsPerHost = max
-	}
-}
-
-// WithMaxConnsPerHost 호스트당 최대 연결 개수를 설정합니다.
-//
-// 매개변수:
-//   - max: 호스트당 최대 연결 개수
-//     · 0: 무제한
-//     · 양수: 지정된 개수로 제한
-//     · 음수: 기본값으로 보정
-func WithMaxConnsPerHost(max int) Option {
-	// 호스트당 최대 연결 개수를 정규화합니다.
-	max = normalizeMaxConnsPerHost(max)
-
-	return func(h *HTTPFetcher) {
-		h.maxConnsPerHost = max
-	}
-}
-
-// WithUserAgent 기본 User-Agent를 설정합니다.
-//
-// 이 옵션으로 설정한 User-Agent는 요청 헤더에 User-Agent가 없을 때만 자동으로 추가됩니다.
-// 요청 헤더에 이미 User-Agent가 설정되어 있으면 그 값이 우선적으로 사용됩니다.
-//
-// 매개변수:
-//   - ua: User-Agent 문자열 (예: "MyBot/1.0", "Mozilla/5.0 ...")
-func WithUserAgent(ua string) Option {
-	return func(h *HTTPFetcher) {
-		h.defaultUA = ua
-	}
-}
-
-// WithMaxRedirects HTTP 클라이언트의 최대 리다이렉트 횟수를 설정합니다.
-//
-// 기본적으로 Go HTTP 클라이언트는 최대 10번까지 리다이렉트를 따라갑니다.
-// 이 옵션으로 제한을 변경할 수 있으며, 리다이렉트 시 Referer 헤더를 자동으로 설정합니다.
-//
-// 매개변수:
-//   - max: 최대 리다이렉트 횟수
-//     · 0: 리다이렉트 허용 안 함
-//     · 양수: 지정된 횟수만큼 리다이렉트 허용
-//     · 음수: 기본값으로 보정
-func WithMaxRedirects(max int) Option {
-	// 최대 리다이렉트 횟수를 정규화합니다.
-	max = normalizeMaxRedirects(max)
-
-	return func(h *HTTPFetcher) {
-		h.client.CheckRedirect = newCheckRedirectPolicy(max)
-	}
-}
-
 // WithDisableTransportCaching Transport 캐싱 사용 여부를 설정합니다.
 //
 // 기본적으로 동일한 설정의 요청들은 Transport를 공유하여 성능을 최적화합니다.
@@ -211,9 +211,14 @@ func WithDisableTransportCaching(disable bool) Option {
 //     - WithProxy, WithMaxIdleConns 등의 옵션이 정상적으로 적용됩니다.
 //
 //  2. 다른 RoundTripper 타입 (Mock 등):
-//     - 제공된 객체를 그대로 사용하며, Transport 관련 옵션은 적용되지 않습니다.
-//     - 설정 변경이 불가능한 타입이므로 사용자 옵션을 무시합니다.
-//     - Transport 캐싱이 자동으로 비활성화되어 완전히 격리된 환경에서 동작합니다.
+//     a) Transport 관련 옵션을 사용하지 않은 경우:
+//     제공된 객체를 그대로 사용하며 정상 동작합니다.
+//     이 경우 needsCustomTransport()가 false를 반환하여 setupTransport()가 조기 종료됩니다.
+//
+//     b) Transport 관련 옵션(WithProxy, WithMaxIdleConns 등)을 함께 사용한 경우:
+//     NewHTTPFetcher()는 성공하지만, Do() 호출 시 ErrUnsupportedTransport 에러를 반환합니다.
+//     이는 *http.Transport가 아닌 타입은 내부 설정(프록시, 타임아웃 등)을 변경할 수 없기 때문입니다.
+//     setupTransport()에서 타입 검사 후 에러를 initErr에 저장하며, Do() 실행 시 이 에러가 반환됩니다.
 //
 // 캐싱 비활성화 이유:
 //   - 외부에서 주입된 Transport는 소유권과 생명주기를 fetcher가 제어할 수 없습니다.
@@ -224,7 +229,9 @@ func WithDisableTransportCaching(disable bool) Option {
 //   - transport: 사용할 http.RoundTripper 구현체 (일반적으로 *http.Transport 또는 테스트용 Mock)
 //
 // 주의사항:
-//   - *http.Transport가 아닌 RoundTripper를 제공하면, 사용자가 설정한 Transport 관련 옵션(WithProxy, WithMaxIdleConns 등)이 적용되지 않습니다.
+//   - *http.Transport가 아닌 RoundTripper를 제공하면서 Transport 관련 옵션을 함께 사용하면,
+//     Do() 호출 시 ErrUnsupportedTransport 에러가 반환됩니다.
+//   - 옵션 없이 사용하면 제공된 RoundTripper를 그대로 사용하며 정상 동작합니다.
 //   - Transport 캐싱이 비활성화되므로 성능 최적화 효과가 감소할 수 있습니다.
 //   - 일반적인 경우에는 표준 옵션(WithProxy, WithMaxIdleConns 등)을 사용하는 것을 권장합니다.
 func WithTransport(transport http.RoundTripper) Option {

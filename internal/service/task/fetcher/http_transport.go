@@ -11,42 +11,37 @@ import (
 )
 
 var (
-	// defaultTransport 전역 기본 Transport입니다.
+	// defaultTransport 전역 Transport입니다.
 	//
 	// 목적:
 	//   - 싱글톤(Singleton) 패턴으로 동작하여 모든 기본 Fetcher가 공유합니다.
 	//   - 프록시나 특수 설정이 필요 없는 일반적인 HTTP 요청에 사용됩니다.
 	//   - 연결 풀을 공유하여 TCP 핸드셰이크 비용을 최소화합니다.
 	//
-	// 주요 설정:
-	//   - 프록시: 환경 변수(HTTP_PROXY, HTTPS_PROXY) 자동 감지
-	//   - 연결 생성: 30초 타임아웃, 30초 Keep-Alive
-	//   - TLS 핸드셰이크: 10초 타임아웃
-	//   - 연결 풀: 최대 100개 유휴 연결 (전체)
-	//   - 유휴 연결 유지: 90초
-	//
 	// 성능 최적화:
 	//   - HTTP Keep-Alive로 연결 재사용
 	//   - 연결 풀링으로 핸드셰이크 오버헤드 감소
 	//   - 여러 Fetcher가 동일한 연결 풀 공유
 	defaultTransport = &http.Transport{
-		// 0. 프록시 설정 (Proxy)
-		// 환경 변수(HTTP_PROXY, HTTPS_PROXY)를 따르도록 설정합니다.
+		// 프록시 설정
+		// 환경 변수(HTTP_PROXY, HTTPS_PROXY)에서 프록시 서버 주소를 자동으로 읽어옵니다.
+		// 환경 변수가 설정되어 있지 않으면 프록시를 거치지 않고 직접 연결합니다.
 		Proxy: http.ProxyFromEnvironment,
 
-		// 1. 연결 생성 (Dialing)
+		// TCP 연결 수립: 30초 타임아웃, Keep-Alive로 연결 재사용
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 
-		// 2. 보안 연결 (TLS)
-		TLSHandshakeTimeout: DefaultTLSHandshakeTimeout,
+		// 전체 유휴 연결의 최대 개수 (기본값: 100)
+		MaxIdleConns: defaultMaxIdleConns,
 
-		// 3. 연결 풀 관리 (Connection Pool)
-		MaxIdleConns:        DefaultMaxIdleConns,
-		MaxIdleConnsPerHost: DefaultMaxIdleConns,
-		IdleConnTimeout:     DefaultIdleConnTimeout,
+		// TLS 핸드셰이크 타임아웃 (기본값: 10초)
+		TLSHandshakeTimeout: defaultTLSHandshakeTimeout,
+
+		// 유휴 연결 타임아웃 (기본값: 90초)
+		IdleConnTimeout: defaultIdleConnTimeout,
 	}
 
 	// transportCache 설정별로 Transport를 캐싱하는 저장소입니다.
@@ -89,31 +84,95 @@ var (
 	transportCacheMu sync.RWMutex
 )
 
+// transportConfig Transport 생성 시 적용할 설정을 전달하는 구조체입니다.
+//
+// 필드별 설명:
+//
+//  1. 프록시 설정 (proxyURL *string)
+//     - nil 또는 "": 환경 변수(HTTP_PROXY, HTTPS_PROXY) 사용, 없으면 직접 연결
+//     - NoProxy: 직접 연결 (프록시 사용 안 함)
+//     - "http://...": 지정된 프록시 사용 (인증: "http://user:pass@host:port")
+//
+//  2. 연결 풀 관리 (maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost *int)
+//     - nil: 시스템 기본값
+//     - 0: 무제한 (단, maxIdleConnsPerHost는 Go 기본값 2)
+//     - 양수: 지정된 개수로 제한
+//
+//  3. 네트워크 타임아웃 (tlsHandshakeTimeout, responseHeaderTimeout, idleConnTimeout *time.Duration)
+//     - nil: 시스템 기본값
+//     - 0: 타임아웃 없음 (무한 대기, 주의 필요)
+//     - 양수: 지정된 시간으로 제한
+//
+// 변환 및 정규화:
+//
+//	이 구조체는 ToCacheKey() 메서드를 통해 transportCacheKey로 변환됩니다.
+//	변환 과정에서 다음과 같은 정규화가 수행됩니다:
+//
+//	  1. nil 값은 각 필드의 시스템 기본값으로 채워집니다.
+//	  2. 포인터는 역참조되어 값 타입으로 변환됩니다.
+//	  3. 동일한 의도를 가진 설정들이 같은 캐시 키를 생성하도록 보장합니다.
+type transportConfig struct {
+	// 프록시 설정
+	proxyURL *string
+
+	// 연결 풀 관리
+	maxIdleConns        *int
+	maxIdleConnsPerHost *int
+	maxConnsPerHost     *int
+
+	// 네트워크 타임아웃
+	tlsHandshakeTimeout   *time.Duration
+	responseHeaderTimeout *time.Duration
+	idleConnTimeout       *time.Duration
+}
+
+// ToCacheKey 포인터 기반 설정을 값 기반 캐시 키로 변환(정규화)합니다.
+//
+// 정규화 규칙:
+//
+//  1. nil 포인터: 각 필드의 시스템 기본값으로 변환
+//     - 예: maxIdleConns가 nil → 100으로 설정
+//     - 예: tlsHandshakeTimeout이 nil → 10초로 설정
+//
+//  2. 값이 있는 포인터: 역참조하여 실제 값 사용
+//     - 예: maxIdleConns가 &200 → 200 사용
+//
+//  3. 특수 케이스 (nil일 때 0 또는 빈 문자열로 정규화):
+//     - proxyURL: 빈 문자열로 정규화 (환경 변수 사용)
+//     - maxIdleConnsPerHost: 0으로 정규화 (Go 기본값 2 사용)
+//     - maxConnsPerHost: 0으로 정규화 (무제한)
+//     - responseHeaderTimeout: 0으로 정규화 (무제한)
+//
+// 반환값:
+//
+//	transportCacheKey: 정규화된 캐시 키 (모든 필드가 값 타입으로 변환됨)
 // transportCacheKey Transport 캐시의 식별자입니다.
 //
 // 목적:
 //   - 동일한 설정을 가진 Fetcher들이 같은 Transport를 공유할 수 있도록 합니다.
 //   - 모든 필드가 일치하면 기존 Transport를 재사용하여 리소스를 절약합니다.
 //
+// transportConfig와의 관계:
+//   - transportConfig.ToCacheKey() 메서드를 통해 생성됩니다.
+//   - transportConfig의 포인터 필드들이 값 타입으로 정규화되어 이 구조체에 저장됩니다.
+//   - 필드 순서는 transportConfig와 동일하게 유지됩니다 (Proxy -> Pool -> Timeouts).
+//
 // 캐시 키 비교:
 //   - Go의 구조체 비교 연산자(==)를 사용하여 모든 필드를 자동으로 비교합니다.
 //   - 하나라도 다르면 별도의 Transport가 생성됩니다.
-//
-// 필드 구성:
-//   - 네트워크 라우팅: proxyURL
-//   - 연결 풀 설정: maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost
-//   - 타임아웃 설정: idleConnTimeout, tlsHandshakeTimeout, responseHeaderTimeout
 type transportCacheKey struct {
-	proxyURL string // 프록시 URL (빈 문자열이면 기본 설정(환경 변수 HTTP_PROXY 등)을 따름)
+	// 프록시 설정
+	proxyURL string
 
-	// 연결 풀 관련 설정 (개수 제한)
-	maxIdleConns    int // 전체 유휴(Idle) 연결의 최대 개수
-	maxConnsPerHost int // 호스트(도메인)당 최대 연결 개수 (0이면 무제한)
+	// 연결 풀 관리
+	maxIdleConns        int
+	maxIdleConnsPerHost int
+	maxConnsPerHost     int
 
-	// 타임아웃 관련 설정 (시간 제한)
-	idleConnTimeout       time.Duration // 유휴 연결이 닫히기 전 유지되는 타임아웃
-	tlsHandshakeTimeout   time.Duration // TLS 핸드셰이크 타임아웃
-	responseHeaderTimeout time.Duration // HTTP 응답 헤더 대기 타임아웃
+	// 네트워크 타임아웃
+	tlsHandshakeTimeout   time.Duration
+	responseHeaderTimeout time.Duration
+	idleConnTimeout       time.Duration
 }
 
 // transportCacheEntry Transport 캐시에 저장되는 항목입니다.
@@ -138,34 +197,35 @@ type transportCacheEntry struct {
 	accessCount atomic.Int64
 }
 
-// newTransport 사용자 설정에 맞춰 격리된(Isolated) Transport 인스턴스를 생성합니다.
+// newTransport 사용자가 설정한 옵션에 맞춰 격리된(Isolated) Transport 인스턴스를 생성합니다.
 //
-// 이 함수는 제공된 기본 Transport를 복제한 후, 사용자가 지정한 설정(프록시, 타임아웃, 연결 풀 등)을
+// 이 함수는 제공된 Transport를 복제한 후, 사용자가 지정한 설정(프록시, 타임아웃, 연결 풀 등)을
 // 적용하여 독립적인 Transport를 생성합니다. "격리된"이란 이 Transport가 다른 Fetcher와 공유되지 않고
 // 특정 Fetcher 전용으로 사용됨을 의미합니다.
 //
 // 처리 흐름:
 //
 //  1. Transport 복제:
-//     - base가 제공되면 해당 Transport를 복제하고, nil이면 defaultTransport를 복제합니다.
+//     - baseTr이 제공되면 해당 Transport를 복제하고, nil이면 defaultTransport를 복제합니다.
 //     - 복제를 통해 원본 Transport의 설정을 보존하면서 독립적인 인스턴스를 생성합니다.
 //
 //  2. 프록시 설정 적용:
 //     - 프록시 URL 문자열을 파싱하여 *url.URL로 변환합니다.
 //     - 파싱 실패 시 비밀번호를 마스킹한 에러를 반환하여 로그 노출을 방지합니다.
 //
-//  3. 연결 풀 설정 적용:
+//  3. 연결 풀 관리 적용:
 //     - MaxIdleConns: 전체 유휴 연결 최대 개수 (모든 호스트 통합)
 //     - MaxIdleConnsPerHost: 호스트당 유휴 연결 최대 개수 (Keep-Alive 효율 제어)
+//     - MaxConnsPerHost: 호스트당 최대 연결 개수 (동시 연결 제한)
 //
-//  4. 타임아웃 설정 적용:
+//  4. 네트워크 타임아웃 적용:
+//     - TLSHandshakeTimeout: TLS 핸드셰이크 완료 대기 시간
 //     - ResponseHeaderTimeout: 응답 헤더 수신 대기 시간
 //     - IdleConnTimeout: 유휴 연결 유지 시간 (연결 풀 관리)
-//     - TLSHandshakeTimeout: TLS 핸드셰이크 완료 대기 시간
 //
 // 매개변수:
-//   - base: 복제할 Transport (nil이면 defaultTransport 사용)
-//   - key: 적용할 설정을 담은 키 객체 (프록시, 타임아웃, 연결 풀 설정 등)
+//   - baseTr: 복제할 Transport (nil이면 defaultTransport 사용)
+//   - cfg: 적용할 설정을 담은 설정 객체 (포인터 기반)
 //
 // 반환값:
 //   - *http.Transport: 사용자 설정이 적용된 격리된 Transport 인스턴스
@@ -174,11 +234,11 @@ type transportCacheEntry struct {
 // 보안 고려사항:
 //   - 프록시 URL 파싱 실패 시, 에러 메시지에서 비밀번호를 자동으로 마스킹하여
 //     로그나 에러 추적 시스템에 민감한 정보가 노출되지 않도록 보호합니다.
-func newTransport(base *http.Transport, key transportCacheKey) (*http.Transport, error) {
+func newTransport(baseTr *http.Transport, cfg transportConfig) (*http.Transport, error) {
 	// 1단계: 제공된 Transport 복제
 	var newTr *http.Transport
-	if base != nil {
-		newTr = base.Clone()
+	if baseTr != nil {
+		newTr = baseTr.Clone()
 	} else {
 		newTr = defaultTransport.Clone()
 	}
@@ -242,12 +302,15 @@ func newTransport(base *http.Transport, key transportCacheKey) (*http.Transport,
 //     - 이를 통해 대다수 사용자에게 영향을 주는 일반 요청의 캐시 히트율을 보호합니다.
 //
 // 매개변수:
-//   - key: Transport 설정을 담은 키 객체 (프록시, 타임아웃, TLS 설정 등의 조합)
+//   - cfg: Transport 설정을 담은 설정 객체 (포인터 기반)
 //
 // 반환값:
 //   - *http.Transport: 재사용 가능한 공유 Transport 객체
 //   - error: Transport 생성 실패 시 에러 (예: 잘못된 프록시 URL)
-func getSharedTransport(key transportCacheKey) (*http.Transport, error) {
+func getSharedTransport(cfg transportConfig) (*http.Transport, error) {
+	// 0단계: 캐시 키 변환
+	key := cfg.ToCacheKey()
+
 	// 1단계: 캐시 조회
 	// 읽기 잠금(RLock)을 사용하여 여러 고루틴이 동시에 캐시를 조회할 수 있도록 합니다.
 	// 이는 읽기 작업이 빈번한 캐시 조회 성능을 최적화합니다.
@@ -299,7 +362,7 @@ func getSharedTransport(key transportCacheKey) (*http.Transport, error) {
 	// 2단계: 새로운 Transport 생성
 	// 캐시에 없는 경우, 요청된 설정에 맞춰 새로운 Transport 인스턴스를 생성합니다.
 	// (이 단계는 잠금 없이 수행되어 다른 고루틴을 차단하지 않습니다)
-	newTr, err := newTransport(nil, key)
+	newTr, err := newTransport(nil, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -372,45 +435,45 @@ func getSharedTransport(key transportCacheKey) (*http.Transport, error) {
 //
 // 처리 흐름:
 //
-//  1. 설정 분석: 사용자가 프록시, 타임아웃, 연결 풀 등의 커스텀 설정을 지정했는지 확인합니다.
+//  1. 설정 유무 확인: 사용자가 옵션(기본값과 다른 값이 아닌, 명시적인 설정값)을 제공했는지 봅니다.
 //
 //  2. 기본 동작:
-//     - 커스텀 설정이 없다면 기본 Transport(defaultTransport)를 그대로 사용합니다.
+//     - 명시적인 설정이 없다면 현재 설정된 Transport(전역 또는 외부 주입)를 변형 없이 그대로 사용합니다.
 //     - 이를 통해 불필요한 객체 생성을 피하고 메모리를 절약합니다.
 //
 //  3. 사용자 정의 동작:
-//     - 커스텀 설정이 있다면 두 가지 방식으로 처리합니다:
+//     - 명시적인 설정이 있다면 두 가지 방식으로 처리합니다:
 //     a) 외부 주입 Transport: `configureTransportFromExternal` 호출 (CoW 전략 적용)
-//     b) 내부 생성 Transport: `configureTransportFromOptions` 호출 (캐시 또는 격리 생성)
+//     b) 전역 Transport 사용 중: `configureTransportFromOptions` 호출 (캐시 또는 격리 생성)
 //
 // 제약사항:
 //   - `*http.Transport` 타입만 설정 변경이 가능합니다.
-//   - 커스텀 `RoundTripper`는 설정 적용 대상에서 제외됩니다.
+//   - 그 외의 커스텀 `RoundTripper`에 옵션을 적용하려 하면 에러(ErrUnsupportedTransport)를 반환합니다.
 //
 // 반환값:
 //   - error: Transport 초기화 실패 시 에러 (예: 잘못된 프록시 URL)
 func (f *HTTPFetcher) setupTransport() error {
-	// 1단계: 기본 Transport(defaultTransport)를 그대로 사용할 수 있는지 확인합니다.
-	// needsCustomTransport()는 사용자가 설정한 옵션(타임아웃, 프록시, TLS 설정 등)이 기본값과 다른지 검사합니다.
-	// 모든 설정이 기본값이라면 성능 최적화를 위해 기본 Transport를 그대로 사용하는 것이 효율적입니다.
+	// 1단계: 현재 Transport를 그대로 사용할 수 있는지 확인합니다.
+	// needsCustomTransport()는 사용자가 설정한 옵션(타임아웃, 프록시 등)이 명시적으로 존재하는지 검사합니다.
+	// 사용자가 설정한 옵션이 존재하지 않는다면(nil), 현재 Transport(defaultTransport 또는 외부 주입 Transport)를 그대로 사용합니다.
 	if !f.needsCustomTransport() {
-		// 커스터마이징이 불필요하므로 기본 Transport를 유지합니다.
+		// 커스터마이징이 불필요하므로 현재 Transport를 유지합니다.
 		return nil
 	}
 
-	// 2단계: 현재 기본 Transport(defaultTransport)를 사용 중인 경우, 사용자 설정을 반영한 새 Transport를 생성합니다.
+	// 2단계: 현재 Transport가 전역 Transport인 경우, 사용자가 설정한 옵션을 반영한 새로운 Transport를 생성합니다.
 	// 이 경우는 Fetcher 생성 시 별도의 Transport가 주입되지 않았고,
 	// 사용자가 설정한 옵션(타임아웃, 프록시 등)을 적용해야 하는 상황입니다.
 	if f.client.Transport == defaultTransport {
-		// 사용자 옵션을 기반으로 완전히 새로운 Transport를 구성합니다.
+		// 사용자가 설정한 옵션을 기반으로 새로운 Transport를 구성합니다.
 		return f.configureTransportFromOptions()
 	}
 
-	// 3단계: 외부에서 주입된 커스텀 Transport를 사용 중인 경우를 처리합니다.
-	// 외부에서 제공된 Transport의 설정을 최대한 보존하면서, 사용자가 명시한 옵션만 선택적으로 덮어쓰는 방식으로 동작합니다.
-	// 이를 통해 외부 설정과 사용자 설정을 조화롭게 병합합니다.
+	// 3단계: 외부에서 주입된 Transport를 처리합니다.
+	// 외부에서 주입된 Transport의 설정을 최대한 보존하면서, 사용자가 설정한 옵션만 선택적으로 덮어쓰는 방식으로 동작합니다.
+	// 이를 통해 외부 설정과 사용자가 설정한 옵션을 조화롭게 병합합니다.
 	if tr, ok := f.client.Transport.(*http.Transport); ok {
-		// 외부 Transport를 복제한 후, 사용자 설정을 적용한 새 Transport를 생성합니다.
+		// 외부 Transport를 복제한 후, 사용자가 설정한 옵션을 적용한 새로운 Transport를 생성합니다.
 		return f.configureTransportFromExternal(tr)
 	}
 
@@ -419,18 +482,17 @@ func (f *HTTPFetcher) setupTransport() error {
 	return ErrUnsupportedTransport
 }
 
-// needsCustomTransport 사용자 설정이 기본값과 다른지 확인하여 커스텀 Transport의 생성이 필요한지 판단합니다.
+// needsCustomTransport 사용자가 설정한 옵션이 명시적으로 존재하는지 확인하여 새로운 Transport의 생성이 필요한지 판단합니다.
 //
-// 판단 기준:
-//   - 다음 중 하나라도 기본값과 다르게 설정되었다면 true를 반환합니다:
-//   - Transport 캐시 비활성화 (disableTransportCaching)
-//   - 프록시 서버 설정 (proxyURL)
-//   - 연결 풀 크기 조정 (maxIdleConns, maxConnsPerHost, maxIdleConnsPerHost)
-//   - 네트워크 타임아웃 변경 (idleConnTimeout, tlsHandshakeTimeout, responseHeaderTimeout)
+// 판단 기준 (다음 중 하나라도 명시적인 설정값(nil 아님)이 존재하면 true 반환):
+//  1. 캐싱 설정 (disableTransportCaching)
+//  2. 프록시 설정 (proxyURL)
+//  3. 연결 풀 관리 (maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost)
+//  4. 네트워크 타임아웃 (tlsHandshakeTimeout, responseHeaderTimeout, idleConnTimeout)
 //
 // 반환값:
-//   - true: 커스텀 Transport 생성 필요
-//   - false: 기본 Transport(defaultTransport) 사용 가능
+//   - true: 사용자 설정이 존재하므로 이를 반영한 새로운 Transport를 생성해야 함
+//   - false: 사용자 설정이 없으므로(모두 nil) 현재 Transport를 변형 없이 그대로 사용 가능
 func (f *HTTPFetcher) needsCustomTransport() bool {
 	return f.disableTransportCache ||
 		f.proxyURL != "" ||
@@ -441,7 +503,7 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 		f.responseHeaderTimeout > 0
 }
 
-// configureTransportFromOptions 사용자 설정을 기반으로 최적의 Transport를 구성합니다.
+// configureTransportFromOptions 사용자가 설정한 옵션을 기반으로 최적의 Transport를 구성합니다.
 //
 // 목적:
 //   - 사용자가 지정한 프록시, 타임아웃, 연결 풀 설정을 바탕으로 가장 효율적인 Transport를 선택하거나 생성합니다.
@@ -450,7 +512,8 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 // 처리 흐름:
 //
 //  1. 설정 키 생성:
-//     - 사용자 설정을 transportCacheKey 구조체로 변환합니다.
+//     - 사용자가 설정한 옵션(f.*)을 transportConfig 구조체로 변환합니다.
+//     - 각 포인터 필드를 직접 매핑하여 사용자 의도(설정 유무)를 정확히 전달합니다.
 //
 //  2. 운영 모드 선택:
 //
@@ -460,7 +523,7 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 //     - 사용 시나리오: 테스트 환경, 특수한 격리 요구사항
 //
 //     b) 공유 모드 (disableTransportCaching = false, 기본값):
-//     - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다.
+//     - 동일한 설정을 가진 Fetcher끼리 Transport를 공유합니다. (getSharedTransport)
 //     - TCP 연결 풀을 재사용하여 메모리와 핸드셰이크 비용을 절약합니다.
 //     - 사용 시나리오: 일반적인 프로덕션 환경 (권장)
 //
@@ -504,21 +567,21 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 	return nil
 }
 
-// configureTransportFromExternal 외부에서 제공된 Transport를 기반으로 사용자 설정이 적용된 새로운 Transport를 구성합니다.
+// configureTransportFromExternal 외부에서 제공된 Transport를 기반으로 사용자가 설정한 옵션이 적용된 새로운 Transport를 구성합니다.
 //
 // 목적:
-//   - WithTransport 옵션으로 제공된 Transport에 사용자 설정을 안전하게 적용합니다.
+//   - WithTransport 옵션으로 제공된 Transport에 사용자가 설정한 옵션을 안전하게 적용합니다.
 //   - Copy-on-Write(CoW) 전략을 사용하여 원본 Transport의 손상을 방지합니다.
 //   - 불필요한 복제를 방지하여 리소스를 절약합니다.
 //
 // 처리 흐름:
 //
 //  1. 변경 필요성 검사:
-//     - 제공된 Transport의 설정이 사용자 요청과 이미 일치하는지 확인합니다.
+//     - 사용자의 명시적 설정이 원본 Transport의 설정과 이미 일치하는지 확인합니다.
 //     - 일치한다면 복제 없이 원본을 그대로 사용하여 리소스를 절약합니다.
 //
 //  2. 안전한 복제 및 적용 (Copy-on-Write):
-//     - 설정 변경이 필요하다면 원본을 복제한 후 사용자 설정을 선택적으로 적용합니다.
+//     - 설정 변경이 필요하다면 원본을 복제한 후 사용자가 설정한 옵션을 선택적으로 적용합니다.
 //     - 복제된 Transport는 격리 모드로 전환되어 Close() 시 안전하게 정리됩니다.
 //
 // 매개변수:
@@ -558,17 +621,18 @@ func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
 // shouldCloneTransport 외부에서 제공된 Transport를 복제해야 하는지 판단합니다.
 //
 // 목적:
-//   - 외부 Transport의 설정과 사용자 요청을 비교하여 복제 필요 여부를 결정합니다.
+//   - 외부 Transport의 설정과 사용자가 설정한 옵션을 비교하여 복제 필요 여부를 결정합니다.
 //   - 불필요한 복제를 방지하여 메모리 사용량을 최소화하고 연결 풀 재사용을 극대화합니다.
 //
 // 판단 기준:
-//   - 사용자 설정(f.*)과 외부 Transport 설정(tr.*)을 항목별로 비교합니다.
-//   - 단 하나라도 다르다면 true를 반환하여 복제를 수행하도록 합니다.
+//   - 사용자가 설정한 옵션(f.*)과 외부 Transport의 현재 설정(tr.*)을 비교합니다.
+//   - 값이 서로 다르다면 true를 반환하여 복제 및 설정 적용을 수행합니다.
+//   - 값이 같다면(또는 사용자가 설정한 옵션이 없다면) 복제 없이 기존 Transport를 재사용합니다.
 //
 // 비교 항목:
 //   - 프록시 서버 (proxyURL)
-//   - 연결 풀 크기 (maxIdleConns, maxConnsPerHost, maxIdleConnsPerHost)
-//   - 네트워크 타임아웃 (idleConnTimeout, tlsHandshakeTimeout, responseHeaderTimeout)
+//   - 연결 풀 관리 (maxIdleConns, maxIdleConnsPerHost, maxConnsPerHost)
+//   - 네트워크 타임아웃 (tlsHandshakeTimeout, responseHeaderTimeout, idleConnTimeout)
 //
 // 매개변수:
 //   - tr: 외부에서 제공된 Transport (WithTransport 옵션으로 주입됨)

@@ -37,11 +37,11 @@ func BenchmarkDrainAndCloseBody(b *testing.B) {
 
 // BenchmarkTransportCreation Transport 생성 및 복제 비용 측정
 func BenchmarkTransportCreation(b *testing.B) {
-	key := transportCacheKey{
-		proxyURL:            "",
-		maxIdleConns:        100,
-		idleConnTimeout:     90 * time.Second,
-		tlsHandshakeTimeout: 10 * time.Second,
+	key := transportConfig{
+		proxyURL:            nil,
+		maxIdleConns:        intPtr(100),
+		idleConnTimeout:     durationPtr(90 * time.Second),
+		tlsHandshakeTimeout: durationPtr(10 * time.Second),
 	}
 
 	b.Run("NewTransport", func(b *testing.B) {
@@ -64,21 +64,21 @@ func BenchmarkTransportCreation(b *testing.B) {
 
 // BenchmarkTransportCache Transport 캐시 조회 및 동시성 성능 측정
 func BenchmarkTransportCache(b *testing.B) {
-	// 테스트용 키
-	key := transportCacheKey{
-		proxyURL:            "http://proxy.example.com:8080",
-		maxIdleConns:        100,
-		idleConnTimeout:     90 * time.Second,
-		tlsHandshakeTimeout: 10 * time.Second,
+	// 테스트용 키 (transportConfig)
+	cfg := transportConfig{
+		proxyURL:            stringPtr("http://proxy.example.com:8080"),
+		maxIdleConns:        intPtr(100),
+		idleConnTimeout:     durationPtr(90 * time.Second),
+		tlsHandshakeTimeout: durationPtr(10 * time.Second),
 	}
 
 	// 캐시에 미리 항목 추가
-	_, _ = getSharedTransport(key)
+	_, _ = getSharedTransport(cfg)
 
 	b.Run("Sequential_Hit", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			_, _ = getSharedTransport(key)
+			_, _ = getSharedTransport(cfg)
 		}
 	})
 
@@ -86,25 +86,25 @@ func BenchmarkTransportCache(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				_, _ = getSharedTransport(key)
+				_, _ = getSharedTransport(cfg)
 			}
 		})
 	})
 
 	// 다양한 키를 사용하여 캐시 경합 및 LRU 갱신 테스트
 	b.Run("Concurrent_MixedKeys", func(b *testing.B) {
-		keys := []transportCacheKey{
-			key,
-			{maxIdleConns: 50},
-			{idleConnTimeout: 60 * time.Second},
-			{tlsHandshakeTimeout: 5 * time.Second},
+		configs := []transportConfig{
+			cfg,
+			{maxIdleConns: intPtr(50)},
+			{idleConnTimeout: durationPtr(60 * time.Second)},
+			{tlsHandshakeTimeout: durationPtr(5 * time.Second)},
 		}
 
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			i := 0
 			for pb.Next() {
-				_, _ = getSharedTransport(keys[i%len(keys)])
+				_, _ = getSharedTransport(configs[i%len(configs)])
 				i++
 			}
 		})
