@@ -12,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -264,7 +265,8 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			tsk := &task{
 				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
 			}
-			tsk.SetFetcher(mockFetcher)
+			tsk.SetScraper(scraper.New(mockFetcher))
+			// SetFetcher call removed
 
 			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
 

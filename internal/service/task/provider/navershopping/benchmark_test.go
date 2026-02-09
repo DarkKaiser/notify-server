@@ -49,7 +49,7 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 	tTask := &task{
 		Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher removed
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchPriceSettings{

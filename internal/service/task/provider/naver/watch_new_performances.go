@@ -214,13 +214,13 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := scraper.FetchJSON(ctx, t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
+		err := t.GetScraper().FetchJSON(ctx, "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
 
 		// API로부터 수신한 비정형 HTML 데이터를 DOM 파싱하여 정형화된 공연 객체 리스트로 변환합니다.
-		pagePerformances, rawCount, err := parsePerformancesFromHTML(pageContent.HTML, matchers)
+		pagePerformances, rawCount, err := t.parsePerformancesFromHTML(ctx, pageContent.HTML, matchers)
 		if err != nil {
 			return nil, err
 		}
@@ -289,8 +289,8 @@ func buildSearchAPIURL(query string, page int) string {
 //   - []*performance: 사용자 정의 키워드 조건(Keywords)을 통과하여 최종 선별된 공연 정보 목록
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
-func parsePerformancesFromHTML(html string, matchers *keywordMatchers) ([]*performance, int, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+func (t *task) parsePerformancesFromHTML(ctx context.Context, html string, matchers *keywordMatchers) ([]*performance, int, error) {
+	doc, err := t.GetScraper().ParseReader(ctx, strings.NewReader(html), "", "")
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -310,7 +311,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 				clientID:     "id",
 				clientSecret: "secret",
 			}
-			tsk.SetFetcher(mockFetcher)
+			tsk.SetScraper(scraper.New(mockFetcher))
+			// SetFetcher call removed as it's deprecated
 
 			got, err := tsk.fetchProducts(context.Background(), &tt.settings)
 			tt.checkResult(t, got, err)
@@ -367,7 +369,8 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 				clientID:     "id",
 				clientSecret: "secret",
 			}
-			tsk.SetFetcher(mockFetcher)
+			tsk.SetScraper(scraper.New(mockFetcher))
+			// SetFetcher call removed as it's deprecated
 
 			_, err := tsk.fetchProducts(context.Background(), &tt.settings)
 
@@ -519,6 +522,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			tsk := &task{
 				Base: provider.NewBase("T", "C", "I", "N", tt.runBy),
 			}
+			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 
 			current := &watchPriceSnapshot{Products: tt.currentItems}
 			var prev *watchPriceSnapshot
@@ -708,6 +712,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			tsk := &task{
 				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
 			}
+			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 			got := tsk.mapToProduct(tt.item)
 
 			if tt.wantProduct {
@@ -976,17 +981,12 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}))
 
 	tsk := &task{
-		Base: provider.NewBase(
-			"test-task",
-			WatchPriceAnyCommand,
-			"test-instance",
-			"test-notifier",
-			contract.TaskRunByUser,
-		),
+		Base:         provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
 		clientID:     "id",
 		clientSecret: "secret",
 	}
-	tsk.SetFetcher(mockFetcher)
+	tsk.SetScraper(scraper.New(mockFetcher))
+	// SetFetcher call removed as it's deprecated
 
 	products, err := tsk.fetchProducts(context.Background(), &settings)
 
@@ -1009,7 +1009,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
 	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
-	tsk.SetFetcher(mockFetcher)
+	// SetFetcher call removed as it's deprecated
 
 	// 강제로 취소 상태 주입 (Context Cancel)
 	tsk.Cancel()

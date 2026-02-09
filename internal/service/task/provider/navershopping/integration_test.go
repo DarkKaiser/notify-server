@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +37,8 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	tTask.SetScraper(scraper.New(mockFetcher))
+	// SetFetcher call removed as it's deprecated
 
 	// 1. 초기 상태 설정
 	commandSettings := &watchPriceSettings{
@@ -95,7 +97,8 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	tTask.SetScraper(scraper.New(mockFetcher))
+	// SetFetcher call removed as it's deprecated
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchPriceSettings{
@@ -123,7 +126,8 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	tTask.SetScraper(scraper.New(mockFetcher))
+	// SetFetcher call removed as it's deprecated
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchPriceSettings{

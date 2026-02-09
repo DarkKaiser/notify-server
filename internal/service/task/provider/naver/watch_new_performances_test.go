@@ -13,6 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -279,7 +280,12 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			t.Parallel()
 
 			// parsePerformancesFromHTML은 (performances, rawCount, error) 반환
-			items, raw, err := parsePerformancesFromHTML(tt.html, tt.filters)
+			taskInstance := &task{
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler),
+			}
+			taskInstance.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
+
+			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, tt.filters)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -711,7 +717,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				"u7=1": makeJSONResponse(`<ul><li><div class="item"><div class="title_box">NO_NAME</div></div></li></ul>`),
 			},
 			// fetchPerformances에서 parse error를 그대로 반환하거나 wrapping함
-			expectedError: "불러온 페이지의 문서구조가 변경되었습니다",
+			expectedError: "HTML 구조가 변경되었습니다",
 		},
 		{
 			name:     "성공: 통합 필터링 (키워드 매칭으로 일부 항목 제외)",
@@ -797,7 +803,8 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			naverTask := &task{
 				Base: baseTask,
 			}
-			naverTask.SetFetcher(mockFetcher)
+			naverTask.SetScraper(scraper.New(mockFetcher))
+			// SetFetcher call removed
 
 			// 실행
 			// prevSnapshot은 nil로 가정 (수집 테스트이므로)
@@ -915,8 +922,11 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
 	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
-	naverTask := &task{Base: baseTask}
-	naverTask.SetFetcher(mockFetcher)
+	naverTask := &task{
+		Base: baseTask,
+	}
+	naverTask.SetScraper(scraper.New(mockFetcher))
+	// SetFetcher call removed
 
 	settings := &watchNewPerformancesSettings{
 		Query:          "CancelTest",
@@ -1005,8 +1015,11 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 
 			// executeFlow
 			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
-			naverTask := &task{Base: baseTask}
-			naverTask.SetFetcher(mockFetcher)
+			naverTask := &task{
+				Base: baseTask,
+			}
+			naverTask.SetScraper(scraper.New(mockFetcher))
+			// SetFetcher call removed
 
 			settings := &watchNewPerformancesSettings{
 				Query:          "LimitTest",
@@ -1047,8 +1060,13 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	taskInstance := &task{
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler),
+	}
+	taskInstance.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
+
 	for i := 0; i < b.N; i++ {
-		_, _, _ = parsePerformancesFromHTML(html, filters)
+		_, _, _ = taskInstance.parsePerformancesFromHTML(context.Background(), html, filters)
 	}
 }
 
@@ -1070,7 +1088,10 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 	}
 
 	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
-	testTask := &task{Base: baseTask}
+	testTask := &task{
+		Base: baseTask,
+	}
+	testTask.SetScraper(scraper.New(nil))
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}

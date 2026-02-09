@@ -194,7 +194,7 @@ func (t *task) fetchProductInfo(ctx context.Context, id int) (*product, error) {
 	// @@@@@
 	// 상품 페이지를 읽어들인다.
 	productPageURL := formatProductPageURL(id)
-	doc, err := scraper.FetchHTMLDocument(ctx, t.GetFetcher(), productPageURL)
+	doc, err := t.GetScraper().FetchHTMLDocument(ctx, productPageURL, nil)
 	if err != nil {
 		return nil, err
 	}

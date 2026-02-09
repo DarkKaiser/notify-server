@@ -10,6 +10,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
@@ -52,7 +53,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 		appConfig: appConfig,
 	}
 
-	kurlyTask.SetFetcher(notificationFetcher)
+	kurlyTask.SetScraper(scraper.New(notificationFetcher))
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다
 	switch req.CommandID {

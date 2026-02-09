@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -12,7 +13,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -154,9 +154,9 @@ func (t *task) executeWatchPrice(ctx context.Context, commandSettings *watchPric
 // fetchProducts 네이버 쇼핑 검색 API를 호출하여 조건에 맞는 상품 목록을 수집합니다.
 func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSettings) ([]*product, error) {
 	var (
-		header = map[string]string{
-			"X-Naver-Client-Id":     t.clientID,
-			"X-Naver-Client-Secret": t.clientSecret,
+		header = http.Header{
+			"X-Naver-Client-Id":     []string{t.clientID},
+			"X-Naver-Client-Secret": []string{t.clientSecret},
 		}
 
 		startIndex       = 1
@@ -203,7 +203,7 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = scraper.FetchJSON(ctx, t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
+		err = t.GetScraper().FetchJSON(ctx, "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}

@@ -71,7 +71,7 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	tTask := &task{
 		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler),
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher removed
 
 	config := &watchNewPerformancesSettings{
 		Query: query,

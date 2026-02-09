@@ -10,7 +10,7 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
@@ -68,8 +68,8 @@ type Base struct {
 	// execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
 	execute ExecuteFunc
 
-	// fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
-	fetcher fetcher.Fetcher
+	// scraper는 웹 요청(HTTP) 및 파싱을 수행하는 컴포넌트입니다.
+	scraper scraper.Scraper
 
 	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
 	storage contract.TaskResultStore
@@ -128,12 +128,12 @@ func (t *Base) SetExecute(fn ExecuteFunc) {
 	t.execute = fn
 }
 
-func (t *Base) SetFetcher(f fetcher.Fetcher) {
-	t.fetcher = f
+func (t *Base) SetScraper(s scraper.Scraper) {
+	t.scraper = s
 }
 
-func (t *Base) GetFetcher() fetcher.Fetcher {
-	return t.fetcher
+func (t *Base) GetScraper() scraper.Scraper {
+	return t.scraper
 }
 
 func (t *Base) SetStorage(storage contract.TaskResultStore) {
