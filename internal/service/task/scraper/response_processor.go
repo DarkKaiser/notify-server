@@ -40,7 +40,9 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 	}
 
 	// HTTP 상태 코드가 2xx 범위의 성공 응답인지 확인
-	if err := fetcher.CheckResponseStatus(resp); err != nil {
+	// 201 Created, 202 Accepted 등 API에서 자주 사용되는 성공 코드를 명시적으로 허용합니다.
+	allowedStatusCodes := []int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}
+	if err := fetcher.CheckResponseStatus(resp, allowedStatusCodes...); err != nil {
 		// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다. (읽기 실패 시 무시)
 		bodySnippet, _ := s.readErrorResponseBody(resp)
 

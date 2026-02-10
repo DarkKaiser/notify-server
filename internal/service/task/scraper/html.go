@@ -267,8 +267,8 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 //
 // 매개변수:
 //   - resp: 검증할 HTTP 응답 객체
-//   - url: 요청한 URL (에러 메시지 및 로그에 포함하여 문제 발생 시 어느 엔드포인트에서 발생했는지 추적)
-//   - logger: 로그를 기록할 로거 객체
+//   - url: 요청을 보낸 대상 URL (에러 발생 시 어느 엔드포인트에서 문제가 생겼는지 추적하기 위한 용도)
+//   - logger: 검증 과정의 특이 사항이나 비표준 헤더 등을 기록할 로거 객체
 //
 // 반환값:
 //   - error: 현재는 항상 nil을 반환 (비표준 Content-Type은 경고 로그로만 처리)
@@ -320,7 +320,7 @@ func (s *scraper) verifyHTMLContentType(resp *http.Response, url string, logger 
 //   - r: HTML 데이터를 읽을 io.Reader
 //   - baseURL: 파싱할 HTML 페이지의 원본 URL (상대 경로 링크를 절대 경로로 변환할 때 사용, nil일 경우 변환 건너뜀)
 //   - contentType: HTTP 응답의 Content-Type 헤더 (인코딩 감지를 위한 힌트로 사용됨, 예: "text/html; charset=euc-kr")
-//   - logger: 로그를 기록할 로거 객체
+//   - logger: 파싱 및 인코딩 변환 과정의 진행 상황을 기록할 로거 객체
 //
 // 반환값:
 //   - *goquery.Document: 파싱된 HTML 문서 객체

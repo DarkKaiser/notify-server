@@ -116,8 +116,8 @@ func (s *scraper) FetchJSON(ctx context.Context, method, rawURL string, body any
 //
 // 매개변수:
 //   - resp: 검증할 HTTP 응답 객체
-//   - url: 요청한 URL (에러 메시지 및 로그에 포함하여 문제 발생 시 어느 엔드포인트에서 발생했는지 추적)
-//   - logger: 경고 로그를 기록할 로거 객체
+//   - url: 요청을 보낸 대상 URL (에러 발생 시 어느 엔드포인트에서 문제가 생겼는지 추적하기 위한 용도)
+//   - logger: 검증 과정의 특이 사항이나 비표준 헤더 등을 기록할 로거 객체
 //
 // 반환값:
 //   - error: HTML 응답이 감지된 경우 에러 반환, 그 외에는 nil
@@ -166,28 +166,16 @@ func (s *scraper) verifyJSONContentType(resp *http.Response, url string, logger 
 	return nil
 }
 
-// @@@@@
 // decodeJSONResponse HTTP 응답 본문을 JSON으로 디코딩하여 지정된 타입으로 변환합니다.
 //
-// 이 함수는 다음 단계를 수행합니다:
-//  1. 204 No Content 응답 처리 (본문이 없는 정상 응답)
-//  2. 응답 본문 크기 제한 검증 (Truncation 확인)
-//  3. 문자 인코딩 감지 및 UTF-8 변환
-//  4. JSON 디코딩 (스트림 방식)
-//  5. Strict Mode 검증 (JSON 데이터 후 추가 데이터 확인)
-//
 // 매개변수:
-//   - result: executeRequest에서 반환된 fetch 결과 (HTTP 응답과 메모리 버퍼링된 본문 포함)
+//   - result: HTTP 요청 실행후 수신된 결과 데이터 (상태 코드, 헤더 및 메모리에 버퍼링된 본문 바이트 포함)
 //   - v: JSON 응답을 디코딩할 대상 구조체의 포인터 (반드시 nil이 아닌 포인터여야 함)
-//   - url: 요청한 URL (에러 메시지 및 로그에 포함)
-//   - logger: 디코딩 과정을 로깅하기 위한 로거 객체
+//   - url: 요청을 보낸 대상 URL (에러 발생 시 어느 엔드포인트에서 문제가 생겼는지 추적하기 위한 용도)
+//   - logger: 파싱 과정의 진행 상황 및 에러 상세 정보를 기록할 로거 객체
 //
 // 반환값:
-//   - error: 다음 경우에 에러를 반환합니다:
-//   - 응답 본문이 크기 제한으로 잘린 경우 (ErrTooLarge)@@@@@
-//   - JSON 문법 오류가 있는 경우 (ParsingFailed)
-//   - 타입 불일치로 디코딩에 실패한 경우 (ParsingFailed)
-//   - JSON 데이터 뒤에 불필요한 데이터가 있는 경우 (ParsingFailed)
+//   - error: JSON 파싱 오류, 응답 크기 초과, 또는 데이터 무결성 오류 시 에러 반환
 func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logger *applog.Entry) error {
 	// ============================================================
 	// 1. 204 No Content 응답 처리
@@ -197,13 +185,18 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 	// 따라서 디코딩을 건너뛰고 즉시 성공을 반환합니다.
 	if result.Response.StatusCode == http.StatusNoContent {
 		logger.WithField("status_code", http.StatusNoContent).
-			Debug("[성공]: 204 No Content 응답 수신, 디코딩 생략")
+			Debug("[성공]: 204 No Content 수신으로 인한 JSON 파싱 생략")
 
 		return nil
 	}
 
 	// ============================================================
-	// 2. 응답 본문 크기 제한 검증
+	// 2. Content-Type 추출
+	// ============================================================
+	contentType := result.Response.Header.Get("Content-Type")
+
+	// ============================================================
+	// 3. 응답 본문 크기 제한 검증
 	// ============================================================
 	// executeRequest 함수는 메모리 보호를 위해 응답 본문을 maxResponseBodySize까지만 읽습니다.
 	// 만약 실제 응답이 이 크기를 초과하면 IsTruncated 플래그가 true로 설정됩니다.
@@ -213,115 +206,104 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 	//   - HTML과 달리 부분 파싱을 지원하지 않으므로, 잘린 데이터는 전혀 사용할 수 없습니다.
 	if result.IsTruncated {
 		logger.WithFields(applog.Fields{
-			"limit_bytes":    s.maxResponseBodySize,
+			"status_code":    result.Response.StatusCode,
+			"content_type":   contentType,
 			"content_length": result.Response.ContentLength,
+			"body_size":      len(result.Body),
+			"limit_bytes":    s.maxResponseBodySize,
 			"truncated":      true,
 		}).Error("[실패]: JSON 파싱 중단, 응답 본문 크기 초과(Truncated)")
 
-		// @@@@@
-		return newErrJSONTruncated(s.maxResponseBodySize, url)
+		return newErrJSONBodyTruncated(s.maxResponseBodySize, url)
 	}
 
-	contentType := result.Response.Header.Get("Content-Type")
+	logger.Debug("[진행]: JSON 파싱 시작")
 
-	logger.WithFields(applog.Fields{
-		"body_size":    len(result.Body),
-		"content_type": contentType,
-	}).Debug("[성공]: JSON 요청 완료, 파싱 단계 진입")
-
-	// @@@@@
 	// ============================================================
-	// 3. 문자 인코딩 감지 및 UTF-8 변환
+	// 4. 문자 인코딩 감지 및 UTF-8 변환
 	// ============================================================
 	utf8Reader, err := charset.NewReader(result.Response.Body, contentType)
 	if err != nil {
 		logger.WithError(err).
-			WithField("content_type", contentType).
-			Warn("[경고]: Charset 리더 생성 실패, 원본 리더 사용")
+			WithFields(applog.Fields{
+				"content_type": contentType,
+				"body_preview": s.previewBody(result.Body, contentType),
+			}).Warn("[경고]: 문자 인코딩 변환 실패, 인코딩 변환 없이 JSON 파싱을 계속합니다")
 
 		utf8Reader = result.Response.Body
 	}
 
 	// ============================================================
-	// 4. JSON 디코딩 (스트림 방식)
+	// 5. JSON 디코딩 (스트림 방식)
 	// ============================================================
 	decoder := json.NewDecoder(utf8Reader)
 	if err = decoder.Decode(v); err != nil {
-		// @@@@@
 		// 디코딩 실패 시 디버깅을 위한 정보 수집
 		// 에러 메시지와 함께 응답 본문의 일부를 로그에 포함합니다.
 		logger := logger.WithError(err).
 			WithFields(applog.Fields{
-				"body_snippet": s.previewBody(result.Body, contentType),
-				"body_length":  len(result.Body),
-				"http_status":  result.Response.StatusCode,
+				"status_code":  result.Response.StatusCode,
+				"content_type": contentType,
+				"body_size":    len(result.Body),
+				"body_preview": s.previewBody(result.Body, contentType),
+				"error_type":   fmt.Sprintf("%T", err),
+				"target_type":  fmt.Sprintf("%T", v),
 			})
 
 		// --------------------------------------------------------
 		// JSON Syntax 에러 특별 처리
 		// --------------------------------------------------------
-		// json.SyntaxError는 JSON 문법 오류 발생 시 반환되며, 에러가 발생한 정확한 바이트 위치(Offset)를 포함합니다.
-		// 에러 발생 위치 주변의 문자열을 추출하여 로그에 포함하면, 어느 부분에서 문제가 발생했는지 빠르게 파악할 수 있습니다.
+		// [문법 오류 처리] json.SyntaxError는 에러가 발생한 정확한 바이트 위치(Offset)를 제공합니다.
+		// 해당 위치 주변의 텍스트를 로그에 포함하여, 어떤 데이터 때문에 파싱이 실패했는지 즉시 식별할 수 있게 합니다.
+		var offset int
+		var snippet string
 		var syntaxErr *json.SyntaxError
-		errMsg := fmt.Sprintf("불러온 페이지(%s) 데이터의 JSON 변환이 실패하였습니다.", url)
-
 		if errors.As(err, &syntaxErr) {
-			// 에러 발생 위치 주변 컨텍스트 추출 (전후 50바이트)
+			// 에러 발생 위치 주변의 문맥 데이터 추출 (전후 50바이트)
 			//
-			// 중요: syntaxErr.Offset은 "디코딩된 UTF-8 스트림"에서의 바이트 위치입니다.
+			// [중요] syntaxErr.Offset은 "디코딩된 UTF-8 스트림" 기준의 바이트 위치입니다.
 			// 만약 원본 데이터가 EUC-KR 등 다른 인코딩이었다면, result.Body의 바이트 위치와 다를 수 있습니다.
-			// 따라서 정확한 위치를 찾기 위해 charset 변환을 다시 수행합니다.
+			// 따라서 정확한 위치를 찾기 위해 원본을 동일한 방식으로 다시 변환하여 위치를 찾습니다.
 			const contextBytes = 50
-			offset := int(syntaxErr.Offset)
-
-			contextStart := int64(offset - contextBytes)
-			if contextStart < 0 {
-				contextStart = 0
-			}
-
+			offset = int(syntaxErr.Offset)
+			contextStart := max(int64(offset-contextBytes), 0)
 			snippetLen := int64(contextBytes * 2)
 
-			// Charset 변환 후 스니펫 추출 시도
-			var snippet string
+			// [스니펫 추출] 올바른 인코딩(UTF-8)으로 변환된 데이터에서 문맥 데이터를 추출합니다.
 			if r, err := charset.NewReader(bytes.NewReader(result.Body), contentType); err == nil {
-				// contextStart까지 스킵
-				// (charset Reader는 io.Seeker를 구현하지 않을 수 있으므로 io.CopyN 사용)
+				// [위치 이동] 스니펫 추출 시작 지점까지 데이터를 읽어서 건너뜁니다.
+				// (charset.Reader는 io.Seeker를 구현하지 않을 수 있으므로 io.CopyN으로 대체)
 				if contextStart > 0 {
 					_, _ = io.CopyN(io.Discard, r, contextStart)
 				}
 
-				// 필요한 만큼만 읽기
-				buf := make([]byte, snippetLen)
-				n, _ := io.ReadFull(r, buf)
-				snippet = string(buf[:n])
+				// [데이터 추출] 설정된 길이(snippetLen)만큼 에러 주변 문맥 데이터를 읽어 들입니다.
+				snippetBuf := make([]byte, snippetLen)
+				n, _ := io.ReadFull(r, snippetBuf)
+				snippet = string(snippetBuf[:n])
 			} else {
-				// Charset 변환 실패 시 원본 바이트에서 직접 추출
-				// 오프셋이 정확하지 않을 수 있지만, 대략적인 위치 파악에는 충분합니다.
-				fallbackStart := offset - contextBytes
-				if fallbackStart < 0 {
-					fallbackStart = 0
-				}
-				fallbackEnd := offset + contextBytes
-				if fallbackEnd > len(result.Body) {
-					fallbackEnd = len(result.Body)
-				}
+				// [차선책] 인코딩 변환 실패 시, 원본 바이트에서 에러 주변 데이터를 직접 추출합니다.
+				// 인코딩 차이로 인해 정확한 문자의 위치는 다를 수 있으나, 대략적인 문맥 파악에는 충분합니다.
+				fallbackStart := max(offset-contextBytes, 0)
+				fallbackEnd := min(offset+contextBytes, len(result.Body))
 
+				// 바이트 슬라이스를 문자열로 변환
 				snippet = string(result.Body[fallbackStart:fallbackEnd])
 			}
 
-			errMsg += fmt.Sprintf(" (SyntaxError at offset %d: ...%s...)", syntaxErr.Offset, snippet)
-
-			logger = logger.WithField("syntax_error_offset", syntaxErr.Offset).WithField("syntax_error_context", snippet)
+			logger = logger.WithFields(applog.Fields{
+				"syntax_error_offset":  offset,
+				"syntax_error_context": snippet,
+			})
 		}
 
-		logger.Error("[실패]: JSON 디코딩 에러, 데이터 변환 불가")
+		logger.Error("[실패]: JSON 데이터 변환 실패, 유효하지 않은 형식")
 
-		// @@@@@
-		return newErrJSONParsingFailed(errMsg, err)
+		return newErrJSONParseFailed(url, offset, snippet, err)
 	}
 
 	// ============================================================
-	// 5. Strict Mode: JSON 데이터 후 추가 데이터 검증
+	// 6. Strict Mode: JSON 데이터 외에 불필요한 데이터가 더 존재하는지 확인
 	// ============================================================
 	// JSON 파싱이 성공적으로 완료된 후, 스트림에 추가 데이터가 남아있는지 확인합니다.
 	//
@@ -341,20 +323,29 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 	//
 	// 이러한 응답은 데이터 무결성 문제를 나타내므로 명시적으로 에러 처리합니다.
 	if token, err := decoder.Token(); err != io.EOF {
+		// 에러 발생 위치 주변의 문맥 데이터 추출 (전후 30바이트)
+		offset := decoder.InputOffset()
+		contextStart := max(int(offset)-30, 0)
+		contextEnd := min(int(offset)+30, len(result.Body))
+
+		// 바이트 슬라이스를 문자열로 변환 (멀티바이트 문자가 깨질 수 있으나 디버깅용으로 충분함)
+		snippet := string(result.Body[contextStart:contextEnd])
+
 		logger.WithFields(applog.Fields{
+			"offset":           offset,
 			"unexpected_token": token,
 			"token_type":       fmt.Sprintf("%T", token),
-			"offset":           decoder.InputOffset(),
-		}).Error("[취약]: JSON Strict Parsing 실패 (EOF Expected)")
+			"context_snippet":  snippet,
+		}).Error("[실패]: JSON 데이터 뒤에 불필요한 잔여 데이터가 감지되었습니다")
 
-		// @@@@@
 		return newErrJSONUnexpectedToken(url)
 	}
 
 	logger.WithFields(applog.Fields{
-		"status_code":    result.Response.StatusCode,
-		"content_length": len(result.Body),
-	}).Debug("[성공]: JSON 요청 및 파싱 완료")
+		"status_code":  result.Response.StatusCode,
+		"content_type": contentType,
+		"body_size":    len(result.Body),
+	}).Debug("[성공]: JSON 파싱 완료")
 
 	return nil
 }
