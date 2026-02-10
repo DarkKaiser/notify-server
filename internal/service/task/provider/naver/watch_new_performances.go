@@ -290,7 +290,7 @@ func buildSearchAPIURL(query string, page int) string {
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
 func (t *task) parsePerformancesFromHTML(ctx context.Context, html string, matchers *keywordMatchers) ([]*performance, int, error) {
-	doc, err := t.GetScraper().ParseReader(ctx, strings.NewReader(html), "", "")
+	doc, err := t.GetScraper().ParseHTML(ctx, strings.NewReader(html), "", "")
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 	}

@@ -9,6 +9,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 )
 
+// component Task 서비스의 Scraper 로깅용 컴포넌트 이름
+const component = "task.scraper"
+
 // defaultMaxBodySize HTTP 요청/응답 본문의 기본 최대 크기입니다.
 // 이 값은 메모리 사용량을 제어하고 악의적인 대용량 데이터로부터 시스템을 보호하기 위해 사용됩니다.
 // WithMaxRequestBodySize 또는 WithMaxResponseBodySize 옵션을 통해 변경할 수 있습니다.
@@ -24,14 +27,14 @@ type HTMLScraper interface {
 	// 매개변수:
 	//   - ctx: 요청의 생명주기를 제어하는 컨텍스트 (취소, 타임아웃 등)
 	//   - method: HTTP 메서드 (예: "GET", "POST")
-	//   - urlStr: 요청할 URL
+	//   - rawURL: 요청할 URL
 	//   - body: 요청 본문 데이터 (nil 가능, GET 요청 시 일반적으로 nil)
 	//   - header: 추가 HTTP 헤더 (nil 가능, 예: User-Agent, Cookie 등)
 	//
 	// 반환값:
 	//   - *goquery.Document: 파싱된 HTML 문서 객체
 	//   - error: 네트워크 오류, 파싱 오류, 또는 응답 크기 초과 시 에러 반환
-	FetchHTML(ctx context.Context, method, urlStr string, body io.Reader, header http.Header) (*goquery.Document, error)
+	FetchHTML(ctx context.Context, method, rawURL string, body io.Reader, header http.Header) (*goquery.Document, error)
 
 	// FetchHTMLDocument 지정된 URL로 GET 요청을 보내 HTML 문서를 가져오는 헬퍼 함수입니다.
 	//
@@ -40,24 +43,33 @@ type HTMLScraper interface {
 	//
 	// 매개변수:
 	//   - ctx: 요청의 생명주기를 제어하는 컨텍스트 (취소, 타임아웃 등)
-	//   - urlStr: 요청할 URL
+	//   - rawURL: 요청할 URL
 	//   - header: 추가 HTTP 헤더 (nil 가능, 예: User-Agent, Cookie 등)
 	//
 	// 반환값:
 	//   - *goquery.Document: 파싱된 HTML 문서 객체
 	//   - error: 네트워크 오류, 파싱 오류, 또는 응답 크기 초과 시 에러 반환
-	FetchHTMLDocument(ctx context.Context, urlStr string, header http.Header) (*goquery.Document, error)
+	FetchHTMLDocument(ctx context.Context, rawURL string, header http.Header) (*goquery.Document, error)
 
-	// @@@@@
-	// ParseReader io.Reader로부터 HTML 문서를 파싱합니다.
-	// 이미 메모리에 로드된 HTML 데이터나 파일에서 읽은 데이터를 파싱할 때 사용합니다.
+	// ParseHTML io.Reader로부터 HTML 문서를 파싱하여 goquery.Document를 반환합니다.
+	//
+	// 이 함수는 이미 메모리에 로드된 HTML 데이터(문자열, 파일 등)를 처리할 때 사용됩니다.
+	// FetchHTML과 달리 HTTP 요청을 수행하지 않으며, 제공된 Reader에서 직접 데이터를 읽어 파싱합니다.
 	//
 	// 매개변수:
-	//   - ctx: 파싱의 컨텍스트
-	//   - r: HTML 데이터를 읽을 Reader
-	//   - urlStr: 문서의 URL (상대 경로 링크 처리용, 빈 문자열 가능)
-	//   - contentType: Content-Type 헤더 값 (인코딩 감지용, 빈 문자열 가능)
-	ParseReader(ctx context.Context, r io.Reader, urlStr string, contentType string) (*goquery.Document, error)
+	//   - ctx: 컨텍스트 (로깅 연동 및 취소 신호 감지)
+	//   - r: HTML 데이터를 읽을 io.Reader (nil 불가)
+	//   - rawURL: 문서의 기준 URL (상대 경로 링크를 절대 경로로 변환할 때 사용, 빈 문자열 가능)
+	//   - contentType: HTTP 응답의 Content-Type 헤더 (인코딩 감지를 위한 힌트로 사용됨, 빈 문자열 가능)
+	//
+	// 반환값:
+	//   - *goquery.Document: 파싱된 HTML 문서 객체
+	//   - error: 입출력 오류, 컨텍스트 취소 또는 파싱 실패 시 에러 반환
+	//
+	// 보안 고려사항:
+	//   - maxResponseBodySize를 초과하는 입력은 자동으로 잘립니다. (DoS 방지)
+	//   - 컨텍스트 취소 시 즉시 중단됩니다.
+	ParseHTML(ctx context.Context, r io.Reader, rawURL string, contentType string) (*goquery.Document, error)
 }
 
 // JSONScraper JSON API 스크래핑을 위한 인터페이스입니다.
@@ -76,14 +88,14 @@ type JSONScraper interface {
 	// 매개변수:
 	//   - ctx: 요청의 생명주기를 제어하는 컨텍스트 (취소, 타임아웃 등)
 	//   - method: HTTP 메서드 (예: "GET", "POST")
-	//   - urlStr: 요청할 URL
+	//   - rawURL: 요청할 URL
 	//   - body: 요청 본문 데이터 (nil 가능, GET 요청 시 일반적으로 nil)
 	//   - header: 추가 HTTP 헤더 (nil 가능, 예: User-Agent, Cookie 등)
 	//   - v: JSON 응답을 디코딩할 대상 구조체의 포인터 (반드시 nil이 아닌 포인터여야 함)
 	//
 	// 반환값:
 	//   - error: 네트워크 오류, JSON 파싱 오류, 또는 응답 크기 초과 시 에러 반환
-	FetchJSON(ctx context.Context, method, urlStr string, body any, header http.Header, v any) error
+	FetchJSON(ctx context.Context, method, rawURL string, body any, header http.Header, v any) error
 }
 
 // Scraper 웹 페이지 스크래핑을 위한 통합 인터페이스입니다.
@@ -118,6 +130,9 @@ type scraper struct {
 	// 응답 헤더나 상태 코드를 검사할 때 사용할 수 있습니다.
 	responseCallback func(*http.Response)
 }
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Scraper = (*scraper)(nil)
 
 // New 새로운 Scraper 인터페이스 구현체를 생성합니다.
 //

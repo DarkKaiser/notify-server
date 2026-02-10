@@ -31,7 +31,7 @@ type contextAwareReader struct {
 //   - n: 읽은 바이트 수
 //   - err: Context 취소 에러 또는 기본 Reader의 에러
 func (r *contextAwareReader) Read(p []byte) (n int, err error) {
-	// Context 취소 여부 확인 (매 Read마다 체크)
+	// Context 취소 여부 확인
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}

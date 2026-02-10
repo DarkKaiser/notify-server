@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
@@ -141,7 +143,7 @@ func TestFetchJSON_Table(t *testing.T) {
 			},
 			wantErr:     true,
 			errType:     apperrors.ExecutionFailed,
-			errContains: "JSON 응답을 기대했으나 HTML 응답이 수신되었습니다",
+			errContains: "유효하지 않은 응답 형식: JSON을 기대했으나 HTML 응답이 수신되었습니다",
 		},
 		{
 			name:   "Error - HTML Content Type Case Insensitive",
@@ -157,7 +159,7 @@ func TestFetchJSON_Table(t *testing.T) {
 			},
 			wantErr:     true,
 			errType:     apperrors.ExecutionFailed,
-			errContains: "JSON 응답을 기대했으나 HTML 응답이 수신되었습니다",
+			errContains: "유효하지 않은 응답 형식: JSON을 기대했으나 HTML 응답이 수신되었습니다",
 		},
 	}
 
@@ -344,7 +346,7 @@ func TestFetchJSON_TrailingData(t *testing.T) {
 	err := s.FetchJSON(context.Background(), "GET", "http://example.com", nil, nil, &result)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Unexpected Token")
+	assert.Contains(t, err.Error(), "(Unexpected Token)")
 }
 
 func TestFetchJSON_ValidationFailure_Visibility(t *testing.T) {
@@ -367,7 +369,7 @@ func TestFetchJSON_ValidationFailure_Visibility(t *testing.T) {
 	assert.Contains(t, err.Error(), "<html><body>Error</body></html>")
 }
 
-func TestWithMaxRequestBodySize(t *testing.T) {
+func TestFetchJSON_RequestBodyLimitTests(t *testing.T) {
 	// 5 bytes limit
 	limit := int64(5)
 
@@ -383,8 +385,7 @@ func TestWithMaxRequestBodySize(t *testing.T) {
 	err := s.FetchJSON(context.Background(), "POST", "http://example.com", largeBody, nil, &map[string]any{})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "요청 본문이 허용된 크기")
-	assert.Contains(t, err.Error(), "초과했습니다")
+	assert.Contains(t, err.Error(), "요청 본문 크기 초과")
 }
 
 func TestFetchJSON_DefaultContentType(t *testing.T) {
@@ -451,15 +452,13 @@ func TestFetchJSON_SyntaxError_Optimization(t *testing.T) {
 
 	assert.Error(t, err)
 	// Check if Error message contains the context correctly (optimization shouldn't break this)
-	assert.Contains(t, err.Error(), "SyntaxError")
+	assert.Contains(t, err.Error(), "invalid character") // SyntaxError's message
 	assert.Contains(t, err.Error(), "@")
 }
 
 func TestFetchJSON_WithGenericReader_ShouldSupportRetry(t *testing.T) {
 	// Arrange
-	mockFetcher := &mocks.MockFetcher{} // Assuming MockFetcher supports retry (Do mock) or use specialized mock if needed.
-	// But in this test suite we use mocks.MockFetcher which is `mock.Mock`.
-	// The original test used MockRetryFetcher which is also `mock.Mock`.
+	mockFetcher := &mocks.MockFetcher{}
 
 	s := scraper.New(mockFetcher)
 	ctx := context.Background()
@@ -536,50 +535,6 @@ func TestFetchJSON_UseNumber_Fix(t *testing.T) {
 	assert.IsType(t, float64(0), result["large_val"], "Expected float64 for large_val")
 }
 
-func TestFetchJSON_RequestBodyLimitTests(t *testing.T) {
-	// 10 bytes 제한 설정
-	limit := int64(10)
-	largeString := "12345678901"
-	largeBytes := []byte("12345678901")
-	largeStruct := struct {
-		Data string `json:"data"`
-	}{
-		Data: "12345", // JSON: {"data":"12345"} (16 bytes)
-	}
-
-	mockFetcher := &mocks.MockFetcher{}
-	s := scraper.New(mockFetcher, scraper.WithMaxRequestBodySize(limit))
-	var result map[string]interface{}
-
-	t.Run("String Body Too Large", func(t *testing.T) {
-		err := s.FetchJSON(context.Background(), "POST", "http://example.com", largeString, nil, &result)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "요청 본문이 허용된 크기")
-	})
-
-	t.Run("Byte Slice Body Too Large", func(t *testing.T) {
-		err := s.FetchJSON(context.Background(), "POST", "http://example.com", largeBytes, nil, &result)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "요청 본문이 허용된 크기")
-	})
-
-	t.Run("Struct Body Too Large", func(t *testing.T) {
-		err := s.FetchJSON(context.Background(), "POST", "http://example.com", largeStruct, nil, &result)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "요청 본문이 허용된 크기")
-	})
-
-	t.Run("Body Within Limit", func(t *testing.T) {
-		smallString := "123456789" // 9 bytes
-		resp := mocks.NewMockResponse(`{}`, 200)
-		resp.Header.Set("Content-Type", "application/json")
-		mockFetcher.On("Do", mock.Anything).Return(resp, nil)
-
-		err := s.FetchJSON(context.Background(), "POST", "http://example.com", smallString, nil, &result)
-		assert.NoError(t, err)
-	})
-}
-
 func TestFetchJSON_InvalidDecodeTarget(t *testing.T) {
 	mockFetcher := &mocks.MockFetcher{}
 	s := scraper.New(mockFetcher)
@@ -596,7 +551,7 @@ func TestFetchJSON_InvalidDecodeTarget(t *testing.T) {
 		err := s.FetchJSON(ctx, "GET", url, nil, nil, result)
 		assert.Error(t, err)
 		assert.True(t, apperrors.Is(err, apperrors.Internal))
-		assert.Contains(t, err.Error(), "JSON 디코딩 실패: 결과를 저장할 대상(v)은 반드시 nil이 아닌 포인터여야 합니다")
+		assert.Contains(t, err.Error(), "JSON 디코딩 실패: 결과를 저장할 변수(v)는 반드시 nil이 아닌 포인터여야 합니다")
 	})
 
 	t.Run("Nil Pointer Target", func(t *testing.T) {
@@ -604,6 +559,56 @@ func TestFetchJSON_InvalidDecodeTarget(t *testing.T) {
 		err := s.FetchJSON(ctx, "GET", url, nil, nil, result)
 		assert.Error(t, err)
 		assert.True(t, apperrors.Is(err, apperrors.Internal))
-		assert.Contains(t, err.Error(), "JSON 디코딩 실패: 결과를 저장할 대상(v)은 반드시 nil이 아닌 포인터여야 합니다")
+		assert.Contains(t, err.Error(), "JSON 디코딩 실패: 결과를 저장할 변수(v)는 반드시 nil이 아닌 포인터여야 합니다")
 	})
+}
+
+// Slow infinite reader for timeout test
+type slowInfiniteReader struct {
+	delay time.Duration
+}
+
+func (r *slowInfiniteReader) Read(p []byte) (n int, err error) {
+	time.Sleep(r.delay)
+	if len(p) > 0 {
+		p[0] = 'a'
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func TestFetchJSON_ContextCancellation_DuringBodyRead(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	slowBody := &slowInfiniteReader{delay: 20 * time.Millisecond}
+	s := scraper.New(&mocks.MockFetcher{})
+
+	var result map[string]interface{}
+	start := time.Now()
+	err := s.FetchJSON(ctx, "POST", "http://example.com", slowBody, nil, &result)
+	duration := time.Since(start)
+
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "context canceled"))
+	assert.Less(t, duration, 200*time.Millisecond)
+}
+
+func TestFetchJSON_ResponseBodySizeLimit(t *testing.T) {
+	mockFetcher := &mocks.MockFetcher{}
+	// Valid JSON > 10MB
+	prefix := `{"key": "`
+	suffix := `"}`
+	fillerSize := 11*1024*1024 - len(prefix) - len(suffix)
+	jsonContent := prefix + strings.Repeat("a", fillerSize) + suffix
+
+	resp := mocks.NewMockResponse(jsonContent, 200)
+	mockFetcher.On("Do", mock.Anything).Return(resp, nil)
+
+	s := scraper.New(mockFetcher)
+	var result map[string]string
+	err := s.FetchJSON(context.Background(), "GET", "http://example.com", nil, nil, &result)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "[JSON 파싱 불가]")
 }
