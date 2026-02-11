@@ -46,7 +46,7 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 		// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다. (읽기 실패 시 무시)
 		bodySnippet, _ := s.readErrorResponseBody(resp)
 
-		return newErrHTTPRequestFailed(params.URL, resp.StatusCode, bodySnippet, err)
+		return newErrHTTPRequestFailed(err, params.URL, resp.StatusCode, bodySnippet)
 	}
 
 	// 사용자 정의 Validator 실행
@@ -58,7 +58,7 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 
 			if preview != "" {
 				// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다.
-				return newErrValidationFailed(preview, err)
+				return newErrValidationFailed(err, preview)
 			}
 
 			// 응답 본문의 일부를 읽지 못한 경우 원본 에러만 반환합니다.

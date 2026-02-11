@@ -214,7 +214,7 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 			"truncated":      true,
 		}).Error("[실패]: JSON 파싱 중단, 응답 본문 크기 초과(Truncated)")
 
-		return newErrJSONBodyTruncated(s.maxResponseBodySize, url)
+		return newErrJSONBodySizeLimitExceeded(url, s.maxResponseBodySize)
 	}
 
 	logger.Debug("[진행]: JSON 파싱 시작")
@@ -299,7 +299,7 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 
 		logger.Error("[실패]: JSON 데이터 변환 실패, 유효하지 않은 형식")
 
-		return newErrJSONParseFailed(url, offset, snippet, err)
+		return newErrJSONParseFailed(err, url, offset, snippet)
 	}
 
 	// ============================================================

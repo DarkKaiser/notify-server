@@ -56,7 +56,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			errType:   apperrors.Internal,
 			errContains: []string{
 				"JSON 디코딩 실패",
-				"결과를 저장할 변수(v)가 nil입니다",
+				"결과를 저장할 변수가 nil입니다",
 			},
 		},
 		{
@@ -69,7 +69,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			errType:   apperrors.Internal,
 			errContains: []string{
 				"JSON 디코딩 실패",
-				"반드시 nil이 아닌 포인터여야 합니다",
+				"결과를 저장할 변수는 nil이 아닌 포인터여야 합니다",
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			errType:   apperrors.Internal,
 			errContains: []string{
 				"JSON 디코딩 실패",
-				"반드시 nil이 아닌 포인터여야 합니다",
+				"결과를 저장할 변수는 nil이 아닌 포인터여야 합니다",
 			},
 		},
 
@@ -206,8 +206,8 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.ParsingFailed,
-			errContains: []string{"유효하지 않은 응답 형식"},
+			errType:     apperrors.ExecutionFailed,
+			errContains: []string{"응답 검증 실패", "응답 형식 오류"},
 		},
 		{
 			name:   "Error - Truncated Body (Size Limit Exceeded)",
@@ -223,7 +223,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.ParsingFailed,
+			errType:     apperrors.InvalidInput,
 			errContains: []string{"응답 본문 크기", "초과"},
 		},
 		{
@@ -238,7 +238,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			},
 			wantErr:     true,
 			errType:     apperrors.ParsingFailed,
-			errContains: []string{"구문 오류 발생", "bad"},
+			errContains: []string{"구문 오류", "bad"},
 		},
 		{
 			name:   "Error - Strict Mode Violation (Garbage Data)",
@@ -252,7 +252,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			},
 			wantErr:     true,
 			errType:     apperrors.ParsingFailed,
-			errContains: []string{"불필요한 데이터", "Unexpected Token"},
+			errContains: []string{"불필요한 토큰"},
 		},
 		{
 			name:   "Error - HTTP 500 (Internal Server Error)",
@@ -265,7 +265,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			},
 			wantErr:     true,
 			errType:     apperrors.Unavailable,
-			errContains: []string{"Status: 500"},
+			errContains: []string{"500 Internal Server Error"},
 		},
 	}
 

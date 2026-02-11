@@ -121,7 +121,7 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 				"body_preview": s.previewBody(result.Body, contentType),
 			}).Error("[실패]: HTML 파싱 에러, goquery Document 생성 실패")
 
-		return nil, newErrHTMLParseFailed(rawURL, err)
+		return nil, newErrHTMLParseFailed(err, rawURL)
 	}
 
 	logger.WithFields(applog.Fields{
@@ -232,7 +232,7 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 			WithField("has_base_url", baseURL != nil).
 			Error("[실패]: HTML 파싱 중단, DOM 객체 생성 실패")
 
-		return nil, newErrHTMLParseFailed(rawURL, err)
+		return nil, newErrHTMLParseFailed(err, rawURL)
 	}
 
 	logger.WithFields(applog.Fields{

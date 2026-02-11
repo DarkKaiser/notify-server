@@ -195,7 +195,7 @@ func TestFetchHTML(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errContains: "응답 본문의 크기가 허용된 제한",
+			errContains: "응답 본문 크기 초과",
 		},
 		{
 			name:   "Error - Context Canceled",
@@ -298,7 +298,7 @@ func TestParseHTML(t *testing.T) {
 			name:        "Error - Nil Reader",
 			input:       nil,
 			wantErr:     true,
-			errContains: "파싱 초기화 실패: 입력 데이터 스트림(Reader)이 nil입니다",
+			errContains: "HTML 파싱 실패: 입력 데이터 스트림이 nil입니다",
 		},
 		{
 			name: "Error - Typed Nil Reader",

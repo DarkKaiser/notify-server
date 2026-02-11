@@ -85,7 +85,7 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 		// 전체 데이터를 메모리로 읽어들입니다.
 		data, err := io.ReadAll(reader)
 		if err != nil {
-			return nil, newErrReadRequestBody(err)
+			return nil, newErrPrepareRequestBody(err)
 		}
 
 		// 요청 본문의 크기 초과 여부 최종 검증
@@ -141,7 +141,7 @@ func (s *scraper) createAndSendRequest(ctx context.Context, params requestParams
 	// [1단계] HTTP 요청 객체 생성
 	req, err := http.NewRequestWithContext(ctx, params.Method, params.URL, params.Body)
 	if err != nil {
-		return nil, newErrCreateHTTPRequest(params.URL, err)
+		return nil, newErrCreateHTTPRequest(err, params.URL)
 	}
 
 	// [2단계] 요청 헤더 설정
@@ -159,11 +159,11 @@ func (s *scraper) createAndSendRequest(ctx context.Context, params requestParams
 	if err != nil {
 		// 컨텍스트 취소/타임아웃 여부 확인
 		if ctx.Err() != nil {
-			return nil, newErrHTTPRequestCanceled(params.URL, ctx.Err())
+			return nil, newErrHTTPRequestCanceled(ctx.Err(), params.URL)
 		}
 
 		// 네트워크 에러 처리
-		return nil, newErrNetworkError(params.URL, err)
+		return nil, newErrNetworkError(err, params.URL)
 	}
 
 	return httpResp, nil
