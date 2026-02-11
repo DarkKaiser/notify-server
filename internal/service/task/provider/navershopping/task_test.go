@@ -217,7 +217,9 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler, err := newTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher)
+			handler, err := newTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher, func() interface{} {
+				return &watchPriceSnapshot{}
+			})
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)

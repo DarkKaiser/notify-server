@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
@@ -33,8 +34,8 @@ func (h *StubTask) GetInstanceID() contract.TaskInstanceID { return h.InstanceID
 func (h *StubTask) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *StubTask) IsCanceled() bool           { return h.Canceled }
-func (h *StubTask) ElapsedTimeAfterRun() int64 { return 0 }
+func (h *StubTask) IsCanceled() bool                   { return h.Canceled }
+func (h *StubTask) ElapsedTimeAfterRun() time.Duration { return 0 }
 
 func (h *StubTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()

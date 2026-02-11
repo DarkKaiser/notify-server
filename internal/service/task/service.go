@@ -221,7 +221,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 				CommandID:     req.CommandID,
 				InstanceID:    task.GetInstanceID(),
 				Message:       msgTaskAlreadyRunning,
-				ElapsedTime:   time.Duration(task.ElapsedTimeAfterRun()) * time.Second,
+				ElapsedTime:   task.ElapsedTimeAfterRun(),
 				ErrorOccurred: false,
 				Cancelable:    false,
 			})
@@ -257,7 +257,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.runningMu.Unlock()
 
 		// Task 인스턴스 생성
-		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore, s.fetcher)
+		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore, s.fetcher, cfg.Command.NewSnapshot)
 		if h == nil {
 			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,
@@ -375,7 +375,7 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 			CommandID:     task.GetCommandID(),
 			InstanceID:    instanceID,
 			Message:       msgTaskCanceledByUser,
-			ElapsedTime:   time.Duration(task.ElapsedTimeAfterRun()) * time.Second,
+			ElapsedTime:   task.ElapsedTimeAfterRun(),
 			ErrorOccurred: false,
 			Cancelable:    false,
 		})

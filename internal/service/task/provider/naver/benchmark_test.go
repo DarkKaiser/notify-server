@@ -70,7 +70,9 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(mockFetcher)),
+		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(mockFetcher), func() interface{} {
+			return &watchNewPerformancesSnapshot{}
+		}),
 	}
 	// SetFetcher removed
 
@@ -152,7 +154,9 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	}
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(nil)),
+		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(nil), func() interface{} {
+			return &watchNewPerformancesSnapshot{}
+		}),
 	}
 
 	prevPerformancesSet := make(map[string]bool)

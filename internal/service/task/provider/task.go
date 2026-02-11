@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
@@ -28,9 +29,9 @@ type Task interface {
 	// Run 루프 내에서 주기적으로 확인하여, 취소 시 작업을 중단하는 용도로 사용됩니다.
 	IsCanceled() bool
 
-	// ElapsedTimeAfterRun 작업이 시작된 후 경과된 시간(초)을 반환합니다.
+	// ElapsedTimeAfterRun 작업이 시작된 후 경과된 시간을 반환합니다.
 	// 작업 모니터링이나 타임아웃 감지에 활용될 수 있습니다.
-	ElapsedTimeAfterRun() int64
+	ElapsedTimeAfterRun() time.Duration
 
 	// Run 작업을 실행하는 메인 메서드입니다.
 	Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)

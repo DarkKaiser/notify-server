@@ -249,7 +249,7 @@ func TestMockCreateTask(t *testing.T) {
 	cmdID := contract.TaskCommandID("test-cmd")
 	instanceID := contract.TaskInstanceID("test-instance")
 
-	createdTask := NewMockTask(id, cmdID, instanceID, "test_notifier", contract.TaskRunByUser, nil, nil)
+	createdTask := NewMockTask(id, cmdID, instanceID, "test_notifier", contract.TaskRunByUser, nil, nil, func() interface{} { return struct{}{} })
 
 	assert.NotNil(t, createdTask)
 	assert.Equal(t, id, createdTask.GetID())

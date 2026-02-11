@@ -57,7 +57,7 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
 	if req.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
@@ -68,7 +68,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 	}
 
 	naverShoppingTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, scraper.New(f)),
+		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, scraper.New(f), newSnapshot),
 
 		clientID:     settings.ClientID,
 		clientSecret: settings.ClientSecret,

@@ -15,7 +15,7 @@ import (
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
 func dummyNewTask() NewTaskFunc {
-	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
+	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
 		return nil, nil
 	}
 }

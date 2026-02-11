@@ -28,7 +28,7 @@ func setupPredictionTest(t *testing.T) (*task, *MockCommandExecutor, *MockComman
 	mockProcess := new(MockCommandProcess)
 
 	lottoTask := &task{
-		Base:     provider.NewBase(TaskID, PredictionCommand, "instance-1", "notifier-1", contract.TaskRunByUser, nil, nil),
+		Base:     provider.NewBase(TaskID, PredictionCommand, "instance-1", "notifier-1", contract.TaskRunByUser, nil, nil, func() interface{} { return &predictionSnapshot{} }),
 		appPath:  tmpDir,
 		executor: mockExecutor,
 	}

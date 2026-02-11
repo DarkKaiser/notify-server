@@ -34,7 +34,7 @@ func registerServiceTestTask() {
 				NewSnapshot:   func() interface{} { return &struct{}{} },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
 			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
 		},
 	}
@@ -349,7 +349,7 @@ func TestService_Submit_Timeout(t *testing.T) {
 		Commands: []*provider.CommandConfig{
 			{ID: "SLOW_CMD", AllowMultiple: true},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
 			// Simulate slow initialization to block the consumer (run0 loop)
 			time.Sleep(100 * time.Millisecond)
 			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil

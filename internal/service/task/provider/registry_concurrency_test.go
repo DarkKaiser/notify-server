@@ -25,7 +25,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 
 				taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 				r.Register(taskID, &Config{
-					NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
+					NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
 						return nil, nil
 					},
 					Commands: []*CommandConfig{
@@ -62,7 +62,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			taskID := contract.TaskID(fmt.Sprintf("TASK_%d", i))
 			r.Register(taskID, &Config{
-				NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
+				NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
 					return nil, nil
 				},
 				Commands: []*CommandConfig{
@@ -92,7 +92,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 					defer wg.Done()
 					taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 					r.Register(taskID, &Config{
-						NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
+						NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
 							return nil, nil
 						},
 						Commands: []*CommandConfig{

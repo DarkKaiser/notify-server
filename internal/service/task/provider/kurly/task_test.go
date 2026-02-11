@@ -197,7 +197,9 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			// we will keep the existing `nil` for the storage argument in `createTask`.
 			// If the intent was to modify `createTask` to take a `provider.Base` directly,
 			// the `createTask` function signature would need to change, which is outside the scope of this instruction.
-			got, err := newTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher)
+			got, err := newTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher, func() interface{} {
+				return &watchProductPriceSnapshot{}
+			})
 
 			if tt.wantErr {
 				require.Error(t, err)

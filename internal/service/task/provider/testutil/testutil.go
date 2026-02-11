@@ -31,8 +31,8 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 				NewSnapshot:   func() interface{} { return snapshot },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
-			t := NewMockTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser, storage, nil)
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
+			t := NewMockTask(taskID, commandID, instanceID, req.NotifierID, req.RunBy, storage, nil, newSnapshot)
 			return t, nil
 		},
 	}
@@ -40,12 +40,12 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, s scraper.Scraper) *provider.Base {
+func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, s scraper.Scraper, newSnapshot provider.NewSnapshotFunc) *provider.Base {
 	if storage == nil {
 		storage = &contractmocks.MockTaskResultStore{}
 	}
 	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
-	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy, storage, s)
+	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy, storage, s, newSnapshot)
 	return t
 }
 

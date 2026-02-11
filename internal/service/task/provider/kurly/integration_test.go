@@ -80,7 +80,9 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -158,7 +160,9 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -216,7 +220,9 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -315,7 +321,9 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -414,7 +422,9 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -497,7 +507,9 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
+		return &watchProductPriceSnapshot{}
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)

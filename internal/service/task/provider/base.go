@@ -76,11 +76,14 @@ type Base struct {
 
 	// fixedFields 로깅 성능 최적화를 위해 생성 시점에 고정되는 필드들을 미리 계산하여 보관합니다.
 	fixedFields applog.Fields
+
+	// newSnapshot은 작업 결과 데이터(Snapshot)의 새 인스턴스를 생성하는 팩토리 함수입니다.
+	newSnapshot NewSnapshotFunc
 }
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, scraper scraper.Scraper) *Base {
+func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, scraper scraper.Scraper, newSnapshot NewSnapshotFunc) *Base {
 	return &Base{
 		id:         id,
 		commandID:  commandID,
@@ -98,6 +101,8 @@ func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID co
 			"instance_id": instanceID,
 			"notifier_id": notifierID,
 		},
+
+		newSnapshot: newSnapshot,
 	}
 }
 
@@ -133,12 +138,12 @@ func (t *Base) GetRunBy() contract.TaskRunBy {
 	return t.runBy
 }
 
-func (t *Base) ElapsedTimeAfterRun() int64 {
+func (t *Base) ElapsedTimeAfterRun() time.Duration {
 	if t.runTime.IsZero() {
 		return 0
 	}
 
-	return int64(time.Since(t.runTime).Seconds())
+	return time.Since(t.runTime)
 }
 
 func (t *Base) SetExecute(fn ExecuteFunc) {
@@ -199,10 +204,10 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 	}
 
 	var snapshot interface{}
-	cfg, findErr := FindConfig(t.GetID(), t.GetCommandID())
-	if findErr == nil {
-		snapshot = cfg.Command.NewSnapshot()
+	if t.newSnapshot != nil {
+		snapshot = t.newSnapshot()
 	}
+
 	if snapshot == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
 		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
@@ -243,7 +248,7 @@ func (t *Base) handleExecutionResult(ctx context.Context, notificationSender con
 				CommandID:     t.GetCommandID(),
 				InstanceID:    t.GetInstanceID(),
 				Message:       message,
-				ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
+				ElapsedTime:   t.ElapsedTimeAfterRun(),
 				ErrorOccurred: false,
 				Cancelable:    false, // Completed -> Not cancelable
 			})
@@ -270,7 +275,7 @@ func (t *Base) notify(ctx context.Context, notificationSender contract.Notificat
 		CommandID:     t.GetCommandID(),
 		InstanceID:    t.GetInstanceID(),
 		Message:       message,
-		ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
+		ElapsedTime:   t.ElapsedTimeAfterRun(),
 		ErrorOccurred: false,
 		Cancelable:    t.GetRunBy() == contract.TaskRunByUser,
 	})
@@ -283,7 +288,7 @@ func (t *Base) notifyError(ctx context.Context, notificationSender contract.Noti
 		CommandID:     t.GetCommandID(),
 		InstanceID:    t.GetInstanceID(),
 		Message:       message,
-		ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
+		ElapsedTime:   t.ElapsedTimeAfterRun(),
 		ErrorOccurred: true,
 		Cancelable:    false, // Error means termination, so not cancelable
 	})
