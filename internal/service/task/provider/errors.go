@@ -27,6 +27,16 @@ var (
 	ErrInvalidCommandSettings = apperrors.New(apperrors.InvalidInput, "명령 설정 데이터가 유효하지 않습니다")
 )
 
+// newErrInvalidTaskSettings 작업 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
+func newErrInvalidTaskSettings(cause error) error {
+	return apperrors.Wrap(cause, apperrors.InvalidInput, ErrInvalidTaskSettings.Error())
+}
+
+// newErrInvalidCommandSettings 명령 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
+func newErrInvalidCommandSettings(cause error) error {
+	return apperrors.Wrap(cause, apperrors.InvalidInput, ErrInvalidCommandSettings.Error())
+}
+
 // NewErrCommandNotSupported 지원하지 않는 명령(Command)일 때 상세 메시지와 함께 에러를 반환합니다.
 func NewErrCommandNotSupported(commandID contract.TaskCommandID) error {
 	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID))

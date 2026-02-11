@@ -218,7 +218,7 @@ func TestNaverTask_Integration_Scenarios(t *testing.T) {
 				tt.configModifier(cmdConfig)
 			}
 			// Important: Eager Init
-			require.NoError(t, cmdConfig.validate())
+			require.NoError(t, cmdConfig.Validate())
 
 			// Run
 			prev := &watchNewPerformancesSnapshot{Performances: []*performance{}}

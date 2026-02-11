@@ -67,7 +67,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.settings.validate()
+			err := tt.settings.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.errSubstr != "" {

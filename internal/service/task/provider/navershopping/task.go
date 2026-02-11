@@ -12,7 +12,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (
@@ -28,7 +27,10 @@ type taskSettings struct {
 	ClientSecret string `json:"client_secret"`
 }
 
-func (s *taskSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*taskSettings)(nil)
+
+func (s *taskSettings) Validate() error {
 	s.ClientID = strings.TrimSpace(s.ClientID)
 	if s.ClientID == "" {
 		return apperrors.New(apperrors.InvalidInput, "client_id가 입력되지 않았거나 공백입니다")
@@ -65,24 +67,9 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 		return nil, provider.ErrTaskNotSupported
 	}
 
-	var settings *taskSettings
-	for _, t := range appConfig.Tasks {
-		if req.TaskID == contract.TaskID(t.ID) {
-			s, err := maputil.Decode[taskSettings](t.Data)
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidTaskSettings.Error())
-			}
-			if err := s.validate(); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidTaskSettings.Error())
-			}
-
-			settings = s
-
-			break
-		}
-	}
-	if settings == nil {
-		return nil, provider.ErrTaskSettingsNotFound
+	settings, err := provider.FindTaskSettings[taskSettings](appConfig, req.TaskID)
+	if err != nil {
+		return nil, err
 	}
 
 	naverShoppingTask := &task{
@@ -98,7 +85,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	if strings.HasPrefix(string(req.CommandID), watchPriceAnyCommandPrefix) {
-		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		commandSettings, err := provider.FindCommandSettings[watchPriceSettings](appConfig, req.TaskID, req.CommandID)
 		if err != nil {
 			return nil, err
 		}
@@ -116,35 +103,6 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	return naverShoppingTask, nil
-}
-
-func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, commandID contract.TaskCommandID) (*watchPriceSettings, error) {
-	var commandSettings *watchPriceSettings
-
-	for _, t := range appConfig.Tasks {
-		if taskID == contract.TaskID(t.ID) {
-			for _, c := range t.Commands {
-				if commandID == contract.TaskCommandID(c.ID) {
-					settings, err := maputil.Decode[watchPriceSettings](c.Data)
-					if err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					if err := settings.validate(); err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					commandSettings = settings
-					break
-				}
-			}
-			break
-		}
-	}
-
-	if commandSettings == nil {
-		return nil, provider.ErrCommandSettingsNotFound
-	}
-
-	return commandSettings, nil
 }
 
 type task struct {

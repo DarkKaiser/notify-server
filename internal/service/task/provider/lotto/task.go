@@ -13,7 +13,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
@@ -34,7 +33,10 @@ type taskSettings struct {
 	AppPath string `json:"app_path"`
 }
 
-func (s *taskSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*taskSettings)(nil)
+
+func (s *taskSettings) Validate() error {
 	s.AppPath = strings.TrimSpace(s.AppPath)
 	if s.AppPath == "" {
 		return apperrors.New(apperrors.InvalidInput, "'app_path'가 입력되지 않았거나 공백입니다")
@@ -78,46 +80,27 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 		return nil, provider.ErrTaskNotSupported
 	}
 
-	var appPath string
-
-	found := false
-	for _, t := range appConfig.Tasks {
-		if req.TaskID == contract.TaskID(t.ID) {
-			settings, err := maputil.Decode[taskSettings](t.Data)
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidTaskSettings.Error())
-			}
-			if err := settings.validate(); err != nil {
-				return nil, err
-			}
-
-			appPath = settings.AppPath
-
-			// JAR 파일 존재 여부 검증
-			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
-			jarPath := filepath.Join(appPath, jarFileName)
-			if err := validation.ValidateFile(jarPath); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName))
-			}
-
-			// Java 실행 가능 여부 검증
-			if _, err := execLookPath("java"); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.System, "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다. PATH 설정을 확인해 주십시오")
-			}
-
-			found = true
-
-			break
-		}
+	settings, err := provider.FindTaskSettings[taskSettings](appConfig, req.TaskID)
+	if err != nil {
+		return nil, err
 	}
-	if !found {
-		return nil, provider.ErrTaskSettingsNotFound
+
+	// JAR 파일 존재 여부 검증
+	// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
+	jarPath := filepath.Join(settings.AppPath, jarFileName)
+	if err := validation.ValidateFile(jarPath); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName))
+	}
+
+	// Java 실행 가능 여부 검증
+	if _, err := execLookPath("java"); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.System, "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다. PATH 설정을 확인해 주십시오")
 	}
 
 	lottoTask := &task{
 		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
 
-		appPath: appPath,
+		appPath: settings.AppPath,
 
 		executor: executor,
 	}

@@ -66,10 +66,13 @@ func TestTaskSettings_Validate_TableDriven(t *testing.T) {
 		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.settings.validate()
-			if tt.wantError != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantError)
+			if err := tt.settings.Validate(); err != nil {
+				if tt.wantError != "" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), tt.wantError)
+				} else {
+					assert.NoError(t, err)
+				}
 			} else {
 				assert.NoError(t, err)
 			}

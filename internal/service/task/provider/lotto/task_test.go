@@ -30,6 +30,11 @@ func mockLookPath(mockFunc func(file string) (string, error)) func() {
 }
 
 func TestNewTask_Comprehensive(t *testing.T) {
+	// lotto.init()이 이미 실행되었겠지만, 테스트를 위해 명시적으로 확인하거나
+	// provider.Register가 중복 호출되면 패닉이 발생하므로 주의해야 합니다.
+	// 기본적으로 lotto.init()에서 등록되므로 별도 등록은 필요 없으나,
+	// req.TaskID와 req.CommandID가 올바른지 확인해야 합니다.
+
 	// 정상적인 상황을 위한 기본 설정 Helper
 	setupValidEnv := func(t *testing.T) (string, *appconfig.AppConfig) {
 		tmpDir := t.TempDir()
@@ -43,6 +48,11 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				{
 					ID:   string(TaskID),
 					Data: map[string]interface{}{"app_path": tmpDir},
+					Commands: []appconfig.CommandConfig{
+						{
+							ID: string(PredictionCommand),
+						},
+					},
 				},
 			},
 		}
@@ -155,7 +165,9 @@ func TestNewTask_Comprehensive(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req, cfg, restore := tt.prepare(t)
-			defer restore()
+			if restore != nil {
+				defer restore()
+			}
 
 			// newTask 사용 (createTask가 아닌 public API 테스트) -> 이제는 Internal이지만 동일 패키지 테스트
 			handler, err := newTask("test-instance", req, cfg)
@@ -165,11 +177,11 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedError)
 				assert.Nil(t, handler)
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, handler)
+				require.NoError(t, err)
+				require.NotNil(t, handler)
 				// 핸들러 타입 검증
 				lottoTask, ok := handler.(*task)
-				assert.True(t, ok)
+				require.True(t, ok)
 				assert.Equal(t, TaskID, lottoTask.GetID())
 			}
 		})

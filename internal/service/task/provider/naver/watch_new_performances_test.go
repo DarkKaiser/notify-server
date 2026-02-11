@@ -67,7 +67,7 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 		tt := tt // Capture range variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.config.validate()
+			err := tt.config.Validate()
 			if tt.expectedError != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)

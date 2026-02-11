@@ -77,7 +77,7 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 		Query: query,
 	}
 	// Eager Initialization (중요: Panic 방지 및 Thread Safety 확보)
-	err := config.validate()
+	err := config.Validate()
 	require.NoError(b, err)
 
 	return tTask, config

@@ -140,7 +140,7 @@ func newErrResponseBodyTooLarge(limit int64, url string) error {
 
 // newErrReadResponseBody 네트워크로부터 전달된 응답 바이트 스트림을 메모리 버퍼로 읽어들이는 과정에서 I/O 오류가 발생했을 때 에러를 생성합니다.
 func newErrReadResponseBody(err error) error {
-	return apperrors.Wrap(err, apperrors.ExecutionFailed, "응답 본문 데이터 수수 실패: 데이터 스트림을 읽는 중 I/O 오류가 발생했습니다")
+	return apperrors.Wrap(err, apperrors.ExecutionFailed, "응답 본문 데이터 수신 실패: 데이터 스트림을 읽는 중 I/O 오류가 발생했습니다")
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

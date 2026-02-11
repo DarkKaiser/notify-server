@@ -12,6 +12,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -72,7 +73,10 @@ type watchNewPerformancesSettings struct {
 	PageFetchDelay int `json:"page_fetch_delay_ms"` // 페이지 수집 간 대기 시간 (ms)
 }
 
-func (s *watchNewPerformancesSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*watchNewPerformancesSettings)(nil)
+
+func (s *watchNewPerformancesSettings) Validate() error {
 	s.Query = strings.TrimSpace(s.Query)
 	if s.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")

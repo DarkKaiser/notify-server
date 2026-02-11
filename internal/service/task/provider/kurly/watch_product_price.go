@@ -13,6 +13,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -40,7 +41,10 @@ type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (s *watchProductPriceSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*watchProductPriceSettings)(nil)
+
+func (s *watchProductPriceSettings) Validate() error {
 	s.WatchProductsFile = strings.TrimSpace(s.WatchProductsFile)
 	if s.WatchProductsFile == "" {
 		return apperrors.New(apperrors.InvalidInput, "watch_products_file이 입력되지 않았거나 공백입니다")

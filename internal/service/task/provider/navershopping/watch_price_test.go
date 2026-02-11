@@ -64,7 +64,7 @@ func TestWatchPriceSettings_Validate_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			s := tt.settings()
-			err := s.validate()
+			err := s.Validate()
 			if tt.wantError != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantError)

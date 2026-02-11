@@ -6,12 +6,10 @@ import (
 	"context"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (
@@ -56,7 +54,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case WatchNewPerformancesCommand:
-		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		commandSettings, err := provider.FindCommandSettings[watchNewPerformancesSettings](appConfig, req.TaskID, req.CommandID)
 		if err != nil {
 			return nil, err
 		}
@@ -74,35 +72,6 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	return naverTask, nil
-}
-
-func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, commandID contract.TaskCommandID) (*watchNewPerformancesSettings, error) {
-	var commandSettings *watchNewPerformancesSettings
-
-	for _, t := range appConfig.Tasks {
-		if taskID == contract.TaskID(t.ID) {
-			for _, c := range t.Commands {
-				if commandID == contract.TaskCommandID(c.ID) {
-					settings, err := maputil.Decode[watchNewPerformancesSettings](c.Data)
-					if err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					if err := settings.validate(); err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					commandSettings = settings
-					break
-				}
-			}
-			break
-		}
-	}
-
-	if commandSettings == nil {
-		return nil, provider.ErrCommandSettingsNotFound
-	}
-
-	return commandSettings, nil
 }
 
 type task struct {
