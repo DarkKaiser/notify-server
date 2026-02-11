@@ -92,7 +92,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 			return nil, err
 		}
 
-		naverShoppingTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		naverShoppingTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchPriceSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchPriceSnapshot{}, previousSnapshot)

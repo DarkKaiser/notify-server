@@ -63,7 +63,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 			return nil, err
 		}
 
-		kurlyTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		kurlyTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchProductPriceSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchProductPriceSnapshot{}, previousSnapshot)

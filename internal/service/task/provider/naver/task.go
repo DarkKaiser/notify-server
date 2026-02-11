@@ -61,7 +61,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 			return nil, err
 		}
 
-		naverTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		naverTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
 			if !ok {
 				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchNewPerformancesSnapshot{}, previousSnapshot)

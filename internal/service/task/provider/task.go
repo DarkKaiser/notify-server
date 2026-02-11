@@ -8,6 +8,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
+// component Task 서비스의 Provider 로깅용 컴포넌트 이름
+const component = "task.provider"
+
 // Task 개별 Task 인스턴스를 제어하고 상태를 조회하기 위한 인터페이스입니다.
 //
 // Task는 Service 레이어와 개별 Task 구현체(Base 구조체) 사이의 계약(Contract)을 정의합니다.

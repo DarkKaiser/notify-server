@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,7 +38,7 @@ const (
 //   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
 //   - interface{}: 실행 완료 후 저장할 새로운 데이터. 다음 실행 시 data 인자로 전달됩니다.
 //   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
-type ExecuteFunc func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
+type ExecuteFunc func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error)
 
 // Base 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
@@ -80,6 +81,9 @@ type Base struct {
 	// newSnapshot은 작업 결과 데이터(Snapshot)의 새 인스턴스를 생성하는 팩토리 함수입니다.
 	newSnapshot NewSnapshotFunc
 }
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Task = (*Base)(nil)
 
 // BaseParams Base 구조체 초기화에 필요한 매개변수들을 정의하는 구조체입니다.
 // 인자가 많아짐에 따른 가독성 저하를 방지하고, 향후 공통 필드 추가 시 확장성을 보장합니다.
@@ -208,7 +212,7 @@ func (t *Base) Run(ctx context.Context, notificationSender contract.Notification
 }
 
 // prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
-func (t *Base) prepareExecution(ctx context.Context, notificationSender contract.NotificationSender) (interface{}, error) {
+func (t *Base) prepareExecution(ctx context.Context, notificationSender contract.NotificationSender) (any, error) {
 	if t.execute == nil {
 		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
 		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
@@ -311,16 +315,13 @@ func (t *Base) notifyError(ctx context.Context, notificationSender contract.Noti
 func (t *Base) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
 	// 고정 필드를 기반으로 맵 복사 최적화 (고정 4개 + run_by 1개 + 추가 필드 + 에러 1개)
 	fieldsMap := make(applog.Fields, len(t.fixedFields)+len(fields)+2)
-	for k, v := range t.fixedFields {
-		fieldsMap[k] = v
-	}
+
+	maps.Copy(fieldsMap, t.fixedFields)
 
 	// 가변 필드 및 추가 필드 반영
 	fieldsMap["run_by"] = t.GetRunBy()
 
-	for k, v := range fields {
-		fieldsMap[k] = v
-	}
+	maps.Copy(fieldsMap, fields)
 
 	if err != nil {
 		fieldsMap["error"] = err

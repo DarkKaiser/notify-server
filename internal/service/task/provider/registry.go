@@ -15,7 +15,7 @@ import (
 type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error)
 
 // NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
-type NewSnapshotFunc func() interface{}
+type NewSnapshotFunc func() any
 
 // Config Task 생성 및 명령어(Command) 구성을 위한 메타데이터를 정의하는 불변(Immutable) 설정 객체입니다.
 // 레지스트리에 등록된 이후에는 상태가 변경되지 않으며(Read-Only), Task 인스턴스를 생성하기 위한 청사진(Blueprint)으로 사용됩니다.

@@ -114,7 +114,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {
 	case PredictionCommand:
-		lottoTask.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
+		lottoTask.SetExecute(func(ctx context.Context, _ any, _ bool) (string, any, error) {
 			return lottoTask.executePrediction()
 		})
 	default:
