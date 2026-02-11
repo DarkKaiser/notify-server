@@ -7,7 +7,6 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 )
@@ -28,37 +27,37 @@ func init() {
 
 				AllowMultiple: true,
 
-				NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },
+				NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 			},
 		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
-	if req.TaskID != TaskID {
+func newTask(p provider.NewTaskParams) (provider.Task, error) {
+	if p.Request.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
 
 	kurlyTask := &task{
 		Base: provider.NewBase(provider.BaseParams{
-			ID:          req.TaskID,
-			CommandID:   req.CommandID,
-			InstanceID:  instanceID,
-			NotifierID:  req.NotifierID,
-			RunBy:       req.RunBy,
-			Storage:     storage,
-			Scraper:     scraper.New(f),
-			NewSnapshot: newSnapshot,
+			ID:          p.Request.TaskID,
+			CommandID:   p.Request.CommandID,
+			InstanceID:  p.InstanceID,
+			NotifierID:  p.Request.NotifierID,
+			RunBy:       p.Request.RunBy,
+			Storage:     p.Storage,
+			Scraper:     scraper.New(p.Fetcher),
+			NewSnapshot: p.NewSnapshot,
 		}),
 
-		appConfig: appConfig,
+		appConfig: p.AppConfig,
 	}
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다
-	switch req.CommandID {
+	switch p.Request.CommandID {
 	case WatchProductPriceCommand:
-		commandSettings, err := provider.FindCommandSettings[watchProductPriceSettings](appConfig, req.TaskID, req.CommandID)
+		commandSettings, err := provider.FindCommandSettings[watchProductPriceSettings](p.AppConfig, p.Request.TaskID, p.Request.CommandID)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +76,7 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 			return kurlyTask.executeWatchProductPrice(ctx, loader, prevSnapshot, supportsHTML)
 		})
 	default:
-		return nil, provider.NewErrCommandNotSupported(req.CommandID)
+		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID)
 	}
 
 	return kurlyTask, nil

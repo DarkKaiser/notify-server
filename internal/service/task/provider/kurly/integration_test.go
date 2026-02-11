@@ -8,6 +8,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -80,8 +81,13 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -160,8 +166,13 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -220,8 +231,13 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -321,8 +337,13 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -422,8 +443,13 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -507,8 +533,13 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchProductPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)

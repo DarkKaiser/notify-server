@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,8 +59,13 @@ func setupTestTask(t *testing.T, fetcher fetcher.Fetcher) (*task, *config.AppCon
 			},
 		},
 	}
-	handler, err := newTask("test_instance", req, appConfig, nil, fetcher, func() interface{} {
-		return &watchNewPerformancesSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     fetcher,
+		NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
 	})
 	require.NoError(t, err)
 	tsk, ok := handler.(*task)

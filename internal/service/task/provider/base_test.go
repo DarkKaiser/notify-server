@@ -8,12 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -391,7 +389,7 @@ func registerTestConfig(tID contract.TaskID, cID contract.TaskCommandID) {
 	// Register 대신 RegisterForTest를 사용하여 중복 시 덮어쓰기 허용
 	// 또는 테스트마다 매번 ClearRegistry를 호출해야 하지만, 병렬 실행 등을 고려하여 덮어쓰기가 유리함
 	defaultRegistry.RegisterForTest(tID, &Config{
-		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
+		NewTask: func(p NewTaskParams) (Task, error) {
 			return nil, nil
 		},
 		Commands: []*CommandConfig{

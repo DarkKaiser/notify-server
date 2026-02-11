@@ -5,9 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,7 +23,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 
 				taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 				r.Register(taskID, &Config{
-					NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
+					NewTask: func(p NewTaskParams) (Task, error) {
 						return nil, nil
 					},
 					Commands: []*CommandConfig{
@@ -62,7 +60,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			taskID := contract.TaskID(fmt.Sprintf("TASK_%d", i))
 			r.Register(taskID, &Config{
-				NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
+				NewTask: func(p NewTaskParams) (Task, error) {
 					return nil, nil
 				},
 				Commands: []*CommandConfig{
@@ -92,7 +90,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 					defer wg.Done()
 					taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
 					r.Register(taskID, &Config{
-						NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error) {
+						NewTask: func(p NewTaskParams) (Task, error) {
 							return nil, nil
 						},
 						Commands: []*CommandConfig{

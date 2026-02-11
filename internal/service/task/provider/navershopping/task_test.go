@@ -217,8 +217,13 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler, err := newTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher, func() interface{} {
-				return &watchPriceSnapshot{}
+			handler, err := newTask(provider.NewTaskParams{
+				InstanceID:  "test_instance",
+				Request:     tt.req,
+				AppConfig:   tt.appConfig,
+				Storage:     nil,
+				Fetcher:     mockFetcher,
+				NewSnapshot: func() any { return &watchPriceSnapshot{} },
 			})
 
 			if tt.wantErr != nil {

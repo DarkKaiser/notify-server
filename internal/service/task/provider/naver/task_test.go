@@ -244,8 +244,13 @@ func (h *testHelper) initTask(runBy contract.TaskRunBy) {
 		RunBy:      runBy, // Scheduler or User
 	}
 
-	handler, err := newTask("test_instance", req, h.appConfig, h.storage, h.fetcher, func() interface{} {
-		return &watchNewPerformancesSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   h.appConfig,
+		Storage:     h.storage,
+		Fetcher:     h.fetcher,
+		NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
 	})
 	require.NoError(h.t, err)
 

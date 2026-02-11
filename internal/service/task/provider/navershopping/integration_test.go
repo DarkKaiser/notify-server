@@ -33,7 +33,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
+		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -92,7 +92,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
+		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -120,7 +120,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
+		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -199,8 +199,13 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -296,8 +301,13 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
@@ -406,8 +416,13 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		},
 	}
 
-	handler, err := newTask("test_instance", req, appConfig, nil, mockFetcher, func() interface{} {
-		return &watchPriceSnapshot{}
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
 	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)

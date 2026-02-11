@@ -11,7 +11,6 @@ import (
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
 
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/idgen"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
@@ -34,8 +33,8 @@ func registerServiceTestTask() {
 				NewSnapshot:   func() interface{} { return &struct{}{} },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
-			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+			return testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID), nil
 		},
 	}
 	provider.RegisterForTest("TEST_TASK", config)
@@ -349,10 +348,10 @@ func TestService_Submit_Timeout(t *testing.T) {
 		Commands: []*provider.CommandConfig{
 			{ID: "SLOW_CMD", AllowMultiple: true},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
 			// Simulate slow initialization to block the consumer (run0 loop)
 			time.Sleep(100 * time.Millisecond)
-			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
+			return testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID), nil
 		},
 	})
 

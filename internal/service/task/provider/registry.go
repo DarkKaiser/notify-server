@@ -11,8 +11,19 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
+// NewTaskParams 새로운 Task 인스턴스 생성에 필요한 매개변수들을 정의하는 구조체입니다.
+// 인자가 많아짐에 따른 가독성 저하를 방지하고, 향후 공통 필드 추가 시 하위 호환성을 보장합니다.
+type NewTaskParams struct {
+	InstanceID  contract.TaskInstanceID
+	Request     *contract.TaskSubmitRequest
+	AppConfig   *config.AppConfig
+	Storage     contract.TaskResultStore
+	Fetcher     fetcher.Fetcher
+	NewSnapshot NewSnapshotFunc
+}
+
 // NewTaskFunc 새로운 Task 인스턴스를 생성하는 팩토리 함수 타입입니다.
-type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher, NewSnapshotFunc) (Task, error)
+type NewTaskFunc func(p NewTaskParams) (Task, error)
 
 // NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
 type NewSnapshotFunc func() any

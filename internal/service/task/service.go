@@ -257,7 +257,14 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.runningMu.Unlock()
 
 		// Task 인스턴스 생성
-		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore, s.fetcher, cfg.Command.NewSnapshot)
+		h, err := cfg.Task.NewTask(provider.NewTaskParams{
+			InstanceID:  instanceID,
+			Request:     req,
+			AppConfig:   s.appConfig,
+			Storage:     s.taskResultStore,
+			Fetcher:     s.fetcher,
+			NewSnapshot: cfg.Command.NewSnapshot,
+		})
 		if h == nil {
 			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,

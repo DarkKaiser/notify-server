@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 )
@@ -72,12 +70,12 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, _ fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
-	if req.TaskID != TaskID {
+func newTask(p provider.NewTaskParams) (provider.Task, error) {
+	if p.Request.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
 
-	settings, err := provider.FindTaskSettings[taskSettings](appConfig, req.TaskID)
+	settings, err := provider.FindTaskSettings[taskSettings](p.AppConfig, p.Request.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +94,14 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 
 	lottoTask := &task{
 		Base: provider.NewBase(provider.BaseParams{
-			ID:          req.TaskID,
-			CommandID:   req.CommandID,
-			InstanceID:  instanceID,
-			NotifierID:  req.NotifierID,
-			RunBy:       req.RunBy,
-			Storage:     storage,
+			ID:          p.Request.TaskID,
+			CommandID:   p.Request.CommandID,
+			InstanceID:  p.InstanceID,
+			NotifierID:  p.Request.NotifierID,
+			RunBy:       p.Request.RunBy,
+			Storage:     p.Storage,
 			Scraper:     nil,
-			NewSnapshot: newSnapshot,
+			NewSnapshot: p.NewSnapshot,
 		}),
 
 		appPath: settings.AppPath,
@@ -112,13 +110,13 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 	}
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
-	switch req.CommandID {
+	switch p.Request.CommandID {
 	case PredictionCommand:
 		lottoTask.SetExecute(func(ctx context.Context, _ any, _ bool) (string, any, error) {
 			return lottoTask.executePrediction()
 		})
 	default:
-		return nil, provider.NewErrCommandNotSupported(req.CommandID)
+		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID)
 	}
 
 	return lottoTask, nil

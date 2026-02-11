@@ -6,10 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 
@@ -31,8 +29,8 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 				NewSnapshot:   func() interface{} { return snapshot },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) (provider.Task, error) {
-			t := NewMockTask(taskID, commandID, instanceID, req.NotifierID, req.RunBy, storage, nil, newSnapshot)
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+			t := NewMockTask(taskID, commandID, p.InstanceID, p.Request.NotifierID, p.Request.RunBy, p.Storage, nil, p.NewSnapshot)
 			return t, nil
 		},
 	}
