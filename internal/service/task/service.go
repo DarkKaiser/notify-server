@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -64,6 +65,9 @@ type Service struct {
 	taskStopWG sync.WaitGroup
 
 	taskResultStore contract.TaskResultStore
+
+	// fetcher는 모든 Task가 공유하여 사용하는 HTTP 클라이언트입니다.
+	fetcher fetcher.Fetcher
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
@@ -89,6 +93,9 @@ func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, t
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
 		taskResultStore: taskResultStore,
+
+		// 모든 Task가 공유할 Fetcher를 초기화합니다.
+		fetcher: fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0),
 	}
 }
 
@@ -250,7 +257,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.runningMu.Unlock()
 
 		// Task 인스턴스 생성
-		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore)
+		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore, s.fetcher)
 		if h == nil {
 			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,

@@ -170,7 +170,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			}
 
 			// newTask 사용 (createTask가 아닌 public API 테스트) -> 이제는 Internal이지만 동일 패키지 테스트
-			handler, err := newTask("test-instance", req, cfg, &contractmocks.MockTaskResultStore{})
+			handler, err := newTask("test-instance", req, cfg, &contractmocks.MockTaskResultStore{}, nil)
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -215,7 +215,7 @@ func TestTask_Run(t *testing.T) {
 		mockStorage := new(contractmocks.MockTaskResultStore)
 
 		task := &task{
-			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser, mockStorage),
+			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser, mockStorage, nil),
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}

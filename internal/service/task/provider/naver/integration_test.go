@@ -58,7 +58,7 @@ func setupTestTask(t *testing.T, fetcher fetcher.Fetcher) (*task, *config.AppCon
 			},
 		},
 	}
-	handler, err := createTask("test_instance", req, appConfig, nil, fetcher)
+	handler, err := newTask("test_instance", req, appConfig, nil, fetcher)
 	require.NoError(t, err)
 	tsk, ok := handler.(*task)
 	require.True(t, ok)

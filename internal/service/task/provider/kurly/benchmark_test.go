@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 )
 
 func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
@@ -57,7 +58,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 
 	// 2. Setup Task
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchProductPriceCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil),
+		Base: provider.NewBase(TaskID, WatchProductPriceCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil, scraper.New(mockFetcher)),
 	}
 	// SetFetcher call removed
 

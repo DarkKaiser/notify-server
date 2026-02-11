@@ -13,6 +13,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	notifier := "telegram"
 
 	mockStorage := &contractmocks.MockTaskResultStore{}
-	task := NewBase(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser, mockStorage)
+	task := NewBase(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser, mockStorage, nil)
 
 	// When & Then
 	assert.Equal(t, taskID, task.GetID())
@@ -291,7 +292,7 @@ func TestTask_Run(t *testing.T) {
 			if runBy == contract.TaskRunByUnknown {
 				runBy = contract.TaskRunByScheduler
 			}
-			task := NewBase(tID, cID, "test_inst", "test_notifier", runBy, store)
+			task := NewBase(tID, cID, "test_inst", "test_notifier", runBy, store, nil)
 			task.SetExecute(exec)
 
 			// Pre-Run Action
@@ -373,7 +374,7 @@ func registerTestConfig(tID contract.TaskID, cID contract.TaskCommandID) {
 	// Register 대신 RegisterForTest를 사용하여 중복 시 덮어쓰기 허용
 	// 또는 테스트마다 매번 ClearRegistry를 호출해야 하지만, 병렬 실행 등을 고려하여 덮어쓰기가 유리함
 	defaultRegistry.RegisterForTest(tID, &Config{
-		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore) (Task, error) {
+		NewTask: func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
 			return nil, nil
 		},
 		Commands: []*CommandConfig{
@@ -418,7 +419,7 @@ func collectAllMessages(sender *notificationmocks.MockNotificationSender) string
 
 // TestConfigNotFound Config가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_ConfigNotFound(t *testing.T) {
-	task := NewBase("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser, nil)
+	task := NewBase("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser, nil, nil)
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
 	task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {

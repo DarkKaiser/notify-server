@@ -11,6 +11,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,7 +70,7 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil),
+		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(mockFetcher)),
 	}
 	// SetFetcher removed
 
@@ -151,7 +152,7 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	}
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil),
+		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler, nil, scraper.New(nil)),
 	}
 
 	prevPerformancesSet := make(map[string]bool)

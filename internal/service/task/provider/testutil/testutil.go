@@ -9,7 +9,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -29,8 +31,8 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 				NewSnapshot:   func() interface{} { return snapshot },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore) (provider.Task, error) {
-			t := NewMockTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser, storage)
+		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
+			t := NewMockTask(taskID, commandID, instanceID, "test_notifier", contract.TaskRunByUser, storage, nil)
 			return t, nil
 		},
 	}
@@ -38,12 +40,12 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore) *provider.Base {
+func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, s scraper.Scraper) *provider.Base {
 	if storage == nil {
 		storage = &contractmocks.MockTaskResultStore{}
 	}
 	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
-	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy, storage)
+	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy, storage, s)
 	return t
 }
 

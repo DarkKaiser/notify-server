@@ -7,11 +7,12 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
-// NewTaskFunc Task 인스턴스를 생성하는 팩토리 함수입니다.
-type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore) (Task, error)
+// NewTaskFunc 새로운 Task 인스턴스를 생성하는 팩토리 함수 타입입니다.
+type NewTaskFunc func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error)
 
 // NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
 type NewSnapshotFunc func() interface{}

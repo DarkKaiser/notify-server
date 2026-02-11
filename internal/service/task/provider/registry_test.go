@@ -9,12 +9,13 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/stretchr/testify/assert"
 )
 
 // 헬퍼 함수: 더미 NewTaskFunc 생성
 func dummyNewTask() NewTaskFunc {
-	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore) (Task, error) {
+	return func(contract.TaskInstanceID, *contract.TaskSubmitRequest, *config.AppConfig, contract.TaskResultStore, fetcher.Fetcher) (Task, error) {
 		return nil, nil
 	}
 }

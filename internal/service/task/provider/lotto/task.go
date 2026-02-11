@@ -12,6 +12,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 )
@@ -71,11 +72,7 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore) (provider.Task, error) {
-	return createTask(instanceID, req, appConfig, storage, &defaultCommandExecutor{})
-}
-
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, executor commandExecutor) (provider.Task, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, _ fetcher.Fetcher) (provider.Task, error) {
 	if req.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
@@ -98,11 +95,11 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	lottoTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage),
+		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, nil),
 
 		appPath: settings.AppPath,
 
-		executor: executor,
+		executor: &defaultCommandExecutor{},
 	}
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.

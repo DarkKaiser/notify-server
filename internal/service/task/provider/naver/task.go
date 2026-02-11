@@ -35,21 +35,14 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore) (provider.Task, error) {
-	httpFetcher := fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0)
-	return createTask(instanceID, req, appConfig, storage, httpFetcher)
-}
-
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, notificationFetcher fetcher.Fetcher) (provider.Task, error) {
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, f fetcher.Fetcher) (provider.Task, error) {
 	if req.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
 
 	naverTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage),
+		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, scraper.New(f)),
 	}
-
-	naverTask.SetScraper(scraper.New(notificationFetcher))
 
 	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
 	switch req.CommandID {

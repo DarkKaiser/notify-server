@@ -73,11 +73,14 @@ type Base struct {
 
 	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
 	storage contract.TaskResultStore
+
+	// fixedFields 로깅 성능 최적화를 위해 생성 시점에 고정되는 필드들을 미리 계산하여 보관합니다.
+	fixedFields applog.Fields
 }
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore) *Base {
+func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, scraper scraper.Scraper) *Base {
 	return &Base{
 		id:         id,
 		commandID:  commandID,
@@ -87,6 +90,14 @@ func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID co
 		runBy:      runBy,
 
 		storage: storage,
+		scraper: scraper,
+
+		fixedFields: applog.Fields{
+			"task_id":     id,
+			"command_id":  commandID,
+			"instance_id": instanceID,
+			"notifier_id": notifierID,
+		},
 	}
 }
 
@@ -132,10 +143,6 @@ func (t *Base) ElapsedTimeAfterRun() int64 {
 
 func (t *Base) SetExecute(fn ExecuteFunc) {
 	t.execute = fn
-}
-
-func (t *Base) SetScraper(s scraper.Scraper) {
-	t.scraper = s
 }
 
 func (t *Base) GetScraper() scraper.Scraper {
@@ -284,13 +291,15 @@ func (t *Base) notifyError(ctx context.Context, notificationSender contract.Noti
 
 // LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
 func (t *Base) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
-	fieldsMap := applog.Fields{
-		"task_id":     t.GetID(),
-		"command_id":  t.GetCommandID(),
-		"instance_id": t.GetInstanceID(),
-		"notifier_id": t.GetNotifierID(),
-		"run_by":      t.GetRunBy(),
+	// 고정 필드를 기반으로 맵 복사 최적화 (고정 4개 + run_by 1개 + 추가 필드 + 에러 1개)
+	fieldsMap := make(applog.Fields, len(t.fixedFields)+len(fields)+2)
+	for k, v := range t.fixedFields {
+		fieldsMap[k] = v
 	}
+
+	// 가변 필드 및 추가 필드 반영
+	fieldsMap["run_by"] = t.GetRunBy()
+
 	for k, v := range fields {
 		fieldsMap[k] = v
 	}

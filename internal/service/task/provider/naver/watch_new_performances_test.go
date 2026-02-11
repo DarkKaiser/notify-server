@@ -281,9 +281,8 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 
 			// parsePerformancesFromHTML은 (performances, rawCount, error) 반환
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil),
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil, scraper.New(mocks.NewMockHTTPFetcher())),
 			}
-			taskInstance.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 
 			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, tt.filters)
 
@@ -360,7 +359,7 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil, nil),
 			}
 
 			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
@@ -467,7 +466,7 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil, nil),
 			}
 			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
@@ -575,7 +574,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Setup Task
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil),
+				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil, nil),
 			}
 
 			// Prepare Snapshots
@@ -799,11 +798,9 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			}
 
 			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
-			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil)
 			naverTask := &task{
-				Base: baseTask,
+				Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil, scraper.New(mockFetcher)),
 			}
-			naverTask.SetScraper(scraper.New(mockFetcher))
 			// SetFetcher call removed
 
 			// 실행
@@ -921,12 +918,9 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
-	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil)
 	naverTask := &task{
-		Base: baseTask,
+		Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil, scraper.New(mockFetcher)),
 	}
-	naverTask.SetScraper(scraper.New(mockFetcher))
-	// SetFetcher call removed
 
 	settings := &watchNewPerformancesSettings{
 		Query:          "CancelTest",
@@ -1014,12 +1008,9 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 			}
 
 			// executeFlow
-			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil)
 			naverTask := &task{
-				Base: baseTask,
+				Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil, scraper.New(mockFetcher)),
 			}
-			naverTask.SetScraper(scraper.New(mockFetcher))
-			// SetFetcher call removed
 
 			settings := &watchNewPerformancesSettings{
 				Query:          "LimitTest",
@@ -1061,9 +1052,8 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 
 	b.ResetTimer()
 	taskInstance := &task{
-		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil),
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil, scraper.New(mocks.NewMockHTTPFetcher())),
 	}
-	taskInstance.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 
 	for i := 0; i < b.N; i++ {
 		_, _, _ = taskInstance.parsePerformancesFromHTML(context.Background(), html, filters)
@@ -1087,11 +1077,9 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 		}
 	}
 
-	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil)
 	testTask := &task{
-		Base: baseTask,
+		Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil, scraper.New(nil)),
 	}
-	testTask.SetScraper(scraper.New(nil))
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}

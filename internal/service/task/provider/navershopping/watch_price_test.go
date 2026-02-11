@@ -308,11 +308,11 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 					"test-notifier",
 					contract.TaskRunByUser,
 					nil,
+					scraper.New(mockFetcher),
 				),
 				clientID:     "id",
 				clientSecret: "secret",
 			}
-			tsk.SetScraper(scraper.New(mockFetcher))
 			// SetFetcher call removed as it's deprecated
 
 			got, err := tsk.fetchProducts(context.Background(), &tt.settings)
@@ -367,11 +367,11 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 					"test-notifier",
 					contract.TaskRunByUser,
 					nil,
+					scraper.New(mockFetcher),
 				),
 				clientID:     "id",
 				clientSecret: "secret",
 			}
-			tsk.SetScraper(scraper.New(mockFetcher))
 			// SetFetcher call removed as it's deprecated
 
 			_, err := tsk.fetchProducts(context.Background(), &tt.settings)
@@ -522,9 +522,8 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Task 생성 및 RunBy 설정
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil),
+				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil, nil),
 			}
-			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 
 			current := &watchPriceSnapshot{Products: tt.currentItems}
 			var prev *watchPriceSnapshot
@@ -712,9 +711,8 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			tsk := &task{
-				Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test-instance", "test-notifier", contract.TaskRunByUser, nil),
+				Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test-instance", "test-notifier", contract.TaskRunByUser, nil, scraper.New(mocks.NewMockHTTPFetcher())),
 			}
-			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 			got := tsk.mapToProduct(tt.item)
 
 			if tt.wantProduct {
@@ -983,11 +981,10 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}))
 
 	tsk := &task{
-		Base:         provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
+		Base:         provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil, scraper.New(mockFetcher)),
 		clientID:     "id",
 		clientSecret: "secret",
 	}
-	tsk.SetScraper(scraper.New(mockFetcher))
 	// SetFetcher call removed as it's deprecated
 
 	products, err := tsk.fetchProducts(context.Background(), &settings)
@@ -1010,7 +1007,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
-	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil)
+	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil, nil)
 	// SetFetcher call removed as it's deprecated
 
 	// 강제로 취소 상태 주입 (Context Cancel)
@@ -1031,7 +1028,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
 func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	tsk := &task{}
-	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil)
+	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil, nil)
 	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
 
 	// Setup Large Data
