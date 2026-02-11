@@ -152,6 +152,7 @@ func newErrHTTPRequestCanceled(cause error, url string) error {
 	return apperrors.Wrap(cause, apperrors.Unavailable, fmt.Sprintf("요청 중단: 컨텍스트 취소 또는 타임아웃 (URL: %s)", url))
 }
 
+// @@@@@ 주석만 삭제하고 다시
 // ErrContextCanceled 스크래핑 프로세스에서 컨텍스트 취소 또는 타임아웃 발생 시 사용되는 공통 에러 인스턴스입니다.
 var ErrContextCanceled = apperrors.New(apperrors.Unavailable, "작업 중단: 컨텍스트 취소 또는 타임아웃")
 
@@ -235,6 +236,32 @@ func newErrResponseBodyTooLarge(limit int64, url string) error {
 //   - 일시적 네트워크 장애일 가능성이 높으므로 재시도를 통해 복구 가능합니다.
 func newErrReadResponseBody(cause error) error {
 	return apperrors.Wrap(cause, apperrors.Unavailable, "응답 본문 데이터 수신 실패: 데이터 스트림을 읽는 중 I/O 오류가 발생했습니다")
+}
+
+// @@@@@ 새로 추가된 함수, 그룹 위치 개선, 함수명이나 메시지 개선, 주석 개선
+// newErrReadHTMLInput HTML 파싱을 위해 입력 데이터 스트림(io.Reader)을 읽어들이는 과정에서 I/O 오류가 발생했을 때 에러를 생성합니다.
+//
+// 발생 시점:
+//   - ParseHTML 함수에서 데이터 로딩(LimitReader/io.ReadAll) 실패 시
+//
+// 용어 구분:
+//   - newErrReadResponseBody: HTTP 응답 수신 실패 (네트워크 관점)
+//   - newErrReadHTMLInput: 범용 입력 스트림 읽기 실패 (I/O 관점)
+func newErrReadHTMLInput(cause error) error {
+	return apperrors.Wrap(cause, apperrors.ExecutionFailed, "HTML 입력 데이터 읽기 실패: 데이터 스트림을 읽는 중 I/O 오류가 발생했습니다")
+}
+
+// @@@@@ 새로 추가된 함수, 그룹 위치 개선, 함수명이나 메시지 개선, 주석 개선
+// newErrHTMLInputTooLarge HTML 파싱을 위해 읽어들인 입력 데이터의 크기가 설정된 제한을 초과했을 때 발생하는 에러를 생성합니다.
+//
+// 발생 시점:
+//   - ParseHTML 함수에서 LimitReader를 통해 읽은 데이터가 maxResponseBodySize를 초과했을 때
+//
+// 용어 구분:
+//   - newErrResponseBodyTooLarge: HTTP 응답 본문 크기 초과 (네트워크 관점)
+//   - newErrHTMLInputTooLarge: 범용 입력 데이터 크기 초과 (데이터 처리 관점)
+func newErrHTMLInputTooLarge(limit int64) error {
+	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("입력 데이터 크기 초과: 처리 가능한 허용 제한(%d 바이트)을 초과했습니다", limit))
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

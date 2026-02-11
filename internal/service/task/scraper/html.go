@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -166,7 +167,7 @@ func (s *scraper) FetchHTMLDocument(ctx context.Context, rawURL string, header h
 //   - error: 입출력 오류, 컨텍스트 취소 또는 파싱 실패 시 에러 반환
 //
 // 보안 고려사항:
-//   - maxResponseBodySize를 초과하는 입력은 자동으로 잘립니다. (DoS 방지)
+//   - maxResponseBodySize를 초과하는 입력은 에러를 반환합니다. (DoS 방지 및 데이터 무결성 보장)
 //   - 컨텍스트 취소 시 즉시 중단됩니다.
 func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, contentType string) (*goquery.Document, error) {
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -213,20 +214,50 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 	}
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// [4단계] 보안: 읽기 크기 제한
+	// [4단계] 보안: 읽기 크기 제한 및 검증
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	// io.LimitReader를 사용하여 maxResponseBodySize를 초과하는 데이터 읽기를 방지합니다.
+	// 서버 자원 보호 및 OOM 방지를 위해 입력 데이터 크기를 제한하고 초과 시 중단합니다.
+
+	// maxResponseBodySize + 1만큼 읽는 이유:
+	//   - maxResponseBodySize 이하인 경우: 전체 데이터를 읽음
+	//   - maxResponseBodySize를 초과하는 경우: maxResponseBodySize+1 바이트를 읽어서 초과 여부를 감지
 	//
-	// 보안 이유:
-	//   - 악의적인 사용자가 수 GB 크기의 HTML 데이터를 전달하여 메모리 고갈을 유발하는 DoS 공격을 방지합니다.
-	//   - 실수로 대용량 파일(예: 로그 파일)을 HTML로 파싱하려는 시도를 조기에 차단합니다.
-	limitedReader := io.LimitReader(r, s.maxResponseBodySize)
+	// 이를 통해 메모리 고갈 공격(DoS)을 방지하면서도 정확한 Truncation 감지가 가능합니다.
+	limitReader := io.LimitReader(r, s.maxResponseBodySize+1)
+
+	// 컨텍스트 취소 감지를 위한 Reader 래핑
+	reader := &contextAwareReader{ctx: ctx, r: limitReader}
+
+	// 제한된 범위 내에서 데이터를 메모리로 읽어들입니다.
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		logger.WithError(err).
+			WithFields(applog.Fields{
+				"limit_bytes": s.maxResponseBodySize,
+			}).Error("[실패]: HTML 파싱 중단, 입력 데이터 읽기 실패")
+
+		return nil, newErrReadHTMLInput(err)
+	}
+
+	// 입력 데이터의 크기 초과 여부 최종 검증
+	// LimitReader가 maxResponseBodySize+1 만큼 읽었으므로, 실제로 maxResponseBodySize를 초과했는지 확인합니다.
+	if int64(len(data)) > s.maxResponseBodySize {
+		logger.WithFields(applog.Fields{
+			"limit_bytes": s.maxResponseBodySize,
+			"read_bytes":  len(data),
+		}).Error("[실패]: HTML 파싱 중단, 입력 데이터 크기 초과")
+
+		return nil, newErrHTMLInputTooLarge(s.maxResponseBodySize)
+	}
+
+	// 이미 메모리에 로드된 데이터를 파싱 로직에서 재사용하기 위해 bytes.Reader로 래핑합니다.
+	parsingReader := bytes.NewReader(data)
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// [5단계] HTML 파싱
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// contextAwareReader로 래핑하여 파싱 중 컨텍스트 취소를 감지할 수 있도록 합니다.
-	doc, err := s.parseHTML(ctx, &contextAwareReader{ctx: ctx, r: limitedReader}, baseURL, contentType, logger)
+	doc, err := s.parseHTML(ctx, &contextAwareReader{ctx: ctx, r: parsingReader}, baseURL, contentType, logger)
 	if err != nil {
 		logger.WithError(err).
 			WithField("has_base_url", baseURL != nil).

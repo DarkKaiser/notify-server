@@ -128,7 +128,7 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 	//   - 이 시점에서 Body는 이미 메모리로 읽힌 상태이므로 Close는 네트워크 연결 해제를 의미
 	defer httpResp.Body.Close()
 
-	bodyBytes, isTruncated, err := s.readResponseBodyWithLimit(httpResp)
+	bodyBytes, isTruncated, err := s.readResponseBodyWithLimit(ctx, httpResp)
 	if err != nil {
 		logger.WithError(err).
 			WithField("duration_ms", time.Since(start).Milliseconds()).

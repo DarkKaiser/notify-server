@@ -20,7 +20,7 @@ import (
 // 이 함수는 RESTful API 호출에 최적화되어 있으며, 다음과 같은 주요 기능을 제공합니다:
 //   - 요청 본문 자동 처리: 구조체를 전달하면 자동으로 JSON 마샬링하여 전송
 //   - 응답 검증: Content-Type 확인 및 HTML 응답 감지
-//   - 메모리 보호: maxResponseBodySize 제한을 통한 대용량 응답 방어
+//   - 메모리 무결성: maxResponseBodySize 초과 시 에러를 반환하여 불완전한 파싱 방지
 //   - 자동 재시도 지원: 네트워크 오류 시 Fetcher가 요청을 재시도할 수 있도록 본문을 메모리 버퍼링
 //
 // 매개변수:
@@ -230,7 +230,10 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 				"body_preview": s.previewBody(result.Body, contentType),
 			}).Warn("[경고]: 문자 인코딩 변환 실패, 인코딩 변환 없이 JSON 파싱을 계속합니다")
 
-		utf8Reader = result.Response.Body
+		// 인코딩 감지 실패 시, 이미 일부 읽혀진 result.Response.Body 대신
+		// 원본 바이트(result.Body)를 사용하여 새 Reader를 생성합니다.
+		// 이를 통해 데이터 소실 없이 파싱을 시도할 수 있습니다.
+		utf8Reader = bytes.NewReader(result.Body)
 	}
 
 	// ============================================================

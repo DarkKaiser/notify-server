@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -31,6 +32,14 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 	if s.responseCallback != nil {
 		safeResp := *resp
 		safeResp.Body = http.NoBody
+
+		// 헤더는 맵이므로 얕은 복사 시 원본이 수정될 수 있습니다.
+		// 콜백에서의 사이드 이펙트를 방지하기 위해 깊은 복사를 수행합니다.
+		safeResp.Header = resp.Header.Clone()
+
+		// Request 포인터가 원본을 공유하므로, 콜백에서 실수로 원본 요청을 수정하지 못하도록 nil로 설정합니다.
+		safeResp.Request = nil
+
 		s.responseCallback(&safeResp)
 	}
 
@@ -75,13 +84,14 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 // maxResponseBodySize를 초과하는 경우 자동으로 잘라내며(Truncation), 호출자에게 플래그로 알립니다.
 //
 // 매개변수:
+//   - ctx: 요청의 생명주기를 제어하는 컨텍스트 (취소 감지용)
 //   - resp: HTTP 응답 객체 (Body는 아직 읽지 않은 상태)
 //
 // 반환값:
 //   - []byte: 응답 본문 데이터 (최대 maxResponseBodySize 바이트)
 //   - bool: Truncation 발생 여부 (true: 잘림, false: 전체 데이터)
-//   - error: I/O 에러 발생 시 반환
-func (s *scraper) readResponseBodyWithLimit(resp *http.Response) ([]byte, bool, error) {
+//   - error: I/O 에러 또는 컨텍스트 취소 에러 발생 시 반환
+func (s *scraper) readResponseBodyWithLimit(ctx context.Context, resp *http.Response) ([]byte, bool, error) {
 	// HTTP 204 상태 코드는 본문이 없는 성공 응답입니다.
 	// 불필요한 메모리 할당을 방지하기 위해 즉시 nil을 반환합니다.
 	if resp.StatusCode == http.StatusNoContent {
@@ -96,8 +106,11 @@ func (s *scraper) readResponseBodyWithLimit(resp *http.Response) ([]byte, bool, 
 	limit := s.maxResponseBodySize + 1
 	limitReader := io.LimitReader(resp.Body, limit)
 
+	// 컨텍스트 취소 감지를 위한 Reader 래핑
+	reader := &contextAwareReader{ctx: ctx, r: limitReader}
+
 	// 전체 본문 데이터를 메모리로 읽어들입니다.
-	data, err := io.ReadAll(limitReader)
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, false, err
 	}

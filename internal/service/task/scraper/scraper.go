@@ -67,7 +67,7 @@ type HTMLScraper interface {
 	//   - error: 입출력 오류, 컨텍스트 취소 또는 파싱 실패 시 에러 반환
 	//
 	// 보안 고려사항:
-	//   - maxResponseBodySize를 초과하는 입력은 자동으로 잘립니다. (DoS 방지)
+	//   - maxResponseBodySize를 초과하는 입력은 에러를 반환합니다. (DoS 방지 및 데이터 무결성 보장)
 	//   - 컨텍스트 취소 시 즉시 중단됩니다.
 	ParseHTML(ctx context.Context, r io.Reader, rawURL string, contentType string) (*goquery.Document, error)
 }
@@ -82,7 +82,7 @@ type JSONScraper interface {
 	// 이 함수는 RESTful API 호출에 최적화되어 있으며, 다음과 같은 주요 기능을 제공합니다:
 	//   - 요청 본문 자동 처리: 구조체를 전달하면 자동으로 JSON 마샬링하여 전송
 	//   - 응답 검증: Content-Type 확인 및 HTML 응답 감지
-	//   - 메모리 보호: maxResponseBodySize 제한을 통한 대용량 응답 방어
+	//   - 메모리 무결성: maxResponseBodySize 초과 시 에러를 반환하여 불완전한 파싱 방지
 	//   - 자동 재시도 지원: 네트워크 오류 시 Fetcher가 요청을 재시도할 수 있도록 본문을 메모리 버퍼링
 	//
 	// 매개변수:
@@ -123,7 +123,7 @@ type scraper struct {
 	maxRequestBodySize int64
 
 	// maxResponseBodySize HTTP 응답 본문의 최대 읽기 크기(바이트)입니다.
-	// 이 값을 초과하는 응답 본문은 잘려서(truncated) 처리됩니다.
+	// 이 값을 초과하는 응답 본문은 에러를 발생시킵니다.
 	maxResponseBodySize int64
 
 	// responseCallback HTTP 응답 수신 직후 실행될 콜백 함수입니다.

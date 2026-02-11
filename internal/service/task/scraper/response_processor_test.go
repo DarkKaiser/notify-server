@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -106,6 +107,46 @@ func TestScraper_validateResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestScraper_validateResponse_Callback_Safety(t *testing.T) {
+	l := logrus.New()
+	l.SetOutput(io.Discard)
+	logger := logrus.NewEntry(l)
+
+	// 원본 요청 객체 생성
+	originalReq, _ := http.NewRequest("GET", "http://example.com", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("success")),
+		Header:     make(http.Header),
+		Request:    originalReq, // 응답에 원본 요청 연결
+	}
+
+	var capturedRequest *http.Request
+	callback := func(r *http.Response) {
+		capturedRequest = r.Request
+	}
+
+	s := &scraper{
+		responseCallback: callback,
+	}
+
+	params := requestParams{
+		URL: "http://example.com",
+	}
+
+	// 실행
+	err := s.validateResponse(resp, params, logger)
+	require.NoError(t, err)
+
+	// 검증: 콜백에 전달된 Response의 Request는 nil이어야 함
+	assert.Nil(t, capturedRequest, "Callback received a non-nil Request object")
+
+	// 원본 Response의 Request는 그대로 유지되어야 함 (얕은 복사로 인한 사이드 이펙트 방지 확인)
+	assert.NotNil(t, resp.Request, "Original Response.Request should not be modified")
+	assert.Equal(t, originalReq, resp.Request)
 }
 
 func TestScraper_readErrorResponseBody(t *testing.T) {
@@ -214,7 +255,7 @@ func TestScraper_readResponseBodyWithLimit(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}
 
-			gotBody, gotTruncated, err := s.readResponseBodyWithLimit(resp)
+			gotBody, gotTruncated, err := s.readResponseBodyWithLimit(context.Background(), resp)
 			require.NoError(t, err)
 
 			if tt.statusCode == http.StatusNoContent {
@@ -311,4 +352,29 @@ func TestIsHTMLContentType(t *testing.T) {
 			assert.Equal(t, tt.want, isHTMLContentType(tt.contentType))
 		})
 	}
+}
+
+func TestScraper_readResponseBodyWithLimit_ContextCanceled(t *testing.T) {
+	s := &scraper{maxResponseBodySize: 1024}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 즉시 취소
+
+	// 무한히 읽히는 Reader (Context 취소 테스트용)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(&infiniteReader{}),
+	}
+
+	_, _, err := s.readResponseBodyWithLimit(ctx, resp)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.Canceled), "Expected context.Canceled error, got: %v", err)
+}
+
+type infiniteReader struct{}
+
+func (r *infiniteReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'A'
+	}
+	return len(p), nil
 }

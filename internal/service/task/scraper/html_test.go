@@ -336,21 +336,6 @@ func TestParseHTML(t *testing.T) {
 			},
 		},
 		{
-			name: "Success - Partial Read Check (LimitReader)",
-			input: func() io.Reader {
-				// MaxSize 보다 큰 데이터
-				large := strings.Repeat("A", 2048)
-				return strings.NewReader(large)
-			}(),
-			// 실제 MaxSize 적용 확인은 Mocking이 아닌 Integration 레벨에서 확실하지만,
-			// 여기서는 ParseHTML이 내부적으로 LimitReader를 쓰는지 간접 확인 (LimitReader는 Read 시 EOF를 빨리 반환)
-			// 단위 테스트 레벨에서는 LimitReader 래핑 여부만 로직 검증으로 충분
-			validate: func(t *testing.T, doc *goquery.Document) {
-				// LimitReader가 적용되어도 goquery는 에러 없이 파싱함 (잘린 HTML도 파싱 시도)
-				assert.NotNil(t, doc)
-			},
-		},
-		{
 			name:  "Robustness - Invalid URL String",
 			input: strings.NewReader("<html></html>"),
 			url:   "://invalid-url",
@@ -368,6 +353,16 @@ func TestParseHTML(t *testing.T) {
 			validate: func(t *testing.T, doc *goquery.Document) {
 				assert.NotNil(t, doc)
 			},
+		},
+		{
+			name: "Error - Size Limit Exceeded",
+			input: func() io.Reader {
+				// 2000바이트 데이터 (기본 제한 1024바이트 초과)
+				large := strings.Repeat("A", 2000)
+				return strings.NewReader(large)
+			}(),
+			wantErr:     true,
+			errContains: "입력 데이터 크기 초과",
 		},
 	}
 
