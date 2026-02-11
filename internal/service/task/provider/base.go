@@ -77,7 +77,7 @@ type Base struct {
 
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *Base {
+func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore) *Base {
 	return &Base{
 		id:         id,
 		commandID:  commandID,
@@ -85,6 +85,8 @@ func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID co
 		notifierID: notifierID,
 		canceled:   0,
 		runBy:      runBy,
+
+		storage: storage,
 	}
 }
 
@@ -121,6 +123,10 @@ func (t *Base) GetRunBy() contract.TaskRunBy {
 }
 
 func (t *Base) ElapsedTimeAfterRun() int64 {
+	if t.runTime.IsZero() {
+		return 0
+	}
+
 	return int64(time.Since(t.runTime).Seconds())
 }
 
@@ -134,10 +140,6 @@ func (t *Base) SetScraper(s scraper.Scraper) {
 
 func (t *Base) GetScraper() scraper.Scraper {
 	return t.scraper
-}
-
-func (t *Base) SetStorage(storage contract.TaskResultStore) {
-	t.storage = storage
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.

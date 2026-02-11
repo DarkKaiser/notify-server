@@ -71,11 +71,11 @@ func init() {
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-	return createTask(instanceID, req, appConfig, &defaultCommandExecutor{})
+func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore) (provider.Task, error) {
+	return createTask(instanceID, req, appConfig, storage, &defaultCommandExecutor{})
 }
 
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (provider.Task, error) {
+func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, storage contract.TaskResultStore, executor commandExecutor) (provider.Task, error) {
 	if req.TaskID != TaskID {
 		return nil, provider.ErrTaskNotSupported
 	}
@@ -98,7 +98,7 @@ func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequ
 	}
 
 	lottoTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage),
 
 		appPath: settings.AppPath,
 

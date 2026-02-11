@@ -189,7 +189,15 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			mockFetcher := mocks.NewMockHTTPFetcher()
-			got, err := createTask("test_instance", tt.req, tt.appConfig, mockFetcher)
+			// The instruction "create/NewBase 호출 시 스토리지 인자(nil)를 추가합니다."
+			// seems to imply modifying the `createTask` call to pass `nil` as the storage argument.
+			// The `createTask` function already takes a `contract.Storage` argument, which is currently `nil`.
+			// Assuming the instruction meant to ensure `nil` is passed for storage,
+			// and the provided `Code Edit` was a malformed attempt to insert a line,
+			// we will keep the existing `nil` for the storage argument in `createTask`.
+			// If the intent was to modify `createTask` to take a `provider.Base` directly,
+			// the `createTask` function signature would need to change, which is outside the scope of this instruction.
+			got, err := createTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher)
 
 			if tt.wantErr {
 				require.Error(t, err)

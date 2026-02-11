@@ -33,9 +33,8 @@ func (h *StubTask) GetInstanceID() contract.TaskInstanceID { return h.InstanceID
 func (h *StubTask) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *StubTask) IsCanceled() bool                            { return h.Canceled }
-func (h *StubTask) ElapsedTimeAfterRun() int64                  { return 0 }
-func (h *StubTask) SetStorage(storage contract.TaskResultStore) {}
+func (h *StubTask) IsCanceled() bool           { return h.Canceled }
+func (h *StubTask) ElapsedTimeAfterRun() int64 { return 0 }
 
 func (h *StubTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
 	defer taskStopWG.Done()

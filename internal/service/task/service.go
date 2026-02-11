@@ -250,7 +250,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.runningMu.Unlock()
 
 		// Task 인스턴스 생성
-		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig)
+		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig, s.taskResultStore)
 		if h == nil {
 			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,
@@ -271,8 +271,6 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
-
-		h.SetStorage(s.taskResultStore)
 
 		// 최종 등록 및 충돌 확인
 		s.runningMu.Lock()

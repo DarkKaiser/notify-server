@@ -217,7 +217,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler, err := createTask("instance_1", tt.req, tt.appConfig, mockFetcher)
+			handler, err := createTask("test_instance", tt.req, tt.appConfig, nil, mockFetcher)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)

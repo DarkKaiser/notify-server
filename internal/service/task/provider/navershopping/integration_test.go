@@ -33,7 +33,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -93,7 +93,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -122,7 +122,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -202,7 +202,7 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := createTask("test_instance", req, appConfig, nil, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -297,7 +297,7 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := createTask("test_instance", req, appConfig, nil, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -405,7 +405,7 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := createTask("test_instance", req, appConfig, nil, mockFetcher)
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)

@@ -307,6 +307,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 					"test-instance",
 					"test-notifier",
 					contract.TaskRunByUser,
+					nil,
 				),
 				clientID:     "id",
 				clientSecret: "secret",
@@ -365,6 +366,7 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 					"test-instance",
 					"test-notifier",
 					contract.TaskRunByUser,
+					nil,
 				),
 				clientID:     "id",
 				clientSecret: "secret",
@@ -520,7 +522,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Task 생성 및 RunBy 설정
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", tt.runBy),
+				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil),
 			}
 			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 
@@ -710,7 +712,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+				Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test-instance", "test-notifier", contract.TaskRunByUser, nil),
 			}
 			tsk.SetScraper(scraper.New(mocks.NewMockHTTPFetcher()))
 			got := tsk.mapToProduct(tt.item)
@@ -981,7 +983,7 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}))
 
 	tsk := &task{
-		Base:         provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+		Base:         provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
 		clientID:     "id",
 		clientSecret: "secret",
 	}
@@ -1008,7 +1010,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
-	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
+	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil)
 	// SetFetcher call removed as it's deprecated
 
 	// 강제로 취소 상태 주입 (Context Cancel)
@@ -1029,7 +1031,7 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
 func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	tsk := &task{}
-	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler)
+	tsk.Base = provider.NewBase("NS", "CMD", "INS", "NOTI", contract.TaskRunByScheduler, nil)
 	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
 
 	// Setup Large Data

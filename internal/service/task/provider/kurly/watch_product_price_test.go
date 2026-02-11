@@ -83,7 +83,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
 	tsk := &task{
-		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
 	}
 
 	tests := []struct {
@@ -263,10 +263,9 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			}
 
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
 			}
 			tsk.SetScraper(scraper.New(mockFetcher))
-			// SetFetcher call removed
 
 			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
 
@@ -294,7 +293,7 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 func TestTask_DiffAndNotify(t *testing.T) {
 	t.Parallel()
 	tsk := &task{
-		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil),
 	}
 
 	newProduct := func(id, price int) *product {
