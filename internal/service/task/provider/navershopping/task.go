@@ -68,7 +68,16 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 	}
 
 	naverShoppingTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, scraper.New(f), newSnapshot),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:          req.TaskID,
+			CommandID:   req.CommandID,
+			InstanceID:  instanceID,
+			NotifierID:  req.NotifierID,
+			RunBy:       req.RunBy,
+			Storage:     storage,
+			Scraper:     scraper.New(f),
+			NewSnapshot: newSnapshot,
+		}),
 
 		clientID:     settings.ClientID,
 		clientSecret: settings.ClientSecret,

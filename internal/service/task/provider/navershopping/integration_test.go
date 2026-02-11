@@ -33,9 +33,7 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil, scraper.New(mockFetcher), func() interface{} {
-			return &watchPriceSnapshot{}
-		}),
+		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -94,9 +92,7 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil, scraper.New(mockFetcher), func() interface{} {
-			return &watchPriceSnapshot{}
-		}),
+		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -124,9 +120,7 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil, scraper.New(mockFetcher), func() interface{} {
-			return &watchPriceSnapshot{}
-		}),
+		Base: provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}

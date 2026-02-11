@@ -81,28 +81,41 @@ type Base struct {
 	newSnapshot NewSnapshotFunc
 }
 
+// BaseParams Base 구조체 초기화에 필요한 매개변수들을 정의하는 구조체입니다.
+// 인자가 많아짐에 따른 가독성 저하를 방지하고, 향후 공통 필드 추가 시 확장성을 보장합니다.
+type BaseParams struct {
+	ID          contract.TaskID
+	CommandID   contract.TaskCommandID
+	InstanceID  contract.TaskInstanceID
+	NotifierID  contract.NotifierID
+	RunBy       contract.TaskRunBy
+	Storage     contract.TaskResultStore
+	Scraper     scraper.Scraper
+	NewSnapshot NewSnapshotFunc
+}
+
 // NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
 // 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, scraper scraper.Scraper, newSnapshot NewSnapshotFunc) *Base {
+func NewBase(p BaseParams) *Base {
 	return &Base{
-		id:         id,
-		commandID:  commandID,
-		instanceID: instanceID,
-		notifierID: notifierID,
+		id:         p.ID,
+		commandID:  p.CommandID,
+		instanceID: p.InstanceID,
+		notifierID: p.NotifierID,
 		canceled:   0,
-		runBy:      runBy,
+		runBy:      p.RunBy,
 
-		storage: storage,
-		scraper: scraper,
+		storage: p.Storage,
+		scraper: p.Scraper,
 
 		fixedFields: applog.Fields{
-			"task_id":     id,
-			"command_id":  commandID,
-			"instance_id": instanceID,
-			"notifier_id": notifierID,
+			"task_id":     p.ID,
+			"command_id":  p.CommandID,
+			"instance_id": p.InstanceID,
+			"notifier_id": p.NotifierID,
 		},
 
-		newSnapshot: newSnapshot,
+		newSnapshot: p.NewSnapshot,
 	}
 }
 

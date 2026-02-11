@@ -48,8 +48,16 @@ func BenchmarkNaverShoppingTask_RunWatchPrice(b *testing.B) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown, nil, scraper.New(mockFetcher), func() interface{} {
-			return &watchPriceSnapshot{}
+		Base: provider.NewBase(provider.BaseParams{
+			ID:         TaskID,
+			CommandID:  WatchPriceAnyCommand,
+			InstanceID: "test_instance",
+			NotifierID: "test-notifier",
+			RunBy:      contract.TaskRunByUnknown,
+			Scraper:    scraper.New(mockFetcher),
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
 		}),
 	}
 	// SetFetcher removed

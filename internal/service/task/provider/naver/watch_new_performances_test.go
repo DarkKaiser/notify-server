@@ -281,7 +281,17 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 
 			// parsePerformancesFromHTML은 (performances, rawCount, error) 반환
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil, scraper.New(mocks.NewMockHTTPFetcher()), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "T",
+					CommandID:  "C",
+					InstanceID: "I",
+					NotifierID: "N",
+					RunBy:      contract.TaskRunByScheduler,
+					Scraper:    scraper.New(mocks.NewMockHTTPFetcher()),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 
 			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, tt.filters)
@@ -359,7 +369,16 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil, nil, func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "T",
+					CommandID:  "C",
+					InstanceID: "I",
+					NotifierID: "N",
+					RunBy:      contract.TaskRunByUser,
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 
 			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
@@ -466,7 +485,16 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser, nil, nil, func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "T",
+					CommandID:  "C",
+					InstanceID: "I",
+					NotifierID: "N",
+					RunBy:      contract.TaskRunByUser,
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
@@ -574,7 +602,16 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Setup Task
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", tt.runBy, nil, nil, func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "T",
+					CommandID:  "C",
+					InstanceID: "I",
+					NotifierID: "N",
+					RunBy:      tt.runBy,
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 
 			// Prepare Snapshots
@@ -799,7 +836,17 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 
 			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
 			naverTask := &task{
-				Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil, scraper.New(mockFetcher), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "NAVER",
+					CommandID:  "WATCH",
+					InstanceID: "INSTANCE",
+					NotifierID: "NOTI",
+					RunBy:      contract.TaskRunByScheduler,
+					Scraper:    scraper.New(mockFetcher),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 			// SetFetcher call removed
 
@@ -919,7 +966,17 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
 	naverTask := &task{
-		Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil, scraper.New(mockFetcher), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:         "NAVER",
+			CommandID:  "WATCH",
+			InstanceID: "INSTANCE",
+			NotifierID: "NOTI",
+			RunBy:      contract.TaskRunByUser,
+			Scraper:    scraper.New(mockFetcher),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}),
 	}
 
 	settings := &watchNewPerformancesSettings{
@@ -1009,7 +1066,17 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 
 			// executeFlow
 			naverTask := &task{
-				Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser, nil, scraper.New(mockFetcher), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "NAVER",
+					CommandID:  "WATCH",
+					InstanceID: "INSTANCE",
+					NotifierID: "NOTI",
+					RunBy:      contract.TaskRunByUser,
+					Scraper:    scraper.New(mockFetcher),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}),
 			}
 
 			settings := &watchNewPerformancesSettings{
@@ -1052,7 +1119,17 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 
 	b.ResetTimer()
 	taskInstance := &task{
-		Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByScheduler, nil, scraper.New(mocks.NewMockHTTPFetcher()), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:         "T",
+			CommandID:  "C",
+			InstanceID: "I",
+			NotifierID: "N",
+			RunBy:      contract.TaskRunByScheduler,
+			Scraper:    scraper.New(mocks.NewMockHTTPFetcher()),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}),
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -1078,7 +1155,17 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 	}
 
 	testTask := &task{
-		Base: provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler, nil, scraper.New(nil), func() interface{} { return &watchNewPerformancesSnapshot{} }),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:         "NAVER",
+			CommandID:  "WATCH",
+			InstanceID: "INSTANCE",
+			NotifierID: "NOTI",
+			RunBy:      contract.TaskRunByScheduler,
+			Scraper:    scraper.New(nil),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}),
 	}
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}

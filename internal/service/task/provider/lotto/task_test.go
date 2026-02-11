@@ -215,7 +215,15 @@ func TestTask_Run(t *testing.T) {
 		mockStorage := new(contractmocks.MockTaskResultStore)
 
 		task := &task{
-			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser, mockStorage, nil, func() interface{} { return &predictionSnapshot{} }),
+			Base: provider.NewBase(provider.BaseParams{
+				ID:          TaskID,
+				CommandID:   PredictionCommand,
+				InstanceID:  "test-instance",
+				NotifierID:  "telegram",
+				RunBy:       contract.TaskRunByUser,
+				Storage:     mockStorage,
+				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
+			}),
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}

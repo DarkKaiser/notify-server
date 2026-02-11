@@ -95,7 +95,16 @@ func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest
 	}
 
 	lottoTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy, storage, nil, newSnapshot),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:          req.TaskID,
+			CommandID:   req.CommandID,
+			InstanceID:  instanceID,
+			NotifierID:  req.NotifierID,
+			RunBy:       req.RunBy,
+			Storage:     storage,
+			Scraper:     nil,
+			NewSnapshot: newSnapshot,
+		}),
 
 		appPath: settings.AppPath,
 

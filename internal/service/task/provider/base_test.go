@@ -28,7 +28,14 @@ func TestTask_BasicMethods(t *testing.T) {
 	notifier := "telegram"
 
 	mockStorage := &contractmocks.MockTaskResultStore{}
-	task := NewBase(taskID, cmdID, instID, contract.NotifierID(notifier), contract.TaskRunByUser, mockStorage, nil, nil)
+	task := NewBase(BaseParams{
+		ID:         taskID,
+		CommandID:  cmdID,
+		InstanceID: instID,
+		NotifierID: contract.NotifierID(notifier),
+		RunBy:      contract.TaskRunByUser,
+		Storage:    mockStorage,
+	})
 
 	// When & Then
 	assert.Equal(t, taskID, task.GetID())
@@ -292,8 +299,16 @@ func TestTask_Run(t *testing.T) {
 			if runBy == contract.TaskRunByUnknown {
 				runBy = contract.TaskRunByScheduler
 			}
-			task := NewBase(tID, cID, "test_inst", "test_notifier", runBy, store, nil, func() interface{} {
-				return make(map[string]interface{})
+			task := NewBase(BaseParams{
+				ID:         tID,
+				CommandID:  cID,
+				InstanceID: "test_inst",
+				NotifierID: "test_notifier",
+				RunBy:      runBy,
+				Storage:    store,
+				NewSnapshot: func() interface{} {
+					return make(map[string]interface{})
+				},
 			})
 			task.SetExecute(exec)
 
@@ -421,7 +436,13 @@ func collectAllMessages(sender *notificationmocks.MockNotificationSender) string
 
 // TestTask_PrepareExecution_SnapshotCreationFailed 스냅샷 생성 함수가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_SnapshotCreationFailed(t *testing.T) {
-	task := NewBase("UNKNOWN_TASK", "UNKNOWN_CMD", "inst", "noti", contract.TaskRunByUser, nil, nil, nil)
+	task := NewBase(BaseParams{
+		ID:         "UNKNOWN_TASK",
+		CommandID:  "UNKNOWN_CMD",
+		InstanceID: "inst",
+		NotifierID: "noti",
+		RunBy:      contract.TaskRunByUser,
+	})
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
 	task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {

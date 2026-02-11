@@ -45,7 +45,16 @@ func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, insta
 		storage = &contractmocks.MockTaskResultStore{}
 	}
 	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
-	var t *provider.Base = provider.NewBase(taskID, commandID, instanceID, notifierID, runBy, storage, s, newSnapshot)
+	var t *provider.Base = provider.NewBase(provider.BaseParams{
+		ID:          taskID,
+		CommandID:   commandID,
+		InstanceID:  instanceID,
+		NotifierID:  notifierID,
+		RunBy:       runBy,
+		Storage:     storage,
+		Scraper:     s,
+		NewSnapshot: newSnapshot,
+	})
 	return t
 }
 
