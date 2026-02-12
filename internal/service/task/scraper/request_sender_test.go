@@ -1,243 +1,399 @@
 package scraper
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// MockFetcher is a mock implementation of the Fetcher interface
-type MockFetcher struct {
-	mock.Mock
-}
-
-func (m *MockFetcher) Do(req *http.Request) (*http.Response, error) {
-	args := m.Called(req)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*http.Response), args.Error(1)
-}
-
-func (m *MockFetcher) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
+// TestScraper_prepareBody는 prepareBody 메서드의 다양한 입력 타입과 에러 처리, 크기 제한을 검증합니다.
 func TestScraper_prepareBody(t *testing.T) {
-	s := &scraper{maxRequestBodySize: 1024}
-
 	tests := []struct {
-		name        string
-		body        interface{}
-		expected    string
-		expectError bool
+		name string
+		// Input
+		body       any
+		scraperOpt []Option
+
+		// Verification
+		wantContent string // Expected content if successful
+		wantErr     bool
+		errType     apperrors.ErrorType
+		errContains []string
 	}{
+		// -------------------------------------------------------------------------
+		// [Category 1: Supported Types]
+		// -------------------------------------------------------------------------
 		{
-			name:     "NilBody",
-			body:     nil,
-			expected: "",
+			name:        "Success - Nil Body",
+			body:        nil,
+			wantContent: "", // Should return nil reader, handled as empty check
 		},
 		{
-			name:     "StringBody",
-			body:     "test string",
-			expected: "test string",
+			name:        "Success - String Body",
+			body:        "test string",
+			wantContent: "test string",
 		},
 		{
-			name:     "BytesBody",
-			body:     []byte("test bytes"),
-			expected: "test bytes",
+			name:        "Success - Byte Slice Body",
+			body:        []byte("test bytes"),
+			wantContent: "test bytes",
 		},
 		{
-			name:     "ReaderBody",
-			body:     strings.NewReader("test reader"),
-			expected: "test reader",
+			name:        "Success - io.Reader Body",
+			body:        bytes.NewBufferString("test reader"),
+			wantContent: "test reader",
 		},
 		{
-			name:     "JSONBody",
-			body:     map[string]string{"key": "value"},
-			expected: `{"key":"value"}`,
+			name:        "Success - Struct (JSON)",
+			body:        struct{ Name string }{"json"},
+			wantContent: `{"Name":"json"}`,
 		},
 		{
-			name:        "JSONError",
-			body:        make(chan int), // Channels cannot be marshaled
-			expectError: true,
+			name:        "Success - Map (JSON)",
+			body:        map[string]int{"val": 1},
+			wantContent: `{"val":1}`,
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 2: Edge Cases]
+		// -------------------------------------------------------------------------
+		{
+			name:        "Success - Empty String",
+			body:        "",
+			wantContent: "",
+		},
+		{
+			name:        "Success - Empty Byte Slice",
+			body:        []byte{},
+			wantContent: "",
+		},
+		{
+			name:        "Success - Typed Nil (io.Reader)",
+			body:        (*bytes.Buffer)(nil),
+			wantContent: "", // Should be handled as nil
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 3: Size Limits]
+		// -------------------------------------------------------------------------
+		{
+			name: "Success - Body At Limit",
+			body: "12345",
+			scraperOpt: []Option{
+				WithMaxRequestBodySize(5),
+			},
+			wantContent: "12345",
+		},
+		{
+			name: "Error - String Body Over Limit",
+			body: "123456",
+			scraperOpt: []Option{
+				WithMaxRequestBodySize(5),
+			},
+			wantErr:     true,
+			errType:     apperrors.InvalidInput,
+			errContains: []string{"요청 본문 크기 초과"},
+		},
+		{
+			name: "Error - Reader Body Over Limit",
+			body: bytes.NewBufferString("123456"),
+			scraperOpt: []Option{
+				WithMaxRequestBodySize(5),
+			},
+			wantErr:     true,
+			errType:     apperrors.InvalidInput,
+			errContains: []string{"요청 본문 크기 초과"},
+		},
+		{
+			name: "Error - JSON Body Over Limit",
+			body: map[string]string{"key": "value_too_long"}, // {"key":"value_too_long"} -> 22 bytes
+			scraperOpt: []Option{
+				WithMaxRequestBodySize(5),
+			},
+			wantErr:     true,
+			errType:     apperrors.InvalidInput,
+			errContains: []string{"요청 본문 크기 초과"},
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 4: Errors]
+		// -------------------------------------------------------------------------
+		{
+			name:        "Error - JSON Marshal Failure (Cyclic/Unsupported)",
+			body:        map[string]any{"chan": make(chan int)}, // Channel cannot be marshaled
+			wantErr:     true,
+			errType:     apperrors.Internal,
+			errContains: []string{"요청 본문 JSON 인코딩 실패"},
+		},
+		{
+			name:        "Error - Reader Read Failure",
+			body:        &failReader{},
+			wantErr:     true,
+			errType:     apperrors.ExecutionFailed,
+			errContains: []string{"요청 본문 준비 실패"},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			reader, err := s.prepareBody(ctx, tt.body)
+			// 1. Initialize Scraper
+			mockFetcher := new(mocks.MockFetcher) // Not used here, but needed for New
+			s := New(mockFetcher, tt.scraperOpt...)
 
-			if tt.expectError {
+			// Cast to concrete type to access private method
+			impl := s.(*scraper)
+
+			// 2. Execute
+			reader, err := impl.prepareBody(context.Background(), tt.body)
+
+			// 3. Verify
+			if tt.wantErr {
 				require.Error(t, err)
-				assert.Nil(t, reader)
+				if len(tt.errContains) > 0 {
+					for _, msg := range tt.errContains {
+						assert.Contains(t, err.Error(), msg)
+					}
+				}
+				if tt.errType != apperrors.Unknown {
+					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
+				}
 			} else {
 				require.NoError(t, err)
-				if tt.expected == "" {
-					assert.Nil(t, reader)
+				if tt.wantContent == "" {
+					// Either nil reader or empty reader
+					if reader == nil {
+						return
+					}
+					// If not nil, read it
+					content, err := io.ReadAll(reader)
+					assert.NoError(t, err)
+					assert.Empty(t, content)
 				} else {
 					require.NotNil(t, reader)
 					content, err := io.ReadAll(reader)
-					require.NoError(t, err)
-					assert.Equal(t, tt.expected, string(content))
+					assert.NoError(t, err)
+					assert.Equal(t, tt.wantContent, string(content))
 				}
 			}
 		})
 	}
 }
 
-func TestScraper_prepareBody_Limit(t *testing.T) {
-	// Set limit to 5 bytes
-	s := &scraper{maxRequestBodySize: 5}
-	ctx := context.Background()
-
-	// Create body with 6 bytes
-	body := "123456"
-
-	// prepareBody reads the whole body to check limit if it's string/bytes/json
-	// Or if it's a Reader, it wraps it.
-	// Wait, prepareBody implementation for string/bytes checks length immediately?
-	// Let's check implementation.
-	// Case string: return strings.NewReader(v), nil. It does NOT check limit there.
-	// It checks limit when reading from the returned reader?
-	// No, prepareBody returns an io.Reader. The check is done inside the reader?
-	// Let's look at prepareBody implementation again.
-	// Ah, line 78 in request_sender.go: limitReader := io.LimitReader(v, s.maxRequestBodySize+1)
-	// Then it does io.ReadAll(limitReader).
-	// So it DOES check limit inside prepareBody for io.Reader types.
-	// For string/bytes, it falls through to default case (JSON marshaling) if not handled explicitly?
-	// No, string is handled in switch v := body.(type).
-	// Wait, string case is NOT handled explicitly in switch!
-	// Only io.Reader, []byte, nil are handled.
-	// String falls into default case -> JSON Marshal -> "123456" (JSON string).
-	// Oh, wait. If I pass "123456" as body, it becomes "\"123456\"" in JSON?
-	// Let's check request_sender.go code again.
-
-	reader, err := s.prepareBody(ctx, body)
-
-	// If body is string, it goes to default case: JSON Marshal.
-	// JSON Marshal of "123456" is "\"123456\"" (8 bytes).
-	// Then it goes to prepareBody recursive call with []byte.
-	// []byte case: checks length. 8 > 5 returns error.
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "요청 본문 크기 초과")
-	assert.Nil(t, reader)
-}
-
+// TestScraper_createAndSendRequest는 HTTP 요청 생성 및 전송 로직, 헤더 처리, 에러 래핑을 검증합니다.
 func TestScraper_createAndSendRequest(t *testing.T) {
 	tests := []struct {
-		name          string
-		params        requestParams
-		mockResponse  *http.Response
-		mockError     error
-		expectedError string
+		name string
+		// Input
+		params requestParams
+
+		// Mock
+		mockSetup func(*mocks.MockFetcher)
+
+		// Context
+		ctxSetup func() (context.Context, context.CancelFunc)
+
+		// Verification
+		wantErr     bool
+		errType     apperrors.ErrorType
+		errContains []string
+		checkResp   func(*testing.T, *http.Response)
 	}{
+		// -------------------------------------------------------------------------
+		// [Category 1: Success & Header Handling]
+		// -------------------------------------------------------------------------
 		{
-			name: "Success",
+			name: "Success - Basic Request",
 			params: requestParams{
 				Method: "GET",
 				URL:    "http://example.com",
 			},
-			mockResponse: &http.Response{StatusCode: 200},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
+					req := args.Get(0).(*http.Request)
+					assert.Equal(t, "GET", req.Method)
+					assert.Equal(t, "http://example.com", req.URL.String())
+				}).Return(&http.Response{StatusCode: 200}, nil)
+			},
+			checkResp: func(t *testing.T, resp *http.Response) {
+				assert.Equal(t, 200, resp.StatusCode)
+			},
 		},
 		{
-			name: "RequestCreationError_InvalidURL",
+			name: "Success - Custom Headers",
 			params: requestParams{
 				Method: "GET",
-				URL:    "://invalid-url", // This causes new request failure
+				URL:    "http://example.com",
+				Header: http.Header{"X-Custom": []string{"value"}},
 			},
-			expectedError: "HTTP 요청 생성 실패",
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
+					req := args.Get(0).(*http.Request)
+					assert.Equal(t, "value", req.Header.Get("X-Custom"))
+				}).Return(&http.Response{StatusCode: 200}, nil)
+			},
 		},
-		// ContextCanceled check is tricky because NewRequestWithContext doesn't return error on cancelled context immediately
 		{
-			name: "NetworkError",
+			name: "Success - Default Accept Header (Applied)",
+			params: requestParams{
+				Method:        "GET",
+				URL:           "http://example.com",
+				DefaultAccept: "application/json",
+			},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
+					req := args.Get(0).(*http.Request)
+					assert.Equal(t, "application/json", req.Header.Get("Accept"))
+				}).Return(&http.Response{StatusCode: 200}, nil)
+			},
+		},
+		{
+			name: "Success - Default Accept Header (Ignored if Exists)",
+			params: requestParams{
+				Method:        "GET",
+				URL:           "http://example.com",
+				Header:        http.Header{"Accept": []string{"text/xml"}},
+				DefaultAccept: "application/json",
+			},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
+					req := args.Get(0).(*http.Request)
+					assert.Equal(t, "text/xml", req.Header.Get("Accept"))
+				}).Return(&http.Response{StatusCode: 200}, nil)
+			},
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 2: Context Cancellation]
+		// -------------------------------------------------------------------------
+		{
+			name: "Error - Context Canceled Before Request",
 			params: requestParams{
 				Method: "GET",
 				URL:    "http://example.com",
 			},
-			mockError:     errors.New("connection refused"),
-			expectedError: "네트워크 오류",
+			ctxSetup: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, context.Canceled)
+			},
+			wantErr:     true,
+			errType:     apperrors.Unavailable,
+			errContains: []string{"요청 중단"},
+		},
+		{
+			name: "Error - Context Deadline Exceeded",
+			params: requestParams{
+				Method: "GET",
+				URL:    "http://example.com",
+			},
+			ctxSetup: func() (context.Context, context.CancelFunc) {
+				// Immediately expired context
+				ctx, cancel := context.WithTimeout(context.Background(), 0)
+				return ctx, cancel
+			},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, context.DeadlineExceeded)
+			},
+			wantErr:     true,
+			errType:     apperrors.Unavailable,
+			errContains: []string{"요청 중단"},
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 3: Fetcher Errors]
+		// -------------------------------------------------------------------------
+		{
+			name: "Error - Network Error",
+			params: requestParams{
+				Method: "GET",
+				URL:    "http://example.com",
+			},
+			mockSetup: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, errors.New("dial tcp: i/o timeout"))
+			},
+			wantErr:     true,
+			errType:     apperrors.Unavailable,
+			errContains: []string{"네트워크 오류"},
+		},
+
+		// -------------------------------------------------------------------------
+		// [Category 4: Validations]
+		// -------------------------------------------------------------------------
+		{
+			name: "Error - Invalid Method",
+			params: requestParams{
+				Method: "INVALID METHOD", // Space not allowed in method
+				URL:    "http://example.com",
+			},
+			// Mock should not be called because NewRequest fails
+			mockSetup:   func(m *mocks.MockFetcher) {},
+			wantErr:     true,
+			errType:     apperrors.ExecutionFailed,
+			errContains: []string{"HTTP 요청 생성 실패"},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := new(MockFetcher)
-			s := &scraper{fetcher: mockFetcher}
-			ctx := context.Background()
-
-			if tt.expectedError == "" || tt.name == "NetworkError" {
-				mockFetcher.On("Do", mock.AnythingOfType("*http.Request")).Return(tt.mockResponse, tt.mockError)
+			// 1. Setup Mock
+			mockFetcher := new(mocks.MockFetcher)
+			if tt.mockSetup != nil {
+				tt.mockSetup(mockFetcher)
 			}
 
-			resp, err := s.createAndSendRequest(ctx, tt.params)
+			// 2. Initialize Scraper
+			s := New(mockFetcher)
+			impl := s.(*scraper)
 
-			if tt.expectedError != "" {
+			// 3. Setup Context
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if tt.ctxSetup != nil {
+				ctx, cancel = tt.ctxSetup()
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+			}
+			defer cancel()
+
+			// 4. Execute
+			resp, err := impl.createAndSendRequest(ctx, tt.params)
+
+			// 5. Verify
+			if tt.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedError)
-				assert.Nil(t, resp)
+				if len(tt.errContains) > 0 {
+					for _, msg := range tt.errContains {
+						assert.Contains(t, err.Error(), msg)
+					}
+				}
+				if tt.errType != apperrors.Unknown {
+					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
+				}
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, resp)
-				assert.Equal(t, tt.mockResponse, resp)
+				if tt.checkResp != nil {
+					tt.checkResp(t, resp)
+				}
 			}
 		})
 	}
 }
 
-func TestScraper_createAndSendRequest_Headers(t *testing.T) {
-	mockFetcher := new(MockFetcher)
-	s := &scraper{fetcher: mockFetcher}
-	ctx := context.Background()
-
-	params := requestParams{
-		Method: "GET",
-		URL:    "http://example.com",
-		Header: http.Header{
-			"X-Custom-Header": []string{"CustomValue"},
-		},
-		DefaultAccept: "application/json",
-	}
-
-	mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-		return req.Header.Get("X-Custom-Header") == "CustomValue" &&
-			req.Header.Get("Accept") == "application/json"
-	})).Return(&http.Response{StatusCode: 200}, nil)
-
-	_, err := s.createAndSendRequest(ctx, params)
-	require.NoError(t, err)
-	mockFetcher.AssertExpectations(t)
-}
-
-func TestScraper_createAndSendRequest_ContextCanceled(t *testing.T) {
-	mockFetcher := new(MockFetcher)
-	s := &scraper{fetcher: mockFetcher}
-
-	// Create a context that is already canceled
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	params := requestParams{
-		Method: "GET",
-		URL:    "http://example.com",
-	}
-
-	// When context is canceled, fetcher.Do might behave differently depending on implementation
-	// But our wrapper createAndSendRequest checks ctx.Err() AFTER Do returns.
-	// We simulate Do returning an error due to context cancel
-	mockFetcher.On("Do", mock.Anything).Return(nil, context.Canceled)
-
-	_, err := s.createAndSendRequest(ctx, params)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "요청 중단")
+func init() {
+	applog.SetLevel(applog.DebugLevel)
 }

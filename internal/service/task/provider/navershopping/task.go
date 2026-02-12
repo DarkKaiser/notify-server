@@ -41,7 +41,7 @@ func (s *taskSettings) Validate() error {
 }
 
 func init() {
-	provider.Register(TaskID, &provider.Config{
+	provider.MustRegister(TaskID, &provider.Config{
 		Commands: []*provider.CommandConfig{
 			{
 				ID: WatchPriceAnyCommand,
@@ -90,7 +90,7 @@ func newTask(p provider.NewTaskParams) (provider.Task, error) {
 			return naverShoppingTask.executeWatchPrice(ctx, commandSettings, prevSnapshot, supportsHTML)
 		})
 	} else {
-		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID)
+		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID, []contract.TaskCommandID{WatchPriceAnyCommand})
 	}
 
 	return naverShoppingTask, nil

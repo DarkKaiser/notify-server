@@ -34,8 +34,8 @@ func (h *StubTask) GetInstanceID() contract.TaskInstanceID { return h.InstanceID
 func (h *StubTask) GetNotifierID() contract.NotifierID {
 	return contract.NotifierID("test-notifier")
 }
-func (h *StubTask) IsCanceled() bool                   { return h.Canceled }
-func (h *StubTask) ElapsedTimeAfterRun() time.Duration { return 0 }
+func (h *StubTask) IsCanceled() bool       { return h.Canceled }
+func (h *StubTask) Elapsed() time.Duration { return 0 }
 
 func (s *StubTask) Run(ctx context.Context, ns contract.NotificationSender) {
 	select {

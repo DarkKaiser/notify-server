@@ -53,7 +53,7 @@ func TestTask_BasicMethods(t *testing.T) {
 
 	// ElapsedTime Test
 	task.runTime = time.Now().Add(-1 * time.Second)
-	assert.GreaterOrEqual(t, task.ElapsedTimeAfterRun(), 1*time.Second)
+	assert.GreaterOrEqual(t, task.Elapsed(), 1*time.Second)
 }
 
 // TestTask_Run Task 실행의 전체수명주기(Lifecycle)와 다양한 시나리오를 검증합니다.

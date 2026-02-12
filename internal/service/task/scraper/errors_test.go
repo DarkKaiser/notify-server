@@ -1,142 +1,337 @@
-package scraper_test
+package scraper
 
 import (
 	"context"
-	"net/http"
-	"runtime"
+	"errors"
 	"testing"
-	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
-func TestFetch_ErrorClassification(t *testing.T) {
-	tests := []struct {
-		name            string
-		statusCode      int
-		expectedErrType apperrors.ErrorType
-	}{
-		{
-			name:            "400 Bad Request -> ExecutionFailed",
-			statusCode:      400,
-			expectedErrType: apperrors.ExecutionFailed,
-		},
-		{
-			name:            "404 Not Found -> ExecutionFailed",
-			statusCode:      404,
-			expectedErrType: apperrors.ExecutionFailed,
-		},
-		{
-			name:            "429 Too Many Requests -> Unavailable (Retryable)",
-			statusCode:      429,
-			expectedErrType: apperrors.Unavailable,
-		},
-		{
-			name:            "500 Internal Server Error -> Unavailable",
-			statusCode:      500,
-			expectedErrType: apperrors.Unavailable,
-		},
-		{
-			name:            "502 Bad Gateway -> Unavailable",
-			statusCode:      502,
-			expectedErrType: apperrors.Unavailable,
-		},
-	}
+// TestScraper_Errors verifies all error constructors and variables in errors.go.
+// It ensures that error types, messages, and wrapped causes are correctly handled.
+func TestScraper_Errors(t *testing.T) {
+	// Common test variables
+	dummyURL := "http://example.com"
+	dummyCause := errors.New("original error")
 
+	t.Run("JSON Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			{
+				name:        "newErrJSONParseFailed with context",
+				err:         newErrJSONParseFailed(dummyCause, dummyURL, 10, "near this"),
+				wantType:    apperrors.ParsingFailed,
+				wantMsg:     []string{"JSON 파싱 실패", dummyURL, "오류 위치: 10", "near this"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrJSONParseFailed without context",
+				err:         newErrJSONParseFailed(dummyCause, dummyURL, 0, ""),
+				wantType:    apperrors.ParsingFailed,
+				wantMsg:     []string{"JSON 파싱 실패", dummyURL},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:     "newErrJSONUnexpectedToken",
+				err:      newErrJSONUnexpectedToken(dummyURL),
+				wantType: apperrors.ParsingFailed,
+				wantMsg:  []string{"불필요한 토큰", dummyURL},
+			},
+			{
+				name:     "newErrUnexpectedHTMLResponse",
+				err:      newErrUnexpectedHTMLResponse(dummyURL, "text/html"),
+				wantType: apperrors.InvalidInput,
+				wantMsg:  []string{"JSON 대신 HTML", dummyURL, "text/html"},
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("HTML Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			{
+				name:        "newErrHTMLParseFailed",
+				err:         newErrHTMLParseFailed(dummyCause, dummyURL),
+				wantType:    apperrors.ParsingFailed,
+				wantMsg:     []string{"HTML 파싱 실패", dummyURL},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:     "NewErrHTMLStructureChanged with URL",
+				err:      NewErrHTMLStructureChanged(dummyURL, "changed layout"),
+				wantType: apperrors.ExecutionFailed,
+				wantMsg:  []string{"HTML 구조 변경", "changed layout", dummyURL},
+			},
+			{
+				name:     "NewErrHTMLStructureChanged without URL",
+				err:      NewErrHTMLStructureChanged("", "changed layout"),
+				wantType: apperrors.ExecutionFailed,
+				wantMsg:  []string{"HTML 구조 변경", "changed layout"},
+			},
+			{
+				name:        "newErrReadHTMLInput",
+				err:         newErrReadHTMLInput(dummyCause),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTML 입력 데이터 읽기 실패"},
+				wantWrapped: dummyCause,
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("HTTP and Network Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			// newErrHTTPRequestFailed - 4xx
+			{
+				name:        "newErrHTTPRequestFailed - 400 Bad Request",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 400, "bad request error"),
+				wantType:    apperrors.ExecutionFailed,
+				wantMsg:     []string{"HTTP 요청 실패", "400", dummyURL, "bad request error"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrHTTPRequestFailed - 404 Not Found",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 404, ""),
+				wantType:    apperrors.ExecutionFailed,
+				wantMsg:     []string{"HTTP 요청 실패", "404", dummyURL},
+				wantWrapped: dummyCause,
+			},
+			// newErrHTTPRequestFailed - Retryable 4xx
+			{
+				name:        "newErrHTTPRequestFailed - 408 Timeout",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 408, ""),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTTP 요청 실패", "408"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrHTTPRequestFailed - 429 Too Many Requests",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 429, ""),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTTP 요청 실패", "429"},
+				wantWrapped: dummyCause,
+			},
+			// newErrHTTPRequestFailed - 5xx
+			{
+				name:        "newErrHTTPRequestFailed - 500 Internal Server Error",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 500, ""),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTTP 요청 실패", "500"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrHTTPRequestFailed - 502 Bad Gateway",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 502, ""),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTTP 요청 실패", "502"},
+				wantWrapped: dummyCause,
+			},
+			// newErrHTTPRequestFailed - Others
+			{
+				name:        "newErrHTTPRequestFailed - 302 Found (Unexpected)",
+				err:         newErrHTTPRequestFailed(dummyCause, dummyURL, 302, ""),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"HTTP 요청 실패", "302"},
+				wantWrapped: dummyCause,
+			},
+
+			// Other HTTP Errors
+			{
+				name:        "newErrCreateHTTPRequest",
+				err:         newErrCreateHTTPRequest(dummyCause, dummyURL),
+				wantType:    apperrors.ExecutionFailed,
+				wantMsg:     []string{"HTTP 요청 생성 실패", dummyURL},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrNetworkError",
+				err:         newErrNetworkError(dummyCause, dummyURL),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"네트워크 오류", dummyURL},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrHTTPRequestCanceled",
+				err:         newErrHTTPRequestCanceled(context.Canceled, dummyURL),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"요청 중단", dummyURL},
+				wantWrapped: context.Canceled,
+			},
+			{
+				name:     "ErrContextCanceled",
+				err:      ErrContextCanceled,
+				wantType: apperrors.Unavailable,
+				wantMsg:  []string{"작업 중단", "컨텍스트 취소"},
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("Body Processing Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			{
+				name:        "newErrPrepareRequestBody",
+				err:         newErrPrepareRequestBody(dummyCause),
+				wantType:    apperrors.ExecutionFailed,
+				wantMsg:     []string{"요청 본문 준비 실패"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrEncodeJSONBody",
+				err:         newErrEncodeJSONBody(dummyCause),
+				wantType:    apperrors.Internal,
+				wantMsg:     []string{"요청 본문 JSON 인코딩 실패"},
+				wantWrapped: dummyCause,
+			},
+			{
+				name:        "newErrReadResponseBody",
+				err:         newErrReadResponseBody(dummyCause),
+				wantType:    apperrors.Unavailable,
+				wantMsg:     []string{"응답 본문 데이터 수신 실패"},
+				wantWrapped: dummyCause,
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("Size Limit Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			{
+				name:     "newErrRequestBodySizeLimitExceeded",
+				err:      newErrRequestBodySizeLimitExceeded(1024, "application/json"),
+				wantType: apperrors.InvalidInput,
+				wantMsg:  []string{"요청 본문 크기 초과", "1024", "application/json"},
+			},
+			{
+				name:     "newErrResponseBodySizeLimitExceeded",
+				err:      newErrResponseBodySizeLimitExceeded(2048, dummyURL, "text/html"),
+				wantType: apperrors.InvalidInput,
+				wantMsg:  []string{"응답 본문 크기 초과", "2048", dummyURL, "text/html"},
+			},
+			{
+				name:     "newErrInputDataSizeLimitExceeded",
+				err:      newErrInputDataSizeLimitExceeded(4096, "HTML"),
+				wantType: apperrors.InvalidInput,
+				wantMsg:  []string{"입력 데이터 크기 초과", "4096", "HTML"},
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("Input Validation Errors", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			err         error
+			wantType    apperrors.ErrorType
+			wantMsg     []string
+			wantWrapped error
+		}{
+			{
+				name:     "ErrDecodeTargetNil",
+				err:      ErrDecodeTargetNil,
+				wantType: apperrors.Internal,
+				wantMsg:  []string{"JSON 디코딩 실패", "변수가 nil"},
+			},
+			{
+				name:     "newErrDecodeTargetInvalidType",
+				err:      newErrDecodeTargetInvalidType(123),
+				wantType: apperrors.Internal,
+				wantMsg:  []string{"JSON 디코딩 실패", "int"},
+			},
+			{
+				name:     "ErrInputReaderNil",
+				err:      ErrInputReaderNil,
+				wantType: apperrors.Internal,
+				wantMsg:  []string{"HTML 파싱 실패", "스트림이 nil"},
+			},
+			{
+				name:     "ErrInputReaderTypedNil",
+				err:      ErrInputReaderTypedNil,
+				wantType: apperrors.Internal,
+				wantMsg:  []string{"HTML 파싱 실패", "Typed Nil"},
+			},
+		}
+		runErrorTests(t, tests)
+	})
+
+	t.Run("Response Validation Errors", func(t *testing.T) {
+		t.Run("Wraps Regular Error", func(t *testing.T) {
+			err := newErrValidationFailed(dummyCause, dummyURL, "preview")
+			assert.True(t, apperrors.Is(err, apperrors.ExecutionFailed))
+			assert.Contains(t, err.Error(), "응답 검증 실패")
+			assert.Contains(t, err.Error(), dummyURL)
+			assert.Contains(t, err.Error(), "preview")
+			assert.ErrorIs(t, err, dummyCause)
+		})
+
+		t.Run("Preserves AppError Type", func(t *testing.T) {
+			unavailableErr := apperrors.New(apperrors.Unavailable, "server busy")
+			err := newErrValidationFailed(unavailableErr, dummyURL, "")
+			assert.True(t, apperrors.Is(err, apperrors.Unavailable), "Should preserve Unavailable type")
+			assert.Contains(t, err.Error(), "응답 검증 실패")
+			assert.ErrorIs(t, err, unavailableErr)
+		})
+	})
+}
+
+// Helper for running error tests
+func runErrorTests(t *testing.T, tests []struct {
+	name        string
+	err         error
+	wantType    apperrors.ErrorType
+	wantMsg     []string
+	wantWrapped error
+}) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &mocks.MockFetcher{}
-			resp := mocks.NewMockResponse("error body", tt.statusCode)
-			resp.Status = http.StatusText(tt.statusCode)
-			req, _ := http.NewRequest(http.MethodGet, "http://example.com/status", nil)
-			resp.Request = req
+			assert.Error(t, tt.err)
 
-			mockFetcher.On("Do", mock.Anything).Return(resp, nil)
+			// Verify Type
+			if tt.wantType != apperrors.Unknown {
+				assert.True(t, apperrors.Is(tt.err, tt.wantType), "Expected error type %s, got err: %v", tt.wantType, tt.err)
+			}
 
-			s := scraper.New(mockFetcher)
+			// Verify Message
+			for _, msg := range tt.wantMsg {
+				assert.Contains(t, tt.err.Error(), msg)
+			}
 
-			// Test with FetchHTMLDocument
-			doc, err := s.FetchHTMLDocument(context.Background(), "http://example.com/status", nil)
-
-			assert.Error(t, err)
-			assert.Nil(t, doc)
-
-			// Check error type
-			assert.True(t, apperrors.Is(err, tt.expectedErrType),
-				"Expected error type %s for status %d, got err: %v", tt.expectedErrType, tt.statusCode, err)
+			// Verify Wrapped Error
+			if tt.wantWrapped != nil {
+				assert.ErrorIs(t, tt.err, tt.wantWrapped)
+			}
 		})
 	}
-}
-
-func TestScraper_RetryOn429_408(t *testing.T) {
-	tests := []struct {
-		name       string
-		statusCode int
-	}{
-		{"429 Too Many Requests", http.StatusTooManyRequests},
-		{"408 Request Timeout", http.StatusRequestTimeout},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := &mocks.MockFetcher{}
-			s := scraper.New(mockFetcher)
-
-			resp := mocks.NewMockResponse("Retry me", tt.statusCode)
-			resp.Header.Set("Content-Type", "text/plain")
-
-			mockFetcher.On("Do", mock.Anything).Return(resp, nil)
-
-			_, err := s.FetchHTML(context.Background(), "GET", "http://example.com", nil, nil)
-
-			assert.Error(t, err)
-			assert.True(t, apperrors.Is(err, apperrors.Unavailable))
-		})
-	}
-}
-
-func TestScraper_NonRetryOnOther4xx(t *testing.T) {
-	mockFetcher := &mocks.MockFetcher{}
-	s := scraper.New(mockFetcher)
-
-	resp := mocks.NewMockResponse("Not Found", http.StatusNotFound)
-	resp.Header.Set("Content-Type", "text/plain")
-
-	mockFetcher.On("Do", mock.Anything).Return(resp, nil)
-
-	_, err := s.FetchHTML(context.Background(), "GET", "http://example.com", nil, nil)
-
-	assert.Error(t, err)
-	assert.True(t, apperrors.Is(err, apperrors.ExecutionFailed))
-	assert.False(t, apperrors.Is(err, apperrors.Unavailable))
-}
-
-func TestCreateBodyReader_GoroutineLeak(t *testing.T) {
-	// 1. Check initial goroutines
-	runtime.GC()
-	startGoroutines := runtime.NumGoroutine()
-
-	// 2. Scraper with dummy fetcher to exercise createBodyReader via FetchJSON
-	ctx := context.Background()
-	body := "test body data"
-
-	var result map[string]interface{}
-	mockFetcher := &mocks.MockFetcher{}
-	mockFetcher.On("Do", mock.Anything).Return(mocks.NewMockResponse("{}", 200), nil)
-
-	s := scraper.New(mockFetcher)
-	_ = s.FetchJSON(ctx, "POST", "http://example.com", body, nil, &result)
-
-	// 3. Wait and check
-	time.Sleep(10 * time.Millisecond)
-	runtime.GC()
-
-	endGoroutines := runtime.NumGoroutine()
-
-	// Relaxed assertion to avoid flakiness
-	assert.LessOrEqual(t, endGoroutines, startGoroutines+1, "Goroutine leak detected!")
 }

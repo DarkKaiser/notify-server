@@ -56,7 +56,7 @@ func (s *taskSettings) Validate() error {
 }
 
 func init() {
-	provider.Register(TaskID, &provider.Config{
+	provider.MustRegister(TaskID, &provider.Config{
 		Commands: []*provider.CommandConfig{
 			{
 				ID: PredictionCommand,
@@ -107,7 +107,7 @@ func newTask(p provider.NewTaskParams) (provider.Task, error) {
 			return lottoTask.executePrediction()
 		})
 	default:
-		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID)
+		return nil, provider.NewErrCommandNotSupported(p.Request.CommandID, []contract.TaskCommandID{PredictionCommand})
 	}
 
 	return lottoTask, nil

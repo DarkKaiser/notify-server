@@ -221,7 +221,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 				CommandID:     req.CommandID,
 				InstanceID:    task.GetInstanceID(),
 				Message:       msgTaskAlreadyRunning,
-				ElapsedTime:   task.ElapsedTimeAfterRun(),
+				ElapsedTime:   task.Elapsed(),
 				ErrorOccurred: false,
 				Cancelable:    false,
 			})
@@ -389,7 +389,7 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 			CommandID:     task.GetCommandID(),
 			InstanceID:    instanceID,
 			Message:       msgTaskCanceledByUser,
-			ElapsedTime:   task.ElapsedTimeAfterRun(),
+			ElapsedTime:   task.Elapsed(),
 			ErrorOccurred: false,
 			Cancelable:    false,
 		})

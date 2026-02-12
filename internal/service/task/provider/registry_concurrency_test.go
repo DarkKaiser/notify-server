@@ -22,7 +22,7 @@ func TestRegistry_Concurrency(t *testing.T) {
 				defer wg.Done()
 
 				taskID := contract.TaskID(fmt.Sprintf("TASK_%d", index))
-				r.Register(taskID, &Config{
+				_ = r.Register(taskID, &Config{
 					NewTask: func(p NewTaskParams) (Task, error) {
 						return nil, nil
 					},

@@ -96,7 +96,7 @@ func TestFindConfig(t *testing.T) {
 				NewSnapshot:   dummyResultFn(),
 			},
 		},
-		NewTask: nil,
+		NewTask: dummyNewTask(),
 	})
 
 	t.Run("존재하는 Task와 Command를 찾는 경우", func(t *testing.T) {
@@ -113,7 +113,8 @@ func TestFindConfig(t *testing.T) {
 		searchResult, err := r.findConfig(contract.TaskID("NON_EXISTENT"), testCommandID)
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
-		assert.Equal(t, ErrTaskNotSupported, err, "ErrTaskNotSupported 에러를 반환해야 합니다")
+		assert.ErrorContains(t, err, ErrTaskNotSupported.Error(), "ErrTaskNotSupported 에러 메시지를 포함해야 합니다")
+		assert.ErrorContains(t, err, "NON_EXISTENT", "에러 메시지에 TaskID가 포함되어야 합니다")
 		assert.Nil(t, searchResult, "검색 결과는 nil이어야 합니다")
 	})
 
@@ -121,7 +122,9 @@ func TestFindConfig(t *testing.T) {
 		searchResult, err := r.findConfig(testTaskID, contract.TaskCommandID("NON_EXISTENT"))
 
 		assert.Error(t, err, "에러가 발생해야 합니다")
-		assert.Equal(t, ErrCommandNotSupported, err, "ErrCommandNotSupported 에러를 반환해야 합니다")
+		assert.ErrorContains(t, err, ErrCommandNotSupported.Error(), "ErrCommandNotSupported 에러 메시지를 포함해야 합니다")
+		assert.ErrorContains(t, err, "NON_EXISTENT", "에러 메시지에 CommandID가 포함되어야 합니다")
+		assert.ErrorContains(t, err, "TEST_COMMAND", "에러 메시지에 사용 가능한 명령 목록이 포함되어야 합니다")
 		assert.Nil(t, searchResult, "검색 결과는 nil이어야 합니다")
 	})
 }
@@ -211,8 +214,8 @@ func TestRegistry_Register_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newRegistry()
-			assert.PanicsWithValue(t, tt.expectedPanic, func() {
-				r.Register("INVALID_TASK", tt.config)
+			assert.Panics(t, func() {
+				r.MustRegister("INVALID_TASK", tt.config)
 			})
 		})
 	}
@@ -223,7 +226,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		r := newRegistry()
 
 		// 먼저 정상 등록
-		r.Register(taskID, &Config{
+		r.MustRegister(taskID, &Config{
 			NewTask: dummyNewTask(),
 			Commands: []*CommandConfig{
 				{
@@ -235,8 +238,8 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		})
 
 		// 동일 ID로 재등록 시 패닉 발생 확인
-		assert.PanicsWithValue(t, fmt.Sprintf("중복된 TaskID입니다: %s", taskID), func() {
-			r.Register(taskID, &Config{
+		assert.Panics(t, func() {
+			r.MustRegister(taskID, &Config{
 				NewTask: dummyNewTask(),
 				Commands: []*CommandConfig{
 					{
@@ -392,7 +395,7 @@ func TestRegistry_DeepCopy(t *testing.T) {
 	}
 
 	// 2. 등록
-	r.Register(taskID, config)
+	r.MustRegister(taskID, config)
 
 	// 3. 원본 슬라이스 변조 (새 커맨드 추가 등)
 	commands[0].AllowMultiple = false // 원본 수정
@@ -408,9 +411,15 @@ func TestRegistry_DeepCopy(t *testing.T) {
 
 	// 등록 시점의 값이 유지되어야 함 (AllowMultiple: true)
 	assert.True(t, result.Command.AllowMultiple, "원본 슬라이스 변조가 레지스트리에 영향을 주면 안 됩니다")
+
+	// 5. 조회 결과 변조 확인 (3번 개선 사항 검증)
+	result.Command.AllowMultiple = false
+	result2, _ := r.findConfig(taskID, cmdID)
+	assert.True(t, result2.Command.AllowMultiple, "조회 결과 변조가 레지스트리 내부 상태에 영향을 주면 안 됩니다")
+
 	// "HACKED_CMD"는 등록되지 않아야 함
 	_, errHack := r.findConfig(taskID, "HACKED_CMD")
-	assert.Equal(t, ErrCommandNotSupported, errHack)
+	assert.ErrorContains(t, errHack, ErrCommandNotSupported.Error())
 }
 
 // TestRegistry_Concurrency_Stress는 과도한 동시성 요청 하에서 레지스트리의 안정성(Race Condition)을 검증합니다.
@@ -437,7 +446,7 @@ func TestRegistry_Concurrency_Stress(t *testing.T) {
 
 				// 동시성 테스트에서는 Panic이 발생할 수 있는데(중복 ID 등), 여기서는 고유 ID를 생성한다고 가정하거나
 				// Register 내부 Lock이 잘 동작하는지 확인
-				r.Register(taskID, &Config{
+				_ = r.Register(taskID, &Config{
 					NewTask: dummyNewTask(),
 					Commands: []*CommandConfig{{
 						ID:          cmdID,
@@ -465,4 +474,58 @@ func TestRegistry_Concurrency_Stress(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestRegistry_MatchingPriority(t *testing.T) {
+	r := newRegistry()
+	taskID := contract.TaskID("PRIORITY_TASK")
+
+	wildcardCMD := contract.TaskCommandID("CMD_*")
+	exactCMD := contract.TaskCommandID("CMD_SPECIFIC")
+
+	// 1. 와일드카드와 정확한 일치 커맨드를 함께 등록
+	r.MustRegister(taskID, &Config{
+		Commands: []*CommandConfig{
+			{
+				ID:            wildcardCMD,
+				AllowMultiple: true,
+				NewSnapshot:   dummyResultFn(),
+			},
+			{
+				ID:            exactCMD,
+				AllowMultiple: false, // 구분하기 위해 false로 설정
+				NewSnapshot:   dummyResultFn(),
+			},
+		},
+		NewTask: dummyNewTask(),
+	})
+
+	t.Run("정확한 매칭이 와일드카드보다 우선순위가 높아야 함", func(t *testing.T) {
+		result, err := r.findConfig(taskID, exactCMD)
+		assert.NoError(t, err)
+		assert.Equal(t, exactCMD, result.Command.ID)
+		assert.False(t, result.Command.AllowMultiple, "Exact match가 반환되어야 하므로 AllowMultiple은 false여야 함")
+	})
+
+	t.Run("정확한 매칭이 없을 경우 와일드카드로 매칭되어야 함", func(t *testing.T) {
+		otherCMD := contract.TaskCommandID("CMD_OTHER")
+		result, err := r.findConfig(taskID, otherCMD)
+		assert.NoError(t, err)
+		assert.Equal(t, wildcardCMD, result.Command.ID)
+		assert.True(t, result.Command.AllowMultiple, "Wildcard match가 반환되어야 하므로 AllowMultiple은 true여야 함")
+	})
+}
+
+func TestRegistry_Validation_NilCheck(t *testing.T) {
+	r := newRegistry()
+	taskID := contract.TaskID("NIL_CHECK_TASK")
+
+	t.Run("CommandConfig가 nil인 경우 패닉 발생 확인", func(t *testing.T) {
+		assert.Panics(t, func() {
+			r.MustRegister(taskID, &Config{
+				Commands: []*CommandConfig{nil},
+				NewTask:  dummyNewTask(),
+			})
+		})
+	})
 }

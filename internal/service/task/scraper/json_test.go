@@ -1,4 +1,4 @@
-package scraper_test
+package scraper
 
 import (
 	"bytes"
@@ -11,17 +11,26 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
+	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 // TestFetchJSON_Comprehensive는 FetchJSON의 모든 동작을 검증하는 테이블 주도 테스트(Table Driven Test)입니다.
 func TestFetchJSON_Comprehensive(t *testing.T) {
+	// Logrus Hook을 사용하여 로그 메시지를 검증합니다.
+	hook := test.NewGlobal()
+
 	// 테스트에 사용할 공통 데이터 구조체
 	type TestResponse struct {
 		Name  string `json:"name"`
 		Value int    `json:"value"`
+	}
+
+	type NestedResponse struct {
+		Data []TestResponse `json:"data"`
 	}
 
 	tests := []struct {
@@ -32,15 +41,17 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 		header     http.Header
 		body       any // 요청 본문 (nil, string, []byte, struct)
 		targetV    any // 디코딩 대상 변수 (Validation 테스트용)
-		scraperOpt []scraper.Option
+		scraperOpt []Option
 
 		// Mock Setup
 		setupMock func(*testing.T, *mocks.MockFetcher)
+		ctxSetup  func() (context.Context, context.CancelFunc)
 
 		// Verification
 		wantErr        bool
 		errType        apperrors.ErrorType
 		errContains    []string
+		checkLog       func(*testing.T, *test.Hook)
 		validateResult func(*testing.T, any)
 	}{
 		// =================================================================================
@@ -103,6 +114,8 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 					req := args.Get(0).(*http.Request)
 					assert.Equal(t, "GET", req.Method)
 					assert.Equal(t, "http://example.com/api", req.URL.String())
+					// DefaultHeader check
+					assert.Equal(t, "application/json", req.Header.Get("Accept"))
 				}).Return(resp, nil)
 			},
 			validateResult: func(t *testing.T, v any) {
@@ -115,7 +128,9 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			name:   "Success - POST with JSON Body & Custom Header",
 			method: "POST",
 			url:    "http://example.com/post",
-			header: http.Header{"X-Test-ID": []string{"12345"}},
+			// http.Header는 map[string][]string이며, Get 메서드는 Key를 Canonical Form으로 변환하여 찾습니다.
+			// 따라서 map 리터럴로 초기화할 때는 Canonical Key("X-Test-Id")를 사용해야 Get("X-Test-ID")가 동작합니다.
+			header: http.Header{"X-Test-Id": []string{"12345"}},
 			body:   map[string]string{"foo": "bar"},
 			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
 				jsonContent := `{"name": "created", "value": 201}`
@@ -125,14 +140,37 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
 					req := args.Get(0).(*http.Request)
 					assert.Equal(t, "POST", req.Method)
-					// Header 검증은 생략 (Mock 전달 과정의 불명확한 이슈 회피)
-					// 핵심은 JSON 요청이 갔는지와 응답 처리가 잘 되는지임.
+					assert.Equal(t, "application/json", req.Header.Get("Content-Type")) // Auto-added header
+					assert.Equal(t, "12345", req.Header.Get("X-Test-ID"))
+
+					// Verify Body Content
+					buf := new(bytes.Buffer)
+					buf.ReadFrom(req.Body)
+					assert.JSONEq(t, `{"foo":"bar"}`, buf.String())
 				}).Return(resp, nil)
 			},
 			validateResult: func(t *testing.T, v any) {
 				res := v.(*TestResponse)
 				assert.Equal(t, "created", res.Name)
 				assert.Equal(t, 201, res.Value)
+			},
+		},
+		{
+			name:    "Success - Nested JSON Structure",
+			method:  "GET",
+			url:     "http://example.com/nested",
+			targetV: &NestedResponse{},
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				jsonContent := `{"data": [{"name": "A", "value": 1}, {"name": "B", "value": 2}]}`
+				resp := mocks.NewMockResponse(jsonContent, 200)
+				resp.Header.Set("Content-Type", "application/json")
+				m.On("Do", mock.Anything).Return(resp, nil)
+			},
+			validateResult: func(t *testing.T, v any) {
+				res := v.(*NestedResponse)
+				assert.Len(t, res.Data, 2)
+				assert.Equal(t, "A", res.Data[0].Name)
+				assert.Equal(t, 2, res.Data[1].Value)
 			},
 		},
 		{
@@ -213,13 +251,14 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			name:   "Error - Truncated Body (Size Limit Exceeded)",
 			method: "GET",
 			url:    "http://example.com/large",
-			scraperOpt: []scraper.Option{
-				scraper.WithMaxResponseBodySize(10),
+			scraperOpt: []Option{
+				WithMaxResponseBodySize(10),
 			},
 			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
 				longJSON := `{"name": "very_long_name_exceeding_limit"}`
 				resp := mocks.NewMockResponse(longJSON, 200)
 				resp.Header.Set("Content-Type", "application/json")
+				// resp.IsTruncated = true (X) - Handled internally
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
@@ -239,6 +278,19 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			wantErr:     true,
 			errType:     apperrors.ParsingFailed,
 			errContains: []string{"구문 오류", "bad"},
+			checkLog: func(t *testing.T, hook *test.Hook) {
+				// Verify snippet logging
+				found := false
+				for _, entry := range hook.AllEntries() {
+					if entry.Level == logrus.ErrorLevel && strings.Contains(entry.Message, "JSON 데이터 변환 실패") {
+						if ctx, ok := entry.Data["syntax_error_context"]; ok {
+							assert.Contains(t, ctx, "bad")
+							found = true
+						}
+					}
+				}
+				assert.True(t, found, "Expected error log with syntax context")
+			},
 		},
 		{
 			name:   "Error - Strict Mode Violation (Garbage Data)",
@@ -267,11 +319,30 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			errType:     apperrors.Unavailable,
 			errContains: []string{"500 Internal Server Error"},
 		},
+		{
+			name:   "Error - Context Canceled",
+			method: "GET",
+			url:    "http://example.com/cancel",
+			ctxSetup: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel() // Start canceled
+				return ctx, cancel
+			},
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				// Fetcher mock might be called, but should return context canceled error
+				m.On("Do", mock.Anything).Return(nil, context.Canceled)
+			},
+			wantErr:     true,
+			errType:     apperrors.Unavailable,
+			errContains: []string{"요청 중단"},
+		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			hook.Reset()
+
 			// 1. Setup Mock
 			mockFetcher := &mocks.MockFetcher{}
 			if tt.setupMock != nil {
@@ -294,10 +365,20 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				}
 			}
 
-			// 3. Initialize Scraper
-			s := scraper.New(mockFetcher, tt.scraperOpt...)
+			// 3. Setup Context
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if tt.ctxSetup != nil {
+				ctx, cancel = tt.ctxSetup()
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+			}
+			defer cancel()
 
-			// 4. Set Target Variable
+			// 4. Initialize Scraper
+			s := New(mockFetcher, tt.scraperOpt...)
+
+			// 5. Set Target Variable
 			var targetV any
 			if strings.Contains(tt.name, "Input Validation") {
 				targetV = tt.targetV
@@ -309,10 +390,10 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				}
 			}
 
-			// 5. Execute
-			err := s.FetchJSON(context.Background(), tt.method, tt.url, bodyReader, tt.header, targetV)
+			// 6. Execute
+			err := s.FetchJSON(ctx, tt.method, tt.url, bodyReader, tt.header, targetV)
 
-			// 6. Verify Error
+			// 7. Verify Error
 			if tt.wantErr {
 				assert.Error(t, err)
 				if len(tt.errContains) > 0 {
@@ -330,8 +411,18 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				}
 			}
 
-			// 7. Verify Mock Expectations
+			// 8. Verify Log
+			if tt.checkLog != nil {
+				tt.checkLog(t, hook)
+			}
+
+			// 9. Verify Mock Expectations
 			mockFetcher.AssertExpectations(t)
 		})
 	}
+}
+
+func init() {
+	// Set log level to Debug for verification
+	applog.SetLevel(applog.DebugLevel)
 }

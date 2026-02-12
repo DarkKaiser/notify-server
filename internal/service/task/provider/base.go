@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,22 +22,6 @@ const (
 	msgNewSnapshotSaveFailed      = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
 	msgPreviousSnapshotLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다."
 )
-
-// ExecuteFunc 작업 실행 로직을 정의하는 함수 타입입니다.
-//
-// 이 함수는 순수 함수(Pure Function)에 가깝게 구현되어야 하며,
-// 작업에 필요한 데이터(Snapshot)를 받아 처리한 후 결과 메시지와 변경된 데이터를 반환합니다.
-//
-// 매개변수:
-//   - ctx: 작업 실행 컨텍스트 (취소 및 타임아웃 처리용)
-//   - previousSnapshot: 이전 실행 시 저장된 데이터 (상태 복원용). 최초 실행 시에는 nil 또는 초기값이 전달됩니다.
-//   - supportsHTML: 알림 채널(Notifier)이 HTML 포맷을 지원하는지 여부.
-//
-// 반환값:
-//   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
-//   - interface{}: 실행 완료 후 저장할 새로운 데이터. 다음 실행 시 data 인자로 전달됩니다.
-//   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
-type ExecuteFunc func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error)
 
 // Base 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
@@ -59,6 +43,10 @@ type Base struct {
 	// 작업 취소 여부 플래그 (0: false, 1: true) - 원자적 접근 필요
 	canceled int32
 
+	// 컨텍스트 취소를 위한 함수 (Run 실행 중에만 유효)
+	cancelFunc context.CancelFunc
+	cancelMu   sync.Mutex
+
 	// 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
 	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
 	runBy contract.TaskRunBy
@@ -74,8 +62,9 @@ type Base struct {
 	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
 	storage contract.TaskResultStore
 
-	// fixedFields 로깅 성능 최적화를 위해 생성 시점에 고정되는 필드들을 미리 계산하여 보관합니다.
-	fixedFields applog.Fields
+	// logger 고정 필드가 바인딩된 로거 인스턴스입니다.
+	// 로깅 시 매번 맵을 복사하는 오버헤드를 줄이기 위해 생성 시점에 초기화하여 재사용합니다.
+	logger *applog.Entry
 
 	// newSnapshot은 작업 결과 데이터(Snapshot)의 새 인스턴스를 생성하는 팩토리 함수입니다.
 	newSnapshot NewSnapshotFunc
@@ -111,12 +100,12 @@ func NewBase(p BaseParams) *Base {
 		storage: p.Storage,
 		scraper: p.Scraper,
 
-		fixedFields: applog.Fields{
+		logger: applog.WithComponentAndFields("task.executor", applog.Fields{
 			"task_id":     p.ID,
 			"command_id":  p.CommandID,
 			"instance_id": p.InstanceID,
 			"notifier_id": p.NotifierID,
-		},
+		}),
 
 		newSnapshot: p.NewSnapshot,
 	}
@@ -160,6 +149,13 @@ func (t *Base) GetNotifierID() contract.NotifierID {
 
 func (t *Base) Cancel() {
 	atomic.StoreInt32(&t.canceled, 1)
+
+	// Run 실행 중이라면 컨텍스트도 취소합니다.
+	t.cancelMu.Lock()
+	if t.cancelFunc != nil {
+		t.cancelFunc()
+	}
+	t.cancelMu.Unlock()
 }
 
 func (t *Base) IsCanceled() bool {
@@ -174,7 +170,7 @@ func (t *Base) GetRunBy() contract.TaskRunBy {
 	return t.runBy
 }
 
-func (t *Base) ElapsedTimeAfterRun() time.Duration {
+func (t *Base) Elapsed() time.Duration {
 	if t.runTime.IsZero() {
 		return 0
 	}
@@ -192,10 +188,26 @@ func (t *Base) GetScraper() scraper.Scraper {
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
 func (t *Base) Run(ctx context.Context, notificationSender contract.NotificationSender) {
+	// 상위 컨텍스트를 래핑하여 Cancel() 호출 시 즉시 취소 신호를 전파할 수 있도록 합니다.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// cancelFunc 등록 (Cancel 메서드에서 사용)
+	t.cancelMu.Lock()
+	t.cancelFunc = cancel
+	t.cancelMu.Unlock()
+
+	// Run 종료 시 cancelFunc 정리
+	defer func() {
+		t.cancelMu.Lock()
+		t.cancelFunc = nil
+		t.cancelMu.Unlock()
+	}()
+
 	defer func() {
 		if r := recover(); r != nil {
 			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
-			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
+			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", applog.Fields{"panic_value": r}, err)
 
 			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
 			t.handleExecutionResult(ctx, notificationSender, "", nil, err)
@@ -207,6 +219,14 @@ func (t *Base) Run(ctx context.Context, notificationSender contract.Notification
 	// 1. 사전 검증 및 데이터 준비
 	previousSnapshot, err := t.prepareExecution(ctx, notificationSender)
 	if err != nil {
+		return
+	}
+
+	// 사전 준비 완료 후 실행 직전 취소 확인
+	// Storage Load 등의 준비 작업 중에 취소 요청이 들어온 경우,
+	// 무거운 비즈니스 로직(execute)을 실행하지 않고 조기 종료합니다.
+	if t.IsCanceled() {
+		t.LogWithContext("task.executor", applog.InfoLevel, "작업이 실행 직전에 취소되었습니다", nil, nil)
 		return
 	}
 
@@ -273,6 +293,8 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 // handleExecutionResult 작업 결과를 처리합니다.
 func (t *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
 	if err == nil {
+		// 성공 알림 전송 여부를 추적합니다.
+		successNotified := false
 		if len(message) > 0 {
 			notificationSender.Notify(ctx, contract.Notification{
 				NotifierID:    t.GetNotifierID(),
@@ -280,23 +302,38 @@ func (t *Base) handleExecutionResult(ctx context.Context, notificationSender con
 				CommandID:     t.GetCommandID(),
 				InstanceID:    t.GetInstanceID(),
 				Message:       message,
-				ElapsedTime:   t.ElapsedTimeAfterRun(),
+				ElapsedTime:   t.Elapsed(),
 				ErrorOccurred: false,
 				Cancelable:    false, // Completed -> Not cancelable
 			})
+			successNotified = true
 		}
 
 		if newSnapshot != nil {
 			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
-				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
-				t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err0)
-				t.notifyError(ctx, notificationSender, message)
+				saveErrMsg := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
+				// 스냅샷 저장 실패는 시스템 정합성을 깨뜨리는 심각한 문제이므로 Error 레벨로 기록합니다.
+				t.LogWithContext("task.executor", applog.ErrorLevel, saveErrMsg, nil, err0)
+
+				// 성공 알림을 보낸 경우, 다음 실행 시 중복 알림 가능성을 운영자에게 경고합니다.
+				if successNotified {
+					warningMsg := fmt.Sprintf("⚠️ 알림 전송은 성공했으나 상태 저장에 실패했습니다.\n다음 실행 시 중복 알림이 발생할 수 있습니다.\n\n☑ %s", err0)
+					t.notifyError(ctx, notificationSender, warningMsg)
+				} else {
+					// 성공 알림을 보내지 않은 경우, 기존 에러 메시지를 그대로 전송합니다.
+					t.notifyError(ctx, notificationSender, saveErrMsg)
+				}
 			}
 		}
 	} else {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
-		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, err)
-		t.notifyError(ctx, notificationSender, message)
+		// execute 함수가 에러와 함께 메시지를 반환한 경우, 해당 메시지를 알림에 포함합니다.
+		errorMsg := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
+		if len(message) > 0 {
+			errorMsg = fmt.Sprintf("%s\n\n%s", errorMsg, message)
+		}
+
+		t.LogWithContext("task.executor", applog.ErrorLevel, errorMsg, nil, err)
+		t.notifyError(ctx, notificationSender, errorMsg)
 	}
 }
 
@@ -307,7 +344,7 @@ func (t *Base) notify(ctx context.Context, notificationSender contract.Notificat
 		CommandID:     t.GetCommandID(),
 		InstanceID:    t.GetInstanceID(),
 		Message:       message,
-		ElapsedTime:   t.ElapsedTimeAfterRun(),
+		ElapsedTime:   t.Elapsed(),
 		ErrorOccurred: false,
 		Cancelable:    t.GetRunBy() == contract.TaskRunByUser,
 	})
@@ -320,7 +357,7 @@ func (t *Base) notifyError(ctx context.Context, notificationSender contract.Noti
 		CommandID:     t.GetCommandID(),
 		InstanceID:    t.GetInstanceID(),
 		Message:       message,
-		ElapsedTime:   t.ElapsedTimeAfterRun(),
+		ElapsedTime:   t.Elapsed(),
 		ErrorOccurred: true,
 		Cancelable:    false, // Error means termination, so not cancelable
 	})
@@ -328,19 +365,15 @@ func (t *Base) notifyError(ctx context.Context, notificationSender contract.Noti
 
 // LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
 func (t *Base) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
-	// 고정 필드를 기반으로 맵 복사 최적화 (고정 4개 + run_by 1개 + 추가 필드 + 에러 1개)
-	fieldsMap := make(applog.Fields, len(t.fixedFields)+len(fields)+2)
+	entry := t.logger.WithField("component", component).WithField("run_by", t.GetRunBy())
 
-	maps.Copy(fieldsMap, t.fixedFields)
-
-	// 가변 필드 및 추가 필드 반영
-	fieldsMap["run_by"] = t.GetRunBy()
-
-	maps.Copy(fieldsMap, fields)
-
-	if err != nil {
-		fieldsMap["error"] = err
+	if len(fields) > 0 {
+		entry = entry.WithFields(fields)
 	}
 
-	applog.WithComponentAndFields(component, fieldsMap).Log(level, message)
+	if err != nil {
+		entry = entry.WithError(err)
+	}
+
+	entry.Log(level, message)
 }

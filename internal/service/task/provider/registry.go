@@ -4,29 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
-
-// NewTaskParams 새로운 Task 인스턴스 생성에 필요한 매개변수들을 정의하는 구조체입니다.
-// 인자가 많아짐에 따른 가독성 저하를 방지하고, 향후 공통 필드 추가 시 하위 호환성을 보장합니다.
-type NewTaskParams struct {
-	InstanceID  contract.TaskInstanceID
-	Request     *contract.TaskSubmitRequest
-	AppConfig   *config.AppConfig
-	Storage     contract.TaskResultStore
-	Fetcher     fetcher.Fetcher
-	NewSnapshot NewSnapshotFunc
-}
-
-// NewTaskFunc 새로운 Task 인스턴스를 생성하는 팩토리 함수 타입입니다.
-type NewTaskFunc func(p NewTaskParams) (Task, error)
-
-// NewSnapshotFunc Task 결과 데이터 구조체를 생성하는 팩토리 함수입니다.
-type NewSnapshotFunc func() any
 
 // Config Task 생성 및 명령어(Command) 구성을 위한 메타데이터를 정의하는 불변(Immutable) 설정 객체입니다.
 // 레지스트리에 등록된 이후에는 상태가 변경되지 않으며(Read-Only), Task 인스턴스를 생성하기 위한 청사진(Blueprint)으로 사용됩니다.
@@ -36,6 +17,22 @@ type Config struct {
 	Commands []*CommandConfig
 
 	NewTask NewTaskFunc
+}
+
+// Clone 설정 객체(Config)의 깊은 복사(Deep Copy)본을 생성하여 반환합니다.
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return nil
+	}
+
+	copy := *c
+	if c.Commands != nil {
+		copy.Commands = make([]*CommandConfig, len(c.Commands))
+		for i, cmd := range c.Commands {
+			copy.Commands[i] = cmd.Clone()
+		}
+	}
+	return &copy
 }
 
 // CommandConfig 개별 명령어(Command)에 대한 실행 정책과 결과 데이터 구조체를 생성하는 구조체입니다.
@@ -48,6 +45,15 @@ type CommandConfig struct {
 	AllowMultiple bool
 
 	NewSnapshot NewSnapshotFunc
+}
+
+// Clone 명령어 설정(CommandConfig)의 복사본을 생성하여 반환합니다.
+func (c *CommandConfig) Clone() *CommandConfig {
+	if c == nil {
+		return nil
+	}
+	copy := *c
+	return &copy
 }
 
 // ConfigLookup 요청된 ID(Task/Command)를 통해 Registry에서 조회된(Found) 설정 조합입니다.
@@ -84,6 +90,9 @@ func (c *Config) Validate() error {
 
 	seenCommands := make(map[contract.TaskCommandID]bool)
 	for _, commandConfig := range c.Commands {
+		if commandConfig == nil {
+			return apperrors.New(apperrors.InvalidInput, "CommandConfig는 nil일 수 없습니다")
+		}
 		if commandConfig.ID == "" {
 			return apperrors.New(apperrors.InvalidInput, "CommandID는 비어있을 수 없습니다")
 		}
@@ -107,28 +116,29 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// MustRegister 주어진 태스크 ID와 설정 정보를 Registry에 등록합니다.
+// "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시킵니다.
+func (r *Registry) MustRegister(taskID contract.TaskID, config *Config) {
+	if err := r.Register(taskID, config); err != nil {
+		panic(err.Error())
+	}
+}
+
 // Register 주어진 태스크 ID와 설정 정보를 Registry에 등록합니다.
-func (r *Registry) Register(taskID contract.TaskID, config *Config) {
-	if config == nil {
-		panic("태스크 설정(config)은 nil일 수 없습니다")
+func (r *Registry) Register(taskID contract.TaskID, config *Config) error {
+	if err := taskID.Validate(); err != nil {
+		return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("유효하지 않은 TaskID입니다: %s", taskID))
 	}
 
-	// 설정 유효성 검증 (실패 시 패닉)
-	if err := config.Validate(); err != nil {
-		panic(err.Error())
+	if config == nil {
+		return apperrors.New(apperrors.InvalidInput, "태스크 설정(config)은 nil일 수 없습니다")
 	}
 
 	// 외부에서 원본 config를 수정하더라도 레지스트리 내부 상태에 영향을 주지 않도록 복제합니다.
-	configCopy := *config
-	if config.Commands != nil {
-		configCopy.Commands = make([]*CommandConfig, len(config.Commands))
-		for i, commandConfig := range config.Commands {
-			if commandConfig != nil {
-				// CommandConfig 구조체 자체를 복사하여 포인터가 가리키는 원본이 수정되어도 영향이 없도록 합니다 (Deep Copy).
-				copiedCommand := *commandConfig
-				configCopy.Commands[i] = &copiedCommand
-			}
-		}
+	// 락(Lock) 획득 전에 복제와 검증을 수행하여 임계 구역을 최소화합니다.
+	configCopy := config.Clone()
+	if err := configCopy.Validate(); err != nil {
+		return err
 	}
 
 	r.mu.Lock()
@@ -136,14 +146,23 @@ func (r *Registry) Register(taskID contract.TaskID, config *Config) {
 
 	// 중복 등록 방지
 	if _, exists := r.configs[taskID]; exists {
-		panic(fmt.Sprintf("중복된 TaskID입니다: %s", taskID))
+		return apperrors.New(apperrors.Conflict, fmt.Sprintf("중복된 TaskID입니다: %s", taskID))
 	}
 
-	r.configs[taskID] = &configCopy
+	r.configs[taskID] = configCopy
+
+	commandIDs := make([]contract.TaskCommandID, len(configCopy.Commands))
+	for i, cmd := range configCopy.Commands {
+		commandIDs[i] = cmd.ID
+	}
 
 	applog.WithComponentAndFields("task.registry", applog.Fields{
-		"task_id": taskID,
+		"task_id":       taskID,
+		"commands":      commandIDs,
+		"command_count": len(commandIDs),
 	}).Info("태스크 정보가 성공적으로 등록되었습니다")
+
+	return nil
 }
 
 // RegisterForTest 유효성 검증 절차를 우회하여 Task 설정을 강제 등록합니다.
@@ -152,7 +171,8 @@ func (r *Registry) Register(taskID contract.TaskID, config *Config) {
 func (r *Registry) RegisterForTest(taskID contract.TaskID, config *Config) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.configs[taskID] = config
+	// 테스트 환경에서도 불변성을 보장하기 위해 클론하여 등록합니다.
+	r.configs[taskID] = config.Clone()
 }
 
 // ClearForTest Registry에 등록된 모든 Task 설정을 제거합니다.
@@ -166,34 +186,59 @@ func (r *Registry) ClearForTest() {
 }
 
 // findConfig 주어진 식별자(ID)에 해당하는 Task 및 Command 설정을 검색하는 내부 메서드입니다.
-// CommandID 매칭 시 와일드카드(*) 패턴을 지원하기 위해, Map 조회 후 커맨드 목록에 대한 순차 탐색(Sequential Search)을 수행합니다.
+// 매칭 시 정확한 일치(Exact Match)를 우선하며, 없을 경우 와일드카드 매칭을 시도합니다.
 func (r *Registry) findConfig(taskID contract.TaskID, commandID contract.TaskCommandID) (*ConfigLookup, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	taskConfig, exists := r.configs[taskID]
-	if exists {
-		// 순차 탐색을 통해 명령어 ID 매칭 (와일드카드 지원 고려)
-		for _, commandConfig := range taskConfig.Commands {
-			if commandConfig.ID.Match(commandID) {
-				return &ConfigLookup{
-					Task:    taskConfig,
-					Command: commandConfig,
-				}, nil
-			}
-		}
-
-		return nil, ErrCommandNotSupported
+	if !exists {
+		return nil, NewErrTaskNotSupported(taskID)
 	}
 
-	return nil, ErrTaskNotSupported
+	// Task 설정을 먼저 복제(Clone)합니다.
+	// Clone()은 내부의 Commands 슬라이스도 모두 깊은 복사합니다.
+	taskClone := taskConfig.Clone()
+
+	// 1. 정확한 매칭(Exact Match) 우선 시도
+	for _, commandConfig := range taskClone.Commands {
+		if commandConfig.ID == commandID {
+			return &ConfigLookup{
+				Task:    taskClone,
+				Command: commandConfig,
+			}, nil
+		}
+	}
+
+	// 2. 와일드카드 매칭 시도
+	for _, commandConfig := range taskClone.Commands {
+		if commandConfig.ID.Match(commandID) {
+			return &ConfigLookup{
+				Task:    taskClone,
+				Command: commandConfig,
+			}, nil
+		}
+	}
+
+	// 지원 가능한 모든 명령 ID 목록 수집 (에러 메시지용)
+	supportedCommands := make([]contract.TaskCommandID, len(taskClone.Commands))
+	for i, cmd := range taskClone.Commands {
+		supportedCommands[i] = cmd.ID
+	}
+
+	return nil, NewErrCommandNotSupported(commandID, supportedCommands)
 }
 
-// Register 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
+// MustRegister 전역 Registry에 새로운 Task를 등록하는 패키지 레벨 진입점(Entry Point)입니다.
 // "Fail Fast" 원칙에 따라, 유효하지 않은 설정이나 중복 ID 감지 시 즉시 패닉(Panic)을 발생시켜
 // 애플리케이션 시작 단계에서 잠재적 설정 오류를 확실하게 차단합니다.
-func Register(taskID contract.TaskID, config *Config) {
-	defaultRegistry.Register(taskID, config)
+func MustRegister(taskID contract.TaskID, config *Config) {
+	defaultRegistry.MustRegister(taskID, config)
+}
+
+// Register 전역 Registry에 새로운 Task를 등록합니다.
+func Register(taskID contract.TaskID, config *Config) error {
+	return defaultRegistry.Register(taskID, config)
 }
 
 // RegisterForTest 유효성 검증 절차를 우회하여 Task 설정을 강제 등록합니다.

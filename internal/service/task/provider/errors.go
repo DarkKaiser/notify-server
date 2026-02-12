@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"strings"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -28,18 +29,41 @@ var (
 )
 
 // newErrInvalidTaskSettings 작업 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
-func newErrInvalidTaskSettings(cause error) error {
-	return apperrors.Wrap(cause, apperrors.InvalidInput, ErrInvalidTaskSettings.Error())
+func newErrInvalidTaskSettings(taskID contract.TaskID, cause error) error {
+	return apperrors.Wrap(cause, apperrors.InvalidInput, fmt.Sprintf("%s (task_id: %s)", ErrInvalidTaskSettings.Error(), taskID))
 }
 
 // newErrInvalidCommandSettings 명령 설정 데이터(JSON/Map) 디코딩 또는 검증 실패 시 반환됩니다.
-func newErrInvalidCommandSettings(cause error) error {
-	return apperrors.Wrap(cause, apperrors.InvalidInput, ErrInvalidCommandSettings.Error())
+func newErrInvalidCommandSettings(taskID contract.TaskID, commandID contract.TaskCommandID, cause error) error {
+	return apperrors.Wrap(cause, apperrors.InvalidInput, fmt.Sprintf("%s (task_id: %s, command_id: %s)", ErrInvalidCommandSettings.Error(), taskID, commandID))
 }
 
-// NewErrCommandNotSupported 지원하지 않는 명령(Command)일 때 상세 메시지와 함께 에러를 반환합니다.
-func NewErrCommandNotSupported(commandID contract.TaskCommandID) error {
-	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID))
+// NewErrTaskSettingsNotFound 작업 설정 데이터를 찾을 수 없을 때 상세 정보를 포함하여 반환합니다.
+func NewErrTaskSettingsNotFound(taskID contract.TaskID) error {
+	return apperrors.Wrap(ErrTaskSettingsNotFound, apperrors.NotFound, fmt.Sprintf("task_id: %s", taskID))
+}
+
+// NewErrCommandSettingsNotFound 명령 설정 데이터를 찾을 수 없을 때 상세 정보를 포함하여 반환합니다.
+func NewErrCommandSettingsNotFound(taskID contract.TaskID, commandID contract.TaskCommandID) error {
+	return apperrors.Wrap(ErrCommandSettingsNotFound, apperrors.NotFound, fmt.Sprintf("task_id: %s, command_id: %s", taskID, commandID))
+}
+
+// NewErrCommandNotSupported 지원하지 않는 명령(Command)일 때 상세 메시지 및 지원 가능한 목록과 함께 에러를 반환합니다.
+func NewErrCommandNotSupported(commandID contract.TaskCommandID, supportedCommands []contract.TaskCommandID) error {
+	msg := fmt.Sprintf("지원하지 않는 명령입니다: %s", commandID)
+	if len(supportedCommands) > 0 {
+		cmds := make([]string, len(supportedCommands))
+		for i, id := range supportedCommands {
+			cmds[i] = string(id)
+		}
+		msg = fmt.Sprintf("%s (사용 가능한 명령: %s)", msg, strings.Join(cmds, ", "))
+	}
+	return apperrors.New(apperrors.InvalidInput, msg)
+}
+
+// NewErrTaskNotSupported 지원하지 않는 작업(Task)일 때 상세 메시지와 함께 에러를 반환합니다.
+func NewErrTaskNotSupported(taskID contract.TaskID) error {
+	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("지원하지 않는 작업입니다: %s", taskID))
 }
 
 // NewErrTypeAssertionFailed 타입 단언(Type Assertion) 실패 시 사용하는 에러를 생성합니다.
