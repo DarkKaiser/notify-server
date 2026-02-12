@@ -105,10 +105,9 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 
 	// [단계 2] HTTP 응답 검증
 	if err := s.validateResponse(httpResp, params, logger); err != nil {
-		// 연결 재사용을 위해 응답 본문을 일부 읽어서 버립니다.
-		// 4KB로 제한하여 대용량 에러 응답으로 인한 메모리 낭비를 방지합니다.
-		_, _ = io.Copy(io.Discard, io.LimitReader(httpResp.Body, 4096))
-		httpResp.Body.Close()
+		// 참고: validateResponse 함수 내부에서 에러 발생 시 디버깅용 본문 읽기(1KB)와
+		// 연결 재사용을 위한 추가 드레인(3KB)을 합쳐 총 4KB의 소모 작업을 이미 완료하고 Body를 닫았습니다.
+		// 따라서 호출자인 이 시점에서는 별도의 드레인이나 Close 처리가 필요하지 않습니다.
 
 		logger.WithError(err).
 			WithField("duration_ms", time.Since(start).Milliseconds()).

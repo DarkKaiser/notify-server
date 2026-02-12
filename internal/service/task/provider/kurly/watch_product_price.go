@@ -101,6 +101,12 @@ func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoa
 	}
 
 	for _, record := range records {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			t.LogWithContext("task.kurly", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, nil)
+			return "", nil, nil
+		}
+
 		if record[csvColumnStatus] != csvStatusEnabled {
 			continue
 		}

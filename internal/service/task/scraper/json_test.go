@@ -206,7 +206,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
-			errType:     apperrors.ExecutionFailed,
+			errType:     apperrors.InvalidInput,
 			errContains: []string{"응답 검증 실패", "응답 형식 오류"},
 		},
 		{

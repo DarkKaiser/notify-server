@@ -214,7 +214,7 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 			"truncated":      true,
 		}).Error("[실패]: JSON 파싱 중단, 응답 본문 크기 초과(Truncated)")
 
-		return newErrJSONBodySizeLimitExceeded(url, s.maxResponseBodySize)
+		return newErrResponseBodySizeLimitExceeded(s.maxResponseBodySize, url, "application/json")
 	}
 
 	logger.Debug("[진행]: JSON 파싱 시작")

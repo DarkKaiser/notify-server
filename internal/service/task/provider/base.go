@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -123,6 +122,26 @@ func NewBase(p BaseParams) *Base {
 	}
 }
 
+// NewBaseFromParams NewTaskParams를 기반으로 Base 인스턴스를 생성하는 헬퍼 함수입니다.
+// 개별 프로바이더 구현체에서 반복적으로 나타나는 Base 초기화 코드를 간소화합니다.
+func NewBaseFromParams(p NewTaskParams) *Base {
+	var s scraper.Scraper
+	if p.Fetcher != nil {
+		s = scraper.New(p.Fetcher)
+	}
+
+	return NewBase(BaseParams{
+		ID:          p.Request.TaskID,
+		CommandID:   p.Request.CommandID,
+		InstanceID:  p.InstanceID,
+		NotifierID:  p.Request.NotifierID,
+		RunBy:       p.Request.RunBy,
+		Storage:     p.Storage,
+		Scraper:     s,
+		NewSnapshot: p.NewSnapshot,
+	})
+}
+
 func (t *Base) GetID() contract.TaskID {
 	return t.id
 }
@@ -172,16 +191,7 @@ func (t *Base) GetScraper() scraper.Scraper {
 }
 
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
-func (t *Base) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
-	defer taskStopWG.Done()
-
-	// [Deep Panic Safety] defer는 역순(LIFO)으로 실행되므로, recover보다 늦게, taskStopWG.Done()보다 먼저 실행되도록 위치시킵니다.
-	// 1. Recover (Panic 복구) -> 2. taskDoneC 전송 (완료 신호) -> 3. Done (WaitGroup 감소, 채널 닫힘 가능성)
-	// 순서로 실행되어야 "닫힌 채널에 전송"하는 Panic을 방지할 수 있습니다.
-	defer func() {
-		taskDoneC <- t.instanceID
-	}()
-
+func (t *Base) Run(ctx context.Context, notificationSender contract.NotificationSender) {
 	defer func() {
 		if r := recover(); r != nil {
 			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
@@ -246,9 +256,14 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 			// 경고 로그 대신 Info 로그를 남기고 빈 스냅샷으로 시작합니다.
 			t.LogWithContext("task.executor", applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
 		} else {
+			// [Policy: Fail-Fast]
+			// 스토리지 장애, 네트워크 에러 등으로 로딩에 실패한 경우
+			// 불완전한 상태로 작업을 강행하지 않고 즉시 실패 처리합니다.
+			// 이는 데이터 정합성(최저가 이력 등)을 보장하고 오탐지 알림을 방지하기 위함입니다.
 			message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-			t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
-			t.notify(ctx, notificationSender, message)
+			t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, err)
+			t.notifyError(ctx, notificationSender, message)
+			return nil, apperrors.Wrap(err, apperrors.Internal, "이전 작업 결과 로딩 실패")
 		}
 	}
 

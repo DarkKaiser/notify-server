@@ -275,7 +275,13 @@ func TestTask_Run(t *testing.T) {
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(context.Background(), mockSender, &wg, doneC)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				doneC <- task.GetInstanceID()
+			}()
+			task.Run(context.Background(), mockSender)
+		}()
 		wg.Wait()
 
 		mockProcess.AssertExpectations(t)
@@ -299,7 +305,13 @@ func TestTask_Run(t *testing.T) {
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(context.Background(), mockSender, &wg, doneC)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				doneC <- task.GetInstanceID()
+			}()
+			task.Run(context.Background(), mockSender)
+		}()
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)

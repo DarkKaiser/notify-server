@@ -8,7 +8,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 )
 
 const (
@@ -40,17 +39,7 @@ func newTask(p provider.NewTaskParams) (provider.Task, error) {
 	}
 
 	kurlyTask := &task{
-		Base: provider.NewBase(provider.BaseParams{
-			ID:          p.Request.TaskID,
-			CommandID:   p.Request.CommandID,
-			InstanceID:  p.InstanceID,
-			NotifierID:  p.Request.NotifierID,
-			RunBy:       p.Request.RunBy,
-			Storage:     p.Storage,
-			Scraper:     scraper.New(p.Fetcher),
-			NewSnapshot: p.NewSnapshot,
-		}),
-
+		Base:      provider.NewBaseFromParams(p),
 		appConfig: p.AppConfig,
 	}
 

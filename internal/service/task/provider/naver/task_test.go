@@ -164,7 +164,8 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 
 	// Mock Storage 설정 (Integration Test 전용)
 	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작
-	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(fmt.Errorf("no data"))
+	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작 (ErrTaskResultNotFound 반환해야 진행됨)
+	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(contract.ErrTaskResultNotFound)
 	// Save 호출 성공
 	h.storage.On("Save", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(nil)
 
@@ -182,8 +183,17 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 	sender := &mockNotificationSender{}
 
 	wg.Add(1)
-	// RunByUser는 한 번 실행 후 종료됨
-	h.task.Run(context.Background(), sender, &wg, quit)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			quit <- h.taskHandler.GetInstanceID()
+		}()
+		// RunByUser는 한 번 실행 후 종료됨
+		h.task.Run(context.Background(), sender)
+	}()
+
+	// Wait for execution to finish
+	wg.Wait()
 
 	// Verify Storage Interaction
 	h.storage.AssertExpectations(t)

@@ -37,15 +37,11 @@ func (h *StubTask) GetNotifierID() contract.NotifierID {
 func (h *StubTask) IsCanceled() bool                   { return h.Canceled }
 func (h *StubTask) ElapsedTimeAfterRun() time.Duration { return 0 }
 
-func (h *StubTask) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
-	defer taskStopWG.Done()
-
+func (s *StubTask) Run(ctx context.Context, ns contract.NotificationSender) {
 	select {
 	case <-ctx.Done():
-	case <-h.CancelC:
+	case <-s.CancelC:
 	}
-
-	taskDoneC <- h.InstanceID
 }
 
 func (h *StubTask) Cancel() {

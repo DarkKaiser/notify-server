@@ -49,19 +49,24 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 		// 요청 본문의 크기를 미리 알 수 있는 Reader의 경우 조기 검증
 		if v, ok := v.(interface{ Len() int }); ok {
 			if int64(v.Len()) > s.maxRequestBodySize {
-				return nil, newErrRequestBodyTooLarge(s.maxRequestBodySize)
+				return nil, newErrRequestBodySizeLimitExceeded(s.maxRequestBodySize, "")
 			}
 		}
 
-		// 재사용 가능한 Reader 타입은 그대로 반환
+		// 재사용 가능한 Reader 타입 처리
 		//
-		// bytes.Buffer, bytes.Reader, strings.Reader는 이미 메모리에 있는 데이터를 읽는 타입이므로,
-		// http.Request.GetBody 함수 생성 시 추가 메모리 복사 없이 재사용할 수 있습니다.
-		// (Fetcher가 재시도 시 동일한 본문을 다시 읽을 수 있도록 GetBody를 자동 생성함)
+		// bytes.Reader, strings.Reader는 Seek 가능하므로 http.Request.GetBody가 자동 생성되어
+		// Fetcher가 재시도 시 동일한 본문을 다시 읽을 수 있습니다.
 		//
-		// 이러한 타입들은 이미 최적화된 형태이므로 그대로 반환하여 불필요한 io.ReadAll을 방지합니다.
-		switch v.(type) {
-		case *bytes.Buffer, *bytes.Reader, *strings.Reader:
+		// bytes.Buffer는 Seek 불가능하므로 bytes.Reader로 변환하여 재시도를 지원합니다.
+		switch buf := v.(type) {
+		case *bytes.Buffer:
+			// bytes.Buffer는 Read 후 되돌릴 수 없으므로 bytes.Reader로 변환
+			// 이를 통해 재시도 시에도 전체 데이터를 재전송할 수 있습니다.
+			return bytes.NewReader(buf.Bytes()), nil
+
+		case *bytes.Reader, *strings.Reader:
+			// 이미 Seek 가능한 타입은 그대로 반환
 			return v, nil
 		}
 
@@ -91,7 +96,7 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 		// 요청 본문의 크기 초과 여부 최종 검증
 		// LimitReader가 maxRequestBodySize+1 만큼 읽었으므로, 실제로 maxRequestBodySize를 초과했는지 확인합니다.
 		if int64(len(data)) > s.maxRequestBodySize {
-			return nil, newErrRequestBodyTooLarge(s.maxRequestBodySize)
+			return nil, newErrRequestBodySizeLimitExceeded(s.maxRequestBodySize, "")
 		}
 
 		return bytes.NewReader(data), nil
@@ -99,7 +104,7 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 	case string:
 		// 문자열 타입: 요청 본문 크기 검증 후 strings.Reader로 변환
 		if int64(len(v)) > s.maxRequestBodySize {
-			return nil, newErrRequestBodyTooLarge(s.maxRequestBodySize)
+			return nil, newErrRequestBodySizeLimitExceeded(s.maxRequestBodySize, "")
 		}
 
 		return strings.NewReader(v), nil
@@ -107,7 +112,7 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 	case []byte:
 		// 바이트 슬라이스 타입: 요청 본문 크기 검증 후 bytes.Reader로 변환
 		if int64(len(v)) > s.maxRequestBodySize {
-			return nil, newErrRequestBodyTooLarge(s.maxRequestBodySize)
+			return nil, newErrRequestBodySizeLimitExceeded(s.maxRequestBodySize, "")
 		}
 
 		return bytes.NewReader(v), nil
@@ -121,7 +126,7 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 
 		// 요청 본문 크기 검증
 		if int64(len(data)) > s.maxRequestBodySize {
-			return nil, newErrRequestBodyTooLarge(s.maxRequestBodySize)
+			return nil, newErrRequestBodySizeLimitExceeded(s.maxRequestBodySize, "")
 		}
 
 		return bytes.NewReader(data), nil

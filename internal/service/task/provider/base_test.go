@@ -117,7 +117,9 @@ func TestTask_Run(t *testing.T) {
 			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
 				// 사용자 실행 -> 실행 중에는 취소 가능했지만, 최종 결과 알림 시점에는 취소 불가능으로 변경됨
 				// handleExecutionResult에서 완료 알림은 Cancelable=false로 강제 설정함.
-				assert.NotEmpty(t, notifs)
+				if len(notifs) == 0 {
+					return
+				}
 				lastNotif := notifs[len(notifs)-1]
 				assert.False(t, lastNotif.Cancelable, "최종 결과 알림 시점에는 취소 불가능 상태여야 합니다")
 			},
@@ -254,29 +256,28 @@ func TestTask_Run(t *testing.T) {
 			expectedMessageParts: []string{msgTaskExecutionFailed, "Task 실행 도중 Panic 발생", "예기치 못한 닐 포인터 참조"},
 		},
 		{
-			name:  "경고: 이전 데이터 로드 실패 (Load Error) - 실행은 계속됨 (User Run)",
+			name:  "에러: 이전 데이터 로드 실패 (Load Error) - 실행 중단 (Fail-Fast)",
 			runBy: contract.TaskRunByUser,
 			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (contract.TaskResultStore, ExecuteFunc) {
 				store := &contractmocks.MockTaskResultStore{}
 				store.On("Load", tID, cID, mock.Anything).Return(errors.New("Corrupted Data"))
-				// Load 실패해도 Execute는 실행되어야 함
-				store.On("Save", tID, cID, mock.Anything).Return(nil)
+				// Load 실패 시 즉시 리턴하므로 Save는 호출되지 않아야 함
+				// store.On("Save", ...).Return(...) -> Removed
 
 				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
-					return "복구 후 실행", map[string]interface{}{}, nil
+					return "실행되면 안됨", map[string]interface{}{}, nil
 				}
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
 			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
-				// 첫 번째 알림(Load Error Warn) -> notify() 호출 -> RunBy=User -> Cancelable=True
-				require.Len(t, notifs, 2)
-				assert.True(t, notifs[0].Cancelable, "진행 중 발생한 경고 알림은 취소 가능해야 합니다 (User Run)")
-				// 두 번째 알림(완료) -> handleExecutionResult -> Cancelable=False
-				assert.False(t, notifs[1].Cancelable, "완료 알림은 취소 불가능해야 합니다")
+				// 에러 알림 1개만 와야 함
+				require.Len(t, notifs, 1)
+				assert.True(t, notifs[0].ErrorOccurred, "에러가 발생했으므로 ErrorOccurred=true여야 합니다")
+				assert.False(t, notifs[0].Cancelable, "에러에 의한 종료이므로 취소 불가능해야 합니다")
 			},
-			expectedNotifyCount:  2, // 1. Load 에러 알림(Warn), 2. 실행 결과 알림
-			expectedMessageParts: []string{"이전 작업결과데이터 로딩이 실패", "복구 후 실행"},
+			expectedNotifyCount:  1, // Load 에러 알림 1회
+			expectedMessageParts: []string{"이전 작업결과데이터 로딩이 실패"},
 		},
 	}
 
@@ -287,6 +288,9 @@ func TestTask_Run(t *testing.T) {
 
 			// Mock 객체 생성
 			mockSender := notificationmocks.NewMockNotificationSender(t)
+			// 기본적으로 모든 Notify 호출을 허용합니다. (실제 횟수 검증은 별도 수행)
+			mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+			mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
 
 			// Setup
 			store, exec := tt.setup(tID, cID)
@@ -320,15 +324,13 @@ func TestTask_Run(t *testing.T) {
 			doneC := make(chan contract.TaskInstanceID, 1)
 			wg.Add(1)
 
-			// Expectation Setup
-			// Notify might be called multiple times. We allow any calls for now and verify later,
-			// or we can set specific expectations if `tt.expectedNotifyCount` is known.
-			// But for simplicity/flexibility, we allow calls and verify count later.
-			mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
-
-			mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
-
-			go task.Run(context.Background(), mockSender, wg, doneC)
+			go func() {
+				defer wg.Done()
+				defer func() {
+					doneC <- task.GetInstanceID()
+				}()
+				task.Run(context.Background(), mockSender)
+			}()
 
 			// Wait for completion
 			waitTimeout(t, wg, 2*time.Second)

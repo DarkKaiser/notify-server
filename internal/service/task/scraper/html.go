@@ -38,7 +38,13 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 		return nil, err
 	}
 
-	// 2단계: HTTP 요청 실행을 위한 파라미터 구성
+	// 2단계: HTTP 헤더 구성
+	// 요청 본문이 존재하는 경우, 호출자가 전달한 원본 헤더가 변경되지 않도록 복사본을 사용합니다.
+	if reqBody != nil && header != nil {
+		header = header.Clone()
+	}
+
+	// 3단계: HTTP 요청 실행을 위한 파라미터 구성
 	// executeRequest 함수가 실제 네트워크 요청을 수행할 수 있도록 필요한 정보들을 requestParams 구조체에 담습니다.
 	params := requestParams{
 		Method:        method,
@@ -55,7 +61,7 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 		},
 	}
 
-	// 3단계: HTTP 요청 실행 및 응답 수신
+	// 4단계: HTTP 요청 실행 및 응답 수신
 	// executeRequest를 통해 실제 네트워크 요청을 수행하고, 응답 본문을 메모리 버퍼(result.Body)로 읽어들입니다.
 	// 이때 result.Response.Body는 이미 NopCloser로 교체된 상태이므로,
 	// 이후의 Close 호출은 실질적인 네트워크 리소스 해제가 아닌, API 규약을 준수하기 위한 관례적 명시입니다.
@@ -66,7 +72,7 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 	}
 	defer result.Response.Body.Close()
 
-	// 4단계: 응답 크기 확인
+	// 5단계: 응답 크기 확인
 	// executeRequest는 maxResponseBodySize를 초과하는 응답을 자동으로 잘라냅니다.
 	// HTML 파싱의 무결성을 보장하기 위해, 잘린(Truncated) 응답은 에러로 처리합니다.
 	// (참고: 이미지나 비디오 파일 등은 Stream 처리가 가능하거나 메타데이터만 필요할 수 있어 Truncation을 허용하기도 하지만,
@@ -78,7 +84,7 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 			"body_size":   len(result.Body),
 		}).Error("[실패]: HTTP 요청 완료 후 파싱 중단, 응답 본문 크기 초과(Truncated)")
 
-		return nil, newErrResponseBodyTooLarge(s.maxResponseBodySize, rawURL)
+		return nil, newErrResponseBodySizeLimitExceeded(s.maxResponseBodySize, rawURL, "text/html")
 	}
 
 	logger.WithFields(applog.Fields{
@@ -86,10 +92,10 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 		"body_size":   len(result.Body),
 	}).Debug("[성공]: HTML 요청 완료, 파싱 단계 진입")
 
-	// 5단계: Content-Type 추출 (7단계의 HTML 파싱 시 Charset 변환을 위한 힌트)
+	// 6단계: Content-Type 추출 (8단계의 HTML 파싱 시 Charset 변환을 위한 힌트)
 	contentType := result.Response.Header.Get("Content-Type")
 
-	// 6단계: 문서 URL 결정 (상대 경로 해석용)
+	// 7단계: 문서 URL 결정 (상대 경로 해석용)
 	// HTML 내의 상대 경로(예: <a href="/path">)를 절대 경로로 변환하기 위한 기준 URL을 설정합니다.
 	// 리다이렉션 후의 최종 URL(Response.Request.URL)을 우선 사용하며,
 	// 만약 Request 객체가 없는 경우(Mocking 등)를 대비해 초기 요청 URL을 Fallback으로 사용합니다.
@@ -105,7 +111,7 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 		}
 	}
 
-	// 7단계: HTML 파싱 실행
+	// 8단계: HTML 파싱 실행
 	// parseHTML을 통해 메모리에 버퍼링된 응답 본문을 읽어 goquery.Document를 생성합니다.
 	//  - result.Response.Body: executeRequest에서 이미 메모리로 읽어들인 응답 본문 (NopCloser로 래핑된 bytes.Reader)
 	//  - contextAwareReader 래핑: 파싱 도중 Context가 취소되면 작업을 즉시 중단합니다.
@@ -179,7 +185,7 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 
 	rv := reflect.ValueOf(r)
 	if rv.Kind() == reflect.Ptr && rv.IsNil() {
-		return nil, ErrInputReaderInvalidType
+		return nil, ErrInputReaderTypedNil
 	}
 
 	// 컨텍스트가 이미 취소되었는지 확인합니다.
@@ -247,7 +253,7 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 			"read_bytes":  len(data),
 		}).Error("[실패]: HTML 파싱 중단, 입력 데이터 크기 초과")
 
-		return nil, newErrHTMLInputTooLarge(s.maxResponseBodySize)
+		return nil, newErrInputDataSizeLimitExceeded(s.maxResponseBodySize, "HTML")
 	}
 
 	// 이미 메모리에 로드된 데이터를 파싱 로직에서 재사용하기 위해 bytes.Reader로 래핑합니다.

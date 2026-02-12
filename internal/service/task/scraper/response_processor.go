@@ -17,6 +17,7 @@ import (
 // validateResponse HTTP 응답의 유효성을 검증하고, 검증 실패 시 에러를 반환합니다.
 //
 // 이 함수는 HTTP 응답이 성공적인지 확인하고, 필요한 경우 사용자 정의 검증 로직(Validator)을 실행합니다.
+// 검증 실패 시 연결 재사용을 위해 응답 본문을 드레인하고 닫습니다.
 //
 // 매개변수:
 //   - resp: HTTP 응답 객체
@@ -37,6 +38,12 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 		// 콜백에서의 사이드 이펙트를 방지하기 위해 깊은 복사를 수행합니다.
 		safeResp.Header = resp.Header.Clone()
 
+		// Trailer도 맵이므로 깊은 복사를 수행합니다.
+		// HTTP Trailer는 청크 전송 인코딩에서 사용되며, 대부분의 경우 nil이거나 비어있습니다.
+		if resp.Trailer != nil {
+			safeResp.Trailer = resp.Trailer.Clone()
+		}
+
 		// Request 포인터가 원본을 공유하므로, 콜백에서 실수로 원본 요청을 수정하지 못하도록 nil로 설정합니다.
 		safeResp.Request = nil
 
@@ -55,6 +62,13 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 		// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다. (읽기 실패 시 무시)
 		bodySnippet, _ := s.readErrorResponseBody(resp)
 
+		// 연결 재사용을 위해 응답 본문의 나머지를 드레인합니다.
+		// readErrorResponseBody에서 이미 1KB를 읽었으므로, 추가로 3KB를 읽어 총 4KB까지 드레인합니다.
+		// 대용량 에러 응답으로 인한 메모리 낭비를 방지하기 위해 제한을 둡니다.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 3072))
+
+		resp.Body.Close()
+
 		return newErrHTTPRequestFailed(err, params.URL, resp.StatusCode, bodySnippet)
 	}
 
@@ -65,9 +79,15 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 			data, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 			preview := s.previewBody(data, resp.Header.Get("Content-Type"))
 
+			// 연결 재사용을 위해 응답 본문의 나머지를 드레인합니다.
+			// 이미 1KB를 읽었으므로, 추가로 3KB를 읽어 총 4KB까지 드레인합니다.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 3072))
+
+			resp.Body.Close()
+
 			if preview != "" {
 				// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다.
-				return newErrValidationFailed(err, preview)
+				return newErrValidationFailed(err, params.URL, preview)
 			}
 
 			// 응답 본문의 일부를 읽지 못한 경우 원본 에러만 반환합니다.
@@ -136,21 +156,33 @@ func (s *scraper) readResponseBodyWithLimit(ctx context.Context, resp *http.Resp
 //   - string: UTF-8로 변환되고 정제된 오류 본문 문자열 (최대 1024바이트)
 //   - error: 본문 읽기 실패 시 발생하는 I/O 에러
 func (s *scraper) readErrorResponseBody(resp *http.Response) (string, error) {
-	// 크기 제한된 리더 생성
-	limitReader := io.LimitReader(resp.Body, 1024)
+	// 일정 크기(1024바이트)의 데이터를 메모리에 읽어둔 후, 복사본으로 인코딩 변환을 시도합니다.
+	buf := new(bytes.Buffer)
+	_, err := io.CopyN(buf, resp.Body, 1024)
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+
+	rawBytes := buf.Bytes()
 
 	// Content-Type 헤더를 기반으로 charset.NewReader를 사용하여 UTF-8로 변환합니다.
-	utf8Reader, err := charset.NewReader(limitReader, resp.Header.Get("Content-Type"))
+	utf8Reader, err := charset.NewReader(bytes.NewReader(rawBytes), resp.Header.Get("Content-Type"))
 	if err != nil {
 		// 인코딩 감지에 실패하더라도 원본 데이터를 사용합니다.
-		// 다음 단계에서 strings.ToValidUTF8이 잘못된 문자를 정제하므로 안전합니다.
-		utf8Reader = limitReader
+		// strings.ToValidUTF8이 잘못된 문자를 정제하므로 안전합니다.
+		cleanBody := strings.ToValidUTF8(string(rawBytes), "")
+
+		return cleanBody, nil
 	}
 
 	// 오류 응답의 본문 데이터 읽기
-	data, err := io.ReadAll(utf8Reader)
+	utf8Data, err := io.ReadAll(utf8Reader)
 	if err != nil {
-		return "", err
+		// 읽기 실패 시 원본 데이터를 사용합니다.
+		// strings.ToValidUTF8이 잘못된 문자를 정제하므로 안전합니다.
+		cleanBody := strings.ToValidUTF8(string(rawBytes), "")
+
+		return cleanBody, nil
 	}
 
 	// UTF-8 유효성 정제
@@ -160,7 +192,7 @@ func (s *scraper) readErrorResponseBody(resp *http.Response) (string, error) {
 	// strings.ToValidUTF8은 잘못된 UTF-8 시퀀스를 처리합니다:
 	//   - 두 번째 인자가 ""이면: 잘못된 시퀀스 제거 (깔끔한 로그 유지)
 	//   - 두 번째 인자가 "�"이면: 잘못된 시퀀스를 U+FFFD(�)로 대체
-	cleanBody := strings.ToValidUTF8(string(data), "")
+	cleanBody := strings.ToValidUTF8(string(utf8Data), "")
 
 	return cleanBody, nil
 }

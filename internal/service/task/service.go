@@ -305,9 +305,16 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 
 		// Task 실행
 		s.taskStopWG.Add(1)
-		// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
-		// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
-		go h.Run(context.Background(), s.notificationSender, &s.taskStopWG, s.taskDoneC)
+		go func(h provider.Task) {
+			defer s.taskStopWG.Done()
+			defer func() {
+				s.taskDoneC <- h.GetInstanceID()
+			}()
+
+			// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
+			// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
+			h.Run(context.Background(), s.notificationSender)
+		}(h)
 
 		if req.NotifyOnStart {
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{

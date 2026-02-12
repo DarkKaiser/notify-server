@@ -307,7 +307,7 @@ func TestParseHTML(t *testing.T) {
 				return buf
 			}(),
 			wantErr:     true,
-			errContains: "파싱 초기화 실패: 입력 데이터 스트림(Reader)이 유효하지 않은 타입(Typed Nil)입니다",
+			errContains: "HTML 파싱 실패: 입력 데이터 스트림이 Typed Nil입니다",
 		},
 		{
 			name: "Success - UTF-8 BOM Handling",

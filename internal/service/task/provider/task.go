@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -36,6 +35,7 @@ type Task interface {
 	// 작업 모니터링이나 타임아웃 감지에 활용될 수 있습니다.
 	ElapsedTimeAfterRun() time.Duration
 
-	// Run 작업을 실행하는 메인 메서드입니다.
-	Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID)
+	// Run Task를 수행합니다.
+	// 순차적으로 실행되며, 작업이 완료되면 리턴합니다. 동기화(goroutine/waitgroup) 처리는 호출자의 책임입니다.
+	Run(ctx context.Context, notificationSender contract.NotificationSender)
 }

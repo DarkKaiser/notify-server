@@ -260,6 +260,16 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			t.LogWithContext("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 키워드 매칭 프로세스를 중단합니다", applog.Fields{
+				"total_items":     len(pageContent.Items),
+				"processed_items": len(products),
+			}, nil)
+
+			return nil, nil
+		}
+
 		// 키워드 매칭 검사 전에 HTML 태그를 제거합니다.
 		// 네이버 검색 API는 매칭된 키워드를 <b> 태그로 감싸서 반환하므로,
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.

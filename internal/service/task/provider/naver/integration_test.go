@@ -9,6 +9,7 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
@@ -59,11 +60,12 @@ func setupTestTask(t *testing.T, fetcher fetcher.Fetcher) (*task, *config.AppCon
 			},
 		},
 	}
+	storage := new(contractmocks.MockTaskResultStore)
 	handler, err := newTask(provider.NewTaskParams{
 		InstanceID:  "test_instance",
 		Request:     req,
 		AppConfig:   appConfig,
-		Storage:     nil,
+		Storage:     storage,
 		Fetcher:     fetcher,
 		NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
 	})
