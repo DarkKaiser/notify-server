@@ -83,7 +83,7 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
 	tsk := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: "T", CommandID: "C", InstanceID: "I", NotifierID: "N", RunBy: contract.TaskRunByUser, NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },}),
+		Base: provider.NewBase(provider.BaseParams{ID: "T", CommandID: "C", InstanceID: "I", NotifierID: "N", RunBy: contract.TaskRunByUser, NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} }}),
 	}
 
 	tests := []struct {
@@ -301,9 +301,6 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 
 func TestTask_DiffAndNotify(t *testing.T) {
 	t.Parallel()
-	tsk := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: "T", CommandID: "C", InstanceID: "I", NotifierID: "N", RunBy: contract.TaskRunByUser, NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },}),
-	}
 
 	newProduct := func(id, price int) *product {
 		p := &product{ID: id, Name: "Test", Price: price}
@@ -372,7 +369,18 @@ func TestTask_DiffAndNotify(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			tsk.SetRunBy(tt.runBy)
+			tsk := &task{
+				Base: provider.NewBase(provider.BaseParams{
+					ID:         "T",
+					CommandID:  "C",
+					InstanceID: "I",
+					NotifierID: "N",
+					RunBy:      tt.runBy,
+					NewSnapshot: func() interface{} {
+						return &watchProductPriceSnapshot{}
+					},
+				}),
+			}
 
 			curSnap := &watchProductPriceSnapshot{Products: tt.current}
 			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}

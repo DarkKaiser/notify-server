@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
@@ -33,6 +36,7 @@ func TestTask_BasicMethods(t *testing.T) {
 		NotifierID: contract.NotifierID(notifier),
 		RunBy:      contract.TaskRunByUser,
 		Storage:    mockStorage,
+		Scraper:    &dummyScraper{},
 	})
 
 	// When & Then
@@ -46,10 +50,6 @@ func TestTask_BasicMethods(t *testing.T) {
 	assert.False(t, task.IsCanceled())
 	task.Cancel()
 	assert.True(t, task.IsCanceled())
-
-	// RunBy Update Test
-	task.SetRunBy(contract.TaskRunByScheduler)
-	assert.Equal(t, contract.TaskRunByScheduler, task.GetRunBy())
 
 	// ElapsedTime Test
 	task.runTime = time.Now().Add(-1 * time.Second)
@@ -177,9 +177,8 @@ func TestTask_Run(t *testing.T) {
 			name: "실패: 실행 전 작업 취소 (Before Run)",
 			setup: func(tID contract.TaskID, cID contract.TaskCommandID) (contract.TaskResultStore, ExecuteFunc) {
 				store := &contractmocks.MockTaskResultStore{}
-				store.On("Load", tID, cID, mock.Anything).Return(nil)
-				// Run 전에 취소되면 Execute 이후 로직(Save, Notify)은 실행되지 않아야 함
-				// 하지만 prepareExecution(Load)까지는 실행됨
+				// [Policy Change] Run 메서드 시작 시 IsCanceled()를 체크하여 조기 종료(Early Exit)하므로,
+				// 조기 취소 시에는 Load/Save/Execute가 모두 실행되지 않아야 합니다.
 
 				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 					return "실행되면 안됨", nil, nil
@@ -221,21 +220,17 @@ func TestTask_Run(t *testing.T) {
 				store.On("Save", tID, cID, mock.Anything).Return(errors.New("DB Disk Full"))
 
 				exec := func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
-					return "성공했으나 저장실패", map[string]interface{}{}, nil
+					return "성공했어나 저장실패", map[string]interface{}{}, nil
 				}
 				registerTestConfig(tID, cID)
 				return store, exec
 			},
-			expectedNotifyCount:  2, // 1. 정상 메시지, 2. 저장 실패 에러 메시지
-			expectedMessageParts: []string{"성공했으나 저장실패", "DB Disk Full"},
+			expectedNotifyCount:  1,                                                                      // 저장 실패 시 성공 알림을 보내지 않고 에러 알림 1회만 발송
+			expectedMessageParts: []string{"DB Disk Full", msgNewSnapshotSaveFailed[0:10], "성공했어나 저장실패"}, // 저장 실패 정보와 원래 성공 메시지가 모두 포함되어야 함
 			verifyNotification: func(t *testing.T, notifs []contract.Notification) {
-				// 두 번의 알림 모두 완료 후 시점이므로 (하나는 성공 후 저장실패)
-				// 1. notify(성공) -> RunBy=Scheduler(Default) -> False? Test setup uses default.
-				// Wait, setup function doesn't set RunBy. Default NewBase uses provided arg in loop.
-				// Loop sets RunBy based on test case. Here it is Default (Scheduler).
-				// So Cancelable=False.
 				for _, n := range notifs {
 					assert.False(t, n.Cancelable)
+					assert.True(t, n.ErrorOccurred)
 				}
 			},
 		},
@@ -308,6 +303,7 @@ func TestTask_Run(t *testing.T) {
 				NotifierID: "test_notifier",
 				RunBy:      runBy,
 				Storage:    store,
+				Scraper:    &dummyScraper{},
 				NewSnapshot: func() interface{} {
 					return make(map[string]interface{})
 				},
@@ -434,14 +430,32 @@ func collectAllMessages(sender *notificationmocks.MockNotificationSender) string
 	return sb
 }
 
+// dummyScraper Scraper 인터페이스의 더미 구현체입니다. (테스트용)
+type dummyScraper struct{}
+
+func (d *dummyScraper) FetchHTML(ctx context.Context, method, rawURL string, body io.Reader, header http.Header) (*goquery.Document, error) {
+	return nil, nil
+}
+func (d *dummyScraper) FetchHTMLDocument(ctx context.Context, rawURL string, header http.Header) (*goquery.Document, error) {
+	return nil, nil
+}
+func (d *dummyScraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, contentType string) (*goquery.Document, error) {
+	return nil, nil
+}
+func (d *dummyScraper) FetchJSON(ctx context.Context, method, rawURL string, body any, header http.Header, v any) error {
+	return nil
+}
+
 // TestTask_PrepareExecution_SnapshotCreationFailed 스냅샷 생성 함수가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_SnapshotCreationFailed(t *testing.T) {
 	task := NewBase(BaseParams{
-		ID:         "UNKNOWN_TASK",
-		CommandID:  "UNKNOWN_CMD",
-		InstanceID: "inst",
-		NotifierID: "noti",
-		RunBy:      contract.TaskRunByUser,
+		ID:          "UNKNOWN_TASK",
+		CommandID:   "UNKNOWN_CMD",
+		InstanceID:  "inst",
+		NotifierID:  "noti",
+		RunBy:       contract.TaskRunByUser,
+		Scraper:     &dummyScraper{},
+		NewSnapshot: func() interface{} { return nil }, // Explicitly trigger SnapshotCreationFailed
 	})
 
 	// ExecuteFunc 설정 (호출되지 않아야 함)
@@ -459,5 +473,60 @@ func TestTask_PrepareExecution_SnapshotCreationFailed(t *testing.T) {
 	require.Error(t, err)
 	assert.IsType(t, &apperrors.AppError{}, err) // AppError 타입 확인
 	// Snapshot 생성 실패 메시지 확인
-	assert.Equal(t, msgSnapshotCreationFailed, err.(*apperrors.AppError).Message())
+	assert.Contains(t, err.Error(), msgSnapshotCreationFailed)
+}
+
+// TestTask_FeatureFlags 기능 플래그(UseStorage, UseScraper)의 동작을 검증합니다.
+func TestTask_FeatureFlags(t *testing.T) {
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
+	ctx := context.Background()
+
+	t.Run("UseStorage=false일 경우 Storage가 nil이어도 에러 없이 통과해야 함", func(t *testing.T) {
+		task := NewBase(BaseParams{
+			ID:        "NO_STORAGE_TASK",
+			CommandID: "CMD",
+			Scraper:   &dummyScraper{},
+		})
+		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+			return "ok", nil, nil
+		})
+
+		_, err := task.prepareExecution(ctx, mockSender)
+		assert.NoError(t, err)
+	})
+
+	t.Run("UseScraper=false일 경우 Scraper가 nil이어도 에러 없이 통과해야 함", func(t *testing.T) {
+		mockStorage := &contractmocks.MockTaskResultStore{}
+		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		task := NewBase(BaseParams{
+			ID:          "NO_SCRAPER_TASK",
+			CommandID:   "CMD",
+			Storage:     mockStorage,
+			NewSnapshot: func() interface{} { return map[string]any{} },
+		})
+		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+			return "ok", nil, nil
+		})
+
+		_, err := task.prepareExecution(ctx, mockSender)
+		assert.NoError(t, err)
+		mockStorage.AssertExpectations(t)
+	})
+
+	t.Run("Snapshot 팩토리(NewSnapshot)가 있고 Storage가 nil일 때는 에러가 발생해야 함", func(t *testing.T) {
+		task := NewBase(BaseParams{
+			ID:          "STRICT_TASK",
+			CommandID:   "CMD",
+			NewSnapshot: func() interface{} { return &struct{}{} },
+		})
+		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+			return "ok", nil, nil
+		})
+
+		_, err := task.prepareExecution(ctx, mockSender)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), msgStorageNotInitialized)
+	})
 }

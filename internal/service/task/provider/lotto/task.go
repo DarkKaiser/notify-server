@@ -93,7 +93,16 @@ func newTask(p provider.NewTaskParams) (provider.Task, error) {
 	}
 
 	lottoTask := &task{
-		Base: provider.NewBaseFromParams(p),
+		Base: provider.NewBase(provider.BaseParams{
+			ID:          p.Request.TaskID,
+			CommandID:   p.Request.CommandID,
+			InstanceID:  p.InstanceID,
+			NotifierID:  p.Request.NotifierID,
+			RunBy:       p.Request.RunBy,
+			Storage:     p.Storage,
+			Scraper:     nil, // 스크래퍼 미사용
+			NewSnapshot: p.NewSnapshot,
+		}),
 
 		appPath: settings.AppPath,
 

@@ -293,7 +293,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "CommandID는 비어있을 수 없습니다",
+			expectedError: "TaskCommandID는 필수입니다",
 		},
 		{
 			name: "NewSnapshot is nil",

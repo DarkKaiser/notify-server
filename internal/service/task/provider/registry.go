@@ -93,8 +93,8 @@ func (c *Config) Validate() error {
 		if commandConfig == nil {
 			return apperrors.New(apperrors.InvalidInput, "CommandConfig는 nil일 수 없습니다")
 		}
-		if commandConfig.ID == "" {
-			return apperrors.New(apperrors.InvalidInput, "CommandID는 비어있을 수 없습니다")
+		if err := commandConfig.ID.Validate(); err != nil {
+			return apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("유효하지 않은 CommandID입니다: %s", commandConfig.ID))
 		}
 		// 명령어 ID 중복 검사
 		if seenCommands[commandConfig.ID] {
@@ -156,7 +156,7 @@ func (r *Registry) Register(taskID contract.TaskID, config *Config) error {
 		commandIDs[i] = cmd.ID
 	}
 
-	applog.WithComponentAndFields("task.registry", applog.Fields{
+	applog.WithComponentAndFields(component, applog.Fields{
 		"task_id":       taskID,
 		"commands":      commandIDs,
 		"command_count": len(commandIDs),
@@ -169,10 +169,16 @@ func (r *Registry) Register(taskID contract.TaskID, config *Config) error {
 //
 // 경고: 이 메서드는 프로덕션 환경에서 절대 호출되어서는 안 됩니다.
 func (r *Registry) RegisterForTest(taskID contract.TaskID, config *Config) {
+	if config == nil {
+		return
+	}
+	// 테스트 환경에서도 불변성을 보장하기 위해 클론하여 등록합니다.
+	// 락(Lock) 획득 전에 복제하여 임계 구역을 최소화합니다 (Register 메서드와 일관성 유지).
+	configCopy := config.Clone()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// 테스트 환경에서도 불변성을 보장하기 위해 클론하여 등록합니다.
-	r.configs[taskID] = config.Clone()
+	r.configs[taskID] = configCopy
 }
 
 // ClearForTest Registry에 등록된 모든 Task 설정을 제거합니다.
@@ -192,37 +198,42 @@ func (r *Registry) findConfig(taskID contract.TaskID, commandID contract.TaskCom
 	defer r.mu.RUnlock()
 
 	taskConfig, exists := r.configs[taskID]
-	if !exists {
+	if !exists || taskConfig == nil {
 		return nil, NewErrTaskNotSupported(taskID)
 	}
 
-	// Task 설정을 먼저 복제(Clone)합니다.
-	// Clone()은 내부의 Commands 슬라이스도 모두 깊은 복사합니다.
-	taskClone := taskConfig.Clone()
-
 	// 1. 정확한 매칭(Exact Match) 우선 시도
-	for _, commandConfig := range taskClone.Commands {
-		if commandConfig.ID == commandID {
-			return &ConfigLookup{
-				Task:    taskClone,
-				Command: commandConfig,
-			}, nil
+	var matchedIdx int = -1
+	for i, cmd := range taskConfig.Commands {
+		if cmd.ID == commandID {
+			matchedIdx = i
+			break
 		}
 	}
 
 	// 2. 와일드카드 매칭 시도
-	for _, commandConfig := range taskClone.Commands {
-		if commandConfig.ID.Match(commandID) {
-			return &ConfigLookup{
-				Task:    taskClone,
-				Command: commandConfig,
-			}, nil
+	if matchedIdx == -1 {
+		for i, cmd := range taskConfig.Commands {
+			if cmd.ID.Match(commandID) {
+				matchedIdx = i
+				break
+			}
 		}
 	}
 
+	// 매칭된 결과가 있으면 복제하여 반환합니다.
+	if matchedIdx != -1 {
+		taskClone := taskConfig.Clone()
+		// Clone()은 깊은 복사를 수행하므로 안전합니다.
+		return &ConfigLookup{
+			Task:    taskClone,
+			Command: taskClone.Commands[matchedIdx],
+		}, nil
+	}
+
 	// 지원 가능한 모든 명령 ID 목록 수집 (에러 메시지용)
-	supportedCommands := make([]contract.TaskCommandID, len(taskClone.Commands))
-	for i, cmd := range taskClone.Commands {
+	supportedCommands := make([]contract.TaskCommandID, len(taskConfig.Commands))
+	for i, cmd := range taskConfig.Commands {
 		supportedCommands[i] = cmd.ID
 	}
 

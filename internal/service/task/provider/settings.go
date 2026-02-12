@@ -41,7 +41,7 @@ func FindCommandSettings[T any](appConfig *config.AppConfig, taskID contract.Tas
 					return settings, nil
 				}
 			}
-			break
+			return nil, NewErrCommandSettingsNotFound(taskID, commandID)
 		}
 	}
 
@@ -56,12 +56,7 @@ func decodeAndValidate[T any](data map[string]any) (*T, error) {
 	}
 
 	// Validator 인터페이스를 구현하고 있다면 유효성 검증을 수행합니다.
-	// T가 구조체인 경우 *T가 Validator를 구현할 수 있으므로 양쪽 모두 확인합니다.
 	if v, ok := any(settings).(Validator); ok {
-		if err := v.Validate(); err != nil {
-			return nil, err
-		}
-	} else if v, ok := any(&settings).(Validator); ok {
 		if err := v.Validate(); err != nil {
 			return nil, err
 		}
