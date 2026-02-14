@@ -53,7 +53,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	assert.True(t, task.IsCanceled())
 
 	// Elapsed Test
-	task.runTime = time.Now().Add(-1 * time.Second)
+	task.startedAt = time.Now().Add(-1 * time.Second)
 	assert.GreaterOrEqual(t, task.Elapsed(), 1*time.Second)
 }
 
@@ -708,7 +708,7 @@ func TestTask_Log(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hook.Reset()
-			task.LogWithContext(tt.component, tt.level, tt.message, tt.fields, tt.err)
+			task.Log(tt.component, tt.level, tt.message, tt.err, tt.fields)
 
 			requireEntry(t, hook)
 			tt.validate(t, hook.LastEntry())

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -119,6 +120,11 @@ func (s *scraper) FetchHTML(ctx context.Context, method, rawURL string, body io.
 	//  - contentType: 응답 헤더의 Charset 정보를 기반으로 인코딩을 자동 변환(예: EUC-KR → UTF-8)합니다.
 	doc, err := s.parseHTML(ctx, &contextAwareReader{ctx: ctx, r: result.Response.Body}, baseURL, contentType, logger)
 	if err != nil {
+		// 컨텍스트 취소/타임아웃 에러는 래핑하지 않고 그대로 반환
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
 		// 파싱 실패 시 디버깅을 위해 응답 본문의 일부를 로그에 포함합니다.
 		logger.WithError(err).
 			WithFields(applog.Fields{
@@ -237,6 +243,11 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 	// 제한된 범위 내에서 데이터를 메모리로 읽어들입니다.
 	data, err := io.ReadAll(reader)
 	if err != nil {
+		// 컨텍스트 취소/타임아웃 에러는 래핑하지 않고 그대로 반환
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
 		logger.WithError(err).
 			WithFields(applog.Fields{
 				"limit_bytes": s.maxResponseBodySize,
@@ -265,6 +276,11 @@ func (s *scraper) ParseHTML(ctx context.Context, r io.Reader, rawURL string, con
 	// contextAwareReader로 래핑하여 파싱 중 컨텍스트 취소를 감지할 수 있도록 합니다.
 	doc, err := s.parseHTML(ctx, &contextAwareReader{ctx: ctx, r: parsingReader}, baseURL, contentType, logger)
 	if err != nil {
+		// 컨텍스트 취소/타임아웃 에러는 래핑하지 않고 그대로 반환
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+
 		logger.WithError(err).
 			WithField("has_base_url", baseURL != nil).
 			Error("[실패]: HTML 파싱 중단, DOM 객체 생성 실패")

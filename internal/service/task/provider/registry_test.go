@@ -138,7 +138,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		{
 			name:          "Config is nil",
 			config:        nil,
-			expectedPanic: "태스크 설정(config)은 nil일 수 없습니다",
+			expectedPanic: "Task 설정은 필수값입니다",
 		},
 		{
 			name: "NewTask is nil",
@@ -152,7 +152,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "[InvalidInput] NewTask는 nil일 수 없습니다",
+			expectedPanic: "NewTask 팩토리 함수는 필수값입니다",
 		},
 		{
 			name: "CommandConfigs is empty",
@@ -160,7 +160,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 				NewTask:  dummyNewTask(),
 				Commands: []*TaskCommandConfig{},
 			},
-			expectedPanic: "[InvalidInput] Commands는 비어있을 수 없습니다",
+			expectedPanic: "최소 하나 이상의 Command 설정이 필요합니다",
 		},
 		{
 			name: "CommandID is empty",
@@ -174,7 +174,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "[InvalidInput] CommandID는 비어있을 수 없습니다",
+			expectedPanic: "TaskCommandID는 필수입니다",
 		},
 		{
 			name: "NewSnapshot is nil",
@@ -188,7 +188,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "[InvalidInput] NewSnapshot은 nil일 수 없습니다",
+			expectedPanic: "NewSnapshot 팩토리 함수는 필수값입니다",
 		},
 		{
 			name: "Duplicate CommandID",
@@ -207,7 +207,7 @@ func TestRegistry_Register_Validation(t *testing.T) {
 					},
 				},
 			},
-			expectedPanic: "[InvalidInput] 중복된 CommandID입니다: DuplicateCommand",
+			expectedPanic: "중복된 CommandID입니다",
 		},
 	}
 
@@ -271,7 +271,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "NewTask는 nil일 수 없습니다",
+			expectedError: "NewTask 팩토리 함수는 필수값입니다",
 		},
 		{
 			name: "CommandConfigs is empty",
@@ -279,7 +279,7 @@ func TestConfig_Validate(t *testing.T) {
 				NewTask:  dummyNewTask(),
 				Commands: []*TaskCommandConfig{},
 			},
-			expectedError: "Commands는 비어있을 수 없습니다",
+			expectedError: "최소 하나 이상의 Command 설정이 필요합니다",
 		},
 		{
 			name: "CommandID is empty",
@@ -307,7 +307,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "NewSnapshot은 nil일 수 없습니다",
+			expectedError: "NewSnapshot 팩토리 함수는 필수값입니다",
 		},
 		{
 			name: "NewSnapshot returns nil",
@@ -323,7 +323,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "NewSnapshot 결과값은 nil일 수 없습니다",
+			expectedError: "NewSnapshot 팩토리 함수가 nil을 반환했습니다",
 		},
 		{
 			name: "Duplicate CommandID",
@@ -342,7 +342,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			expectedError: "중복된 CommandID입니다: DuplicateCommand",
+			expectedError: "중복된 CommandID입니다",
 		},
 		{
 			name: "Valid Config",

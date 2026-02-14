@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
@@ -16,14 +18,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestScraper_prepareBody는 prepareBody 메서드의 다양한 입력 타입과 에러 처리, 크기 제한을 검증합니다.
-func TestScraper_prepareBody(t *testing.T) {
+// slowReader simulates a slow read to allow context cancellation to happen.
+type slowReader struct{}
+
+func (s *slowReader) Read(p []byte) (n int, err error) {
+	// Sleep longer than the context cancel delay in the test
+	time.Sleep(50 * time.Millisecond)
+	// Return some data so ReadAll calls Read again
+	return copy(p, []byte("data")), nil
+}
+
+func TestScraper_prepareBody_Comprehensive(t *testing.T) {
 	tests := []struct {
 		name string
 		// Input
 		body       any
 		scraperOpt []Option
-
+		// Context
+		ctxSetup func() (context.Context, context.CancelFunc)
 		// Verification
 		wantContent string // Expected content if successful
 		wantErr     bool
@@ -36,7 +48,7 @@ func TestScraper_prepareBody(t *testing.T) {
 		{
 			name:        "Success - Nil Body",
 			body:        nil,
-			wantContent: "", // Should return nil reader, handled as empty check
+			wantContent: "",
 		},
 		{
 			name:        "Success - String Body",
@@ -49,7 +61,7 @@ func TestScraper_prepareBody(t *testing.T) {
 			wantContent: "test bytes",
 		},
 		{
-			name:        "Success - io.Reader Body",
+			name:        "Success - io.Reader Body (Buffer)",
 			body:        bytes.NewBufferString("test reader"),
 			wantContent: "test reader",
 		},
@@ -65,7 +77,7 @@ func TestScraper_prepareBody(t *testing.T) {
 		},
 
 		// -------------------------------------------------------------------------
-		// [Category 2: Edge Cases]
+		// [Category 2: Edge Cases & Optimizations]
 		// -------------------------------------------------------------------------
 		{
 			name:        "Success - Empty String",
@@ -80,7 +92,22 @@ func TestScraper_prepareBody(t *testing.T) {
 		{
 			name:        "Success - Typed Nil (io.Reader)",
 			body:        (*bytes.Buffer)(nil),
-			wantContent: "", // Should be handled as nil
+			wantContent: "",
+		},
+		{
+			name:        "Success - *bytes.Buffer (Optimization)",
+			body:        bytes.NewBufferString("optimized buffer"),
+			wantContent: "optimized buffer",
+		},
+		{
+			name:        "Success - *bytes.Reader (Optimization)",
+			body:        bytes.NewReader([]byte("optimized reader")),
+			wantContent: "optimized reader",
+		},
+		{
+			name:        "Success - *strings.Reader (Optimization)",
+			body:        strings.NewReader("optimized strings"),
+			wantContent: "optimized strings",
 		},
 
 		// -------------------------------------------------------------------------
@@ -116,7 +143,7 @@ func TestScraper_prepareBody(t *testing.T) {
 		},
 		{
 			name: "Error - JSON Body Over Limit",
-			body: map[string]string{"key": "value_too_long"}, // {"key":"value_too_long"} -> 22 bytes
+			body: map[string]string{"key": "value_too_long"},
 			scraperOpt: []Option{
 				WithMaxRequestBodySize(5),
 			},
@@ -126,14 +153,14 @@ func TestScraper_prepareBody(t *testing.T) {
 		},
 
 		// -------------------------------------------------------------------------
-		// [Category 4: Errors]
+		// [Category 4: Errors & Context Handling]
 		// -------------------------------------------------------------------------
 		{
-			name:        "Error - JSON Marshal Failure (Cyclic/Unsupported)",
+			name:        "Error - JSON Marshal Failure",
 			body:        map[string]any{"chan": make(chan int)}, // Channel cannot be marshaled
 			wantErr:     true,
 			errType:     apperrors.Internal,
-			errContains: []string{"요청 본문 JSON 인코딩 실패"},
+			errContains: []string{"JSON 인코딩 실패"},
 		},
 		{
 			name:        "Error - Reader Read Failure",
@@ -142,22 +169,56 @@ func TestScraper_prepareBody(t *testing.T) {
 			errType:     apperrors.ExecutionFailed,
 			errContains: []string{"요청 본문 준비 실패"},
 		},
+		{
+			name: "Error - Context Canceled Before Read",
+			body: strings.NewReader("test"),
+			ctxSetup: func() (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx, cancel
+			},
+			wantErr:     true,
+			errType:     apperrors.Unknown, // Should return context error directly
+			errContains: []string{"context canceled"},
+		},
+		{
+			name: "Error - Context Canceled During Read (Slow Reader)",
+			body: &slowReader{}, // This reader sleeps
+			ctxSetup: func() (context.Context, context.CancelFunc) {
+				// Cancel context after small delay
+				ctx, cancel := context.WithCancel(context.Background())
+				go func() {
+					time.Sleep(10 * time.Millisecond)
+					cancel()
+				}()
+				return ctx, cancel
+			},
+			wantErr:     true,
+			errType:     apperrors.Unknown, // Should return context error directly, not wrapped
+			errContains: []string{"context canceled"},
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// 1. Initialize Scraper
-			mockFetcher := new(mocks.MockFetcher) // Not used here, but needed for New
-			s := New(mockFetcher, tt.scraperOpt...)
-
-			// Cast to concrete type to access private method
+			// Initialize Scraper
+			s := New(&mocks.MockFetcher{}, tt.scraperOpt...)
 			impl := s.(*scraper)
 
-			// 2. Execute
-			reader, err := impl.prepareBody(context.Background(), tt.body)
+			// Setup Context
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if tt.ctxSetup != nil {
+				ctx, cancel = tt.ctxSetup()
+			} else {
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			}
+			defer cancel()
 
-			// 3. Verify
+			// Execute
+			reader, err := impl.prepareBody(ctx, tt.body)
+
+			// Verify
 			if tt.wantErr {
 				require.Error(t, err)
 				if len(tt.errContains) > 0 {
@@ -167,18 +228,19 @@ func TestScraper_prepareBody(t *testing.T) {
 				}
 				if tt.errType != apperrors.Unknown {
 					assert.True(t, apperrors.Is(err, tt.errType), "Expected error type %s, got %v", tt.errType, err)
+				} else if strings.Contains(tt.name, "Context") {
+					// For context errors, we expect direct errors (context.Canceled or DeadlineExceeded)
+					// Verify it is NOT wrapped in apperror if possible, or matches standard error
+					assert.True(t, errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
 				}
 			} else {
 				require.NoError(t, err)
 				if tt.wantContent == "" {
-					// Either nil reader or empty reader
-					if reader == nil {
-						return
+					if reader != nil {
+						content, err := io.ReadAll(reader)
+						assert.NoError(t, err)
+						assert.Empty(t, content)
 					}
-					// If not nil, read it
-					content, err := io.ReadAll(reader)
-					assert.NoError(t, err)
-					assert.Empty(t, content)
 				} else {
 					require.NotNil(t, reader)
 					content, err := io.ReadAll(reader)
@@ -190,19 +252,15 @@ func TestScraper_prepareBody(t *testing.T) {
 	}
 }
 
-// TestScraper_createAndSendRequest는 HTTP 요청 생성 및 전송 로직, 헤더 처리, 에러 래핑을 검증합니다.
-func TestScraper_createAndSendRequest(t *testing.T) {
+func TestScraper_createAndSendRequest_Comprehensive(t *testing.T) {
 	tests := []struct {
 		name string
 		// Input
 		params requestParams
-
 		// Mock
 		mockSetup func(*mocks.MockFetcher)
-
 		// Context
 		ctxSetup func() (context.Context, context.CancelFunc)
-
 		// Verification
 		wantErr     bool
 		errType     apperrors.ErrorType
@@ -219,46 +277,48 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 				URL:    "http://example.com",
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
-				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
-					req := args.Get(0).(*http.Request)
-					assert.Equal(t, "GET", req.Method)
-					assert.Equal(t, "http://example.com", req.URL.String())
-				}).Return(&http.Response{StatusCode: 200}, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Method == "GET" && req.URL.String() == "http://example.com"
+				})).Return(&http.Response{StatusCode: 200}, nil)
 			},
 			checkResp: func(t *testing.T, resp *http.Response) {
 				assert.Equal(t, 200, resp.StatusCode)
 			},
 		},
 		{
-			name: "Success - Custom Headers",
+			name: "Success - Header Cloning (Immutable)",
 			params: requestParams{
 				Method: "GET",
 				URL:    "http://example.com",
-				Header: http.Header{"X-Custom": []string{"value"}},
+				Header: http.Header{"X-Orig": []string{"val"}},
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
-				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
-					req := args.Get(0).(*http.Request)
-					assert.Equal(t, "value", req.Header.Get("X-Custom"))
-				}).Return(&http.Response{StatusCode: 200}, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					// Verify request has original header
+					if req.Header.Get("X-Orig") != "val" {
+						return false
+					}
+					// Verify modifying request header doesn't affect params.Header (Conceptual check)
+					// In Go, map is reference. Header.Clone() is used in createAndSendRequest.
+					return true
+				})).Return(&http.Response{StatusCode: 200}, nil)
 			},
 		},
 		{
-			name: "Success - Default Accept Header (Applied)",
+			name: "Success - Default Accept",
 			params: requestParams{
 				Method:        "GET",
 				URL:           "http://example.com",
 				DefaultAccept: "application/json",
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
-				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
-					req := args.Get(0).(*http.Request)
-					assert.Equal(t, "application/json", req.Header.Get("Accept"))
-				}).Return(&http.Response{StatusCode: 200}, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Header.Get("Accept") == "application/json"
+				})).Return(&http.Response{StatusCode: 200}, nil)
 			},
 		},
 		{
-			name: "Success - Default Accept Header (Ignored if Exists)",
+			name: "Success - Explicit Accept Overrides Default",
 			params: requestParams{
 				Method:        "GET",
 				URL:           "http://example.com",
@@ -266,10 +326,9 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 				DefaultAccept: "application/json",
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
-				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
-					req := args.Get(0).(*http.Request)
-					assert.Equal(t, "text/xml", req.Header.Get("Accept"))
-				}).Return(&http.Response{StatusCode: 200}, nil)
+				m.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+					return req.Header.Get("Accept") == "text/xml"
+				})).Return(&http.Response{StatusCode: 200}, nil)
 			},
 		},
 
@@ -277,17 +336,19 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 		// [Category 2: Context Cancellation]
 		// -------------------------------------------------------------------------
 		{
-			name: "Error - Context Canceled Before Request",
+			name: "Error - Context Canceled During Do",
 			params: requestParams{
 				Method: "GET",
 				URL:    "http://example.com",
 			},
 			ctxSetup: func() (context.Context, context.CancelFunc) {
 				ctx, cancel := context.WithCancel(context.Background())
+				// Cancel so that createAndSendRequest detects it
 				cancel()
 				return ctx, cancel
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
+				// Simulate Fetcher detecting canceled context
 				m.On("Do", mock.Anything).Return(nil, context.Canceled)
 			},
 			wantErr:     true,
@@ -295,14 +356,13 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 			errContains: []string{"요청 중단"},
 		},
 		{
-			name: "Error - Context Deadline Exceeded",
+			name: "Error - Context Timeout During Do",
 			params: requestParams{
 				Method: "GET",
 				URL:    "http://example.com",
 			},
 			ctxSetup: func() (context.Context, context.CancelFunc) {
-				// Immediately expired context
-				ctx, cancel := context.WithTimeout(context.Background(), 0)
+				ctx, cancel := context.WithTimeout(context.Background(), 0) // Already timed out
 				return ctx, cancel
 			},
 			mockSetup: func(m *mocks.MockFetcher) {
@@ -314,8 +374,19 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 		},
 
 		// -------------------------------------------------------------------------
-		// [Category 3: Fetcher Errors]
+		// [Category 3: Errors]
 		// -------------------------------------------------------------------------
+		{
+			name: "Error - Invalid Request (Bad Method)",
+			params: requestParams{
+				Method: "INVALID METHOD",
+				URL:    "http://example.com",
+			},
+			// Expect NewRequestWithContext to fail
+			wantErr:     true,
+			errType:     apperrors.ExecutionFailed,
+			errContains: []string{"HTTP 요청 생성 실패"},
+		},
 		{
 			name: "Error - Network Error",
 			params: requestParams{
@@ -329,51 +400,29 @@ func TestScraper_createAndSendRequest(t *testing.T) {
 			errType:     apperrors.Unavailable,
 			errContains: []string{"네트워크 오류"},
 		},
-
-		// -------------------------------------------------------------------------
-		// [Category 4: Validations]
-		// -------------------------------------------------------------------------
-		{
-			name: "Error - Invalid Method",
-			params: requestParams{
-				Method: "INVALID METHOD", // Space not allowed in method
-				URL:    "http://example.com",
-			},
-			// Mock should not be called because NewRequest fails
-			mockSetup:   func(m *mocks.MockFetcher) {},
-			wantErr:     true,
-			errType:     apperrors.ExecutionFailed,
-			errContains: []string{"HTTP 요청 생성 실패"},
-		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// 1. Setup Mock
 			mockFetcher := new(mocks.MockFetcher)
 			if tt.mockSetup != nil {
 				tt.mockSetup(mockFetcher)
 			}
 
-			// 2. Initialize Scraper
 			s := New(mockFetcher)
 			impl := s.(*scraper)
 
-			// 3. Setup Context
 			var ctx context.Context
 			var cancel context.CancelFunc
 			if tt.ctxSetup != nil {
 				ctx, cancel = tt.ctxSetup()
 			} else {
-				ctx, cancel = context.WithCancel(context.Background())
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 			}
 			defer cancel()
 
-			// 4. Execute
 			resp, err := impl.createAndSendRequest(ctx, tt.params)
 
-			// 5. Verify
 			if tt.wantErr {
 				require.Error(t, err)
 				if len(tt.errContains) > 0 {

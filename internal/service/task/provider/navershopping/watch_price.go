@@ -145,7 +145,7 @@ func (t *task) executeWatchPrice(ctx context.Context, commandSettings *watchPric
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.navershopping", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.Log("task.navershopping", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 
@@ -180,20 +180,20 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	for startIndex <= targetFetchCount {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", applog.Fields{
+			t.Log("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, applog.Fields{
 				"start_index":          startIndex,
 				"total_fetched_so_far": len(pageContent.Items),
-			}, nil)
+			})
 
 			return nil, nil
 		}
 
-		t.LogWithContext("task.navershopping", applog.DebugLevel, "네이버 쇼핑 검색 API 페이지를 요청합니다", applog.Fields{
+		t.Log("task.navershopping", applog.DebugLevel, "네이버 쇼핑 검색 API 페이지를 요청합니다", nil, applog.Fields{
 			"query":         commandSettings.Query,
 			"start_index":   startIndex,
 			"display_count": apiDisplayCount,
 			"sort_option":   apiSortOption,
-		}, nil)
+		})
 
 		// `baseURL`은 루프 불변 템플릿으로, 파싱 비용을 절감하는 동시에 상태 격리를 보장합니다.
 		// 구조체 역참조(*baseURL)를 통한 값 복사(Value Copy)는 매 반복마다 깨끗한(Clean) 상태를 보장하며,
@@ -237,13 +237,13 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 
 	// 수집된 결과가 없는 경우, 불필요한 슬라이스 할당(`make`)과 후속 키워드 매칭 로직을 건너뛰고 즉시 종료합니다.
 	if len(pageContent.Items) == 0 {
-		t.LogWithContext("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다 (검색 결과 없음)", applog.Fields{
+		t.Log("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다 (검색 결과 없음)", nil, applog.Fields{
 			"collected_count": 0,
 			"fetched_count":   0,
 			"api_total_count": pageContent.Total,
 			"api_start":       pageContent.Start,
 			"api_display":     pageContent.Display,
-		}, nil)
+		})
 
 		return nil, nil
 	}
@@ -262,10 +262,10 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	for _, item := range pageContent.Items {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 키워드 매칭 프로세스를 중단합니다", applog.Fields{
+			t.Log("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 키워드 매칭 프로세스를 중단합니다", nil, applog.Fields{
 				"total_items":     len(pageContent.Items),
 				"processed_items": len(products),
-			}, nil)
+			})
 
 			return nil, nil
 		}
@@ -286,13 +286,13 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		}
 	}
 
-	t.LogWithContext("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", applog.Fields{
+	t.Log("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", nil, applog.Fields{
 		"collected_count": len(products),
 		"fetched_count":   len(pageContent.Items),
 		"api_total_count": pageContent.Total,
 		"api_start":       pageContent.Start,
 		"api_display":     pageContent.Display,
-	}, nil)
+	})
 
 	return products, nil
 }
@@ -303,14 +303,14 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		t.LogWithContext("task.navershopping", applog.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", applog.Fields{
+		t.Log("task.navershopping", applog.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", nil, applog.Fields{
 			"product_id":      item.ProductID,
 			"product_type":    item.ProductType,
 			"title":           item.Title,
 			"raw_price_value": item.LowPrice,
 			"clean_price":     cleanPrice,
 			"parse_error":     err.Error(),
-		}, nil)
+		})
 
 		return nil
 	}

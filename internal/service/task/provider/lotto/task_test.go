@@ -121,7 +121,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "app_path로 지정된 경로가 유효하지 않습니다",
+			expectedError: "app_path로 지정된 디렉터리 검증에 실패하였습니다",
 		},
 		{
 			name: "Missing JAR File",
@@ -303,7 +303,7 @@ func TestTask_Run(t *testing.T) {
 		// Note: The actual implementation might use NotifyDefaultWithError or Notify.
 		// BaseTask.notifyError uses: s.notificationSender.Notify(ctx, s.defaultNotifierID, message)
 		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
-			return contains(n.Message, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+			return contains(n.Message, "작업 실행 중 오류가 발생하였습니다")
 		})).Return(nil)
 
 		var wg sync.WaitGroup

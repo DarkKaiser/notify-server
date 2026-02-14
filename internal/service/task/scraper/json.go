@@ -243,6 +243,11 @@ func (s *scraper) decodeJSONResponse(ctx context.Context, result fetchResult, v 
 	reader := &contextAwareReader{ctx: ctx, r: utf8Reader}
 	decoder := json.NewDecoder(reader)
 	if err = decoder.Decode(v); err != nil {
+		// 컨텍스트 취소/타임아웃 에러는 래핑하지 않고 그대로 반환
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+
 		// 디코딩 실패 시 디버깅을 위한 정보 수집
 		// 에러 메시지와 함께 응답 본문의 일부를 로그에 포함합니다.
 		logger := logger.WithError(err).
@@ -328,6 +333,11 @@ func (s *scraper) decodeJSONResponse(ctx context.Context, result fetchResult, v 
 	//
 	// 이러한 응답은 데이터 무결성 문제를 나타내므로 명시적으로 에러 처리합니다.
 	if token, err := decoder.Token(); err != io.EOF {
+		// 컨텍스트가 취소되었거나 타임아웃된 경우, 이를 "불필요한 데이터"로 간주하지 않고 올바른 에러를 반환해야 합니다.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+
 		// 에러 발생 위치 주변의 문맥 데이터 추출 (전후 30바이트)
 		offset := decoder.InputOffset()
 		contextStart := max(int(offset)-30, 0)

@@ -100,7 +100,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// CSV 파일 생성 (테스트용 임시 파일)
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	// 초기 결과 데이터 (비어있음)
@@ -183,7 +183,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	resultData := &watchProductPriceSnapshot{}
@@ -248,7 +248,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	resultData := &watchProductPriceSnapshot{}
@@ -353,7 +353,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (동일한 데이터)
@@ -459,7 +459,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (이전 가격)
@@ -549,7 +549,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 		WatchProductsFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
-	csvFile := testutil.CreateTestCSVFile(t, "test_products.csv", csvContent)
+	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchProductsFile = csvFile
 
 	// 기존 결과 데이터 (정상 판매 중)

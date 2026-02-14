@@ -103,7 +103,7 @@ func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoa
 	for _, record := range records {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.kurly", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, nil)
+			t.Log("task.kurly", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, nil)
 			return "", nil, nil
 		}
 
@@ -140,7 +140,7 @@ func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoa
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.kurly", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.Log("task.kurly", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 

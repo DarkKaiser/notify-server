@@ -61,7 +61,7 @@ func WithComponent(component string) *Entry {
 
 // WithComponentAndFields 'component' 필드와 추가적인 구조화된 필드들을 동시에 컨텍스트에 추가합니다.
 func WithComponentAndFields(component string, fields Fields) *Entry {
-	return logrus.WithFields(fields).WithField("component", component)
+	return logrus.WithField("component", component).WithFields(fields)
 }
 
 // Trace 레벨 로그를 기록합니다.

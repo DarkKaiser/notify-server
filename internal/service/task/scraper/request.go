@@ -108,7 +108,12 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 	// defer로 Body를 닫는 이유:
 	//   - 정상 흐름과 에러 흐름 모두에서 리소스가 해제됨을 보장
 	//   - 이후 단계에서 본문을 메모리로 읽어들일 것이므로, 함수 종료 시 네트워크 연결 해제를 보장
-	defer httpResp.Body.Close()
+	//
+	// [중요] defer 실행 시점의 Body 객체(원본 네트워크 스트림)를 명시적으로 캡처하여 닫습니다.
+	// 이후 로직에서 httpResp.Body가 메모리 버퍼(NopCloser)로 교체되더라도,
+	// 여기서 캡처된 원본 Body가 닫히므로 리소스 누수가 발생하지 않습니다.
+	originalBody := httpResp.Body
+	defer originalBody.Close()
 
 	// [단계 2] HTTP 응답 검증
 	if err := s.validateResponse(httpResp, params, logger); err != nil {

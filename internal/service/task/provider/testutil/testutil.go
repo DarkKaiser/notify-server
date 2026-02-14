@@ -37,8 +37,6 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 }
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-// NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-// NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) *provider.Base {
 	if storage == nil {
 		storage = &contractmocks.MockTaskResultStore{}
@@ -73,7 +71,7 @@ func RegisterMockTask(storage *contractmocks.MockTaskResultStore, taskID contrac
 // LoadTestData testdata 디렉토리에서 파일을 읽어옵니다.
 // 실패 시 t.Fatalf로 테스트를 중단합니다.
 func LoadTestData(t *testing.T, filename string) []byte {
-	t.Helper() // 테스트 실패 시 호출자를 가리키도록 설정
+	t.Helper()
 
 	testdataPath := filepath.Join("testdata", filename)
 	data, err := os.ReadFile(testdataPath)
@@ -89,35 +87,19 @@ func LoadTestDataAsString(t *testing.T, filename string) string {
 	return string(LoadTestData(t, filename))
 }
 
-// CreateTestCSVFile 임시 디렉토리에 CSV 파일을 생성하고 경로를 반환합니다.
-func CreateTestCSVFile(t *testing.T, filename string, content string) string {
+// CreateTestFile 임시 디렉토리에 파일을 생성하고 경로를 반환합니다.
+func CreateTestFile(t *testing.T, filename string, content string) string {
 	t.Helper()
 
-	tempDir := CreateTestTempDir(t)
+	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, filename)
 
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	if err != nil {
-		t.Fatalf("테스트 CSV 파일 생성 실패: %v", err)
+		t.Fatalf("테스트 파일 생성 실패: %v", err)
 	}
 
 	return filePath
-}
-
-// CreateTestTempDir 테스트가 끝나면 자동으로 삭제되는 임시 디렉토리를 생성합니다.
-func CreateTestTempDir(t *testing.T) string {
-	t.Helper()
-
-	dir, err := os.MkdirTemp("", "notify-server-test-*")
-	if err != nil {
-		t.Fatalf("임시 디렉토리 생성 실패: %v", err)
-	}
-
-	t.Cleanup(func() {
-		os.RemoveAll(dir)
-	})
-
-	return dir
 }
 
 // CreateTestJSONFile 임의의 데이터를 JSON으로 변환하여 임시 파일로 저장하고 경로를 반환합니다.
@@ -129,5 +111,5 @@ func CreateTestJSONFile(t *testing.T, filename string, data interface{}) string 
 		t.Fatalf("JSON 마샬링 실패: %v", err)
 	}
 
-	return CreateTestCSVFile(t, filename, string(content))
+	return CreateTestFile(t, filename, string(content))
 }

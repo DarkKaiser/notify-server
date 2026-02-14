@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
@@ -34,13 +35,18 @@ import (
 //   - io.Reader: 스트림 데이터 (메모리로 버퍼링됨)
 //   - 기타 타입: JSON으로 직렬화하여 전송
 func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	if body == nil {
 		return nil, nil
 	}
 
-	// Typed Nil 체크: 인터페이스 내부의 실제 포인터 값이 nil인지 확인하여 패닉을 방지합니다.
+	// Typed Nil 체크: 인터페이스 내부의 실제 값이 nil인지 확인하여 불필요한 처리를 방지합니다.
 	rv := reflect.ValueOf(body)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	kind := rv.Kind()
+	if (kind == reflect.Ptr || kind == reflect.Interface || kind == reflect.Slice || kind == reflect.Map || kind == reflect.Chan || kind == reflect.Func) && rv.IsNil() {
 		return nil, nil
 	}
 
@@ -90,6 +96,11 @@ func (s *scraper) prepareBody(ctx context.Context, body any) (io.Reader, error) 
 		// 전체 데이터를 메모리로 읽어들입니다.
 		data, err := io.ReadAll(reader)
 		if err != nil {
+			// 컨텍스트 취소/타임아웃 에러는 래핑하지 않고 그대로 반환
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+
 			return nil, newErrPrepareRequestBody(err)
 		}
 
