@@ -10,292 +10,774 @@ import (
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
+	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 const (
-	msgTaskExecutionFailed        = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
-	msgStorageNotInitialized      = "Storage가 초기화되지 않았습니다."
-	msgExecuteFuncNotInitialized  = "Execute()가 초기화되지 않았습니다."
-	msgSnapshotCreationFailed     = "작업결과데이터 생성이 실패하였습니다."
-	msgNewSnapshotSaveFailed      = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
-	msgPreviousSnapshotLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s\n\n빈 작업결과데이터를 이용하여 작업을 계속 진행합니다."
+	// msgTaskExecutionFailed 작업 실행 중 발생한 모든 에러 상황에 대해
+	// 사용자에게 전송되는 알림 메시지의 공통 헤더입니다.
+	//
+	// 이 메시지 뒤에는 항상 구체적인 에러 원인(reason)이 결합되어 전송되므로,
+	// 사용자가 어떤 문제로 실패했는지 쉽게 파악할 수 있도록 돕습니다.
+	msgTaskExecutionFailed = "작업 실행 중 오류가 발생하였습니다.😱"
+
+	// @@@@@
+	// msgExecuteFuncNotInitialized Task의 핵심 비즈니스 로직(ExecuteFunc)이 주입되지 않았을 때
+	// 발생하는 개발자 대상 에러 메시지입니다.
+	//
+	// ExecuteFunc는 Task가 수행해야 할 구체적인 작업(스크래핑, 데이터 가공 등)을 정의하며,
+	// 이 함수가 없으면 Task는 아무런 동작도 수행할 수 없습니다.
+	// 주로 Task 생성 시점에 의존성 주입이 누락된 경우 발생합니다.
+	msgExecuteFuncNotInitialized = "Execute()가 초기화되지 않았습니다"
+
+	// @@@@@
+	// msgScraperNotInitialized 웹 스크래핑 기능이 필요한 Task임에도 불구하고
+	// Scraper가 초기화되지 않았을 때 발생하는 개발자 대상 에러 메시지입니다.
+	//
+	// RequireScraper 옵션이 true로 설정된 경우, Scraper는 필수 의존성입니다.
+	msgScraperNotInitialized = "Scraper가 초기화되지 않았습니다"
+
+	// @@@@@
+	// msgStorageNotInitialized 작업 결과(Snapshot)를 저장할 Storage가 초기화되지 않았을 때
+	// 발생하는 개발자 대상 에러 메시지입니다.
+	//
+	// Snapshot을 사용하여 상태를 관리하는 Task의 경우, Storage 구현체가 반드시 주입되어야 합니다.
+	msgStorageNotInitialized = "Storage가 초기화되지 않았습니다"
+
+	// @@@@@
+	// msgSnapshotCreationFailed 작업 결과를 담을 Snapshot 객체 생성(NewSnapshot)이 실패했을 때
+	// 발생하는 에러 메시지입니다.
+	//
+	// NewSnapshot 팩토리 함수가 nil을 반환하거나 내부 로직 오류로 객체를 생성하지 못했을 때 사용됩니다.
+	msgSnapshotCreationFailed = "작업결과데이터 생성이 실패하였습니다"
+
+	// @@@@@
+	// msgNewSnapshotSaveFailed 작업 실행 완료 후, 새로운 결과(Snapshot)를 저장소에 기록하는 과정에서
+	// 실패했을 때 사용자에게 전달되는 알림 메시지 포맷입니다.
+	//
+	// 이 메시지는 비즈니스 로직은 성공했으나 데이터 영속화에 실패했음을 사용자에게 알립니다.
+	msgNewSnapshotSaveFailed = "작업이 끝난 작업결과데이터의 저장이 실패하였습니다.😱\n\n☑ %s"
+
+	// @@@@@
+	// msgPreviousSnapshotLoadFailed 이전 작업 실행 결과(Snapshot)를 저장소로부터 불러오는 과정에서
+	// 실패했을 때 사용자에게 전달되는 알림 메시지 포맷입니다.
+	//
+	// 작업 실행을 위한 초기 상태 복원에 실패했음을 의미합니다.
+	msgPreviousSnapshotLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s"
 )
 
-// ExecuteFunc 작업 실행 로직을 정의하는 함수 타입입니다.
+// Base 개별 Task의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
-// 이 함수는 순수 함수(Pure Function)에 가깝게 구현되어야 하며,
-// 작업에 필요한 데이터(Snapshot)를 받아 처리한 후 결과 메시지와 변경된 데이터를 반환합니다.
-//
-// 매개변수:
-//   - ctx: 작업 실행 컨텍스트 (취소 및 타임아웃 처리용)
-//   - previousSnapshot: 이전 실행 시 저장된 데이터 (상태 복원용). 최초 실행 시에는 nil 또는 초기값이 전달됩니다.
-//   - supportsHTML: 알림 채널(Notifier)이 HTML 포맷을 지원하는지 여부.
-//
-// 반환값:
-//   - string: 사용자에게 알림으로 전송할 메시지 본문. 빈 문자열일 경우 알림을 보내지 않습니다.
-//   - interface{}: 실행 완료 후 저장할 새로운 데이터. 다음 실행 시 data 인자로 전달됩니다.
-//   - error: 실행 중 발생한 에러. nil이 아니면 작업 실패로 처리됩니다.
-type ExecuteFunc func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error)
-
-// Base 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
-//
-// Base는 불변 상태(id, commandID 등)와 가변 상태(canceled, storage 상태 등)를 모두 포함하며,
-// Service에 의해 생성되고 생명주기가 관리됩니다. 이 구조체는 '작업의 정의'와 '실행 상태'를 모두 캡슐화합니다.
-//
-// 주요 특징:
-//   - 상태 보존 (Stateful): storage를 통해 실행 결과를 영속화하여, 스크래핑 작업 간의 데이터 연속성을 보장합니다.
-//   - 실행 제어 (Control): Cancel() 메서드를 통해 실행 중인 작업을 안전하게 중단할 수 있습니다.
-//   - 의존성 주입 (DI): storage, fetcher 등의 외부 의존성을 필드로 주입받아 테스트 용이성을 높입니다.
+// 이 구조체는 Task의 정의(무엇을, 어떻게)와 실행 상태(언제, 얼마나)를 모두 캡슐화하며,
+// Service 레이어에 의해 생성되고 생명주기가 관리됩니다.
 type Base struct {
-	id         contract.TaskID         // 실행할 작업의 고유 식별자입니다. (예: "NAVER", "KURLY")
-	commandID  contract.TaskCommandID  // 작업 내에서 수행할 구체적인 명령어 식별자입니다. (예: "CheckPrice")
-	instanceID contract.TaskInstanceID // 이번 작업 실행 인스턴스에 할당된 유일한 식별자(UUID 등)입니다.
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 식별자
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	// 알림을 전송할 대상 채널 또는 수단(Notifier)의 식별자입니다.
+	// id Task의 고유 식별자입니다.
+	id contract.TaskID
+
+	// commandID Task 내에서 실행할 Command의 고유 식별자입니다.
+	commandID contract.TaskCommandID
+
+	// instanceID 실행된 Task 인스턴스의 고유 식별자입니다.
+	instanceID contract.TaskInstanceID
+
+	// notifierID 작업 완료 시 알림을 전송할 대상 채널의 고유 식별자입니다.
 	notifierID contract.NotifierID
 
-	// 작업 취소 여부 플래그 (0: false, 1: true) - 원자적 접근 필요
-	canceled int32
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 실행 제어
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	// 해당 작업을 누가/무엇이 실행 요청했는지를 나타냅니다.
+	// canceled 작업 취소 여부를 나타내는 플래그입니다.
+	// atomic.Bool을 사용하여 여러 고루틴에서 안전하게 접근 가능합니다.
+	canceled atomic.Bool
+
+	// ctxCancel Run() 실행 중 컨텍스트를 취소하기 위한 함수입니다.
+	// Run() 시작 시 설정되고 종료 시 nil로 초기화됩니다.
+	ctxCancel context.CancelFunc
+
+	// ctxCancelMu ctxCancel 필드에 대한 동시 접근을 보호하는 뮤텍스입니다.
+	ctxCancelMu sync.Mutex
+
+	// requireScraper 이 Task가 웹 스크래핑을 필요로 하는지 여부를 나타냅니다.
+	// true인 경우 scraper 필드가 반드시 초기화되어야 합니다.
+	requireScraper bool
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 실행 메타데이터
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// runBy Task의 실행 주체를 나타냅니다.
 	// (예: RunByUser - 사용자 수동 실행, RunByScheduler - 스케줄러 자동 실행)
 	runBy contract.TaskRunBy
-	// 작업 실행 시작 시각
-	runTime time.Time
 
-	// execute는 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
+	// startedAt Task 실행 시작 시각입니다.
+	// startedAtMu에 의해 보호되며, Elapsed() 메서드에서 경과 시간 계산에 사용됩니다.
+	startedAt time.Time
+
+	// startedAtMu startedAt 필드에 대한 동시 접근을 보호하는 읽기/쓰기 뮤텍스입니다.
+	startedAtMu sync.RWMutex
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 비즈니스 로직 및 의존성
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// execute 실제 비즈니스 로직(스크래핑, 가격 비교 등)을 수행하는 함수입니다.
+	// SetExecute() 메서드를 통해 개별 Task 구현체에서 주입됩니다.
 	execute ExecuteFunc
 
-	// fetcher는 웹 요청(HTTP)을 수행하는 클라이언트 추상화입니다.
-	fetcher fetcher.Fetcher
+	// scraper 웹 요청(HTTP) 및 HTML/JSON 파싱을 수행하는 컴포넌트입니다.
+	// requireScraper가 true인 경우에만 초기화됩니다.
+	scraper scraper.Scraper
 
-	// storage는 작업의 상태를 저장하고 불러오는 인터페이스입니다.
+	// storage 작업 결과 데이터(Snapshot)를 영구 저장하고 불러오는 인터페이스입니다.
+	// 이전 실행 결과 조회(Load)와 새로운 결과 저장(Save)에 사용됩니다.
 	storage contract.TaskResultStore
+
+	// newSnapshot 작업 결과 데이터의 빈 인스턴스를 생성하는 팩토리 함수입니다.
+	// Storage.Load() 호출 시 데이터를 담을 구조체를 생성하는 데 사용됩니다.
+	newSnapshot NewSnapshotFunc
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 유틸리티
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// logger 고정 필드(task_id, command_id 등)가 바인딩된 로거 인스턴스입니다.
+	// 생성 시점에 초기화하여 로깅 시 매번 필드를 복사하는 오버헤드를 방지합니다.
+	logger *applog.Entry
 }
 
-// NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
-// 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(id contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy) *Base {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ Task = (*Base)(nil)
+
+// baseParams Base 구조체 초기화에 필요한 매개변수들을 그룹화하는 구조체입니다.
+//
+// 설계 목적:
+//   - Base 구조체 초기화에 필요한 매개변수들을 하나의 구조체로 묶어 함수 시그니처를 간결하게 유지합니다.
+//   - 향후 Base 구조체 필드 추가 시 기존 호출 코드를 수정하지 않아도 되는 확장성을 제공합니다.
+//   - 필드명을 통해 각 매개변수의 의미를 명확히 전달하여 가독성을 높입니다.
+type baseParams struct {
+	ID         contract.TaskID
+	CommandID  contract.TaskCommandID
+	InstanceID contract.TaskInstanceID
+	NotifierID contract.NotifierID
+
+	RequireScraper bool
+
+	RunBy contract.TaskRunBy
+
+	Scraper     scraper.Scraper
+	Storage     contract.TaskResultStore
+	NewSnapshot NewSnapshotFunc
+}
+
+// newBase baseParams를 받아 Base 인스턴스를 생성하는 내부 팩토리 함수입니다.
+//
+// 이 함수는 패키지 내부에서만 사용되며, 외부에서는 NewBase() 함수를 통해 간접적으로 호출됩니다.
+// Base 구조체의 모든 필드를 초기화하며, 특히 logger는 생성 시점에 고정 필드를 바인딩하여
+// 이후 로깅 시 매번 필드를 복사하는 오버헤드를 방지합니다.
+//
+// 매개변수:
+//   - p: Base 초기화에 필요한 모든 매개변수를 담은 구조체
+//
+// 반환값: 완전히 초기화된 Base 인스턴스 포인터
+func newBase(p baseParams) *Base {
 	return &Base{
-		id:         id,
-		commandID:  commandID,
-		instanceID: instanceID,
-		notifierID: notifierID,
-		canceled:   0,
-		runBy:      runBy,
+		id:         p.ID,
+		commandID:  p.CommandID,
+		instanceID: p.InstanceID,
+		notifierID: p.NotifierID,
+
+		requireScraper: p.RequireScraper,
+
+		runBy: p.RunBy,
+
+		scraper:     p.Scraper,
+		storage:     p.Storage,
+		newSnapshot: p.NewSnapshot,
+
+		logger: applog.WithFields(applog.Fields{
+			"task_id":         p.ID,
+			"command_id":      p.CommandID,
+			"instance_id":     p.InstanceID,
+			"notifier_id":     p.NotifierID,
+			"require_scraper": p.RequireScraper,
+			"run_by":          p.RunBy,
+		}),
 	}
 }
 
-func (t *Base) GetID() contract.TaskID {
-	return t.id
+// NewBase NewTaskParams를 기반으로 Base 인스턴스를 생성하는 공개 팩토리 함수입니다.
+//
+// 이 함수는 개별 Task 구현체(kurly, naver, lotto 등)의 NewTask 메서드에서 호출되며,
+// 반복적으로 나타나는 Base 초기화 코드를 간소화하여 코드 중복을 방지합니다.
+// NewTaskParams를 내부 baseParams로 변환하고, 필요 시 Scraper를 초기화한 후
+// newBase() 내부 팩토리 함수를 호출하여 완전히 초기화된 Base 인스턴스를 반환합니다.
+//
+// 매개변수:
+//   - p: Task 생성에 필요한 모든 매개변수를 담은 구조체
+//   - requireScraper: 웹 스크래핑 기능 활성화 여부
+//     (true로 설정 시 p.Fetcher가 필수이며, nil일 경우 패닉 발생)
+//
+// 반환값: 완전히 초기화된 Base 인스턴스 포인터
+func NewBase(p NewTaskParams, requireScraper bool) *Base {
+	if p.Request == nil {
+		panic("NewBase: params.Request는 필수입니다")
+	}
+
+	// 웹 스크래핑이 필요한 Task인 경우, Fetcher 의존성을 검증하고 Scraper를 생성합니다.
+	var scr scraper.Scraper
+	if requireScraper {
+		if p.Fetcher == nil {
+			panic(fmt.Sprintf("NewBase: 스크래핑 작업에는 Fetcher 주입이 필수입니다 (TaskID=%s)", p.Request.TaskID))
+		}
+
+		scr = scraper.New(p.Fetcher)
+	}
+
+	return newBase(baseParams{
+		ID:         p.Request.TaskID,
+		CommandID:  p.Request.CommandID,
+		InstanceID: p.InstanceID,
+		NotifierID: p.Request.NotifierID,
+
+		RequireScraper: requireScraper,
+
+		RunBy: p.Request.RunBy,
+
+		Scraper:     scr,
+		Storage:     p.Storage,
+		NewSnapshot: p.NewSnapshot,
+	})
 }
 
-func (t *Base) GetCommandID() contract.TaskCommandID {
-	return t.commandID
+func (b *Base) ID() contract.TaskID {
+	return b.id
 }
 
-func (t *Base) GetInstanceID() contract.TaskInstanceID {
-	return t.instanceID
+func (b *Base) CommandID() contract.TaskCommandID {
+	return b.commandID
 }
 
-func (t *Base) GetNotifierID() contract.NotifierID {
-	return t.notifierID
+func (b *Base) InstanceID() contract.TaskInstanceID {
+	return b.instanceID
 }
 
-func (t *Base) Cancel() {
-	atomic.StoreInt32(&t.canceled, 1)
+func (b *Base) NotifierID() contract.NotifierID {
+	return b.notifierID
 }
 
-func (t *Base) IsCanceled() bool {
-	return atomic.LoadInt32(&t.canceled) == 1
+func (b *Base) Cancel() {
+	b.canceled.Store(true)
+
+	// 현재 실행 중(Run 메서드가 호출된 상태)이라면, 할당된 컨텍스트를 즉시 취소하여
+	// 진행 중인 비즈니스 로직(네트워크 요청, 데이터 처리 등)이 조속히 중단되도록 유도합니다.
+	b.ctxCancelMu.Lock()
+	if b.ctxCancel != nil {
+		b.ctxCancel()
+	}
+	b.ctxCancelMu.Unlock()
 }
 
-func (t *Base) SetRunBy(runBy contract.TaskRunBy) {
-	t.runBy = runBy
+func (b *Base) IsCanceled() bool {
+	return b.canceled.Load()
 }
 
-func (t *Base) GetRunBy() contract.TaskRunBy {
-	return t.runBy
+func (b *Base) RunBy() contract.TaskRunBy {
+	return b.runBy
 }
 
-func (t *Base) ElapsedTimeAfterRun() int64 {
-	return int64(time.Since(t.runTime).Seconds())
+func (b *Base) Elapsed() time.Duration {
+	b.startedAtMu.RLock()
+	defer b.startedAtMu.RUnlock()
+
+	// 작업이 실행된 적이 없거나 시작 시각이 기록되지 않은 경우 0을 반환합니다.
+	if b.startedAt.IsZero() {
+		return 0
+	}
+
+	// 현재 시각과 시작 시각의 차이를 계산하여 경과 시간을 반환합니다.
+	return time.Since(b.startedAt)
 }
 
-func (t *Base) SetExecute(fn ExecuteFunc) {
-	t.execute = fn
+// @@@@@
+func (b *Base) SetExecute(execute ExecuteFunc) {
+	b.execute = execute
 }
 
-func (t *Base) SetFetcher(f fetcher.Fetcher) {
-	t.fetcher = f
+func (b *Base) Scraper() scraper.Scraper {
+	return b.scraper
 }
 
-func (t *Base) GetFetcher() fetcher.Fetcher {
-	return t.fetcher
-}
+// @@@@@
+// Run Task의 전체 실행 수명 주기를 관리하는 메인 진입점입니다.
+//
+// 이 메서드는 Task 인터페이스의 핵심 메서드로서, Service 레이어에서 호출되어
+// Task의 생성부터 종료까지의 전체 생명주기를 제어합니다. 다음 단계를 순차적으로 수행합니다:
+//
+//  1. 사전 검증: notificationSender 유효성 확인 및 조기 취소 감지
+//  2. 컨텍스트 설정: 취소 가능한 컨텍스트 생성 및 패닉 복구 핸들러 등록
+//  3. 실행 준비: 필수 의존성 검증 및 이전 작업 결과(Snapshot) 로딩
+//  4. 비즈니스 로직 실행: execute 함수 호출을 통한 실제 작업 수행
+//  5. 결과 처리: Snapshot 저장 및 사용자 알림 전송
+//
+// 설계 특징:
+//   - 다단계 취소 확인: 실행 전, 준비 후, 실행 후 총 3회 취소 상태를 확인하여 불필요한 작업 방지
+//   - 패닉 복구: 예상치 못한 패닉 발생 시에도 시스템 안정성을 유지하고 사용자에게 알림 전송
+//   - 컨텍스트 전파: 상위 컨텍스트의 취소 신호를 모든 하위 작업에 전파
+//
+// 매개변수:
+//   - ctx: Task 실행의 생명주기를 제어하는 컨텍스트 (타임아웃, 취소 신호 전파)
+//   - notificationSender: 작업 결과를 사용자에게 알리기 위한 인터페이스 구현체 (필수)
+func (b *Base) Run(ctx context.Context, notificationSender contract.NotificationSender) {
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 사전 검증: 필수 의존성 확인 및 조기 취소 감지
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-func (t *Base) SetStorage(storage contract.TaskResultStore) {
-	t.storage = storage
-}
+	// notificationSender는 Task 실행 결과를 사용자에게 전달하는 필수 의존성입니다.
+	// nil인 경우 작업을 수행할 수 없으므로 즉시 종료합니다.
+	if notificationSender == nil {
+		b.Log(component, applog.ErrorLevel, "notificationSender is nil. Task execution stopped.", nil, nil)
+		return
+	}
 
-// Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
-func (t *Base) Run(ctx context.Context, notificationSender contract.NotificationSender, taskStopWG *sync.WaitGroup, taskDoneC chan<- contract.TaskInstanceID) {
-	defer taskStopWG.Done()
+	// Run() 호출 전에 이미 Cancel()이 호출된 경우를 감지합니다.
+	// 이는 스케줄러가 Task를 큐에 넣었지만, 실행 전에 사용자가 취소한 경우 등에 해당합니다.
+	// 조기 종료(Early Exit)를 통해 불필요한 리소스 사용을 방지합니다.
+	if b.IsCanceled() {
+		b.Log(component, applog.InfoLevel, "작업이 시작 전에 취소되었습니다", nil, nil)
+		return
+	}
 
-	// [Deep Panic Safety] defer는 역순(LIFO)으로 실행되므로, recover보다 늦게, taskStopWG.Done()보다 먼저 실행되도록 위치시킵니다.
-	// 1. Recover (Panic 복구) -> 2. taskDoneC 전송 (완료 신호) -> 3. Done (WaitGroup 감소, 채널 닫힘 가능성)
-	// 순서로 실행되어야 "닫힌 채널에 전송"하는 Panic을 방지할 수 있습니다.
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 컨텍스트 설정: 취소 가능한 컨텍스트 생성 및 생명주기 관리
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// 상위 컨텍스트를 래핑하여 이 Task 전용 취소 가능한 컨텍스트를 생성합니다.
+	// 이를 통해 Cancel() 메서드 호출 시 진행 중인 모든 하위 작업(네트워크 요청, DB 쿼리 등)에
+	// 즉시 취소 신호를 전파할 수 있습니다.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// cancel 함수를 Base 구조체에 저장하여 외부(Cancel 메서드)에서 접근 가능하도록 합니다.
+	// 뮤텍스로 보호하여 동시 접근 시 데이터 경합(data race)을 방지합니다.
+	b.ctxCancelMu.Lock()
+	b.ctxCancel = cancel
+	b.ctxCancelMu.Unlock()
+
+	// Run() 종료 시 cancel 함수 참조를 정리하여 메모리 누수를 방지합니다.
+	// 이후 Cancel() 호출은 이미 종료된 Task에 영향을 주지 않습니다.
 	defer func() {
-		taskDoneC <- t.instanceID
+		b.ctxCancelMu.Lock()
+		b.ctxCancel = nil
+		b.ctxCancelMu.Unlock()
 	}()
 
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 패닉 복구: 예상치 못한 패닉 발생 시 시스템 안정성 유지
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	//
+	// Task 실행 중 발생할 수 있는 모든 패닉을 복구하여 전체 서비스가 중단되지 않도록 보호합니다.
+	// 패닉이 발생하더라도 다음 두 가지 핵심 작업을 수행합니다:
+	//   1. 상세한 패닉 정보를 로그에 기록하여 디버깅 가능하도록 함
+	//   2. 사용자에게 에러 알림을 전송하여 작업 실패를 인지할 수 있도록 함
 	defer func() {
 		if r := recover(); r != nil {
-			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
-			t.LogWithContext("task.executor", applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", nil, err)
+			// 1단계: 패닉 정보를 즉시 로그에 기록합니다.
+			// 로깅은 가장 안전한 작업이므로 최우선으로 수행하여 패닉 원인을 보존합니다.
+			err := apperrors.Newf(apperrors.Internal, "Task 내부 Panic 발생: %v", r)
+			b.Log(component, applog.ErrorLevel, "Critical: Task 실행 도중 Panic 발생 (Recovered)", err, applog.Fields{"panic_value": r})
 
-			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
-			t.handleExecutionResult(ctx, notificationSender, "", nil, err)
+			// 2단계: 사용자에게 에러 알림을 전송합니다.
+			// 알림 전송 자체가 패닉을 일으킬 수 있으므로, 별도의 익명 함수로 격리하고
+			// 내부에 또 다른 recover를 설치하여 2차 패닉을 방지합니다.
+			func() {
+				defer func() {
+					if r2 := recover(); r2 != nil {
+						// 2차 패닉이 발생한 경우, 로그만 기록하고 더 이상 알림을 시도하지 않습니다.
+						// 이는 무한 재귀를 방지하고 시스템 안정성을 최우선으로 합니다.
+						b.Log(component, applog.ErrorLevel, "Critical: Panic 복구 로직 내부에서 2차 Panic 발생", nil, applog.Fields{"secondary_panic_value": r2})
+					}
+				}()
+
+				// notificationSender와 Base 인스턴스가 유효한 경우에만 알림을 전송합니다.
+				if notificationSender != nil && b != nil {
+					// 사용자에게 전달할 패닉 메시지를 생성합니다.
+					// 기술적인 스택 트레이스 대신 사용자 친화적인 메시지로 변환합니다.
+					panicMsg := b.formatTaskErrorMessage(fmt.Sprintf("시스템 내부 오류(Panic)가 발생하였습니다. (%v)", r))
+					_ = notificationSender.Notify(ctx, b.newNotification(panicMsg, true))
+				}
+			}()
 		}
 	}()
 
-	t.runTime = time.Now()
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 실행 시작 시각 기록
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	// 1. 사전 검증 및 데이터 준비
-	previousSnapshot, err := t.prepareExecution(ctx, notificationSender)
+	// Task 실행 시작 시각을 기록하여 Elapsed() 메서드에서 경과 시간을 계산할 수 있도록 합니다.
+	// 뮤텍스로 보호하여 동시 접근 시 데이터 경합을 방지합니다.
+	b.startedAtMu.Lock()
+	b.startedAt = time.Now()
+	b.startedAtMu.Unlock()
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 1단계: 실행 준비 - 의존성 검증 및 이전 작업 결과 로딩
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// prepareExecution()은 다음 작업을 수행합니다:
+	//   - execute, scraper, storage 등 필수 의존성이 초기화되었는지 검증
+	//   - Storage에서 이전 작업 결과(Snapshot)를 로딩하여 비교 기반 작업 지원
+	// 검증 실패 시 에러를 반환하며, 이 경우 비즈니스 로직을 실행하지 않고 종료합니다.
+	previousSnapshot, err := b.prepareExecution(ctx, notificationSender)
 	if err != nil {
 		return
 	}
 
-	// 2. 작업 실행
-	message, newSnapshot, err := t.execute(ctx, previousSnapshot, notificationSender.SupportsHTML(t.notifierID))
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 취소 확인 #2: 준비 작업 완료 후, 실행 직전
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	if t.IsCanceled() {
+	// prepareExecution() 중에 취소 요청이 들어온 경우를 감지합니다.
+	// Storage Load 등의 준비 작업은 완료되었지만, 무거운 비즈니스 로직(execute)을
+	// 실행하기 전에 취소 상태를 확인하여 불필요한 CPU/네트워크 리소스 사용을 방지합니다.
+	if b.IsCanceled() {
+		b.Log(component, applog.InfoLevel, "작업이 실행 직전에 취소되었습니다", nil, nil)
 		return
 	}
 
-	// 3. 결과 처리
-	t.handleExecutionResult(ctx, notificationSender, message, newSnapshot, err)
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 2단계: 비즈니스 로직 실행
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// execute 함수를 호출하여 실제 작업(웹 스크래핑, 데이터 가공, 비교 등)을 수행합니다.
+	// 반환값:
+	//   - message: 사용자에게 전송할 알림 메시지 (성공 시)
+	//   - newSnapshot: 저장할 새로운 작업 결과 데이터 (nil이면 저장 생략)
+	//   - err: 실행 중 발생한 에러 (nil이면 성공)
+	message, newSnapshot, err := b.execute(ctx, previousSnapshot, notificationSender.SupportsHTML(b.notifierID))
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 취소 확인 #3: 비즈니스 로직 실행 완료 후, 결과 처리 직전
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// execute 실행 중에 취소 요청이 들어온 경우를 감지합니다.
+	// 이미 작업은 완료되었지만, Snapshot 저장이나 알림 전송을 수행하지 않고 종료하여
+	// 취소된 작업의 결과가 사용자에게 전달되지 않도록 합니다.
+	if b.IsCanceled() {
+		b.Log(component, applog.InfoLevel, "작업 실행 중 취소가 감지되어 결과 처리를 중단합니다", nil, nil)
+		return
+	}
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 3단계: 결과 처리 - Snapshot 저장 및 사용자 알림 전송
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// handleExecutionResult()는 execute의 반환값을 기반으로 다음 작업을 수행합니다:
+	//   - 에러 발생 시: 에러 로깅 및 사용자에게 에러 알림 전송
+	//   - 성공 시: Snapshot 저장 → 사용자에게 성공 알림 전송
+	b.handleExecutionResult(ctx, notificationSender, message, newSnapshot, err)
 }
 
-// prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
-func (t *Base) prepareExecution(ctx context.Context, notificationSender contract.NotificationSender) (interface{}, error) {
-	if t.execute == nil {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgExecuteFuncNotInitialized)
-		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx, notificationSender, message)
-		return nil, apperrors.New(apperrors.Internal, msgExecuteFuncNotInitialized)
+// prepareExecution Task 실행 전 필수 조건을 검증하고 이전 작업 결과 Snapshot을 준비하는 사전 검증 단계입니다.
+//
+// 이 메서드는 Run() 메서드에서 비즈니스 로직(execute)을 실행하기 전에 호출되며,
+// 다음 두 가지 핵심 역할을 수행합니다:
+//
+//  1. 필수 의존성 검증
+//     - execute 함수가 초기화되었는지 확인
+//     - 웹 스크래핑이 필요한 Task인 경우 Scraper 인스턴스가 준비되었는지 확인
+//
+//  2. 이전 작업 결과(Snapshot) 로딩
+//     - Snapshot 생성 팩토리 함수(newSnapshot)가 등록된 경우, Storage에서 이전 작업 결과를 로드
+//
+// 검증 실패 시 에러 로그를 기록하고 사용자에게 알림을 전송한 후 즉시 에러를 반환하여
+// 불완전한 상태에서의 실행을 방지합니다.
+//
+// 매개변수:
+//   - ctx: 작업 실행 컨텍스트 (취소 신호 전파 용도)
+//   - notificationSender: 검증 실패 시 에러 알림을 전송할 인터페이스
+//
+// 반환값:
+//   - any: 이전 작업 결과 Snapshot (최초 실행이거나 newSnapshot이 nil인 경우 nil)
+//   - error: 검증 실패 또는 Snapshot 로딩 실패 시 에러
+func (b *Base) prepareExecution(ctx context.Context, notificationSender contract.NotificationSender) (any, error) {
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 1단계: 필수 의존성 검증
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+	// 비즈니스 로직 실행 함수(execute)가 초기화되었는지 검증합니다.
+	// execute는 개별 Task 구현체에서 SetExecute()를 통해 주입되어야 하며, 이 함수가 없으면 Task는 실질적인 작업을 수행할 수 없습니다.
+	if b.execute == nil {
+		// @@@@@
+		message := b.formatTaskErrorMessage(msgExecuteFuncNotInitialized)
+		b.Log(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (ExecuteFunc 미초기화)", nil, applog.Fields{
+			"detail": message,
+		})
+
+		b.sendErrorNotification(ctx, notificationSender, message)
+		return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgExecuteFuncNotInitialized, b.id, b.commandID)
 	}
 
-	var snapshot interface{}
-	cfg, findErr := FindConfig(t.GetID(), t.GetCommandID())
-	if findErr == nil {
-		snapshot = cfg.Command.NewSnapshot()
-	}
-	if snapshot == nil {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgSnapshotCreationFailed)
-		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx, notificationSender, message)
-		return nil, apperrors.New(apperrors.Internal, msgSnapshotCreationFailed)
+	// 웹 스크래핑이 필요한 Task인 경우, Scraper가 초기화되었는지 검증합니다.
+	if b.requireScraper && b.scraper == nil {
+		// @@@@@
+		message := b.formatTaskErrorMessage(msgScraperNotInitialized)
+		b.Log(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (Scraper 미초기화)", nil, applog.Fields{
+			"detail": message,
+		})
+
+		b.sendErrorNotification(ctx, notificationSender, message)
+		return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgScraperNotInitialized, b.id, b.commandID)
 	}
 
-	if t.storage == nil {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, msgStorageNotInitialized)
-		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, nil)
-		t.notifyError(ctx, notificationSender, message)
-		return nil, apperrors.New(apperrors.Internal, msgStorageNotInitialized)
-	}
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 2단계: 이전 작업 결과(Snapshot) 로딩
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-	err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
-	if err != nil {
-		if errors.Is(err, contract.ErrTaskResultNotFound) {
-			// 최초 실행 시에는 데이터가 없는 것이 정상입니다.
-			// 경고 로그 대신 Info 로그를 남기고 빈 스냅샷으로 시작합니다.
-			t.LogWithContext("task.executor", applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
-		} else {
-			message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
-			t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err)
-			t.notify(ctx, notificationSender, message)
+	var snapshot any
+
+	// Snapshot 생성 팩토리 함수(newSnapshot)가 등록된 경우, 이전 작업 결과를 로딩합니다.
+	if b.newSnapshot != nil {
+		// 비어있는 Snapshot 인스턴스를 생성합니다.
+		snapshot = b.newSnapshot()
+
+		// Snapshot 생성 실패는 팩토리 함수의 구현 오류를 의미하므로 즉시 실패 처리합니다.
+		if snapshot == nil {
+			// @@@@@
+			message := b.formatTaskErrorMessage(msgSnapshotCreationFailed)
+			b.Log(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (Snapshot 생성 실패)", nil, applog.Fields{
+				"detail": message,
+			})
+			b.sendErrorNotification(ctx, notificationSender, message)
+			return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgSnapshotCreationFailed, b.id, b.commandID)
+		}
+
+		// Snapshot 인스턴스가 생성되었으므로, 데이터를 로드하기 위한 Storage가 반드시 초기화되어야 합니다.
+		if b.storage == nil {
+			// @@@@@
+			message := b.formatTaskErrorMessage(msgStorageNotInitialized)
+			b.Log(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (Storage 미초기화)", nil, applog.Fields{
+				"detail": message,
+			})
+			b.sendErrorNotification(ctx, notificationSender, message)
+			return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgStorageNotInitialized, b.id, b.commandID)
+		}
+
+		// Storage에서 이전 작업 결과를 로드합니다.
+		if err := b.storage.Load(b.ID(), b.CommandID(), snapshot); err != nil {
+			// 최초 실행 시에는 이전 작업 결과가 존재하지 않으므로, ErrTaskResultNotFound 에러는 정상적인 상황으로 간주합니다.
+			// 따라서 에러로 처리하지 않고 로그만 남긴 후 작업을 계속 진행합니다.
+			if errors.Is(err, contract.ErrTaskResultNotFound) {
+				// @@@@@
+				b.Log(component, applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
+			} else {
+				// 그 외의 에러(파일 시스템 오류, 역직렬화 실패 등)는 실제 문제이므로 에러 로그를 기록하고
+				// 사용자에게 알림을 전송한 후 실행을 중단합니다.
+				// @@@@@
+				message := fmt.Sprintf(msgPreviousSnapshotLoadFailed, err)
+				b.Log(component, applog.ErrorLevel, "이전 작업 결과 로딩 중 에러가 발생하였습니다", err, applog.Fields{
+					"detail": message,
+				})
+
+				// 사용자에 의한 취소(context.Canceled)인 경우 알림 소음을 방지하기 위해
+				// 에러 알림을 생략합니다.
+				if !errors.Is(err, context.Canceled) {
+					b.sendErrorNotification(ctx, notificationSender, message)
+				}
+
+				return nil, apperrors.Wrap(err, apperrors.Internal, "이전 작업 결과 로딩 실패")
+			}
 		}
 	}
 
 	return snapshot, nil
 }
 
-// handleExecutionResult 작업 결과를 처리합니다.
-func (t *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
-	if err == nil {
+// @@@@@
+// handleExecutionResult 비즈니스 로직(execute) 실행 후 반환된 결과를 처리하고 사용자에게 알림을 전송합니다.
+//
+// 이 메서드는 Task 실행의 마지막 단계로서, execute 함수가 반환한 결과(성공/실패)에 따라
+// 다음 세 가지 핵심 작업을 순차적으로 수행합니다:
+//
+//  1. 에러 처리: execute 실행 중 발생한 에러를 로깅하고 사용자에게 에러 알림 전송
+//  2. 상태 저장: 새로운 작업 결과(Snapshot)를 Storage에 영구 저장
+//  3. 성공 알림: 모든 과정이 성공한 경우에만 사용자에게 성공 메시지 전송
+//
+// 매개변수:
+//   - ctx: 알림 전송 및 저장 작업의 컨텍스트 (취소 신호 전파 용도)
+//   - notificationSender: 사용자에게 알림을 전송할 인터페이스 구현체
+//   - message: execute가 생성한 사용자 대상 알림 메시지 (성공 시 전송될 내용)
+//   - newSnapshot: execute가 생성한 새로운 작업 결과 데이터 (nil이면 저장 생략)
+//   - err: execute 실행 중 발생한 에러 (nil이면 성공으로 간주)
+func (b *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot any, err error) {
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 1단계: 비즈니스 로직(execute) 실행 에러 처리
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	//
+	// execute 함수가 에러를 반환한 경우, 작업 실행이 실패했음을 의미합니다.
+	// 이 경우 Snapshot 저장이나 성공 알림을 시도하지 않고 즉시 에러 처리 후 종료합니다.
+	if err != nil {
+		// 사용자에게 전송할 에러 메시지를 생성합니다.
+		// 공통 에러 헤더(msgTaskExecutionFailed)에 구체적인 실패 원인(err)을 결합합니다.
+		errorMsg := b.formatTaskErrorMessage(err)
+
+		// execute가 에러와 함께 부가 정보(message)를 반환한 경우,
+		// 이를 에러 메시지에 추가하여 사용자에게 더 많은 컨텍스트를 제공합니다.
 		if len(message) > 0 {
-			notificationSender.Notify(ctx, contract.Notification{
-				NotifierID:    t.GetNotifierID(),
-				TaskID:        t.GetID(),
-				CommandID:     t.GetCommandID(),
-				InstanceID:    t.GetInstanceID(),
-				Message:       message,
-				ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
-				ErrorOccurred: false,
-				Cancelable:    false, // Completed -> Not cancelable
-			})
+			errorMsg = fmt.Sprintf("%s\n\n%s", errorMsg, message)
 		}
 
-		if newSnapshot != nil {
-			if err0 := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot); err0 != nil {
-				message := fmt.Sprintf(msgNewSnapshotSaveFailed, err0)
-				t.LogWithContext("task.executor", applog.WarnLevel, message, nil, err0)
-				t.notifyError(ctx, notificationSender, message)
+		b.Log(component, applog.ErrorLevel, "작업 실행 로직(execute) 중 에러가 발생하였습니다", err, applog.Fields{"detail": errorMsg})
+
+		// 사용자가 명시적으로 작업을 취소한 경우(context.Canceled)에는
+		// 에러 알림을 전송하지 않아 불필요한 알림 소음(notification noise)을 방지합니다.
+		// 취소는 정상적인 사용자 행동이므로 에러로 간주하지 않습니다.
+		if !errors.Is(err, context.Canceled) {
+			b.sendErrorNotification(ctx, notificationSender, errorMsg)
+		}
+		return
+	}
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 2단계: 작업 결과(Snapshot) 저장
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	//
+	// execute가 성공적으로 실행되었고 새로운 Snapshot을 반환한 경우,
+	// 이를 Storage에 저장하여 다음 실행 시 참조할 수 있도록 영속화합니다.
+	//
+	// 설계 원칙: 성공 알림 전송보다 상태 저장을 우선 수행합니다.
+	// 이는 알림 전송이 실패하더라도 작업 결과는 보존되어야 하기 때문입니다.
+	if newSnapshot != nil {
+		if b.storage != nil {
+			err := b.storage.Save(b.ID(), b.CommandID(), newSnapshot)
+			if err != nil {
+				// Snapshot 저장 실패는 심각한 문제이지만, execute가 생성한 중요한 정보(message)를
+				// 사용자가 유실하지 않도록 에러 메시지와 함께 전송합니다.
+				//
+				// 예: "가격이 10,000원 → 8,000원으로 변경되었습니다" 같은 중요한 정보를
+				// 저장 실패로 인해 사용자가 놓치지 않도록 보장합니다.
+				errMsg := fmt.Sprintf(msgNewSnapshotSaveFailed, err)
+				if message != "" {
+					errMsg = fmt.Sprintf("%s\n\n---\n[비즈니스 실행 결과]\n%s", errMsg, message)
+				}
+
+				b.Log(component, applog.ErrorLevel, "작업 결과 저장 중 에러가 발생하였습니다", err, applog.Fields{"detail": errMsg})
+				b.sendErrorNotification(ctx, notificationSender, errMsg)
+				return
 			}
+		} else {
+			// execute가 Snapshot을 반환했는데 Storage가 초기화되지 않은 경우는
+			// Task 설정 오류 또는 구현 버그를 의미합니다.
+			//
+			// 이 상황은 개발 단계에서 발견되어야 하지만, 만약 프로덕션에서 발생하면
+			// 사용자에게 알려 시스템 관리자가 조치할 수 있도록 합니다.
+			errMsg := b.formatTaskErrorMessage(msgStorageNotInitialized)
+			if message != "" {
+				errMsg = fmt.Sprintf("%s\n\n---\n[비즈니스 실행 결과]\n%s", errMsg, message)
+			}
+			b.Log(component, applog.ErrorLevel, "작업 결과가 반환되었으나 Storage가 초기화되지 않아 저장할 수 없습니다", nil, applog.Fields{"detail": errMsg})
+			b.sendErrorNotification(ctx, notificationSender, errMsg)
+			return
 		}
-	} else {
-		message := fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, err)
-		t.LogWithContext("task.executor", applog.ErrorLevel, message, nil, err)
-		t.notifyError(ctx, notificationSender, message)
+	}
+
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	// 3단계: 성공 알림 전송
+	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+	//
+	// 모든 과정(execute 실행, Snapshot 저장)이 성공적으로 완료된 경우에만
+	// 사용자에게 성공 메시지를 전송합니다.
+	//
+	// message가 비어있는 경우는 execute가 의도적으로 알림을 생략한 것으로 간주하여
+	// 알림을 전송하지 않습니다. (예: 변경 사항이 없는 경우)
+	if len(message) > 0 {
+		notifyErr := notificationSender.Notify(ctx, b.newNotification(message, false))
+
+		// 알림 전송 실패는 로그로만 기록하고 Task 실행 자체는 성공으로 간주합니다.
+		// 이는 "알림 실패가 비즈니스 로직 실패로 전파되지 않도록" 하는 설계 원칙을 따릅니다.
+		if notifyErr != nil {
+			b.Log(component, applog.ErrorLevel, "성공 알림 전송 중 에러가 발생하였습니다", notifyErr, nil)
+		}
 	}
 }
 
-func (t *Base) notify(ctx context.Context, notificationSender contract.NotificationSender, message string) error {
-	return notificationSender.Notify(ctx, contract.Notification{
-		NotifierID:    t.GetNotifierID(),
-		TaskID:        t.GetID(),
-		CommandID:     t.GetCommandID(),
-		InstanceID:    t.GetInstanceID(),
-		Message:       message,
-		ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
-		ErrorOccurred: false,
-		Cancelable:    t.GetRunBy() == contract.TaskRunByUser,
-	})
-}
-
-func (t *Base) notifyError(ctx context.Context, notificationSender contract.NotificationSender, message string) error {
-	return notificationSender.Notify(ctx, contract.Notification{
-		NotifierID:    t.GetNotifierID(),
-		TaskID:        t.GetID(),
-		CommandID:     t.GetCommandID(),
-		InstanceID:    t.GetInstanceID(),
-		Message:       message,
-		ElapsedTime:   time.Duration(t.ElapsedTimeAfterRun()) * time.Second,
-		ErrorOccurred: true,
-		Cancelable:    false, // Error means termination, so not cancelable
-	})
-}
-
-// LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
-func (t *Base) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
-	fieldsMap := applog.Fields{
-		"task_id":     t.GetID(),
-		"command_id":  t.GetCommandID(),
-		"instance_id": t.GetInstanceID(),
-		"notifier_id": t.GetNotifierID(),
-		"run_by":      t.GetRunBy(),
-	}
-	for k, v := range fields {
-		fieldsMap[k] = v
-	}
+// sendErrorNotification 작업 실행 중 발생한 에러를 사용자에게 알림으로 전송합니다.
+//
+// 이 메서드는 Task 실행 과정에서 발생한 다양한 에러 상황(초기화 실패, 스크래핑 실패, 저장 실패 등)을
+// 사용자에게 알리기 위해 내부적으로 사용됩니다. Base에 바인딩된 메타데이터(TaskID, CommandID, Elapsed 등)를
+// 포함한 에러 알림 객체를 생성하고, NotificationSender를 통해 전송합니다.
+//
+// 알림 전송 자체가 실패하더라도 Task 실행 흐름을 중단하지 않으며, 대신 에러 로그를 기록하여
+// 시스템 안정성을 유지합니다. 이는 "알림 실패가 비즈니스 로직 실패로 전파되지 않도록" 하는 설계 원칙을 따릅니다.
+//
+// 매개변수:
+//   - ctx: 알림 전송 요청의 컨텍스트 (타임아웃, 취소 신호 전파 용도)
+//   - notificationSender: 알림 전송을 담당하는 인터페이스 구현체
+//   - message: 사용자에게 전달할 에러 메시지 본문
+func (b *Base) sendErrorNotification(ctx context.Context, notificationSender contract.NotificationSender, message string) {
+	err := notificationSender.Notify(ctx, b.newNotification(message, true))
 
 	if err != nil {
-		fieldsMap["error"] = err
+		b.Log(component, applog.ErrorLevel, "알림 전송 실패: 발송 요청이 실패하였습니다", err, nil)
 	}
+}
 
-	applog.WithComponentAndFields(component, fieldsMap).Log(level, message)
+// newNotification Base의 상태 정보를 기반으로 새로운 Notification 객체를 생성합니다.
+//
+// 이 메서드는 Task 실행 중 발생한 이벤트(성공, 실패, 패닉 등)를 사용자에게 알리기 위한
+// Notification 구조체를 초기화합니다. Base에 바인딩된 식별자(TaskID, CommandID 등)와
+// 실행 메타데이터(Elapsed)를 자동으로 포함하여 일관된 알림 형식을 보장합니다.
+//
+// 매개변수:
+//   - message: 사용자에게 전달할 알림 메시지 본문
+//   - errorOccurred: 에러 발생 여부 (true: 실패 알림, false: 성공 알림)
+func (b *Base) newNotification(message string, errorOccurred bool) contract.Notification {
+	return contract.Notification{
+		NotifierID: b.NotifierID(),
+
+		TaskID:     b.ID(),
+		CommandID:  b.CommandID(),
+		InstanceID: b.InstanceID(),
+
+		Message: message,
+		Elapsed: b.Elapsed(),
+
+		ErrorOccurred: errorOccurred,
+		Cancelable:    false,
+	}
+}
+
+// formatTaskErrorMessage 작업 실패 시 사용자에게 전송할 에러 메시지를 생성합니다.
+//
+// 이 메서드는 모든 Task 실행 에러에 대해 일관된 형식의 메시지를 생성하기 위해 사용됩니다.
+// 공통 에러 헤더(msgTaskExecutionFailed)에 구체적인 실패 원인(reason)을 결합하여,
+// 사용자가 문제를 쉽게 파악할 수 있도록 합니다.
+//
+// 매개변수:
+//   - reason: 작업 실패의 구체적인 원인 (문자열 또는 error 객체)
+//
+// 반환값:
+//   - string: 공통 헤더와 실패 원인이 결합된 최종 에러 메시지
+func (b *Base) formatTaskErrorMessage(reason any) string {
+	return fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, reason)
+}
+
+// Log 컴포넌트 이름, 에러, 추가 필드를 포함한 구조적 로깅을 수행합니다.
+//
+// 이 메서드는 Base 생성 시 바인딩된 기본 필드(task_id, command_id 등)에
+// 추가적인 컨텍스트 정보를 덧붙여 로그를 기록합니다.
+func (b *Base) Log(component string, level applog.Level, message string, err error, fields applog.Fields) {
+	entry := b.logger.WithField("component", component)
+	if err != nil {
+		entry = entry.WithError(err)
+	}
+	if len(fields) > 0 {
+		entry = entry.WithFields(fields)
+	}
+	entry.Log(level, message)
 }

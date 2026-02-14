@@ -66,10 +66,13 @@ func TestTaskSettings_Validate_TableDriven(t *testing.T) {
 		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.settings.validate()
-			if tt.wantError != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantError)
+			if err := tt.settings.Validate(); err != nil {
+				if tt.wantError != "" {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), tt.wantError)
+				} else {
+					assert.NoError(t, err)
+				}
 			} else {
 				assert.NoError(t, err)
 			}
@@ -129,7 +132,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				CommandID: validCommandID,
 			},
 			appConfig: &config.AppConfig{}, // Empty config
-			wantErr:   provider.ErrTaskSettingsNotFound,
+			wantErr:   provider.ErrTaskNotFound,
 		},
 		{
 			name: "실패: Task 필수 설정(ClientID) 누락",
@@ -178,7 +181,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				WithTask(string(validTaskID), "id", "secret").
 				WithCommand("OtherCommand", "q"). // 다른 커맨드만 있음
 				Build(),
-			wantErr: provider.ErrCommandSettingsNotFound,
+			wantErr: provider.ErrCommandNotFound,
 		},
 		{
 			name: "실패: Command 필수 설정(Query) 누락",
@@ -214,7 +217,14 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler, err := createTask("instance_1", tt.req, tt.appConfig, mockFetcher)
+			handler, err := newTask(provider.NewTaskParams{
+				InstanceID:  "test_instance",
+				Request:     tt.req,
+				AppConfig:   tt.appConfig,
+				Storage:     nil,
+				Fetcher:     mockFetcher,
+				NewSnapshot: func() any { return &watchPriceSnapshot{} },
+			})
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)

@@ -100,7 +100,7 @@ func TestNotification_String(t *testing.T) {
 				CommandID:     "CMD",
 				InstanceID:    "INST",
 				Message:       "Msg",
-				ElapsedTime:   time.Second,
+				Elapsed:       time.Second,
 				ErrorOccurred: true,
 				Cancelable:    true,
 			},

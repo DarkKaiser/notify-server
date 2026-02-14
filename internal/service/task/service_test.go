@@ -25,16 +25,16 @@ import (
 
 func registerServiceTestTask() {
 	// 정상 테스트용 Task 등록
-	config := &provider.Config{
-		Commands: []*provider.CommandConfig{
+	config := &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{
 				ID:            "TEST_COMMAND",
 				AllowMultiple: true,
 				NewSnapshot:   func() interface{} { return &struct{}{} },
 			},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+			return testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID), nil
 		},
 	}
 	provider.RegisterForTest("TEST_TASK", config)
@@ -344,14 +344,14 @@ func TestService_Submit_Timeout(t *testing.T) {
 	registerServiceTestTask() // Register basic tasks
 
 	// Register a slow task
-	provider.RegisterForTest("SLOW_TASK", &provider.Config{
-		Commands: []*provider.CommandConfig{
+	provider.RegisterForTest("SLOW_TASK", &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{ID: "SLOW_CMD", AllowMultiple: true},
 		},
-		NewTask: func(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
 			// Simulate slow initialization to block the consumer (run0 loop)
 			time.Sleep(100 * time.Millisecond)
-			return testutil.NewStubTask(req.TaskID, req.CommandID, instanceID), nil
+			return testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID), nil
 		},
 	})
 

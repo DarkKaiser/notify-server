@@ -9,6 +9,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/config"
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
@@ -64,6 +65,9 @@ type Service struct {
 	taskStopWG sync.WaitGroup
 
 	taskResultStore contract.TaskResultStore
+
+	// fetcher는 모든 Task가 공유하여 사용하는 HTTP 클라이언트입니다.
+	fetcher fetcher.Fetcher
 }
 
 // NewService 새로운 Service 인스턴스를 생성합니다.
@@ -89,6 +93,9 @@ func NewService(appConfig *config.AppConfig, idGenerator contract.IDGenerator, t
 		taskCancelC: make(chan contract.TaskInstanceID, defaultChannelBufferSize),
 
 		taskResultStore: taskResultStore,
+
+		// 모든 Task가 공유할 Fetcher를 초기화합니다.
+		fetcher: fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0),
 	}
 }
 
@@ -181,7 +188,7 @@ func (s *Service) handleSubmitRequest(serviceStopCtx context.Context, req *contr
 			CommandID:     req.CommandID,
 			InstanceID:    "", // InstanceID not yet generated
 			Message:       provider.ErrTaskNotSupported.Error(),
-			ElapsedTime:   0,
+			Elapsed:       0,
 			ErrorOccurred: true,
 			Cancelable:    false,
 		})
@@ -206,15 +213,15 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	defer s.runningMu.Unlock()
 
 	for _, task := range s.tasks {
-		if task.GetID() == req.TaskID && task.GetCommandID() == req.CommandID && !task.IsCanceled() {
+		if task.ID() == req.TaskID && task.CommandID() == req.CommandID && !task.IsCanceled() {
 			// req.TaskContext = req.TaskContext.WithTaskInstanceID... -> Removed
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
 				NotifierID:    req.NotifierID,
 				TaskID:        req.TaskID,
 				CommandID:     req.CommandID,
-				InstanceID:    task.GetInstanceID(),
+				InstanceID:    task.InstanceID(),
 				Message:       msgTaskAlreadyRunning,
-				ElapsedTime:   time.Duration(task.ElapsedTimeAfterRun()) * time.Second,
+				Elapsed:       task.Elapsed(),
 				ErrorOccurred: false,
 				Cancelable:    false,
 			})
@@ -225,7 +232,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	return false
 }
 
-func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ConfigLookup) {
+func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ResolvedConfig) {
 	// 무한 루프 방지를 위한 최대 재시도 횟수
 	const maxRetries = 3
 
@@ -250,7 +257,14 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		s.runningMu.Unlock()
 
 		// Task 인스턴스 생성
-		h, err := cfg.Task.NewTask(instanceID, req, s.appConfig)
+		h, err := cfg.Task.NewTask(provider.NewTaskParams{
+			InstanceID:  instanceID,
+			Request:     req,
+			AppConfig:   s.appConfig,
+			Storage:     s.taskResultStore,
+			Fetcher:     s.fetcher,
+			NewSnapshot: cfg.Command.NewSnapshot,
+		})
 		if h == nil {
 			applog.WithComponentAndFields("task.service", applog.Fields{
 				"task_id":    req.TaskID,
@@ -264,15 +278,13 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 				CommandID:     req.CommandID,
 				InstanceID:    "", // InstanceID not generated
 				Message:       err.Error(),
-				ElapsedTime:   0,
+				Elapsed:       0,
 				ErrorOccurred: true,
 				Cancelable:    false,
 			})
 
 			return // Task 생성 실패는 치명적 오류이므로 재시도하지 않고 종료합니다.
 		}
-
-		h.SetStorage(s.taskResultStore)
 
 		// 최종 등록 및 충돌 확인
 		s.runningMu.Lock()
@@ -293,9 +305,16 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 
 		// Task 실행
 		s.taskStopWG.Add(1)
-		// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
-		// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
-		go h.Run(context.Background(), s.notificationSender, &s.taskStopWG, s.taskDoneC)
+		go func(h provider.Task) {
+			defer s.taskStopWG.Done()
+			defer func() {
+				s.taskDoneC <- h.InstanceID()
+			}()
+
+			// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
+			// context.Background()를 전달합니다. Task 취소는 task.Cancel()을 통해 처리됩니다.
+			h.Run(context.Background(), s.notificationSender)
+		}(h)
 
 		if req.NotifyOnStart {
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
@@ -304,7 +323,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 				CommandID:     req.CommandID,
 				InstanceID:    instanceID,
 				Message:       msgTaskRunning,
-				ElapsedTime:   0,
+				Elapsed:       0,
 				ErrorOccurred: false,
 				Cancelable:    req.RunBy == contract.TaskRunByUser,
 			})
@@ -326,7 +345,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		CommandID:     req.CommandID,
 		InstanceID:    "",
 		Message:       "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).",
-		ElapsedTime:   0,
+		Elapsed:       0,
 		ErrorOccurred: true,
 		Cancelable:    false,
 	})
@@ -338,8 +357,8 @@ func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 
 	if task, exists := s.tasks[instanceID]; exists {
 		applog.WithComponentAndFields("task.service", applog.Fields{
-			"task_id":     task.GetID(),
-			"command_id":  task.GetCommandID(),
+			"task_id":     task.ID(),
+			"command_id":  task.CommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 완료")
 
@@ -359,18 +378,18 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 		task.Cancel()
 
 		applog.WithComponentAndFields("task.service", applog.Fields{
-			"task_id":     task.GetID(),
-			"command_id":  task.GetCommandID(),
+			"task_id":     task.ID(),
+			"command_id":  task.CommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 취소")
 
 		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
-			NotifierID:    task.GetNotifierID(),
-			TaskID:        task.GetID(),
-			CommandID:     task.GetCommandID(),
+			NotifierID:    task.NotifierID(),
+			TaskID:        task.ID(),
+			CommandID:     task.CommandID(),
 			InstanceID:    instanceID,
 			Message:       msgTaskCanceledByUser,
-			ElapsedTime:   time.Duration(task.ElapsedTimeAfterRun()) * time.Second,
+			Elapsed:       task.Elapsed(),
 			ErrorOccurred: false,
 			Cancelable:    false,
 		})

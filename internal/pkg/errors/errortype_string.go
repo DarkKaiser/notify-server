@@ -17,13 +17,14 @@ func _() {
 	_ = x[Conflict-6]
 	_ = x[NotFound-7]
 	_ = x[ExecutionFailed-8]
-	_ = x[Timeout-9]
-	_ = x[Unavailable-10]
+	_ = x[ParsingFailed-9]
+	_ = x[Timeout-10]
+	_ = x[Unavailable-11]
 }
 
-const _ErrorType_name = "UnknownInternalSystemUnauthorizedForbiddenInvalidInputConflictNotFoundExecutionFailedTimeoutUnavailable"
+const _ErrorType_name = "UnknownInternalSystemUnauthorizedForbiddenInvalidInputConflictNotFoundExecutionFailedParsingFailedTimeoutUnavailable"
 
-var _ErrorType_index = [...]uint8{0, 7, 15, 21, 33, 42, 54, 62, 70, 85, 92, 103}
+var _ErrorType_index = [...]uint8{0, 7, 15, 21, 33, 42, 54, 62, 70, 85, 98, 105, 116}
 
 func (i ErrorType) String() string {
 	idx := int(i) - 0

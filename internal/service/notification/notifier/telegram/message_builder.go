@@ -164,7 +164,7 @@ func (n *telegramNotifier) withCancelCommand(notification *contract.Notification
 //   - 경과 시간이 포함된 알림 메시지 (경과 시간이 0이면 원본 메시지 그대로)
 func (n *telegramNotifier) withElapsedTime(notification *contract.Notification, message string) string {
 	// 경과 시간이 0보다 큰 경우에만 포맷팅하여 추가
-	if elapsedTime := notification.ElapsedTime; elapsedTime > 0 {
+	if elapsedTime := notification.Elapsed; elapsedTime > 0 {
 		return message + formatElapsedTime(elapsedTime)
 	}
 	return message

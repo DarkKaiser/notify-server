@@ -1,135 +1,117 @@
-// Package lotto 로또 당첨 번호 예측 프로그램과 연동하여
-// 예측된 당첨 예상 번호를 알림으로 발송하는 작업을 수행하는 패키지입니다.
 package lotto
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
 	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
 const (
-	// TaskID
+	// TaskID 로또 당첨번호 예측 서비스와 연동되는 Task의 고유 식별자입니다.
 	TaskID contract.TaskID = "LOTTO"
 
-	// CommandID
-	PredictionCommand contract.TaskCommandID = "Prediction" // 로또 번호 예측
+	// PredictionCommand 로또 당첨번호 예측을 수행하는 Command의 고유 식별자입니다.
+	// 이 Command는 외부 Java 프로그램(JAR)을 실행하여 로또 당첨번호를 예측하고,
+	// 예측 결과를 텔레그램 등을 통해 전송합니다.
+	PredictionCommand contract.TaskCommandID = "Prediction"
 
-	// jarFileName PredictionCommand 수행 시 실행되는 JAR 파일명
-	jarFileName = "lottoprediction-1.0.0.jar"
+	// predictionJarName 로또 당첨번호 예측을 수행하는 외부 Java 프로그램(JAR)의 파일명입니다.
+	//
+	// 이 상수는 PredictionCommand 실행 시 사용되며, Task 초기화 단계(newTask)에서 해당 파일의
+	// 존재 여부를 검증합니다. JAR 파일은 반드시 Task 설정의 app_path로 지정된 디렉터리 내에
+	// 위치해야 하며, 그렇지 않을 경우 Task 생성이 실패합니다.
+	predictionJarName = "lottoprediction-1.0.0.jar"
 )
 
-var execLookPath = exec.LookPath
+// lookPath os/exec 패키지의 LookPath 함수를 참조합니다.
+// 이 변수는 단위 테스트 시 외부 실행 파일(예: java)의 존재 여부를 확인하는 로직을 가상화(Mocking)하기 위해 사용됩니다.
+var lookPath = exec.LookPath
 
 type taskSettings struct {
 	AppPath string `json:"app_path"`
 }
 
-func (s *taskSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*taskSettings)(nil)
+
+func (s *taskSettings) Validate() error {
 	s.AppPath = strings.TrimSpace(s.AppPath)
 	if s.AppPath == "" {
-		return apperrors.New(apperrors.InvalidInput, "'app_path'가 입력되지 않았거나 공백입니다")
+		return ErrAppPathMissing
 	}
 
 	// 절대 경로로 변환하여 실행 위치(CWD)에 독립적으로 만듭니다.
 	absPath, err := filepath.Abs(s.AppPath)
 	if err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'에 대한 절대 경로 변환 처리에 실패하였습니다")
+		return newErrAppPathAbsFailed(err)
 	}
 	s.AppPath = absPath
 
 	if err := validation.ValidateDir(s.AppPath); err != nil {
-		return apperrors.Wrap(err, apperrors.InvalidInput, "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다")
+		return newErrAppPathDirValidationFailed(err)
 	}
 
 	return nil
 }
 
 func init() {
-	provider.Register(TaskID, &provider.Config{
-		Commands: []*provider.CommandConfig{
+	provider.MustRegister(TaskID, &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{
 				ID: PredictionCommand,
 
 				AllowMultiple: false,
 
-				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
+				NewSnapshot: func() any { return &predictionSnapshot{} },
 			},
 		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-	return createTask(instanceID, req, appConfig, &defaultCommandExecutor{})
-}
-
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, executor commandExecutor) (provider.Task, error) {
-	if req.TaskID != TaskID {
-		return nil, provider.ErrTaskNotSupported
+func newTask(params provider.NewTaskParams) (provider.Task, error) {
+	if params.Request.TaskID != TaskID {
+		return nil, provider.NewErrTaskNotSupported(params.Request.TaskID)
 	}
 
-	var appPath string
-
-	found := false
-	for _, t := range appConfig.Tasks {
-		if req.TaskID == contract.TaskID(t.ID) {
-			settings, err := maputil.Decode[taskSettings](t.Data)
-			if err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidTaskSettings.Error())
-			}
-			if err := settings.validate(); err != nil {
-				return nil, err
-			}
-
-			appPath = settings.AppPath
-
-			// JAR 파일 존재 여부 검증
-			// 실제 실행 시점의 에러를 방지하기 위해 미리 확인합니다.
-			jarPath := filepath.Join(appPath, jarFileName)
-			if err := validation.ValidateFile(jarPath); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.InvalidInput, fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName))
-			}
-
-			// Java 실행 가능 여부 검증
-			if _, err := execLookPath("java"); err != nil {
-				return nil, apperrors.Wrap(err, apperrors.System, "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다. PATH 설정을 확인해 주십시오")
-			}
-
-			found = true
-
-			break
-		}
+	taskSettings, err := provider.FindTaskSettings[taskSettings](params.AppConfig, params.Request.TaskID)
+	if err != nil {
+		return nil, err
 	}
-	if !found {
-		return nil, provider.ErrTaskSettingsNotFound
+
+	// 로또 당첨번호 예측을 담당하는 외부 JAR 파일이 지정된 경로에 존재하는지 확인합니다.
+	predictionJarPath := filepath.Join(taskSettings.AppPath, predictionJarName)
+	if err := validation.ValidateFile(predictionJarPath); err != nil {
+		return nil, newErrJarFileNotFound(err, predictionJarName)
+	}
+
+	// JAR 파일을 실행하기 위해 시스템에 Java가 설치되어 있는지 확인합니다.
+	if _, err := lookPath("java"); err != nil {
+		return nil, newErrJavaNotFound(err)
 	}
 
 	lottoTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		Base: provider.NewBase(params, false),
 
-		appPath: appPath,
+		appPath: taskSettings.AppPath,
 
-		executor: executor,
+		executor: &defaultCommandExecutor{},
 	}
 
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다.
-	switch req.CommandID {
+	// Command에 따른 실행 함수를 미리 바인딩합니다.
+	switch params.Request.CommandID {
 	case PredictionCommand:
-		lottoTask.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
+		lottoTask.SetExecute(func(ctx context.Context, _ any, _ bool) (string, any, error) {
 			return lottoTask.executePrediction()
 		})
+
 	default:
-		return nil, provider.NewErrCommandNotSupported(req.CommandID)
+		return nil, provider.NewErrCommandNotSupported(params.Request.CommandID, []contract.TaskCommandID{PredictionCommand})
 	}
 
 	return lottoTask, nil
@@ -142,3 +124,6 @@ type task struct {
 
 	executor commandExecutor
 }
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Task = (*task)(nil)

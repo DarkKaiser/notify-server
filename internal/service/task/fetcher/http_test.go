@@ -345,3 +345,39 @@ func TestHTTPFetcher_ProxyConfiguration(t *testing.T) {
 		assert.Contains(t, err.Error(), "프록시 URL의 형식이 유효하지 않습니다") // Expected error message
 	})
 }
+
+// TestHTTPFetcher_Close_ExternalTransport verifies that an externally injected Transport
+// is NOT closed when the HTTPFetcher is closed.
+func TestHTTPFetcher_Close_ExternalTransport(t *testing.T) {
+	// 1. Create a dummy server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	// 2. Create a shared Transport
+	sharedTr := &http.Transport{
+		MaxIdleConns: 1,
+	}
+
+	// 3. Create Fetcher with this Transport
+	f := fetcher.NewHTTPFetcher(fetcher.WithTransport(sharedTr))
+
+	// 4. Perform a request to ensure connection is established and put in pool
+	req, _ := http.NewRequest("GET", ts.URL, nil)
+	resp, err := f.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	// 5. Close the Fetcher
+	// This should NOT close the sharedTr due to ownsTransport=false
+	err = f.Close()
+	require.NoError(t, err)
+
+	// 6. Verify Transport is still usable by another client
+	client2 := &http.Client{Transport: sharedTr}
+	resp2, err2 := client2.Get(ts.URL)
+	require.NoError(t, err2)
+	assert.Equal(t, http.StatusOK, resp2.StatusCode)
+	resp2.Body.Close()
+}

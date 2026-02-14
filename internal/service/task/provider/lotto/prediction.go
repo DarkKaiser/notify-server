@@ -39,7 +39,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		}
 	}()
 
-	jarPath := filepath.Join(t.appPath, jarFileName)
+	jarPath := filepath.Join(t.appPath, predictionJarName)
 
 	// 비동기적으로 작업을 시작한다
 	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", jarPath)
@@ -58,9 +58,9 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		// 에러 발생 시 Stderr 내용을 포함하여 로깅합니다.
 		stderr := process.Stderr()
 		if len(stderr) > 0 {
-			t.LogWithContext("task.lotto", applog.ErrorLevel, "외부 프로세스 실행 중 에러 발생", applog.Fields{
+			t.Log("task.lotto", applog.ErrorLevel, "외부 프로세스 실행 중 에러 발생", err, applog.Fields{
 				"stderr": stderr,
-			}, err)
+			})
 		}
 		return "", nil, err
 	}
@@ -96,9 +96,9 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 	defer func() {
 		// 분석이 끝난 로그 파일은 삭제한다.
 		if err := os.Remove(analysisFilePath); err != nil {
-			t.LogWithContext("task.lotto", applog.WarnLevel, "분석 결과 임시 파일 삭제 실패", applog.Fields{
+			t.Log("task.lotto", applog.WarnLevel, "분석 결과 임시 파일 삭제 실패", err, applog.Fields{
 				"path": analysisFilePath,
-			}, err)
+			})
 		}
 	}()
 

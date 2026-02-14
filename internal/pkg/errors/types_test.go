@@ -21,6 +21,7 @@ var definedTypes = []struct {
 	{Conflict, "Conflict"},
 	{NotFound, "NotFound"},
 	{ExecutionFailed, "ExecutionFailed"},
+	{ParsingFailed, "ParsingFailed"},
 	{Timeout, "Timeout"},
 	{Unavailable, "Unavailable"},
 }
@@ -104,6 +105,45 @@ func TestErrorType_Invariants(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestErrorType_Exhaustiveness ensures that all defined ErrorType constants
+// are present in the 'definedTypes' slice used for testing.
+// It iterates from 0 upwards until it finds the first undefined ErrorType (one that returns "ErrorType(N)").
+// If it encounters a defined type (valid string output) that is NOT in 'definedTypes', the test fails.
+func TestErrorType_Exhaustiveness(t *testing.T) {
+	t.Parallel()
+
+	// Create a lookup map for O(1) checking
+	known := make(map[ErrorType]bool)
+	for _, dt := range definedTypes {
+		known[dt.errType] = true
+	}
+
+	// Dynamic discovery: iterate from 0
+	// We assume types are somewhat contiguous or at least start from 0 (iota).
+	// We'll stop after finding a sequence of undefined values to be safe,
+	// or we can rely on String() behavior.
+	// Since generated String() returns "ErrorType(d)" for unknown values, we check for that.
+
+	const maxScan = 255 // Arbitrary reasonable limit for enum scan
+
+	for i := 0; i < maxScan; i++ {
+		et := ErrorType(i)
+		str := et.String()
+
+		// Check if this appears to be a generated fallback string "ErrorType(N)"
+		// Ideally we would check `str == fmt.Sprintf("ErrorType(%d)", i)` but exact format matching is robust enough.
+		isFallback := str == fmt.Sprintf("ErrorType(%d)", i)
+
+		if !isFallback {
+			// This is a DEFINED constant (it has a string name).
+			// It MUST be in our 'known' map.
+			if !known[et] {
+				t.Errorf("Critical: ErrorType constant '%s' (value %d) is defined in types.go but MISSING in types_test.go/definedTypes", str, i)
+			}
+		}
+	}
 }
 
 // TestErrorType_Printability confirms that ErrorType implements fmt.Stringer correctly

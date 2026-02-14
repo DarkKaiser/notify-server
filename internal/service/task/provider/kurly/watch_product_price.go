@@ -13,6 +13,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -40,7 +41,10 @@ type watchProductPriceSettings struct {
 	WatchProductsFile string `json:"watch_products_file"`
 }
 
-func (s *watchProductPriceSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*watchProductPriceSettings)(nil)
+
+func (s *watchProductPriceSettings) Validate() error {
 	s.WatchProductsFile = strings.TrimSpace(s.WatchProductsFile)
 	if s.WatchProductsFile == "" {
 		return apperrors.New(apperrors.InvalidInput, "watch_products_file이 입력되지 않았거나 공백입니다")
@@ -97,6 +101,12 @@ func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoa
 	}
 
 	for _, record := range records {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			t.Log("task.kurly", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, nil)
+			return "", nil, nil
+		}
+
 		if record[csvColumnStatus] != csvStatusEnabled {
 			continue
 		}
@@ -130,7 +140,7 @@ func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoa
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.kurly", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.Log("task.kurly", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 
@@ -194,7 +204,7 @@ func (t *task) fetchProductInfo(ctx context.Context, id int) (*product, error) {
 	// @@@@@
 	// 상품 페이지를 읽어들인다.
 	productPageURL := formatProductPageURL(id)
-	doc, err := scraper.FetchHTMLDocument(ctx, t.GetFetcher(), productPageURL)
+	doc, err := t.Scraper().FetchHTMLDocument(ctx, productPageURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +658,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 
 	// 변경 사항이 없더라도, 사용자가 명시적 의도로 작업(RunByUser)을 실행한 경우에는 침묵하지 않고 현재 상태를 보고합니다.
 	// 이는 시스템이 정상 동작 중임을 사용자에게 확신시켜 주기 위한 중요한 UX 장치입니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		if len(currentSnapshot.Products) == 0 {
 			return "등록된 상품 정보가 존재하지 않습니다."
 		}

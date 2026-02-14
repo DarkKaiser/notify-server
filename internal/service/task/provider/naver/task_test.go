@@ -124,7 +124,8 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 			}
 
 			// Execution
-			cmdConfig, _ := findCommandSettings(h.appConfig, TaskID, WatchNewPerformancesCommand)
+			cmdConfig, err := provider.FindCommandSettings[watchNewPerformancesSettings](h.appConfig, TaskID, WatchNewPerformancesCommand)
+			require.NoError(t, err)
 			msg, newSnapshot, err := h.task.executeWatchNewPerformances(context.Background(), cmdConfig, tt.prevSnapshot, true)
 
 			// Verification
@@ -163,7 +164,8 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 
 	// Mock Storage 설정 (Integration Test 전용)
 	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작
-	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(fmt.Errorf("no data"))
+	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작 (ErrTaskResultNotFound 반환해야 진행됨)
+	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(contract.ErrTaskResultNotFound)
 	// Save 호출 성공
 	h.storage.On("Save", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(nil)
 
@@ -181,8 +183,17 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 	sender := &mockNotificationSender{}
 
 	wg.Add(1)
-	// RunByUser는 한 번 실행 후 종료됨
-	h.task.Run(context.Background(), sender, &wg, quit)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			quit <- h.taskHandler.InstanceID()
+		}()
+		// RunByUser는 한 번 실행 후 종료됨
+		h.task.Run(context.Background(), sender)
+	}()
+
+	// Wait for execution to finish
+	wg.Wait()
 
 	// Verify Storage Interaction
 	h.storage.AssertExpectations(t)
@@ -210,8 +221,8 @@ func newTestHelper(t *testing.T) *testHelper {
 	storage := &contractmocks.MockTaskResultStore{}
 
 	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
-	provider.Register(TaskID, &provider.Config{
-		Commands: []*provider.CommandConfig{{
+	provider.Register(TaskID, &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{{
 			ID: WatchNewPerformancesCommand,
 
 			AllowMultiple: true,
@@ -243,12 +254,18 @@ func (h *testHelper) initTask(runBy contract.TaskRunBy) {
 		RunBy:      runBy, // Scheduler or User
 	}
 
-	handler, err := createTask("test_instance", req, h.appConfig, h.fetcher)
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   h.appConfig,
+		Storage:     h.storage,
+		Fetcher:     h.fetcher,
+		NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
+	})
 	require.NoError(h.t, err)
 
 	h.taskHandler = handler
 	h.task = handler.(*task)
-	h.task.SetStorage(h.storage)
 }
 
 // === Mock Response Builder ===

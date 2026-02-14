@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
 var (
@@ -310,9 +312,11 @@ func newTransport(baseTr *http.Transport, cfg transportConfig) (*http.Transport,
 		if *cfg.proxyURL == NoProxy || *cfg.proxyURL == "" {
 			// 프록시 비활성화:
 			// NoProxy("DIRECT") 또는 빈 문자열("")이 설정된 경우, 프록시를 완전히 비활성화합니다.
-			// Transport.Proxy를 nil로 설정하여 환경 변수(HTTP_PROXY, HTTPS_PROXY)도 무시하고,
-			// 모든 요청이 프록시 없이 대상 서버로 직접 연결되도록 합니다.
-			newTr.Proxy = nil
+			//
+			// [주의] Transport.Proxy를 nil로 설정하면 Go 기본 동작에 따라 환경 변수(HTTP_PROXY 등)를 참조하게 됩니다.
+			// 따라서 환경 변수마저 무시하고 강제로 Direct 연결을 하려면, 항상 nil을 반환하는 함수를 할당해야 합니다.
+			// http.ProxyURL(nil)이 바로 이러한 함수(항상 nil 반환)를 생성해줍니다.
+			newTr.Proxy = http.ProxyURL(nil)
 		} else {
 			// 프록시 URL 설정:
 			// - 제공된 URL을 파싱하여 프록시 서버로 설정합니다.
@@ -603,10 +607,10 @@ func (f *HTTPFetcher) needsCustomTransport() bool {
 // 반환값:
 //   - error: Transport 생성 실패 시 에러 (예: 잘못된 프록시 URL)
 func (f *HTTPFetcher) configureTransportFromOptions() error {
-	// 1단계: Transport 설정 객체 생성
+	// Transport 설정 객체 생성
 	cfg := f.toTransportConfig()
 
-	// 2단계: 운영 모드 선택
+	// 운영 모드 선택
 	if f.disableTransportCaching {
 		// 격리 모드:
 		// - 이 Fetcher 전용의 독립적인 Transport를 생성합니다.
@@ -618,6 +622,9 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 		}
 
 		f.client.Transport = newTr
+
+		// 격리 모드에서 생성한 Transport는 이 Fetcher가 독점적으로 소유합니다.
+		f.ownsTransport = true
 
 		return nil
 	}
@@ -632,6 +639,9 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 	}
 
 	f.client.Transport = tr
+
+	// 공유 Transport는 캐시가 소유하므로, 개별 Fetcher는 소유권을 갖지 않습니다.
+	f.ownsTransport = false
 
 	return nil
 }
@@ -659,17 +669,54 @@ func (f *HTTPFetcher) configureTransportFromOptions() error {
 // 반환값:
 //   - error: 프록시 URL 파싱 실패 시 에러
 func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
-	// 1단계: 복제 필요성 검사
+	// 복제 필요성 검사
 	// 외부에서 주입된 Transport의 현재 설정이 사용자가 요청한 설정과 이미 일치하는지 확인합니다.
 	// 일치한다면 복제 없이 원본을 그대로 사용하여 불필요한 메모리 사용과 처리 비용을 절약합니다.
 	if !f.shouldCloneTransport(tr) {
+		// 외부에서 주입된 Transport를 그대로 사용하므로 소유권은 외부에 있습니다.
+		f.ownsTransport = false
+
 		return nil
 	}
 
-	// 2단계: Transport 설정 객체 생성
+	// ⚠️ 성능 경고 로그
+	//
+	// WithTransport + 다른 Transport 설정 옵션 동시 사용 시 성능 경고:
+	//   - 원본 보호를 위해 Transport 복제 → 매번 새로운 커넥션 풀 생성 (캐싱 비활성화)
+	//   - 해결: WithTransport 없이 옵션만 사용 또는 모든 설정 완료 후 Transport 주입
+	//   - 로그 필드로 어떤 설정이 복제를 유발했는지 추적
+	fields := applog.Fields{}
+	if f.proxyURL != nil {
+		fields["proxy_changed"] = true
+	}
+	if f.maxIdleConns != nil && tr.MaxIdleConns != *f.maxIdleConns {
+		fields["max_idle_conns_changed"] = true
+	}
+	if f.maxIdleConnsPerHost != nil && tr.MaxIdleConnsPerHost != *f.maxIdleConnsPerHost {
+		fields["max_idle_conns_per_host_changed"] = true
+	}
+	if f.maxConnsPerHost != nil && tr.MaxConnsPerHost != *f.maxConnsPerHost {
+		fields["max_conns_per_host_changed"] = true
+	}
+	if f.tlsHandshakeTimeout != nil && tr.TLSHandshakeTimeout != *f.tlsHandshakeTimeout {
+		fields["tls_handshake_timeout_changed"] = true
+	}
+	if f.responseHeaderTimeout != nil && tr.ResponseHeaderTimeout != *f.responseHeaderTimeout {
+		fields["response_header_timeout_changed"] = true
+	}
+	if f.idleConnTimeout != nil && tr.IdleConnTimeout != *f.idleConnTimeout {
+		fields["idle_conn_timeout_changed"] = true
+	}
+	applog.WithComponent(component).
+		WithFields(fields).
+		Warn("외부 Transport 주입 시 추가 설정 옵션 적용으로 인한 성능 저하 감지: " +
+			"Copy-on-Write 전략에 따라 Transport가 복제되어 커넥션 풀 재사용이 불가능합니다. " +
+			"권장 사항: 내부 캐싱 활용을 위해 WithTransport 옵션 제거 또는 사전 구성된 Transport 주입")
+
+	// Transport 설정 객체 생성
 	cfg := f.toTransportConfig()
 
-	// 3단계: Copy-on-Write (CoW) 전략 적용
+	// Copy-on-Write (CoW) 전략 적용
 	// 외부에서 주입된 Transport를 복제하고, 복제본에만 사용자 설정을 적용합니다.
 	// 이를 통해 원본 Transport는 변경되지 않고 보호되며, 새로운 독립적인 Transport가 생성됩니다.
 	newTr, err := newTransport(tr, cfg)
@@ -677,12 +724,15 @@ func (f *HTTPFetcher) configureTransportFromExternal(tr *http.Transport) error {
 		return newErrIsolatedTransportCreateFailed(err)
 	}
 
-	// 4단계: 격리 모드로 전환
+	// 격리 모드로 전환
 	// 복제된 Transport는 다른 Fetcher와 공유되지 않는 격리된 리소스입니다.
 	// Close() 호출 시 안전하게 정리할 수 있도록 캐싱을 비활성화합니다.
 	f.disableTransportCaching = true
 
 	f.client.Transport = newTr
+
+	// 복제된 Transport는 이 Fetcher가 생성했으므로 소유권을 가집니다.
+	f.ownsTransport = true
 
 	return nil
 }

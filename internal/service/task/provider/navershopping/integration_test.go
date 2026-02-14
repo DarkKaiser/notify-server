@@ -32,11 +32,23 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher call removed as it's deprecated
 
 	// 1. 초기 상태 설정
 	commandSettings := &watchPriceSettings{
@@ -91,11 +103,23 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher call removed as it's deprecated
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchPriceSettings{
@@ -119,11 +143,23 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(TaskID, WatchPriceAnyCommand, "test_instance", "test-notifier", contract.TaskRunByUnknown),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher call removed as it's deprecated
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchPriceSettings{
@@ -198,7 +234,14 @@ func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -293,7 +336,14 @@ func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)
@@ -401,7 +451,14 @@ func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
 		},
 	}
 
-	handler, err := createTask("test_instance", req, appConfig, mockFetcher)
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID:  "test_instance",
+		Request:     req,
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     mockFetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
+	})
 	require.NoError(t, err)
 	tTask, ok := handler.(*task)
 	require.True(t, ok)

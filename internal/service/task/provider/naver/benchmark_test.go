@@ -69,15 +69,27 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchNewPerformancesCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByScheduler,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}, true),
 	}
-	tTask.SetFetcher(mockFetcher)
+	// SetFetcher removed
 
 	config := &watchNewPerformancesSettings{
 		Query: query,
 	}
 	// Eager Initialization (중요: Panic 방지 및 Thread Safety 확보)
-	err := config.validate()
+	err := config.Validate()
 	require.NoError(b, err)
 
 	return tTask, config
@@ -151,7 +163,19 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	}
 
 	tTask := &task{
-		Base: provider.NewBase(TaskID, WatchNewPerformancesCommand, "test_instance", "test-notifier", contract.TaskRunByScheduler),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchNewPerformancesCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByScheduler,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mocks.NewMockHTTPFetcher(),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}, true),
 	}
 
 	prevPerformancesSet := make(map[string]bool)

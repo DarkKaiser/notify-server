@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -63,7 +64,10 @@ type watchPriceSettings struct {
 	} `json:"filters"`
 }
 
-func (s *watchPriceSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*watchPriceSettings)(nil)
+
+func (s *watchPriceSettings) Validate() error {
 	s.Query = strings.TrimSpace(s.Query)
 	if s.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
@@ -141,7 +145,7 @@ func (t *task) executeWatchPrice(ctx context.Context, commandSettings *watchPric
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.navershopping", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.Log("task.navershopping", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 
@@ -154,9 +158,9 @@ func (t *task) executeWatchPrice(ctx context.Context, commandSettings *watchPric
 // fetchProducts 네이버 쇼핑 검색 API를 호출하여 조건에 맞는 상품 목록을 수집합니다.
 func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSettings) ([]*product, error) {
 	var (
-		header = map[string]string{
-			"X-Naver-Client-Id":     t.clientID,
-			"X-Naver-Client-Secret": t.clientSecret,
+		header = http.Header{
+			"X-Naver-Client-Id":     []string{t.clientID},
+			"X-Naver-Client-Secret": []string{t.clientSecret},
 		}
 
 		startIndex       = 1
@@ -176,20 +180,20 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	for startIndex <= targetFetchCount {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", applog.Fields{
+			t.Log("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 상품 정보 수집 프로세스를 중단합니다", nil, applog.Fields{
 				"start_index":          startIndex,
 				"total_fetched_so_far": len(pageContent.Items),
-			}, nil)
+			})
 
 			return nil, nil
 		}
 
-		t.LogWithContext("task.navershopping", applog.DebugLevel, "네이버 쇼핑 검색 API 페이지를 요청합니다", applog.Fields{
+		t.Log("task.navershopping", applog.DebugLevel, "네이버 쇼핑 검색 API 페이지를 요청합니다", nil, applog.Fields{
 			"query":         commandSettings.Query,
 			"start_index":   startIndex,
 			"display_count": apiDisplayCount,
 			"sort_option":   apiSortOption,
-		}, nil)
+		})
 
 		// `baseURL`은 루프 불변 템플릿으로, 파싱 비용을 절감하는 동시에 상태 격리를 보장합니다.
 		// 구조체 역참조(*baseURL)를 통한 값 복사(Value Copy)는 매 반복마다 깨끗한(Clean) 상태를 보장하며,
@@ -203,7 +207,7 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = scraper.FetchJSON(ctx, t.GetFetcher(), "GET", u.String(), header, nil, currentPage)
+		err = t.Scraper().FetchJSON(ctx, "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}
@@ -233,13 +237,13 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 
 	// 수집된 결과가 없는 경우, 불필요한 슬라이스 할당(`make`)과 후속 키워드 매칭 로직을 건너뛰고 즉시 종료합니다.
 	if len(pageContent.Items) == 0 {
-		t.LogWithContext("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다 (검색 결과 없음)", applog.Fields{
+		t.Log("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다 (검색 결과 없음)", nil, applog.Fields{
 			"collected_count": 0,
 			"fetched_count":   0,
 			"api_total_count": pageContent.Total,
 			"api_start":       pageContent.Start,
 			"api_display":     pageContent.Display,
-		}, nil)
+		})
 
 		return nil, nil
 	}
@@ -256,6 +260,16 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	products := make([]*product, 0, len(pageContent.Items))
 
 	for _, item := range pageContent.Items {
+		// 작업 취소 여부 확인
+		if t.IsCanceled() {
+			t.Log("task.navershopping", applog.WarnLevel, "작업 취소 요청이 감지되어 키워드 매칭 프로세스를 중단합니다", nil, applog.Fields{
+				"total_items":     len(pageContent.Items),
+				"processed_items": len(products),
+			})
+
+			return nil, nil
+		}
+
 		// 키워드 매칭 검사 전에 HTML 태그를 제거합니다.
 		// 네이버 검색 API는 매칭된 키워드를 <b> 태그로 감싸서 반환하므로,
 		// 이를 제거해야 정확한 키워드 매칭(특히 제외 키워드)이 가능합니다.
@@ -272,13 +286,13 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		}
 	}
 
-	t.LogWithContext("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", applog.Fields{
+	t.Log("task.navershopping", applog.InfoLevel, "상품 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", nil, applog.Fields{
 		"collected_count": len(products),
 		"fetched_count":   len(pageContent.Items),
 		"api_total_count": pageContent.Total,
 		"api_start":       pageContent.Start,
 		"api_display":     pageContent.Display,
-	}, nil)
+	})
 
 	return products, nil
 }
@@ -289,14 +303,14 @@ func (t *task) mapToProduct(item *searchResponseItem) *product {
 	cleanPrice := strings.ReplaceAll(item.LowPrice, ",", "")
 	lowPrice, err := strconv.Atoi(cleanPrice)
 	if err != nil {
-		t.LogWithContext("task.navershopping", applog.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", applog.Fields{
+		t.Log("task.navershopping", applog.WarnLevel, "상품 가격 데이터의 형식이 유효하지 않아 파싱할 수 없습니다 (해당 상품 건너뜀)", nil, applog.Fields{
 			"product_id":      item.ProductID,
 			"product_type":    item.ProductType,
 			"title":           item.Title,
 			"raw_price_value": item.LowPrice,
 			"clean_price":     cleanPrice,
 			"parse_error":     err.Error(),
-		}, nil)
+		})
 
 		return nil
 	}
@@ -344,7 +358,7 @@ func (t *task) analyzeAndReport(commandSettings *watchPriceSettings, currentSnap
 	//
 	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
 
 		if len(currentSnapshot.Products) == 0 {

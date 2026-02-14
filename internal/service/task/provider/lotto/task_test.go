@@ -14,27 +14,33 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	fetchermocks "github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// MockLookPath는 테스트를 위해 execLookPath 함수를 교체하는 Helper입니다.
+// MockLookPath는 테스트를 위해 lookPath 함수를 교체하는 Helper입니다.
 func mockLookPath(mockFunc func(file string) (string, error)) func() {
-	original := execLookPath
-	execLookPath = mockFunc
+	original := lookPath
+	lookPath = mockFunc
 	return func() {
-		execLookPath = original
+		lookPath = original
 	}
 }
 
 func TestNewTask_Comprehensive(t *testing.T) {
+	// lotto.init()이 이미 실행되었겠지만, 테스트를 위해 명시적으로 확인하거나
+	// provider.Register가 중복 호출되면 패닉이 발생하므로 주의해야 합니다.
+	// 기본적으로 lotto.init()에서 등록되므로 별도 등록은 필요 없으나,
+	// req.TaskID와 req.CommandID가 올바른지 확인해야 합니다.
+
 	// 정상적인 상황을 위한 기본 설정 Helper
 	setupValidEnv := func(t *testing.T) (string, *appconfig.AppConfig) {
 		tmpDir := t.TempDir()
 		// JAR 파일 생성
-		f, err := os.Create(filepath.Join(tmpDir, jarFileName))
+		f, err := os.Create(filepath.Join(tmpDir, predictionJarName))
 		require.NoError(t, err)
 		f.Close()
 
@@ -43,6 +49,11 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				{
 					ID:   string(TaskID),
 					Data: map[string]interface{}{"app_path": tmpDir},
+					Commands: []appconfig.CommandConfig{
+						{
+							ID: string(PredictionCommand),
+						},
+					},
 				},
 			},
 		}
@@ -88,7 +99,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				// 빈 설정
 				return req, &appconfig.AppConfig{Tasks: []appconfig.TaskConfig{}}, func() {}
 			},
-			expectedError: provider.ErrTaskSettingsNotFound.Error(),
+			expectedError: provider.ErrTaskNotFound.Error(),
 		},
 		{
 			name: "Empty AppPath",
@@ -99,7 +110,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "'app_path'가 입력되지 않았거나 공백입니다",
+			expectedError: ErrAppPathMissing.Error(), // 이제 New/Newf 결과값과 직접 비교
 		},
 		{
 			name: "Non-existent AppPath",
@@ -110,7 +121,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다",
+			expectedError: "app_path로 지정된 디렉터리 검증에 실패하였습니다",
 		},
 		{
 			name: "Missing JAR File",
@@ -123,7 +134,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				return req, cfg, func() {}
 			},
-			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName),
+			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", predictionJarName),
 		},
 		{
 			name: "Missing Java Runtime",
@@ -137,7 +148,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				})
 				return req, cfg, restore
 			},
-			expectedError: "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다",
+			expectedError: "Java 런타임(JRE) 환경을 찾을 수 없습니다",
 		},
 		{
 			name: "Invalid Command TaskID",
@@ -155,22 +166,31 @@ func TestNewTask_Comprehensive(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req, cfg, restore := tt.prepare(t)
-			defer restore()
+			if restore != nil {
+				defer restore()
+			}
 
 			// newTask 사용 (createTask가 아닌 public API 테스트) -> 이제는 Internal이지만 동일 패키지 테스트
-			handler, err := newTask("test-instance", req, cfg)
+			handler, err := newTask(provider.NewTaskParams{
+				InstanceID:  "test-instance",
+				Request:     req,
+				AppConfig:   cfg,
+				Storage:     &contractmocks.MockTaskResultStore{},
+				Fetcher:     nil,
+				NewSnapshot: func() any { return &predictionSnapshot{} },
+			})
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
 				assert.Nil(t, handler)
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, handler)
+				require.NoError(t, err)
+				require.NotNil(t, handler)
 				// 핸들러 타입 검증
 				lottoTask, ok := handler.(*task)
-				assert.True(t, ok)
-				assert.Equal(t, TaskID, lottoTask.GetID())
+				require.True(t, ok)
+				assert.Equal(t, TaskID, lottoTask.ID())
 			}
 		})
 	}
@@ -201,13 +221,24 @@ func TestTask_Run(t *testing.T) {
 		mockProcess := new(MockCommandProcess)
 		mockSender := notificationmocks.NewMockNotificationSender(t)
 		mockStorage := new(contractmocks.MockTaskResultStore)
+		mockFetcher := fetchermocks.NewMockHTTPFetcher() // Use fetcher/mocks
 
 		task := &task{
-			Base:     provider.NewBase(TaskID, PredictionCommand, "test-instance", "telegram", contract.TaskRunByUser),
+			Base: provider.NewBase(provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:     TaskID,
+					CommandID:  PredictionCommand,
+					NotifierID: "telegram",
+					RunBy:      contract.TaskRunByUser,
+				},
+				InstanceID:  "test-instance",
+				Storage:     mockStorage,
+				Fetcher:     mockFetcher, // Inject Fetcher
+				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
+			}, true), // The 'true' argument is for isInternal, assuming it's internal for this test context
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}
-		task.SetStorage(mockStorage)
 		task.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
 			return task.executePrediction()
 		})
@@ -249,7 +280,13 @@ func TestTask_Run(t *testing.T) {
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(context.Background(), mockSender, &wg, doneC)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				doneC <- task.InstanceID()
+			}()
+			task.Run(context.Background(), mockSender)
+		}()
 		wg.Wait()
 
 		mockProcess.AssertExpectations(t)
@@ -266,14 +303,20 @@ func TestTask_Run(t *testing.T) {
 		// Note: The actual implementation might use NotifyDefaultWithError or Notify.
 		// BaseTask.notifyError uses: s.notificationSender.Notify(ctx, s.defaultNotifierID, message)
 		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
-			return contains(n.Message, "작업 진행중 오류가 발생하여 작업이 실패하였습니다")
+			return contains(n.Message, "작업 실행 중 오류가 발생하였습니다")
 		})).Return(nil)
 
 		var wg sync.WaitGroup
 		doneC := make(chan contract.TaskInstanceID, 1)
 		wg.Add(1)
 
-		task.Run(context.Background(), mockSender, &wg, doneC)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				doneC <- task.InstanceID()
+			}()
+			task.Run(context.Background(), mockSender)
+		}()
 		wg.Wait()
 
 		mockExecutor.AssertExpectations(t)

@@ -12,6 +12,7 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -72,7 +73,10 @@ type watchNewPerformancesSettings struct {
 	PageFetchDelay int `json:"page_fetch_delay_ms"` // 페이지 수집 간 대기 시간 (ms)
 }
 
-func (s *watchNewPerformancesSettings) validate() error {
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Validator = (*watchNewPerformancesSettings)(nil)
+
+func (s *watchNewPerformancesSettings) Validate() error {
 	s.Query = strings.TrimSpace(s.Query)
 	if s.Query == "" {
 		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
@@ -143,7 +147,7 @@ func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings 
 		// 만약 메시지 없이 데이터만 갱신되면, 사용자는 변경 사실을 영영 모르게 될 수 있습니다.
 		// 이를 방지하기 위해, 이런 비정상적인 상황에서는 저장을 차단하고 즉시 로그를 남깁니다.
 		if message == "" {
-			t.LogWithContext("task.naver", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
+			t.Log("task.naver", applog.WarnLevel, "변경 사항 감지 후 저장 프로세스를 시도했으나, 알림 메시지가 비어있습니다 (저장 건너뜀)", nil, nil)
 			return "", nil, nil
 		}
 
@@ -185,42 +189,42 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 	for {
 		// 작업 취소 여부 확인
 		if t.IsCanceled() {
-			t.LogWithContext("task.naver", applog.WarnLevel, "작업 취소 요청이 감지되어 공연 정보 수집 프로세스를 중단합니다", applog.Fields{
+			t.Log("task.naver", applog.WarnLevel, "작업 취소 요청이 감지되어 공연 정보 수집 프로세스를 중단합니다", nil, applog.Fields{
 				"page_index":      pageIndex,
 				"collected_count": len(currentPerformances),
 				"fetched_count":   totalFetchedCount,
-			}, nil)
+			})
 
 			return nil, nil
 		}
 
 		if pageIndex > commandSettings.MaxPages {
-			t.LogWithContext("task.naver", applog.WarnLevel, "설정된 최대 페이지 수집 제한에 도달하여 프로세스를 조기 종료합니다", applog.Fields{
+			t.Log("task.naver", applog.WarnLevel, "설정된 최대 페이지 수집 제한에 도달하여 프로세스를 조기 종료합니다", nil, applog.Fields{
 				"limit_max_pages": commandSettings.MaxPages,
 				"current_page":    pageIndex,
 				"collected_count": len(currentPerformances),
 				"fetched_count":   totalFetchedCount,
-			}, nil)
+			})
 
 			break
 		}
 
-		t.LogWithContext("task.naver", applog.DebugLevel, "네이버 공연 검색 API 페이지를 요청합니다", applog.Fields{
+		t.Log("task.naver", applog.DebugLevel, "네이버 공연 검색 API 페이지를 요청합니다", nil, applog.Fields{
 			"query":      commandSettings.Query,
 			"page_index": pageIndex,
-		}, nil)
+		})
 
 		// API 요청 URL 생성
 		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := scraper.FetchJSON(ctx, t.GetFetcher(), "GET", searchAPIURL, nil, nil, pageContent)
+		err := t.Scraper().FetchJSON(ctx, "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
 
 		// API로부터 수신한 비정형 HTML 데이터를 DOM 파싱하여 정형화된 공연 객체 리스트로 변환합니다.
-		pagePerformances, rawCount, err := parsePerformancesFromHTML(pageContent.HTML, matchers)
+		pagePerformances, rawCount, err := t.parsePerformancesFromHTML(ctx, pageContent.HTML, matchers)
 		if err != nil {
 			return nil, err
 		}
@@ -243,11 +247,11 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		// 현재 페이지에서 탐색된 원본 항목(Raw Count)이 0개라면, 더 이상 제공될 데이터가 없는 상태입니다.
 		// 이는 모든 공연 정보를 수집했음을 의미하므로, 불필요한 추가 요청을 방지하기 위해 루프를 정상 종료합니다.
 		if rawCount == 0 {
-			t.LogWithContext("task.naver", applog.DebugLevel, "페이지네이션 종료 조건(데이터 없음)에 도달하여 수집 프로세스를 정상 종료합니다", applog.Fields{
+			t.Log("task.naver", applog.DebugLevel, "페이지네이션 종료 조건(데이터 없음)에 도달하여 수집 프로세스를 정상 종료합니다", nil, applog.Fields{
 				"last_visited_page": pageIndex - 1,
 				"collected_count":   len(currentPerformances),
 				"fetched_count":     totalFetchedCount,
-			}, nil)
+			})
 
 			break
 		}
@@ -255,11 +259,11 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
 	}
 
-	t.LogWithContext("task.naver", applog.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", applog.Fields{
+	t.Log("task.naver", applog.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", nil, applog.Fields{
 		"collected_count": len(currentPerformances),
 		"fetched_count":   totalFetchedCount,
 		"request_pages":   pageIndex - 1,
-	}, nil)
+	})
 
 	return currentPerformances, nil
 }
@@ -289,8 +293,8 @@ func buildSearchAPIURL(query string, page int) string {
 //   - []*performance: 사용자 정의 키워드 조건(Keywords)을 통과하여 최종 선별된 공연 정보 목록
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
-func parsePerformancesFromHTML(html string, matchers *keywordMatchers) ([]*performance, int, error) {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+func (t *task) parsePerformancesFromHTML(ctx context.Context, html string, matchers *keywordMatchers) ([]*performance, int, error) {
+	doc, err := t.Scraper().ParseHTML(ctx, strings.NewReader(html), "", "")
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 	}
@@ -317,7 +321,7 @@ func parsePerformancesFromHTML(html string, matchers *keywordMatchers) ([]*perfo
 
 		if !matchers.TitleMatcher.Match(perf.Title) || !matchers.PlaceMatcher.Match(perf.Place) {
 			// 키워드 매칭 실패 로깅 (Verbose)
-			// t.LogWithContext("task.naver", applog.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", applog.Fields{"title": perf.Title}, nil)
+			// t.Log("task.naver", applog.TraceLevel, "키워드 매칭 조건에 의해 제외되었습니다", nil, applog.Fields{"title": perf.Title})
 			return true // 계속 진행
 		}
 
@@ -393,7 +397,7 @@ func (t *task) analyzeAndReport(currentSnapshot *watchNewPerformancesSnapshot, p
 	//
 	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		if len(currentSnapshot.Performances) == 0 {
 			return "등록된 공연정보가 존재하지 않습니다.", false
 		}

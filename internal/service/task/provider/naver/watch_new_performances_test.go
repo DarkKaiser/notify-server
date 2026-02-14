@@ -66,7 +66,7 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 		tt := tt // Capture range variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.config.validate()
+			err := tt.config.Validate()
 			if tt.expectedError != "" {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
@@ -279,7 +279,23 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			t.Parallel()
 
 			// parsePerformancesFromHTML은 (performances, rawCount, error) 반환
-			items, raw, err := parsePerformancesFromHTML(tt.html, tt.filters)
+			taskInstance := &task{
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      contract.TaskRunByScheduler,
+					},
+					InstanceID: "I",
+					Fetcher:    mocks.NewMockHTTPFetcher(),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, true),
+			}
+
+			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, tt.filters)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -354,7 +370,19 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      contract.TaskRunByUser,
+					},
+					InstanceID: "I",
+					Fetcher:    mocks.NewMockHTTPFetcher(),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, false),
 			}
 
 			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
@@ -461,7 +489,19 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 			t.Parallel()
 
 			taskInstance := &task{
-				Base: provider.NewBase("T", "C", "I", "N", contract.TaskRunByUser),
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      contract.TaskRunByUser,
+					},
+					InstanceID: "I",
+					Fetcher:    mocks.NewMockHTTPFetcher(),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, false),
 			}
 			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
@@ -569,7 +609,19 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Setup Task
 			tsk := &task{
-				Base: provider.NewBase("T", "C", "I", "N", tt.runBy),
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      tt.runBy,
+					},
+					InstanceID: "I",
+					Fetcher:    mocks.NewMockHTTPFetcher(),
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, false),
 			}
 
 			// Prepare Snapshots
@@ -711,7 +763,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				"u7=1": makeJSONResponse(`<ul><li><div class="item"><div class="title_box">NO_NAME</div></div></li></ul>`),
 			},
 			// fetchPerformances에서 parse error를 그대로 반환하거나 wrapping함
-			expectedError: "불러온 페이지의 문서구조가 변경되었습니다",
+			expectedError: "HTML 구조 변경",
 		},
 		{
 			name:     "성공: 통합 필터링 (키워드 매칭으로 일부 항목 제외)",
@@ -793,11 +845,22 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			}
 
 			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
-			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
 			naverTask := &task{
-				Base: baseTask,
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "NAVER",
+						CommandID:  "WATCH",
+						NotifierID: "NOTI",
+						RunBy:      contract.TaskRunByScheduler,
+					},
+					InstanceID: "INSTANCE",
+					Fetcher:    mockFetcher,
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, true),
 			}
-			naverTask.SetFetcher(mockFetcher)
+			// SetFetcher call removed
 
 			// 실행
 			// prevSnapshot은 nil로 가정 (수집 테스트이므로)
@@ -914,9 +977,21 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
 
-	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
-	naverTask := &task{Base: baseTask}
-	naverTask.SetFetcher(mockFetcher)
+	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     "NAVER",
+				CommandID:  "WATCH",
+				NotifierID: "NOTI",
+				RunBy:      contract.TaskRunByUser,
+			},
+			InstanceID: "INSTANCE",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}, true),
+	}
 
 	settings := &watchNewPerformancesSettings{
 		Query:          "CancelTest",
@@ -927,18 +1002,18 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	// 2. Execution (Async Cancel)
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := naverTask.fetchPerformances(context.Background(), settings)
+		_, err := taskInstance.fetchPerformances(context.Background(), settings)
 		errCh <- err
 	}()
 
 	// 지연 시간(500ms)보다 짧은 시간(100ms) 후에 취소 요청을 보냅니다.
 	time.Sleep(100 * time.Millisecond)
-	naverTask.Cancel()
+	taskInstance.Cancel()
 
 	// 3. Validation
 	err := <-errCh
 	assert.NoError(t, err, "취소 시 에러가 반환되지 않고 nil이어야 합니다 (Graceful Shutdown)")
-	assert.True(t, naverTask.IsCanceled(), "Task 상태가 Canceled여야 합니다")
+	assert.True(t, taskInstance.IsCanceled(), "Task 상태가 Canceled여야 합니다")
 
 	// 요청이 실제로 취소되었는지 확인 (결과가 nil이어야 함)
 	// fetchPerformances는 취소 시 nil, nil을 반환하도록 구현되어 있음
@@ -1003,10 +1078,23 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 				mockFetcher.SetResponse(u, []byte(body))
 			}
 
-			// executeFlow
-			baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByUser)
-			naverTask := &task{Base: baseTask}
-			naverTask.SetFetcher(mockFetcher)
+			// Setup Task (without Fetcher)
+			naverTask := &task{
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "NAVER",
+						CommandID:  "WATCH",
+						NotifierID: "NOTI",
+						RunBy:      contract.TaskRunByScheduler,
+					},
+					InstanceID: "INSTANCE",
+					Fetcher:    mockFetcher, // Inject Fetcher
+					NewSnapshot: func() interface{} {
+						return &watchNewPerformancesSnapshot{}
+					},
+				}, true),
+			}
+			_ = naverTask
 
 			settings := &watchNewPerformancesSettings{
 				Query:          "LimitTest",
@@ -1047,8 +1135,24 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     "T",
+				CommandID:  "C",
+				NotifierID: "N",
+				RunBy:      contract.TaskRunByScheduler,
+			},
+			InstanceID: "I",
+			Fetcher:    mocks.NewMockHTTPFetcher(),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}, true),
+	}
+
 	for i := 0; i < b.N; i++ {
-		_, _, _ = parsePerformancesFromHTML(html, filters)
+		_, _, _ = taskInstance.parsePerformancesFromHTML(context.Background(), html, filters)
 	}
 }
 
@@ -1069,8 +1173,21 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 		}
 	}
 
-	baseTask := provider.NewBase("NAVER", "WATCH", "INSTANCE", "NOTI", contract.TaskRunByScheduler)
-	testTask := &task{Base: baseTask}
+	testTask := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     "NAVER",
+				CommandID:  "WATCH",
+				NotifierID: "NOTI",
+				RunBy:      contract.TaskRunByScheduler,
+			},
+			InstanceID: "INSTANCE",
+			Fetcher:    mocks.NewMockHTTPFetcher(),
+			NewSnapshot: func() interface{} {
+				return &watchNewPerformancesSnapshot{}
+			},
+		}, false),
+	}
 
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}

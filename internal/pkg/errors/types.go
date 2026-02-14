@@ -34,6 +34,9 @@ const (
 	// ExecutionFailed 비즈니스 로직 수행 실패 (외부 프로세스 오류 등)
 	ExecutionFailed
 
+	// ParsingFailed 데이터 파싱 또는 형식 변환 실패
+	ParsingFailed
+
 	// Timeout 작업 시간 초과
 	Timeout
 

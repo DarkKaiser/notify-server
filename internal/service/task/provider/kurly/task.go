@@ -1,114 +1,76 @@
-// Package kurly 마켓컬리(Kurly) 플랫폼과 연동하여 상품 정보를 수집하고
-// 가격 변동을 모니터링하는 작업을 수행하는 패키지입니다.
 package kurly
 
 import (
 	"context"
 
 	"github.com/darkkaiser/notify-server/internal/config"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/pkg/maputil"
 )
 
 const (
-	// TaskID
-	TaskID contract.TaskID = "KURLY" // 마켓컬리 (https://www.kurly.com/)
+	// TaskID 마켓컬리(https://www.kurly.com/) 서비스와 연동되는 Task의 고유 식별자입니다.
+	TaskID contract.TaskID = "KURLY"
 
-	// CommandID
-	WatchProductPriceCommand contract.TaskCommandID = "WatchProductPrice" // 상품 가격 변화 감시
+	// WatchProductPriceCommand 마켓컬리 상품의 가격 변화를 감시하는 Command의 고유 식별자입니다.
+	// 이 Command는 지정된 상품 목록을 주기적으로 스크래핑하여 가격 변동을 추적하고,
+	// 변화가 감지되면 텔레그램 등을 통해 알림을 전송합니다.
+	WatchProductPriceCommand contract.TaskCommandID = "WatchProductPrice"
 )
 
 func init() {
-	provider.Register(TaskID, &provider.Config{
-		Commands: []*provider.CommandConfig{
+	provider.MustRegister(TaskID, &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{
 				ID: WatchProductPriceCommand,
 
 				AllowMultiple: true,
 
-				NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} },
+				NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
 			},
 		},
 		NewTask: newTask,
 	})
 }
 
-func newTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig) (provider.Task, error) {
-	httpFetcher := fetcher.New(appConfig.HTTPRetry.MaxRetries, appConfig.HTTPRetry.RetryDelay, 0)
-	return createTask(instanceID, req, appConfig, httpFetcher)
-}
-
-func createTask(instanceID contract.TaskInstanceID, req *contract.TaskSubmitRequest, appConfig *config.AppConfig, notificationFetcher fetcher.Fetcher) (provider.Task, error) {
-	if req.TaskID != TaskID {
-		return nil, provider.ErrTaskNotSupported
+func newTask(params provider.NewTaskParams) (provider.Task, error) {
+	if params.Request.TaskID != TaskID {
+		return nil, provider.NewErrTaskNotSupported(params.Request.TaskID)
 	}
 
 	kurlyTask := &task{
-		Base: provider.NewBase(req.TaskID, req.CommandID, instanceID, req.NotifierID, req.RunBy),
+		Base: provider.NewBase(params, true),
 
-		appConfig: appConfig,
+		appConfig: params.AppConfig,
 	}
 
-	kurlyTask.SetFetcher(notificationFetcher)
-
-	// CommandID에 따른 실행 함수를 미리 바인딩합니다
-	switch req.CommandID {
+	// Command에 따른 실행 함수를 미리 바인딩합니다
+	switch params.Request.CommandID {
 	case WatchProductPriceCommand:
-		commandSettings, err := findCommandSettings(appConfig, req.TaskID, req.CommandID)
+		commandSettings, err := provider.FindCommandSettings[watchProductPriceSettings](params.AppConfig, params.Request.TaskID, params.Request.CommandID)
 		if err != nil {
 			return nil, err
 		}
 
-		kurlyTask.SetExecute(func(ctx context.Context, previousSnapshot interface{}, supportsHTML bool) (string, interface{}, error) {
+		kurlyTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchProductPriceSnapshot)
 			if !ok {
-				return "", nil, provider.NewErrTypeAssertionFailed("prevSnapshot", &watchProductPriceSnapshot{}, previousSnapshot)
+				return "", nil, provider.NewErrTypeAssertionFailed(&watchProductPriceSnapshot{}, previousSnapshot)
 			}
 
-			// 설정된 CSV 파일에서 감시 대상 상품 목록을 읽어오는 Loader를 생성합니다.
+			// CSV 파일에서 감시 대상 상품 목록을 읽어오는 Loader를 생성합니다.
 			loader := &CSVWatchListLoader{
 				FilePath: commandSettings.WatchProductsFile,
 			}
 
 			return kurlyTask.executeWatchProductPrice(ctx, loader, prevSnapshot, supportsHTML)
 		})
+
 	default:
-		return nil, provider.NewErrCommandNotSupported(req.CommandID)
+		return nil, provider.NewErrCommandNotSupported(params.Request.CommandID, []contract.TaskCommandID{WatchProductPriceCommand})
 	}
 
 	return kurlyTask, nil
-}
-
-func findCommandSettings(appConfig *config.AppConfig, taskID contract.TaskID, commandID contract.TaskCommandID) (*watchProductPriceSettings, error) {
-	var commandSettings *watchProductPriceSettings
-
-	for _, t := range appConfig.Tasks {
-		if taskID == contract.TaskID(t.ID) {
-			for _, c := range t.Commands {
-				if commandID == contract.TaskCommandID(c.ID) {
-					settings, err := maputil.Decode[watchProductPriceSettings](c.Data)
-					if err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					if err := settings.validate(); err != nil {
-						return nil, apperrors.Wrap(err, apperrors.InvalidInput, provider.ErrInvalidCommandSettings.Error())
-					}
-					commandSettings = settings
-					break
-				}
-			}
-			break
-		}
-	}
-
-	if commandSettings == nil {
-		return nil, provider.ErrCommandSettingsNotFound
-	}
-
-	return commandSettings, nil
 }
 
 type task struct {
@@ -116,3 +78,6 @@ type task struct {
 
 	appConfig *config.AppConfig
 }
+
+// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
+var _ provider.Task = (*task)(nil)
