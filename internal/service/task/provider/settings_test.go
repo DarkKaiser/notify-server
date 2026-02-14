@@ -41,7 +41,7 @@ func TestFindTaskSettings(t *testing.T) {
 		settings, err := FindTaskSettings[TestSettings](appConfig, "KURLY")
 		assert.Error(t, err)
 		assert.Nil(t, settings)
-		assert.ErrorIs(t, err, ErrTaskSettingsNotFound)
+		assert.ErrorIs(t, err, ErrTaskNotFound)
 	})
 }
 
@@ -74,14 +74,14 @@ func TestFindCommandSettings(t *testing.T) {
 		settings, err := FindCommandSettings[TestSettings](appConfig, "NAVER", "UnknownCommand")
 		assert.Error(t, err)
 		assert.Nil(t, settings)
-		assert.ErrorIs(t, err, ErrCommandSettingsNotFound)
+		assert.ErrorIs(t, err, ErrCommandNotFound)
 	})
 
 	t.Run("실패: Task 자체가 존재하지 않는 경우", func(t *testing.T) {
 		settings, err := FindCommandSettings[TestSettings](appConfig, "KURLY", "CheckPrice")
 		assert.Error(t, err)
 		assert.Nil(t, settings)
-		assert.ErrorIs(t, err, ErrCommandSettingsNotFound)
+		assert.ErrorIs(t, err, ErrTaskNotFound)
 	})
 }
 

@@ -70,7 +70,7 @@ func TestCommandConfig_EqualsCommandID(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			config := &CommandConfig{
+			config := &TaskCommandConfig{
 				ID: c.configCommandID,
 			}
 
@@ -88,8 +88,8 @@ func TestFindConfig(t *testing.T) {
 	// 독립적인 레지스트리 인스턴스 생성
 	r := newRegistry()
 
-	r.RegisterForTest(testTaskID, &Config{
-		Commands: []*CommandConfig{
+	r.RegisterForTest(testTaskID, &TaskConfig{
+		Commands: []*TaskCommandConfig{
 			{
 				ID:            testCommandID,
 				AllowMultiple: true,
@@ -132,7 +132,7 @@ func TestFindConfig(t *testing.T) {
 func TestRegistry_Register_Validation(t *testing.T) {
 	tests := []struct {
 		name          string
-		config        *Config
+		config        *TaskConfig
 		expectedPanic string
 	}{
 		{
@@ -142,9 +142,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		},
 		{
 			name: "NewTask is nil",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: nil,
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "DummyCommand",
 						AllowMultiple: true,
@@ -156,17 +156,17 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		},
 		{
 			name: "CommandConfigs is empty",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask:  dummyNewTask(),
-				Commands: []*CommandConfig{},
+				Commands: []*TaskCommandConfig{},
 			},
 			expectedPanic: "[InvalidInput] Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "",
 						AllowMultiple: true,
@@ -178,9 +178,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		},
 		{
 			name: "NewSnapshot is nil",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
@@ -192,9 +192,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		},
 		{
 			name: "Duplicate CommandID",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "DuplicateCommand",
 						AllowMultiple: true,
@@ -226,9 +226,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 		r := newRegistry()
 
 		// 먼저 정상 등록
-		r.MustRegister(taskID, &Config{
+		r.MustRegister(taskID, &TaskConfig{
 			NewTask: dummyNewTask(),
-			Commands: []*CommandConfig{
+			Commands: []*TaskCommandConfig{
 				{
 					ID:            "SomeCommand",
 					AllowMultiple: true,
@@ -239,9 +239,9 @@ func TestRegistry_Register_Validation(t *testing.T) {
 
 		// 동일 ID로 재등록 시 패닉 발생 확인
 		assert.Panics(t, func() {
-			r.MustRegister(taskID, &Config{
+			r.MustRegister(taskID, &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "OtherCommand",
 						AllowMultiple: true,
@@ -256,14 +256,14 @@ func TestRegistry_Register_Validation(t *testing.T) {
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name          string
-		config        *Config
+		config        *TaskConfig
 		expectedError string
 	}{
 		{
 			name: "NewTask is nil",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: nil,
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "DummyCommand",
 						AllowMultiple: true,
@@ -275,17 +275,17 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "CommandConfigs is empty",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask:  dummyNewTask(),
-				Commands: []*CommandConfig{},
+				Commands: []*TaskCommandConfig{},
 			},
 			expectedError: "Commands는 비어있을 수 없습니다",
 		},
 		{
 			name: "CommandID is empty",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "",
 						AllowMultiple: true,
@@ -297,9 +297,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "NewSnapshot is nil",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "SafeCommand",
 						AllowMultiple: true,
@@ -311,9 +311,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "NewSnapshot returns nil",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "NilDataCommand",
 						AllowMultiple: true,
@@ -327,9 +327,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "Duplicate CommandID",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "DuplicateCommand",
 						AllowMultiple: true,
@@ -346,9 +346,9 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "Valid Config",
-			config: &Config{
+			config: &TaskConfig{
 				NewTask: dummyNewTask(),
-				Commands: []*CommandConfig{
+				Commands: []*TaskCommandConfig{
 					{
 						ID:            "ValidCommand",
 						AllowMultiple: true,
@@ -381,7 +381,7 @@ func TestRegistry_DeepCopy(t *testing.T) {
 	cmdID := contract.TaskCommandID("TEST_CMD")
 
 	// 1. 초기 Config 생성
-	commands := []*CommandConfig{
+	commands := []*TaskCommandConfig{
 		{
 			ID:            cmdID,
 			AllowMultiple: true,
@@ -389,7 +389,7 @@ func TestRegistry_DeepCopy(t *testing.T) {
 		},
 	}
 
-	config := &Config{
+	config := &TaskConfig{
 		Commands: commands,
 		NewTask:  dummyNewTask(),
 	}
@@ -399,7 +399,7 @@ func TestRegistry_DeepCopy(t *testing.T) {
 
 	// 3. 원본 슬라이스 변조 (새 커맨드 추가 등)
 	commands[0].AllowMultiple = false // 원본 수정
-	commands = append(commands, &CommandConfig{
+	commands = append(commands, &TaskCommandConfig{
 		ID:            "HACKED_CMD",
 		AllowMultiple: true,
 		NewSnapshot:   dummyResultFn(),
@@ -446,9 +446,9 @@ func TestRegistry_Concurrency_Stress(t *testing.T) {
 
 				// 동시성 테스트에서는 Panic이 발생할 수 있는데(중복 ID 등), 여기서는 고유 ID를 생성한다고 가정하거나
 				// Register 내부 Lock이 잘 동작하는지 확인
-				_ = r.Register(taskID, &Config{
+				_ = r.Register(taskID, &TaskConfig{
 					NewTask: dummyNewTask(),
-					Commands: []*CommandConfig{{
+					Commands: []*TaskCommandConfig{{
 						ID:          cmdID,
 						NewSnapshot: dummyResultFn(),
 					}},
@@ -484,8 +484,8 @@ func TestRegistry_MatchingPriority(t *testing.T) {
 	exactCMD := contract.TaskCommandID("CMD_SPECIFIC")
 
 	// 1. 와일드카드와 정확한 일치 커맨드를 함께 등록
-	r.MustRegister(taskID, &Config{
-		Commands: []*CommandConfig{
+	r.MustRegister(taskID, &TaskConfig{
+		Commands: []*TaskCommandConfig{
 			{
 				ID:            wildcardCMD,
 				AllowMultiple: true,
@@ -522,8 +522,8 @@ func TestRegistry_Validation_NilCheck(t *testing.T) {
 
 	t.Run("CommandConfig가 nil인 경우 패닉 발생 확인", func(t *testing.T) {
 		assert.Panics(t, func() {
-			r.MustRegister(taskID, &Config{
-				Commands: []*CommandConfig{nil},
+			r.MustRegister(taskID, &TaskConfig{
+				Commands: []*TaskCommandConfig{nil},
 				NewTask:  dummyNewTask(),
 			})
 		})

@@ -132,7 +132,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				CommandID: validCommandID,
 			},
 			appConfig: &config.AppConfig{}, // Empty config
-			wantErr:   provider.ErrTaskSettingsNotFound,
+			wantErr:   provider.ErrTaskNotFound,
 		},
 		{
 			name: "실패: Task 필수 설정(ClientID) 누락",
@@ -181,7 +181,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				WithTask(string(validTaskID), "id", "secret").
 				WithCommand("OtherCommand", "q"). // 다른 커맨드만 있음
 				Build(),
-			wantErr: provider.ErrCommandSettingsNotFound,
+			wantErr: provider.ErrCommandNotFound,
 		},
 		{
 			name: "실패: Command 필수 설정(Query) 누락",

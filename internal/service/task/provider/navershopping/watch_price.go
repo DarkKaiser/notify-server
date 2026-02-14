@@ -207,7 +207,7 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = t.GetScraper().FetchJSON(ctx, "GET", u.String(), header, nil, currentPage)
+		err = t.Scraper().FetchJSON(ctx, "GET", u.String(), header, nil, currentPage)
 		if err != nil {
 			return nil, err
 		}
@@ -358,7 +358,7 @@ func (t *task) analyzeAndReport(commandSettings *watchPriceSettings, currentSnap
 	//
 	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		searchConditionsSummary := t.buildSearchConditionsSummary(commandSettings)
 
 		if len(currentSnapshot.Products) == 0 {

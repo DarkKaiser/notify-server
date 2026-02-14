@@ -67,8 +67,6 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 		// 대용량 에러 응답으로 인한 메모리 낭비를 방지하기 위해 제한을 둡니다.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 3072))
 
-		resp.Body.Close()
-
 		return newErrHTTPRequestFailed(err, params.URL, resp.StatusCode, bodySnippet)
 	}
 
@@ -82,8 +80,6 @@ func (s *scraper) validateResponse(resp *http.Response, params requestParams, lo
 			// 연결 재사용을 위해 응답 본문의 나머지를 드레인합니다.
 			// 이미 1KB를 읽었으므로, 추가로 3KB를 읽어 총 4KB까지 드레인합니다.
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 3072))
-
-			resp.Body.Close()
 
 			if preview != "" {
 				// 디버깅을 돕기 위해 에러 메시지에 응답 본문의 일부를 포함하여 반환합니다.

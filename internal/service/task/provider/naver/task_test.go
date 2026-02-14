@@ -186,7 +186,7 @@ func TestTask_Run_Integration_Simulation(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer func() {
-			quit <- h.taskHandler.GetInstanceID()
+			quit <- h.taskHandler.InstanceID()
 		}()
 		// RunByUser는 한 번 실행 후 종료됨
 		h.task.Run(context.Background(), sender)
@@ -221,8 +221,8 @@ func newTestHelper(t *testing.T) *testHelper {
 	storage := &contractmocks.MockTaskResultStore{}
 
 	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
-	provider.Register(TaskID, &provider.Config{
-		Commands: []*provider.CommandConfig{{
+	provider.Register(TaskID, &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{{
 			ID: WatchNewPerformancesCommand,
 
 			AllowMultiple: true,

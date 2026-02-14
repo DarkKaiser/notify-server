@@ -188,7 +188,7 @@ func (s *Service) handleSubmitRequest(serviceStopCtx context.Context, req *contr
 			CommandID:     req.CommandID,
 			InstanceID:    "", // InstanceID not yet generated
 			Message:       provider.ErrTaskNotSupported.Error(),
-			ElapsedTime:   0,
+			Elapsed:       0,
 			ErrorOccurred: true,
 			Cancelable:    false,
 		})
@@ -213,15 +213,15 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	defer s.runningMu.Unlock()
 
 	for _, task := range s.tasks {
-		if task.GetID() == req.TaskID && task.GetCommandID() == req.CommandID && !task.IsCanceled() {
+		if task.ID() == req.TaskID && task.CommandID() == req.CommandID && !task.IsCanceled() {
 			// req.TaskContext = req.TaskContext.WithTaskInstanceID... -> Removed
 			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
 				NotifierID:    req.NotifierID,
 				TaskID:        req.TaskID,
 				CommandID:     req.CommandID,
-				InstanceID:    task.GetInstanceID(),
+				InstanceID:    task.InstanceID(),
 				Message:       msgTaskAlreadyRunning,
-				ElapsedTime:   task.Elapsed(),
+				Elapsed:       task.Elapsed(),
 				ErrorOccurred: false,
 				Cancelable:    false,
 			})
@@ -232,7 +232,7 @@ func (s *Service) checkConcurrencyLimit(serviceStopCtx context.Context, req *con
 	return false
 }
 
-func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ConfigLookup) {
+func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ResolvedConfig) {
 	// 무한 루프 방지를 위한 최대 재시도 횟수
 	const maxRetries = 3
 
@@ -278,7 +278,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 				CommandID:     req.CommandID,
 				InstanceID:    "", // InstanceID not generated
 				Message:       err.Error(),
-				ElapsedTime:   0,
+				Elapsed:       0,
 				ErrorOccurred: true,
 				Cancelable:    false,
 			})
@@ -308,7 +308,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		go func(h provider.Task) {
 			defer s.taskStopWG.Done()
 			defer func() {
-				s.taskDoneC <- h.GetInstanceID()
+				s.taskDoneC <- h.InstanceID()
 			}()
 
 			// Task 내부의 알림 전송이 서비스 종료 시그널(serviceStopCtx)에 영향받지 않도록
@@ -323,7 +323,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 				CommandID:     req.CommandID,
 				InstanceID:    instanceID,
 				Message:       msgTaskRunning,
-				ElapsedTime:   0,
+				Elapsed:       0,
 				ErrorOccurred: false,
 				Cancelable:    req.RunBy == contract.TaskRunByUser,
 			})
@@ -345,7 +345,7 @@ func (s *Service) createAndStartTask(serviceStopCtx context.Context, req *contra
 		CommandID:     req.CommandID,
 		InstanceID:    "",
 		Message:       "시스템 오류로 작업 실행에 실패했습니다 (ID 충돌).",
-		ElapsedTime:   0,
+		Elapsed:       0,
 		ErrorOccurred: true,
 		Cancelable:    false,
 	})
@@ -357,8 +357,8 @@ func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 
 	if task, exists := s.tasks[instanceID]; exists {
 		applog.WithComponentAndFields("task.service", applog.Fields{
-			"task_id":     task.GetID(),
-			"command_id":  task.GetCommandID(),
+			"task_id":     task.ID(),
+			"command_id":  task.CommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 완료")
 
@@ -378,18 +378,18 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 		task.Cancel()
 
 		applog.WithComponentAndFields("task.service", applog.Fields{
-			"task_id":     task.GetID(),
-			"command_id":  task.GetCommandID(),
+			"task_id":     task.ID(),
+			"command_id":  task.CommandID(),
 			"instance_id": instanceID,
 		}).Debug("Task 작업 취소")
 
 		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
-			NotifierID:    task.GetNotifierID(),
-			TaskID:        task.GetID(),
-			CommandID:     task.GetCommandID(),
+			NotifierID:    task.NotifierID(),
+			TaskID:        task.ID(),
+			CommandID:     task.CommandID(),
 			InstanceID:    instanceID,
 			Message:       msgTaskCanceledByUser,
-			ElapsedTime:   task.Elapsed(),
+			Elapsed:       task.Elapsed(),
 			ErrorOccurred: false,
 			Cancelable:    false,
 		})

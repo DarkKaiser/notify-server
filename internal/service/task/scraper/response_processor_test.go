@@ -18,7 +18,10 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// TestValidateResponse_StatusCodes HTTP 상태 코드에 따른 검증 로직을 테스트합니다.
+// =================================================================================
+// Test Group 1: ValidateResponse
+// =================================================================================
+
 func TestValidateResponse_StatusCodes(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -84,6 +87,7 @@ func TestValidateResponse_StatusCodes(t *testing.T) {
 				Status:     http.StatusText(tt.statusCode),
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 				Request:    &http.Request{URL: nil},
+				Header:     make(http.Header),
 			}
 
 			// Act
@@ -105,7 +109,6 @@ func TestValidateResponse_StatusCodes(t *testing.T) {
 	}
 }
 
-// TestValidateResponse_CustomValidator 사용자 정의 Validator 로직을 테스트합니다.
 func TestValidateResponse_CustomValidator(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -133,6 +136,17 @@ func TestValidateResponse_CustomValidator(t *testing.T) {
 			wantErr:     true,
 			errContains: []string{"응답 검증 실패", "custom validation error", "Invalid Content"},
 		},
+		{
+			name:       "Error - Validator Fails (Body Read Error handled gracefully)",
+			statusCode: http.StatusOK,
+			// Body reading failure simulation requires mocking ReadCloser, hard to trigger with just strings.NewReader.
+			// Instead, we verify that validator error is returned even if preview generation fails.
+			validator: func(resp *http.Response, logger *applog.Entry) error {
+				return errors.New("fail")
+			},
+			wantErr:     true,
+			errContains: []string{"fail"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -145,6 +159,7 @@ func TestValidateResponse_CustomValidator(t *testing.T) {
 				StatusCode: tt.statusCode,
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 				Request:    &http.Request{URL: nil},
+				Header:     make(http.Header),
 			}
 
 			params := requestParams{Validator: tt.validator}
@@ -165,22 +180,27 @@ func TestValidateResponse_CustomValidator(t *testing.T) {
 	}
 }
 
-// TestValidateResponse_Callback ResponseCallback 호출 로직을 테스트합니다.
 func TestValidateResponse_Callback(t *testing.T) {
 	// Arrange
 	callbackCalled := false
 	s := New(new(mocks.MockFetcher), WithResponseCallback(func(resp *http.Response) {
 		callbackCalled = true
-		// Verify callback receives safe copy
+		// Validate Deep Copy Safety
+		// 1. Body should be NoBody
 		assert.Equal(t, http.NoBody, resp.Body, "Callback should receive NoBody")
+		// 2. Request should be nil
 		assert.Nil(t, resp.Request, "Callback should receive nil Request")
+		// 3. Header modification should not affect original (though hard to verify side effect here without original check after)
+		resp.Header.Set("X-Modified", "True")
 	})).(*scraper)
 	logger := applog.WithContext(context.Background())
 
+	originalHeader := http.Header{"X-Original": []string{"True"}}
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       io.NopCloser(strings.NewReader("body")),
 		Request:    &http.Request{URL: nil},
+		Header:     originalHeader,
 	}
 
 	// Act
@@ -189,9 +209,14 @@ func TestValidateResponse_Callback(t *testing.T) {
 	// Assert
 	assert.NoError(t, err)
 	assert.True(t, callbackCalled, "Response callback should be called")
+	assert.Equal(t, "True", originalHeader.Get("X-Original"))
+	assert.Empty(t, originalHeader.Get("X-Modified"), "Callback specific modifications should not leak to original header")
 }
 
-// TestReadResponseBodyWithLimit 응답 본문 읽기 및 크기 제한 로직을 테스트합니다.
+// =================================================================================
+// Test Group 2: ReadResponseBodyWithLimit
+// =================================================================================
+
 func TestReadResponseBodyWithLimit(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -221,6 +246,13 @@ func TestReadResponseBodyWithLimit(t *testing.T) {
 			wantContent:   "1234567890",
 			wantTruncated: true,
 		},
+		{
+			name:          "Success - Empty Body",
+			bodyContent:   "",
+			maxSize:       10,
+			wantContent:   "",
+			wantTruncated: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -228,7 +260,8 @@ func TestReadResponseBodyWithLimit(t *testing.T) {
 			// Arrange
 			s := New(new(mocks.MockFetcher), WithMaxResponseBodySize(tt.maxSize)).(*scraper)
 			resp := &http.Response{
-				Body: io.NopCloser(strings.NewReader(tt.bodyContent)),
+				Body:       io.NopCloser(strings.NewReader(tt.bodyContent)),
+				StatusCode: http.StatusOK, // Assuming 200 OK unless specified
 			}
 
 			// Act
@@ -242,18 +275,17 @@ func TestReadResponseBodyWithLimit(t *testing.T) {
 	}
 }
 
-// TestReadResponseBodyWithLimit_ContextCancel 컨텍스트 취소 시 읽기 중단 로직을 테스트합니다.
 func TestReadResponseBodyWithLimit_ContextCancel(t *testing.T) {
 	// Arrange
 	s := New(new(mocks.MockFetcher)).(*scraper)
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
 	resp := &http.Response{
-		Body: io.NopCloser(strings.NewReader("some body")),
+		Body:       io.NopCloser(strings.NewReader("some body")),
+		StatusCode: http.StatusOK,
 	}
 
-	// Act
+	// Act - Cancel before read
+	cancel()
 	_, _, err := s.readResponseBodyWithLimit(ctx, resp)
 
 	// Assert
@@ -261,7 +293,27 @@ func TestReadResponseBodyWithLimit_ContextCancel(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-// TestReadErrorResponseBody 에러 응답 본문 읽기 및 인코딩 변환을 테스트합니다.
+func TestReadResponseBodyWithLimit_NoContent(t *testing.T) {
+	// Arrange
+	s := New(new(mocks.MockFetcher)).(*scraper)
+	resp := &http.Response{
+		StatusCode: http.StatusNoContent,
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+
+	// Act
+	content, truncated, err := s.readResponseBodyWithLimit(context.Background(), resp)
+
+	// Assert
+	require.NoError(t, err)
+	assert.False(t, truncated)
+	assert.Nil(t, content)
+}
+
+// =================================================================================
+// Test Group 3: ReadErrorResponseBody & PreviewBody
+// =================================================================================
+
 func TestReadErrorResponseBody(t *testing.T) {
 	eucKrData, _ := io.ReadAll(transform.NewReader(strings.NewReader("한글"), korean.EUCKR.NewEncoder()))
 
@@ -287,6 +339,13 @@ func TestReadErrorResponseBody(t *testing.T) {
 			body: append(bytes.Repeat([]byte("a"), 1024), []byte("bc")...),
 			want: strings.Repeat("a", 1024),
 		},
+		{
+			name: "UTF-8 Sanitation (Invalid Sequence)",
+			// Invalid UTF-8 sequence (0xFF is never valid in UTF-8)
+			body:        []byte("Valid" + string([]byte{0xFF}) + "End"),
+			contentType: "text/plain; charset=utf-8",
+			want:        "Valid\ufffdEnd", // charset decoder replaces invalid bytes with U+FFFD
+		},
 	}
 
 	for _, tt := range tests {
@@ -308,7 +367,6 @@ func TestReadErrorResponseBody(t *testing.T) {
 	}
 }
 
-// TestPreviewBody 응답 본문 미리보기 생성 로직을 검증합니다.
 func TestPreviewBody(t *testing.T) {
 	eucKrData, _ := io.ReadAll(transform.NewReader(strings.NewReader("한글"), korean.EUCKR.NewEncoder()))
 
@@ -336,10 +394,21 @@ func TestPreviewBody(t *testing.T) {
 			want:        "한글",
 		},
 		{
-			name:       "Binary Data Detection",
+			name:       "Binary Data Detection (Null Byte)",
 			body:       []byte{0x00, 0x01, 0x02, 0x03},
 			want:       "[바이너리 데이터]",
 			wantPrefix: true,
+		},
+		{
+			name:       "Binary Data Detection (Control Char)",
+			body:       []byte{'H', 'i', 0x07}, // Bell char
+			want:       "[바이너리 데이터]",
+			wantPrefix: true,
+		},
+		{
+			name: "Whitespace Control Chars (Allowed)",
+			body: []byte("Line1\nLine2\tTabbed\rCarriage"),
+			want: "Line1\nLine2\tTabbed\rCarriage",
 		},
 		{
 			name: "Truncation with Ellipsis",
@@ -366,20 +435,27 @@ func TestPreviewBody(t *testing.T) {
 	}
 }
 
-// TestIsCommonContentTypes Content-Type 헬퍼 함수들을 테스트합니다.
+// =================================================================================
+// Test Group 4: Helper Functions
+// =================================================================================
+
 func TestIsCommonContentTypes(t *testing.T) {
 	t.Run("isUTF8ContentType", func(t *testing.T) {
 		assert.True(t, isUTF8ContentType("text/html; charset=utf-8"))
 		assert.True(t, isUTF8ContentType("application/json; charset=UTF-8"))
+		assert.True(t, isUTF8ContentType("text/plain; CHARSET=utf-8")) // Case insensitive
 		assert.False(t, isUTF8ContentType("text/html; charset=euc-kr"))
 		assert.False(t, isUTF8ContentType("image/png"))
+		assert.False(t, isUTF8ContentType(""))
 	})
 
 	t.Run("isHTMLContentType", func(t *testing.T) {
 		assert.True(t, isHTMLContentType("text/html"))
 		assert.True(t, isHTMLContentType("text/html; charset=utf-8"))
 		assert.True(t, isHTMLContentType("application/xhtml+xml"))
+		assert.True(t, isHTMLContentType("TEXT/HTML")) // Case insensitive
 		assert.False(t, isHTMLContentType("application/json"))
 		assert.False(t, isHTMLContentType("text/plain"))
+		assert.False(t, isHTMLContentType(""))
 	})
 }

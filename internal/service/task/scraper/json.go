@@ -100,7 +100,7 @@ func (s *scraper) FetchJSON(ctx context.Context, method, rawURL string, body any
 	// 5단계: JSON 디코딩 및 데이터 매핑
 	// 메모리에 확보된 응답 본문(result.Body)을 디코딩하여 대상 구조체(v)에 저장합니다.
 	// 이 과정에서 문자열 인코딩 변환(Charset)과 JSON 문법 검사(Strict Mode)가 수행됩니다.
-	return s.decodeJSONResponse(result, v, rawURL, logger)
+	return s.decodeJSONResponse(ctx, result, v, rawURL, logger)
 }
 
 // verifyJSONContentType JSON API 응답의 Content-Type 헤더를 검증합니다.
@@ -154,7 +154,7 @@ func (s *scraper) verifyJSONContentType(resp *http.Response, url string, logger 
 	// 정상적으로 동작하는 API와의 통신이 차단될 수 있습니다.
 	//
 	// 따라서 경고 로그만 남기고 JSON 파싱을 계속 진행하여, 실제 데이터 유효성은 디코딩 단계에서 검증합니다.
-	if contentType != "" && !strings.Contains(strings.ToLower(contentType), "json") {
+	if contentType == "" || !strings.Contains(strings.ToLower(contentType), "json") {
 		logger.WithFields(applog.Fields{
 			"url":            url,
 			"status_code":    resp.StatusCode,
@@ -169,6 +169,7 @@ func (s *scraper) verifyJSONContentType(resp *http.Response, url string, logger 
 // decodeJSONResponse HTTP 응답 본문을 JSON으로 디코딩하여 지정된 타입으로 변환합니다.
 //
 // 매개변수:
+//   - ctx: 요청의 생명주기를 제어하는 컨텍스트 (취소, 타임아웃 등)
 //   - result: HTTP 요청 실행후 수신된 결과 데이터 (상태 코드, 헤더 및 메모리에 버퍼링된 본문 바이트 포함)
 //   - v: JSON 응답을 디코딩할 대상 구조체의 포인터 (반드시 nil이 아닌 포인터여야 함)
 //   - url: 요청을 보낸 대상 URL (에러 발생 시 어느 엔드포인트에서 문제가 생겼는지 추적하기 위한 용도)
@@ -176,7 +177,7 @@ func (s *scraper) verifyJSONContentType(resp *http.Response, url string, logger 
 //
 // 반환값:
 //   - error: JSON 파싱 오류, 응답 크기 초과, 또는 데이터 무결성 오류 시 에러 반환
-func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logger *applog.Entry) error {
+func (s *scraper) decodeJSONResponse(ctx context.Context, result fetchResult, v any, url string, logger *applog.Entry) error {
 	// ============================================================
 	// 1. 204 No Content 응답 처리
 	// ============================================================
@@ -239,7 +240,8 @@ func (s *scraper) decodeJSONResponse(result fetchResult, v any, url string, logg
 	// ============================================================
 	// 5. JSON 디코딩 (스트림 방식)
 	// ============================================================
-	decoder := json.NewDecoder(utf8Reader)
+	reader := &contextAwareReader{ctx: ctx, r: utf8Reader}
+	decoder := json.NewDecoder(reader)
 	if err = decoder.Decode(v); err != nil {
 		// 디코딩 실패 시 디버깅을 위한 정보 수집
 		// 에러 메시지와 함께 응답 본문의 일부를 로그에 포함합니다.

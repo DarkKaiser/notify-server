@@ -224,7 +224,7 @@ func TestTelegramNotifier_WithElapsedTime(t *testing.T) {
 		{
 			name: "Positive Elapsed Time",
 			notification: contract.Notification{
-				ElapsedTime: 10 * time.Second,
+				Elapsed: 10 * time.Second,
 			},
 			message:  "Job Finished",
 			expected: "Job Finished (10초 지남)",
@@ -232,7 +232,7 @@ func TestTelegramNotifier_WithElapsedTime(t *testing.T) {
 		{
 			name: "Zero Elapsed Time",
 			notification: contract.Notification{
-				ElapsedTime: 0,
+				Elapsed: 0,
 			},
 			message:  "Job Started",
 			expected: "Job Started", // 변경 없음
@@ -240,7 +240,7 @@ func TestTelegramNotifier_WithElapsedTime(t *testing.T) {
 		{
 			name: "Negative Elapsed Time",
 			notification: contract.Notification{
-				ElapsedTime: -5 * time.Minute,
+				Elapsed: -5 * time.Minute,
 			},
 			message:  "Weird Job",
 			expected: "Weird Job", // 변경 없음
@@ -264,7 +264,7 @@ func TestTelegramNotifier_BuildEnrichMessage_Integration(t *testing.T) {
 		Message:       "Main Content",
 		Cancelable:    true,
 		InstanceID:    "inst-999",
-		ElapsedTime:   1 * time.Hour,
+		Elapsed:       1 * time.Hour,
 		ErrorOccurred: true,
 	}
 

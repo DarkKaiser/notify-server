@@ -204,7 +204,7 @@ func (t *task) fetchProductInfo(ctx context.Context, id int) (*product, error) {
 	// @@@@@
 	// 상품 페이지를 읽어들인다.
 	productPageURL := formatProductPageURL(id)
-	doc, err := t.GetScraper().FetchHTMLDocument(ctx, productPageURL, nil)
+	doc, err := t.Scraper().FetchHTMLDocument(ctx, productPageURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +658,7 @@ func (t *task) buildNotificationMessage(currentSnapshot *watchProductPriceSnapsh
 
 	// 변경 사항이 없더라도, 사용자가 명시적 의도로 작업(RunByUser)을 실행한 경우에는 침묵하지 않고 현재 상태를 보고합니다.
 	// 이는 시스템이 정상 동작 중임을 사용자에게 확신시켜 주기 위한 중요한 UX 장치입니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		if len(currentSnapshot.Products) == 0 {
 			return "등록된 상품 정보가 존재하지 않습니다."
 		}

@@ -218,7 +218,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		searchAPIURL := buildSearchAPIURL(commandSettings.Query, pageIndex)
 
 		var pageContent = &searchResponse{}
-		err := t.GetScraper().FetchJSON(ctx, "GET", searchAPIURL, nil, nil, pageContent)
+		err := t.Scraper().FetchJSON(ctx, "GET", searchAPIURL, nil, nil, pageContent)
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +294,7 @@ func buildSearchAPIURL(query string, page int) string {
 //   - int (rawCount): 키워드 매칭 검사 전 탐색된 원본 항목의 총 개수 (페이지네이션 종료 조건 판별의 기준값)
 //   - error: DOM 파싱 실패 또는 필수 요소 누락 등 구조적 변경으로 인한 치명적 에러
 func (t *task) parsePerformancesFromHTML(ctx context.Context, html string, matchers *keywordMatchers) ([]*performance, int, error) {
-	doc, err := t.GetScraper().ParseHTML(ctx, strings.NewReader(html), "", "")
+	doc, err := t.Scraper().ParseHTML(ctx, strings.NewReader(html), "", "")
 	if err != nil {
 		return nil, 0, apperrors.Wrap(err, apperrors.ExecutionFailed, "불러온 페이지의 데이터 파싱이 실패하였습니다")
 	}
@@ -397,7 +397,7 @@ func (t *task) analyzeAndReport(currentSnapshot *watchNewPerformancesSnapshot, p
 	//
 	// 자동 실행 시에는 변경 사항이 없으면 불필요한 알림(Noise)을 방지하기 위해 침묵하지만,
 	// 수동 실행 시에는 "변경 없음"이라는 명시적인 피드백을 제공하여 시스템이 정상 동작 중임을 사용자가 인지할 수 있도록 합니다.
-	if t.GetRunBy() == contract.TaskRunByUser {
+	if t.RunBy() == contract.TaskRunByUser {
 		if len(currentSnapshot.Performances) == 0 {
 			return "등록된 공연정보가 존재하지 않습니다.", false
 		}

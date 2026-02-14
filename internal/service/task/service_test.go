@@ -25,8 +25,8 @@ import (
 
 func registerServiceTestTask() {
 	// 정상 테스트용 Task 등록
-	config := &provider.Config{
-		Commands: []*provider.CommandConfig{
+	config := &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{
 				ID:            "TEST_COMMAND",
 				AllowMultiple: true,
@@ -344,8 +344,8 @@ func TestService_Submit_Timeout(t *testing.T) {
 	registerServiceTestTask() // Register basic tasks
 
 	// Register a slow task
-	provider.RegisterForTest("SLOW_TASK", &provider.Config{
-		Commands: []*provider.CommandConfig{
+	provider.RegisterForTest("SLOW_TASK", &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{ID: "SLOW_CMD", AllowMultiple: true},
 		},
 		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {

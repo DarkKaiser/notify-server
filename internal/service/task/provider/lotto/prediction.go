@@ -39,7 +39,7 @@ func (t *task) executePrediction() (message string, _ interface{}, err error) {
 		}
 	}()
 
-	jarPath := filepath.Join(t.appPath, jarFileName)
+	jarPath := filepath.Join(t.appPath, predictionJarName)
 
 	// 비동기적으로 작업을 시작한다
 	process, err := t.executor.StartCommand(ctx, "java", "-Dfile.encoding=UTF-8", fmt.Sprintf("-Duser.dir=%s", t.appPath), "-jar", jarPath)

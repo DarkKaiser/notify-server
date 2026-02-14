@@ -64,8 +64,8 @@ type Notification struct {
 	// Message 전달하고자 하는 알림의 본문 내용입니다. (Required)
 	Message string
 
-	// ElapsedTime 작업 실행에 소요된 시간입니다. (Optional)
-	ElapsedTime time.Duration
+	// Elapsed 작업 실행에 소요된 시간입니다. (Optional)
+	Elapsed time.Duration
 
 	// ErrorOccurred 이 알림이 에러 상황을 알리는 것인지의 여부입니다.
 	ErrorOccurred bool

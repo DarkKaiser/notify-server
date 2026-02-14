@@ -41,7 +41,8 @@ type fetchResult struct {
 	// Response HTTP 응답 객체입니다.
 	//
 	// 응답 본문(Body)은 이미 메모리로 읽힌 상태이며, bytes.NewReader로 교체되어 있습니다.
-	// 따라서 호출자는 이 Body를 여러 번 읽을 수 있으며(Seek 지원), 네트워크 연결은 이미 해제된 상태입니다.
+	// 따라서 호출자는 이 Body를 여러 번 읽을 수 있으며, 네트워크 연결은 이미 해제된 상태입니다.
+	// (주의) Response.Body 자체는 Seek을 지원하지 않으므로, 탐색이 필요한 경우 fetchResult.Body를 사용하십시오.
 	Response *http.Response
 
 	// Body 응답 본문 데이터의 메모리 복사본입니다.
@@ -102,11 +103,17 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 
 		return fetchResult{}, logger, err
 	}
+	// 응답 본문 닫기 예약: validateResponse 등 이후 로직에서 패닉이 발생하더라도 리소스가 해제되도록 보장합니다.
+	//
+	// defer로 Body를 닫는 이유:
+	//   - 정상 흐름과 에러 흐름 모두에서 리소스가 해제됨을 보장
+	//   - 이후 단계에서 본문을 메모리로 읽어들일 것이므로, 함수 종료 시 네트워크 연결 해제를 보장
+	defer httpResp.Body.Close()
 
 	// [단계 2] HTTP 응답 검증
 	if err := s.validateResponse(httpResp, params, logger); err != nil {
-		// 참고: validateResponse 함수 내부에서 에러 발생 시 디버깅용 본문 읽기(1KB)와
-		// 연결 재사용을 위한 추가 드레인(3KB)을 합쳐 총 4KB의 소모 작업을 이미 완료하고 Body를 닫았습니다.
+		// 참고: validateResponse 함수 내부에서 에러 발생 시 연결 재사용을 위해 응답 본문을 일부 드레인(Drain)합니다.
+		// 하지만, 실제 리소스 해제(Close)는 상단에 예약된 defer를 통해 함수 종료 시점에 실행됩니다.
 		// 따라서 호출자인 이 시점에서는 별도의 드레인이나 Close 처리가 필요하지 않습니다.
 
 		logger.WithError(err).
@@ -121,12 +128,6 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 	// readResponseBodyWithLimit를 호출하여:
 	//   - 응답 본문을 메모리로 읽어들임
 	//   - maxResponseBodySize를 초과하는 경우 자동으로 잘라냄 (Truncation)
-	//
-	// defer로 Body를 닫는 이유:
-	//   - 정상 흐름과 에러 흐름 모두에서 리소스가 해제됨을 보장
-	//   - 이 시점에서 Body는 이미 메모리로 읽힌 상태이므로 Close는 네트워크 연결 해제를 의미
-	defer httpResp.Body.Close()
-
 	bodyBytes, isTruncated, err := s.readResponseBodyWithLimit(ctx, httpResp)
 	if err != nil {
 		logger.WithError(err).
@@ -145,15 +146,16 @@ func (s *scraper) executeRequest(ctx context.Context, params requestParams) (res
 
 	// 메모리 버퍼로 Body 교체
 	//
-	// 원본 Body(네트워크 스트림)를 bytes.NewReader(메모리 버퍼)로 교체합니다.
+	// 원본 Body(네트워크 스트림)를 메모리 버퍼(bytes.Reader)로 교체합니다.
 	// 이를 통해:
-	//   - 호출자가 Body를 여러 번 읽을 수 있음 (Seek 지원)
-	//   - 네트워크 연결이 이미 해제되어 리소스 누수 방지
-	//   - 빠른 접근 가능 (메모리 읽기)
+	//   - 응답 데이터를 메모리에 확보하여 네트워크 리소스(연결)를 즉시 해제
+	//   - 이후 파싱 단계에서 네트워크 상태와 무관하게 안정적인 데이터 접근 보장
+	//   - (참고) io.NopCloser로 감싸여 있어 Response.Body를 통한 직접 Seek은 불가능하지만,
+	//     필요 시 fetchResult.Body 바이트 슬라이스를 통해 언제든 재읽기가 가능함
 	//
 	// io.NopCloser로 래핑하는 이유:
-	//   - http.Response.Body는 io.ReadCloser 타입이어야 하므로 Close 메서드 추가
-	//   - bytes.Reader는 Close를 제공하지 않으므로 NopCloser로 감쌈
+	//   - http.Response.Body 필드는 io.ReadCloser 인터페이스를 요구함
+	//   - bytes.Reader는 Close 메서드가 없으므로 NopCloser로 감싸서 규격 준수
 	httpResp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// 최종 결과 객체 생성

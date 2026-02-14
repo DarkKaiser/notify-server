@@ -14,6 +14,7 @@ import (
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 )
 
+// @@@@@
 const (
 	msgTaskExecutionFailed        = "작업 진행중 오류가 발생하여 작업이 실패하였습니다.😱"
 	msgStorageNotInitialized      = "Storage가 초기화되지 않았습니다."
@@ -24,6 +25,7 @@ const (
 	msgPreviousSnapshotLoadFailed = "이전 작업결과데이터 로딩이 실패하였습니다.😱\n\n☑ %s"
 )
 
+// @@@@@
 // Base 개별 작업의 실행 단위이자 상태를 관리하는 핵심 구조체입니다.
 //
 // Base는 불변 상태(id, commandID 등)와 가변 상태(canceled, storage 상태 등)를 모두 포함하며,
@@ -43,6 +45,9 @@ type Base struct {
 
 	// 작업 취소 여부 플래그 - 원자적 접근 필요
 	canceled atomic.Bool
+
+	// scraper 필수 여부 플래그
+	requireScraper bool
 
 	// 컨텍스트 취소를 위한 함수 (Run 실행 중에만 유효)
 	cancelFunc context.CancelFunc
@@ -75,22 +80,24 @@ type Base struct {
 // 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
 var _ Task = (*Base)(nil)
 
-// BaseParams Base 구조체 초기화에 필요한 매개변수들을 정의하는 구조체입니다.
+// @@@@@
+// baseParams Base 구조체 초기화에 필요한 매개변수들을 정의하는 구조체입니다.
 // 인자가 많아짐에 따른 가독성 저하를 방지하고, 향후 공통 필드 추가 시 확장성을 보장합니다.
-type BaseParams struct {
-	ID          contract.TaskID
-	CommandID   contract.TaskCommandID
-	InstanceID  contract.TaskInstanceID
-	NotifierID  contract.NotifierID
-	RunBy       contract.TaskRunBy
-	Storage     contract.TaskResultStore
-	Scraper     scraper.Scraper
-	NewSnapshot NewSnapshotFunc
+type baseParams struct {
+	ID             contract.TaskID
+	CommandID      contract.TaskCommandID
+	InstanceID     contract.TaskInstanceID
+	NotifierID     contract.NotifierID
+	RunBy          contract.TaskRunBy
+	Storage        contract.TaskResultStore
+	Scraper        scraper.Scraper
+	RequireScraper bool
+	NewSnapshot    NewSnapshotFunc
 }
 
-// NewBase Base 구조체의 필수 불변 필드들을 초기화하여 반환하는 생성자입니다.
-// 하위 Task 구현체는 이 함수를 사용하여 기본 Base 필드를 초기화해야 합니다.
-func NewBase(p BaseParams) *Base {
+// @@@@@
+// newBase 패키지 외부에서 직접 호출하지 못하도록 비노출로 변경합니다.
+func newBase(p baseParams) *Base {
 	return &Base{
 		id:         p.ID,
 		commandID:  p.CommandID,
@@ -98,8 +105,9 @@ func NewBase(p BaseParams) *Base {
 		notifierID: p.NotifierID,
 		runBy:      p.RunBy,
 
-		storage: p.Storage,
-		scraper: p.Scraper,
+		storage:        p.Storage,
+		scraper:        p.Scraper,
+		requireScraper: p.RequireScraper,
 
 		logger: applog.WithComponentAndFields(component, applog.Fields{
 			"task_id":     p.ID,
@@ -113,42 +121,52 @@ func NewBase(p BaseParams) *Base {
 	}
 }
 
-// NewBaseFromParams NewTaskParams를 기반으로 Base 인스턴스를 생성하는 헬퍼 함수입니다.
+// @@@@@
+// NewBase NewTaskParams를 기반으로 Base 인스턴스를 생성하는 헬퍼 함수입니다.
 // 개별 프로바이더 구현체에서 반복적으로 나타나는 Base 초기화 코드를 간소화합니다.
-func NewBaseFromParams(p NewTaskParams) *Base {
+func NewBase(p NewTaskParams, requireScraper bool) *Base {
+	if p.Request == nil {
+		panic("p.Request is nil in NewBaseFromParams")
+	}
+
 	var s scraper.Scraper
-	if p.Fetcher != nil {
+	if requireScraper {
+		if p.Fetcher == nil {
+			panic(fmt.Sprintf("scraper is required for task %s but fetcher is nil", p.Request.TaskID))
+		}
 		s = scraper.New(p.Fetcher)
 	}
 
-	return NewBase(BaseParams{
-		ID:          p.Request.TaskID,
-		CommandID:   p.Request.CommandID,
-		InstanceID:  p.InstanceID,
-		NotifierID:  p.Request.NotifierID,
-		RunBy:       p.Request.RunBy,
-		Storage:     p.Storage,
-		Scraper:     s,
-		NewSnapshot: p.NewSnapshot,
+	return newBase(baseParams{
+		ID:             p.Request.TaskID,
+		CommandID:      p.Request.CommandID,
+		InstanceID:     p.InstanceID,
+		NotifierID:     p.Request.NotifierID,
+		RunBy:          p.Request.RunBy,
+		Storage:        p.Storage,
+		Scraper:        s,
+		RequireScraper: requireScraper,
+		NewSnapshot:    p.NewSnapshot,
 	})
 }
 
-func (t *Base) GetID() contract.TaskID {
+func (t *Base) ID() contract.TaskID {
 	return t.id
 }
 
-func (t *Base) GetCommandID() contract.TaskCommandID {
+func (t *Base) CommandID() contract.TaskCommandID {
 	return t.commandID
 }
 
-func (t *Base) GetInstanceID() contract.TaskInstanceID {
+func (t *Base) InstanceID() contract.TaskInstanceID {
 	return t.instanceID
 }
 
-func (t *Base) GetNotifierID() contract.NotifierID {
+func (t *Base) NotifierID() contract.NotifierID {
 	return t.notifierID
 }
 
+// @@@@@
 func (t *Base) Cancel() {
 	t.canceled.Store(true)
 
@@ -164,7 +182,7 @@ func (t *Base) IsCanceled() bool {
 	return t.canceled.Load()
 }
 
-func (t *Base) GetRunBy() contract.TaskRunBy {
+func (t *Base) RunBy() contract.TaskRunBy {
 	return t.runBy
 }
 
@@ -172,6 +190,7 @@ func (t *Base) Elapsed() time.Duration {
 	t.runTimeMu.RLock()
 	defer t.runTimeMu.RUnlock()
 
+	// @@@@@
 	if t.runTime.IsZero() {
 		return 0
 	}
@@ -179,16 +198,23 @@ func (t *Base) Elapsed() time.Duration {
 	return time.Since(t.runTime)
 }
 
+// @@@@@
 func (t *Base) SetExecute(fn ExecuteFunc) {
 	t.execute = fn
 }
 
-func (t *Base) GetScraper() scraper.Scraper {
+func (t *Base) Scraper() scraper.Scraper {
 	return t.scraper
 }
 
+// @@@@@
 // Run Task의 실행 수명 주기를 관리하는 메인 진입점입니다.
 func (t *Base) Run(ctx context.Context, notificationSender contract.NotificationSender) {
+	if notificationSender == nil {
+		t.LogWithContext(component, applog.ErrorLevel, "notificationSender is nil. Task execution stopped.", nil, nil)
+		return
+	}
+
 	// 실행 전 시스템에 의해 이미 취소된 상태라면 즉시 종료합니다 (Early Exit).
 	if t.IsCanceled() {
 		t.LogWithContext(component, applog.InfoLevel, "작업이 시작 전에 취소되었습니다", nil, nil)
@@ -213,11 +239,26 @@ func (t *Base) Run(ctx context.Context, notificationSender contract.Notification
 
 	defer func() {
 		if r := recover(); r != nil {
-			err := apperrors.New(apperrors.Internal, fmt.Sprintf("Task 실행 도중 Panic 발생: %v", r))
-			t.LogWithContext(component, applog.ErrorLevel, "Critical: Task 내부 Panic 발생 (Recovered)", applog.Fields{"panic_value": r}, err)
+			// 1. 즉시 로그 기록 (가장 안전한 로직)
+			// 상세 에러와 패닉 값을 포함하여 로깅합니다.
+			err := apperrors.Newf(apperrors.Internal, "Task 내부 Panic 발생: %v", r)
+			t.LogWithContext(component, applog.ErrorLevel, "Critical: Task 실행 도중 Panic 발생 (Recovered)", applog.Fields{"panic_value": r}, err)
 
-			// Panic 발생 시에도 결과 처리 로직을 태워 "작업 실패"로 기록하고 알림을 보냅니다.
-			t.handleExecutionResult(ctx, notificationSender, "", nil, err)
+			// 2. 2차 패닉 방지를 위한 로컬 복구 구현 및 최소한의 알림 시도
+			// 알림 전송 로지 자체가 패닉을 일으키더라도 전체 시스템에는 영향을 주지 않도록 격리합니다.
+			func() {
+				defer func() {
+					if r2 := recover(); r2 != nil {
+						t.LogWithContext(component, applog.ErrorLevel, "Critical: Panic 복구 로직 내부에서 2차 Panic 발생", applog.Fields{"secondary_panic_value": r2}, nil)
+					}
+				}()
+
+				if notificationSender != nil && t != nil {
+					// 패닉 상황임을 명시하는 최소한의 메시지를 생성합니다.
+					panicMsg := t.formatTaskErrorMessage(fmt.Sprintf("시스템 내부 오류(Panic)가 발생하였습니다. (%v)", r))
+					_ = notificationSender.Notify(ctx, t.buildNotification(panicMsg, true))
+				}
+			}()
 		}
 	}()
 
@@ -251,6 +292,7 @@ func (t *Base) Run(ctx context.Context, notificationSender contract.Notification
 	t.handleExecutionResult(ctx, notificationSender, message, newSnapshot, err)
 }
 
+// @@@@@
 // prepareExecution 실행 전 필요한 조건을 검증하고 데이터를 준비합니다.
 func (t *Base) prepareExecution(ctx context.Context, notificationSender contract.NotificationSender) (any, error) {
 	if t.execute == nil {
@@ -258,6 +300,13 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 		t.LogWithContext(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (ExecuteFunc 미초기화)", applog.Fields{"detail": message}, nil)
 		t.notifyError(ctx, notificationSender, message)
 		return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgExecuteFuncNotInitialized, t.id, t.commandID)
+	}
+
+	if t.requireScraper && t.scraper == nil {
+		message := t.formatTaskErrorMessage(msgScraperNotInitialized)
+		t.LogWithContext(component, applog.ErrorLevel, "작업 실행 중 에러가 발생하였습니다 (Scraper 미초기화)", applog.Fields{"detail": message}, nil)
+		t.notifyError(ctx, notificationSender, message)
+		return nil, apperrors.Newf(apperrors.Internal, "%s (task_id: %s, command_id: %s)", msgScraperNotInitialized, t.id, t.commandID)
 	}
 
 	var snapshot interface{}
@@ -280,7 +329,7 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 		}
 
 		// Storage에서 이전 결과를 로드합니다.
-		err := t.storage.Load(t.GetID(), t.GetCommandID(), snapshot)
+		err := t.storage.Load(t.ID(), t.CommandID(), snapshot)
 		if err != nil {
 			if errors.Is(err, contract.ErrTaskResultNotFound) {
 				t.LogWithContext(component, applog.InfoLevel, "이전 작업 결과가 없습니다 (최초 실행)", nil, nil)
@@ -299,6 +348,7 @@ func (t *Base) prepareExecution(ctx context.Context, notificationSender contract
 	return snapshot, nil
 }
 
+// @@@@@
 // handleExecutionResult 작업 결과를 처리합니다.
 func (t *Base) handleExecutionResult(ctx context.Context, notificationSender contract.NotificationSender, message string, newSnapshot interface{}, err error) {
 	// 1. 비즈니스 로직(execute) 실행 에러 처리
@@ -317,18 +367,31 @@ func (t *Base) handleExecutionResult(ctx context.Context, notificationSender con
 	}
 
 	// 2. 상태 저장(Snapshot Save) 우선 수행
-	if newSnapshot != nil && t.storage != nil {
-		err := t.storage.Save(t.GetID(), t.GetCommandID(), newSnapshot)
-		if err != nil {
-			// [수정: Stability]
-			// 저장이 실패하더라도 비즈니스 로직(execute)이 성공하여 생성된 중요한 알림 메시지(message)가 있다면,
-			// 이를 에러 메시지와 함께 전송하여 사용자가 정보를 유실하지 않도록 합니다.
-			errMsg := fmt.Sprintf(msgNewSnapshotSaveFailed, err)
+	if newSnapshot != nil {
+		if t.storage != nil {
+			err := t.storage.Save(t.ID(), t.CommandID(), newSnapshot)
+			if err != nil {
+				// [수정: Stability]
+				// 저장이 실패하더라도 비즈니스 로직(execute)이 성공하여 생성된 중요한 알림 메시지(message)가 있다면,
+				// 이를 에러 메시지와 함께 전송하여 사용자가 정보를 유실하지 않도록 합니다.
+				errMsg := fmt.Sprintf(msgNewSnapshotSaveFailed, err)
+				if message != "" {
+					errMsg = fmt.Sprintf("%s\n\n---\n[비즈니스 실행 결과]\n%s", errMsg, message)
+				}
+
+				t.LogWithContext(component, applog.ErrorLevel, "작업 결과 저장 중 에러가 발생하였습니다", applog.Fields{"detail": errMsg}, err)
+				t.notifyError(ctx, notificationSender, errMsg)
+				return
+			}
+		} else {
+			// [수정: Bug Fix]
+			// execute 로직이 새로운 스냅샷을 반환했지만 storage가 설정되지 않은 경우,
+			// 이는 명백한 설정/구현 오류이므로 사용자에게 알리고 에러로 처리합니다.
+			errMsg := t.formatTaskErrorMessage(msgStorageNotInitialized)
 			if message != "" {
 				errMsg = fmt.Sprintf("%s\n\n---\n[비즈니스 실행 결과]\n%s", errMsg, message)
 			}
-
-			t.LogWithContext(component, applog.ErrorLevel, "작업 결과 저장 중 에러가 발생하였습니다", applog.Fields{"detail": errMsg}, err)
+			t.LogWithContext(component, applog.ErrorLevel, "작업 결과가 반환되었으나 Storage가 초기화되지 않아 저장할 수 없습니다", applog.Fields{"detail": errMsg}, nil)
 			t.notifyError(ctx, notificationSender, errMsg)
 			return
 		}
@@ -336,7 +399,7 @@ func (t *Base) handleExecutionResult(ctx context.Context, notificationSender con
 
 	// 3. 모든 과정이 성공했을 때만 성공 알림 전송
 	if len(message) > 0 {
-		notifyErr := notificationSender.Notify(ctx, t.newNotification(message, false))
+		notifyErr := notificationSender.Notify(ctx, t.buildNotification(message, false))
 
 		if notifyErr != nil {
 			t.LogWithContext(component, applog.ErrorLevel, "성공 알림 전송 중 에러가 발생하였습니다", nil, notifyErr)
@@ -344,14 +407,31 @@ func (t *Base) handleExecutionResult(ctx context.Context, notificationSender con
 	}
 }
 
+// @@@@@
 func (t *Base) notifyError(ctx context.Context, notificationSender contract.NotificationSender, message string) {
-	err := notificationSender.Notify(ctx, t.newNotification(message, true))
+	err := notificationSender.Notify(ctx, t.buildNotification(message, true))
 
 	if err != nil {
 		t.LogWithContext(component, applog.ErrorLevel, "알림 전송 중 에러가 발생하였습니다", nil, err)
 	}
 }
 
+// @@@@@
+// buildNotification 새로운 Notification 객체를 생성합니다.
+func (t *Base) buildNotification(message string, errorOccurred bool) contract.Notification {
+	return contract.Notification{
+		NotifierID:    t.NotifierID(),
+		TaskID:        t.ID(),
+		CommandID:     t.CommandID(),
+		InstanceID:    t.InstanceID(),
+		Message:       message,
+		Elapsed:       t.Elapsed(),
+		ErrorOccurred: errorOccurred,
+		Cancelable:    false,
+	}
+}
+
+// @@@@@
 // LogWithContext 컴포넌트 이름과 추가 필드를 포함하여 로깅을 수행하는 메서드입니다.
 func (t *Base) LogWithContext(component string, level applog.Level, message string, fields applog.Fields, err error) {
 	entry := t.logger.WithField("component", component)
@@ -367,21 +447,8 @@ func (t *Base) LogWithContext(component string, level applog.Level, message stri
 	entry.Log(level, message)
 }
 
+// @@@@@
 // formatTaskErrorMessage "작업 실패" 공통 문구와 세부 에러 내용을 조합합니다.
 func (t *Base) formatTaskErrorMessage(detail any) string {
 	return fmt.Sprintf("%s\n\n☑ %s", msgTaskExecutionFailed, detail)
-}
-
-// newNotification 새로운 Notification 객체를 생성합니다.
-func (t *Base) newNotification(message string, isError bool) contract.Notification {
-	return contract.Notification{
-		NotifierID:    t.GetNotifierID(),
-		TaskID:        t.GetID(),
-		CommandID:     t.GetCommandID(),
-		InstanceID:    t.GetInstanceID(),
-		Message:       message,
-		ElapsedTime:   t.Elapsed(),
-		ErrorOccurred: isError,
-		Cancelable:    false, // 통상적으로 결과 기반 알림은 취소 불가능
-	}
 }

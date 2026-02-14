@@ -12,7 +12,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -83,7 +82,18 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 func TestExtractDuplicateRecords(t *testing.T) {
 	t.Parallel()
 	tsk := &task{
-		Base: provider.NewBase(provider.BaseParams{ID: "T", CommandID: "C", InstanceID: "I", NotifierID: "N", RunBy: contract.TaskRunByUser, NewSnapshot: func() interface{} { return &watchProductPriceSnapshot{} }}),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     "T",
+				CommandID:  "C",
+				NotifierID: "N",
+				RunBy:      contract.TaskRunByUser,
+			},
+			InstanceID: "I",
+			NewSnapshot: func() interface{} {
+				return &watchProductPriceSnapshot{}
+			},
+		}, false),
 	}
 
 	tests := []struct {
@@ -263,17 +273,19 @@ func TestTask_ParseProductFromPage(t *testing.T) {
 			}
 
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{
-					ID:         "T",
-					CommandID:  "C",
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      contract.TaskRunByScheduler,
+					},
 					InstanceID: "I",
-					NotifierID: "N",
-					RunBy:      contract.TaskRunByUser,
-					Scraper:    scraper.New(mockFetcher),
+					Fetcher:    mockFetcher,
 					NewSnapshot: func() interface{} {
 						return &watchProductPriceSnapshot{}
 					},
-				}),
+				}, true),
 			}
 
 			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
@@ -370,16 +382,18 @@ func TestTask_DiffAndNotify(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{
-					ID:         "T",
-					CommandID:  "C",
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     "T",
+						CommandID:  "C",
+						NotifierID: "N",
+						RunBy:      tt.runBy,
+					},
 					InstanceID: "I",
-					NotifierID: "N",
-					RunBy:      tt.runBy,
 					NewSnapshot: func() interface{} {
 						return &watchProductPriceSnapshot{}
 					},
-				}),
+				}, false),
 			}
 
 			curSnap := &watchProductPriceSnapshot{Products: tt.current}

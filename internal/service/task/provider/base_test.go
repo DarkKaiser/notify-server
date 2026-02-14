@@ -15,6 +15,7 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func TestTask_BasicMethods(t *testing.T) {
 	notifier := "telegram"
 
 	mockStorage := &contractmocks.MockTaskResultStore{}
-	task := NewBase(BaseParams{
+	task := newBase(baseParams{
 		ID:         taskID,
 		CommandID:  cmdID,
 		InstanceID: instID,
@@ -40,18 +41,18 @@ func TestTask_BasicMethods(t *testing.T) {
 	})
 
 	// When & Then
-	assert.Equal(t, taskID, task.GetID())
-	assert.Equal(t, cmdID, task.GetCommandID())
-	assert.Equal(t, instID, task.GetInstanceID())
-	assert.Equal(t, contract.NotifierID(notifier), task.GetNotifierID())
-	assert.Equal(t, contract.TaskRunByUser, task.GetRunBy())
+	assert.Equal(t, taskID, task.ID())
+	assert.Equal(t, cmdID, task.CommandID())
+	assert.Equal(t, instID, task.InstanceID())
+	assert.Equal(t, contract.NotifierID(notifier), task.NotifierID())
+	assert.Equal(t, contract.TaskRunByUser, task.RunBy())
 
 	// Cancel Test
 	assert.False(t, task.IsCanceled())
 	task.Cancel()
 	assert.True(t, task.IsCanceled())
 
-	// ElapsedTime Test
+	// Elapsed Test
 	task.runTime = time.Now().Add(-1 * time.Second)
 	assert.GreaterOrEqual(t, task.Elapsed(), 1*time.Second)
 }
@@ -248,7 +249,7 @@ func TestTask_Run(t *testing.T) {
 			},
 			expectedNotifyCount: 1,
 			// handleExecutionResult에서 "작업이 실패하였습니다" 문구와 에러 메시지를 조합하여 전송함
-			expectedMessageParts: []string{msgTaskExecutionFailed, "Task 실행 도중 Panic 발생", "예기치 못한 닐 포인터 참조"},
+			expectedMessageParts: []string{msgTaskExecutionFailed, "시스템 내부 오류(Panic)", "예기치 못한 닐 포인터 참조"},
 		},
 		{
 			name:  "에러: 이전 데이터 로드 실패 (Load Error) - 실행 중단 (Fail-Fast)",
@@ -296,7 +297,7 @@ func TestTask_Run(t *testing.T) {
 			if runBy == contract.TaskRunByUnknown {
 				runBy = contract.TaskRunByScheduler
 			}
-			task := NewBase(BaseParams{
+			task := newBase(baseParams{
 				ID:         tID,
 				CommandID:  cID,
 				InstanceID: "test_inst",
@@ -323,7 +324,7 @@ func TestTask_Run(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				defer func() {
-					doneC <- task.GetInstanceID()
+					doneC <- task.InstanceID()
 				}()
 				task.Run(context.Background(), mockSender)
 			}()
@@ -386,11 +387,11 @@ func TestTask_Run(t *testing.T) {
 func registerTestConfig(tID contract.TaskID, cID contract.TaskCommandID) {
 	// Register 대신 RegisterForTest를 사용하여 중복 시 덮어쓰기 허용
 	// 또는 테스트마다 매번 ClearRegistry를 호출해야 하지만, 병렬 실행 등을 고려하여 덮어쓰기가 유리함
-	defaultRegistry.RegisterForTest(tID, &Config{
+	defaultRegistry.RegisterForTest(tID, &TaskConfig{
 		NewTask: func(p NewTaskParams) (Task, error) {
 			return nil, nil
 		},
-		Commands: []*CommandConfig{
+		Commands: []*TaskCommandConfig{
 			{
 				ID: cID,
 				NewSnapshot: func() interface{} {
@@ -448,7 +449,7 @@ func (d *dummyScraper) FetchJSON(ctx context.Context, method, rawURL string, bod
 
 // TestTask_PrepareExecution_SnapshotCreationFailed 스냅샷 생성 함수가 없는 경우의 처리를 테스트합니다.
 func TestTask_PrepareExecution_SnapshotCreationFailed(t *testing.T) {
-	task := NewBase(BaseParams{
+	task := newBase(baseParams{
 		ID:          "UNKNOWN_TASK",
 		CommandID:   "UNKNOWN_CMD",
 		InstanceID:  "inst",
@@ -482,8 +483,24 @@ func TestTask_FeatureFlags(t *testing.T) {
 	mockSender.On("Notify", mock.Anything, mock.Anything).Return(nil).Maybe()
 	ctx := context.Background()
 
+	t.Run("Snapshot 팩토리(NewSnapshot)가 있고 Storage가 nil일 때는 Run 실행 시 에러가 발생해야 함", func(t *testing.T) {
+		task := newBase(baseParams{
+			ID:          "STRICT_TASK",
+			CommandID:   "CMD",
+			NewSnapshot: func() interface{} { return &struct{}{} },
+		})
+		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+			return "ok", &struct{}{}, nil // NewSnapshot 반환
+		})
+
+		// prepareExecution에서는 스냅샷 팩토리가 있으면 Storage nil을 체크함 (현재 구현 유지)
+		_, err := task.prepareExecution(ctx, mockSender)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), msgStorageNotInitialized)
+	})
+
 	t.Run("UseStorage=false일 경우 Storage가 nil이어도 에러 없이 통과해야 함", func(t *testing.T) {
-		task := NewBase(BaseParams{
+		task := newBase(baseParams{
 			ID:        "NO_STORAGE_TASK",
 			CommandID: "CMD",
 			Scraper:   &dummyScraper{},
@@ -496,30 +513,12 @@ func TestTask_FeatureFlags(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("UseScraper=false일 경우 Scraper가 nil이어도 에러 없이 통과해야 함", func(t *testing.T) {
-		mockStorage := &contractmocks.MockTaskResultStore{}
-		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-		task := NewBase(BaseParams{
-			ID:          "NO_SCRAPER_TASK",
-			CommandID:   "CMD",
-			Storage:     mockStorage,
-			NewSnapshot: func() interface{} { return map[string]any{} },
-		})
-		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
-			return "ok", nil, nil
-		})
-
-		_, err := task.prepareExecution(ctx, mockSender)
-		assert.NoError(t, err)
-		mockStorage.AssertExpectations(t)
-	})
-
-	t.Run("Snapshot 팩토리(NewSnapshot)가 있고 Storage가 nil일 때는 에러가 발생해야 함", func(t *testing.T) {
-		task := NewBase(BaseParams{
-			ID:          "STRICT_TASK",
-			CommandID:   "CMD",
-			NewSnapshot: func() interface{} { return &struct{}{} },
+	t.Run("RequireScraper=true일 때 Scraper가 nil이면 에러가 발생해야 함", func(t *testing.T) {
+		task := newBase(baseParams{
+			ID:             "STRICT_SCRAPER_TASK",
+			CommandID:      "CMD",
+			RequireScraper: true,
+			Scraper:        nil,
 		})
 		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
 			return "ok", nil, nil
@@ -527,6 +526,227 @@ func TestTask_FeatureFlags(t *testing.T) {
 
 		_, err := task.prepareExecution(ctx, mockSender)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), msgStorageNotInitialized)
+		assert.Contains(t, err.Error(), msgScraperNotInitialized)
 	})
+
+	t.Run("RequireScraper=false일 때 Scraper가 nil이어도 통과해야 함", func(t *testing.T) {
+		task := newBase(baseParams{
+			ID:             "LAX_SCRAPER_TASK",
+			CommandID:      "CMD",
+			RequireScraper: false,
+			Scraper:        nil,
+		})
+		task.SetExecute(func(ctx context.Context, prev interface{}, html bool) (string, interface{}, error) {
+			return "ok", nil, nil
+		})
+
+		_, err := task.prepareExecution(ctx, mockSender)
+		assert.NoError(t, err)
+	})
+}
+
+// TestTask_Run_PanicRecovery 패닉 발생 시 복구 및 알림 전송 로직을 검증합니다.
+func TestTask_Run_PanicRecovery(t *testing.T) {
+	// Given
+	tID := contract.TaskID("PANIC_TASK")
+	cID := contract.TaskCommandID("PANIC_CMD")
+	registerTestConfig(tID, cID)
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	// 패닉 알림이 1회 호출되어야 함
+	mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred && n.TaskID == tID
+	})).Return(nil).Once()
+	mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
+
+	task := newBase(baseParams{
+		ID:         tID,
+		CommandID:  cID,
+		InstanceID: "inst_id",
+	})
+	// 의도적으로 Panic을 일으키는 ExecuteFunc 설정
+	task.SetExecute(func(ctx context.Context, prev any, html bool) (string, any, error) {
+		panic("intentional panic")
+	})
+
+	// When
+	assert.NotPanics(t, func() {
+		task.Run(context.Background(), mockSender)
+	})
+
+	// Then
+	mockSender.AssertExpectations(t)
+}
+
+// TestTask_Run_SecondaryPanicRecovery 패닉 복구 로직 내부에서 발생하는 2차 패닉에 대한 방어 로직을 검증합니다.
+func TestTask_Run_SecondaryPanicRecovery(t *testing.T) {
+	// Given
+	tID := contract.TaskID("DOUBLE_PANIC_TASK")
+	cID := contract.TaskCommandID("DOUBLE_PANIC_CMD")
+	registerTestConfig(tID, cID)
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	// 알림 전송 중 2차 패닉을 유도합니다.
+	mockSender.On("Notify", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		panic("secondary panic in notify")
+	}).Return(nil) // 실제로는 panic 때문에 실행되지 않음
+	mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
+
+	task := newBase(baseParams{
+		ID:         tID,
+		CommandID:  cID,
+		InstanceID: "inst_id",
+	})
+	task.SetExecute(func(ctx context.Context, prev any, html bool) (string, any, error) {
+		panic("primary panic")
+	})
+
+	// When & Then
+	// 고루틴 내에서 실행되지 않도록 직접 Run을 호출하여 패닉 전파 여부 확인
+	assert.NotPanics(t, func() {
+		task.Run(context.Background(), mockSender)
+	}, "2차 패닉이 발생하더라도 최종적으로 복구되어야 합니다")
+}
+
+// TestNewBaseFromParams_NilRequest p.Request가 nil일 때 패닉이 발생하는지 검증합니다.
+func TestNewBaseFromParams_NilRequest(t *testing.T) {
+	assert.Panics(t, func() {
+		NewBase(NewTaskParams{
+			Request: nil,
+		}, false)
+	})
+}
+
+// TestTask_Run_NilNotificationSender notificationSender가 nil일 때 안전하게 종료되는지 검증합니다.
+func TestTask_Run_NilNotificationSender(t *testing.T) {
+	task := newBase(baseParams{
+		ID:        "TEST",
+		CommandID: "CMD",
+	})
+
+	assert.NotPanics(t, func() {
+		task.Run(context.Background(), nil)
+	})
+}
+
+// -----------------------------------------------------------------------------
+// Logging Tests (Integrated from base_log_test.go)
+// -----------------------------------------------------------------------------
+
+func TestTask_Log(t *testing.T) {
+	// 로거 훅 설정 (로그 캡처)
+	hook := NewMemoryHook()
+	applog.StandardLogger().AddHook(hook)
+	defer func() {
+		hook.Reset()
+	}()
+
+	// Given
+	task := newBase(baseParams{
+		ID:         "TEST_TASK",
+		CommandID:  "TEST_CMD",
+		InstanceID: "TEST_INST",
+		NotifierID: "test-notifier",
+		RunBy:      contract.TaskRunByScheduler,
+		NewSnapshot: func() interface{} {
+			return struct{}{}
+		},
+	})
+
+	tests := []struct {
+		name      string
+		component string
+		level     applog.Level
+		message   string
+		fields    applog.Fields
+		err       error
+		validate  func(t *testing.T, entry *applog.Entry)
+	}{
+		{
+			name:      "기본 로깅 (필드 없음, 에러 없음)",
+			component: "test.component",
+			level:     applog.InfoLevel,
+			message:   "info message",
+			fields:    nil,
+			err:       nil,
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.InfoLevel, entry.Level)
+				assert.Equal(t, "info message", entry.Message)
+				assert.Equal(t, "test.component", entry.Data["component"])
+				assert.Equal(t, contract.TaskID("TEST_TASK"), entry.Data["task_id"])
+				assert.Equal(t, contract.TaskCommandID("TEST_CMD"), entry.Data["command_id"])
+			},
+		},
+		{
+			name:      "추가 필드 포함",
+			component: "test.component",
+			level:     applog.WarnLevel,
+			message:   "warn message",
+			fields:    applog.Fields{"custom_field": "value"},
+			err:       nil,
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.WarnLevel, entry.Level)
+				assert.Equal(t, "warn message", entry.Message)
+				assert.Equal(t, "value", entry.Data["custom_field"])
+			},
+		},
+		{
+			name:      "에러 포함",
+			component: "test.component",
+			level:     applog.ErrorLevel,
+			message:   "error message",
+			fields:    nil,
+			err:       errors.New("test error"),
+			validate: func(t *testing.T, entry *applog.Entry) {
+				assert.Equal(t, applog.ErrorLevel, entry.Level)
+				assert.Equal(t, "error message", entry.Message)
+				assert.Equal(t, "test error", entry.Data["error"].(error).Error())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hook.Reset()
+			task.LogWithContext(tt.component, tt.level, tt.message, tt.fields, tt.err)
+
+			requireEntry(t, hook)
+			tt.validate(t, hook.LastEntry())
+		})
+	}
+}
+
+func requireEntry(t *testing.T, hook *MemoryHook) {
+	if len(hook.Entries) == 0 {
+		t.Fatal("로그가 기록되지 않았습니다")
+	}
+}
+
+// MemoryHook 테스트용 로그 훅 구현체
+type MemoryHook struct {
+	Entries []*applog.Entry
+}
+
+func NewMemoryHook() *MemoryHook {
+	return &MemoryHook{}
+}
+
+func (h *MemoryHook) Levels() []applog.Level {
+	return applog.AllLevels
+}
+
+func (h *MemoryHook) Fire(entry *applog.Entry) error {
+	h.Entries = append(h.Entries, entry)
+	return nil
+}
+
+func (h *MemoryHook) Reset() {
+	h.Entries = make([]*applog.Entry, 0)
+}
+
+func (h *MemoryHook) LastEntry() *applog.Entry {
+	if len(h.Entries) == 0 {
+		return nil
+	}
+	return h.Entries[len(h.Entries)-1]
 }

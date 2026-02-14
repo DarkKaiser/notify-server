@@ -3,11 +3,10 @@ package scraper
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
@@ -96,7 +95,6 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				"결과를 저장할 변수는 nil이 아닌 포인터여야 합니다",
 			},
 		},
-
 		// =================================================================================
 		// Group 2: 정상 요청 및 파싱 (Success Scenarios)
 		// =================================================================================
@@ -228,11 +226,24 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				assert.Equal(t, "fallback", res.Name)
 				assert.Equal(t, 999, res.Value)
 			},
+			checkLog: nil, // charset.NewReader often handles invalid charsets gracefully without error
 		},
 
 		// =================================================================================
 		// Group 4: 에러 상황 (Error Handling)
 		// =================================================================================
+		{
+			name:   "Error - Request Body Marshal Failure",
+			method: "POST",
+			url:    "http://example.com/fail-marshal",
+			body:   func() {}, // func is not marshallable
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				// Fetcher not called due to marshal error
+			},
+			wantErr:     true,
+			errType:     apperrors.Internal,
+			errContains: []string{"요청 본문 JSON 인코딩 실패"},
+		},
 		{
 			name:   "Error - Unexpected Content Type (HTML)",
 			method: "GET",
@@ -258,7 +269,23 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				longJSON := `{"name": "very_long_name_exceeding_limit"}`
 				resp := mocks.NewMockResponse(longJSON, 200)
 				resp.Header.Set("Content-Type", "application/json")
-				// resp.IsTruncated = true (X) - Handled internally
+				// resp.IsTruncated = true (X) - Handled internally within scraper implementation or fetcher
+				// Here we simulate truncated flag being set by fetcher if `MaxBodySize` was passed to it,
+				// BUT: In `FetchJSON`, we rely on `s.executeRequest` which uses `fetcher` and reads into buffer.
+				// The scraper's `executeRequest` logic handles truncation check if it implements limiting.
+				// Let's assume standard behavior: if logic inside `executeRequest` sets Truncated.
+				// Since we mock `Fetcher.Do`, we can't easily set `IsTruncated` inside `executeRequest` unless
+				// we change how `executeRequest` works or mock it closer.
+				// In `json.go`: `result, logger, err := s.executeRequest(...)`
+				// `executeRequest` reads body.
+				// If we want to test truncation logic in `decodeJSONResponse`, we can rely on `executeRequest` behavior.
+				// However, `executeRequest` in `request_sender.go` does: `io.CopyN` or `LimitReader`.
+				// To force truncation in this test without complex mocks, we can rely on the fact that
+				// the real `executeRequest` will set `IsTruncated` if read hits limit.
+				// Let's pass a response body larger than limit.
+
+				// Re-verify `request_sender.go`: `executeRequest` implementation details.
+				// Assuming `executeRequest` respects `s.maxResponseBodySize`.
 				m.On("Do", mock.Anything).Return(resp, nil)
 			},
 			wantErr:     true,
@@ -325,16 +352,72 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			url:    "http://example.com/cancel",
 			ctxSetup: func() (context.Context, context.CancelFunc) {
 				ctx, cancel := context.WithCancel(context.Background())
-				cancel() // Start canceled
 				return ctx, cancel
 			},
 			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
-				// Fetcher mock might be called, but should return context canceled error
-				m.On("Do", mock.Anything).Return(nil, context.Canceled)
+				// Simulate context cancellation during fetch
+				// We can return context error directly
+				m.On("Do", mock.Anything).Run(func(args mock.Arguments) {
+					// Cancel context inside call
+					// But usually context is canceled before or during.
+					// Here we simulate external cancellation.
+				}).Return(nil, context.Canceled)
 			},
 			wantErr:     true,
 			errType:     apperrors.Unavailable,
 			errContains: []string{"요청 중단"},
+		},
+
+		// =================================================================================
+		// Group 5: Warning Log Verification
+		// =================================================================================
+		{
+			name:   "Warning - Non-Standard Content Type (text/plain)",
+			method: "GET",
+			url:    "http://example.com/text-plain",
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				jsonContent := `{"name": "plain", "value": 1}`
+				resp := mocks.NewMockResponse(jsonContent, 200)
+				resp.Header.Set("Content-Type", "text/plain")
+				m.On("Do", mock.Anything).Return(resp, nil)
+			},
+			validateResult: func(t *testing.T, v any) {
+				res := v.(*TestResponse)
+				assert.Equal(t, "plain", res.Name)
+			},
+			checkLog: func(t *testing.T, hook *test.Hook) {
+				found := false
+				for _, entry := range hook.AllEntries() {
+					if entry.Level == logrus.WarnLevel && strings.Contains(entry.Message, "비표준 Content-Type") {
+						found = true
+					}
+				}
+				assert.True(t, found, "Expected warning log for text/plain content type")
+			},
+		},
+		{
+			name:   "Warning - Empty Content Type",
+			method: "GET",
+			url:    "http://example.com/empty-ct",
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				jsonContent := `{"name": "empty", "value": 0}`
+				resp := mocks.NewMockResponse(jsonContent, 200)
+				resp.Header.Del("Content-Type")
+				m.On("Do", mock.Anything).Return(resp, nil)
+			},
+			validateResult: func(t *testing.T, v any) {
+				res := v.(*TestResponse)
+				assert.Equal(t, "empty", res.Name)
+			},
+			checkLog: func(t *testing.T, hook *test.Hook) {
+				found := false
+				for _, entry := range hook.AllEntries() {
+					if entry.Level == logrus.WarnLevel && strings.Contains(entry.Message, "비표준 Content-Type") {
+						found = true
+					}
+				}
+				assert.True(t, found, "Expected warning log for empty content type")
+			},
 		},
 	}
 
@@ -347,22 +430,12 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			mockFetcher := &mocks.MockFetcher{}
 			if tt.setupMock != nil {
 				tt.setupMock(t, mockFetcher)
-			} else {
-				// Unexpected call은 Testify가 처리
 			}
 
 			// 2. Prepare Body
-			var bodyReader io.Reader
+			var bodyArg any
 			if tt.body != nil {
-				switch b := tt.body.(type) {
-				case string:
-					bodyReader = strings.NewReader(b)
-				case []byte:
-					bodyReader = bytes.NewReader(b)
-				default:
-					jsonBytes, _ := json.Marshal(b)
-					bodyReader = bytes.NewReader(jsonBytes)
-				}
+				bodyArg = tt.body
 			}
 
 			// 3. Setup Context
@@ -371,9 +444,17 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			if tt.ctxSetup != nil {
 				ctx, cancel = tt.ctxSetup()
 			} else {
-				ctx, cancel = context.WithCancel(context.Background())
+				// Default context with timeout to prevent hanging tests
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 			}
-			defer cancel()
+			if cancel != nil {
+				defer cancel()
+			}
+
+			// If we are testing cancellation, we might need to cancel before call
+			if strings.Contains(tt.name, "Context Canceled") {
+				cancel()
+			}
 
 			// 4. Initialize Scraper
 			s := New(mockFetcher, tt.scraperOpt...)
@@ -391,7 +472,9 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			}
 
 			// 6. Execute
-			err := s.FetchJSON(ctx, tt.method, tt.url, bodyReader, tt.header, targetV)
+			// Note: We pass `bodyArg` (interface{}) directly, not `bodyReader`.
+			// `FetchJSON` expects `body any` and marshals it.
+			err := s.FetchJSON(ctx, tt.method, tt.url, bodyArg, tt.header, targetV)
 
 			// 7. Verify Error
 			if tt.wantErr {

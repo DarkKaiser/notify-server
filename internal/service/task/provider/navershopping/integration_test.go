@@ -11,7 +11,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +32,19 @@ func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -92,7 +103,19 @@ func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}
@@ -120,7 +143,19 @@ func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
 
 	// 2. Task 초기화
 	tTask := &task{
-		Base:         provider.NewBase(provider.BaseParams{ID: TaskID, CommandID: WatchPriceAnyCommand, InstanceID: "test_instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUnknown, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}),
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchPriceAnyCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByUnknown,
+			},
+			InstanceID: "test_instance",
+			Fetcher:    mockFetcher,
+			NewSnapshot: func() interface{} {
+				return &watchPriceSnapshot{}
+			},
+		}, true),
 		clientID:     "test-client-id",
 		clientSecret: "test-client-secret",
 	}

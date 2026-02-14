@@ -14,18 +14,19 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
+	fetchermocks "github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// MockLookPath는 테스트를 위해 execLookPath 함수를 교체하는 Helper입니다.
+// MockLookPath는 테스트를 위해 lookPath 함수를 교체하는 Helper입니다.
 func mockLookPath(mockFunc func(file string) (string, error)) func() {
-	original := execLookPath
-	execLookPath = mockFunc
+	original := lookPath
+	lookPath = mockFunc
 	return func() {
-		execLookPath = original
+		lookPath = original
 	}
 }
 
@@ -39,7 +40,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 	setupValidEnv := func(t *testing.T) (string, *appconfig.AppConfig) {
 		tmpDir := t.TempDir()
 		// JAR 파일 생성
-		f, err := os.Create(filepath.Join(tmpDir, jarFileName))
+		f, err := os.Create(filepath.Join(tmpDir, predictionJarName))
 		require.NoError(t, err)
 		f.Close()
 
@@ -98,7 +99,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				// 빈 설정
 				return req, &appconfig.AppConfig{Tasks: []appconfig.TaskConfig{}}, func() {}
 			},
-			expectedError: provider.ErrTaskSettingsNotFound.Error(),
+			expectedError: provider.ErrTaskNotFound.Error(),
 		},
 		{
 			name: "Empty AppPath",
@@ -109,7 +110,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "'app_path'가 입력되지 않았거나 공백입니다",
+			expectedError: ErrAppPathMissing.Error(), // 이제 New/Newf 결과값과 직접 비교
 		},
 		{
 			name: "Non-existent AppPath",
@@ -120,7 +121,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				}
 				return req, cfg, func() {}
 			},
-			expectedError: "'app_path'로 지정된 경로가 존재하지 않거나 유효하지 않습니다",
+			expectedError: "app_path로 지정된 경로가 유효하지 않습니다",
 		},
 		{
 			name: "Missing JAR File",
@@ -133,7 +134,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
 				return req, cfg, func() {}
 			},
-			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", jarFileName),
+			expectedError: fmt.Sprintf("로또 당첨번호 예측 프로그램(%s)을 찾을 수 없습니다", predictionJarName),
 		},
 		{
 			name: "Missing Java Runtime",
@@ -147,7 +148,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				})
 				return req, cfg, restore
 			},
-			expectedError: "호스트 시스템에서 Java 런타임(JRE) 환경을 감지할 수 없습니다",
+			expectedError: "Java 런타임(JRE) 환경을 찾을 수 없습니다",
 		},
 		{
 			name: "Invalid Command TaskID",
@@ -189,7 +190,7 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				// 핸들러 타입 검증
 				lottoTask, ok := handler.(*task)
 				require.True(t, ok)
-				assert.Equal(t, TaskID, lottoTask.GetID())
+				assert.Equal(t, TaskID, lottoTask.ID())
 			}
 		})
 	}
@@ -220,17 +221,21 @@ func TestTask_Run(t *testing.T) {
 		mockProcess := new(MockCommandProcess)
 		mockSender := notificationmocks.NewMockNotificationSender(t)
 		mockStorage := new(contractmocks.MockTaskResultStore)
+		mockFetcher := fetchermocks.NewMockHTTPFetcher() // Use fetcher/mocks
 
 		task := &task{
-			Base: provider.NewBase(provider.BaseParams{
-				ID:          TaskID,
-				CommandID:   PredictionCommand,
+			Base: provider.NewBase(provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:     TaskID,
+					CommandID:  PredictionCommand,
+					NotifierID: "telegram",
+					RunBy:      contract.TaskRunByUser,
+				},
 				InstanceID:  "test-instance",
-				NotifierID:  "telegram",
-				RunBy:       contract.TaskRunByUser,
 				Storage:     mockStorage,
+				Fetcher:     mockFetcher, // Inject Fetcher
 				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
-			}),
+			}, true), // The 'true' argument is for isInternal, assuming it's internal for this test context
 			appPath:  tmpDir,
 			executor: mockExecutor,
 		}
@@ -278,7 +283,7 @@ func TestTask_Run(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			defer func() {
-				doneC <- task.GetInstanceID()
+				doneC <- task.InstanceID()
 			}()
 			task.Run(context.Background(), mockSender)
 		}()
@@ -308,7 +313,7 @@ func TestTask_Run(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			defer func() {
-				doneC <- task.GetInstanceID()
+				doneC <- task.InstanceID()
 			}()
 			task.Run(context.Background(), mockSender)
 		}()

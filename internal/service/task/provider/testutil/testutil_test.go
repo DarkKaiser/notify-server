@@ -252,6 +252,6 @@ func TestMockCreateTask(t *testing.T) {
 	createdTask := NewMockTask(id, cmdID, instanceID, "test_notifier", contract.TaskRunByUser, nil, nil, func() interface{} { return struct{}{} })
 
 	assert.NotNil(t, createdTask)
-	assert.Equal(t, id, createdTask.GetID())
+	assert.Equal(t, id, createdTask.ID())
 	// 스토리지 설정 확인 (내부 필드라 직접 접근 어렵지만 패닉 안나면 됨)
 }

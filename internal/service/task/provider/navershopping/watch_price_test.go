@@ -12,7 +12,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -301,7 +300,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			}
 
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{ID: "test-task", CommandID: WatchPriceAnyCommand, InstanceID: "test-instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUser, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
+				Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
 				clientID:     "id",
 				clientSecret: "secret",
 			}
@@ -352,7 +351,7 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 			mockFetcher.SetResponse(tt.expectedURL, defaultResponse)
 
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{ID: "test-task", CommandID: WatchPriceAnyCommand, InstanceID: "test-instance", NotifierID: "test-notifier", RunBy: contract.TaskRunByUser, Scraper: scraper.New(mockFetcher), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },}),
+				Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
 				clientID:     "id",
 				clientSecret: "secret",
 			}
@@ -506,14 +505,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 
 			// Task 생성 및 RunBy 설정
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{
-					ID:          "T",
-					CommandID:   "C",
-					InstanceID:  "I",
-					NotifierID:  "N",
-					RunBy:       tt.runBy,
-					NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },
-				}),
+				Base: provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "T", CommandID: "C", NotifierID: "N", RunBy: tt.runBy}, InstanceID: "I", Fetcher: mocks.NewMockHTTPFetcher(), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
 			}
 
 			current := &watchPriceSnapshot{Products: tt.currentItems}
@@ -702,15 +694,19 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			tsk := &task{
-				Base: provider.NewBase(provider.BaseParams{
-					ID:          TaskID,
-					CommandID:   WatchPriceAnyCommand,
-					InstanceID:  "test-instance",
-					NotifierID:  "test-notifier",
-					RunBy:       contract.TaskRunByUser,
-					Scraper:     scraper.New(mocks.NewMockHTTPFetcher()),
-					NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },
-				}),
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:     TaskID,
+						CommandID:  WatchPriceAnyCommand,
+						NotifierID: "test-notifier",
+						RunBy:      contract.TaskRunByUser,
+					},
+					InstanceID: "test-instance",
+					Fetcher:    mocks.NewMockHTTPFetcher(),
+					NewSnapshot: func() interface{} {
+						return &watchPriceSnapshot{}
+					},
+				}, true),
 			}
 			got := tsk.mapToProduct(tt.item)
 
@@ -980,17 +976,19 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 	}))
 
 	tsk := &task{
-		Base: provider.NewBase(provider.BaseParams{
-			ID:         "T",
-			CommandID:  "C",
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     "T",
+				CommandID:  "C",
+				NotifierID: "N",
+				RunBy:      contract.TaskRunByUser,
+			},
 			InstanceID: "I",
-			NotifierID: "N",
-			RunBy:      contract.TaskRunByUser,
-			Scraper:    scraper.New(mockFetcher),
+			Fetcher:    mockFetcher,
 			NewSnapshot: func() interface{} {
 				return &watchPriceSnapshot{}
 			},
-		}),
+		}, true),
 		clientID:     "id",
 		clientSecret: "secret",
 	}
@@ -1016,7 +1014,19 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// Task 생성 및 취소 상태로 설정
 	tsk := &task{clientID: "id", clientSecret: "secret"}
-	tsk.Base = provider.NewBase(provider.BaseParams{ID: "NS", CommandID: "CMD", InstanceID: "INS", NotifierID: "NOTI", RunBy: contract.TaskRunByScheduler, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },})
+	tsk.Base = provider.NewBase(provider.NewTaskParams{
+		Request: &contract.TaskSubmitRequest{
+			TaskID:     "NS",
+			CommandID:  "CMD",
+			NotifierID: "NOTI",
+			RunBy:      contract.TaskRunByScheduler,
+		},
+		InstanceID: "INS",
+		Fetcher:    mockFetcher,
+		NewSnapshot: func() interface{} {
+			return &watchPriceSnapshot{}
+		},
+	}, true)
 	// SetFetcher call removed as it's deprecated
 
 	// 강제로 취소 상태 주입 (Context Cancel)
@@ -1037,7 +1047,19 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
 func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	tsk := &task{}
-	tsk.Base = provider.NewBase(provider.BaseParams{ID: "NS", CommandID: "CMD", InstanceID: "INS", NotifierID: "NOTI", RunBy: contract.TaskRunByScheduler, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} },})
+	tsk.Base = provider.NewBase(provider.NewTaskParams{
+		Request: &contract.TaskSubmitRequest{
+			TaskID:     "NS",
+			CommandID:  "CMD",
+			NotifierID: "NOTI",
+			RunBy:      contract.TaskRunByScheduler,
+		},
+		InstanceID: "INS",
+		Fetcher:    mocks.NewMockHTTPFetcher(),
+		NewSnapshot: func() interface{} {
+			return &watchPriceSnapshot{}
+		},
+	}, true)
 	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
 
 	// Setup Large Data

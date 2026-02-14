@@ -8,21 +8,21 @@ import (
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 
 	"github.com/stretchr/testify/mock"
 )
 
 // NewMockTaskConfig 테스트를 위한 기본 Task Config 인스턴스를 생성합니다.
-func NewMockTaskConfig(taskID contract.TaskID, commandID contract.TaskCommandID) *provider.Config {
+func NewMockTaskConfig(taskID contract.TaskID, commandID contract.TaskCommandID) *provider.TaskConfig {
 	return NewMockTaskConfigWithSnapshot(taskID, commandID, nil)
 }
 
 // NewMockTaskConfigWithSnapshot 테스트를 위한 Task Config 인스턴스를 스냅샷과 함께 생성합니다.
-func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) *provider.Config {
-	return &provider.Config{
-		Commands: []*provider.CommandConfig{
+func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.TaskCommandID, snapshot interface{}) *provider.TaskConfig {
+	return &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
 			{
 				ID:            commandID,
 				AllowMultiple: true,
@@ -38,22 +38,24 @@ func NewMockTaskConfigWithSnapshot(taskID contract.TaskID, commandID contract.Ta
 
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
 // NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
-func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, s scraper.Scraper, newSnapshot provider.NewSnapshotFunc) *provider.Base {
+// NewMockTask 테스트를 위한 Task 인스턴스를 생성하고 Mock Storage를 연결하여 반환합니다.
+func NewMockTask(taskID contract.TaskID, commandID contract.TaskCommandID, instanceID contract.TaskInstanceID, notifierID contract.NotifierID, runBy contract.TaskRunBy, storage contract.TaskResultStore, f fetcher.Fetcher, newSnapshot provider.NewSnapshotFunc) *provider.Base {
 	if storage == nil {
 		storage = &contractmocks.MockTaskResultStore{}
 	}
-	// Explicitly define the variable type to ensure compatibility with provider.NewBase return type
-	var t *provider.Base = provider.NewBase(provider.BaseParams{
-		ID:          taskID,
-		CommandID:   commandID,
+
+	return provider.NewBase(provider.NewTaskParams{
+		Request: &contract.TaskSubmitRequest{
+			TaskID:     taskID,
+			CommandID:  commandID,
+			NotifierID: notifierID,
+			RunBy:      runBy,
+		},
 		InstanceID:  instanceID,
-		NotifierID:  notifierID,
-		RunBy:       runBy,
 		Storage:     storage,
-		Scraper:     s,
+		Fetcher:     f,
 		NewSnapshot: newSnapshot,
-	})
-	return t
+	}, f != nil) // Fetcher가 있으면 스크래퍼 활성화
 }
 
 // RegisterMockTask Mock TaskResultStore에 특정 작업 결과를 미리 등록합니다.

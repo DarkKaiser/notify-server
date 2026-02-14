@@ -117,8 +117,8 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				assert.True(t, ok, "handler should be of type *task")
 
 				// 기본 속성 검증
-				assert.Equal(t, TaskID, taskImpl.GetID())
-				assert.Equal(t, WatchProductPriceCommand, taskImpl.GetCommandID())
+				assert.Equal(t, TaskID, taskImpl.ID())
+				assert.Equal(t, WatchProductPriceCommand, taskImpl.CommandID())
 			},
 		},
 		{
@@ -149,7 +149,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: invalidConfig_MissingCommand,
 			wantErr:   true,
-			errMsg:    "해당 명령 생성에 필요한 설정 데이터가 존재하지 않습니다",
+			errMsg:    "해당 명령을 찾을 수 없습니다",
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (파일 확장자 오류)",

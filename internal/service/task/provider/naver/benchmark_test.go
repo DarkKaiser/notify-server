@@ -11,7 +11,6 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
-	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,17 +69,19 @@ func setupBenchmarkTask(b *testing.B, performanceCount int) (*task, *watchNewPer
 	mockFetcher.SetResponse(makeURL(2), []byte(`{"total": 0, "html": ""}`))
 
 	tTask := &task{
-		Base: provider.NewBase(provider.BaseParams{
-			ID:         TaskID,
-			CommandID:  WatchNewPerformancesCommand,
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchNewPerformancesCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByScheduler,
+			},
 			InstanceID: "test_instance",
-			NotifierID: "test-notifier",
-			RunBy:      contract.TaskRunByScheduler,
-			Scraper:    scraper.New(mockFetcher),
+			Fetcher:    mockFetcher,
 			NewSnapshot: func() interface{} {
 				return &watchNewPerformancesSnapshot{}
 			},
-		}),
+		}, true),
 	}
 	// SetFetcher removed
 
@@ -162,17 +163,19 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	}
 
 	tTask := &task{
-		Base: provider.NewBase(provider.BaseParams{
-			ID:         TaskID,
-			CommandID:  WatchNewPerformancesCommand,
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID:     TaskID,
+				CommandID:  WatchNewPerformancesCommand,
+				NotifierID: "test-notifier",
+				RunBy:      contract.TaskRunByScheduler,
+			},
 			InstanceID: "test_instance",
-			NotifierID: "test-notifier",
-			RunBy:      contract.TaskRunByScheduler,
-			Scraper:    scraper.New(nil),
+			Fetcher:    mocks.NewMockHTTPFetcher(),
 			NewSnapshot: func() interface{} {
 				return &watchNewPerformancesSnapshot{}
 			},
-		}),
+		}, true),
 	}
 
 	prevPerformancesSet := make(map[string]bool)
