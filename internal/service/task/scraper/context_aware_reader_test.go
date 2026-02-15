@@ -55,8 +55,8 @@ func TestContextAwareReader_Read_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 
-	// 타임아웃 발생 대기
-	time.Sleep(10 * time.Millisecond)
+	// 타임아웃 발생 대기 (명시적으로 Context가 종료될 때까지 대기하여 테스트 안정성 확보)
+	<-ctx.Done()
 
 	cr := &contextAwareReader{
 		ctx: ctx,
