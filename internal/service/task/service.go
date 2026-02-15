@@ -486,14 +486,17 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 	}
 
 	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	running := s.running
+	s.runningMu.Unlock()
 
 	// 2. 상태 검증: 서비스가 실행 중인지 확인합니다.
-	if !s.running {
+	if !running {
 		return apperrors.New(apperrors.Internal, "Task 서비스가 실행중이 아닙니다.")
 	}
 
 	// 3. 큐잉: 버퍼드 채널에 요청을 넣습니다.
+	// 락을 해제한 상태에서 채널 전송을 시도하여, 채널이 가득 찼을 때의 데드락을 방지합니다.
+	// (run0 루프가 락을 획득하여 채널을 비울 수 있도록 함)
 	select {
 	case s.taskSubmitC <- req:
 		return nil
@@ -518,12 +521,14 @@ func (s *Service) Cancel(instanceID contract.TaskInstanceID) (err error) {
 	}()
 
 	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	running := s.running
+	s.runningMu.Unlock()
 
-	if !s.running {
+	if !running {
 		return apperrors.New(apperrors.Internal, "Task 서비스가 실행중이 아닙니다.")
 	}
 
+	// 락을 해제한 상태에서 채널 전송을 시도합니다.
 	select {
 	case s.taskCancelC <- instanceID:
 		return nil
