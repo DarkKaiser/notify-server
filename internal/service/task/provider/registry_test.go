@@ -529,3 +529,69 @@ func TestRegistry_Validation_NilCheck(t *testing.T) {
 		})
 	})
 }
+
+func TestGlobalRegistry(t *testing.T) {
+	// 전역 상태 초기화 (테스트 격리)
+	ClearForTest()
+	defer ClearForTest()
+
+	taskID := contract.TaskID("GLOBAL_TASK")
+	cfg := &TaskConfig{
+		NewTask: dummyNewTask(),
+		Commands: []*TaskCommandConfig{
+			{
+				ID:            "CMD",
+				AllowMultiple: true,
+				NewSnapshot:   dummyResultFn(),
+			},
+		},
+	}
+
+	// Register (Global)
+	err := Register(taskID, cfg)
+	assert.NoError(t, err)
+
+	// FindConfig (Global)
+	resolved, err := FindConfig(taskID, "CMD")
+	assert.NoError(t, err)
+	assert.NotNil(t, resolved)
+	assert.Equal(t, contract.TaskCommandID("CMD"), resolved.Command.ID)
+
+	// MustRegister (Global) - Duplicate
+	assert.Panics(t, func() {
+		MustRegister(taskID, cfg)
+	})
+
+	// ClearForTest (Global)
+	ClearForTest()
+	_, err = FindConfig(taskID, "CMD")
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrTaskNotSupported)
+}
+
+func TestRegisterForTest_BypassedValidation(t *testing.T) {
+	ClearForTest()
+	defer ClearForTest()
+
+	taskID := contract.TaskID("BYPASS_TASK")
+
+	// 유효성 검증에 실패할 설정 (NewTask 누락)
+	invalidCfg := &TaskConfig{
+		NewTask: nil, // 필수값이지만 누락됨
+		Commands: []*TaskCommandConfig{
+			{
+				ID:          "CMD",
+				NewSnapshot: dummyResultFn(),
+			},
+		},
+	}
+
+	// RegisterForTest는 검증을 우회하므로 패닉없이 등록되어야 함
+	RegisterForTest(taskID, invalidCfg)
+
+	// 등록 여부 확인
+	resolved, err := FindConfig(taskID, "CMD")
+	assert.NoError(t, err)
+	assert.NotNil(t, resolved)
+	assert.Nil(t, resolved.Task.NewTask) // NewTask가 nil인 상태로 저장됨을 확인
+}
