@@ -6,9 +6,9 @@ func NewProductionOptions(appName string) Options {
 		Name:  appName,
 		Level: InfoLevel, // 운영 환경 로그 레벨
 
-		MaxAge:     30,  // 30일 보관
-		MaxSizeMB:  100, // 100MB 단위 로테이션
-		MaxBackups: 20,  // 최대 20개 백업 유지
+		MaxAge:     30, // 30일 보관
+		MaxSizeMB:  10, // 10MB 단위 로테이션
+		MaxBackups: 20, // 최대 20개 백업 유지
 
 		EnableCriticalLog: true,  // 장애 대응을 위한 중요 로그 격리
 		EnableVerboseLog:  true,  // 문제 추적을 위한 상세 로그 분리
