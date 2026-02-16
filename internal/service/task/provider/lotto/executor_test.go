@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,10 +21,10 @@ func TestLimitWriter_Write(t *testing.T) {
 	tests := []struct {
 		name          string
 		limit         int
-		inputs        [][]byte // 여러 번 Write 할 수 있음
-		expectedN     []int    // 각 Write 호출의 반환값
-		expectedTotal int      // 최종 written 카운트
-		expectedBuf   string   // 버퍼에 담긴 내용
+		inputs        [][]byte
+		expectedN     []int
+		expectedTotal int
+		expectedBuf   string
 	}{
 		{
 			name:          "Within Limit",
@@ -45,17 +46,17 @@ func TestLimitWriter_Write(t *testing.T) {
 			name:          "Exceed Limit Single Write",
 			limit:         5,
 			inputs:        [][]byte{[]byte("1234567890")},
-			expectedN:     []int{10}, // 반환값은 입력 길이 (에러 방지)
-			expectedTotal: 5,         // 실제 기록은 제한값
-			expectedBuf:   "12345\n... (truncated)",
+			expectedN:     []int{10},
+			expectedTotal: 5,
+			expectedBuf:   "12345\n...(생략됨)",
 		},
 		{
 			name:          "Exceed Limit Multiple Writes",
 			limit:         10,
 			inputs:        [][]byte{[]byte("12345"), []byte("67890ABC")},
-			expectedN:     []int{5, 8}, // 5바이트 씀, 8바이트 시도(3바이트 초과)
+			expectedN:     []int{5, 8},
 			expectedTotal: 10,
-			expectedBuf:   "1234567890\n... (truncated)",
+			expectedBuf:   "1234567890\n...(생략됨)",
 		},
 		{
 			name:          "Already Full",
@@ -63,7 +64,7 @@ func TestLimitWriter_Write(t *testing.T) {
 			inputs:        [][]byte{[]byte("12345"), []byte("ABC")},
 			expectedN:     []int{5, 3},
 			expectedTotal: 5,
-			expectedBuf:   "12345\n... (truncated)", // 이제 정확히 꽉 찼어도 이후 쓰기 시도가 있으면 Truncated Msg가 써짐
+			expectedBuf:   "12345\n...(생략됨)",
 		},
 	}
 
@@ -78,28 +79,53 @@ func TestLimitWriter_Write(t *testing.T) {
 				assert.Equal(t, tt.expectedN[i], n)
 			}
 
-			// 결과 검증
 			assert.Equal(t, tt.expectedTotal, lw.written, "internal written count mismatch")
 			assert.Equal(t, tt.expectedBuf, buf.String())
 		})
 	}
+
+	t.Run("Error Propagation", func(t *testing.T) {
+		errWriter := &errorWriter{err: fmt.Errorf("write error")}
+		lw := &limitWriter{w: errWriter, limit: 10}
+
+		// 1. Normal write error propagation
+		n, err := lw.Write([]byte("123"))
+		assert.Error(t, err)
+		assert.Equal(t, 2, n)
+
+		// 2. Truncation message write error
+		lw.written = 10
+		n, err = lw.Write([]byte("exceed"))
+		assert.Error(t, err)
+		assert.Equal(t, 0, n)
+	})
+}
+
+type errorWriter struct {
+	err error
+}
+
+func (e *errorWriter) Write(p []byte) (n int, err error) {
+	if len(p) > 2 && string(p[:2]) == "12" {
+		return 2, e.err
+	}
+	return 0, e.err
 }
 
 func TestLimitWriter_LargeData(t *testing.T) {
-	// 1MB 데이터 생성
 	largeData := make([]byte, 1024*1024)
 	n, _ := rand.Read(largeData)
 	require.Equal(t, len(largeData), n)
 
 	var buf bytes.Buffer
-	limit := 1024 // 1kb 제한
+	limit := 1024
 	lw := &limitWriter{w: &buf, limit: limit}
 
 	written, err := lw.Write(largeData)
 	assert.NoError(t, err)
 	assert.Equal(t, len(largeData), written)
 
-	truncatedMsg := []byte("\n... (truncated)")
+	truncatedMsg := []byte("\n...(생략됨)")
 	assert.Equal(t, limit+len(truncatedMsg), buf.Len())
 
 	expected := append(largeData[:limit], truncatedMsg...)
@@ -108,8 +134,7 @@ func TestLimitWriter_LargeData(t *testing.T) {
 
 // --- DefaultCommandExecutor Integration Tests ---
 
-// TestHelperProcess는 테스트 목적의 자식 프로세스로 실행됩니다.
-// -test.run=TestHelperProcess 플래그와 함께 실행되어야 합니다.
+// TestHelperProcess acts as a child process for tests.
 func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
 		return
@@ -122,45 +147,87 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Print(os.Getenv("HELPER_PAYLOAD"))
 	case "env":
 		fmt.Print(os.Getenv("TARGET_ENV_KEY"))
+	case "pwd":
+		wd, _ := os.Getwd()
+		fmt.Print(wd)
 	case "sleep":
-		time.Sleep(10 * time.Second) // 충분히 길게 대기
+		time.Sleep(10 * time.Second)
 	case "stderr":
 		fmt.Fprint(os.Stderr, os.Getenv("HELPER_PAYLOAD"))
 	case "large-output":
-		fmt.Print(strings.Repeat("A", 1024*1024)) // 1MB 출력
+		fmt.Print(strings.Repeat("A", 1024*1024))
+	case "crash":
+		os.Exit(1)
 	}
 }
 
-// makeHelperCommand는 자기 자신을 자식 프로세스로 실행하는 명령어를 생성합니다.
 func makeHelperCommand(ctx context.Context, executor commandExecutor, mode string, env map[string]string) (commandProcess, error) {
-	// 현재 실행 중인 테스트 바이너리 경로
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
 
-	// 기본 환경변수에 헬퍼 모드 추가
 	defaultEnv := []string{"GO_TEST_HELPER_PROCESS=1", "HELPER_MODE=" + mode}
 	for k, v := range env {
 		defaultEnv = append(defaultEnv, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	// executor가 defaultCommandExecutor인 경우 환경변수 설정
 	if dexec, ok := executor.(*defaultCommandExecutor); ok {
-		dexec.env = defaultEnv
-	} else {
-		return nil, fmt.Errorf("executor type mismatch")
+		newEnv := append([]string{}, defaultEnv...)
+		if len(dexec.env) > 0 {
+			newEnv = append(newEnv, dexec.env...)
+		}
+		dexec.env = newEnv
 	}
 
-	args := []string{"-test.run=TestHelperProcess", "-test.v=false"} // -test.v=false로 노이즈 최소화
-	return executor.StartCommand(ctx, exe, args...)
+	args := []string{"-test.run=TestHelperProcess", "-test.v=false"}
+	return executor.Start(ctx, exe, args...)
+}
+
+func TestDefaultCommandExecutor_Start_Error(t *testing.T) {
+	executor := &defaultCommandExecutor{}
+	ctx := context.Background()
+
+	_, err := executor.Start(ctx, "non_existent_command_12345")
+	assert.Error(t, err)
+}
+
+func TestDefaultCommandExecutor_Dir(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// On Windows, tempDir might be something like "C:\Users\ADMINI~1\AppData\Local\Temp\...",
+	// but Getwd() might return the long path version.
+	// So we evaluate symlinks to get the "real" path for comparison.
+	realTempDir, err := filepath.EvalSymlinks(tempDir)
+	require.NoError(t, err)
+
+	executor := &defaultCommandExecutor{
+		dir: tempDir,
+	}
+	ctx := context.Background()
+
+	proc, err := makeHelperCommand(ctx, executor, "pwd", nil)
+	require.NoError(t, err)
+
+	err = proc.Wait()
+	assert.NoError(t, err)
+
+	output := strings.TrimSpace(proc.Stdout())
+
+	// Resolve output path as well just in case
+	realOutput, err := filepath.EvalSymlinks(output)
+	if err == nil {
+		output = realOutput
+	}
+
+	// Case-insensitive comparison for Windows robustness
+	assert.Equal(t, strings.ToLower(realTempDir), strings.ToLower(output))
 }
 
 func TestDefaultCommandExecutor_Env(t *testing.T) {
 	executor := &defaultCommandExecutor{}
 	ctx := context.Background()
 
-	// 헬퍼가 TARGET_ENV_KEY 값을 출력하도록 요청
 	proc, err := makeHelperCommand(ctx, executor, "env", map[string]string{
 		"TARGET_ENV_KEY": "SUPER_SECRET_VALUE",
 	})
@@ -168,10 +235,7 @@ func TestDefaultCommandExecutor_Env(t *testing.T) {
 
 	err = proc.Wait()
 	assert.NoError(t, err)
-
-	output := proc.Stdout()
-	// go test 출력에 섞일 수 있으므로 Contains로 확인
-	assert.Contains(t, output, "SUPER_SECRET_VALUE")
+	assert.Contains(t, proc.Stdout(), "SUPER_SECRET_VALUE")
 }
 
 func TestDefaultCommandExecutor_CaptureStderr(t *testing.T) {
@@ -186,18 +250,15 @@ func TestDefaultCommandExecutor_CaptureStderr(t *testing.T) {
 
 	err = proc.Wait()
 	assert.NoError(t, err)
-
 	assert.Contains(t, proc.Stderr(), payload)
 	assert.Empty(t, proc.Stdout())
 }
 
 func TestDefaultCommandExecutor_ContextCancel(t *testing.T) {
 	executor := &defaultCommandExecutor{}
-	// 100ms 타임아웃
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// 10초 동안 자는 프로세스 실행
 	proc, err := makeHelperCommand(ctx, executor, "sleep", nil)
 	require.NoError(t, err)
 
@@ -205,21 +266,17 @@ func TestDefaultCommandExecutor_ContextCancel(t *testing.T) {
 	err = proc.Wait()
 	duration := time.Since(start)
 
-	// Context 취소로 인해 에러가 반환되어야 함 (주로 signal: killed 또는 exit status 등)
 	assert.Error(t, err)
-
-	// 10초가 아니라 타임아웃(100ms) + 알파 내에 종료되어야 함
-	assert.Less(t, duration, 2*time.Second, "프로세스가 타임아웃에 의해 강제 종료되지 않았습니다")
+	assert.Less(t, duration, 2*time.Second)
 }
 
 func TestDefaultCommandExecutor_LimitOutput(t *testing.T) {
-	limit := 1024 // 1KB
+	limit := 1024
 	executor := &defaultCommandExecutor{
 		limit: limit,
 	}
 	ctx := context.Background()
 
-	// 1MB 출력 요청
 	proc, err := makeHelperCommand(ctx, executor, "large-output", nil)
 	require.NoError(t, err)
 
@@ -227,7 +284,33 @@ func TestDefaultCommandExecutor_LimitOutput(t *testing.T) {
 	assert.NoError(t, err)
 
 	output := proc.Stdout()
-	truncatedMark := "\n... (truncated)"
+	truncatedMark := "\n...(생략됨)"
 	assert.Equal(t, limit+len(truncatedMark), len(output))
 	assert.Contains(t, output, truncatedMark)
+}
+
+func TestDefaultCommandExecutor_ExitError(t *testing.T) {
+	executor := &defaultCommandExecutor{}
+	ctx := context.Background()
+
+	proc, err := makeHelperCommand(ctx, executor, "crash", nil)
+	require.NoError(t, err)
+
+	err = proc.Wait()
+	assert.Error(t, err) // Should error on non-zero exit code
+}
+
+func TestDefaultCommandProcess_Kill(t *testing.T) {
+	executor := &defaultCommandExecutor{}
+	ctx := context.Background()
+
+	proc, err := makeHelperCommand(ctx, executor, "sleep", nil)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+	err = proc.Kill()
+	assert.NoError(t, err)
+
+	err = proc.Wait()
+	assert.Error(t, err)
 }

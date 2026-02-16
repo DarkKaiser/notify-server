@@ -294,8 +294,8 @@ func (s *scraper) decodeJSONResponse(ctx context.Context, result fetchResult, v 
 			} else {
 				// [차선책] 인코딩 변환 실패 시, 원본 바이트에서 에러 주변 데이터를 직접 추출합니다.
 				// 인코딩 차이로 인해 정확한 문자의 위치는 다를 수 있으나, 대략적인 문맥 파악에는 충분합니다.
-				fallbackStart := max(offset-contextBytes, 0)
-				fallbackEnd := min(offset+contextBytes, len(result.Body))
+				fallbackStart := min(max(offset-contextBytes, 0), len(result.Body))
+				fallbackEnd := min(max(offset+contextBytes, 0), len(result.Body))
 
 				// 바이트 슬라이스를 문자열로 변환
 				snippet = string(result.Body[fallbackStart:fallbackEnd])
@@ -340,8 +340,8 @@ func (s *scraper) decodeJSONResponse(ctx context.Context, result fetchResult, v 
 
 		// 에러 발생 위치 주변의 문맥 데이터 추출 (전후 30바이트)
 		offset := decoder.InputOffset()
-		contextStart := max(int(offset)-30, 0)
-		contextEnd := min(int(offset)+30, len(result.Body))
+		contextStart := min(max(int(offset)-30, 0), len(result.Body))
+		contextEnd := min(max(int(offset)+30, 0), len(result.Body))
 
 		// 바이트 슬라이스를 문자열로 변환 (멀티바이트 문자가 깨질 수 있으나 디버깅용으로 충분함)
 		snippet := string(result.Body[contextStart:contextEnd])

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -27,10 +28,6 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 	type User struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
-	}
-
-	type Response struct {
-		Data User `json:"data"`
 	}
 
 	tests := []struct {
@@ -246,7 +243,7 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 				// 호출되지 않음
 			},
 			wantErr:     true,
-			errType:     apperrors.Internal,
+			errType:     apperrors.Internal, // Internal System Error로 매핑되어야 함
 			errContains: []string{"결과를 저장할 변수가 nil입니다"},
 		},
 		{
@@ -437,6 +434,99 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 	}
 }
 
+// TestFetchJSON_MarshalError는 JSON 인코딩이 불가능한 Body를 전달했을 때를 검증합니다.
+func TestFetchJSON_MarshalError(t *testing.T) {
+	mockFetcher := &mocks.MockFetcher{}
+	s := New(mockFetcher)
+
+	// 채널은 JSON 마샬링이 불가능함
+	body := make(chan int)
+	var target map[string]any
+
+	err := s.FetchJSON(context.Background(), "POST", "http://example.com", body, nil, &target)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "JSON 인코딩 실패")
+}
+
+// TestVerifyJSONContentType_EdgeCases는 Content-Type 헤더 검증의 다양한 엣지 케이스를 테스트합니다.
+func TestVerifyJSONContentType_EdgeCases(t *testing.T) {
+	s := &scraper{}
+	logger := logrus.NewEntry(logrus.New())
+
+	tests := []struct {
+		name        string
+		contentType string
+		wantErr     bool
+	}{
+		{"Empty Content-Type", "", false},
+		{"Case Insensitive Matches", "Application/JSON", false},
+		{"With Parameters", "application/json; charset=utf-8", false},
+		{"With Version Parameter", "application/json; v=2", false},
+		{"HTML Content-Type", "text/html", true},
+		{"HTML with Charset", "text/html; charset=utf-8", true},
+		{"XML Content-Type", "application/xml", false}, // JSON은 아니지만 HTML도 아님 -> 경고 로그만 남기고 진행
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{tt.contentType}},
+			}
+			err := s.verifyJSONContentType(resp, "http://example.com", logger)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestDecodeJSONResponse_CharsetLogic은 다양한 인코딩 상황 및 에러 처리를 검증합니다.
+func TestDecodeJSONResponse_CharsetLogic(t *testing.T) {
+	s := &scraper{maxResponseBodySize: 1024}
+	logger := logrus.NewEntry(logrus.New())
+
+	t.Run("Unsupported Charset Fallback", func(t *testing.T) {
+		// 지원되지 않는 Charset -> 원본 바이트로 파싱 시도
+		// "Unknown" 이라는 Charset은 없을 것이므로 에러 발생 -> Fallback 작동
+		jsonData := []byte(`{"key": "value"}`)
+		result := fetchResult{
+			Response: &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json; charset=Unknown-Charset-X"}},
+				Body:       io.NopCloser(bytes.NewReader(jsonData)),
+			},
+			Body: jsonData,
+		}
+		var target map[string]string
+
+		err := s.decodeJSONResponse(context.Background(), result, &target, "http://url", logger)
+		assert.NoError(t, err)
+		assert.Equal(t, "value", target["key"])
+	})
+
+	t.Run("Decode Error with Invalid Charset Data", func(t *testing.T) {
+		// 잘못된 인코딩 데이터가 들어왔을 때 디코딩 에러 발생 확인
+		// EUC-KR 데이터를 UTF-8 헤더로 명시 -> 디코딩 에러 예상
+		eucKRData := []byte{0xc8, 0xab} // "홍" (EUC-KR)
+		result := fetchResult{
+			Response: &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}}, // 거짓말 헤더
+				Body:       io.NopCloser(bytes.NewReader(eucKRData)),
+			},
+			Body: eucKRData,
+		}
+		var target any
+
+		err := s.decodeJSONResponse(context.Background(), result, &target, "http://url", logger)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "JSON 파싱 실패")
+	})
+}
+
 // TestDecodeJSONResponse_ContextCancel는 JSON 디코딩 중 Trailing Data를 확인하는 단계에서
 // 컨텍스트가 취소되는 엣지 케이스를 검증합니다.
 func TestDecodeJSONResponse_ContextCancel(t *testing.T) {
@@ -495,4 +585,41 @@ func (m *MockContext) Err() error {
 
 func (m *MockContext) Done() <-chan struct{} {
 	return nil
+}
+
+// TestDecodeJSONResponse_Infinity is a test case for mathematical constants that are not valid in standard JSON.
+// Go's json decoder might handle or reject them depending on usage, but standard JSON doesn't support NaN/Infinity.
+func TestDecodeJSONResponse_Numbers(t *testing.T) {
+	s := &scraper{maxResponseBodySize: 1024}
+	logger := logrus.NewEntry(logrus.New())
+
+	// JSON Spec does not support NaN or Infinity
+	// This test ensures we handle them reasonably (usually error in standard library)
+	data := []byte(`{"val": NaN}`)
+	result := fetchResult{
+		Response: &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(bytes.NewReader(data)),
+		},
+		Body: data,
+	}
+	var target struct {
+		Val float64 `json:"val"`
+	}
+
+	err := s.decodeJSONResponse(context.Background(), result, &target, "url", logger)
+	assert.Error(t, err) // Expect syntax error
+}
+
+func TestFetchJSON_UnsupportedFloat(t *testing.T) {
+	mockFetcher := &mocks.MockFetcher{}
+	s := New(mockFetcher)
+
+	// Body with NaN (unsupported in JSON)
+	body := map[string]float64{"val": math.NaN()}
+	var target any
+
+	err := s.FetchJSON(context.Background(), "POST", "http://example.com", body, nil, &target)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "JSON 인코딩 실패")
 }

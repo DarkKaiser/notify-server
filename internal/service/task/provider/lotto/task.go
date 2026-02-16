@@ -11,6 +11,9 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/validation"
 )
 
+// component Task 서비스의 Lotto Provider 로깅용 컴포넌트 이름
+const component = "task.provider.lotto"
+
 const (
 	// TaskID 로또 당첨번호 예측 서비스와 연동되는 Task의 고유 식별자입니다.
 	TaskID contract.TaskID = "LOTTO"
@@ -19,7 +22,9 @@ const (
 	// 이 Command는 외부 Java 프로그램(JAR)을 실행하여 로또 당첨번호를 예측하고,
 	// 예측 결과를 텔레그램 등을 통해 전송합니다.
 	PredictionCommand contract.TaskCommandID = "Prediction"
+)
 
+const (
 	// predictionJarName 로또 당첨번호 예측을 수행하는 외부 Java 프로그램(JAR)의 파일명입니다.
 	//
 	// 이 상수는 PredictionCommand 실행 시 사용되며, Task 초기화 단계(newTask)에서 해당 파일의
@@ -100,14 +105,16 @@ func newTask(params provider.NewTaskParams) (provider.Task, error) {
 
 		appPath: taskSettings.AppPath,
 
-		executor: &defaultCommandExecutor{},
+		executor: &defaultCommandExecutor{
+			dir: taskSettings.AppPath,
+		},
 	}
 
 	// Command에 따른 실행 함수를 미리 바인딩합니다.
 	switch params.Request.CommandID {
 	case PredictionCommand:
 		lottoTask.SetExecute(func(ctx context.Context, _ any, _ bool) (string, any, error) {
-			return lottoTask.executePrediction()
+			return lottoTask.executePrediction(ctx)
 		})
 
 	default:
