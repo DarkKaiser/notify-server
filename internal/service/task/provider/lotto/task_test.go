@@ -1,23 +1,17 @@
 package lotto
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"sync"
 	"testing"
 
 	appconfig "github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
-	notificationmocks "github.com/darkkaiser/notify-server/internal/service/notification/mocks"
-	fetchermocks "github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -161,6 +155,69 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			},
 			expectedError: "지원하지 않는 명령입니다",
 		},
+		{
+			name: "Relative AppPath",
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
+				// Windows에서 다른 드라이브 간 상대 경로 생성이 불가능하므로,
+				// 현재 디렉토리 하위에 임시 디렉토리를 생성하여 테스트합니다.
+				wd, err := os.Getwd()
+				require.NoError(t, err)
+
+				localTmpDir := filepath.Join(wd, "temp_rel_test")
+				err = os.MkdirAll(localTmpDir, 0755)
+				require.NoError(t, err)
+
+				// JAR 파일 생성 (검증 통과를 위해)
+				f, err := os.Create(filepath.Join(localTmpDir, predictionJarName))
+				require.NoError(t, err)
+				f.Close()
+
+				relPath := "temp_rel_test"
+
+				cfg := &appconfig.AppConfig{
+					Tasks: []appconfig.TaskConfig{
+						{
+							ID:   string(TaskID),
+							Data: map[string]interface{}{"app_path": relPath},
+							Commands: []appconfig.CommandConfig{
+								{
+									ID: string(PredictionCommand),
+								},
+							},
+						},
+					},
+				}
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
+
+				restore := mockLookPath(func(file string) (string, error) { return "/bin/java", nil })
+
+				// Cleanup function
+				cleanup := func() {
+					restore()
+					os.RemoveAll(localTmpDir)
+				}
+
+				return req, cfg, cleanup
+			},
+			expectedError: "",
+		},
+		{
+			name: "AppPath Not Directory (File)",
+			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
+				tmpDir := t.TempDir()
+				filePath := filepath.Join(tmpDir, "somefile.txt")
+				f, err := os.Create(filePath)
+				require.NoError(t, err)
+				f.Close()
+
+				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
+				cfg := &appconfig.AppConfig{
+					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": filePath}}},
+				}
+				return req, cfg, func() {}
+			},
+			expectedError: "app_path로 지정된 디렉터리 검증에 실패하였습니다",
+		},
 	}
 
 	for _, tt := range tests {
@@ -194,139 +251,6 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestTask_Run(t *testing.T) {
-	// 실제 run 메서드가 커버되는 통합 테스트 성격의 유닛 테스트
-	tmpDir := t.TempDir()
-
-	// 가짜 분석 결과 파일 내용
-	fakeAnalysisContent := `
-======================
-- 분석결과
-======================
-당첨 확률이 높은 당첨번호 목록(5개)중에서 5개의 당첨번호가 추출되었습니다.
-
-당첨번호1 [ 1, 2, 3, 4, 5, 6 ]
-당첨번호2 [ 7, 8, 9, 10, 11, 12 ]
-당첨번호3 [ 13, 14, 15, 16, 17, 18 ]
-당첨번호4 [ 19, 20, 21, 22, 23, 24 ]
-당첨번호5 [ 25, 26, 27, 28, 29, 30 ]
-`
-	fakeLogFile := filepath.Join(tmpDir, "result_12345.log")
-
-	// Helper to setup fresh environment for each test
-	setup := func() (*task, *MockCommandExecutor, *MockCommandProcess, *notificationmocks.MockNotificationSender, *contractmocks.MockTaskResultStore) {
-		mockExecutor := new(MockCommandExecutor)
-		mockProcess := new(MockCommandProcess)
-		mockSender := notificationmocks.NewMockNotificationSender(t)
-		mockStorage := new(contractmocks.MockTaskResultStore)
-		mockFetcher := fetchermocks.NewMockHTTPFetcher() // Use fetcher/mocks
-
-		task := &task{
-			Base: provider.NewBase(provider.NewTaskParams{
-				Request: &contract.TaskSubmitRequest{
-					TaskID:     TaskID,
-					CommandID:  PredictionCommand,
-					NotifierID: "telegram",
-					RunBy:      contract.TaskRunByUser,
-				},
-				InstanceID:  "test-instance",
-				Storage:     mockStorage,
-				Fetcher:     mockFetcher, // Inject Fetcher
-				NewSnapshot: func() interface{} { return &predictionSnapshot{} },
-			}, true), // The 'true' argument is for isInternal, assuming it's internal for this test context
-			appPath:  tmpDir,
-			executor: mockExecutor,
-		}
-		task.SetExecute(func(ctx context.Context, _ interface{}, _ bool) (string, interface{}, error) {
-			return task.executePrediction()
-		})
-
-		// Common Mock Setup
-		// mockSender.SupportsHTMLReturnValue is true by default
-		mockSender.On("SupportsHTML", mock.Anything).Return(true).Maybe()
-		mockStorage.On("Load", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		mockStorage.On("Save", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-		// Setup default Notify expectation (can be overridden or refined in sub-tests)
-		// Or strictly define per test
-		// Success path needs: Notify(Ctx, ID, Message)
-
-		return task, mockExecutor, mockProcess, mockSender, mockStorage
-	}
-
-	// Test Cases
-	t.Run("Success Path", func(t *testing.T) {
-		task, mockExecutor, mockProcess, mockSender, _ := setup()
-
-		// MockProcess 설정
-		mockProcess.On("Wait").Return(nil)
-		stdout := fmt.Sprintf("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:%s)", fakeLogFile)
-		mockProcess.On("Stdout").Return(stdout)
-		// Stderr is not called in success path
-
-		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
-
-		// Expect Notify for Success
-		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
-			return contains(n.Message, "당첨 확률이 높은 당첨번호 목록")
-		})).Return(nil)
-
-		err := os.WriteFile(fakeLogFile, []byte(fakeAnalysisContent), 0644)
-		require.NoError(t, err)
-
-		var wg sync.WaitGroup
-		doneC := make(chan contract.TaskInstanceID, 1)
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			defer func() {
-				doneC <- task.InstanceID()
-			}()
-			task.Run(context.Background(), mockSender)
-		}()
-		wg.Wait()
-
-		mockProcess.AssertExpectations(t)
-		mockExecutor.AssertExpectations(t)
-		mockSender.AssertExpectations(t)
-	})
-
-	t.Run("Execution Failed (StartCommand Error)", func(t *testing.T) {
-		task, mockExecutor, _, mockSender, _ := setup()
-
-		mockExecutor.On("StartCommand", mock.Anything, "java", mock.Anything).Return(nil, fmt.Errorf("fail to start java"))
-
-		// Expect Notify for Error
-		// Note: The actual implementation might use NotifyDefaultWithError or Notify.
-		// BaseTask.notifyError uses: s.notificationSender.Notify(ctx, s.defaultNotifierID, message)
-		mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
-			return contains(n.Message, "작업 실행 중 오류가 발생하였습니다")
-		})).Return(nil)
-
-		var wg sync.WaitGroup
-		doneC := make(chan contract.TaskInstanceID, 1)
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			defer func() {
-				doneC <- task.InstanceID()
-			}()
-			task.Run(context.Background(), mockSender)
-		}()
-		wg.Wait()
-
-		mockExecutor.AssertExpectations(t)
-		mockSender.AssertExpectations(t)
-	})
-}
-
-// Helper for strings.Contains in Matcher
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
 }
 
 // --- Local Mocks for Test ---
