@@ -271,6 +271,26 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
 			expectError: true, // selectorPlace = ".title_box .sub_text" 이므로 매칭 실패 -> 에러
 		},
+		{
+			name:          "성공: 썸네일 URL 정규화 (프로토콜 생략 //)",
+			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "//ssl.gstatic.com/cats.jpg")),
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectedCount: 1,
+			expectedRaw:   1,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "https://ssl.gstatic.com/cats.jpg", performances[0].Thumbnail, "프로토콜이 생략된 경우 https:가 추가되어야 합니다")
+			},
+		},
+		{
+			name:          "성공: 썸네일 URL 정규화 (상대 경로 /)",
+			html:          fmt.Sprintf("<ul>%s</ul>", makeItem("Cats", "Broadway", "/p/cats.jpg")),
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectedCount: 1,
+			expectedRaw:   1,
+			validateItems: func(t *testing.T, performances []*performance) {
+				assert.Equal(t, "https://m.search.naver.com/p/cats.jpg", performances[0].Thumbnail, "상대 경로인 경우 네이버 도메인이 추가되어야 합니다")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -331,7 +351,7 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			current: []*performance{makePerf("P1", "L1"), makePerf("P2", "L2")},
 			prev:    []*performance{makePerf("P1", "L1")},
 			expectedDiffs: []performanceDiff{
-				{Type: eventNewPerformance, Performance: makePerf("P2", "L2")},
+				{Type: performanceEventNew, Performance: makePerf("P2", "L2")},
 			},
 		},
 		{
@@ -345,7 +365,7 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			current: []*performance{makePerf("P1", "L1")},
 			prev:    nil,
 			expectedDiffs: []performanceDiff{
-				{Type: eventNewPerformance, Performance: makePerf("P1", "L1")},
+				{Type: performanceEventNew, Performance: makePerf("P1", "L1")},
 			},
 		},
 		{
@@ -359,7 +379,7 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			current: []*performance{makePerf("Cats", "Seoul"), makePerf("Cats", "Busan")},
 			prev:    []*performance{makePerf("Cats", "Seoul")},
 			expectedDiffs: []performanceDiff{
-				{Type: eventNewPerformance, Performance: makePerf("Cats", "Busan")},
+				{Type: performanceEventNew, Performance: makePerf("Cats", "Busan")},
 			},
 		},
 	}
@@ -422,7 +442,7 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 
 	// 테스트 데이터 준비
 	p1 := &performance{Title: "Cats", Place: "Seoul"}
-	diffNew := performanceDiff{Type: eventNewPerformance, Performance: p1}
+	diffNew := performanceDiff{Type: performanceEventNew, Performance: p1}
 
 	// 예상되는 링크 URL (Title 기반 생성)
 	expectedLink := "https://search.naver.com/search.naver?query=Cats"
@@ -469,8 +489,8 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 		{
 			name: "복수 항목 렌더링 (구분자 확인)",
 			diffs: []performanceDiff{
-				{Type: eventNewPerformance, Performance: &performance{Title: "A", Place: "P1"}},
-				{Type: eventNewPerformance, Performance: &performance{Title: "B", Place: "P2"}},
+				{Type: performanceEventNew, Performance: &performance{Title: "A", Place: "P1"}},
+				{Type: performanceEventNew, Performance: &performance{Title: "B", Place: "P2"}},
 			},
 			supportsHTML: false,
 			validate: func(t *testing.T, msg string) {
@@ -781,6 +801,17 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				assert.Equal(t, "Keep Item", snapshot.Performances[0].Title)
 			},
 		},
+		{
+			name: "실패: API 응답 HTML 필드 누락 (구조 변경 감지)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "MissingHTML",
+				MaxPages: 1,
+			},
+			mockResponses: map[string]string{
+				"u7=1": `{}`, // HTML 필드 자체가 없음
+			},
+			expectedError: "API 스키마 변경 의심",
+		},
 	}
 
 	for _, tt := range tests {
@@ -975,7 +1006,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	// 이는 별도 고루틴에서 Cancel()을 호출할 충분한 시간을 벌어줍니다.
 	delayedURL := buildSearchAPIURL("CancelTest", 1)
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
-	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li>Delayed Item</li></ul>"}`))
+	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li><div class='title_box'><strong class='name'>Delayed Item</strong><span class='sub_text'>Place</span></div></li></ul>"}`))
 
 	taskInstance := &task{
 		Base: provider.NewBase(provider.NewTaskParams{
@@ -1000,23 +1031,27 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 	}
 
 	// 2. Execution (Async Cancel)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := taskInstance.fetchPerformances(context.Background(), settings)
+		_, err := taskInstance.fetchPerformances(ctx, settings)
 		errCh <- err
 	}()
 
 	// 지연 시간(500ms)보다 짧은 시간(100ms) 후에 취소 요청을 보냅니다.
 	time.Sleep(100 * time.Millisecond)
 	taskInstance.Cancel()
+	cancel() // Context도 같이 취소하여 select 구문 등에서 즉시 감지되도록 함
 
 	// 3. Validation
 	err := <-errCh
-	assert.NoError(t, err, "취소 시 에러가 반환되지 않고 nil이어야 합니다 (Graceful Shutdown)")
+	assert.ErrorIs(t, err, context.Canceled, "취소 시 context.Canceled 에러가 반환되어야 합니다")
 	assert.True(t, taskInstance.IsCanceled(), "Task 상태가 Canceled여야 합니다")
 
-	// 요청이 실제로 취소되었는지 확인 (결과가 nil이어야 함)
-	// fetchPerformances는 취소 시 nil, nil을 반환하도록 구현되어 있음
+	// 요청이 실제로 취소되었는지 확인 (context.Canceled 반환)
+	// fetchPerformances는 취소 시 nil, error를 반환하도록 구현되어 있음
 }
 
 // TestTask_FetchPerformances_PaginationLimits 페이지네이션 한계 및 종료 조건을 검증합니다.

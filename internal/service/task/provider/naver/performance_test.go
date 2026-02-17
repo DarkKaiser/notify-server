@@ -79,14 +79,15 @@ func TestPerformance_Render(t *testing.T) {
 			name: "HTML 포맷 - Security: XSS 방지 (HTML Escape)",
 			perf: &performance{
 				Title: "<script>alert(1)</script>",
-				Place: "Hack Place",
+				Place: "Hack <Place>",
 			},
 			supportsHTML: true,
 			mark:         "",
 			wants: []string{
-				"&lt;script&gt;alert(1)&lt;/script&gt;", // 태그가 이스케이프 처리되어야 함
+				"&lt;script&gt;alert(1)&lt;/script&gt;", // 제목 이스케이프
+				"Hack &lt;Place&gt;",                    // 장소 이스케이프 (신규 추가 검증 항목)
 			},
-			unwants: []string{"<script>"}, // Raw 태그 노출 금지
+			unwants: []string{"<script>", "<Place>"}, // Raw 태그 노출 금지
 		},
 		{
 			name: "Edge Case - 빈 필드",
@@ -201,17 +202,17 @@ func TestPerformance_Key(t *testing.T) {
 		{
 			name:     "Normal: 일반적인 제목과 장소",
 			perf:     &performance{Title: "뮤지컬 캣츠", Place: "브로드웨이극장"},
-			expected: "뮤지컬 캣츠|브로드웨이극장",
+			expected: "16:뮤지컬 캣츠|21:브로드웨이극장", // "뮤지컬 캣츠" (16 bytes in UTF-8), "브로드웨이극장" (21 bytes)
 		},
 		{
 			name:     "Edge: 특수문자(|) 포함 시 충돌 방지 확인",
 			perf:     &performance{Title: "공연|제목", Place: "장소|이름"},
-			expected: "공연|제목|장소|이름", // 단순 연결이므로 구분자와 겹칠 수 있음에 유의 (현재 로직상 허용)
+			expected: "13:공연|제목|13:장소|이름",
 		},
 		{
 			name:     "Edge: 빈 문자열",
 			perf:     &performance{Title: "", Place: ""},
-			expected: "|",
+			expected: "0:|0:",
 		},
 	}
 
@@ -223,6 +224,18 @@ func TestPerformance_Key(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// TestPerformance_Key_Collision 이전에 발생 가능했던 Key 충돌 시나리오가 해결되었는지 검증합니다.
+func TestPerformance_Key_Collision(t *testing.T) {
+	t.Parallel()
+
+	// (A|B, C) 와 (A, B|C) 는 단순 결합 시 "A|B|C"로 동일했으나,
+	// 이스케이프 로직 적용 후에는 "A||B|C"와 "A|B||C"로 명확히 구분되어야 합니다.
+	p1 := &performance{Title: "A|B", Place: "C"}
+	p2 := &performance{Title: "A", Place: "B|C"}
+
+	assert.NotEqual(t, p1.Key(), p2.Key(), "서로 다른 데이터 구성에 대해 고유한 Key가 생성되어야 합니다")
 }
 
 // TestPerformance_Equals Equals 메서드의 동등성 판단 로직을 검증합니다.

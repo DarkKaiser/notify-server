@@ -102,8 +102,8 @@ type watchNewPerformancesSnapshot struct {
 type performanceEventType int
 
 const (
-	eventNone           performanceEventType = iota
-	eventNewPerformance                      // 신규 공연 등록
+	performanceEventNone performanceEventType = iota
+	performanceEventNew                       // 신규 공연 등록
 )
 
 // performanceDiff 공연 데이터의 변경 사항(신규 등록 등)을 표현하는 중간 객체입니다.
@@ -120,7 +120,7 @@ type keywordMatchers struct {
 }
 
 // executeWatchNewPerformances 작업을 실행하여 신규 공연 정보를 확인합니다.
-func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
+func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, newSnapshot any, err error) {
 	// 1. 최신 공연 정보를 수집한다.
 	currentPerformances, err := t.fetchPerformances(ctx, commandSettings)
 	if err != nil {
@@ -174,7 +174,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 
 	// searchResponse 네이버 통합검색 API의 응답을 처리하기 위한 JSON 래퍼(Wrapper)입니다.
 	type searchResponse struct {
-		HTML string `json:"html"`
+		HTML *string `json:"html"` // 포인터를 사용하여 필드가 실제로 존재하는지(nil 여부) 확인합니다.
 	}
 
 	var currentPerformances []*performance
@@ -195,7 +195,11 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 				"fetched_count":   totalFetchedCount,
 			})
 
-			return nil, nil
+			err := ctx.Err()
+			if err == nil {
+				err = context.Canceled
+			}
+			return nil, err
 		}
 
 		if pageIndex > commandSettings.MaxPages {
@@ -223,8 +227,16 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 			return nil, err
 		}
 
+		// API 응답의 필수 필드(html) 자체가 누락된 경우, API 구조가 변경된 것으로 간주하여 에러를 발생시킵니다.
+		// (Silent Failure 방지: 데이터가 없는데 성공으로 오인하는 것을 차단)
+		if pageContent.HTML == nil {
+			return nil, scraper.NewErrHTMLStructureChanged("", "네이버 API 응답에 HTML 필드가 누락되었습니다 (API 스키마 변경 의심)")
+		}
+
+		html := *pageContent.HTML
+
 		// API로부터 수신한 비정형 HTML 데이터를 DOM 파싱하여 정형화된 공연 객체 리스트로 변환합니다.
-		pagePerformances, rawCount, err := t.parsePerformancesFromHTML(ctx, pageContent.HTML, matchers)
+		pagePerformances, rawCount, err := t.parsePerformancesFromHTML(ctx, html, matchers)
 		if err != nil {
 			return nil, err
 		}
@@ -256,7 +268,18 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 			break
 		}
 
-		time.Sleep(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond)
+		// 다음 페이지 수집 전 대기 (Context 취소 시 즉시 중단 가능하도록 select 사용)
+		select {
+		case <-ctx.Done():
+			t.Log("task.naver", applog.WarnLevel, "대기 중 작업 취소가 감지되어 프로세스를 중단합니다", nil, applog.Fields{
+				"page_index":    pageIndex - 1,
+				"fetched_count": totalFetchedCount,
+			})
+			return nil, ctx.Err()
+
+		case <-time.After(time.Duration(commandSettings.PageFetchDelay) * time.Millisecond):
+			// 대기 완료, 다음 루프 진행
+		}
 	}
 
 	t.Log("task.naver", applog.InfoLevel, "공연 정보 수집 및 키워드 매칭 프로세스가 완료되었습니다", nil, applog.Fields{
@@ -363,6 +386,13 @@ func parsePerformance(s *goquery.Selection) (*performance, error) {
 	thumbnailSelection := s.Find(selectorThumbnail)
 	if thumbnailSelection.Length() > 0 {
 		if src, exists := thumbnailSelection.Attr("src"); exists {
+			// URL 정규화: 상대 경로(/) 또는 프로토콜 없는 경로(//)인 경우 절대 경로로 변환합니다.
+			if strings.HasPrefix(src, "//") {
+				src = "https:" + src
+			} else if strings.HasPrefix(src, "/") {
+				// 네이버 모바일 검색 도메인을 결약하여 절대 경로를 완성합니다.
+				src = "https://m.search.naver.com" + src
+			}
 			thumbnailSrc = src
 		}
 	}
@@ -428,7 +458,7 @@ func (t *task) calculatePerformanceDiffs(currentSnapshot *watchNewPerformancesSn
 		// 이전에 수집된 목록에 존재하지 않는다면 신규 공연으로 판단한다.
 		if !prevPerformancesSet[p.Key()] {
 			diffs = append(diffs, performanceDiff{
-				Type:        eventNewPerformance,
+				Type:        performanceEventNew,
 				Performance: p,
 			})
 		}
@@ -453,7 +483,7 @@ func (t *task) renderPerformanceDiffs(diffs []performanceDiff, supportsHTML bool
 			sb.WriteString("\n\n")
 		}
 
-		if diff.Type == eventNewPerformance {
+		if diff.Type == performanceEventNew {
 			sb.WriteString(diff.Performance.Render(supportsHTML, mark.New))
 		}
 	}

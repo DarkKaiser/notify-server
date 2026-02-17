@@ -34,13 +34,19 @@ func (p *performance) Equals(other *performance) bool {
 
 // Key 공연을 고유하게 식별하기 위한 문자열 키를 반환합니다.
 //
-// 반환값은 "제목|장소" 형식으로, 파이프(|) 문자를 구분자로 사용하여 제목과 장소를 결합합니다.
+// 반환값은 "{Title길이}:{Title}|{Place길이}:{Place}" 형식입니다.
+// 각 필드의 길이를 접두어로 포함하여 필드 내용에 구분자(|)나 콜론(:)이 포함되더라도
+// 경계를 완벽하게 구분할 수 있도록 설계되었습니다. (충돌 방지)
+//
 // 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
 //
 // [중요] 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
 // 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
 func (p *performance) Key() string {
-	return p.Title + "|" + p.Place
+	// 각 필드의 길이를 포함하여 결합함으로써 모호성을 제거합니다.
+	// 예: Title="A|", Place="B" -> "2:A||1:B"
+	// 예: Title="A", Place="|B" -> "1:A|2:|B"
+	return fmt.Sprintf("%d:%s|%d:%s", len(p.Title), p.Title, len(p.Place), p.Place)
 }
 
 // Render 공연 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
@@ -73,7 +79,7 @@ func (p *performance) renderInternal(supportsHTML bool, m mark.Mark) string {
 			url.QueryEscape(p.Title),
 			template.HTMLEscapeString(p.Title),
 			m.WithSpace(),
-			p.Place,
+			template.HTMLEscapeString(p.Place),
 		)
 	} else {
 		const textFormat = `☞ %s%s
