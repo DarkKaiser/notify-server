@@ -14,6 +14,19 @@ import (
 )
 
 const (
+	// notifySendTimeout 알림 발송 한 건의 전체 처리 흐름에 허용되는 최대 시간입니다.
+	//
+	// 알림 발송은 두 단계로 이루어집니다:
+	//   1. Enqueue: Notify()가 내부 채널에 요청을 넣는 단계 (빠름)
+	//   2. Send: 백그라운드 워커가 채널에서 꺼내 텔레그램 API를 실제로 호출하는 단계
+	//
+	// 이 타임아웃은 두 단계를 합산한 전체 시간을 기준으로 합니다.
+	// 텔레그램 HTTP Client 타임아웃(70초)보다 짧게 설정하여, 발송이 완료된 직후
+	// 컨텍스트가 자연스럽게 해제될 수 있도록 합니다.
+	notifySendTimeout = 60 * time.Second
+)
+
+const (
 	// notifyTaskExecutionFailed 작업 실행 중 발생한 모든 에러 상황에 대해 사용자에게 전송되는 알림 메시지의 공통 헤더입니다.
 	//
 	// 이 메시지 뒤에는 항상 구체적인 에러 원인(reason)이 결합되어 전송되므로,
@@ -386,10 +399,20 @@ func (b *Base) Run(ctx context.Context, notificationSender contract.Notification
 				}()
 
 				if notificationSender != nil && b != nil {
+					// [컨텍스트 설계 의도]
+					// Notify()는 비동기 함수로, 실제 발송은 백그라운드 워커가 담당합니다.
+					//
+					// 워커는 이 함수가 반환된 이후에도 notifyCtx를 계속 사용하므로,
+					// defer cancel()을 호출하면 워커가 발송을 시도하기도 전에 컨텍스트가 취소되어 버립니다.
+					//
+					// 따라서 cancel()을 명시적으로 호출하지 않고, notifySendTimeout(60초) 경과 시
+					// 컨텍스트가 자동으로 해제되도록 합니다.
+					notifyCtx, _ := context.WithTimeout(context.WithoutCancel(ctx), notifySendTimeout)
+
 					// 사용자에게 전달할 패닉 메시지를 생성합니다.
 					message := b.formatTaskErrorMessage(fmt.Sprintf("시스템 내부 오류(Panic)가 발생하였습니다.\n\n[오류 상세 내용]\n%v", r))
 
-					_ = notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, true))
+					_ = notificationSender.Notify(notifyCtx, b.newNotification(message, true))
 				}
 			}()
 		}
@@ -675,9 +698,19 @@ func (b *Base) finalizeExecution(ctx context.Context, notificationSender contrac
 	// message가 비어있는 경우는 execute가 의도적으로 알림을 생략한 것으로 간주하여
 	// 알림을 전송하지 않습니다. (예: 변경 사항이 없는 경우)
 	if len(message) > 0 {
+		// [컨텍스트 설계 의도]
+		// Notify()는 비동기 함수로, 실제 발송은 백그라운드 워커가 담당합니다.
+		//
+		// 워커는 이 함수가 반환된 이후에도 notifyCtx를 계속 사용하므로,
+		// defer cancel()을 호출하면 워커가 발송을 시도하기도 전에 컨텍스트가 취소되어 버립니다.
+		//
+		// 따라서 cancel()을 명시적으로 호출하지 않고, notifySendTimeout(60초) 경과 시
+		// 컨텍스트가 자동으로 해제되도록 합니다.
+		notifyCtx, _ := context.WithTimeout(context.WithoutCancel(ctx), notifySendTimeout)
+
 		// 알림 전송 실패는 로그로만 기록하고 Task 실행 자체는 성공으로 간주합니다.
 		// 이는 "알림 실패가 비즈니스 로직 실패로 전파되지 않도록" 하는 설계 원칙을 따릅니다.
-		if notifyErr := notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, false)); notifyErr != nil {
+		if notifyErr := notificationSender.Notify(notifyCtx, b.newNotification(message, false)); notifyErr != nil {
 			b.Log(component, applog.ErrorLevel, "성공 알림 발송 실패: 전송 에러", notifyErr, nil)
 		}
 	}
@@ -697,7 +730,17 @@ func (b *Base) finalizeExecution(ctx context.Context, notificationSender contrac
 //   - notificationSender: 알림 전송을 담당하는 인터페이스 구현체
 //   - message: 사용자에게 전달할 에러 메시지 본문
 func (b *Base) sendErrorNotification(ctx context.Context, notificationSender contract.NotificationSender, message string) {
-	if err := notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, true)); err != nil {
+	// [컨텍스트 설계 의도]
+	// Notify()는 비동기 함수로, 실제 발송은 백그라운드 워커가 담당합니다.
+	//
+	// 워커는 이 함수가 반환된 이후에도 notifyCtx를 계속 사용하므로,
+	// defer cancel()을 호출하면 워커가 발송을 시도하기도 전에 컨텍스트가 취소되어 버립니다.
+	//
+	// 따라서 cancel()을 명시적으로 호출하지 않고, notifySendTimeout(60초) 경과 시
+	// 컨텍스트가 자동으로 해제되도록 합니다.
+	notifyCtx, _ := context.WithTimeout(context.WithoutCancel(ctx), notifySendTimeout)
+
+	if err := notificationSender.Notify(notifyCtx, b.newNotification(message, true)); err != nil {
 		b.Log(component, applog.ErrorLevel, "에러 알림 발송 실패: 전송 에러", err, nil)
 	}
 }
