@@ -2,91 +2,58 @@ package naver
 
 import (
 	"fmt"
-	"html/template"
-	"net/url"
-	"strings"
-
-	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 )
 
-const (
-	// searchResultPageURL 사용자에게 제공할 '검색 결과 페이지'의 기본 URL입니다.
-	//
-	// [목적]
-	//  - 알림 메시지에서 공연명을 클릭했을 때 이동할 하이퍼링크(Target URL)를 생성하는 데 사용됩니다.
-	//  - 쿼리 파라미터(?query=...)를 추가하여 사용자가 해당 공연의 상세 검색 결과를 즉시 확인할 수 있도록 돕습니다.
-	searchResultPageURL = "https://search.naver.com/search.naver"
-)
-
-// performance 크롤링된 공연 정보를 담는 도메인 모델입니다.
+// performance 네이버에서 크롤링한 공연 정보를 표현하는 도메인 모델입니다.
+//
+// 이 구조체는 네이버 공연 검색 API에서 받아온 데이터를 파싱하여 저장하며,
+// 스냅샷 비교, 중복 제거, 알림 메시지 생성 등에 사용됩니다.
 type performance struct {
-	Title     string `json:"title"`
-	Place     string `json:"place"`
+	// Title 공연 제목입니다. (필수)
+	Title string `json:"title"`
+
+	// Place 공연 장소명입니다. (필수)
+	Place string `json:"place"`
+
+	// Thumbnail 공연 썸네일 이미지 URL입니다. (선택)
 	Thumbnail string `json:"thumbnail"`
 }
 
+// Equals 두 공연이 동일한 공연인지 비교합니다. (식별자 기준)
+//
+// 공연의 동일성은 Title(제목)과 Place(장소)의 조합으로 판단합니다.
+// 예: "오페라의 유령" + "예술의전당" = 고유한 공연
+//
+// 이 메서드는 중복 제거 또는 스냅샷 비교 시 동일 공연 여부를 판단하는 데 사용됩니다.
 func (p *performance) Equals(other *performance) bool {
 	if p == nil || other == nil {
 		return false
 	}
+
 	return p.Title == other.Title && p.Place == other.Place
+}
+
+// ContentEquals 두 공연의 모든 내용이 완전히 동일한지 비교합니다.
+//
+// Equals()는 식별자(Title, Place)만 비교하지만, 이 메서드는
+// Thumbnail 등 부가 정보까지 모두 비교하여 내용 변경 여부를 확인합니다.
+func (p *performance) ContentEquals(other *performance) bool {
+	if !p.Equals(other) {
+		return false
+	}
+
+	return p.Thumbnail == other.Thumbnail
 }
 
 // Key 공연을 고유하게 식별하기 위한 문자열 키를 반환합니다.
 //
-// 반환값은 "{Title길이}:{Title}|{Place길이}:{Place}" 형식입니다.
-// 각 필드의 길이를 접두어로 포함하여 필드 내용에 구분자(|)나 콜론(:)이 포함되더라도
-// 경계를 완벽하게 구분할 수 있도록 설계되었습니다. (충돌 방지)
+// 반환 형식: "{Title길이}:{Title}|{Place길이}:{Place}"
 //
-// 이 키는 Map 기반 중복 제거나 빠른 조회(O(1))가 필요한 상황에서 사용됩니다.
-//
-// [중요] 이 메서드의 비교 기준(Title + Place)은 Equals() 메서드와 반드시 일치해야 합니다.
-// 만약 두 공연이 Equals()로 동일하다면, Key()도 동일한 값을 반환해야 합니다.
+// 각 필드의 길이를 접두어로 포함하여, 필드 내용에 구분자(| 또는 :)가 포함되더라도
+// 경계를 완벽하게 구분할 수 있도록 설계되었습니다.
 func (p *performance) Key() string {
 	// 각 필드의 길이를 포함하여 결합함으로써 모호성을 제거합니다.
 	// 예: Title="A|", Place="B" -> "2:A||1:B"
 	// 예: Title="A", Place="|B" -> "1:A|2:|B"
 	return fmt.Sprintf("%d:%s|%d:%s", len(p.Title), p.Title, len(p.Place), p.Place)
-}
-
-// Render 공연 정보를 알림 메시지 포맷으로 렌더링하여 반환합니다.
-// 주로 단일 공연 정보 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
-func (p *performance) Render(supportsHTML bool, m mark.Mark) string {
-	return p.renderInternal(supportsHTML, m)
-}
-
-// RenderDiff 현재 공연 정보와 과거 정보를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
-// 현재 Naver 패키지는 '신규' 위주이므로 Render와 큰 차이가 없을 수 있으나,
-// 향후 확장성 및 타 패키지(NaverShopping)와의 일관성을 위해 인터페이스를 분리합니다.
-func (p *performance) RenderDiff(supportsHTML bool, m mark.Mark, prev *performance) string {
-	return p.renderInternal(supportsHTML, m)
-}
-
-// renderInternal 공연 알림 메시지를 생성하는 핵심 내부 구현체입니다.
-func (p *performance) renderInternal(supportsHTML bool, m mark.Mark) string {
-	var sb strings.Builder
-
-	// 예상 버퍼 크기 할당
-	sb.Grow(512)
-
-	if supportsHTML {
-		const htmlFormat = `☞ <a href="%s?query=%s"><b>%s</b></a>%s
-      • 장소 : %s`
-
-		fmt.Fprintf(&sb,
-			htmlFormat,
-			searchResultPageURL,
-			url.QueryEscape(p.Title),
-			template.HTMLEscapeString(p.Title),
-			m.WithSpace(),
-			template.HTMLEscapeString(p.Place),
-		)
-	} else {
-		const textFormat = `☞ %s%s
-      • 장소 : %s`
-
-		fmt.Fprintf(&sb, textFormat, p.Title, m.WithSpace(), p.Place)
-	}
-
-	return sb.String()
 }

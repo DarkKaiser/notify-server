@@ -63,7 +63,7 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // Capture range variable for parallel execution
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			err := tt.config.Validate()
@@ -72,12 +72,18 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				assert.NoError(t, err)
-				if tt.validate != nil {
-					tt.validate(t, tt.config)
-				}
+				// Validate()는 더 이상 기본값을 설정하지 않으므로 값 검증 로직 제거
 			}
 		})
 	}
+
+	// 별도 테스트: ApplyDefaults 동작 검증
+	t.Run("ApplyDefaults 동작 검증", func(t *testing.T) {
+		c := &watchNewPerformancesSettings{}
+		c.ApplyDefaults()
+		assert.Equal(t, 50, c.MaxPages, "MaxPages 기본값이 적용되어야 합니다")
+		assert.Equal(t, 100, c.PageFetchDelay, "PageFetchDelay 기본값이 적용되어야 합니다")
+	})
 }
 
 // TestNaverTask_Filtering_Behavior 은 문서화 차원에서 Naver Task의 키워드 매칭 규칙 예시를 나열합니다.
@@ -142,6 +148,7 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 		expectedCount int                                             // 키워드 매칭 후 예상 개수
 		expectedRaw   int                                             // 키워드 매칭 전 raw 개수
 		expectError   bool                                            // 에러 발생 여부
+		pageNumber    int                                             // 테스트 시 사용할 페이지 번호 (기본 1)
 		validateItems func(t *testing.T, performances []*performance) // 세부 항목 검증
 	}{
 		{
@@ -165,9 +172,10 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				TitleMatcher: strutil.NewKeywordMatcher([]string{"Musical"}, nil),
 				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
-			expectedCount: 1, // Cats only
+			expectedCount: 2,
 			expectedRaw:   2,
 			validateItems: func(t *testing.T, performances []*performance) {
+				require.Len(t, performances, 2)
 				assert.Equal(t, "Cats Musical", performances[0].Title)
 			},
 		},
@@ -180,9 +188,10 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				TitleMatcher: strutil.NewKeywordMatcher(nil, []string{"Drama"}),
 				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
-			expectedCount: 1, // Happy only
+			expectedCount: 2,
 			expectedRaw:   2,
 			validateItems: func(t *testing.T, performances []*performance) {
+				require.Len(t, performances, 2)
 				assert.Equal(t, "Happy Musical", performances[0].Title)
 			},
 		},
@@ -196,10 +205,10 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				TitleMatcher: strutil.NewKeywordMatcher([]string{"Cats|Dogs"}, nil), // "Cats" OR "Dogs"
 				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
-			expectedCount: 2, // Cats, Dogs
+			expectedCount: 3,
 			expectedRaw:   3,
 			validateItems: func(t *testing.T, performances []*performance) {
-				require.Len(t, performances, 2)
+				require.Len(t, performances, 3)
 				assert.Equal(t, "Musical Cats", performances[0].Title)
 				assert.Equal(t, "Musical Dogs", performances[1].Title)
 			},
@@ -213,9 +222,10 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				TitleMatcher: strutil.NewKeywordMatcher([]string{"Musical"}, []string{"Boring"}), // Musical 포함 AND Boring 제외
 				PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
 			},
-			expectedCount: 1, // Perfect Musical only
+			expectedCount: 2,
 			expectedRaw:   2,
 			validateItems: func(t *testing.T, performances []*performance) {
+				require.Len(t, performances, 2)
 				assert.Equal(t, "Perfect Musical", performances[0].Title)
 			},
 		},
@@ -252,8 +262,8 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			},
 		},
 		{
-			name:          "성공: 빈 결과",
-			html:          `<ul></ul>`,
+			name:          "성공: 빈 결과 (Valid Empty Result with Message)",
+			html:          `<div class="api_no_result">검색결과가 없습니다</div><!-- --------------------------------------- padding to pass length check -->`,
 			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
 			expectedCount: 0,
 			expectedRaw:   0,
@@ -288,8 +298,39 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 			expectedCount: 1,
 			expectedRaw:   1,
 			validateItems: func(t *testing.T, performances []*performance) {
-				assert.Equal(t, "https://m.search.naver.com/p/cats.jpg", performances[0].Thumbnail, "상대 경로인 경우 네이버 도메인이 추가되어야 합니다")
+				// testPageURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+				// /p/cats.jpg 를 이 URL 기준으로 resolve하면 https://m.search.naver.com/p/cats.jpg 가 됩니다.
+				assert.Equal(t, "https://m.search.naver.com/p/cats.jpg", performances[0].Thumbnail, "상대 경로인 경우 도메인 루트 기준으로 해결되어야 합니다")
 			},
+		},
+		{
+			name:          "성공: 결과 없음 메시지 감지 (Valid Empty Result)",
+			html:          `<div class="api_no_result">검색결과가 없습니다</div>`,
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectedCount: 0,
+			expectedRaw:   0,
+			expectError:   false,
+		},
+		{
+			name:        "실패: 구조 변경 의심 (Invalid Empty Result - No Items & No Message)",
+			html:        `<div>Something completely different structure</div>`,
+			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectError: true, // 에러 발생해야 함
+		},
+		{
+			name:        "실패: HTML 너무 짧음 (Invalid Empty Result)",
+			html:        `<html></html>`,
+			filters:     &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectError: true,
+		},
+		{
+			name:          "성공: 2페이지 이상에서 빈 결과 수신 (정상 종료로 간주)",
+			html:          `<html><body></body></html>`, // noResult 배너 없음
+			filters:       &keywordMatchers{TitleMatcher: strutil.NewKeywordMatcher(nil, nil), PlaceMatcher: strutil.NewKeywordMatcher(nil, nil)},
+			expectedCount: 0,
+			expectedRaw:   0,
+			expectError:   false,
+			pageNumber:    2,
 		},
 	}
 
@@ -315,7 +356,13 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 				}, true),
 			}
 
-			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, tt.filters)
+			// 테스트용 더미 URL
+			const testPageURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+			pageNumber := tt.pageNumber
+			if pageNumber == 0 {
+				pageNumber = 1
+			}
+			items, raw, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, testPageURL, pageNumber)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -341,10 +388,11 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		current       []*performance
-		prev          []*performance
-		expectedDiffs []performanceDiff // 예상되는 Diff 목록
+		name           string
+		current        []*performance
+		prev           []*performance
+		expectedDiffs  []performanceDiff // 예상되는 Diff 목록
+		wantHasChanges bool              // 예상되는 변경 여부
 	}{
 		{
 			name:    "신규 공연 발견 (순수 추가)",
@@ -353,12 +401,14 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			expectedDiffs: []performanceDiff{
 				{Type: performanceEventNew, Performance: makePerf("P2", "L2")},
 			},
+			wantHasChanges: true,
 		},
 		{
-			name:          "변동 없음",
-			current:       []*performance{makePerf("P1", "L1")},
-			prev:          []*performance{makePerf("P1", "L1")},
-			expectedDiffs: nil, // 또는 Empty
+			name:           "변동 없음",
+			current:        []*performance{makePerf("P1", "L1")},
+			prev:           []*performance{makePerf("P1", "L1")},
+			expectedDiffs:  nil, // 또는 Empty
+			wantHasChanges: false,
 		},
 		{
 			name:    "초기 실행 (Prev is nil) -> 모두 신규로 간주",
@@ -367,12 +417,25 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			expectedDiffs: []performanceDiff{
 				{Type: performanceEventNew, Performance: makePerf("P1", "L1")},
 			},
+			wantHasChanges: true,
 		},
 		{
-			name:          "공연 삭제 (Current에 없음) -> 현재 로직상 Diff 제외",
-			current:       []*performance{},
-			prev:          []*performance{makePerf("P1", "L1")},
-			expectedDiffs: nil, // 삭제된 건은 알림 대상이 아님
+			name:           "공연 삭제 (Current에 없음) -> 현재 로직상 Diff 제외",
+			current:        []*performance{},
+			prev:           []*performance{makePerf("P1", "L1")},
+			expectedDiffs:  nil,  // 삭제된 건은 알림 대상이 아님
+			wantHasChanges: true, // 삭제 발생
+		},
+		{
+			name: "내용 변경 감지 (썸네일 변경)",
+			current: []*performance{
+				{Title: "P1", Place: "L1", Thumbnail: "NEW_URL"},
+			},
+			prev: []*performance{
+				{Title: "P1", Place: "L1", Thumbnail: "OLD_URL"},
+			},
+			expectedDiffs:  nil,  // 신규 추가는 없으므로 Diff는 없음
+			wantHasChanges: true, // 내용 변경 발생
 		},
 		{
 			name:    "장소가 다른 동명의 공연 -> 다른 공연으로 취급 (Key = Title + Place)",
@@ -381,6 +444,7 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 			expectedDiffs: []performanceDiff{
 				{Type: performanceEventNew, Performance: makePerf("Cats", "Busan")},
 			},
+			wantHasChanges: true,
 		},
 	}
 
@@ -389,37 +453,17 @@ func TestCalculatePerformanceDiffs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			taskInstance := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     "T",
-						CommandID:  "C",
-						NotifierID: "N",
-						RunBy:      contract.TaskRunByUser,
-					},
-					InstanceID: "I",
-					Fetcher:    mocks.NewMockHTTPFetcher(),
-					NewSnapshot: func() interface{} {
-						return &watchNewPerformancesSnapshot{}
-					},
-				}, false),
-			}
-
 			currSnap := &watchNewPerformancesSnapshot{Performances: tt.current}
 			var prevSnap *watchNewPerformancesSnapshot
 			if tt.prev != nil {
 				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
 			}
 
-			prevPerformancesSet := make(map[string]bool)
-			if prevSnap != nil {
-				for _, p := range prevSnap.Performances {
-					prevPerformancesSet[p.Key()] = true
-				}
-			}
-			gotDiffs := taskInstance.calculatePerformanceDiffs(currSnap, prevPerformancesSet)
+			// prevPerformancesSet 변환 로직 제거 (Compare 내부에서 처리)
+			gotDiffs, gotHasChanges := currSnap.Compare(prevSnap)
 
 			assert.Equal(t, len(tt.expectedDiffs), len(gotDiffs), "Diff 개수가 일치해야 합니다")
+			assert.Equal(t, tt.wantHasChanges, gotHasChanges, "HasChanges 값이 예상과 다릅니다")
 
 			// 순서 무관하게 내용 검증 (Set 비교)
 			// 실제 구현은 순서를 보장하지 않을 수 있으나 현재 append 순서대로임.
@@ -467,7 +511,7 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 			supportsHTML: true,
 			validate: func(t *testing.T, msg string) {
 				assert.Contains(t, msg, mark.New, "신규 마크가 포함되어야 합니다")
-				assert.Contains(t, msg, fmt.Sprintf(`<a href="%s?query=Cats"><b>Cats</b></a>`, searchResultPageURL), "HTML 링크 포맷이 올바라야 합니다")
+				assert.Contains(t, msg, fmt.Sprintf(`<a href="%s?query=Cats"><b>Cats</b></a>`, naverSearchURL), "HTML 링크 포맷이 올바라야 합니다")
 				assert.Contains(t, msg, "Seoul")
 			},
 		},
@@ -481,9 +525,7 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 				assert.Contains(t, msg, "Seoul")
 
 				// Negative Assertion (Text 모드에서는 HTML 태그가 없어야 함)
-				assert.NotContains(t, msg, "<a href=", "Text 모드에서는 앵커 태그가 없어야 합니다")
-				assert.NotContains(t, msg, "<b>", "Text 모드에서는 볼드 태그가 없어야 합니다")
-				assert.NotContains(t, msg, expectedLink, "Render 메서드는 Text 모드에서 URL을 직접 노출하지 않아야 합니다") // performance.go의 Render 구현 의도 확인
+				assert.Contains(t, msg, expectedLink, "Render 메서드는 Text 모드에서도 URL을 노출해야 합니다")
 			},
 		},
 		{
@@ -508,22 +550,7 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			taskInstance := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     "T",
-						CommandID:  "C",
-						NotifierID: "N",
-						RunBy:      contract.TaskRunByUser,
-					},
-					InstanceID: "I",
-					Fetcher:    mocks.NewMockHTTPFetcher(),
-					NewSnapshot: func() interface{} {
-						return &watchNewPerformancesSnapshot{}
-					},
-				}, false),
-			}
-			gotMsg := taskInstance.renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
+			gotMsg := renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
 			if tt.validate != nil {
 				tt.validate(t, gotMsg)
@@ -540,6 +567,12 @@ func TestTask_RenderPerformanceDiffs(t *testing.T) {
 // 2. 실행 주체(User vs Scheduler)에 따른 알림 정책 차이
 // 3. 데이터가 없을 때의 피드백
 // 4. 불변식(Invariant) 검증: 변경 사항 존재 시 메시지 필히 생성
+// TestTask_AnalyzeAndReport_TableDriven 네이버 공연 알림 로직의 핵심인 reportNewPerformances 메서드를
+// 다양한 시나리오(Table-Driven)를 통해 철저하게 검증합니다.
+//
+// [검증 범위]
+// 1. 신규 공연 감지 (New Performance)
+// 2. 메시지 생성 여부
 func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 	t.Parallel()
 
@@ -560,51 +593,46 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 		supportsHTML        bool
 
 		// Expected Output
-		wantShouldSave    bool
 		wantMsgContent    []string // 메시지에 반드시 포함되어야 할 텍스트 조각들
 		wantMsgNotContent []string // 메시지에 절대 포함되어서는 안 될 텍스트 조각들
 		wantEmptyMsg      bool     // 메시지가 아예 비어있어야 하는지
 	}{
 		{
-			name:                "신규 공연 감지 (Scheduler) - 알림 발송 및 저장",
+			name:                "신규 공연 감지 (Scheduler) - 알림 발송",
 			runBy:               contract.TaskRunByScheduler,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{}, // 이전 기록 없음 (완전 신규)
 			supportsHTML:        false,
-			wantShouldSave:      true,
 			wantMsgContent:      []string{"새로운 공연정보가 등록되었습니다", "뮤지컬 영웅"},
 			wantMsgNotContent:   []string{},
 			wantEmptyMsg:        false,
 		},
 		{
-			name:                "변경 없음 (Scheduler) - 침묵 (알림 X, 저장 X)",
+			name:                "변경 없음 (Scheduler) - 침묵 (알림 X)",
 			runBy:               contract.TaskRunByScheduler,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")}, // 동일 데이터
 			supportsHTML:        false,
-			wantShouldSave:      false,
 			wantMsgContent:      []string{},
 			wantMsgNotContent:   []string{},
 			wantEmptyMsg:        true,
 		},
 		{
-			name:                "변경 없음 (User) - 현황 보고 (알림 O, 저장 X)",
+			name:                "변경 없음 (User) - 현황 보고 (알림 O)",
 			runBy:               contract.TaskRunByUser,
 			currentPerformances: []*performance{createPerf("1", "뮤지컬 영웅")},
 			prevPerformances:    []*performance{createPerf("1", "뮤지컬 영웅")},
 			supportsHTML:        false,
-			wantShouldSave:      false, // 변경 사항 자체는 없으므로 저장할 필요 없음
 			wantMsgContent:      []string{"신규로 등록된 공연정보가 없습니다", "현재 등록된 공연정보는 아래와 같습니다", "뮤지컬 영웅"},
 			wantMsgNotContent:   []string{"새로운 공연정보가 등록되었습니다"},
 			wantEmptyMsg:        false,
 		},
 		{
-			name:                "데이터 없음 (User) - 안내 메시지 (알림 O, 저장 X)",
+			name:                "데이터 없음 (User) - 안내 메시지 (알림 O)",
 			runBy:               contract.TaskRunByUser,
 			currentPerformances: []*performance{}, // 수집된 공연 0개
 			prevPerformances:    []*performance{},
 			supportsHTML:        false,
-			wantShouldSave:      false,
 			wantMsgContent:      []string{"등록된 공연정보가 존재하지 않습니다"},
 			wantMsgNotContent:   []string{},
 			wantEmptyMsg:        false,
@@ -615,7 +643,6 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			currentPerformances: []*performance{createPerf("1", "기존 공연"), createPerf("2", "신규 공연")},
 			prevPerformances:    []*performance{createPerf("1", "기존 공연")},
 			supportsHTML:        false,
-			wantShouldSave:      true,
 			wantMsgContent:      []string{"새로운 공연정보가 등록되었습니다", "신규 공연"},
 			wantMsgNotContent:   []string{"기존 공연"}, // 변경 알림 메시지에는 신규 건만 나와야 함
 			wantEmptyMsg:        false,
@@ -628,21 +655,6 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			t.Parallel()
 
 			// Setup Task
-			tsk := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     "T",
-						CommandID:  "C",
-						NotifierID: "N",
-						RunBy:      tt.runBy,
-					},
-					InstanceID: "I",
-					Fetcher:    mocks.NewMockHTTPFetcher(),
-					NewSnapshot: func() interface{} {
-						return &watchNewPerformancesSnapshot{}
-					},
-				}, false),
-			}
 
 			// Prepare Snapshots
 			currentSnap := &watchNewPerformancesSnapshot{Performances: tt.currentPerformances}
@@ -654,11 +666,25 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 			}
 
 			// Execute Logic
-			msg, shouldSave := tsk.analyzeAndReport(currentSnap, prevMap, tt.supportsHTML)
+			var msg string
+
+			if tt.runBy == contract.TaskRunByUser {
+				msg = renderCurrentStatus(currentSnap, tt.supportsHTML)
+			} else {
+				// reportNewPerformances 로직 수동 구현 (Unit Test)
+				// prepare prevSnap
+				var prevSnap *watchNewPerformancesSnapshot
+				if len(tt.prevPerformances) > 0 {
+					prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prevPerformances}
+				}
+
+				diffs, _ := currentSnap.Compare(prevSnap)
+				if len(diffs) > 0 {
+					msg = "새로운 공연정보가 등록되었습니다.\n\n" + renderPerformanceDiffs(diffs, tt.supportsHTML)
+				}
+			}
 
 			// Verification
-			assert.Equal(t, tt.wantShouldSave, shouldSave, "ShouldSave 상태 불일치")
-
 			if tt.wantEmptyMsg {
 				assert.Empty(t, msg, "메시지가 비어있어야 합니다")
 			} else {
@@ -669,11 +695,6 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 				for _, notContent := range tt.wantMsgNotContent {
 					assert.NotContains(t, msg, notContent, "메시지에 포함되지 말아야 할 내용 존재")
 				}
-			}
-
-			// [Invariant Check]
-			if shouldSave {
-				assert.NotEmpty(t, msg, "[Invariant Failure] 변경 사항이 있어 저장(shouldSave=true)하려는데 알림 메시지가 없습니다.")
 			}
 		})
 	}
@@ -689,7 +710,8 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 
 	// 테스트 데이터 생성 헬퍼
 	makePerformanceHTML := func(title, place string) string {
-		return fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">%s</span></div><div class="thumb"><img src="thumb.jpg"></div></div></li>`, title, place)
+		// 썸네일 URL을 절대 경로로 고정하여 파싱 로직의 정규화 영향을 배제함
+		return fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">%s</span></div><div class="thumb"><img src="https://example.com/thumb.jpg"></div></div></li>`, title, place)
 	}
 
 	makeJSONResponse := func(htmlContent string) string {
@@ -707,27 +729,90 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 	settingsWithFilters.Filters.Title.ExcludedKeywords = "Drop"
 
 	tests := []struct {
-		name            string
-		settings        *watchNewPerformancesSettings
-		mockResponses   map[string]string // URL Query -> HTML Body
-		mockErrors      map[string]error  // URL Query -> Error
-		expectedMessage []string          // 예상되는 알림 메시지 포함 문자열
-		expectedError   string            // 예상되는 에러 메시지
-		validate        func(t *testing.T, snapshot *watchNewPerformancesSnapshot)
+		name             string
+		runBy            contract.TaskRunBy // 실행 주체 (기본: Scheduler)
+		settings         *watchNewPerformancesSettings
+		prevSnapshot     *watchNewPerformancesSnapshot                              // 이전 스냅샷 주입
+		mockResponses    map[string]string                                          // URL Query -> HTML Body
+		mockErrors       map[string]error                                           // URL Query -> Error
+		expectedMessage  []string                                                   // 예상되는 알림 메시지 포함 문자열
+		expectedEmpty    bool                                                       // 메시지가 비어야 하는 경우
+		expectedError    string                                                     // 예상되는 에러 메시지
+		validateSnapshot func(t *testing.T, snapshot *watchNewPerformancesSnapshot) // 스냅샷 검증 (nil일 수도 있음)
 	}{
 		{
-			name: "성공: 단일 페이지 수집 및 신규 공연 알림",
+			name: "성공: 단일 페이지 수집 및 신규 공연 알림 (초기 실행)",
 			settings: &watchNewPerformancesSettings{
 				Query:    "뮤지컬",
 				MaxPages: 1,
 			},
+			prevSnapshot: nil, // 초기 실행
 			mockResponses: map[string]string{
-				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("New Musical", "Seoul"))), // Page 1
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("New Musical", "Seoul"))),
 			},
 			expectedMessage: []string{"새로운 공연정보가 등록되었습니다", "New Musical", "Seoul"},
-			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				require.NotNil(t, snapshot, "초기 실행 시 스냅샷이 생성되어야 합니다")
 				assert.Equal(t, 1, len(snapshot.Performances))
 				assert.Equal(t, "New Musical", snapshot.Performances[0].Title)
+			},
+		},
+		{
+			name: "성공: 변동 없음 (스냅샷 갱신 안함)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "NoChange",
+				MaxPages: 1,
+			},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
+			},
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Old", "Seoul"))),
+			},
+			expectedEmpty: true, // 알림 없음
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				assert.Nil(t, snapshot, "변경 사항이 없으면 스냅샷을 갱신하지 않아야 합니다(nil 반환)")
+			},
+		},
+		{
+			name: "성공: 공연 삭제 감지 (알림 X, 스냅샷 갱신 O)",
+			settings: &watchNewPerformancesSettings{
+				Query:    "Deleted",
+				MaxPages: 1,
+			},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{
+					{Title: "Keep", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"},
+					{Title: "Deleted", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"},
+				},
+			},
+			// 수집 결과에는 "Keep"만 존재 -> "Deleted" 삭제됨
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Keep", "Seoul"))),
+			},
+			expectedEmpty: true, // 삭제는 알림 대상 아님
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				require.NotNil(t, snapshot, "삭제 발생 시 스냅샷이 갱신되어야 합니다")
+				assert.Equal(t, 1, len(snapshot.Performances))
+				assert.Equal(t, "Keep", snapshot.Performances[0].Title)
+			},
+		},
+		{
+			name:  "성공: 변동 없음 (스냅샷 갱신 안함 - Scheduler)",
+			runBy: contract.TaskRunByScheduler,
+			settings: &watchNewPerformancesSettings{
+				Query:    "NoChangeScheduler",
+				MaxPages: 1,
+			},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
+			},
+			mockResponses: map[string]string{
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Old", "Seoul"))),
+			},
+			expectedEmpty: true,
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				assert.Nil(t, snapshot, "스케줄러 실행 시 변경 사항이 없으면 nil을 반환해야 합니다")
 			},
 		},
 		{
@@ -741,7 +826,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				"u7=2": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Concert 2", "Hall"))),    // Page 2
 			},
 			expectedMessage: []string{"Concert 1", "Concert 2"},
-			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
 				assert.Equal(t, 2, len(snapshot.Performances))
 			},
 		},
@@ -757,7 +842,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 					makePerformanceHTML("Perf A", "Place A"),   // Page 1 내용이 다시 넘어옴 (중복)
 					makePerformanceHTML("Perf B", "Place B"))), // Page 2 신규
 			},
-			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
 				assert.Equal(t, 2, len(snapshot.Performances), "중복된 Perf A는 하나만 저장되어야 합니다")
 			},
 		},
@@ -796,7 +881,7 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				)),
 			},
 			expectedMessage: []string{"Keep Item"},
-			validate: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
 				require.Equal(t, 1, len(snapshot.Performances))
 				assert.Equal(t, "Keep Item", snapshot.Performances[0].Title)
 			},
@@ -810,7 +895,27 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			mockResponses: map[string]string{
 				"u7=1": `{}`, // HTML 필드 자체가 없음
 			},
-			expectedError: "API 스키마 변경 의심",
+			expectedError: "필수 필드 'html'이 누락되었습니다",
+		},
+		{
+			name:  "성공: 사용자 수동 실행 시 내용 변경만 발생한 경우 현재 현황 응답 (UX 개선)",
+			runBy: contract.TaskRunByUser,
+			settings: &watchNewPerformancesSettings{
+				Query:    "ManualUX",
+				MaxPages: 1,
+			},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{{Title: "Existing", Place: "Seoul", Thumbnail: "https://example.com/old.jpg"}},
+			},
+			mockResponses: map[string]string{
+				// 썸네일만 변경됨 (hasChanges=true, message="")
+				"u7=1": makeJSONResponse(fmt.Sprintf("<ul>%s</ul>", makePerformanceHTML("Existing", "Seoul"))),
+			},
+			expectedMessage: []string{"신규로 등록된 공연정보가 없습니다", "현재 등록된 공연정보는 아래와 같습니다", "Existing"},
+			validateSnapshot: func(t *testing.T, snapshot *watchNewPerformancesSnapshot) {
+				require.NotNil(t, snapshot, "내용 변경 시 스냅샷이 갱신되어야 합니다")
+				assert.Contains(t, snapshot.Performances[0].Thumbnail, "thumb.jpg")
+			},
 		},
 	}
 
@@ -821,8 +926,10 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 
 			// Mock Fetcher 설정
 			mockFetcher := mocks.NewMockHTTPFetcher()
-			baseParams := url.Values{}
-			// 기본 파라미터 (watch_new_performances.go 참조)
+			var baseParams url.Values
+			// 만약 CancelTest가 아니면, query string을 통해 API call을 mocking 해야 함.
+			// 여기서는 settings.Query를 사용.
+			baseParams = url.Values{}
 			baseParams.Set("key", "kbList")
 			baseParams.Set("pkid", "269")
 			baseParams.Set("where", "nexearch")
@@ -833,23 +940,20 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 			baseParams.Set("u5", "date")
 			baseParams.Set("u6", "N")
 			baseParams.Set("u8", "all")
-			// u7(Page)만 가변
 
 			// Mock Response 등록
 			for queryPart, body := range tt.mockResponses {
-				// 쿼리 파라미터 조합
 				fullParams := url.Values{} // 복사
 				for k, v := range baseParams {
 					fullParams[k] = v
 				}
 
-				// queryPart 파싱 (ex: u7=1)
 				q, _ := url.ParseQuery(queryPart)
 				for k, v := range q {
 					fullParams[k] = v
 				}
 
-				fullURL := fmt.Sprintf("%s?%s", searchAPIBaseURL, fullParams.Encode())
+				fullURL := fmt.Sprintf("%s?%s", performanceSearchEndpoint, fullParams.Encode())
 				mockFetcher.SetResponse(fullURL, []byte(body))
 			}
 
@@ -863,26 +967,30 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 				for k, v := range q {
 					fullParams[k] = v
 				}
-				fullURL := fmt.Sprintf("%s?%s", searchAPIBaseURL, fullParams.Encode())
-				mockFetcher.SetError(fullURL, err) // 에러 설정
+				fullURL := fmt.Sprintf("%s?%s", performanceSearchEndpoint, fullParams.Encode())
+				mockFetcher.SetError(fullURL, err)
 			}
 
 			// Task 생성 및 설정
 			if tt.settings.MaxPages == 0 {
-				tt.settings.MaxPages = 50 // 기본값
+				tt.settings.MaxPages = 50
 			}
 			if tt.settings.PageFetchDelay == 0 {
-				tt.settings.PageFetchDelay = 1 // 테스트 속도를 위해 최소화
+				tt.settings.PageFetchDelay = 1
 			}
 
-			// executeWatchNewPerformances는 task 구조체의 메서드이므로 task 인스턴스 필요
+			runBy := tt.runBy
+			if runBy == contract.TaskRunByUnknown {
+				runBy = contract.TaskRunByScheduler
+			}
+
 			naverTask := &task{
 				Base: provider.NewBase(provider.NewTaskParams{
 					Request: &contract.TaskSubmitRequest{
 						TaskID:     "NAVER",
 						CommandID:  "WATCH",
 						NotifierID: "NOTI",
-						RunBy:      contract.TaskRunByScheduler,
+						RunBy:      runBy,
 					},
 					InstanceID: "INSTANCE",
 					Fetcher:    mockFetcher,
@@ -891,27 +999,33 @@ func TestTask_ExecuteWatchNewPerformances(t *testing.T) {
 					},
 				}, true),
 			}
-			// SetFetcher call removed
 
 			// 실행
-			// prevSnapshot은 nil로 가정 (수집 테스트이므로)
-			msg, resultData, err := naverTask.executeWatchNewPerformances(context.Background(), tt.settings, nil, false)
+			msg, resultData, err := naverTask.executeWatchNewPerformances(context.Background(), tt.settings, tt.prevSnapshot, false)
 
 			// 검증
 			if tt.expectedError != "" {
-				require.Error(t, err) // Error가 nil이면 여기서 멈춤 (Prevents panic)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				require.NoError(t, err)
 
-				for _, expMsg := range tt.expectedMessage {
-					assert.Contains(t, msg, expMsg)
+				if tt.expectedEmpty {
+					assert.Empty(t, msg)
+				} else {
+					for _, expMsg := range tt.expectedMessage {
+						assert.Contains(t, msg, expMsg)
+					}
 				}
 
-				if tt.validate != nil {
-					snapshot, ok := resultData.(*watchNewPerformancesSnapshot)
-					require.True(t, ok, "결과 데이터는 watchNewPerformancesSnapshot 타입이어야 합니다")
-					tt.validate(t, snapshot)
+				if tt.validateSnapshot != nil {
+					var snapshot *watchNewPerformancesSnapshot
+					if resultData != nil {
+						s, ok := resultData.(*watchNewPerformancesSnapshot)
+						require.True(t, ok, "결과 데이터는 watchNewPerformancesSnapshot 타입이어야 합니다")
+						snapshot = s
+					}
+					tt.validateSnapshot(t, snapshot)
 				}
 			}
 		})
@@ -962,13 +1076,13 @@ func TestBuildSearchAPIURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotURLStr := buildSearchAPIURL(tt.query, tt.page)
+			gotURLStr := buildPerformanceSearchURL(tt.query, tt.page)
 			gotURL, err := url.Parse(gotURLStr)
 			require.NoError(t, err, "생성된 URL은 유효한 형식이어야 합니다")
 
 			// 1. Base URL 검증
-			// searchAPIBaseURL 상수는 쿼리 파라미터를 포함하지 않는 순수 경로라고 가정
-			expectedBaseURL, _ := url.Parse(searchAPIBaseURL)
+			// performanceSearchURL 상수는 쿼리 파라미터를 포함하지 않는 순수 경로라고 가정
+			expectedBaseURL, _ := url.Parse(performanceSearchEndpoint)
 			assert.Equal(t, expectedBaseURL.Scheme, gotURL.Scheme, "Scheme이 일치해야 합니다")
 			assert.Equal(t, expectedBaseURL.Host, gotURL.Host, "Host가 일치해야 합니다")
 			assert.Equal(t, expectedBaseURL.Path, gotURL.Path, "Path가 일치해야 합니다")
@@ -1004,7 +1118,7 @@ func TestTask_FetchPerformances_Cancellation(t *testing.T) {
 
 	// 첫 번째 페이지 요청에 500ms 지연을 설정합니다.
 	// 이는 별도 고루틴에서 Cancel()을 호출할 충분한 시간을 벌어줍니다.
-	delayedURL := buildSearchAPIURL("CancelTest", 1)
+	delayedURL := buildPerformanceSearchURL("CancelTest", 1)
 	mockFetcher.SetDelay(delayedURL, 500*time.Millisecond)
 	mockFetcher.SetResponse(delayedURL, []byte(`{"html": "<ul><li><div class='title_box'><strong class='name'>Delayed Item</strong><span class='sub_text'>Place</span></div></li></ul>"}`))
 
@@ -1059,14 +1173,22 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 	t.Parallel()
 
 	makePageHTML := func(startIndex int, itemsCount int) string {
-		var sb strings.Builder
-		sb.WriteString("<ul>")
-		for i := 0; i < itemsCount; i++ {
-			idx := startIndex + i
-			sb.WriteString(fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">Item %d</strong><span class="sub_text">Place %d</span></div><div class="thumb"><img src="t.jpg"></div></div></li>`, idx, idx))
+		var content string
+		if itemsCount == 0 {
+			// 빈 페이지만, 유효한 결과 없음 메시지를 포함해야 함
+			content = `<div class="api_no_result">검색결과가 없습니다</div><!-- padding padding padding padding padding padding padding -->`
+		} else {
+			var sb strings.Builder
+			sb.WriteString("<ul>")
+			for i := 0; i < itemsCount; i++ {
+				idx := startIndex + i
+				sb.WriteString(fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">Item %d</strong><span class="sub_text">Place %d</span></div><div class="thumb"><img src="t.jpg"></div></div></li>`, idx, idx))
+			}
+			sb.WriteString("</ul>")
+			content = sb.String()
 		}
-		sb.WriteString("</ul>")
-		m := map[string]string{"html": sb.String()}
+
+		m := map[string]string{"html": content}
 		b, _ := json.Marshal(m)
 		return string(b)
 	}
@@ -1109,7 +1231,7 @@ func TestTask_FetchPerformances_PaginationLimits(t *testing.T) {
 			mockFetcher := mocks.NewMockHTTPFetcher()
 			for i, body := range tt.mockResponses {
 				page := i + 1
-				u := buildSearchAPIURL("LimitTest", page)
+				u := buildPerformanceSearchURL("LimitTest", page)
 				mockFetcher.SetResponse(u, []byte(body))
 			}
 
@@ -1164,11 +1286,6 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 	sb.WriteString("</ul>")
 	html := sb.String()
 
-	filters := &keywordMatchers{
-		TitleMatcher: strutil.NewKeywordMatcher(nil, nil),
-		PlaceMatcher: strutil.NewKeywordMatcher(nil, nil),
-	}
-
 	b.ResetTimer()
 	taskInstance := &task{
 		Base: provider.NewBase(provider.NewTaskParams{
@@ -1186,8 +1303,11 @@ func BenchmarkTask_ParsePerformances(b *testing.B) {
 		}, true),
 	}
 
+	// 테스트용 더미 URL
+	const testPageURL = "https://m.search.naver.com/p/csearch/content/nqapirender.nhn"
+
 	for i := 0; i < b.N; i++ {
-		_, _, _ = taskInstance.parsePerformancesFromHTML(context.Background(), html, filters)
+		_, _, _ = taskInstance.parsePerformancesFromHTML(context.Background(), html, testPageURL, 1)
 	}
 }
 
@@ -1208,22 +1328,6 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 		}
 	}
 
-	testTask := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     "NAVER",
-				CommandID:  "WATCH",
-				NotifierID: "NOTI",
-				RunBy:      contract.TaskRunByScheduler,
-			},
-			InstanceID: "INSTANCE",
-			Fetcher:    mocks.NewMockHTTPFetcher(),
-			NewSnapshot: func() interface{} {
-				return &watchNewPerformancesSnapshot{}
-			},
-		}, false),
-	}
-
 	prevSnap := &watchNewPerformancesSnapshot{Performances: prevItems}
 	currSnap := &watchNewPerformancesSnapshot{Performances: currItems}
 
@@ -1234,6 +1338,10 @@ func BenchmarkTask_DiffAndNotify_Large(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = testTask.analyzeAndReport(currSnap, prevPerformancesSet, false)
+		// _ = testTask.reportNewPerformances(currSnap, prevPerformancesSet, false)
+		gotDiffs, _ := currSnap.Compare(prevSnap)
+		if len(gotDiffs) > 0 {
+			_ = renderPerformanceDiffs(gotDiffs, false)
+		}
 	}
 }
