@@ -389,7 +389,7 @@ func (b *Base) Run(ctx context.Context, notificationSender contract.Notification
 					// 사용자에게 전달할 패닉 메시지를 생성합니다.
 					message := b.formatTaskErrorMessage(fmt.Sprintf("시스템 내부 오류(Panic)가 발생하였습니다.\n\n[오류 상세 내용]\n%v", r))
 
-					_ = notificationSender.Notify(ctx, b.newNotification(message, true))
+					_ = notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, true))
 				}
 			}()
 		}
@@ -677,7 +677,7 @@ func (b *Base) finalizeExecution(ctx context.Context, notificationSender contrac
 	if len(message) > 0 {
 		// 알림 전송 실패는 로그로만 기록하고 Task 실행 자체는 성공으로 간주합니다.
 		// 이는 "알림 실패가 비즈니스 로직 실패로 전파되지 않도록" 하는 설계 원칙을 따릅니다.
-		if notifyErr := notificationSender.Notify(ctx, b.newNotification(message, false)); notifyErr != nil {
+		if notifyErr := notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, false)); notifyErr != nil {
 			b.Log(component, applog.ErrorLevel, "성공 알림 발송 실패: 전송 에러", notifyErr, nil)
 		}
 	}
@@ -697,7 +697,7 @@ func (b *Base) finalizeExecution(ctx context.Context, notificationSender contrac
 //   - notificationSender: 알림 전송을 담당하는 인터페이스 구현체
 //   - message: 사용자에게 전달할 에러 메시지 본문
 func (b *Base) sendErrorNotification(ctx context.Context, notificationSender contract.NotificationSender, message string) {
-	if err := notificationSender.Notify(ctx, b.newNotification(message, true)); err != nil {
+	if err := notificationSender.Notify(context.WithoutCancel(ctx), b.newNotification(message, true)); err != nil {
 		b.Log(component, applog.ErrorLevel, "에러 알림 발송 실패: 전송 에러", err, nil)
 	}
 }
