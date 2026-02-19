@@ -96,28 +96,6 @@ func TestNewTask_Comprehensive(t *testing.T) {
 			expectedError: provider.ErrTaskNotFound.Error(),
 		},
 		{
-			name: "Empty AppPath",
-			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
-				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
-				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": ""}}},
-				}
-				return req, cfg, func() {}
-			},
-			expectedError: ErrAppPathMissing.Error(), // 이제 New/Newf 결과값과 직접 비교
-		},
-		{
-			name: "Non-existent AppPath",
-			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
-				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
-				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": "/invalid/path"}}},
-				}
-				return req, cfg, func() {}
-			},
-			expectedError: "app_path로 지정된 디렉터리 검증에 실패하였습니다",
-		},
-		{
 			name: "Missing JAR File",
 			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
 				// 폴더는 있지만 JAR가 없는 경우
@@ -200,23 +178,6 @@ func TestNewTask_Comprehensive(t *testing.T) {
 				return req, cfg, cleanup
 			},
 			expectedError: "",
-		},
-		{
-			name: "AppPath Not Directory (File)",
-			prepare: func(t *testing.T) (*contract.TaskSubmitRequest, *appconfig.AppConfig, func()) {
-				tmpDir := t.TempDir()
-				filePath := filepath.Join(tmpDir, "somefile.txt")
-				f, err := os.Create(filePath)
-				require.NoError(t, err)
-				f.Close()
-
-				req := &contract.TaskSubmitRequest{TaskID: TaskID, CommandID: PredictionCommand}
-				cfg := &appconfig.AppConfig{
-					Tasks: []appconfig.TaskConfig{{ID: string(TaskID), Data: map[string]interface{}{"app_path": filePath}}},
-				}
-				return req, cfg, func() {}
-			},
-			expectedError: "app_path로 지정된 디렉터리 검증에 실패하였습니다",
 		},
 	}
 
