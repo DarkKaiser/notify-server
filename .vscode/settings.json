@@ -23,5 +23,12 @@
     "**/node_modules/**": true,
     "**/.hg/store/**": true,
     "**/logs/**": true
+  },
+
+  // gopls 분석 설정
+  "gopls": {
+    "analyses": {
+      "lostcancel": false
+    }
   }
 }

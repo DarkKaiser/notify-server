@@ -77,10 +77,7 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 		}
 	}
 
-	// 3단계: 공연 삭제 감지 (개수 비교)
-	//
-	// [참고] 이 로직은 삭제된 공연을 정확히 식별(누가 삭제되었는지)하지 않고,
-	// 단순히 전체 개수가 줄어들었는지만 확인하여 스냅샷 갱신(`hasChanges=true`)을 유도합니다.
+	// 3단계: 공연 삭제 감지(개수 비교) 및 비정상 상황(0건) 방어
 	//
 	// [시나리오]
 	// 1. A 삭제: len(prev)=2, len(cur)=1 -> hasChanges=true (정상)
@@ -89,6 +86,27 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 	if prev != nil {
 		prevLen = len(prev.Performances)
 	}
+
+	// [중요] 일시적 오류로 인해 검색 결과가 0건이 된 경우 스냅샷 갱신 방지
+	//
+	// 시나리오: 네이버 측 일시 오류나 네트워크 문제로 0건이 반환될 수 있습니다.
+	// 이때 스냅샷을 0건으로 갱신하면, 다음 정상 실행 시 모든 공연이 '신규'로 인식되어
+	// 사용자에게 대량 알림(Spam)이 전송되는 참사가 발생합니다.
+	//
+	// 전략: '이전에 데이터가 있었는데 갑자기 0건이 된 경우'는 비정상으로 간주하여
+	// 변경사항이 없다고 판단(false 반환)하고 기존 스냅샷을 유지합니다.
+	//
+	// [주의 - 한계점]
+	// 이 안전 장치로 인해 실제로 모든 공연이 종료되어 0건이 된 경우에도
+	// 스냅샷이 갱신되지 않아, DB에 과거 데이터가 남을 수 있습니다.
+	// 하지만 잘못된 알림 폭탄(Spam)으로 인한 사용자 경험 저하를 막는 것이
+	// 데이터 정합성보다 우선순위가 높다고 판단하여 이 방식을 채택합니다.
+	if len(s.Performances) == 0 && prevLen > 0 {
+		return nil, false
+	}
+
+	// [참고] 이 로직은 삭제된 공연을 정확히 식별(누가 삭제되었는지)하지 않고,
+	// 단순히 전체 개수가 변동되었는지만 확인하여 스냅샷 갱신(`hasChanges=true`)을 유도합니다.
 	if len(s.Performances) != prevLen {
 		hasChanges = true
 	}

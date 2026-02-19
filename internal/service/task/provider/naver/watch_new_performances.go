@@ -243,6 +243,12 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		// (네이버 서버 부하 방지 및 차단 회피 목적)
 		//
 		// 매번 새로운 타이머를 생성하는 대신 기존 타이머를 재사용(Reset)하여 GC 부하를 최소화합니다.
+		if !fetchDelayTimer.Stop() {
+			select {
+			case <-fetchDelayTimer.C:
+			default:
+			}
+		}
 		fetchDelayTimer.Reset(fetchDelay)
 
 		select {
