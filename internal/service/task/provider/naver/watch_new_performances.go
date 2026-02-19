@@ -181,7 +181,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		// 실제 네이버 서버에 HTTP 요청을 보내 해당 페이지의 공연 목록을 가져옵니다.
 		rawPerformances, rawCount, err := t.fetchPagePerformances(ctx, commandSettings.Query, currentPage)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			if errors.Is(err, context.Canceled) {
 				t.Log(component, applog.InfoLevel, "수집 중단: 외부 취소 요청", nil, applog.Fields{
 					"query":           commandSettings.Query,
 					"page":            currentPage,
@@ -192,6 +192,32 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 				})
 
 				return nil, context.Canceled
+			}
+
+			// [주의] context.Canceled로 교체하지 않고 ctx.Err()를 그대로 반환합니다.
+			//
+			// 왜 교체하면 안 되는가?
+			//   base.go의 finalizeExecution()은 에러가 context.Canceled인 경우에만
+			//   "사용자가 직접 취소한 것"으로 간주하여 에러 알림 전송을 의도적으로 생략합니다.
+			//
+			//   만약 여기서 ctx.Err()(예: context.DeadlineExceeded)를 context.Canceled로
+			//   교체해버리면, 타임아웃으로 인한 수집 실패임에도 불구하고 에러 알림이 전송되지 않아
+			//   사용자는 서비스가 조용히 실패하고 있다는 사실을 전혀 알 수 없게 됩니다.
+			//
+			// 올바른 동작:
+			//   - context.Canceled  → 사용자가 명시적으로 취소한 경우: 알림 생략 (정상)
+			//   - context.DeadlineExceeded → 타임아웃으로 실패한 경우:  알림 전송 (이상 상황)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				t.Log(component, applog.WarnLevel, "수집 중단: 컨텍스트 종료", ctxErr, applog.Fields{
+					"query":           commandSettings.Query,
+					"page":            currentPage,
+					"limit_max_pages": commandSettings.MaxPages,
+					"collected_count": len(collectedPerformances),
+					"fetched_count":   totalFetchedCount,
+					"error":           err.Error(),
+				})
+
+				return nil, ctxErr
 			}
 
 			return nil, err
@@ -261,7 +287,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 				"fetched_count":     totalFetchedCount,
 			})
 
-			return nil, context.Canceled
+			return nil, ctx.Err()
 
 		case <-fetchDelayTimer.C: // 대기 시간이 만료되면 다음 루프(페이지)로 진행
 		}

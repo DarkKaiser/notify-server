@@ -3,6 +3,7 @@ package naver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -57,7 +58,9 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.config.Validate()
 			if tt.wantErr != "" {
 				assert.ErrorContains(t, err, tt.wantErr)
@@ -69,6 +72,8 @@ func TestNaverWatchNewPerformancesSettings_Validate(t *testing.T) {
 }
 
 func TestNaverWatchNewPerformancesSettings_ApplyDefaults(t *testing.T) {
+	t.Parallel()
+
 	config := &watchNewPerformancesSettings{}
 	config.ApplyDefaults()
 	assert.Equal(t, 50, config.MaxPages)
@@ -119,7 +124,9 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			items, _, err := taskInstance.parsePerformancesFromHTML(context.Background(), tt.html, "http://example.com", 1)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -141,6 +148,8 @@ func TestParsePerformancesFromHTML(t *testing.T) {
 }
 
 func TestBuildSearchAPIURL(t *testing.T) {
+	t.Parallel()
+
 	urlStr := buildPerformanceSearchURL("Query", 2)
 	u, err := url.Parse(urlStr)
 	require.NoError(t, err)
@@ -154,9 +163,9 @@ func TestBuildSearchAPIURL(t *testing.T) {
 // Unit Tests: Rendering & Reporting
 // =============================================================================
 
-// Note: TestRenderPerformanceDiffs is already covered in renderer_test.go
-
 func TestRenderPerformanceDiffs_Integration(t *testing.T) {
+	t.Parallel()
+
 	// Simple integration check to ensure it works with the rest of the package
 	diffs := []performanceDiff{
 		{Type: performanceEventNew, Performance: &performance{Title: "T1", Place: "P1"}},
@@ -171,6 +180,8 @@ func TestRenderPerformanceDiffs_Integration(t *testing.T) {
 // =============================================================================
 
 func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
+	t.Parallel()
+
 	// Table driven test for the main execution flow
 	tests := []struct {
 		name           string
@@ -178,6 +189,7 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 		settings       *watchNewPerformancesSettings
 		prevSnapshot   *watchNewPerformancesSnapshot
 		mockPages      []string // HTML content for pages 1, 2, ...
+		mockDelay      time.Duration
 		mockError      error
 		expectMessage  []string
 		expectEmptyMsg bool
@@ -200,7 +212,7 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 		{
 			name:     "No Changes (Scheduler)",
 			runBy:    contract.TaskRunByScheduler,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1}, // Match mocked pages count
+			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
 			prevSnapshot: &watchNewPerformancesSnapshot{
 				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
 			},
@@ -215,7 +227,7 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 		{
 			name:     "No Changes (User) - Should report status",
 			runBy:    contract.TaskRunByUser,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1}, // Match mocked pages count
+			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
 			prevSnapshot: &watchNewPerformancesSnapshot{
 				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
 			},
@@ -225,6 +237,22 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 			expectMessage: []string{"현재 등록된 공연정보는 아래와 같습니다", "Old"},
 			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
 				assert.Nil(t, s, "Snapshot should be nil if no changes")
+			},
+		},
+		{
+			name:     "Content Change Only (Scheduler)",
+			runBy:    contract.TaskRunByScheduler,
+			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb1.jpg"}},
+			},
+			mockPages: []string{
+				makeHTMLHelper(makeItemHelper("Old", "Seoul")), // Thumbnail will be https://example.com/thumb.jpg from helper
+			},
+			expectEmptyMsg: true, // Content changed (thumbnail) but no NEW item, so no notification
+			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
+				require.NotNil(t, s, "Snapshot should be updated due to content change")
+				assert.Len(t, s.Performances, 1)
 			},
 		},
 		{
@@ -245,14 +273,14 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 		{
 			name:     "Duplicates Across Pages",
 			runBy:    contract.TaskRunByScheduler,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 2}, // Match mocked pages count
+			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 2},
 			mockPages: []string{
 				makeHTMLHelper(makeItemHelper("A", "L1")),                            // Page 1
 				makeHTMLHelper(makeItemHelper("A", "L1"), makeItemHelper("B", "L2")), // Page 2 (A is result of shifting)
 			},
 			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
 				require.NotNil(t, s, "Snapshot should not be nil")
-				assert.Len(t, s.Performances, 2, "Duplicate A should be removed, B should be kept. Total 2 distinct (A from p1, B from p2). Wait, distinct keys are 2.")
+				assert.Len(t, s.Performances, 2, "Duplicate A should be removed, B should be kept.")
 			},
 		},
 		{
@@ -266,7 +294,7 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 			name:  "Filtering (Include/Exclude)",
 			runBy: contract.TaskRunByScheduler,
 			settings: func() *watchNewPerformancesSettings {
-				s := &watchNewPerformancesSettings{Query: "Test", MaxPages: 1} // Match mocked pages count
+				s := &watchNewPerformancesSettings{Query: "Test", MaxPages: 1}
 				s.Filters.Title.IncludedKeywords = "Keep"
 				s.Filters.Title.ExcludedKeywords = "Drop"
 				return s
@@ -285,10 +313,28 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 				assert.Equal(t, "Keep This", s.Performances[0].Title)
 			},
 		},
+		{
+			name:     "Zero Result Safety Check",
+			runBy:    contract.TaskRunByScheduler,
+			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
+			prevSnapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{{Title: "Existing", Place: "Seoul"}},
+			},
+			mockPages: []string{
+				makeHTMLHelper(), // Returns empty list (0 items)
+			},
+			expectEmptyMsg: true, // Should not notify "All deleted"
+			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
+				assert.Nil(t, s, "Snapshot should NOT be updated (safety guard for spurious empty result)")
+			},
+		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			mockFetcher := mocks.NewMockHTTPFetcher()
 
 			// Setup Mocks
@@ -299,6 +345,9 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 			} else {
 				for i, pageContent := range tt.mockPages {
 					u := buildPerformanceSearchURL(tt.settings.Query, i+1)
+					if tt.mockDelay > 0 {
+						mockFetcher.SetDelay(u, tt.mockDelay)
+					}
 					mockFetcher.SetResponse(u, []byte(makeJSONResponse(pageContent)))
 				}
 			}
@@ -355,6 +404,8 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 // =============================================================================
 
 func TestTask_CancelDuringFetch(t *testing.T) {
+	t.Parallel()
+
 	mockFetcher := mocks.NewMockHTTPFetcher()
 
 	// Setup a delayed response
@@ -386,7 +437,10 @@ func TestTask_CancelDuringFetch(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		assert.ErrorIs(t, err, context.Canceled)
+		// Accept either context.Canceled or a wrapped error containing it
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled error, got %v", err)
+		}
 		assert.True(t, taskInstance.IsCanceled())
 	case <-time.After(1 * time.Second):
 		t.Fatal("Timeout waiting for cancellation")
@@ -394,11 +448,25 @@ func TestTask_CancelDuringFetch(t *testing.T) {
 }
 
 func TestFetchPerformances_Context_Deadline(t *testing.T) {
+	t.Parallel()
+
 	mockFetcher := mocks.NewMockHTTPFetcher()
 	u := buildPerformanceSearchURL("Timeout", 1)
 	mockFetcher.SetDelay(u, 200*time.Millisecond)
 
 	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{TaskID: "N"},
+			Fetcher: mocks.NewMockHTTPFetcher(), // Actual fetcher call will delay
+		}, true),
+	}
+	// We need to inject the mock fetcher behavior that causes delay.
+	// The mocks package usage here might need adjustment if SetDelay logic is strictly internal to HTTPFetcher mock.
+	// Assuming NewMockHTTPFetcher respects SetDelay for any URL or specific URL.
+	mockFetcher.SetDelay(u, 200*time.Millisecond)
+
+	// Re-create task with the configured mockFetcher
+	taskInstance = &task{
 		Base: provider.NewBase(provider.NewTaskParams{
 			Request: &contract.TaskSubmitRequest{TaskID: "N"},
 			Fetcher: mockFetcher,
@@ -413,8 +481,61 @@ func TestFetchPerformances_Context_Deadline(t *testing.T) {
 
 	// Should fail with context deadline exceeded
 	assert.Error(t, err)
-	// Depending on timing/implementation, it might be Canceled or DeadlineExceeded wrapped.
-	// But it must be an error.
+}
+
+func TestFetchPerformances_RateLimiting(t *testing.T) {
+	t.Parallel()
+
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	pagesToFetch := 3
+	query := "RateLimit"
+	delayMs := 50
+
+	// Setup mock responses for 3 pages
+	for i := 1; i <= pagesToFetch; i++ {
+		u := buildPerformanceSearchURL(query, i)
+		mockFetcher.SetResponse(u, []byte(makeJSONResponse(makeHTMLHelper(makeItemHelper(fmt.Sprintf("Item%d", i), "Seoul")))))
+	}
+	// 4th page empty to stop
+	u := buildPerformanceSearchURL(query, pagesToFetch+1)
+	mockFetcher.SetResponse(u, []byte(makeJSONResponse(makeHTMLHelper())))
+
+	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{TaskID: "N"},
+			Fetcher: mockFetcher,
+		}, true),
+	}
+
+	settings := &watchNewPerformancesSettings{
+		Query:          query,
+		MaxPages:       10,
+		PageFetchDelay: delayMs,
+	}
+
+	start := time.Now()
+	items, err := taskInstance.fetchPerformances(context.Background(), settings)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Len(t, items, pagesToFetch)
+
+	// Expected delay: (pagesToFetch - 1) * delayMs
+	// 1st page: immediate
+	// 2nd page: wait delay
+	// 3rd page: wait delay
+	// 4th page (empty): wait delay
+	// Total waits: 3 times (between 1-2, 2-3, 3-4) ?
+	// Let's check logic:
+	// Loop 1(page 1): fetch -> wait
+	// Loop 2(page 2): fetch -> wait
+	// Loop 3(page 3): fetch -> wait
+	// Loop 4(page 4): fetch (empty) -> break
+	// Total 3 waits.
+	expectedMinDuration := time.Duration((pagesToFetch)*delayMs) * time.Millisecond
+
+	// Allow some margin for execution overhead, but it should definitely be more than the minimal delay
+	assert.True(t, elapsed >= expectedMinDuration, "Execution time %v should be at least %v", elapsed, expectedMinDuration)
 }
 
 // =============================================================================
