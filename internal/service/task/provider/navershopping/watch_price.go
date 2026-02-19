@@ -207,7 +207,7 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		u.RawQuery = q.Encode()
 
 		var currentPage = &searchResponse{}
-		err = t.Scraper().FetchJSON(ctx, "GET", u.String(), header, nil, currentPage)
+		err = t.Scraper().FetchJSON(ctx, "GET", u.String(), nil, header, currentPage)
 		if err != nil {
 			return nil, err
 		}
