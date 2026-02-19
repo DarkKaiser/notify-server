@@ -19,28 +19,6 @@ const (
 	WatchPriceAnyCommand = contract.TaskCommandID(watchPriceAnyCommandPrefix + "*")
 )
 
-type taskSettings struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-}
-
-// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
-var _ provider.Validator = (*taskSettings)(nil)
-
-func (s *taskSettings) Validate() error {
-	s.ClientID = strings.TrimSpace(s.ClientID)
-	if s.ClientID == "" {
-		return ErrClientIDMissing
-	}
-
-	s.ClientSecret = strings.TrimSpace(s.ClientSecret)
-	if s.ClientSecret == "" {
-		return ErrClientSecretMissing
-	}
-
-	return nil
-}
-
 func init() {
 	provider.MustRegister(TaskID, &provider.TaskConfig{
 		Commands: []*provider.TaskCommandConfig{

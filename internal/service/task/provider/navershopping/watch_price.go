@@ -13,7 +13,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -54,34 +53,6 @@ const (
 	// policyFetchLimit 단일 커맨드당 최대 수집 제한 (과도한 요청 방지)
 	policyFetchLimit = 1000
 )
-
-type watchPriceSettings struct {
-	Query   string `json:"query"`
-	Filters struct {
-		IncludedKeywords string `json:"included_keywords"`
-		ExcludedKeywords string `json:"excluded_keywords"`
-		PriceLessThan    int    `json:"price_less_than"`
-	} `json:"filters"`
-}
-
-// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
-var _ provider.Validator = (*watchPriceSettings)(nil)
-
-func (s *watchPriceSettings) Validate() error {
-	s.Query = strings.TrimSpace(s.Query)
-	if s.Query == "" {
-		return apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
-	}
-	if s.Filters.PriceLessThan <= 0 {
-		return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("price_less_than은 0보다 커야 합니다 (입력값: %d)", s.Filters.PriceLessThan))
-	}
-	return nil
-}
-
-// watchPriceSnapshot 가격 변동을 감지하기 위한 상품 데이터의 스냅샷입니다.
-type watchPriceSnapshot struct {
-	Products []*product `json:"products"`
-}
 
 // productEventType 상품 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
 type productEventType int
