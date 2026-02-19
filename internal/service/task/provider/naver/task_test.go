@@ -33,14 +33,104 @@ func (m *mockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID
 
 // === Tests ===
 
-func TestCreateTask(t *testing.T) {
-	h := newTestHelper(t)
-	// createTask는 내부적으로 config를 조회하므로 appConfig가 필요함
-	// initTask 호출 시 내부적으로 createTask를 검증함
-	h.initTask(contract.TaskRunByUser)
+func TestNewTask(t *testing.T) {
+	// 격리를 위해 전역 레지스트리 초기화
+	provider.ClearForTest()
+	defer provider.ClearForTest()
 
-	assert.NotNil(t, h.taskHandler)
-	assert.IsType(t, &task{}, h.taskHandler)
+	// Given: 기본 TaskConfig 등록 (테스트 헬퍼 활용 또는 직접 등록)
+	// 하지만 newTask 함수 자체는 레지스트리 의존성 없이 호출 가능하므로
+	// 여기서는 newTask에 전달할 인자(params) 검증 위주로 진행
+
+	defaultCfg := newConfigBuilder().
+		withTask(string(TaskID), string(WatchNewPerformancesCommand), defaultTaskData()).
+		build()
+
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockStorage := &contractmocks.MockTaskResultStore{}
+
+	type testCase struct {
+		name        string
+		params      provider.NewTaskParams
+		expectError bool
+		errorTarget error // 특정 에러 타겟 검증 (errors.Is)
+		errorType   error // 특정 에러 타입 검증 (As) - 여기서는 provider 패키지의 에러 타입 확인
+	}
+
+	tests := []testCase{
+		{
+			name: "성공: 올바른 TaskID와 CommandID",
+			params: provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:    TaskID,
+					CommandID: WatchNewPerformancesCommand,
+				},
+				AppConfig: defaultCfg,
+				Fetcher:   mockFetcher,
+				Storage:   mockStorage,
+			},
+			expectError: false,
+		},
+		{
+			name: "실패: 지원하지 않는 TaskID",
+			params: provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:    "INVALID_TASK",
+					CommandID: WatchNewPerformancesCommand,
+				},
+				AppConfig: defaultCfg,
+				Fetcher:   mockFetcher,
+				Storage:   mockStorage,
+			},
+			expectError: true,
+			// provider.NewErrTaskNotSupported 반환 예상
+		},
+		// CommandID 검증은 newTask 내부에서 default case로 빠지는 경우
+		{
+			name: "실패: 지원하지 않는 CommandID",
+			params: provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:    TaskID,
+					CommandID: "INVALID_COMMAND",
+				},
+				AppConfig: defaultCfg,
+				Fetcher:   mockFetcher,
+				Storage:   mockStorage,
+			},
+			expectError: true,
+			// provider.NewErrCommandNotSupported 반환 예상
+		},
+		{
+			name: "실패: 설정 파일에 해당 Command 설정 누락",
+			params: provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:    TaskID,
+					CommandID: WatchNewPerformancesCommand,
+				},
+				AppConfig: &config.AppConfig{}, // 빈 설정
+				Fetcher:   mockFetcher,
+				Storage:   mockStorage,
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// When
+			createdTask, err := newTask(tt.params)
+
+			// Then
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, createdTask)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, createdTask)
+				assert.IsType(t, &task{}, createdTask)
+			}
+		})
+	}
 }
 
 func TestExecute_WatchNewPerformances(t *testing.T) {
@@ -79,7 +169,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 				b.page(2).returnsEmpty()
 			},
 			prevSnapshot: &watchNewPerformancesSnapshot{Performances: []*performance{
-				{Title: "Musical A", Place: "Place"},
+				{Title: "Musical A", Place: "Place", Thumbnail: "http://example.com/thumb.jpg"},
 			}},
 			expectedMessage:      "신규로 등록된 공연정보가 없습니다.", // 현재 상태 출력
 			expectedSnapshotSize: -1,                    // 변경 없음 -> 스냅샷 nil
@@ -93,7 +183,7 @@ func TestExecute_WatchNewPerformances(t *testing.T) {
 				b.page(2).returnsEmpty()
 			},
 			prevSnapshot: &watchNewPerformancesSnapshot{Performances: []*performance{
-				{Title: "Musical A", Place: "Place"},
+				{Title: "Musical A", Place: "Place", Thumbnail: "http://example.com/thumb.jpg"},
 			}},
 			expectedMessage:      "", // 알림 없음
 			expectedSnapshotSize: -1, // 변경 없음 -> 스냅샷 nil
@@ -336,7 +426,7 @@ func (p *pageBuilder) returns(items ...string) {
 }
 
 func (p *pageBuilder) returnsEmpty() {
-	p.parent.fetcher.SetResponse(p.fullURL, []byte(`{"html": ""}`))
+	p.parent.fetcher.SetResponse(p.fullURL, []byte(`{"html": "<div class=\"api_no_result\">검색결과가 없습니다</div><!-- padding padding padding padding padding padding padding -->"}`))
 }
 
 func (p *pageBuilder) failsWith(err error) {

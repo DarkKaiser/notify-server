@@ -7,6 +7,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 )
 
+// component Task 서비스의 Naver Provider 로깅용 컴포넌트 이름
+const component = "task.provider.naver"
+
 const (
 	// TaskID 네이버(https://www.naver.com/) 서비스와 연동되는 Task의 고유 식별자입니다.
 	TaskID contract.TaskID = "NAVER"
@@ -48,6 +51,10 @@ func newTask(params provider.NewTaskParams) (provider.Task, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// 설정 파일에서 누락된 필수 설정값들을 기본값으로 채웁니다.
+		// 이를 통해 사용자가 일부 설정을 생략하더라도 안전하게 동작할 수 있도록 보장합니다.
+		commandSettings.ApplyDefaults()
 
 		naverTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchNewPerformancesSnapshot)
