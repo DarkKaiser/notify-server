@@ -13,9 +13,6 @@ import (
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
-type predictionSnapshot struct {
-}
-
 func (t *task) executePrediction(ctx context.Context) (message string, _ any, err error) {
 	// 타임아웃(10분) 처리를 위해 상위 Context를 래핑합니다.
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
