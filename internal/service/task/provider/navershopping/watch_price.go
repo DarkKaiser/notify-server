@@ -54,22 +54,6 @@ const (
 	policyFetchLimit = 1000
 )
 
-// productEventType 상품 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
-type productEventType int
-
-const (
-	eventNone         productEventType = iota
-	eventNewProduct                    // 신규 상품 (이전 검색 결과에 없던 상품)
-	eventPriceChanged                  // 가격 변동 (이전과 동일 상품이나 최저가 변동)
-)
-
-// productDiff 상품 데이터의 변동 사항(신규, 가격 변화 등)을 캡슐화한 중간 객체입니다.
-type productDiff struct {
-	Type    productEventType
-	Product *product
-	Prev    *product
-}
-
 // searchResponse 네이버 쇼핑 검색 API의 응답 데이터를 담는 구조체입니다.
 type searchResponse struct {
 	Total   int                   `json:"total"`   // 검색된 전체 상품의 총 개수 (페이징 처리에 사용)

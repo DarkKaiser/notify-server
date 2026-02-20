@@ -1127,3 +1127,130 @@ func makeMockProducts(count int) []*product {
 	}
 	return products
 }
+
+// TestTask_AnalyzeAndReport_Sorting executeWatchPrice 결과 리포트 생성 시,
+// 신규 상품과 변경 상품이 '가격 오름차순'으로 올바르게 정렬되는지 검증합니다.
+// (동일 가격일 경우 기존 순서를 유지하거나 이름순 등으로 정렬될 수 있음 - 현재 구현 기준 검증)
+func TestTask_AnalyzeAndReport_Sorting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		currentProducts []*product
+		prevProducts    []*product
+		wantOrder       []string // 기대되는 ProductID 순서 (가격 오름차순)
+	}{
+		{
+			name: "신규 상품만 - 가격 오름차순 정렬",
+			currentProducts: []*product{
+				{ProductID: "A", ProductType: "1", Title: "Product A", LowPrice: 30000},
+				{ProductID: "B", ProductType: "1", Title: "Product B", LowPrice: 10000},
+				{ProductID: "C", ProductType: "1", Title: "Product C", LowPrice: 20000},
+			},
+			prevProducts: []*product{},
+			wantOrder:    []string{"B", "C", "A"}, // 10000 → 20000 → 30000
+		},
+		{
+			name: "가격 변경 상품만 - 가격 오름차순 정렬",
+			currentProducts: []*product{
+				{ProductID: "A", ProductType: "1", Title: "Product A", LowPrice: 25000},
+				{ProductID: "B", ProductType: "1", Title: "Product B", LowPrice: 15000},
+				{ProductID: "C", ProductType: "1", Title: "Product C", LowPrice: 35000},
+			},
+			prevProducts: []*product{
+				{ProductID: "A", ProductType: "1", Title: "Product A", LowPrice: 30000},
+				{ProductID: "B", ProductType: "1", Title: "Product B", LowPrice: 20000},
+				{ProductID: "C", ProductType: "1", Title: "Product C", LowPrice: 40000},
+			},
+			wantOrder: []string{"B", "A", "C"}, // 15000 → 25000 → 35000
+		},
+		{
+			name: "신규 + 가격 변경 혼합 - 전체 가격 오름차순 정렬",
+			currentProducts: []*product{
+				{ProductID: "NEW1", ProductType: "1", Title: "New 1", LowPrice: 50000},
+				{ProductID: "CHANGED1", ProductType: "1", Title: "Changed 1", LowPrice: 12000},
+				{ProductID: "NEW2", ProductType: "1", Title: "New 2", LowPrice: 8000},
+				{ProductID: "CHANGED2", ProductType: "1", Title: "Changed 2", LowPrice: 18000},
+				{ProductID: "UNCHANGED", ProductType: "1", Title: "Unchanged", LowPrice: 5000}, // 가격 변경 없음 (메시지 미생성)
+			},
+			prevProducts: []*product{
+				{ProductID: "CHANGED1", ProductType: "1", Title: "Changed 1", LowPrice: 15000},
+				{ProductID: "CHANGED2", ProductType: "1", Title: "Changed 2", LowPrice: 20000},
+				{ProductID: "UNCHANGED", ProductType: "1", Title: "Unchanged", LowPrice: 5000},
+			},
+			wantOrder: []string{"NEW2", "CHANGED1", "CHANGED2", "NEW1"}, // 8000 → 12000 → 18000 → 50000 (UNCHANGED 제외)
+		},
+		{
+			name: "동일 가격 상품 - 원본 순서 유지",
+			currentProducts: []*product{
+				{ProductID: "A", ProductType: "1", Title: "Product A", LowPrice: 10000},
+				{ProductID: "B", ProductType: "1", Title: "Product B", LowPrice: 10000},
+				{ProductID: "C", ProductType: "1", Title: "Product C", LowPrice: 10000},
+			},
+			prevProducts: []*product{},
+			wantOrder:    []string{"A", "B", "C"}, // 동일 가격이므로 원본 순서 유지
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			tsk := &task{}
+			currentSnapshot := &watchPriceSnapshot{Products: tt.currentProducts}
+			prevSnapshot := &watchPriceSnapshot{Products: tt.prevProducts}
+			settings := &watchPriceSettings{
+				Query: "test",
+			}
+			settings.Filters.PriceLessThan = 100000
+
+			// Execute
+			prevProductsMap := make(map[string]*product)
+			if prevSnapshot != nil {
+				for _, p := range prevSnapshot.Products {
+					prevProductsMap[p.Key()] = p
+				}
+			}
+			message, _ := tsk.analyzeAndReport(settings, currentSnapshot, prevProductsMap, false)
+
+			if len(tt.wantOrder) == 0 {
+				assert.Empty(t, message, "변경 사항이 없으면 메시지가 비어야 합니다")
+				return
+			}
+
+			require.NotEmpty(t, message, "변경 사항이 있으면 메시지가 생성되어야 합니다")
+
+			// 메시지에서 ProductID 출현 순서 추출
+			// (참고: 실제 구현체는 메시지 생성 시 상품명/가격 등을 출력하므로, Title이나 Price로 역추적해야 함.
+			// 여기서는 Title에 ProductID 정보가 암묵적으로 포함되어 있다고 가정하거나, Title 자체를 확인)
+			// -> Test data setup에서 Title을 'Product A' 등으로 했으므로 Title로 찾습니다.
+			//    ProductID와 Title 매핑: A -> Product A, B -> Product B ...
+			lines := strings.Split(message, "\n")
+			var actualOrder []string
+			for _, line := range lines {
+				for _, p := range tt.currentProducts {
+					if strings.Contains(line, p.Title) {
+						// 중복 방지 (한 라인에 여러 번 매칭될 수도 있으나, 여기선 단순화)
+						// 이미 리스트에 있으면 스킵
+						alreadyAdded := false
+						for _, id := range actualOrder {
+							if id == p.ProductID {
+								alreadyAdded = true
+								break
+							}
+						}
+						if !alreadyAdded {
+							actualOrder = append(actualOrder, p.ProductID)
+						}
+						break // 한 라인에 하나의 상품만 매칭된다고 가정
+					}
+				}
+			}
+
+			// 기대 순서와 실제 순서 비교
+			assert.Equal(t, tt.wantOrder, actualOrder, "상품이 가격 오름차순으로 정렬되어야 합니다")
+		})
+	}
+}
