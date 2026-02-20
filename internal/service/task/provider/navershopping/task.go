@@ -9,6 +9,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 )
 
+// component Task 서비스의 NaverShopping Provider 로깅용 컴포넌트 이름
+const component = "task.provider.navershopping"
+
 const (
 	// TaskID 네이버쇼핑(https://shopping.naver.com/) 서비스와 연동되는 Task의 고유 식별자입니다.
 	TaskID contract.TaskID = "NS"
@@ -16,7 +19,7 @@ const (
 	// WatchPriceAnyCommand 네이버쇼핑 상품의 가격 변화를 감시하는 Command의 고유 식별자입니다.
 	// 이 Command는 와일드카드 패턴(*)을 사용하여 여러 상품을 동시에 추적할 수 있으며,
 	// 네이버 쇼핑 API를 통해 가격 변동을 확인하고 변화가 감지되면 알림을 전송합니다.
-	WatchPriceAnyCommand = contract.TaskCommandID(watchPriceAnyCommandPrefix + "*")
+	WatchPriceAnyCommand = contract.TaskCommandID(watchPriceCommandPrefix + "*")
 )
 
 func init() {
@@ -54,7 +57,7 @@ func newTask(params provider.NewTaskParams) (provider.Task, error) {
 	}
 
 	// Command에 따른 실행 함수를 미리 바인딩합니다.
-	if strings.HasPrefix(string(params.Request.CommandID), watchPriceAnyCommandPrefix) {
+	if strings.HasPrefix(string(params.Request.CommandID), watchPriceCommandPrefix) {
 		commandSettings, err := provider.FindCommandSettings[watchPriceSettings](params.AppConfig, params.Request.TaskID, params.Request.CommandID)
 		if err != nil {
 			return nil, err

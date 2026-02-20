@@ -56,10 +56,10 @@ func renderPerformance(p *performance, supportsHTML bool, m mark.Mark) string {
 	return sb.String()
 }
 
-// renderPerformanceDiffs 이전 스냅샷과 비교하여, 발견된 신규 공연 목록을 알림 메시지로 렌더링합니다.
+// renderPerformanceDiffs 이전 스냅샷과 비교하여 발견된 신규 공연 목록을 알림 메시지로 렌더링합니다.
 //
 // 매개변수:
-//   - diffs: 공연 변경 사항 목록 (신규 추가, 삭제 등)
+//   - diffs: 신규 공연 목록
 //   - supportsHTML: 알림 수신 채널이 HTML 포맷을 지원하는지 여부
 //
 // 반환값: 신규 공연들을 포맷팅한 메시지 문자열

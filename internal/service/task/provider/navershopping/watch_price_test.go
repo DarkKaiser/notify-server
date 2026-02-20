@@ -100,8 +100,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: 정상적인 데이터 수집 및 키워드 매칭",
 			settings: defaultSettings,
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{
-					Total: 3, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 3, Items: []*productSearchResponseItem{
 						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
 						{Title: "FilterPrice", Link: "L2", LowPrice: "30000", ProductID: "2"},   // 20000 초과
 						{Title: "FilterKeyword", Link: "L3", LowPrice: "10000", ProductID: "3"}, // 제외 키워드 시나리오
@@ -121,8 +121,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: 제외 키워드 적용",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("Exclude").Build(),
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{
-					Total: 2, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 2, Items: []*productSearchResponseItem{
 						{Title: "Keep", Link: "L1", LowPrice: "10000", ProductID: "1"},
 						{Title: "Exclude Me", Link: "L2", LowPrice: "10000", ProductID: "2"},
 					},
@@ -139,7 +139,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: 가격 쉼표 파싱",
 			settings: defaultSettings,
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Comma", LowPrice: "1,500", ProductID: "1"}}}
+				resp := productSearchResponse{Total: 1, Items: []*productSearchResponseItem{{Title: "Comma", LowPrice: "1,500", ProductID: "1"}}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -152,7 +152,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: 빈 결과",
 			settings: defaultSettings,
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{Total: 0, Items: []*searchResponseItem{}}
+				resp := productSearchResponse{Total: 0, Items: []*productSearchResponseItem{}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -175,7 +175,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: 잘못된 가격 형식 무시",
 			settings: defaultSettings,
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "BadPrice", LowPrice: "Free", ProductID: "1"}}}
+				resp := productSearchResponse{Total: 1, Items: []*productSearchResponseItem{{Title: "BadPrice", LowPrice: "Free", ProductID: "1"}}}
 				m.SetResponse(expectedURL, mustMarshal(resp))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -187,8 +187,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			name:     "성공: HTML 태그가 포함된 로우 데이터 키워드 매칭",
 			settings: NewSettingsBuilder().WithQuery("test").WithPriceLessThan(20000).WithExcludedKeywords("S25 FE").Build(),
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
-				resp := searchResponse{
-					Total: 2, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 2, Items: []*productSearchResponseItem{
 						{Title: "Galaxy <b>S25</b> <b>FE</b>", Link: "L1", LowPrice: "10000", ProductID: "1"}, // 제외 대상
 						{Title: "Galaxy S25 Plus", Link: "L2", LowPrice: "10000", ProductID: "2"},             // 수집 대상
 					},
@@ -218,7 +218,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				// 예상되는 인코딩된 URL
 				encodedURL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%EC%95%84%EC%9D%B4%ED%8F%B0+%26+%EC%BC%80%EC%9D%B4%EC%8A%A4&sort=sim&start=1"
-				resp := searchResponse{Total: 1, Items: []*searchResponseItem{{Title: "Case", LowPrice: "5000", ProductID: "1"}}}
+				resp := productSearchResponse{Total: 1, Items: []*productSearchResponseItem{{Title: "Case", LowPrice: "5000", ProductID: "1"}}}
 				m.SetResponse(encodedURL, mustMarshal(resp))
 			},
 			checkResult: func(t *testing.T, p []*product, err error) {
@@ -231,8 +231,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Galaxy|iPhone").WithPriceLessThan(999999).Build(),
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
-				resp := searchResponse{
-					Total: 3, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 3, Items: []*productSearchResponseItem{
 						{Title: "Galaxy S25", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (Galaxy)
 						{Title: "iPhone 16", Link: "L2", LowPrice: "1000", ProductID: "2"},  // 매칭 (iPhone)
 						{Title: "Pixel 9", Link: "L3", LowPrice: "1000", ProductID: "3"},    // 미매칭
@@ -252,8 +252,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords("Case").WithExcludedKeywords("Silicon,Hard").WithPriceLessThan(999999).Build(),
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
-				resp := searchResponse{
-					Total: 4, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 4, Items: []*productSearchResponseItem{
 						{Title: "Leather Case", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (Case 포함, 제외어 없음)
 						{Title: "Silicon Case", Link: "L2", LowPrice: "1000", ProductID: "2"}, // 제외 (Silicon)
 						{Title: "Hard Case", Link: "L3", LowPrice: "1000", ProductID: "3"},    // 제외 (Hard)
@@ -273,8 +273,8 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 			settings: NewSettingsBuilder().WithQuery("search").WithIncludedKeywords(" apple watch | galaxy TAB ").WithPriceLessThan(999999).Build(),
 			mockSetup: func(m *mocks.MockHTTPFetcher) {
 				url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=search&sort=sim&start=1"
-				resp := searchResponse{
-					Total: 3, Items: []*searchResponseItem{
+				resp := productSearchResponse{
+					Total: 3, Items: []*productSearchResponseItem{
 						{Title: "Apple Watch Series 9", Link: "L1", LowPrice: "1000", ProductID: "1"}, // 매칭 (apple watch)
 						{Title: "Galaxy Tab S9", Link: "L2", LowPrice: "1000", ProductID: "2"},        // 매칭 (galaxy TAB)
 						{Title: "Galaxy Watch 6", Link: "L3", LowPrice: "1000", ProductID: "3"},       // 미매칭
@@ -317,7 +317,7 @@ func TestTask_FetchProducts_TableDriven(t *testing.T) {
 func TestTask_FetchProducts_URLVerification(t *testing.T) {
 	t.Parallel()
 
-	defaultResponse := mustMarshal(searchResponse{Total: 0, Items: []*searchResponseItem{}})
+	defaultResponse := mustMarshal(productSearchResponse{Total: 0, Items: []*productSearchResponseItem{}})
 
 	tests := []struct {
 		name        string
@@ -514,14 +514,7 @@ func TestTask_AnalyzeAndReport_TableDriven(t *testing.T) {
 				prev = &watchPriceSnapshot{Products: tt.prevItems}
 			}
 
-			prevMap := make(map[string]*product)
-			if prev != nil {
-				for _, p := range prev.Products {
-					prevMap[p.Key()] = p
-				}
-			}
-
-			msg, shouldSave := tsk.analyzeAndReport(&settings, current, prevMap, false)
+			msg, shouldSave := tsk.analyzeAndReport(&settings, current, prev, false)
 			tt.checkMsg(t, msg, shouldSave)
 
 			// [Invariant Check] 전문가 수준의 방어적 테스트
@@ -622,8 +615,8 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	// Helper for clean tests
-	item := func(title, price string) *searchResponseItem {
-		return &searchResponseItem{
+	item := func(title, price string) *productSearchResponseItem {
+		return &productSearchResponseItem{
 			Title:     title,
 			LowPrice:  price,
 			ProductID: "1",
@@ -634,7 +627,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		item          *searchResponseItem
+		item          *productSearchResponseItem
 		wantProduct   bool
 		expectedTitle string // 변환 후 기대되는 Title (plain text)
 	}{
@@ -708,7 +701,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 					},
 				}, true),
 			}
-			got := tsk.mapToProduct(tt.item)
+			got := tsk.parseProduct(tt.item)
 
 			if tt.wantProduct {
 				require.NotNil(t, got)
@@ -723,7 +716,7 @@ func TestTask_MapToProduct_TableDriven(t *testing.T) {
 	}
 }
 
-func TestTask_IsPriceEligible_TableDriven(t *testing.T) {
+func TestProduct_IsPriceEligible_TableDriven(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -768,9 +761,8 @@ func TestTask_IsPriceEligible_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
-			tsk := &task{}
-			got := tsk.isPriceEligible(tt.price, tt.priceLessThan)
+			p := &product{LowPrice: tt.price}
+			got := p.isPriceEligible(tt.priceLessThan)
 
 			assert.Equal(t, tt.want, got)
 		})
@@ -799,48 +791,58 @@ func TestCalculateProductDiffs(t *testing.T) {
 		{
 			name: "신규 상품 감지 및 정렬 (가격 오름차순)",
 			current: []*product{
-				makeProd("2", "Expensive", 20000),
-				makeProd("1", "Cheap", 10000),
+				makeProd("1", "A", 2000),
+				makeProd("2", "B", 1000),
 			},
-			prev: nil, // Initial run
+			prev: []*product{},
 			expectedDiffs: []productDiff{
-				{Type: eventNewProduct, Product: makeProd("1", "Cheap", 10000)},
-				{Type: eventNewProduct, Product: makeProd("2", "Expensive", 20000)},
+				{Type: productEventNew, Product: makeProd("2", "B", 1000), Prev: nil},
+				{Type: productEventNew, Product: makeProd("1", "A", 2000), Prev: nil},
 			},
-			checkSorting: func(t *testing.T, sorted []*product) {
-				assert.Equal(t, "Cheap", sorted[0].Title)
-				assert.Equal(t, "Expensive", sorted[1].Title)
-			},
-		},
-		{
-			name:    "가격 변동 감지",
-			current: []*product{makeProd("1", "Item", 9000)},
-			prev:    []*product{makeProd("1", "Item", 10000)},
-			expectedDiffs: []productDiff{
-				{Type: eventPriceChanged, Product: makeProd("1", "Item", 9000), Prev: makeProd("1", "Item", 10000)},
+			checkSorting: func(t *testing.T, curr []*product) {
+				assert.Equal(t, "B", curr[0].Title) // 1000원이 먼저 오름
+				assert.Equal(t, "A", curr[1].Title)
 			},
 		},
 		{
-			name:          "변동 없음",
-			current:       []*product{makeProd("1", "Item", 10000)},
-			prev:          []*product{makeProd("1", "Item", 10000)},
-			expectedDiffs: nil,
-		},
-		{
-			name: "정렬: 가격 동일 시 상품명 오름차순",
+			name: "가격 변동 감지",
 			current: []*product{
-				makeProd("2", "B", 10000),
-				makeProd("1", "A", 10000),
+				makeProd("1", "A", 1500),
 			},
-			prev: nil,
+			prev: []*product{
+				makeProd("1", "A", 2000),
+			},
 			expectedDiffs: []productDiff{
-				{Type: eventNewProduct, Product: makeProd("1", "A", 10000)},
-				{Type: eventNewProduct, Product: makeProd("2", "B", 10000)},
+				{Type: productEventPriceChanged, Product: makeProd("1", "A", 1500), Prev: makeProd("1", "A", 2000)},
 			},
-			checkSorting: func(t *testing.T, sorted []*product) {
-				assert.Equal(t, "A", sorted[0].Title)
-				assert.Equal(t, "B", sorted[1].Title)
+			checkSorting: func(t *testing.T, curr []*product) {},
+		},
+		{
+			name: "가격 동일 시 이름 오름차순 정렬",
+			current: []*product{
+				makeProd("2", "B_Title", 1000),
+				makeProd("1", "A_Title", 1000),
 			},
+			prev: []*product{},
+			expectedDiffs: []productDiff{
+				{Type: productEventNew, Product: makeProd("1", "A_Title", 1000), Prev: nil},
+				{Type: productEventNew, Product: makeProd("2", "B_Title", 1000), Prev: nil},
+			},
+			checkSorting: func(t *testing.T, curr []*product) {
+				assert.Equal(t, "A_Title", curr[0].Title)
+				assert.Equal(t, "B_Title", curr[1].Title)
+			},
+		},
+		{
+			name: "변경 없음 (Diffs Empty)",
+			current: []*product{
+				makeProd("1", "A", 1000),
+			},
+			prev: []*product{
+				makeProd("1", "A", 1000),
+			},
+			expectedDiffs: nil,
+			checkSorting:  func(t *testing.T, curr []*product) {},
 		},
 	}
 
@@ -849,7 +851,6 @@ func TestCalculateProductDiffs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			taskInstance := &task{}
 			currSnap := &watchPriceSnapshot{Products: tt.current}
 			var prevSnap *watchPriceSnapshot
 			if tt.prev != nil {
@@ -857,13 +858,7 @@ func TestCalculateProductDiffs(t *testing.T) {
 			}
 
 			// Execute
-			prevProductsMap := make(map[string]*product)
-			if prevSnap != nil {
-				for _, p := range prevSnap.Products {
-					prevProductsMap[p.Key()] = p
-				}
-			}
-			diffs := taskInstance.calculateProductDiffs(currSnap, prevProductsMap)
+			diffs := currSnap.Compare(prevSnap)
 
 			// Verify Diffs
 			assert.Len(t, diffs, len(tt.expectedDiffs))
@@ -876,8 +871,8 @@ func TestCalculateProductDiffs(t *testing.T) {
 				}
 			}
 
-			// Verify Side-Effect (Sorting)
-			if tt.checkSorting != nil {
+			// Verify Sorting (Side Effect)
+			if tt.checkSorting != nil && len(currSnap.Products) > 0 {
 				tt.checkSorting(t, currSnap.Products)
 			}
 		})
@@ -892,14 +887,12 @@ func TestRenderProductDiffs(t *testing.T) {
 	p1Prev := &product{Title: "Item1", LowPrice: 15000} // Price dropped
 
 	diffs := []productDiff{
-		{Type: eventNewProduct, Product: p2},
-		{Type: eventPriceChanged, Product: p1, Prev: p1Prev},
+		{Type: productEventNew, Product: p2},
+		{Type: productEventPriceChanged, Product: p1, Prev: p1Prev},
 	}
 
-	taskInstance := &task{}
-
 	t.Run("HTML Mode", func(t *testing.T) {
-		msg := taskInstance.renderProductDiffs(diffs, true)
+		msg := renderProductDiffs(diffs, true)
 		assert.Contains(t, msg, mark.New.WithSpace())
 		assert.Contains(t, msg, mark.Modified.WithSpace())
 		assert.Contains(t, msg, "<a href=")
@@ -907,7 +900,7 @@ func TestRenderProductDiffs(t *testing.T) {
 	})
 
 	t.Run("Text Mode", func(t *testing.T) {
-		msg := taskInstance.renderProductDiffs(diffs, false)
+		msg := renderProductDiffs(diffs, false)
 		assert.Contains(t, msg, mark.New.WithSpace())
 		assert.Contains(t, msg, mark.Modified.WithSpace())
 		assert.NotContains(t, msg, "<a href=")
@@ -915,12 +908,12 @@ func TestRenderProductDiffs(t *testing.T) {
 	})
 
 	t.Run("Empty Diffs", func(t *testing.T) {
-		msg := taskInstance.renderProductDiffs(nil, false)
+		msg := renderProductDiffs(nil, false)
 		assert.Empty(t, msg)
 	})
 }
 
-func TestBuildSearchConditionsSummary(t *testing.T) {
+func TestRenderSearchConditionsSummary(t *testing.T) {
 	t.Parallel()
 
 	settings := NewSettingsBuilder().
@@ -930,8 +923,7 @@ func TestBuildSearchConditionsSummary(t *testing.T) {
 		WithPriceLessThan(50000).
 		Build()
 
-	taskInstance := &task{}
-	summary := taskInstance.buildSearchConditionsSummary(&settings)
+	summary := renderSearchConditionsSummary(&settings)
 
 	assert.Contains(t, summary, "MyQuery")
 	assert.Contains(t, summary, "In Key")
@@ -957,21 +949,21 @@ func TestTask_FetchProducts_Pagination(t *testing.T) {
 
 	// Page 1 Setup
 	page1URL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=paging&sort=sim&start=1"
-	page1Items := make([]*searchResponseItem, 100)
+	page1Items := make([]*productSearchResponseItem, 100)
 	for i := 0; i < 100; i++ {
-		page1Items[i] = &searchResponseItem{Title: "P1", LowPrice: "100", ProductID: "P1"}
+		page1Items[i] = &productSearchResponseItem{Title: "P1", LowPrice: "100", ProductID: "P1"}
 	}
-	mockFetcher.SetResponse(page1URL, mustMarshal(searchResponse{
+	mockFetcher.SetResponse(page1URL, mustMarshal(productSearchResponse{
 		Total: 150, Start: 1, Display: 100, Items: page1Items,
 	}))
 
 	// Page 2 Setup
 	page2URL := "https://openapi.naver.com/v1/search/shop.json?display=100&query=paging&sort=sim&start=101"
-	page2Items := make([]*searchResponseItem, 50)
+	page2Items := make([]*productSearchResponseItem, 50)
 	for i := 0; i < 50; i++ {
-		page2Items[i] = &searchResponseItem{Title: "P2", LowPrice: "100", ProductID: "P2"}
+		page2Items[i] = &productSearchResponseItem{Title: "P2", LowPrice: "100", ProductID: "P2"}
 	}
-	mockFetcher.SetResponse(page2URL, mustMarshal(searchResponse{
+	mockFetcher.SetResponse(page2URL, mustMarshal(productSearchResponse{
 		Total: 150, Start: 101, Display: 50, Items: page2Items,
 	}))
 
@@ -1008,8 +1000,8 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	// 1페이지 응답 설정 (Total이 많아서 다음 페이지가 필요하도록 설정)
 	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=cancel&sort=sim&start=1"
-	mockFetcher.SetResponse(url, mustMarshal(searchResponse{
-		Total: 1000, Start: 1, Display: 1, Items: []*searchResponseItem{{Title: "A", LowPrice: "100", ProductID: "1"}},
+	mockFetcher.SetResponse(url, mustMarshal(productSearchResponse{
+		Total: 1000, Start: 1, Display: 1, Items: []*productSearchResponseItem{{Title: "A", LowPrice: "100", ProductID: "1"}},
 	}))
 
 	// Task 생성 및 취소 상태로 설정
@@ -1087,20 +1079,20 @@ func BenchmarkTask_DiffAndNotify(b *testing.B) {
 	prevProductsMap := make(map[string]*product)
 	if prevSnapshot != nil {
 		for _, p := range prevSnapshot.Products {
-			prevProductsMap[p.Key()] = p
+			prevProductsMap[p.key()] = p
 		}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = tsk.analyzeAndReport(&settings, currSnapshot, prevProductsMap, false)
+		_, _ = tsk.analyzeAndReport(&settings, currSnapshot, prevSnapshot, false)
 	}
 }
 
 // BenchmarkTask_MapToProduct 핫 패스(Hot Path)인 상품 매핑 로직의 성능을 측정합니다.
 func BenchmarkTask_MapToProduct(b *testing.B) {
 	tsk := &task{}
-	item := &searchResponseItem{
+	item := &productSearchResponseItem{
 		Title:     "<b>Benchmark</b> Product",
 		LowPrice:  "50,000",
 		ProductID: "123456",
@@ -1110,7 +1102,7 @@ func BenchmarkTask_MapToProduct(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = tsk.mapToProduct(item)
+		_ = tsk.parseProduct(item)
 	}
 }
 
@@ -1207,13 +1199,7 @@ func TestTask_AnalyzeAndReport_Sorting(t *testing.T) {
 			settings.Filters.PriceLessThan = 100000
 
 			// Execute
-			prevProductsMap := make(map[string]*product)
-			if prevSnapshot != nil {
-				for _, p := range prevSnapshot.Products {
-					prevProductsMap[p.Key()] = p
-				}
-			}
-			message, _ := tsk.analyzeAndReport(settings, currentSnapshot, prevProductsMap, false)
+			message, _ := tsk.analyzeAndReport(settings, currentSnapshot, prevSnapshot, false)
 
 			if len(tt.wantOrder) == 0 {
 				assert.Empty(t, message, "변경 사항이 없으면 메시지가 비어야 합니다")

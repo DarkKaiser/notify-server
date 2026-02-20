@@ -42,12 +42,12 @@ func TestPerformance_Key(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.p.Key(); got != tt.want {
-				t.Errorf("performance.Key() = %v, want %v", got, tt.want)
+			if got := tt.p.key(); got != tt.want {
+				t.Errorf("performance.key() = %v, want %v", got, tt.want)
 			}
 			// Idempotency Check (반복 호출 시에도 동일한 값 반환)
-			if got := tt.p.Key(); got != tt.want {
-				t.Errorf("performance.Key() second call = %v, want %v", got, tt.want)
+			if got := tt.p.key(); got != tt.want {
+				t.Errorf("performance.key() second call = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -62,7 +62,7 @@ func TestPerformance_Key_Collision(t *testing.T) {
 	p1 := &performance{Title: "A|B", Place: "C"}
 	p2 := &performance{Title: "A", Place: "B|C"}
 
-	assert.NotEqual(t, p1.Key(), p2.Key(), "서로 다른 데이터 구성에 대해 고유한 Key가 생성되어야 합니다")
+	assert.NotEqual(t, p1.key(), p2.key(), "서로 다른 데이터 구성에 대해 고유한 Key가 생성되어야 합니다")
 }
 
 func TestPerformance_Key_Concurrency(t *testing.T) {
@@ -73,8 +73,8 @@ func TestPerformance_Key_Concurrency(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 100; i++ {
 		go func() {
-			if got := p.Key(); got != want {
-				t.Errorf("Concurrent Key() = %v, want %v", got, want)
+			if got := p.key(); got != want {
+				t.Errorf("Concurrent key() = %v, want %v", got, want)
 			}
 			done <- true
 		}()
@@ -86,7 +86,7 @@ func TestPerformance_Key_Concurrency(t *testing.T) {
 }
 
 // TestPerformance_Equals Equals 메서드의 동등성 판단 로직을 검증합니다.
-func TestPerformance_Equals(t *testing.T) {
+func TestPerformance_equals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -131,13 +131,13 @@ func TestPerformance_Equals(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := tt.perf1.Equals(tt.perf2)
+			result := tt.perf1.equals(tt.perf2)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestPerformance_ContentEquals(t *testing.T) {
+func TestPerformance_contentEquals(t *testing.T) {
 	base := &performance{Title: "T", Place: "P", Thumbnail: "URL1"}
 
 	tests := []struct {
@@ -174,14 +174,14 @@ func TestPerformance_ContentEquals(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := base.ContentEquals(tt.other); got != tt.want {
-				t.Errorf("performance.ContentEquals() = %v, want %v", got, tt.want)
+			if got := base.contentEquals(tt.other); got != tt.want {
+				t.Errorf("performance.contentEquals() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestPerformance_Consistency Key(), Equals(), 그리고 Render() 간의 논리적 일관성을 검증합니다.
+// TestPerformance_Consistency key(), equals(), 그리고 Render() 간의 논리적 일관성을 검증합니다.
 // 이는 불변식(Invariant)을 테스트하여 코드의 신뢰성을 높입니다.
 func TestPerformance_Consistency(t *testing.T) {
 	t.Parallel()
@@ -191,17 +191,17 @@ func TestPerformance_Consistency(t *testing.T) {
 	p3 := &performance{Title: "A", Place: "C"}
 
 	// 1. Equals의 반사성 (Reflexivity)
-	assert.True(t, p1.Equals(p1), "객체는 자기 자신과 같아야 합니다")
+	assert.True(t, p1.equals(p1), "객체는 자기 자신과 같아야 합니다")
 
 	// 2. Equals의 대칭성 (Symmetry)
-	assert.Equal(t, p1.Equals(p2), p2.Equals(p1), "동등성 비교는 대칭적이어야 합니다")
+	assert.Equal(t, p1.equals(p2), p2.equals(p1), "동등성 비교는 대칭적이어야 합니다")
 
 	// 3. Key와 Equals의 일관성
-	if p1.Equals(p2) {
-		assert.Equal(t, p1.Key(), p2.Key(), "동등한 객체는 동일한 Key를 가져야 합니다")
+	if p1.equals(p2) {
+		assert.Equal(t, p1.key(), p2.key(), "동등한 객체는 동일한 Key를 가져야 합니다")
 	}
-	if !p1.Equals(p3) {
-		assert.NotEqual(t, p1.Key(), p3.Key(), "다른 객체는 다른 Key를 가져야 합니다 (해시 충돌 제외)")
+	if !p1.equals(p3) {
+		assert.NotEqual(t, p1.key(), p3.key(), "다른 객체는 다른 Key를 가져야 합니다 (해시 충돌 제외)")
 	}
 }
 

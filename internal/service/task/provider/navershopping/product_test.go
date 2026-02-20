@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestProduct_Key는 ProductID가 Key로 올바르게 사용되는지 검증합니다.
-func TestProduct_Key(t *testing.T) {
+// TestProduct_key는 ProductID가 Key로 올바르게 사용되는지 검증합니다.
+func TestProduct_key(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -26,13 +26,13 @@ func TestProduct_Key(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &product{ProductID: tt.productID}
-			assert.Equal(t, tt.want, p.Key())
+			assert.Equal(t, tt.want, p.key())
 		})
 	}
 }
 
-// TestProduct_Render Render 메서드(단일 상품 표시)의 동작을 다양한 시나리오에서 검증합니다.
-func TestProduct_Render(t *testing.T) {
+// TestRenderProduct 단일 상품 표시 렌더링 동작을 다양한 시나리오에서 검증합니다.
+func TestRenderProduct(t *testing.T) {
 	t.Parallel()
 
 	baseProduct := &product{
@@ -106,7 +106,7 @@ func TestProduct_Render(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.Render(tt.supportsHTML, tt.mark)
+			got := renderProduct(tt.product, tt.supportsHTML, tt.mark)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want, "Expected substring missing")
 			}
@@ -117,8 +117,8 @@ func TestProduct_Render(t *testing.T) {
 	}
 }
 
-// TestProduct_RenderDiff RenderDiff 메서드(변경 사항 비교 표시)의 동작을 검증합니다.
-func TestProduct_RenderDiff(t *testing.T) {
+// TestRenderProductDiff 변경 사항 비교 표시 렌더링 동작을 검증합니다.
+func TestRenderProductDiff(t *testing.T) {
 	t.Parallel()
 
 	current := &product{
@@ -179,7 +179,7 @@ func TestProduct_RenderDiff(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.RenderDiff(tt.supportsHTML, tt.mark, tt.prev)
+			got := renderProductDiff(tt.product, tt.supportsHTML, tt.mark, tt.prev)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want)
 			}
@@ -191,8 +191,8 @@ func TestProduct_RenderDiff(t *testing.T) {
 	}
 }
 
-// BenchmarkProduct_Render Render 성능 측정 (단순 조회)
-func BenchmarkProduct_Render(b *testing.B) {
+// BenchmarkRenderProduct 단일 상품 렌더링 성능 측정
+func BenchmarkRenderProduct(b *testing.B) {
 	p := &product{
 		Title:    "Benchmark Product",
 		LowPrice: 1234567,
@@ -201,12 +201,12 @@ func BenchmarkProduct_Render(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(false, "")
+		_ = renderProduct(p, false, "")
 	}
 }
 
-// BenchmarkProduct_RenderDiff RenderDiff 성능 측정 (비교 조회)
-func BenchmarkProduct_RenderDiff(b *testing.B) {
+// BenchmarkRenderProductDiff 변경 사항 렌더링 성능 측정
+func BenchmarkRenderProductDiff(b *testing.B) {
 	p := &product{
 		Title:    "Benchmark Product",
 		LowPrice: 1000000,
@@ -217,6 +217,6 @@ func BenchmarkProduct_RenderDiff(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.RenderDiff(false, mark.Modified, prev)
+		_ = renderProductDiff(p, false, mark.Modified, prev)
 	}
 }

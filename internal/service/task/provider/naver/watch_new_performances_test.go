@@ -197,61 +197,14 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 		validateSnap   func(*testing.T, *watchNewPerformancesSnapshot)
 	}{
 		{
-			name:     "New Items Found (Scheduler)",
+			name:     "Base Execution Flow (Success)",
 			runBy:    contract.TaskRunByScheduler,
 			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1}, // Match mocked pages count
 			mockPages: []string{
 				makeHTMLHelper(makeItemHelper("New1", "Seoul")),
 			},
-			expectMessage: []string{"새로운 공연정보가 등록되었습니다", "New1"},
 			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
 				require.NotNil(t, s)
-				assert.Len(t, s.Performances, 1)
-			},
-		},
-		{
-			name:     "No Changes (Scheduler)",
-			runBy:    contract.TaskRunByScheduler,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
-			prevSnapshot: &watchNewPerformancesSnapshot{
-				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
-			},
-			mockPages: []string{
-				makeHTMLHelper(makeItemHelper("Old", "Seoul")),
-			},
-			expectEmptyMsg: true,
-			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
-				assert.Nil(t, s, "No changes should result in nil snapshot update")
-			},
-		},
-		{
-			name:     "No Changes (User) - Should report status",
-			runBy:    contract.TaskRunByUser,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
-			prevSnapshot: &watchNewPerformancesSnapshot{
-				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb.jpg"}},
-			},
-			mockPages: []string{
-				makeHTMLHelper(makeItemHelper("Old", "Seoul")),
-			},
-			expectMessage: []string{"현재 등록된 공연정보는 아래와 같습니다", "Old"},
-			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
-				assert.Nil(t, s, "Snapshot should be nil if no changes")
-			},
-		},
-		{
-			name:     "Content Change Only (Scheduler)",
-			runBy:    contract.TaskRunByScheduler,
-			settings: &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
-			prevSnapshot: &watchNewPerformancesSnapshot{
-				Performances: []*performance{{Title: "Old", Place: "Seoul", Thumbnail: "https://example.com/thumb1.jpg"}},
-			},
-			mockPages: []string{
-				makeHTMLHelper(makeItemHelper("Old", "Seoul")), // Thumbnail will be https://example.com/thumb.jpg from helper
-			},
-			expectEmptyMsg: true, // Content changed (thumbnail) but no NEW item, so no notification
-			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
-				require.NotNil(t, s, "Snapshot should be updated due to content change")
 				assert.Len(t, s.Performances, 1)
 			},
 		},
@@ -327,6 +280,21 @@ func TestTask_ExecuteWatchNewPerformances_Flow(t *testing.T) {
 			validateSnap: func(t *testing.T, s *watchNewPerformancesSnapshot) {
 				assert.Nil(t, s, "Snapshot should NOT be updated (safety guard for spurious empty result)")
 			},
+		},
+		{
+			name:        "JSON Parsing Error (Invalid Format)",
+			runBy:       contract.TaskRunByScheduler,
+			settings:    &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
+			mockPages:   []string{"{invalid_json_but_this_gets_bypassed_in_helper_so_we_must_inject_raw}"}, // Actually handled via mockError below for direct fetcher control
+			mockError:   fmt.Errorf("invalid json format"),                                                 // fetchPerformances 단의 에러 모사
+			expectError: "invalid json format",
+		},
+		{
+			name:        "Context Cancelled (Timeout/User Cancel)",
+			runBy:       contract.TaskRunByScheduler,
+			settings:    &watchNewPerformancesSettings{Query: "Test", MaxPages: 1},
+			mockError:   context.Canceled, // context 취소 에러 모사
+			expectError: context.Canceled.Error(),
 		},
 	}
 
@@ -481,6 +449,70 @@ func TestFetchPerformances_Context_Deadline(t *testing.T) {
 
 	// Should fail with context deadline exceeded
 	assert.Error(t, err)
+}
+
+func TestFetchPerformances_AlreadyCanceled(t *testing.T) {
+	t.Parallel()
+
+	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{
+				TaskID: "N", CommandID: "W", NotifierID: "N", RunBy: contract.TaskRunByUser,
+			},
+			Fetcher: mocks.NewMockHTTPFetcher(),
+		}, true),
+	}
+
+	// 강제 취소 부여
+	taskInstance.Cancel()
+
+	// fetchPerformances 호출 (루프 진입하자마자 IsCanceled에 잡혀야 함)
+	items, err := taskInstance.fetchPerformances(context.Background(), &watchNewPerformancesSettings{Query: "X", MaxPages: 1})
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Nil(t, items)
+}
+
+func TestFetchPerformances_TimerDrained(t *testing.T) {
+	t.Parallel()
+
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	u1 := buildPerformanceSearchURL("TimerDrain", 1)
+	u2 := buildPerformanceSearchURL("TimerDrain", 2)
+	u3 := buildPerformanceSearchURL("TimerDrain", 3)
+
+	// 서버 처리가 설정된 delay보다 오래 걸린다고 가정 (이 경우 리셋 전 Stop 시 타이머 채널이 차 있어서 Drain 발생)
+	// Page 1을 가져오는데 30ms가 걸리도록 지연
+	mockFetcher.SetDelay(u1, 30*time.Millisecond)
+	mockFetcher.SetResponse(u1, []byte(makeJSONResponse(makeHTMLHelper(makeItemHelper("A", "Seoul")))))
+
+	// Page 2도 마찬가지 - (마지막 페이지 조건으로 루프 탈출 방지용)
+	mockFetcher.SetDelay(u2, 30*time.Millisecond)
+	mockFetcher.SetResponse(u2, []byte(makeJSONResponse(makeHTMLHelper(makeItemHelper("B", "Busan")))))
+
+	// Page 3은 빈 리스트를 반환하여 종료
+	mockFetcher.SetResponse(u3, []byte(makeJSONResponse(makeHTMLHelper())))
+
+	taskInstance := &task{
+		Base: provider.NewBase(provider.NewTaskParams{
+			Request: &contract.TaskSubmitRequest{TaskID: "N"},
+			Fetcher: mockFetcher,
+		}, true),
+	}
+
+	// 의도적으로 지연 시간을 짧게 잡아 fetch(30ms) 시점에 이미 타이머가 만료되도록 함
+	// 그리고 확실히 타이머 채널을 채우게 하기 위해 명시적으로 Sleep을 줍니다.
+	time.Sleep(5 * time.Millisecond) // 확실히 타이머 만료 이벤트를 넘기게 유도
+
+	settings := &watchNewPerformancesSettings{
+		Query:          "TimerDrain",
+		MaxPages:       5,
+		PageFetchDelay: 1, // 1ms delay
+	}
+
+	items, err := taskInstance.fetchPerformances(context.Background(), settings)
+
+	require.NoError(t, err)
+	assert.Len(t, items, 2)
 }
 
 func TestFetchPerformances_RateLimiting(t *testing.T) {

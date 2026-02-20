@@ -51,13 +51,13 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 	prevMap := make(map[string]*performance)
 	if prev != nil {
 		for _, p := range prev.Performances {
-			prevMap[p.Key()] = p
+			prevMap[p.key()] = p
 		}
 	}
 
 	// 2단계: 현재 스냅샷의 공연들을 순회하며 신규 공연 및 내용 변경 감지
 	for _, p := range s.Performances {
-		prevPerformance, exists := prevMap[p.Key()]
+		prevPerformance, exists := prevMap[p.key()]
 		if !exists {
 			// 케이스 1: 신규 공연 발견
 			// 이전 스냅샷에 없던 공연이므로 diffs에 추가하고 hasChanges를 true로 설정
@@ -71,7 +71,7 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 			// 케이스 2: 기존 공연의 내용 변경 확인
 			// 공연은 동일하지만 내용(예: 썸네일)이 변경되었을 수 있음!
 			// 알림 대상은 아니지만, 스냅샷 갱신은 필요하므로 hasChanges를 true로 설정
-			if !p.ContentEquals(prevPerformance) {
+			if !p.contentEquals(prevPerformance) {
 				hasChanges = true
 			}
 		}
