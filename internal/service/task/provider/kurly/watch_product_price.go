@@ -13,7 +13,6 @@ import (
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/scraper"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
@@ -36,48 +35,6 @@ var (
 	// 이 패턴이 발견되면 '판매 중지'되거나 '삭제된 상품'으로 판단하여 불필요한 알림을 보내지 않도록 합니다.
 	reDetectUnavailable = regexp.MustCompile(`"product":\s*null`)
 )
-
-type watchProductPriceSettings struct {
-	WatchProductsFile string `json:"watch_products_file"`
-}
-
-// 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
-var _ provider.Validator = (*watchProductPriceSettings)(nil)
-
-func (s *watchProductPriceSettings) Validate() error {
-	s.WatchProductsFile = strings.TrimSpace(s.WatchProductsFile)
-	if s.WatchProductsFile == "" {
-		return apperrors.New(apperrors.InvalidInput, "watch_products_file이 입력되지 않았거나 공백입니다")
-	}
-	if !strings.HasSuffix(strings.ToLower(s.WatchProductsFile), ".csv") {
-		return apperrors.New(apperrors.InvalidInput, "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다")
-	}
-	return nil
-}
-
-// watchProductPriceSnapshot 가격 변동을 감지하기 위한 상품 데이터의 스냅샷입니다.
-type watchProductPriceSnapshot struct {
-	Products []*product `json:"products"`
-}
-
-// productEventType 상품 데이터의 상태 변화(변경 유형)를 식별하기 위한 열거형입니다.
-type productEventType int
-
-const (
-	eventNone               productEventType = iota
-	eventNewProduct                          // 신규 상품 등록
-	eventRestocked                           // 재입고
-	eventPriceChanged                        // 가격 변동
-	eventLowestPriceRenewed                  // 역대 최저가 갱신
-	eventDiscontinued                        // 판매 중지 (현재 로직에서는 Diff에 포함되지 않으나 확장성을 위해 정의)
-)
-
-// productDiff 상품 데이터의 변동 사항(신규, 가격 변화 등)을 캡슐화한 중간 객체입니다.
-type productDiff struct {
-	Type    productEventType
-	Product *product
-	Prev    *product
-}
 
 // executeWatchProductPrice 감시 대상 상품들의 최신 가격을 조회하고, 이전 상태와 비교하여 변동이 있으면 알림을 생성합니다.
 func (t *task) executeWatchProductPrice(ctx context.Context, loader WatchListLoader, prevSnapshot *watchProductPriceSnapshot, supportsHTML bool) (message string, changedTaskResultData interface{}, err error) {
