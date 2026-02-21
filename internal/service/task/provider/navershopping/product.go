@@ -28,9 +28,22 @@ type product struct {
 	MallName string `json:"mallName"`
 }
 
-// key 상품을 고유하게 식별하기 위한 키를 반환합니다.
+// key 상품을 고유하게 식별하기 위한 문자열 키를 반환합니다.
 func (p *product) key() string {
 	return p.ProductID
+}
+
+// contentEquals 두 상품의 키·가격을 제외한 메타 정보(상품 유형, 상품명, 링크, 판매처)를 비교하여
+// 내용 변경 여부를 판단합니다. 스냅샷 갱신 여부 결정 시 사용됩니다.
+func (p *product) contentEquals(other *product) bool {
+	if p == nil || other == nil {
+		return false
+	}
+
+	return p.ProductType == other.ProductType &&
+		p.Title == other.Title &&
+		p.Link == other.Link &&
+		p.MallName == other.MallName
 }
 
 // isPriceEligible 이 상품이 알림 대상인지 판단합니다. (조건: 최저가가 0원 초과이고, 사용자가 설정한 상한가 미만)

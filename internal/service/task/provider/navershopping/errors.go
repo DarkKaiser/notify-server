@@ -23,7 +23,7 @@ var (
 	ErrEmptyQuery = apperrors.New(apperrors.InvalidInput, "query가 입력되지 않았거나 공백입니다")
 )
 
-// NewErrInvalidPrice 네이버 쇼핑 감시 가격('price_less_than') 설정값이 유효하지 않을 때 발생하는 에러를 생성합니다.
+// newErrInvalidPrice 네이버 쇼핑 감시 가격('price_less_than') 설정값이 유효하지 않을 때 발생하는 에러를 생성합니다.
 //
 // watchPriceSettings의 Validate() 메서드에서 검증하며, 가격 설정값이 0 이하인 경우 호출됩니다.
 //
@@ -31,6 +31,16 @@ var (
 //   - input: 검증에 실패한 실제 가격 설정값 (0 이하의 정수값)
 //
 // 반환값: InvalidInput 유형의 에러 객체를 반환합니다.
-func NewErrInvalidPrice(input int) error {
+func newErrInvalidPrice(input int) error {
 	return apperrors.New(apperrors.InvalidInput, fmt.Sprintf("price_less_than은 0보다 커야 합니다 (입력값: %d)", input))
+}
+
+// newErrEndpointParseFailed 원본 에러를 래핑하여 엔드포인트 URL 파싱 실패 에러를 생성합니다.
+//
+// 매개변수:
+//   - cause: url.Parse에서 반환된 원인 에러
+//
+// 반환값: Internal 유형의 에러 객체를 반환합니다.
+func newErrEndpointParseFailed(cause error) error {
+	return apperrors.Wrap(cause, apperrors.Internal, "네이버 쇼핑 검색 API 엔드포인트 URL 파싱에 실패하였습니다")
 }

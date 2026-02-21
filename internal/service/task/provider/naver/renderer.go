@@ -92,20 +92,21 @@ func renderPerformanceDiffs(diffs []performanceDiff, supportsHTML bool) string {
 	return sb.String()
 }
 
-// renderCurrentStatus 신규 공연이 없을 때 현재 등록된 모든 공연 목록을 사용자에게 보고하는 메시지를 생성합니다.
+// renderCurrentStatus 현재 스냅샷에 기록된 전체 감시 공연 목록을 하나의 통합 메시지로 렌더링합니다.
 //
-// 이 함수는 신규 공연이 발견되지 않았을 때 호출되며, 사용자에게 "현재 어떤 공연들이 등록되어 있는지" 알려주는 역할을 합니다.
+// 사용자가 수동으로 작업을 실행했으나 이전 대비 변경 사항이 없을 때,
+// "현재 감시 중인 공연들의 최신 상태"를 한눈에 브리핑하기 위해 analyzeAndReport에서 호출됩니다.
 //
 // 매개변수:
-//   - snapshot: 현재 등록된 공연 정보 스냅샷
-//   - supportsHTML: 알림 수신 채널이 HTML 포맷을 지원하는지 여부
+//   - snapshot: 현재 시점에 수집된 전체 공연 정보 스냅샷
+//   - supportsHTML: 알림을 수신할 메신저 채널(예: 텔레그램)의 HTML 서식 지원 여부
 //
-// 반환값: 현재 상태를 설명하는 메시지
-//   - 등록된 공연이 없으면: "등록된 공연정보가 존재하지 않습니다."
-//   - 등록된 공연이 있으면: 안내 문구 + 전체 공연 목록
+// 반환값:
+//   - 전체 감시 공연 목록이 포함된 렌더링된 메시지 문자열
+//   - 스냅샷이 nil이거나 공연 정보가 0건인 경우 빈 문자열을 반환합니다.
 func renderCurrentStatus(snapshot *watchNewPerformancesSnapshot, supportsHTML bool) string {
 	if snapshot == nil || len(snapshot.Performances) == 0 {
-		return "등록된 공연정보가 존재하지 않습니다."
+		return ""
 	}
 
 	var sb strings.Builder
@@ -119,9 +120,8 @@ func renderCurrentStatus(snapshot *watchNewPerformancesSnapshot, supportsHTML bo
 			sb.WriteString("\n\n")
 		}
 
-		// 기존 공연이므로 마크("")는 빈 문자열로 전달
 		sb.WriteString(renderPerformance(p, supportsHTML, ""))
 	}
 
-	return "신규로 등록된 공연정보가 없습니다.\n\n현재 등록된 공연정보는 아래와 같습니다:\n\n" + sb.String()
+	return sb.String()
 }

@@ -181,7 +181,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 					"limit_max_pages": commandSettings.MaxPages,
 					"collected_count": len(collectedPerformances),
 					"fetched_count":   totalFetchedCount,
-					"error":           err.Error(),
+					"fetch_error":     err.Error(),
 				})
 
 				return nil, context.Canceled
@@ -207,7 +207,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 					"limit_max_pages": commandSettings.MaxPages,
 					"collected_count": len(collectedPerformances),
 					"fetched_count":   totalFetchedCount,
-					"error":           err.Error(),
+					"fetch_error":     err.Error(),
 				})
 
 				return nil, ctxErr

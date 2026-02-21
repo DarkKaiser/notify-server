@@ -16,7 +16,7 @@ const (
 // renderProduct 단일 상품 정보를 알림 메시지 포맷에 맞게 렌더링합니다.
 //
 // 상품의 제목, 판매처, 가격 정보를 조합하여 사용자에게 보여줄 최종 텍스트를 생성합니다.
-// 내부적으로 renderProductDiff를 호출하며, 이전 가격과의 비교가 필요 없는 일반적인 출력 상황에서 활용됩니다.
+// 내부적으로 formatProductItem을 호출하며, 이전 가격과의 비교가 필요 없는 일반적인 출력 상황에서 활용됩니다.
 //
 // 매개변수:
 //   - p: 렌더링할 최신 상품 정보
@@ -25,24 +25,67 @@ const (
 //
 // 반환값: 각 채널 규격에 맞춰 포맷팅이 완료된 상품 정보 문자열
 func renderProduct(p *product, supportsHTML bool, m mark.Mark) string {
-	return renderProductDiff(p, supportsHTML, m, nil)
+	return formatProductItem(p, supportsHTML, m, nil)
 }
 
-// renderProductDiff 이전 스냅샷 정보와 대조하여 변동 사항이 강조된 알림 메시지를 렌더링합니다.
+// renderProductDiffs 수집 과정에서 발견된 모든 변동 상품(신규 등록, 가격 변동)을 하나의 통합 메시지로 렌더링합니다.
 //
-// 상품명, 판매처, 현재 가격을 기본으로 표시하며, 이전 정보(prev)가 제공된 경우 가격 변동 내역을 추가하여
-// 사용자가 한눈에 가격 변화를 인지할 수 있도록 돕습니다.
+// 개별 상품들의 정보를 순차적으로 조합하며, 가독성을 위해 상품 사이에는 적절한 구분(빈 줄)을 추가합니다.
+// 스냅샷 비교 결과물인 diffs 슬라이스를 순회하면서 각 상품의 상태(신규/변동)에 맞는 상세 렌더러를 호출합니다.
+//
+// 매개변수:
+//   - diffs: 분석을 통해 추출된 변동 상품 정보 목록
+//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
+//
+// 반환값: 모든 변동 상품 정보가 결합된 최종 알림 메시지 문자열 (변동 상품이 없으면 빈 문자열을 반환합니다)
+func renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
+	if len(diffs) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// 상품 개수 x 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
+	sb.Grow(len(diffs) * estimatedProductMsgSize)
+
+	needSeparator := false
+	for _, diff := range diffs {
+		// 첫 번째 렌더링 항목이 아니면 구분을 위해 빈 줄 추가
+		if needSeparator {
+			sb.WriteString("\n\n")
+		}
+
+		switch diff.Type {
+		case productEventNew:
+			needSeparator = true
+			sb.WriteString(renderProduct(diff.Product, supportsHTML, mark.New))
+
+		case productEventPriceChanged:
+			needSeparator = true
+			sb.WriteString(formatProductItem(diff.Product, supportsHTML, mark.Modified, diff.Prev))
+		}
+	}
+
+	return sb.String()
+}
+
+// formatProductItem 단일 상품 정보를 알림 메시지 포맷에 맞게 조립하는 핵심 내부 렌더러입니다.
+//
+// 상품명, 판매처, 현재 가격을 기본으로 표시하며, 이전 상품 정보가 제공된 경우 가격 변동 내역을 추가하여
+// 사용자가 한눈에 변화를 인지할 수 있도록 돕습니다.
+// renderProduct와 renderProductDiffs 양쪽에서 공통으로 호출되는 포맷팅 공유 함수로,
+// 외부에서 직접 호출하는 대신 두 상위 함수를 통해 사용되는 것을 원칙으로 합니다.
 //
 // 매개변수:
 //   - p: 렌더링할 최신 상품 정보
 //   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
-//   - m: 상품명 옆에 표시될 상태 마크 (예: 가격 변동 시 "🔄")
-//   - prev: 가격 비교의 기준이 되는 이전 정보 (nil인 경우 변동 내역 표시 생략)
+//   - m: 상품명 옆에 표시될 상태 마크 (예: 신규 상품 "🆕", 가격 변동 "🔄")
+//   - prev: 가격 비교의 기준이 되는 이전 상품 정보 (nil인 경우 가격 변동 내역 표시 생략)
 //
-// 반환값: 변동 사항이 시각적으로 구성된 최종 메시지 문자열
-//   - HTML 지원: 상품명에 링크를 연결하고 볼드 처리를 통해 가독성을 높입니다.
-//   - 텍스트 전용: 정보 배열 후 하단에 별도의 URL 링크를 배치합니다.
-func renderProductDiff(p *product, supportsHTML bool, m mark.Mark, prev *product) string {
+// 반환값: 채널 규격(HTML/텍스트)에 맞춰 포맷팅된 단일 상품 정보 문자열
+//   - HTML: 상품명에 하이퍼링크와 볼드 처리를 적용하여 가독성을 높입니다.
+//   - 텍스트: 상품 정보를 한 줄로 나열하고, 하단에 URL을 별도로 표시합니다.
+func formatProductItem(p *product, supportsHTML bool, m mark.Mark, prev *product) string {
 	var sb strings.Builder
 
 	// 상품 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
@@ -82,47 +125,6 @@ func renderProductDiff(p *product, supportsHTML bool, m mark.Mark, prev *product
 	// 텍스트 모드에서는 상품명 아래 줄에 링크를 별도로 표시
 	if !supportsHTML {
 		fmt.Fprintf(&sb, "\n%s", p.Link)
-	}
-
-	return sb.String()
-}
-
-// renderProductDiffs 수집 과정에서 발견된 모든 변동 상품(신규 등록, 가격 변동)을 하나의 통합 메시지로 렌더링합니다.
-//
-// 개별 상품들의 정보를 순차적으로 조합하며, 가독성을 위해 상품 사이에는 적절한 구분(빈 줄)을 추가합니다.
-// 스냅샷 비교 결과물인 diffs 슬라이스를 순회하면서 각 상품의 상태(신규/변동)에 맞는 상세 렌더러를 호출합니다.
-//
-// 매개변수:
-//   - diffs: 분석을 통해 추출된 변동 상품 정보 목록
-//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
-//
-// 반환값: 모든 변동 상품 정보가 결합된 최종 알림 메시지 문자열 (변동 상품이 없으면 빈 문자열을 반환합니다)
-func renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
-	if len(diffs) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-
-	// 상품 개수 x 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
-	sb.Grow(len(diffs) * estimatedProductMsgSize)
-
-	needSeparator := false
-	for _, diff := range diffs {
-		// 첫 번째 렌더링 항목이 아니면 구분을 위해 빈 줄 추가
-		if needSeparator {
-			sb.WriteString("\n\n")
-		}
-
-		switch diff.Type {
-		case productEventNew:
-			needSeparator = true
-			sb.WriteString(renderProduct(diff.Product, supportsHTML, mark.New))
-
-		case productEventPriceChanged:
-			needSeparator = true
-			sb.WriteString(renderProductDiff(diff.Product, supportsHTML, mark.Modified, diff.Prev))
-		}
 	}
 
 	return sb.String()

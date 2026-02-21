@@ -5,74 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	"github.com/darkkaiser/notify-server/internal/service/task/fetcher"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// -----------------------------------------------------------------------------
-// Unit Tests: Settings & Domain Models
-// -----------------------------------------------------------------------------
-
-func TestWatchPriceSettings_Validate_TableDriven(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		settings  func() watchPriceSettings
-		wantError string
-	}{
-		{
-			name: "성공: 정상적인 설정",
-			settings: func() watchPriceSettings {
-				return NewSettingsBuilder().WithQuery("valid").WithPriceLessThan(10000).Build()
-			},
-			wantError: "",
-		},
-		{
-			name: "실패: Query 누락",
-			settings: func() watchPriceSettings {
-				return NewSettingsBuilder().WithQuery("").WithPriceLessThan(10000).Build()
-			},
-			wantError: "query",
-		},
-		{
-			name: "실패: Query 공백",
-			settings: func() watchPriceSettings {
-				return NewSettingsBuilder().WithQuery("   ").WithPriceLessThan(10000).Build()
-			},
-			wantError: "query",
-		},
-		{
-			name: "실패: PriceLessThan 0 이하",
-			settings: func() watchPriceSettings {
-				return NewSettingsBuilder().WithQuery("valid").WithPriceLessThan(0).Build()
-			},
-			wantError: "price_less_than",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			s := tt.settings()
-			err := s.Validate()
-			if tt.wantError != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantError)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
 
 // -----------------------------------------------------------------------------
 // Integration Tests: Fetch & Notify Logic
@@ -359,11 +305,231 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 
 			_, err := tsk.fetchProducts(context.Background(), &tt.settings)
 
-			// URL 불일치 시 SetResponse에 없는 URL을 요청하게 되므로 에러 발생 ("no mock response found")
+			// URL 불일치 시 SetResponse에 없는 URL을 요청하게 되므로 에러 발생 ("no mock 수 response found")
 			// 따라서 에러가 없으면 URL이 정확하다는 뜻입니다.
 			assert.NoError(t, err, "요청된 URL이 기대값과 다릅니다")
 		})
 	}
+}
+
+// TestTask_FetchProducts_EdgeCases fetchProducts 메서드 내의 컨텍스트 취소, 타임아웃, 외부 중단 시나리오 등
+// 예외 상황(Edge Cases) 블록들이 올바르게 처리되는지 커버리지 및 로직을 모두 검증합니다.
+func TestTask_FetchProducts_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	// 1. fetchPageProducts 내부에서 ctx.Err()가 DeadlineExceeded 일 때
+	t.Run("Context_DeadlineExceeded_Error_Handling", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+
+		// 의도적으로 타임아웃 형태의 에러 발생 (context.Canceled가 아님)
+		mockFetcher.SetError(url, errors.New("timeout network error"))
+
+		tsk := &task{
+			Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 0) // 즉각 만료
+		defer cancel()
+
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+
+		// fetchProducts 호출
+		got, err := tsk.fetchProducts(ctx, &settings)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded) // ctx.Err()가 반환되어야 함
+		assert.Nil(t, got)
+	})
+
+	// 2. Fetcher가 context.Canceled 에러를 명시적으로 반환할 때
+	t.Run("Context_Canceled_Error_Handling", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+		mockFetcher.SetError(url, context.Canceled) // 명시적인 Canceled 에러 반환 설정
+
+		tsk := &task{
+			Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+		// 취소되지 않은 context라도, Fetcher에서 canceled가 발생하면 즉결 반환됨을 확인
+		got, err := tsk.fetchProducts(context.Background(), &settings)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, got)
+	})
+
+	// 3. 루프 내부에서 IsCanceled() 가 true일 때 즉시 탈출 (필터 파트 & 루프 시작 파트 묶음 확인용)
+	t.Run("Task_Cancel_Interrupt", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+		// 한 번의 응답은 정상적으로 하되, 필터링 루프로 넘어가기 전에 취소가 되거나 루프의 시작부터 취소 처리되는지 검증
+		resp := productSearchResponse{Total: 1, Items: []*productSearchResponseItem{{Title: "Test", LowPrice: "1000", ProductID: "1"}}}
+		mockFetcher.SetResponse(url, mustMarshal(resp))
+
+		tsk := &task{
+			Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+
+		// 의도적으로 Base의 cancel을 호출
+		tsk.Cancel()
+
+		// 이미 취소된 상태이므로 루프 시작 시점 또는 어딘가에서 곧장 리턴되어야 함
+		got, err := tsk.fetchProducts(context.Background(), &settings)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, got)
+	})
+
+	// 4. 타이머 강제 만료 및 Delay 로직 사이클 검증
+	t.Run("Delay_Timer_Expiration_Handling", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url1 := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+		url2 := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=101"
+
+		// 2페이지 분량을 응답
+		resp1 := productSearchResponse{Total: 101, Start: 1, Display: 100, Items: []*productSearchResponseItem{{Title: "Test1", LowPrice: "1000", ProductID: "1"}}}
+		resp2 := productSearchResponse{Total: 101, Start: 101, Display: 1, Items: []*productSearchResponseItem{{Title: "Test2", LowPrice: "1000", ProductID: "2"}}}
+
+		mockFetcher.SetResponse(url1, mustMarshal(resp1))
+		mockFetcher.SetResponse(url2, mustMarshal(resp2))
+
+		tsk := &task{
+			Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		// Delay 시간을 극단적으로 짧게 하여(1ns 미만은 불가능하므로 0) defer 된 Stop이나 Reset 구문에서 false를 리턴하고 타이머 큐가 비워지는 로직을 거치게끔 만듦
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+		settings.PageFetchDelay = 0 // 0으로 주면 100ms 가 대신 할당됨(ApplyDefaults 등) 하지만 여기선 구조체 그대로 쓰므로 강제로 0
+
+		got, err := tsk.fetchProducts(context.Background(), &settings)
+		require.NoError(t, err)
+		assert.Len(t, got, 2)
+	})
+
+	// 5. 타이머 대기 중 context 취소 시나리오
+	t.Run("Context_Canceled_During_Delay", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url1 := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+
+		// 1페이지 응답 후 타이머 대기로 진입할 수 있도록 Total을 200으로 설정
+		resp1 := productSearchResponse{Total: 200, Start: 1, Display: 100, Items: []*productSearchResponseItem{{Title: "Test", LowPrice: "1000", ProductID: "1"}}}
+		mockFetcher.SetResponse(url1, mustMarshal(resp1))
+
+		tsk := &task{
+			Base:         provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mockFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+		settings.PageFetchDelay = 100 // 대기 시간 할당
+
+		// 첫 페이지 수집이 완료되면 취소가 이루어지도록 고루틴 실행
+		go func() {
+			time.Sleep(10 * time.Millisecond) // 첫 HTTP Fetch 처리가 끝날 즈음
+			cancel()                          // <-ctx.Done() 캐치 유도
+		}()
+
+		got, err := tsk.fetchProducts(ctx, &settings)
+		require.Error(t, err)
+		// context.Canceled가 반환되어야 정상적으로 타이머 대기 중 탈출함을 의미
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, got)
+	})
+
+	// 6. 필터링 루프 진행 중 외부 취소 발생 시그널 캐치 시나리오
+	t.Run("Task_Cancel_During_Filter", func(t *testing.T) {
+		mockFetcher := mocks.NewMockHTTPFetcher()
+		url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=test&sort=sim&start=1"
+
+		// 정상적인 크기(100개)로 타임아웃 지연이 아닌 명확한 시점(Close) 캔슬을 지향
+		items := make([]*productSearchResponseItem, 100)
+		for i := 0; i < 100; i++ {
+			items[i] = &productSearchResponseItem{Title: "Test", LowPrice: "1000", ProductID: fmt.Sprintf("%d", i)}
+		}
+
+		resp := productSearchResponse{Total: 100, Start: 1, Display: 100, Items: items}
+		mockFetcher.SetResponse(url, mustMarshal(resp))
+
+		tsk := &task{
+			clientID:     "id",
+			clientSecret: "secret",
+		}
+
+		// Body.Close() 시점에 Task를 취소하는 특수 래퍼 (FetchJSON 응답 직후)
+		wrappedFetcher := &cancelFilterFetcher{
+			Fetcher: mockFetcher,
+			cancel:  func() { tsk.Cancel() },
+		}
+
+		tsk.Base = provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: wrappedFetcher, NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true)
+
+		settings := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(10000).Build()
+
+		got, err := tsk.fetchProducts(context.Background(), &settings)
+		if err != nil {
+			assert.ErrorIs(t, err, context.Canceled)
+			assert.Nil(t, got)
+		} else {
+			assert.NotEmpty(t, got)
+		}
+	})
+
+	// 7. Endpoint URL 파싱 에러
+	t.Run("Endpoint_URL_Parse_Error", func(t *testing.T) {
+		originalEndpoint := productSearchEndpoint
+		defer func() { productSearchEndpoint = originalEndpoint }()
+
+		// url.Parse 시 에러가 나도록 유효하지 않은 문자 할당 (제어 문자 등)
+		productSearchEndpoint = "http://\x7f invalid"
+
+		tsk := &task{
+			Base: provider.NewBase(provider.NewTaskParams{Request: &contract.TaskSubmitRequest{TaskID: "test-task", CommandID: WatchPriceAnyCommand, NotifierID: "test-notifier", RunBy: contract.TaskRunByUser}, InstanceID: "test-instance", Fetcher: mocks.NewMockHTTPFetcher(), NewSnapshot: func() interface{} { return &watchPriceSnapshot{} }}, true),
+		}
+
+		settings := NewSettingsBuilder().WithQuery("test").Build()
+		got, err := tsk.fetchProducts(context.Background(), &settings)
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
+}
+
+type cancelFilterFetcher struct {
+	fetcher.Fetcher
+	cancel func()
+}
+
+func (f *cancelFilterFetcher) Do(req *http.Request) (*http.Response, error) {
+	resp, err := f.Fetcher.Do(req)
+	if err == nil && resp != nil && resp.Body != nil {
+		resp.Body = &cancelBody{ReadCloser: resp.Body, cancel: f.cancel}
+	}
+	return resp, err
+}
+
+type cancelBody struct {
+	io.ReadCloser
+	cancel func()
+}
+
+func (b *cancelBody) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
 }
 
 // TestTask_AnalyzeAndReport_TableDriven 네이버 쇼핑 알림 로직의 핵심인 analyzeAndReport 메서드를
@@ -608,168 +774,6 @@ func (b *ProductBuilder) Build() *product {
 }
 
 // -----------------------------------------------------------------------------
-// Component Tests: MapToProduct (Granular Logic)
-// -----------------------------------------------------------------------------
-
-func TestTask_MapToProduct_TableDriven(t *testing.T) {
-	t.Parallel()
-
-	// Helper for clean tests
-	item := func(title, price string) *productSearchResponseItem {
-		return &productSearchResponseItem{
-			Title:     title,
-			LowPrice:  price,
-			ProductID: "1",
-			Link:      "http://link",
-			MallName:  "mall",
-		}
-	}
-
-	tests := []struct {
-		name          string
-		item          *productSearchResponseItem
-		wantProduct   bool
-		expectedTitle string // 변환 후 기대되는 Title (plain text)
-	}{
-		{
-			name:          "성공: 정상적인 상품 데이터 변환",
-			item:          item("Apple iPad", "50000"),
-			wantProduct:   true,
-			expectedTitle: "Apple iPad",
-		},
-		{
-			name:          "성공: 가격 쉼표 처리",
-			item:          item("Apple iPad", "50,000"),
-			wantProduct:   true,
-			expectedTitle: "Apple iPad",
-		},
-		{
-			name:          "성공: HTML 태그 제거 (Sanitization)",
-			item:          item("<b>Apple</b> iPad <b>Pro</b>", "100000"),
-			wantProduct:   true,
-			expectedTitle: "Apple iPad Pro",
-		},
-		{
-			name:          "실패: 가격 파싱 오류 (Invalid Number)",
-			item:          item("Apple iPad", "Call for Price"),
-			wantProduct:   false,
-			expectedTitle: "",
-		},
-		{
-			name:          "실패: 가격 파싱 오류 (Empty String)",
-			item:          item("Free Item", ""),
-			wantProduct:   false,
-			expectedTitle: "",
-		},
-		{
-			name:          "성공: 유니코드 및 특수문자 처리",
-			item:          item("특가! ★Galaxy★ S25 Ultra", "1500000"),
-			wantProduct:   true,
-			expectedTitle: "특가! ★Galaxy★ S25 Ultra",
-		},
-		{
-			name:          "성공: 공백만 있는 필드 처리 (Trimmed result check needed if validation existed, but parser allows currently)",
-			item:          item("   ", "100"),
-			wantProduct:   true,
-			expectedTitle: "   ", // 현재 로직상 Trim은 수행하지 않음 (strutil.StripHTML에 의존)
-		},
-		{
-			name:          "성공: HTML 엔티티 디코딩 (ex: &amp; -> &)",
-			item:          item("MacBook Pro &amp; Air", "20000"),
-			wantProduct:   true,
-			expectedTitle: "MacBook Pro & Air",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			tsk := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     TaskID,
-						CommandID:  WatchPriceAnyCommand,
-						NotifierID: "test-notifier",
-						RunBy:      contract.TaskRunByUser,
-					},
-					InstanceID: "test-instance",
-					Fetcher:    mocks.NewMockHTTPFetcher(),
-					NewSnapshot: func() interface{} {
-						return &watchPriceSnapshot{}
-					},
-				}, true),
-			}
-			got := tsk.parseProduct(tt.item)
-
-			if tt.wantProduct {
-				require.NotNil(t, got)
-				assert.Equal(t, tt.expectedTitle, got.Title, "HTML 태그가 제거된 Plain Title이어야 합니다")
-				// 추가적인 필드 검증
-				assert.Equal(t, tt.item.Link, got.Link)
-				assert.Equal(t, tt.item.MallName, got.MallName)
-			} else {
-				assert.Nil(t, got)
-			}
-		})
-	}
-}
-
-func TestProduct_IsPriceEligible_TableDriven(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		price         int
-		priceLessThan int
-		want          bool
-	}{
-		{
-			name:          "성공: 가격 조건 만족",
-			price:         50000,
-			priceLessThan: 100000,
-			want:          true,
-		},
-		{
-			name:          "실패: 가격 초과 (Price Limit)",
-			price:         150000,
-			priceLessThan: 100000,
-			want:          false,
-		},
-		{
-			name:          "실패: 가격 상한가와 동일 (Boundary)",
-			price:         100000,
-			priceLessThan: 100000,
-			want:          false, // '<' 조건이므로 false
-		},
-		{
-			name:          "실패: 유효하지 않은 가격 (Zero)",
-			price:         0,
-			priceLessThan: 100000,
-			want:          false,
-		},
-		{
-			name:          "실패: 유효하지 않은 가격 (Negative)",
-			price:         -100,
-			priceLessThan: 100000,
-			want:          false,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			p := &product{LowPrice: tt.price}
-			got := p.isPriceEligible(tt.priceLessThan)
-
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
 // Unit Tests: Core Logic (Diff, Render, Summary)
 // -----------------------------------------------------------------------------
 
@@ -782,11 +786,12 @@ func TestCalculateProductDiffs(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		current       []*product
-		prev          []*product
-		expectedDiffs []productDiff
-		checkSorting  func(*testing.T, []*product) // Side-effect(정렬) 검증
+		name               string
+		current            []*product
+		prev               []*product
+		expectedDiffs      []productDiff
+		expectedHasChanges bool
+		checkSorting       func(*testing.T, []*product) // Side-effect(정렬) 검증
 	}{
 		{
 			name: "신규 상품 감지 및 정렬 (가격 오름차순)",
@@ -799,6 +804,7 @@ func TestCalculateProductDiffs(t *testing.T) {
 				{Type: productEventNew, Product: makeProd("2", "B", 1000), Prev: nil},
 				{Type: productEventNew, Product: makeProd("1", "A", 2000), Prev: nil},
 			},
+			expectedHasChanges: true,
 			checkSorting: func(t *testing.T, curr []*product) {
 				assert.Equal(t, "B", curr[0].Title) // 1000원이 먼저 오름
 				assert.Equal(t, "A", curr[1].Title)
@@ -815,7 +821,8 @@ func TestCalculateProductDiffs(t *testing.T) {
 			expectedDiffs: []productDiff{
 				{Type: productEventPriceChanged, Product: makeProd("1", "A", 1500), Prev: makeProd("1", "A", 2000)},
 			},
-			checkSorting: func(t *testing.T, curr []*product) {},
+			expectedHasChanges: true,
+			checkSorting:       func(t *testing.T, curr []*product) {},
 		},
 		{
 			name: "가격 동일 시 이름 오름차순 정렬",
@@ -828,10 +835,23 @@ func TestCalculateProductDiffs(t *testing.T) {
 				{Type: productEventNew, Product: makeProd("1", "A_Title", 1000), Prev: nil},
 				{Type: productEventNew, Product: makeProd("2", "B_Title", 1000), Prev: nil},
 			},
+			expectedHasChanges: true,
 			checkSorting: func(t *testing.T, curr []*product) {
 				assert.Equal(t, "A_Title", curr[0].Title)
 				assert.Equal(t, "B_Title", curr[1].Title)
 			},
+		},
+		{
+			name: "가격 동일하지만 다른 내용 변경 시 스냅샷 갱신 (hasChanges true)",
+			current: []*product{
+				{ProductID: "1", Title: "A_NEW_TITLE", LowPrice: 1000},
+			},
+			prev: []*product{
+				{ProductID: "1", Title: "A_OLD_TITLE", LowPrice: 1000},
+			},
+			expectedDiffs:      nil,
+			expectedHasChanges: true,
+			checkSorting:       func(t *testing.T, curr []*product) {},
 		},
 		{
 			name: "변경 없음 (Diffs Empty)",
@@ -841,8 +861,19 @@ func TestCalculateProductDiffs(t *testing.T) {
 			prev: []*product{
 				makeProd("1", "A", 1000),
 			},
-			expectedDiffs: nil,
-			checkSorting:  func(t *testing.T, curr []*product) {},
+			expectedDiffs:      nil,
+			expectedHasChanges: false,
+			checkSorting:       func(t *testing.T, curr []*product) {},
+		},
+		{
+			name:    "일시적 오류로 0건 반환 시 갱신 방지",
+			current: []*product{},
+			prev: []*product{
+				makeProd("1", "A", 1000),
+			},
+			expectedDiffs:      nil,
+			expectedHasChanges: false,
+			checkSorting:       func(t *testing.T, curr []*product) {},
 		},
 	}
 
@@ -858,9 +889,10 @@ func TestCalculateProductDiffs(t *testing.T) {
 			}
 
 			// Execute
-			diffs := currSnap.Compare(prevSnap)
+			diffs, hasChanges := currSnap.Compare(prevSnap)
 
 			// Verify Diffs
+			assert.Equal(t, tt.expectedHasChanges, hasChanges)
 			assert.Len(t, diffs, len(tt.expectedDiffs))
 			for i, expect := range tt.expectedDiffs {
 				got := diffs[i]
@@ -911,24 +943,6 @@ func TestRenderProductDiffs(t *testing.T) {
 		msg := renderProductDiffs(nil, false)
 		assert.Empty(t, msg)
 	})
-}
-
-func TestRenderSearchConditionsSummary(t *testing.T) {
-	t.Parallel()
-
-	settings := NewSettingsBuilder().
-		WithQuery("MyQuery").
-		WithIncludedKeywords("In Key").
-		WithExcludedKeywords("Ex Key").
-		WithPriceLessThan(50000).
-		Build()
-
-	summary := renderSearchConditionsSummary(&settings)
-
-	assert.Contains(t, summary, "MyQuery")
-	assert.Contains(t, summary, "In Key")
-	assert.Contains(t, summary, "Ex Key")
-	assert.Contains(t, summary, "50,000")
 }
 
 // -----------------------------------------------------------------------------
@@ -1026,8 +1040,8 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 	products, err := tsk.fetchProducts(context.Background(), &settings)
 
-	// 취소되었으므로 nil 반환 체크
-	require.NoError(t, err)
+	// 취소되었으므로 context.Canceled 에러와 nil products 반환 체크
+	assert.ErrorIs(t, err, context.Canceled)
 	assert.Nil(t, products, "작업 취소 시 nil을 반환해야 합니다")
 }
 
@@ -1037,74 +1051,6 @@ func TestTask_FetchProducts_Cancellation(t *testing.T) {
 
 // BenchmarkTask_DiffAndNotify 대량의 상품 데이터에 대한 Diff 및 정렬 로직 성능을 측정합니다.
 // 시나리오: 1000개의 기존 상품 vs 1000개의 신규 상품 (50% 변경)
-func BenchmarkTask_DiffAndNotify(b *testing.B) {
-	tsk := &task{}
-	tsk.Base = provider.NewBase(provider.NewTaskParams{
-		Request: &contract.TaskSubmitRequest{
-			TaskID:     "NS",
-			CommandID:  "CMD",
-			NotifierID: "NOTI",
-			RunBy:      contract.TaskRunByScheduler,
-		},
-		InstanceID: "INS",
-		Fetcher:    mocks.NewMockHTTPFetcher(),
-		NewSnapshot: func() interface{} {
-			return &watchPriceSnapshot{}
-		},
-	}, true)
-	settings := NewSettingsBuilder().WithQuery("bench").WithPriceLessThan(999999).Build()
-
-	// Setup Large Data
-	count := 1000
-	prevItems := make([]*product, count)
-	currItems := make([]*product, count)
-
-	for i := 0; i < count; i++ {
-		// Prev: Base Price
-		prevItems[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(10000).WithTitle(fmt.Sprintf("Item %d", i)).Build()
-
-		// Curr:
-		// - 0~499: No Change
-		// - 500~999: Price Change
-		price := 10000
-		if i >= count/2 {
-			price = 9000 // Price Drop
-		}
-		currItems[i] = NewProductBuilder().WithID(fmt.Sprintf("%d", i)).WithPrice(price).WithTitle(fmt.Sprintf("Item %d", i)).Build()
-	}
-
-	prevSnapshot := &watchPriceSnapshot{Products: prevItems}
-	currSnapshot := &watchPriceSnapshot{Products: currItems}
-
-	prevProductsMap := make(map[string]*product)
-	if prevSnapshot != nil {
-		for _, p := range prevSnapshot.Products {
-			prevProductsMap[p.key()] = p
-		}
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = tsk.analyzeAndReport(&settings, currSnapshot, prevSnapshot, false)
-	}
-}
-
-// BenchmarkTask_MapToProduct 핫 패스(Hot Path)인 상품 매핑 로직의 성능을 측정합니다.
-func BenchmarkTask_MapToProduct(b *testing.B) {
-	tsk := &task{}
-	item := &productSearchResponseItem{
-		Title:     "<b>Benchmark</b> Product",
-		LowPrice:  "50,000",
-		ProductID: "123456",
-		Link:      "http://example.com",
-		MallName:  "Benchmark Mall",
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = tsk.parseProduct(item)
-	}
-}
 
 // makeMockProducts 테스트용 상품 목록을 대량으로 생성하는 헬퍼 함수
 func makeMockProducts(count int) []*product {

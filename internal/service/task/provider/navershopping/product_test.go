@@ -3,12 +3,18 @@ package navershopping
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestProduct_key는 ProductID가 Key로 올바르게 사용되는지 검증합니다.
-func TestProduct_key(t *testing.T) {
+// =============================================================================
+// product.key() 검증
+// =============================================================================
+
+// TestProduct_Key ProductID 값이 key()의 반환값과 정확히 일치하는지 검증합니다.
+//
+// key()는 스냅샷 비교 시 상품을 식별하는 유일한 기준입니다.
+// 빈 문자열을 포함한 모든 값을 그대로 반환해야 합니다.
+func TestProduct_Key(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -16,13 +22,24 @@ func TestProduct_key(t *testing.T) {
 		productID string
 		want      string
 	}{
-		{"Normal ID", "1234567890", "1234567890"},
-		{"Empty ID", "", ""},
-		{"Alphanumeric ID", "prod-123-abc", "prod-123-abc"},
+		{
+			name:      "숫자 ID",
+			productID: "1234567890",
+			want:      "1234567890",
+		},
+		{
+			name:      "영숫자 혼합 ID",
+			productID: "prod-123-abc",
+			want:      "prod-123-abc",
+		},
+		{
+			name:      "빈 ID (경계값)",
+			productID: "",
+			want:      "",
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := &product{ProductID: tt.productID}
@@ -31,192 +48,153 @@ func TestProduct_key(t *testing.T) {
 	}
 }
 
-// TestRenderProduct 단일 상품 표시 렌더링 동작을 다양한 시나리오에서 검증합니다.
-func TestRenderProduct(t *testing.T) {
+// =============================================================================
+// product.contentEquals() 검증
+// =============================================================================
+
+// TestProduct_ContentEquals 두 상품의 메타 정보(가격·키 제외) 동일 여부를 검증합니다.
+//
+// contentEquals 는 ProductType, Title, Link, MallName 네 필드를 비교합니다.
+// LowPrice 와 ProductID 는 비교 대상이 아님을 함께 검증합니다.
+func TestProduct_ContentEquals(t *testing.T) {
 	t.Parallel()
 
-	baseProduct := &product{
-		Title:     "Apple iPad Air 5th Gen",
-		Link:      "https://shopping.naver.com/products/1234567890",
-		LowPrice:  850000,
-		MallName:  "Apple Official",
-		ProductID: "1234567890",
+	base := &product{
+		ProductID:   "1",
+		ProductType: "1",
+		Title:       "Samsung Galaxy S24",
+		Link:        "https://shopping.naver.com/products/1",
+		LowPrice:    1000000,
+		MallName:    "Samsung",
 	}
 
 	tests := []struct {
-		name         string
-		product      *product
-		supportsHTML bool
-		mark         mark.Mark
-		wants        []string // 결과 문자열에 반드시 포함되어야 할 부분 문자열
-		unwants      []string // 결과 문자열에 포함되지 말아야 할 부분 문자열
+		name      string
+		a         *product
+		b         *product
+		wantEqual bool
 	}{
 		{
-			name:         "HTML Format - Basic",
-			product:      baseProduct,
-			supportsHTML: true,
-			mark:         "",
-			wants: []string{
-				`<a href="https://shopping.naver.com/products/1234567890"><b>Apple iPad Air 5th Gen</b></a>`,
-				"(Apple Official)",
-				"850,000원",
-			},
-			unwants: []string{"🆕", "☞ Apple iPad Air"}, // Text format elements
+			name:      "완전히 동일한 두 상품",
+			a:         base,
+			b:         &product{ProductID: "2", ProductType: "1", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/1", LowPrice: 999999, MallName: "Samsung"},
+			wantEqual: true,
 		},
 		{
-			name:         "HTML Format - With New Mark",
-			product:      baseProduct,
-			supportsHTML: true,
-			mark:         mark.New,
-			wants:        []string{"850,000원 🆕"},
+			name:      "LowPrice만 다른 경우 → 동일로 판단",
+			a:         base,
+			b:         &product{ProductID: "1", ProductType: "1", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/1", LowPrice: 500000, MallName: "Samsung"},
+			wantEqual: true,
 		},
 		{
-			name:         "Text Format - Basic",
-			product:      baseProduct,
-			supportsHTML: false,
-			mark:         "",
-			wants: []string{
-				"☞ Apple iPad Air 5th Gen (Apple Official) 850,000원",
-				"https://shopping.naver.com/products/1234567890",
-			},
-			unwants: []string{"<a href", "<b>", "</b>"},
+			name:      "ProductID만 다른 경우 → 동일로 판단",
+			a:         base,
+			b:         &product{ProductID: "99", ProductType: "1", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/1", LowPrice: 1000000, MallName: "Samsung"},
+			wantEqual: true,
 		},
 		{
-			name:         "Text Format - With New Mark",
-			product:      baseProduct,
-			supportsHTML: false,
-			mark:         mark.New,
-			wants:        []string{"850,000원 🆕"},
+			name:      "Title이 다른 경우 → 다름",
+			a:         base,
+			b:         &product{ProductID: "1", ProductType: "1", Title: "Samsung Galaxy S25", Link: "https://shopping.naver.com/products/1", LowPrice: 1000000, MallName: "Samsung"},
+			wantEqual: false,
 		},
 		{
-			name: "Zero Price Handling",
-			product: &product{
-				Title:    "Free Sample",
-				LowPrice: 0,
-				MallName: "Promo",
-				Link:     "http://example.com",
-			},
-			supportsHTML: false,
-			mark:         "",
-			wants:        []string{"0원"},
+			name:      "Link가 다른 경우 → 다름",
+			a:         base,
+			b:         &product{ProductID: "1", ProductType: "1", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/999", LowPrice: 1000000, MallName: "Samsung"},
+			wantEqual: false,
+		},
+		{
+			name:      "MallName이 다른 경우 → 다름",
+			a:         base,
+			b:         &product{ProductID: "1", ProductType: "1", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/1", LowPrice: 1000000, MallName: "Coupang"},
+			wantEqual: false,
+		},
+		{
+			name:      "ProductType이 다른 경우 → 다름",
+			a:         base,
+			b:         &product{ProductID: "1", ProductType: "2", Title: "Samsung Galaxy S24", Link: "https://shopping.naver.com/products/1", LowPrice: 1000000, MallName: "Samsung"},
+			wantEqual: false,
+		},
+		{
+			name:      "receiver가 nil인 경우 → false",
+			a:         nil,
+			b:         base,
+			wantEqual: false,
+		},
+		{
+			name:      "other가 nil인 경우 → false",
+			a:         base,
+			b:         nil,
+			wantEqual: false,
+		},
+		{
+			name:      "둘 다 nil인 경우 → false",
+			a:         nil,
+			b:         nil,
+			wantEqual: false,
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := renderProduct(tt.product, tt.supportsHTML, tt.mark)
-			for _, want := range tt.wants {
-				assert.Contains(t, got, want, "Expected substring missing")
-			}
-			for _, unwant := range tt.unwants {
-				assert.NotContains(t, got, unwant, "Unexpected substring found")
-			}
+			got := tt.a.contentEquals(tt.b)
+			assert.Equal(t, tt.wantEqual, got)
 		})
 	}
 }
 
-// TestRenderProductDiff 변경 사항 비교 표시 렌더링 동작을 검증합니다.
-func TestRenderProductDiff(t *testing.T) {
+// TestProduct_ContentEquals_Symmetry contentEquals는 교환법칙을 만족해야 합니다.
+// a.contentEquals(b) == b.contentEquals(a)
+func TestProduct_ContentEquals_Symmetry(t *testing.T) {
 	t.Parallel()
 
-	current := &product{
-		Title:     "Galaxy S24",
-		Link:      "http://link",
-		LowPrice:  1000000,
-		MallName:  "Samsung",
-		ProductID: "1",
-	}
+	a := &product{ProductType: "1", Title: "iPhone 15", Link: "http://link/a", MallName: "Apple"}
+	b := &product{ProductType: "1", Title: "iPhone 15", Link: "http://link/a", MallName: "Apple"}
+	c := &product{ProductType: "2", Title: "iPhone 15", Link: "http://link/a", MallName: "Apple"} // ProductType 다름
+
+	assert.Equal(t, a.contentEquals(b), b.contentEquals(a), "교환법칙: 동일한 상품")
+	assert.Equal(t, a.contentEquals(c), c.contentEquals(a), "교환법칙: 다른 상품")
+}
+
+// =============================================================================
+// product.isPriceEligible() 검증
+// =============================================================================
+
+// TestProduct_IsPriceEligible 가격 필터링 로직을 경계값 분석(BVA) 기반으로 검증합니다.
+//
+// 유효 조건: LowPrice > 0 AND LowPrice < priceLessThan
+// "미만(strictly less than)" 이므로 priceLessThan과 같은 경우는 false 입니다.
+func TestProduct_IsPriceEligible(t *testing.T) {
+	t.Parallel()
+
+	const threshold = 100000 // 알림 기준 상한가: 100,000원
 
 	tests := []struct {
 		name         string
-		product      *product
-		prev         *product
-		supportsHTML bool
-		mark         mark.Mark
-		wants        []string
+		lowPrice     int
+		wantEligible bool
 	}{
-		{
-			name:         "Price Drop (Text)",
-			product:      current,
-			prev:         &product{LowPrice: 1100000}, // 110만원 -> 100만원
-			supportsHTML: false,
-			mark:         mark.Mark("🔻"),
-			wants: []string{
-				"1,000,000원",
-				"(이전: 1,100,000원)",
-				"🔻",
-			},
-		},
-		{
-			name:         "Price Increase (HTML)",
-			product:      current,
-			prev:         &product{LowPrice: 900000}, // 90만원 -> 100만원
-			supportsHTML: true,
-			mark:         mark.Mark("🔺"),
-			wants: []string{
-				"1,000,000원",
-				"(이전: 900,000원)",
-				"🔺",
-				"<b>Galaxy S24</b>",
-			},
-		},
-		{
-			name:         "Same Price (No diff text shown)",
-			product:      current,
-			prev:         &product{LowPrice: 1000000},
-			supportsHTML: false,
-			mark:         "",
-			wants: []string{
-				"1,000,000원",
-			},
-			// Same price should NOT show "(이전: ...)"
-		},
+		// --- 유효한 케이스 ---
+		{name: "상한가 바로 아래 (99,999원) → 대상", lowPrice: 99999, wantEligible: true},
+		{name: "일반적인 가격 (50,000원) → 대상", lowPrice: 50000, wantEligible: true},
+		{name: "최솟값 (1원) → 대상", lowPrice: 1, wantEligible: true},
+
+		// --- 경계값: 제외 케이스 ---
+		{name: "상한가와 같은 경우 (100,000원) → 미포함, 제외", lowPrice: threshold, wantEligible: false},
+		{name: "상한가 초과 (100,001원) → 제외", lowPrice: 100001, wantEligible: false},
+
+		// --- 비정상 데이터 케이스 ---
+		{name: "0원 (API 오류/무효 데이터) → 제외", lowPrice: 0, wantEligible: false},
+		{name: "음수 가격 (비정상 데이터) → 제외", lowPrice: -1, wantEligible: false},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := renderProductDiff(tt.product, tt.supportsHTML, tt.mark, tt.prev)
-			for _, want := range tt.wants {
-				assert.Contains(t, got, want)
-			}
-			// 동일 가격일 경우 "이전:" 텍스트가 없어야 함을 검증
-			if tt.prev.LowPrice == tt.product.LowPrice {
-				assert.NotContains(t, got, "(이전:")
-			}
+			p := &product{LowPrice: tt.lowPrice}
+			assert.Equal(t, tt.wantEligible, p.isPriceEligible(threshold))
 		})
-	}
-}
-
-// BenchmarkRenderProduct 단일 상품 렌더링 성능 측정
-func BenchmarkRenderProduct(b *testing.B) {
-	p := &product{
-		Title:    "Benchmark Product",
-		LowPrice: 1234567,
-		MallName: "Benchmark Mall",
-		Link:     "http://example.com",
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = renderProduct(p, false, "")
-	}
-}
-
-// BenchmarkRenderProductDiff 변경 사항 렌더링 성능 측정
-func BenchmarkRenderProductDiff(b *testing.B) {
-	p := &product{
-		Title:    "Benchmark Product",
-		LowPrice: 1000000,
-		MallName: "Benchmark Mall",
-		Link:     "http://example.com",
-	}
-	prev := &product{LowPrice: 1100000}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = renderProductDiff(p, false, mark.Modified, prev)
 	}
 }

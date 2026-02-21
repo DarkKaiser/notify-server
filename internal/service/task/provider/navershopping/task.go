@@ -63,6 +63,10 @@ func newTask(params provider.NewTaskParams) (provider.Task, error) {
 			return nil, err
 		}
 
+		// 설정 파일에서 누락된 필수 설정값들을 기본값으로 채웁니다.
+		// 이를 통해 사용자가 일부 설정을 생략하더라도 안전하게 동작할 수 있도록 보장합니다.
+		commandSettings.ApplyDefaults()
+
 		naverShoppingTask.SetExecute(func(ctx context.Context, previousSnapshot any, supportsHTML bool) (string, any, error) {
 			prevSnapshot, ok := previousSnapshot.(*watchPriceSnapshot)
 			if !ok {

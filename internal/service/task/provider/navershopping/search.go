@@ -12,12 +12,6 @@ import (
 )
 
 const (
-	// productSearchEndpoint 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
-	//
-	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
-	// 인증 방식: 요청 헤더에 X-Naver-Client-Id, X-Naver-Client-Secret 값을 포함해야 합니다.
-	productSearchEndpoint = "https://openapi.naver.com/v1/search/shop.json"
-
 	// ------------------------------------------------------------------------------------------------
 	// API 매개변수 기본값
 	// ------------------------------------------------------------------------------------------------
@@ -36,6 +30,14 @@ const (
 	// 네이버 쇼핑 API는 요청당 최소 10개, 최대 100개까지 허용합니다.
 	// 전체 수집 시간을 줄이기 위해 허용 최대치인 100으로 설정합니다.
 	defaultDisplayCount = 100
+)
+
+var (
+	// productSearchEndpoint 네이버 쇼핑 상품 검색을 위한 OpenAPI 엔드포인트입니다.
+	//
+	// 공식 문서: https://developers.naver.com/docs/serviceapi/search/shopping/shopping.md
+	// 인증 방식: 요청 헤더에 X-Naver-Client-Id, X-Naver-Client-Secret 값을 포함해야 합니다.
+	productSearchEndpoint = "https://openapi.naver.com/v1/search/shop.json"
 )
 
 // productSearchResponse 네이버 쇼핑 상품 검색 API의 최상위 응답 구조체입니다.
@@ -90,30 +92,6 @@ func (t *task) fetchPageProducts(ctx context.Context, apiURL string) (*productSe
 	return resp, nil
 }
 
-// buildProductSearchURL 검색 키워드와 페이지네이션 매개변수를 조합하여
-// 네이버 쇼핑 API 요청용 최종 URL 문자열을 생성합니다.
-//
-// 매개변수:
-//   - baseURL: 엔드포인트 원본 URL (이 함수 호출 후에도 변경되지 않음)
-//   - query: 검색할 상품 키워드
-//   - start: 결과 조회 시작 인덱스 (1부터 시작)
-//   - display: 한 페이지에 포함할 상품 수 (최대 100)
-func buildProductSearchURL(baseURL *url.URL, query string, start, display int) string {
-	// baseURL의 얕은 복사(Shallow Copy)를 수행합니다.
-	// 필드 중 User는 포인터이나, 여기서는 값 타입인 RawQuery 필드만 새로운 값으로 교체하여
-	// URL 문자열을 생성하므로 원본 baseURL 객체를 오염시키지 않고 안전하게 재사용할 수 있습니다.
-	u := *baseURL
-
-	q := u.Query()
-	q.Set("query", query)
-	q.Set("display", strconv.Itoa(display))
-	q.Set("start", strconv.Itoa(start))
-	q.Set("sort", defaultSortOption)
-	u.RawQuery = q.Encode()
-
-	return u.String()
-}
-
 // parseProduct API 응답의 원시 상품 데이터(productSearchResponseItem)를 도메인 모델(*product)로 변환합니다.
 //
 // 변환 과정에서 다음과 같은 정제 작업이 수행됩니다:
@@ -150,4 +128,28 @@ func (t *task) parseProduct(item *productSearchResponseItem) *product {
 		LowPrice:    lowPrice,
 		MallName:    item.MallName,
 	}
+}
+
+// buildProductSearchURL 검색 키워드와 페이지네이션 매개변수를 조합하여
+// 네이버 쇼핑 API 요청용 최종 URL 문자열을 생성합니다.
+//
+// 매개변수:
+//   - baseURL: 엔드포인트 원본 URL (이 함수 호출 후에도 변경되지 않음)
+//   - query: 검색할 상품 키워드
+//   - start: 결과 조회 시작 인덱스 (1부터 시작)
+//   - display: 한 페이지에 포함할 상품 수 (최대 100)
+func buildProductSearchURL(baseURL *url.URL, query string, start, display int) string {
+	// baseURL의 얕은 복사(Shallow Copy)를 수행합니다.
+	// 필드 중 User는 포인터이나, 여기서는 값 타입인 RawQuery 필드만 새로운 값으로 교체하여
+	// URL 문자열을 생성하므로 원본 baseURL 객체를 오염시키지 않고 안전하게 재사용할 수 있습니다.
+	u := *baseURL
+
+	q := u.Query()
+	q.Set("query", query)
+	q.Set("display", strconv.Itoa(display))
+	q.Set("start", strconv.Itoa(start))
+	q.Set("sort", defaultSortOption)
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }
