@@ -2,490 +2,497 @@ package navershopping
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"net/url"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
+	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNaverShoppingTask_RunWatchPrice_Integration(t *testing.T) {
-	// 1. Mock 설정
+// =============================================================================
+// 통합 테스트 헬퍼 (Integration Test Helpers)
+// =============================================================================
+
+// integrationTask HTTP 목업 응답과 함께 사용할 통합테스트 전용 task를 생성합니다.
+//
+// newTask 팩토리를 통해 실제 초기화 경로(AppConfig → taskSettings 파싱 → clientID/Secret 바인딩)를
+// 거치므로 단위테스트용 직접 구성 방식보다 실제 환경에 더 가깝습니다.
+func integrationTask(t *testing.T, fetcher *mocks.MockHTTPFetcher, runBy contract.TaskRunBy) *task {
+	t.Helper()
+
+	appConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(TaskID),
+				Data: map[string]interface{}{
+					"client_id":     "test-client-id",
+					"client_secret": "test-client-secret",
+				},
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchPriceAnyCommand),
+						Data: map[string]interface{}{
+							"query": "placeholder",
+							"filters": map[string]interface{}{
+								"price_less_than": float64(9999999),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	handler, err := newTask(provider.NewTaskParams{
+		InstanceID: "integration-test",
+		Request: &contract.TaskSubmitRequest{
+			TaskID:     TaskID,
+			CommandID:  WatchPriceAnyCommand,
+			NotifierID: "test-notifier",
+			RunBy:      runBy,
+		},
+		AppConfig:   appConfig,
+		Storage:     nil,
+		Fetcher:     fetcher,
+		NewSnapshot: func() any { return &watchPriceSnapshot{} },
+	})
+	require.NoError(t, err)
+
+	tsk, ok := handler.(*task)
+	require.True(t, ok)
+	return tsk
+}
+
+// makeItemJSON 단일 상품 JSON 문자열을 생성하는 헬퍼입니다.
+func makeItemJSON(id, title, price, link, mallName string) string {
+	return fmt.Sprintf(`{"productId":%q,"productType":"1","title":%q,"lprice":%q,"link":%q,"mallName":%q}`,
+		id, title, price, link, mallName)
+}
+
+// makeSearchResponseJSON 상품 목록을 감싸는 검색 응답 JSON을 생성합니다.
+func makeSearchResponseJSON(items ...string) string {
+	var joined string
+	for i, item := range items {
+		if i > 0 {
+			joined += ","
+		}
+		joined += item
+	}
+	return fmt.Sprintf(`{"total":%d,"start":1,"display":%d,"items":[%s]}`, len(items), len(items), joined)
+}
+
+// apiURL 검색어를 이용해 첫 페이지 URL을 반환합니다.
+func apiURL(query string) string {
+	base, err := url.Parse(productSearchEndpoint)
+	if err != nil {
+		panic(err)
+	}
+	return buildProductSearchURL(base, query, 1, defaultDisplayCount)
+}
+
+// =============================================================================
+// 통합 시나리오 테스트
+// =============================================================================
+
+// TestIntegration_FirstRun_NewProducts 최초 실행(prev 스냅샷 없음) 시나리오를 검증합니다.
+//
+// 기대 동작:
+//   - API 응답의 상품이 모두 신규(🆕)로 인식되어 알림 메시지가 생성됩니다.
+//   - 가격 필터 미달 상품은 결과에서 제외됩니다.
+//   - 반환된 스냅샷에 결과가 올바르게 저장됩니다.
+func TestIntegration_FirstRun_NewProducts(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
 	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("1", "테스트 상품", "10000", "https://link/1", "TestMall"),
+	)))
 
-	// 테스트용 JSON 응답 생성
-	productTitle := "테스트 상품"
-	productLink := "https://example.com/product/123"
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
 
-	// "shopping_search_result.json"은 service/task/navershopping/testdata에 있어야 함
-	// 하지만 list_dir 결과 "shopping_search_result.json"은 "naver" 폴더에 있었음.
-	// We will assume I move it to "service/task/navershopping/testdata".
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, newSnapshot, "신규 상품이 있으면 스냅샷을 반환해야 합니다")
+
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 1)
+	assert.Equal(t, "테스트 상품", typed.Products[0].Title)
+	assert.Equal(t, 10000, typed.Products[0].LowPrice)
+
+	assert.Contains(t, msg, "상품 정보가 변경되었습니다")
+	assert.Contains(t, msg, "테스트 상품")
+	assert.Contains(t, msg, mark.New.String(), "신규 상품은 🆕 마크가 포함되어야 합니다")
+}
+
+// TestIntegration_FirstRun_FromJSONFile testdata JSON 파일을 이용한 최초 실행 시나리오입니다.
+//
+// 실제 API 응답 형태의 파일을 로드하여 파싱이 올바르게 동작하는지 검증합니다.
+func TestIntegration_FirstRun_FromJSONFile(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
 	jsonContent := testutil.LoadTestDataAsString(t, "shopping_search_result.json")
 
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetResponse(url, []byte(jsonContent))
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(jsonContent))
 
-	// 2. Task 초기화
-	tTask := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     TaskID,
-				CommandID:  WatchPriceAnyCommand,
-				NotifierID: "test-notifier",
-				RunBy:      contract.TaskRunByUnknown,
-			},
-			InstanceID: "test_instance",
-			Fetcher:    mockFetcher,
-			NewSnapshot: func() interface{} {
-				return &watchPriceSnapshot{}
-			},
-		}, true),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
-	}
-	// SetFetcher call removed as it's deprecated
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
 
-	// 1. 초기 상태 설정
-	commandSettings := &watchPriceSettings{
-		Query: "맥북 에어",
-	}
-	commandSettings.Filters.PriceLessThan = 1500000
-	commandSettingsMap := make(map[string]interface{})
-	refStruct, _ := json.Marshal(commandSettings)
-	_ = json.Unmarshal(refStruct, &commandSettingsMap)
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
 
-	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceSettings{
-		Query: "테스트",
-	}
-	commandConfig.Filters.IncludedKeywords = ""
-	commandConfig.Filters.ExcludedKeywords = ""
-	commandConfig.Filters.PriceLessThan = 100000
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
 
-	// 초기 결과 데이터 (비어있음)
-	resultData := &watchPriceSnapshot{
-		Products: make([]*product, 0),
-	}
-
-	// 4. 실행
-	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
-
-	// 5. 검증
 	require.NoError(t, err)
-	require.NotNil(t, newResultData)
+	require.NotNil(t, newSnapshot)
 
-	// 결과 데이터 타입 변환
-	typedResultData, ok := newResultData.(*watchPriceSnapshot)
-	require.True(t, ok)
-	require.Equal(t, 1, len(typedResultData.Products))
-
-	product := typedResultData.Products[0]
-	require.Equal(t, productTitle, product.Title)
-	require.Equal(t, 10000, product.LowPrice)
-	require.Equal(t, productLink, product.Link)
-
-	// 메시지 검증 (신규 상품 알림)
-	require.Contains(t, message, "조회 조건에 해당되는 상품 정보가 변경되었습니다")
-	require.Contains(t, message, productTitle)
-	require.Contains(t, message, "🆕")
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.GreaterOrEqual(t, len(typed.Products), 1, "JSON 파일에 최소 1개 이상의 상품이 있어야 합니다")
+	assert.Contains(t, msg, mark.New.String())
 }
 
-func TestNaverShoppingTask_RunWatchPrice_NetworkError(t *testing.T) {
-	// 1. Mock 설정
+// TestIntegration_NoChange_Scheduler 스케줄러 실행 시 변경 없으면 메시지가 빈 문자열임을 검증합니다.
+func TestIntegration_NoChange_Scheduler(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	const productID = "123"
 	mockFetcher := mocks.NewMockHTTPFetcher()
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetError(url, fmt.Errorf("network error"))
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON(productID, "테스트 상품", "10000", "https://link/1", "TestMall"),
+	)))
 
-	// 2. Task 초기화
-	tTask := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     TaskID,
-				CommandID:  WatchPriceAnyCommand,
-				NotifierID: "test-notifier",
-				RunBy:      contract.TaskRunByUnknown,
-			},
-			InstanceID: "test_instance",
-			Fetcher:    mockFetcher,
-			NewSnapshot: func() interface{} {
-				return &watchPriceSnapshot{}
-			},
-		}, true),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
-	}
-	// SetFetcher call removed as it's deprecated
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
 
-	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceSettings{
-		Query: "테스트",
-	}
-	resultData := &watchPriceSnapshot{}
-
-	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
-
-	// 5. 검증
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "network error")
-}
-
-func TestNaverShoppingTask_RunWatchPrice_InvalidJSON(t *testing.T) {
-	// 1. Mock 설정
-	mockFetcher := mocks.NewMockHTTPFetcher()
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetResponse(url, []byte(`{invalid json`))
-
-	// 2. Task 초기화
-	tTask := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     TaskID,
-				CommandID:  WatchPriceAnyCommand,
-				NotifierID: "test-notifier",
-				RunBy:      contract.TaskRunByUnknown,
-			},
-			InstanceID: "test_instance",
-			Fetcher:    mockFetcher,
-			NewSnapshot: func() interface{} {
-				return &watchPriceSnapshot{}
-			},
-		}, true),
-		clientID:     "test-client-id",
-		clientSecret: "test-client-secret",
-	}
-	// SetFetcher call removed as it's deprecated
-
-	// 3. 테스트 데이터 준비
-	commandConfig := &watchPriceSettings{
-		Query: "테스트",
-	}
-	resultData := &watchPriceSnapshot{}
-
-	// 4. 실행
-	_, _, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
-
-	// 5. 검증
-	require.Error(t, err)
-	// unmarshalFromResponseJSONData 함수에서 발생하는 에러 메시지 확인
-	// "응답 데이터(JSON) 파싱이 실패하였습니다" 같은 메시지가 포함되어야 함
-	require.Contains(t, err.Error(), "JSON")
-}
-
-func TestNaverShoppingTask_RunWatchPrice_NoChange(t *testing.T) {
-	// 데이터 변화 없음 시나리오 (스케줄러 실행)
-	mockFetcher := mocks.NewMockHTTPFetcher()
-
-	productTitle := "테스트 상품"
-	productLprice := "10000"
-	productLink := "https://example.com/product/123"
-	productImage := "https://example.com/image.jpg"
-	productMallName := "테스트몰"
-
-	jsonContent := fmt.Sprintf(`{
-		"total": 1,
-		"start": 1,
-		"display": 1,
-		"items": [{
-			"title": "%s",
-			"lprice": "%s",
-			"link": "%s",
-			"image": "%s",
-			"mallName": "%s",
-			"productId": "123",
-			"productType": "1"
-		}]
-	}`, productTitle, productLprice, productLink, productImage, productMallName)
-
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetResponse(url, []byte(jsonContent))
-
-	req := &contract.TaskSubmitRequest{
-		TaskID:     TaskID,
-		CommandID:  WatchPriceAnyCommand,
-		NotifierID: "test-notifier",
-		RunBy:      contract.TaskRunByScheduler,
-	}
-	appConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(TaskID),
-				Data: map[string]interface{}{
-					"client_id":     "test-client-id",
-					"client_secret": "test-client-secret",
-				},
-				Commands: []config.CommandConfig{
-					{
-						ID: string(WatchPriceAnyCommand),
-						Data: map[string]interface{}{
-							"query": "dummy",
-							"filters": map[string]interface{}{
-								"price_less_than": 10000,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	handler, err := newTask(provider.NewTaskParams{
-		InstanceID:  "test_instance",
-		Request:     req,
-		AppConfig:   appConfig,
-		Storage:     nil,
-		Fetcher:     mockFetcher,
-		NewSnapshot: func() any { return &watchPriceSnapshot{} },
-	})
-	require.NoError(t, err)
-	tTask, ok := handler.(*task)
-	require.True(t, ok)
-
-	commandSettings := &watchPriceSettings{
-		Query: "맥북 프로",
-	}
-	commandSettings.Filters.PriceLessThan = 2000000
-	commandSettingsMap := make(map[string]interface{})
-	refStruct, _ := json.Marshal(commandSettings)
-	_ = json.Unmarshal(refStruct, &commandSettingsMap)
-
-	commandConfig := &watchPriceSettings{
-		Query: "테스트",
-	}
-
-	// 기존 결과 데이터 (이미 동일한 상품이 있음)
-	resultData := &watchPriceSnapshot{
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	// 이전 스냅샷에 동일한 상품 존재
+	prevSnapshot := &watchPriceSnapshot{
 		Products: []*product{
-			{
-				Title:     productTitle,
-				LowPrice:  10000,
-				Link:      productLink,
-				ProductID: "123",
-			},
+			{ProductID: productID, Title: "테스트 상품", LowPrice: 10000, Link: "https://link/1", MallName: "TestMall", ProductType: "1"},
 		},
 	}
 
-	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
 
-	// 검증
 	require.NoError(t, err)
-	require.Empty(t, message)     // 스케줄러 실행 시 변화 없으면 메시지 없음
-	require.Nil(t, newResultData) // 변화 없으면 nil 반환
+	assert.Empty(t, msg, "Scheduler: 변경 없음 → 빈 메시지")
+	assert.Nil(t, newSnapshot, "변경 없음 → 스냅샷 갱신 불필요")
 }
 
-func TestNaverShoppingTask_RunWatchPrice_PriceChange(t *testing.T) {
-	// 가격 변경 시나리오
+// TestIntegration_NoChange_User 사용자 실행 시 변경 없어도 현재 목록을 알림으로 전송합니다.
+func TestIntegration_NoChange_User(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	const productID = "456"
 	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON(productID, "테스트 상품", "20000", "https://link/2", "UserMall"),
+	)))
 
-	productTitle := "테스트 상품"
-	newPrice := "8000" // 가격 하락
-	productLink := "https://example.com/product/123"
-	productImage := "https://example.com/image.jpg"
-	productMallName := "테스트몰"
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByUser)
 
-	jsonContent := fmt.Sprintf(`{
-		"total": 1,
-		"start": 1,
-		"display": 1,
-		"items": [{
-			"title": "%s",
-			"lprice": "%s",
-			"link": "%s",
-			"image": "%s",
-			"mallName": "%s",
-			"productId": "123",
-			"productType": "1"
-		}]
-	}`, productTitle, newPrice, productLink, productImage, productMallName)
-
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetResponse(url, []byte(jsonContent))
-
-	req := &contract.TaskSubmitRequest{
-		TaskID:     TaskID,
-		CommandID:  WatchPriceAnyCommand,
-		NotifierID: "test-notifier",
-		RunBy:      contract.TaskRunByUnknown,
-	}
-	appConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(TaskID),
-				Data: map[string]interface{}{
-					"client_id":     "test-client-id",
-					"client_secret": "test-client-secret",
-				},
-				Commands: []config.CommandConfig{
-					{
-						ID: string(WatchPriceAnyCommand),
-						Data: map[string]interface{}{
-							"query": "dummy",
-							"filters": map[string]interface{}{
-								"price_less_than": 10000,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	handler, err := newTask(provider.NewTaskParams{
-		InstanceID:  "test_instance",
-		Request:     req,
-		AppConfig:   appConfig,
-		Storage:     nil,
-		Fetcher:     mockFetcher,
-		NewSnapshot: func() any { return &watchPriceSnapshot{} },
-	})
-	require.NoError(t, err)
-	tTask, ok := handler.(*task)
-	require.True(t, ok)
-
-	commandConfig := &watchPriceSettings{
-		Query: "테스트",
-	}
-	commandConfig.Filters.PriceLessThan = 100000 // 가격 필터 설정
-
-	// 기존 결과 데이터 (이전 가격)
-	resultData := &watchPriceSnapshot{
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{
 		Products: []*product{
-			{
-				Title:     productTitle,
-				LowPrice:  10000,
-				Link:      productLink,
-				ProductID: "123",
-			},
+			{ProductID: productID, Title: "테스트 상품", LowPrice: 20000, Link: "https://link/2", MallName: "UserMall", ProductType: "1"},
 		},
 	}
 
-	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandConfig, resultData, true)
+	msg, _, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
 
-	// 검증
 	require.NoError(t, err)
-	require.NotEmpty(t, message) // 가격 변경 시 메시지 있음
-	// 가격 변경 시 메시지에 상품 정보 포함 확인
-	require.Contains(t, message, productTitle)
-
-	typedResultData, ok := newResultData.(*watchPriceSnapshot)
-	require.True(t, ok)
-	require.Equal(t, 1, len(typedResultData.Products))
-	require.Equal(t, 8000, typedResultData.Products[0].LowPrice)
+	assert.Contains(t, msg, "변경된 정보가 없습니다", "User 실행: 현재 상품 목록을 표시해야 합니다")
+	assert.Contains(t, msg, "테스트 상품")
 }
 
-func TestNaverShoppingTask_RunWatchPrice_WithFiltering(t *testing.T) {
-	// 키워드 매칭 적용 시나리오
+// TestIntegration_PriceChanged 가격 변동 시 🔄 마크와 이전 가격이 메시지에 포함되는지 검증합니다.
+func TestIntegration_PriceChanged(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	const productID = "789"
 	mockFetcher := mocks.NewMockHTTPFetcher()
+	// 가격이 10000 → 8000으로 하락
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON(productID, "테스트 상품", "8000", "https://link/3", "PriceMall"),
+	)))
 
-	jsonContent := `{
-		"total": 3,
-		"start": 1,
-		"display": 3,
-		"items": [
-			{
-				"title": "프리미엄 테스트 상품",
-				"lprice": "50000",
-				"link": "https://example.com/product/1",
-				"image": "https://example.com/image1.jpg",
-				"mallName": "테스트몰1",
-				"productId": "1",
-				"productType": "1"
-			},
-			{
-				"title": "일반 테스트 상품",
-				"lprice": "15000",
-				"link": "https://example.com/product/2",
-				"image": "https://example.com/image2.jpg",
-				"mallName": "테스트몰2",
-				"productId": "2",
-				"productType": "1"
-			},
-			{
-				"title": "저렴한 상품",
-				"lprice": "5000",
-				"link": "https://example.com/product/3",
-				"image": "https://example.com/image3.jpg",
-				"mallName": "테스트몰3",
-				"productId": "3",
-				"productType": "1"
-			}
-		]
-	}`
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
 
-	url := "https://openapi.naver.com/v1/search/shop.json?display=100&query=%ED%85%8C%EC%8A%A4%ED%8A%B8&sort=sim&start=1"
-	mockFetcher.SetResponse(url, []byte(jsonContent))
-
-	req := &contract.TaskSubmitRequest{
-		TaskID:     TaskID,
-		CommandID:  WatchPriceAnyCommand,
-		NotifierID: "test-notifier",
-		RunBy:      contract.TaskRunByUnknown,
-	}
-	appConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: string(TaskID),
-				Data: map[string]interface{}{
-					"client_id":     "test-client-id",
-					"client_secret": "test-client-secret",
-				},
-				Commands: []config.CommandConfig{
-					{
-						ID: string(WatchPriceAnyCommand),
-						Data: map[string]interface{}{
-							"query": "dummy",
-							"filters": map[string]interface{}{
-								"price_less_than": 10000,
-							},
-						},
-					},
-				},
-			},
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{
+		Products: []*product{
+			{ProductID: productID, Title: "테스트 상품", LowPrice: 10000, Link: "https://link/3", MallName: "PriceMall", ProductType: "1"},
 		},
 	}
 
-	handler, err := newTask(provider.NewTaskParams{
-		InstanceID:  "test_instance",
-		Request:     req,
-		AppConfig:   appConfig,
-		Storage:     nil,
-		Fetcher:     mockFetcher,
-		NewSnapshot: func() any { return &watchPriceSnapshot{} },
-	})
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
 	require.NoError(t, err)
-	tTask, ok := handler.(*task)
-	require.True(t, ok)
+	require.NotNil(t, newSnapshot)
 
-	commandSettings := &watchPriceSettings{
-		Query: "테스트",
-	}
-	// 가격 필터: 20000원 미만만
-	commandSettings.Filters.PriceLessThan = 20000
-	// 포함 키워드: "테스트"
-	commandSettings.Filters.IncludedKeywords = "테스트"
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 1)
+	assert.Equal(t, 8000, typed.Products[0].LowPrice, "스냅샷에 새 가격이 반영되어야 합니다")
 
-	resultData := &watchPriceSnapshot{
-		Products: make([]*product, 0),
-	}
+	assert.Contains(t, msg, "8,000원", "현재 가격이 포함되어야 합니다")
+	assert.Contains(t, msg, "(이전: 10,000원)", "이전 가격 비교가 포함되어야 합니다")
+	assert.Contains(t, msg, mark.Modified.String(), "가격 변동은 🔄 마크가 포함되어야 합니다")
+}
 
-	// 실행
-	message, newResultData, err := tTask.executeWatchPrice(context.Background(), commandSettings, resultData, true)
+// TestIntegration_PriceFilter 가격 필터(price_less_than)가 올바르게 작동하는지 검증합니다.
+//
+// 필터 기준: 20000원 미만
+//   - 5000원 상품  → 포함
+//   - 15000원 상품 → 포함
+//   - 50000원 상품 → 제외
+func TestIntegration_PriceFilter(t *testing.T) {
+	t.Parallel()
 
-	// 검증
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("1", "저렴한 상품", "5000", "https://link/1", "Mall1"),
+		makeItemJSON("2", "보통 상품", "15000", "https://link/2", "Mall2"),
+		makeItemJSON("3", "비싼 상품", "50000", "https://link/3", "Mall3"),
+	)))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(20000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
 	require.NoError(t, err)
-	require.NotEmpty(t, message)
+	require.NotNil(t, newSnapshot)
 
-	typedResultData, ok := newResultData.(*watchPriceSnapshot)
-	require.True(t, ok)
-	// 키워드 매칭 결과: "일반 테스트 상품"만 포함 (가격 15000원, "테스트" 포함)
-	require.Equal(t, 1, len(typedResultData.Products))
-	require.Equal(t, "일반 테스트 상품", typedResultData.Products[0].Title)
-	require.Equal(t, 15000, typedResultData.Products[0].LowPrice)
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 2, "20000원 미만 상품만 2개 포함되어야 합니다")
+
+	titles := []string{typed.Products[0].Title, typed.Products[1].Title}
+	assert.Contains(t, titles, "저렴한 상품")
+	assert.Contains(t, titles, "보통 상품")
+	assert.NotContains(t, titles, "비싼 상품")
+}
+
+// TestIntegration_IncludedKeywordFilter 포함 키워드 필터가 올바르게 작동하는지 검증합니다.
+//
+// 포함 키워드: "프로" (AND 조건)
+func TestIntegration_IncludedKeywordFilter(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("1", "맥북 프로 14인치", "2000000", "https://link/1", "Mall"),
+		makeItemJSON("2", "맥북 에어 15인치", "1500000", "https://link/2", "Mall"),
+	)))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().
+		WithQuery(query).
+		WithPriceLessThan(9999999).
+		WithIncludedKeywords("프로").
+		Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, newSnapshot)
+
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 1, "포함 키워드 '프로'에 매칭되는 상품만 수집되어야 합니다")
+	assert.Equal(t, "맥북 프로 14인치", typed.Products[0].Title)
+}
+
+// TestIntegration_ExcludedKeywordFilter 제외 키워드 필터가 올바르게 작동하는지 검증합니다.
+//
+// 제외 키워드: "중고" (OR 조건)
+func TestIntegration_ExcludedKeywordFilter(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("1", "새 상품 A", "10000", "https://link/1", "Mall"),
+		makeItemJSON("2", "중고 상품 B", "5000", "https://link/2", "Mall"),
+	)))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().
+		WithQuery(query).
+		WithPriceLessThan(100000).
+		WithExcludedKeywords("중고").
+		Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, newSnapshot)
+
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 1, "제외 키워드 '중고' 상품은 수집되지 않아야 합니다")
+	assert.Equal(t, "새 상품 A", typed.Products[0].Title)
+}
+
+// TestIntegration_CombinedFilters 포함+제외 키워드와 가격 필터가 복합 적용되는지 검증합니다.
+func TestIntegration_CombinedFilters(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("1", "프리미엄 테스트 상품", "50000", "https://link/1", "Mall1"), // 가격 초과 → 제외
+		makeItemJSON("2", "일반 테스트 상품", "15000", "https://link/2", "Mall2"),   // 조건 충족 → 포함
+		makeItemJSON("3", "저렴한 상품", "5000", "https://link/3", "Mall3"),       // 포함 키워드 없음 → 제외
+	)))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().
+		WithQuery(query).
+		WithPriceLessThan(20000).    // 20000원 미만
+		WithIncludedKeywords("테스트"). // "테스트" 포함
+		Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, newSnapshot)
+
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 1, "복합 필터 결과: '일반 테스트 상품'만 통과해야 합니다")
+	assert.Equal(t, "일반 테스트 상품", typed.Products[0].Title)
+	assert.Equal(t, 15000, typed.Products[0].LowPrice)
+}
+
+// TestIntegration_NetworkError 네트워크 오류 시 에러를 반환하는지 검증합니다.
+func TestIntegration_NetworkError(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetError(apiURL(query), fmt.Errorf("connection refused"))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, _, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+// TestIntegration_InvalidJSON 유효하지 않은 JSON 응답 시 파싱 에러를 반환하는지 검증합니다.
+func TestIntegration_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	mockFetcher.SetResponse(apiURL(query), []byte(`{invalid json`))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	_, _, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "JSON")
+}
+
+// TestIntegration_EmptyResult_ZeroSpamProtection 결과가 0건이면 스팸 방지로 스냅샷이 갱신되지 않습니다.
+func TestIntegration_EmptyResult_ZeroSpamProtection(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	// 0건 응답
+	mockFetcher.SetResponse(apiURL(query), []byte(`{"total":0,"start":1,"display":0,"items":[]}`))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	// 이전에 상품이 있었음
+	prevSnapshot := &watchPriceSnapshot{
+		Products: []*product{
+			{ProductID: "1", Title: "기존 상품", LowPrice: 10000, Link: "https://link/1", MallName: "Mall", ProductType: "1"},
+		},
+	}
+
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	assert.Empty(t, msg, "0건 방어: 스팸 방지로 알림을 보내지 않아야 합니다")
+	assert.Nil(t, newSnapshot, "0건 방어: 스냅샷을 갱신하지 않아야 합니다")
+}
+
+// TestIntegration_SortOrder 결과 상품이 가격 오름차순으로 정렬되어 메시지에 표시되는지 검증합니다.
+func TestIntegration_SortOrder(t *testing.T) {
+	t.Parallel()
+
+	const query = "테스트"
+	mockFetcher := mocks.NewMockHTTPFetcher()
+	// 역순으로 응답 (30000 → 10000 → 20000)
+	mockFetcher.SetResponse(apiURL(query), []byte(makeSearchResponseJSON(
+		makeItemJSON("3", "비싼 상품", "30000", "https://link/3", "Mall"),
+		makeItemJSON("1", "저렴한 상품", "10000", "https://link/1", "Mall"),
+		makeItemJSON("2", "중간 상품", "20000", "https://link/2", "Mall"),
+	)))
+
+	tsk := integrationTask(t, mockFetcher, contract.TaskRunByScheduler)
+
+	settings := NewSettingsBuilder().WithQuery(query).WithPriceLessThan(100000).Build()
+	prevSnapshot := &watchPriceSnapshot{Products: []*product{}}
+
+	msg, newSnapshot, err := tsk.executeWatchPrice(context.Background(), &settings, prevSnapshot, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, newSnapshot)
+
+	// 스냅샷 내부 정렬 확인
+	typed := newSnapshot.(*watchPriceSnapshot)
+	require.Len(t, typed.Products, 3)
+	assert.Equal(t, 10000, typed.Products[0].LowPrice, "첫 번째 상품은 최저가여야 합니다")
+	assert.Equal(t, 20000, typed.Products[1].LowPrice)
+	assert.Equal(t, 30000, typed.Products[2].LowPrice)
+
+	// 메시지 내 순서: "저렴한 상품"이 "비싼 상품"보다 먼저 등장해야 함
+	idxCheap := indexInString(msg, "저렴한 상품")
+	idxExpensive := indexInString(msg, "비싼 상품")
+	assert.Greater(t, idxCheap, -1)
+	assert.Greater(t, idxExpensive, -1)
+	assert.Less(t, idxCheap, idxExpensive, "가격 오름차순으로 정렬된 순서로 메시지가 구성되어야 합니다")
+}
+
+// indexInString msg 내에서 sub 문자열의 바이트 위치를 반환합니다. 없으면 -1.
+func indexInString(msg, sub string) int {
+	for i := 0; i <= len(msg)-len(sub); i++ {
+		if msg[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
 }

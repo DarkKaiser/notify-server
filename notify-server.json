@@ -71,7 +71,8 @@
 							"included_keywords": "2종",
 							"excluded_keywords": "3종",
 							"price_less_than": 36400
-						}
+						},
+						"page_fetch_delay_ms": 100
 					}
 				},
 				{
@@ -92,7 +93,8 @@
 							"included_keywords": "트루락, 키즈업, 90포|3개월|3박스",
 							"excluded_keywords": "30포, 60포, 1박스, 2박스",
 							"price_less_than": 150000
-						}
+						},
+						"page_fetch_delay_ms": 100
 					}
 				}
 			],

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/darkkaiser/notify-server/internal/service/contract"
 	applog "github.com/darkkaiser/notify-server/pkg/log"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -35,7 +34,8 @@ type keywordMatchers struct {
 //   - newSnapshot: 변경사항이 감지된 경우 새로 수집된 공연 목록 스냅샷, 없으면 nil
 //   - err: 실행 중 발생한 오류
 func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings *watchNewPerformancesSettings, prevSnapshot *watchNewPerformancesSnapshot, supportsHTML bool) (message string, newSnapshot any, err error) {
-	// 1단계: 네이버에서 최신 공연 목록을 수집한다.
+	// 1단계: 설정된 조건(검색어, 필터 등)을 기반으로 네이버에서 최신 공연 목록을 수집합니다.
+	// 수집 결과는 직전 스냅샷과의 비교 대상으로 활용됩니다.
 	currentPerformances, err := t.fetchPerformances(ctx, commandSettings)
 	if err != nil {
 		return "", nil, err
@@ -45,33 +45,26 @@ func (t *task) executeWatchNewPerformances(ctx context.Context, commandSettings 
 		Performances: currentPerformances,
 	}
 
-	// 2단계: 이전 스냅샷과 비교하여 변경 사항을 감지한다.
-	diffs, hasChanges := currentSnapshot.Compare(prevSnapshot)
-
-	// 3단계: 신규 공연이 발견된 경우 알림 메시지를 생성한다.
-	if len(diffs) > 0 {
-		message = "새로운 공연정보가 등록되었습니다.\n\n" + renderPerformanceDiffs(diffs, supportsHTML)
-	}
-
-	// 4단계: 스냅샷 저장 및 결과 반환
+	// 2단계: 수집된 현재 스냅샷을 직전 스냅샷과 비교하여 변경 여부를 판단하고 알림 메시지를 구성합니다.
 	//
-	// [변경 있음] 현재 스냅샷을 저장하여 다음 실행 시 비교 기준으로 사용한다.
-	// 단, 신규 공연이 없어 알림 메시지가 비어있는 경우(예: 공연 삭제만 발생)에는
-	// 사용자가 직접 실행한 경우에 한해 현재 등록된 모든 공연 목록을 대신 전송한다.
-	if hasChanges {
-		if message == "" && t.RunBy() == contract.TaskRunByUser {
-			message = renderCurrentStatus(currentSnapshot, supportsHTML)
-		}
+	// 내부적으로 신규 공연 감지, 삭제 감지, 내용 변경(예: 썸네일) 감지를 수행하며,
+	// 그 결과를 message(알림 메시지)와 hasChanges(스냅샷 갱신 필요 여부)로 분리하여 반환합니다.
+	message, hasChanges := t.analyzeAndReport(currentSnapshot, prevSnapshot, supportsHTML)
 
+	// 3단계: 스냅샷 갱신 여부에 따라 결과를 반환합니다.
+	//
+	// [변경 사항이 있는 경우 (hasChanges == true)]
+	// 신규 공연 발견, 공연 삭제, 또는 내용 변경 중 하나 이상이 감지된 상태입니다.
+	// 다음 실행 시 정확한 비교 기준이 될 수 있도록 현재 스냅샷(currentSnapshot)을 함께 반환합니다.
+	// 반환된 currentSnapshot은 호출부에서 데이터베이스에 저장됩니다.
+	if hasChanges {
 		return message, currentSnapshot, nil
 	}
 
-	// [변경 없음] 스냅샷 갱신이 불필요하므로 nil을 반환한다.
-	// 사용자가 직접 실행한 경우에 한해 현재 등록된 모든 공연 목록을 전송한다.
-	if t.RunBy() == contract.TaskRunByUser {
-		return renderCurrentStatus(currentSnapshot, supportsHTML), nil, nil
-	}
-
+	// [변경 사항이 없는 경우 (hasChanges == false)]
+	// 스냅샷 갱신이 불필요하므로 nil을 반환하여 저장을 건너뜁니다.
+	// analyzeAndReport 내부에서 수동 실행(TaskRunByUser) 시 현재 공연 목록을 message에 담아두므로,
+	// 여기서는 그 값을 그대로 전달합니다. (스케줄러 실행 시에는 message가 빈 문자열입니다.)
 	return message, nil, nil
 }
 
@@ -181,17 +174,43 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 		// 실제 네이버 서버에 HTTP 요청을 보내 해당 페이지의 공연 목록을 가져옵니다.
 		rawPerformances, rawCount, err := t.fetchPagePerformances(ctx, commandSettings.Query, currentPage)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			if errors.Is(err, context.Canceled) {
 				t.Log(component, applog.InfoLevel, "수집 중단: 외부 취소 요청", nil, applog.Fields{
 					"query":           commandSettings.Query,
 					"page":            currentPage,
 					"limit_max_pages": commandSettings.MaxPages,
 					"collected_count": len(collectedPerformances),
 					"fetched_count":   totalFetchedCount,
-					"error":           err.Error(),
+					"fetch_error":     err.Error(),
 				})
 
 				return nil, context.Canceled
+			}
+
+			// [주의] context.Canceled로 교체하지 않고 ctx.Err()를 그대로 반환합니다.
+			//
+			// 왜 교체하면 안 되는가?
+			//   base.go의 finalizeExecution()은 에러가 context.Canceled인 경우에만
+			//   "사용자가 직접 취소한 것"으로 간주하여 에러 알림 전송을 의도적으로 생략합니다.
+			//
+			//   만약 여기서 ctx.Err()(예: context.DeadlineExceeded)를 context.Canceled로
+			//   교체해버리면, 타임아웃으로 인한 수집 실패임에도 불구하고 에러 알림이 전송되지 않아
+			//   사용자는 서비스가 조용히 실패하고 있다는 사실을 전혀 알 수 없게 됩니다.
+			//
+			// 올바른 동작:
+			//   - context.Canceled  → 사용자가 명시적으로 취소한 경우: 알림 생략 (정상)
+			//   - context.DeadlineExceeded → 타임아웃으로 실패한 경우:  알림 전송 (이상 상황)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				t.Log(component, applog.WarnLevel, "수집 중단: 컨텍스트 종료", ctxErr, applog.Fields{
+					"query":           commandSettings.Query,
+					"page":            currentPage,
+					"limit_max_pages": commandSettings.MaxPages,
+					"collected_count": len(collectedPerformances),
+					"fetched_count":   totalFetchedCount,
+					"fetch_error":     err.Error(),
+				})
+
+				return nil, ctxErr
 			}
 
 			return nil, err
@@ -210,7 +229,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 			}
 
 			// 동일한 공연이 여러 페이지에 중복 노출될 수 있으므로 Key 기반으로 중복을 제거합니다.
-			key := p.Key()
+			key := p.key()
 			if collectedKeys[key] {
 				continue
 			}
@@ -261,7 +280,7 @@ func (t *task) fetchPerformances(ctx context.Context, commandSettings *watchNewP
 				"fetched_count":     totalFetchedCount,
 			})
 
-			return nil, context.Canceled
+			return nil, ctx.Err()
 
 		case <-fetchDelayTimer.C: // 대기 시간이 만료되면 다음 루프(페이지)로 진행
 		}

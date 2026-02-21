@@ -34,10 +34,10 @@ type watchNewPerformancesSnapshot struct {
 
 // Compare 현재 스냅샷과 이전 스냅샷을 비교하여 공연 정보의 변경 사항을 감지합니다.
 //
-// 이 메서드는 세 가지 종류의 변경을 감지합니다:
-//   1. 신규 공연 등록: 이전 스냅샷에 없던 공연이 현재 스냅샷에 추가됨
-//   2. 공연 삭제: 이전 스냅샷에 있던 공연이 현재 스냅샷에서 사라짐
-//   3. 공연 정보 변경: 공연은 동일하지만 내용(예: 썸네일)이 변경됨
+// 다음 시나리오에 대한 변화를 감지합니다:
+//  1. 신규 공연 등록: 이전 스냅샷에 없던 공연이 현재 스냅샷에 추가된 경우
+//  2. 공연 삭제: 이전 스냅샷에 있던 공연이 현재 스냅샷에서 사라진 경우
+//  3. 공연 정보 변경: 공연은 동일하지만 내용(썸네일 등)이 변경된 경우
 //
 // 매개변수:
 //   - prev: 비교 대상이 되는 이전 스냅샷 (nil일 수 있음)
@@ -51,13 +51,13 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 	prevMap := make(map[string]*performance)
 	if prev != nil {
 		for _, p := range prev.Performances {
-			prevMap[p.Key()] = p
+			prevMap[p.key()] = p
 		}
 	}
 
 	// 2단계: 현재 스냅샷의 공연들을 순회하며 신규 공연 및 내용 변경 감지
 	for _, p := range s.Performances {
-		prevPerformance, exists := prevMap[p.Key()]
+		prevPerformance, exists := prevMap[p.key()]
 		if !exists {
 			// 케이스 1: 신규 공연 발견
 			// 이전 스냅샷에 없던 공연이므로 diffs에 추가하고 hasChanges를 true로 설정
@@ -71,7 +71,7 @@ func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapsho
 			// 케이스 2: 기존 공연의 내용 변경 확인
 			// 공연은 동일하지만 내용(예: 썸네일)이 변경되었을 수 있음!
 			// 알림 대상은 아니지만, 스냅샷 갱신은 필요하므로 hasChanges를 true로 설정
-			if !p.ContentEquals(prevPerformance) {
+			if !p.contentEquals(prevPerformance) {
 				hasChanges = true
 			}
 		}

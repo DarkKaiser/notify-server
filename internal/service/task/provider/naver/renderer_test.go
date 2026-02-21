@@ -2,7 +2,6 @@ package naver
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
@@ -110,69 +109,171 @@ func TestRenderPerformance(t *testing.T) {
 }
 
 func TestRenderPerformanceDiffs(t *testing.T) {
-	// 헬퍼
+	// Helper function for creating performance diffs
 	newDiff := func(title string, eventType performanceEventType) performanceDiff {
 		return performanceDiff{
 			Type:        eventType,
-			Performance: &performance{Title: title, Place: "Place"},
+			Performance: &performance{Title: title, Place: "Test Place"},
 		}
 	}
 
-	t.Run("빈 리스트: 빈 문자열 반환", func(t *testing.T) {
-		assert.Empty(t, renderPerformanceDiffs([]performanceDiff{}, true))
-	})
+	tests := []struct {
+		name         string
+		diffs        []performanceDiff
+		supportsHTML bool
+		wants        []string
+		unwants      []string
+	}{
+		{
+			name:         "빈 리스트: 빈 문자열 반환",
+			diffs:        []performanceDiff{},
+			supportsHTML: false,
+			wants:        []string{},
+			unwants:      []string{"☞", "Test Place"},
+		},
+		{
+			name: "신규 공연만 렌더링 (Text 모드)",
+			diffs: []performanceDiff{
+				newDiff("New Musical 1", performanceEventNew),
+				newDiff("Old Musical", performanceEventNone),                                        // 무시되어야 함
+				{Type: performanceEventType(99), Performance: &performance{Title: "Unknown Event"}}, // 무시되어야 함
+				newDiff("New Musical 2", performanceEventNew),
+			},
+			supportsHTML: false,
+			wants: []string{
+				"New Musical 1",
+				"New Musical 2",
+				"🆕",
+				"\n\n", // 항목 간 구분자
+			},
+			unwants: []string{
+				"Old Musical",
+				"Unknown Event",
+				"<a href=", // 일반 텍스트이므로 HTML 태그 없어야 함
+			},
+		},
+		{
+			name: "신규 공연 렌더링 (HTML 모드)",
+			diffs: []performanceDiff{
+				newDiff("HTML Musical 1", performanceEventNew),
+			},
+			supportsHTML: true,
+			wants: []string{
+				"HTML Musical 1",
+				"<a href=",
+				"<b>",
+				"🆕",
+			},
+			unwants: []string{},
+		},
+	}
 
-	t.Run("신규 공연만 렌더링", func(t *testing.T) {
-		diffs := []performanceDiff{
-			newDiff("New Musical 1", performanceEventNew),
-			newDiff("Deleted Musical", performanceEventNone), // Should be ignored (Type None or specific Delete type if exists, but snapshot uses EventNew/None mainly)
-			// snapshot.go 정의상 Delete 이벤트는 diffs에 포함되지 않으므로,
-			// 여기서는 performanceEventNew가 아닌 다른 타입이 왔을 때 무시되는지 확인 (코드상 if diff.Type == performanceEventNew)
-			{Type: performanceEventType(99), Performance: &performance{Title: "Unknown Event"}},
-			newDiff("New Musical 2", performanceEventNew),
-		}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := renderPerformanceDiffs(tt.diffs, tt.supportsHTML)
 
-		result := renderPerformanceDiffs(diffs, false)
+			if len(tt.diffs) == 0 {
+				assert.Empty(t, result, "빈 리스트인 경우 빈 문자열을 반환해야 합니다.")
+				return
+			}
 
-		assert.Contains(t, result, "New Musical 1")
-		assert.Contains(t, result, "New Musical 2")
-		assert.NotContains(t, result, "Deleted Musical")
-		assert.NotContains(t, result, "Unknown Event")
-
-		// 줄바꿈으로 구분되는지 확인
-		assert.Contains(t, result, "\n\n")
-		// 항목이 2개이므로 구분자는 1개여야 함 (New Musical 1 ... \n\n ... New Musical 2)
-		assert.Equal(t, 1, strings.Count(result, "\n\n"))
-	})
+			for _, want := range tt.wants {
+				assert.Contains(t, result, want, "결과 메시지에 예상된 문자열이 포함되어야 합니다.")
+			}
+			for _, unwant := range tt.unwants {
+				assert.NotContains(t, result, unwant, "결과 메시지에 예상치 못한 문자열이 포함되면 안 됩니다.")
+			}
+		})
+	}
 }
 
 func TestRenderCurrentStatus(t *testing.T) {
-	t.Run("데이터 없음: 안내 메시지 반환", func(t *testing.T) {
-		assert.Contains(t, renderCurrentStatus(nil, false), "등록된 공연정보가 존재하지 않습니다.")
-		assert.Contains(t, renderCurrentStatus(&watchNewPerformancesSnapshot{}, false), "등록된 공연정보가 존재하지 않습니다.")
-	})
-
-	t.Run("데이터 있음: 헤더와 목록 반환", func(t *testing.T) {
-		snapshot := &watchNewPerformancesSnapshot{
-			Performances: []*performance{
-				{Title: "Musical A", Place: "Place A"},
-				{Title: "Musical B", Place: "Place B"},
+	tests := []struct {
+		name         string
+		snapshot     *watchNewPerformancesSnapshot
+		supportsHTML bool
+		wants        []string
+		unwants      []string
+	}{
+		{
+			name:         "Snapshot이 nil인 경우: 빈 문자열",
+			snapshot:     nil,
+			supportsHTML: false,
+			wants:        []string{},
+			unwants:      []string{"☞"},
+		},
+		{
+			name:         "Performances가 비어있는 경우: 빈 문자열",
+			snapshot:     &watchNewPerformancesSnapshot{Performances: []*performance{}},
+			supportsHTML: false,
+			wants:        []string{},
+			unwants:      []string{"☞"},
+		},
+		{
+			name: "데이터가 여러 개 있는 경우 - Text 모드",
+			snapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{
+					{Title: "Current Musical A", Place: "Seoul"},
+					{Title: "Current Musical B", Place: "Busan"},
+				},
 			},
-		}
+			supportsHTML: false,
+			wants: []string{
+				"Current Musical A",
+				"Seoul",
+				"Current Musical B",
+				"Busan",
+				"\n\n", // 아이템 간 구분
+			},
+			unwants: []string{
+				"🆕", // 현재 상태 목록에는 New 마크가 뜨면 안 됨
+				"<a href=",
+				"<b>",
+			},
+		},
+		{
+			name: "데이터가 여러 개 있는 경우 - HTML 모드",
+			snapshot: &watchNewPerformancesSnapshot{
+				Performances: []*performance{
+					{Title: "HTML Musical A", Place: "Seoul"},
+					{Title: "HTML Musical B", Place: "Busan"},
+				},
+			},
+			supportsHTML: true,
+			wants: []string{
+				"HTML Musical A",
+				"Seoul",
+				"HTML Musical B",
+				"Busan",
+				"<a href=",
+				"<b>",
+				"\n\n", // 아이템 간 구분
+			},
+			unwants: []string{
+				"🆕", // 현재 상태 목록에는 New 마크가 뜨면 안 됨
+			},
+		},
+	}
 
-		result := renderCurrentStatus(snapshot, false)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := renderCurrentStatus(tt.snapshot, tt.supportsHTML)
 
-		// 헤더 확인
-		assert.Contains(t, result, "신규로 등록된 공연정보가 없습니다.")
-		assert.Contains(t, result, "현재 등록된 공연정보는 아래와 같습니다:")
+			if tt.snapshot == nil || len(tt.snapshot.Performances) == 0 {
+				assert.Empty(t, result, "데이터가 없는 경우 빈 문자열을 반환해야 합니다.")
+				return
+			}
 
-		// 목록 확인
-		assert.Contains(t, result, "Musical A")
-		assert.Contains(t, result, "Place A")
-		assert.Contains(t, result, "Musical B")
-		assert.Contains(t, result, "Place B")
-
-		// 구분선 확인
-		assert.Contains(t, result, "\n\n")
-	})
+			for _, want := range tt.wants {
+				assert.Contains(t, result, want, "결과 메시지에 예상된 문자열이 포함되어야 합니다.")
+			}
+			for _, unwant := range tt.unwants {
+				assert.NotContains(t, result, unwant, "결과 메시지에 예상치 못한 문자열이 포함되면 안 됩니다.")
+			}
+		})
+	}
 }

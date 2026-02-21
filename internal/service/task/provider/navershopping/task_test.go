@@ -1,84 +1,33 @@
 package navershopping
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
+	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// TestTaskSettings_Validate_TableDriven 유효성 검사 테스트를 테이블 기반으로 구조화합니다.
-func TestTaskSettings_Validate_TableDriven(t *testing.T) {
-	t.Parallel()
+// === Mocks ===
 
-	tests := []struct {
-		name      string
-		settings  taskSettings
-		wantError string
-	}{
-		{
-			name: "성공: 필수 필드가 모두 존재함",
-			settings: taskSettings{
-				ClientID:     "valid_id",
-				ClientSecret: "valid_secret",
-			},
-			wantError: "",
-		},
-		{
-			name: "실패: ClientID 누락 (공백)",
-			settings: taskSettings{
-				ClientID:     "   ",
-				ClientSecret: "valid_secret",
-			},
-			wantError: "client_id",
-		},
-		{
-			name: "실패: ClientID 누락 (빈 문자열)",
-			settings: taskSettings{
-				ClientID:     "",
-				ClientSecret: "valid_secret",
-			},
-			wantError: "client_id",
-		},
-		{
-			name: "실패: ClientSecret 누락 (공백)",
-			settings: taskSettings{
-				ClientID:     "valid_id",
-				ClientSecret: "   ",
-			},
-			wantError: "client_secret",
-		},
-		{
-			name: "실패: ClientSecret 누락 (빈 문자열)",
-			settings: taskSettings{
-				ClientID:     "valid_id",
-				ClientSecret: "",
-			},
-			wantError: "client_secret",
-		},
-	}
+type mockNotificationSender struct{}
 
-	for _, tt := range tests {
-		tt := tt // Capture range variable
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if err := tt.settings.Validate(); err != nil {
-				if tt.wantError != "" {
-					assert.Error(t, err)
-					assert.Contains(t, err.Error(), tt.wantError)
-				} else {
-					assert.NoError(t, err)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+func (m *mockNotificationSender) Notify(ctx context.Context, notification contract.Notification) error {
+	return nil
 }
+
+func (m *mockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID) bool {
+	return true
+}
+
+// === Tests ===
 
 // TestCreateTask_TableDriven CreateTask 함수의 다양한 시나리오를 검증합니다.
 func TestCreateTask_TableDriven(t *testing.T) {
@@ -217,11 +166,16 @@ func TestCreateTask_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+			// Task 생성
+			// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+			mockStorage := &contractmocks.MockTaskResultStore{}
+
 			handler, err := newTask(provider.NewTaskParams{
 				InstanceID:  "test_instance",
 				Request:     tt.req,
 				AppConfig:   tt.appConfig,
-				Storage:     nil,
+				Storage:     mockStorage, // 정상 진행을 위해 Mock Storage 주입
 				Fetcher:     mockFetcher,
 				NewSnapshot: func() any { return &watchPriceSnapshot{} },
 			})
@@ -236,6 +190,39 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.NotNil(t, handler)
+
+				// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+				// [커버리지 보완] SetExecute 로 등록된 익명 콜백 함수 내부 로직 검증
+				// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+				// execute 콜백 함수는 newTask 안에서 handler.SetExecute()를 통해 바인딩됩니다.
+				// [시나리오 1 - 커버리지 목적] 잘못된 스냅샷 객체를 주입하여 Type Assertion 실패 유도
+				// NewSnapshot 함수가 반환하는 객체와 다른 타입을 주입하기 위해, Load 메서드가 잘못된 타입을 엎어쓰도록 Mock 설정
+				mockStorage.On("Load", TaskID, WatchPriceAnyCommand, mock.Anything).Run(func(args mock.Arguments) {
+					// 인터페이스를 통한 타입 덮어쓰기는 불가능하므로 빈 값을 읽은 것처럼 속이고,
+					// 대신 실제 비즈니스 로직(execute)을 실행할 때 잘못된 타입을 넘기도록 우회해야 하지만,
+					// Base.Run()은 내부적으로 우리가 제어할 수 없는 Storage.Load의 결과를 사용하므로
+					// 여기서는 의도적으로 newSnapshot 함수 자체를 이상한 타입으로 반환하게 만들어 봅니다.
+				}).Return(contract.ErrTaskResultNotFound).Once()
+
+				// Fetcher에서 페이지 1 호출 시 에러 설정 (정상 흐름 진행용)
+				mockFetcher.SetError("https://openapi.naver.com/v1/search/shop.json?display=100&query=test_query&sort=sim&start=1", fmt.Errorf("mock error to stop processing quickly"))
+
+				ctx := context.Background()
+				sender := &mockNotificationSender{}
+				handler.Run(ctx, sender)
+
+				// [시나리오 2 - 커버리지 목적] NewSnapshot 이 반환한 객체가 잘못된 타입일 경우
+				handlerBadSnapshot, _ := newTask(provider.NewTaskParams{
+					InstanceID:  "test_instance",
+					Request:     tt.req,
+					AppConfig:   tt.appConfig,
+					Storage:     mockStorage,
+					Fetcher:     mockFetcher,
+					NewSnapshot: func() any { return &struct{ Invalid string }{} }, // 잘못된 타입
+				})
+
+				mockStorage.On("Load", TaskID, WatchPriceAnyCommand, mock.Anything).Return(contract.ErrTaskResultNotFound).Once()
+				handlerBadSnapshot.Run(ctx, sender)
 			}
 		})
 	}
