@@ -55,7 +55,7 @@ type Service struct {
 	runningMu sync.Mutex
 }
 
-// NewService Service 인스턴스를 생성합니다.
+// NewService API 서비스를 생성합니다.
 func NewService(appConfig *config.AppConfig, notificationSender contract.NotificationSender, buildInfo version.Info) *Service {
 	if appConfig == nil {
 		panic("AppConfig는 필수입니다")
@@ -90,7 +90,7 @@ func NewService(appConfig *config.AppConfig, notificationSender contract.Notific
 //  6. 서버 에러 처리 및 알림 전송 (예상치 못한 에러 발생 시)
 //  7. 서비스 상태 정리 (running 플래그 초기화)
 //
-// 파라미터:
+// 매개변수:
 //   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - serviceStopWG: 서비스 종료 완료를 알리기 위한 WaitGroup
 //
@@ -117,16 +117,16 @@ func (s *Service) Start(serviceStopCtx context.Context, serviceStopWG *sync.Wait
 
 	s.running = true
 
-	go s.runServiceLoop(serviceStopCtx, serviceStopWG)
+	go s.runEventLoop(serviceStopCtx, serviceStopWG)
 
 	applog.WithComponent(component).Info("서비스 시작 완료: API 서비스가 정상적으로 초기화되었습니다")
 
 	return nil
 }
 
-// runServiceLoop 서비스의 메인 실행 루프입니다.
+// runEventLoop 서비스의 메인 실행 루프입니다.
 // 서버 설정, HTTP 서버 시작, Shutdown 대기를 순차적으로 수행합니다.
-func (s *Service) runServiceLoop(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) {
+func (s *Service) runEventLoop(serviceStopCtx context.Context, serviceStopWG *sync.WaitGroup) {
 	defer serviceStopWG.Done()
 
 	// 서버 설정
@@ -178,7 +178,7 @@ func (s *Service) setupServer() *echo.Echo {
 // 설정에 따라 TLS 활성화 여부를 결정하며, 서버가 종료되면 httpServerDone 채널을 닫아
 // 대기 중인 고루틴에 신호를 보냅니다.
 //
-// Parameters:
+// 매개변수:
 //   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
 //   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널
@@ -242,7 +242,7 @@ func (s *Service) handleServerError(serviceStopCtx context.Context, err error) {
 //  3. HTTP 서버 완전 종료 대기
 //  4. 서비스 상태 정리 (running 플래그 초기화)
 //
-// Parameters:
+// 매개변수:
 //   - serviceStopCtx: 서비스 종료 신호를 받기 위한 Context
 //   - e: Echo 서버 인스턴스
 //   - httpServerDone: HTTP 서버 종료가 완료되었음을 부모 루틴에 알리기 위한 신호 채널

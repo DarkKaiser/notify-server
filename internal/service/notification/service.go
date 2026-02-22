@@ -40,7 +40,7 @@ type Service struct {
 
 // NewService Notification 서비스를 생성합니다.
 func NewService(appConfig *config.AppConfig, creator notifier.Creator, executor contract.TaskExecutor) *Service {
-	service := &Service{
+	return &Service{
 		appConfig: appConfig,
 
 		notifiers:       make(map[contract.NotifierID]notifier.Notifier),
@@ -55,8 +55,6 @@ func NewService(appConfig *config.AppConfig, creator notifier.Creator, executor 
 		running:   false,
 		runningMu: sync.RWMutex{},
 	}
-
-	return service
 }
 
 // Start Notification 서비스를 시작하고 모든 Notifier를 초기화합니다.
@@ -67,7 +65,7 @@ func NewService(appConfig *config.AppConfig, creator notifier.Creator, executor 
 // 다른 Notifier의 동작에는 영향을 주지 않습니다. 서비스 종료 시에는 모든 Notifier가
 // 안전하게 정리될 때까지 대기합니다.
 //
-// 파라미터:
+// 매개변수:
 //   - serviceStopCtx: 서비스 종료 신호를 전달받는 컨텍스트입니다.
 //     이 컨텍스트가 취소되면 모든 Notifier의 정리 프로세스가 시작됩니다.
 //   - serviceStopWG: 서비스 종료 시 모든 고루틴(Notifier 및 종료 처리 고루틴)이
@@ -296,7 +294,7 @@ func (s *Service) waitForShutdown(serviceStopCtx context.Context, serviceStopWG 
 // 전송 요청이 성공적으로 큐에 적재되거나 시스템에 수락되었을 때 nil을 반환합니다.
 // 즉, nil 반환이 반드시 "최종 사용자 도달"을 보장하는 것은 아닙니다.
 //
-// 파라미터:
+// 매개변수:
 //   - ctx: 요청의 컨텍스트 (Timeout, Cancellation 전파 용도)
 //   - notification: 전송할 알림의 상세 내용 (메시지, 수신처, 메타데이터 등)
 //
