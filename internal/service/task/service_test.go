@@ -417,3 +417,282 @@ func TestService_Submit_Timeout(t *testing.T) {
 	// We allow some buffer for test execution overhead
 	require.Less(t, elapsed, 200*time.Millisecond, "Submit blocked longer than expected")
 }
+
+// =============================================================================
+// Lifecycle and Edge Case Tests
+// =============================================================================
+
+// TestService_Start_MissingDependencies는 의존성이 누락된 상태에서 Start 호출 시 패닉/에러가 발생하는지 검증합니다.
+func TestService_Start_MissingDependencies(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	mockStorage := new(contractmocks.MockTaskResultStore)
+	service := NewService(appConfig, mockIDGen, mockStorage)
+
+	// NotificationSender를 주입하지 않고 Start 시도
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	err := service.Start(ctx, serviceStopWG)
+	require.Error(t, err, "NotificationSender가 없으면 Start는 실패해야 합니다")
+	require.Contains(t, err.Error(), "NotificationSender", "원인을 나타내는 메시지가 포함되어야 합니다")
+
+	// Start 실패 시 WaitGroup.Done()을 호출하는지 직접 확인하기 위해 대기
+	// 타임아웃 방지를 위해 별도 고루틴에서 대기
+	wgDone := make(chan struct{})
+	go func() {
+		serviceStopWG.Wait()
+		close(wgDone)
+	}()
+
+	select {
+	case <-wgDone:
+		// 성공
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start 실패 시 serviceStopWG.Done()이 호출되지 않았습니다")
+	}
+}
+
+// TestService_Submit_WhenStopped는 서비스가 실행 중이 아닐 때 Submit 요청이 거부되는지 검증합니다.
+func TestService_Submit_WhenStopped(t *testing.T) {
+	service, _, _, _, _, _ := setupTestService(t) // 일단 시작하지만 내부에서 중지 중인지 시뮬레이션
+
+	// 인위적으로 running 플래그를 false로 변경
+	service.runningMu.Lock()
+	service.running = false
+	service.runningMu.Unlock()
+
+	err := service.Submit(context.Background(), &contract.TaskSubmitRequest{
+		TaskID:     "TEST_TASK",
+		CommandID:  "TEST_COMMAND",
+		NotifierID: "test-notifier",
+		RunBy:      contract.TaskRunByUser,
+	})
+
+	require.Error(t, err, "서비스가 중지 중일 때는 Submit이 거부되어야 합니다")
+	require.Contains(t, err.Error(), "실행 중이지 않아", "거부 사유가 명확해야 합니다")
+}
+
+// TestService_Cancel_WhenStopped는 서비스가 중지 중일 때 Cancel 요청이 무시(에러 반환 없이 early return)되는지 검증합니다.
+func TestService_Cancel_WhenStopped(t *testing.T) {
+	service, _, _, _, _, _ := setupTestService(t)
+
+	service.runningMu.Lock()
+	service.running = false
+	service.runningMu.Unlock()
+
+	err := service.Cancel(contract.TaskInstanceID("some_id"))
+	require.Error(t, err, "서비스 중지 중 Cancel은 방어 로직에 의해 에러를 반환해야 합니다")
+	require.Contains(t, err.Error(), "실행 중이지 않아")
+}
+
+// TestService_RejectIfAlreadyRunning는 AllowMultiple=false인 Task의 중복 실행 방지 로직을 검증합니다.
+func TestService_RejectIfAlreadyRunning(t *testing.T) {
+	appConfig := &config.AppConfig{}
+
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	mockIDGen.On("New").Return(contract.TaskInstanceID("singleton-instance-id")).Maybe()
+	mockStorage := new(contractmocks.MockTaskResultStore)
+	service := NewService(appConfig, mockIDGen, mockStorage)
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	err := service.Start(ctx, serviceStopWG)
+	require.NoError(t, err)
+
+	defer func() {
+		cancel()
+		serviceStopWG.Wait()
+	}()
+
+	// 테스트용 싱글톤 Task 등록 (AllowMultiple=false)
+	provider.RegisterForTest("SINGLETON_TASK", &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
+			{ID: "SINGLETON_CMD", AllowMultiple: false},
+		},
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+			// 작업이 끝나지 않도록 영원히 블록되는 StubTask 생성
+			task := testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID)
+			task.RunFunc = func(ctx context.Context, ns contract.NotificationSender) {
+				<-ctx.Done() // 취소될 때까지 대기
+			}
+			return task, nil
+		},
+	})
+
+	// 1차 요청 (성공해야 함)
+	err = service.Submit(context.Background(), &contract.TaskSubmitRequest{
+		TaskID:     "SINGLETON_TASK",
+		CommandID:  "SINGLETON_CMD",
+		NotifierID: "test-notifier",
+		RunBy:      contract.TaskRunByUser,
+	})
+	require.NoError(t, err, "첫 번째 요청은 성공해야 합니다")
+
+	// Task가 실행되어 `s.tasks` 맵에 등록될 시간을 잠깐 줍니다
+	time.Sleep(100 * time.Millisecond)
+
+	// 두 번째 요청에 의한 중복 반려(비동기) 알림 전송을 감지하기 위한 채널
+	notifyCalled := make(chan struct{})
+
+	mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred == false && n.Cancelable == true
+	})).Run(func(args mock.Arguments) {
+		close(notifyCalled)
+	}).Return(nil).Once()
+
+	// 2차 요청 (중복 거부되어 알림이 발송되어야 함)
+	err2 := service.Submit(context.Background(), &contract.TaskSubmitRequest{
+		TaskID:     "SINGLETON_TASK",
+		CommandID:  "SINGLETON_CMD",
+		NotifierID: "test-notifier",
+		RunBy:      contract.TaskRunByUser,
+	})
+	require.NoError(t, err2, "Submit 자체는 성공하지만 비동기 큐에서 거부됩니다")
+
+	// 비동기 알림 전송 대기
+	select {
+	case <-notifyCalled:
+		// 성공
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for AlreadyRunning notification")
+	}
+
+	mockSender.AssertExpectations(t)
+}
+
+// =============================================================================
+// Error Handling and Edge Case Tests
+// =============================================================================
+
+// TestService_IDCollisionMaxRetries는 ID 생성 충돌이 한계치(MaxRetries)를 초과할 때의 에러 처리와 알림을 검증합니다.
+func TestService_IDCollisionMaxRetries(t *testing.T) {
+	appConfig := &config.AppConfig{}
+
+	// 항상 동일한 ID만 반환하여 고의로 무한 충돌을 유발하는 Mock Generator
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	mockIDGen.On("New").Return(contract.TaskInstanceID("always-colliding-id"))
+
+	mockStorage := new(contractmocks.MockTaskResultStore)
+	service := NewService(appConfig, mockIDGen, mockStorage)
+
+	// 비동기 통지 호출을 감지하기 위한 채널
+	notifyCalled := make(chan struct{})
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	// ID 생성 완전 실패 시 발송되는 에러 알림을 기대함
+	mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred == true && n.Message == "시스템 오류로 작업 실행에 실패했습니다. (ID 충돌)"
+	})).Run(func(args mock.Arguments) {
+		close(notifyCalled)
+	}).Return(nil).Once()
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	err := service.Start(ctx, &wg)
+	require.NoError(t, err)
+
+	// 테스트용 Task를 등록해야 FindConfig 검증을 통과하여 ID 발급 로직까지 진행됩니다.
+	provider.RegisterForTest("TEST_TASK", &provider.TaskConfig{
+		Commands: []*provider.TaskCommandConfig{
+			{ID: "TEST_COMMAND", AllowMultiple: true},
+		},
+		NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+			return testutil.NewStubTask(p.Request.TaskID, p.Request.CommandID, p.InstanceID), nil
+		},
+	})
+
+	// 이미 동일한 ID로 Task 1개를 미리 등록해 둡니다.
+	service.runningMu.Lock()
+	service.tasks["always-colliding-id"] = testutil.NewStubTask("T", "C", "always-colliding-id")
+	service.runningMu.Unlock()
+
+	// 두 번째 Task를 제출합니다. 이것은 ID 생성기에서 계속 같은 ID를 받아오므로 maxRetries(3)번 모두 실패해야 합니다.
+	err = service.Submit(context.Background(), &contract.TaskSubmitRequest{
+		TaskID:     "TEST_TASK",
+		CommandID:  "TEST_COMMAND",
+		NotifierID: "test-notifier",
+		RunBy:      contract.TaskRunByUser,
+	})
+	require.NoError(t, err) // Submit 자체는 큐에 등록될 뿐 에러를 즉시 반환하지 않습니다.
+
+	// 비동기 처리가 끝나 에러 알림이 발송될 때까지 대기
+	select {
+	case <-notifyCalled:
+		// 성공
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for ID collision error notification")
+	}
+
+	// mockSender의 Notify가 호출되었는지 검증
+	mockSender.AssertExpectations(t)
+}
+
+// TestService_PanicInSubmit는 Submit 메서드 호출 중 내부 로직에서 발생한 패닉이 복구(Recover)되는지 검증합니다.
+func TestService_PanicInSubmit(t *testing.T) {
+	service, _, _, _, _, _ := setupTestService(t)
+
+	// 억지로 panic을 유도합니다. (예: req 파라미터가 nil일 때)
+	// *Service.Submit() 내부에서 panic을 처리하는 defer가 동작하는지 확인합니다.
+	err := service.Submit(context.Background(), nil)
+
+	require.Error(t, err, "nil req에 대한 방어 로직이 에러를 뱉는지 확인")
+	require.Contains(t, err.Error(), "요청을 처리할 수 없습니다")
+}
+
+// TestService_HandleTaskEvent_UnknownID는 존재하지 않는 Task ID에 대한 Done/Cancel 이벤트가 안전하게 무시되는지 검증합니다.
+func TestService_HandleTaskEvent_UnknownID(t *testing.T) {
+	appConfig := &config.AppConfig{}
+	mockIDGen := new(contractmocks.MockIDGenerator)
+	mockStorage := new(contractmocks.MockTaskResultStore)
+	service := NewService(appConfig, mockIDGen, mockStorage)
+
+	mockSender := notificationmocks.NewMockNotificationSender(t)
+	service.SetNotificationSender(mockSender)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serviceStopWG := &sync.WaitGroup{}
+	serviceStopWG.Add(1)
+
+	// 비동기 통지 호출을 감지하기 위한 채널
+	notifyCalled := make(chan struct{})
+
+	// 없는 ID에 대해 취소를 요청하면 에러 메시지 알림이 가야 합니다.
+	mockSender.On("Notify", mock.Anything, mock.MatchedBy(func(n contract.Notification) bool {
+		return n.ErrorOccurred == true && n.Cancelable == false
+	})).Run(func(args mock.Arguments) {
+		close(notifyCalled)
+	}).Return(nil).Once()
+
+	err := service.Start(ctx, serviceStopWG)
+	require.NoError(t, err)
+
+	defer func() {
+		cancel()
+		serviceStopWG.Wait()
+	}()
+
+	err = service.Cancel("unknown-instance-id")
+	require.NoError(t, err, "존재하지 않는 ID에 대한 Cancel 요청 자체는 에러가 발생하지 않아야 합니다")
+
+	// 비동기 알림 전송이 완료될 때까지 안전하게 대기 (최대 1초)
+	select {
+	case <-notifyCalled:
+		// 성공
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for mockSender.Notify to be called")
+	}
+
+	mockSender.AssertExpectations(t)
+}
