@@ -25,7 +25,7 @@ func (t *task) analyzeAndReport(commandSettings *watchPriceSettings, currentSnap
 
 	// 신규 등록 또는 가격 변동 상품이 발견된 경우, 조회 조건과 변동 목록을 함께 조합하여 알림 메시지를 구성합니다.
 	if len(diffs) > 0 {
-		searchConditionsSummary := renderSearchConditionsSummary(commandSettings)
+		searchConditionsSummary := renderSearchConditionsSummary(commandSettings, supportsHTML)
 
 		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s", searchConditionsSummary, renderProductDiffs(diffs, supportsHTML)), hasChanges
 	}
@@ -35,7 +35,7 @@ func (t *task) analyzeAndReport(commandSettings *watchPriceSettings, currentSnap
 	// 스케줄러 실행 시에는 조용히 스냅샷만 갱신하고,
 	// 사용자 직접 실행 시에는 "현재 조회 조건에 해당되는 상품 목록 전체"를 알림으로 전송하여 시스템이 정상 동작 중임을 확인시켜 줍니다.
 	if t.RunBy() == contract.TaskRunByUser {
-		searchConditionsSummary := renderSearchConditionsSummary(commandSettings)
+		searchConditionsSummary := renderSearchConditionsSummary(commandSettings, supportsHTML)
 
 		if len(currentSnapshot.Products) == 0 {
 			return fmt.Sprintf("조회 조건에 해당되는 상품이 존재하지 않습니다.\n\n%s", searchConditionsSummary), hasChanges

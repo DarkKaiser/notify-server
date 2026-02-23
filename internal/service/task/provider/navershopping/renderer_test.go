@@ -22,18 +22,18 @@ func TestFormatProductItem_HTML(t *testing.T) {
 	t.Parallel()
 
 	p := &product{
-		Title:    "Apple iPad Air",
+		Title:    "Apple iPad <Air>",
 		Link:     "https://shopping.naver.com/products/1234",
 		LowPrice: 850000,
-		MallName: "Apple Official",
+		MallName: "A & B Shop",
 	}
 
 	got := formatProductItem(p, true, "", nil)
 
 	// HTML 포맷 구조 검증
 	assert.Contains(t, got, `<a href="https://shopping.naver.com/products/1234">`)
-	assert.Contains(t, got, `<b>Apple iPad Air</b>`)
-	assert.Contains(t, got, "(Apple Official)")
+	assert.Contains(t, got, `<b>Apple iPad &lt;Air&gt;</b>`)
+	assert.Contains(t, got, "(A &amp; B Shop)")
 	assert.Contains(t, got, "850,000원")
 
 	// 텍스트 모드 전용 요소는 없어야 함
@@ -337,7 +337,7 @@ func TestRenderSearchConditionsSummary(t *testing.T) {
 			WithPriceLessThan(1500000).
 			Build()
 
-		got := renderSearchConditionsSummary(&s)
+		got := renderSearchConditionsSummary(&s, false)
 
 		assert.Contains(t, got, "갤럭시 S24")
 		assert.Contains(t, got, "공식,정품")
@@ -349,7 +349,7 @@ func TestRenderSearchConditionsSummary(t *testing.T) {
 		t.Parallel()
 
 		s := NewSettingsBuilder().WithQuery("MacBook Air").WithPriceLessThan(2000000).Build()
-		got := renderSearchConditionsSummary(&s)
+		got := renderSearchConditionsSummary(&s, false)
 
 		assert.Contains(t, got, "MacBook Air")
 		assert.Contains(t, got, "2,000,000원 미만")
@@ -362,9 +362,26 @@ func TestRenderSearchConditionsSummary(t *testing.T) {
 		t.Parallel()
 
 		s := NewSettingsBuilder().WithQuery("test").WithPriceLessThan(1000000).Build()
-		got := renderSearchConditionsSummary(&s)
+		got := renderSearchConditionsSummary(&s, false)
 
 		assert.Contains(t, got, "1,000,000원 미만")
+	})
+
+	t.Run("HTML 이스케이프 검증", func(t *testing.T) {
+		t.Parallel()
+
+		s := NewSettingsBuilder().
+			WithQuery("MacBook < 15\"").
+			WithIncludedKeywords("M1 & M2").
+			WithExcludedKeywords("Refurbished > 1Year").
+			WithPriceLessThan(1500000).
+			Build()
+
+		got := renderSearchConditionsSummary(&s, true)
+
+		assert.Contains(t, got, "MacBook &lt; 15&#34;")
+		assert.Contains(t, got, "M1 &amp; M2")
+		assert.Contains(t, got, "Refurbished &gt; 1Year")
 	})
 }
 
@@ -384,4 +401,56 @@ func TestHTMLvsText_FormatDiff(t *testing.T) {
 	assert.NotEqual(t, htmlOutput, textOutput)
 	assert.Contains(t, htmlOutput, "<a href")
 	assert.NotContains(t, textOutput, "<a href")
+}
+
+// =============================================================================
+// 보안 및 예외(Edge Case) 방어 검증
+// =============================================================================
+
+// TestFormatProductItem_XSS_Escape 악의적인 HTML 태그(XSS)가 입력으로 들어왔을 때
+// 안전하게 Escape 처리되어 렌더러가 무너지지 않는지(Security) 검증합니다.
+func TestFormatProductItem_XSS_Escape(t *testing.T) {
+	t.Parallel()
+
+	// 악의적인 스크립트 및 태그가 포함된 상품 정보 시뮬레이션
+	maliciousProduct := &product{
+		Title:    `<script>alert("XSS")</script> Bad Product`,
+		Link:     `https://example.com/item?q=<iframe src="javascript:alert(1)">`,
+		LowPrice: 1000,
+		MallName: `Store <img src=x onerror=alert("XSS")>`,
+	}
+
+	// HTML 렌더링 모드일 때만 Escape가 발생하므로 true로 테스트
+	got := formatProductItem(maliciousProduct, true, "", nil)
+
+	// 공격용 태그 문자(<, >)가 안전한 HTML Entity(&lt;, &gt;)로 변환되었는지 단언(Assert)
+	assert.Contains(t, got, "&lt;script&gt;alert(&#34;XSS&#34;)&lt;/script&gt;")
+	assert.Contains(t, got, "&lt;iframe src=&#34;javascript:alert(1)&#34;&gt;")
+	assert.Contains(t, got, "&lt;img src=x onerror=alert(&#34;XSS&#34;)&gt;")
+
+	// 원본 악성 태그가 그대로 노출되면 안 됨
+	assert.NotContains(t, got, "<script>")
+	assert.NotContains(t, got, "<iframe>")
+	assert.NotContains(t, got, "<img")
+}
+
+// TestRenderSearchConditionsSummary_NilPointer 예외적인 빈 값(nil 또는 초기화 안 됨)이
+// 전달되었을 때 렌더러가 패닉(Panic) 없이 안전하게 동작하는지(Robustness) 검증합니다.
+func TestRenderSearchConditionsSummary_NilPointer(t *testing.T) {
+	t.Parallel()
+
+	// 1. Settings 값의 필터 필드가 초기화되지 않은 극한 상황 시뮬레이션
+	// (기본적으로 NewSettingsBuilder를 쓰면 안전하지만 외부 요인 배제 불가)
+	emptySettings := &watchPriceSettings{
+		Query: "Empty Query",
+		// Filters: 익명 구조체이므로 명시적으로 초기화하지 않으면 0값(zero-value) 할당됨
+	}
+
+	gotText := renderSearchConditionsSummary(emptySettings, false)
+	assert.Contains(t, gotText, "Empty Query")
+	assert.Contains(t, gotText, "0원 미만") // 0값은 0원으로 정상 렌더링
+
+	gotHTML := renderSearchConditionsSummary(emptySettings, true)
+	assert.Contains(t, gotHTML, "Empty Query")
+	assert.Contains(t, gotHTML, "0원 미만")
 }

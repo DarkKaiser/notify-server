@@ -133,6 +133,10 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		return nil, newErrEndpointParseFailed(err)
 	}
 
+	// 수집 루프 중복 감지를 위한 Set
+	// 네이버 API가 버그로 인해 동일한 데이터를 반복 반환하는 무한 루프(공회전)를 방지합니다.
+	seenProductIDs := make(map[string]bool)
+
 	// =========================================================================
 	// [메인 루프] 페이지 단위로 상품 데이터를 수집합니다.
 	// =========================================================================
@@ -219,11 +223,46 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 			targetFetchCount = min(currentResponse.Total, policyMaxFetchCount)
 		}
 
+		// API 응답에 상품이 없으면, 더 이상 조회할 데이터가 없는 것이므로 즉시 수집 루프를 종료합니다.
+		// (네이버 API의 Total 값이 실제 반환되는 데이터 수보다 크거나 허수가 포함된 경우에 발생하는 공회전 방지)
+		if len(currentResponse.Items) == 0 {
+			t.Log(component, applog.DebugLevel, "수집 조기 종료: 더 이상 가져올 상품 데이터가 없음", nil, applog.Fields{
+				"query":              commandSettings.Query,
+				"start_index":        startIndex,
+				"target_fetch_count": targetFetchCount,
+				"fetched_count":      len(accumulatedResponse.Items),
+			})
+
+			break
+		}
+
+		// 방금 가져온 페이지에 "완전히 새로운 상품"이 단 한 개라도 있는지 확인합니다.
+		hasNewItems := false
+		for _, item := range currentResponse.Items {
+			if !seenProductIDs[item.ProductID] {
+				seenProductIDs[item.ProductID] = true
+				hasNewItems = true
+			}
+		}
+
+		// 만약 가져온 항목들이 전부 다 이전 페이지에서 이미 봤던 상품이라면?
+		// API가 고장나서 똑같은 데이터를 계속 주거나 페이징의 실제 끝에 도달한 것이므로 루프를 강제 종료합니다.
+		if !hasNewItems {
+			t.Log(component, applog.DebugLevel, "수집 조기 종료: API 중복 데이터 반복 반환 (공회전 방지)", nil, applog.Fields{
+				"query":              commandSettings.Query,
+				"start_index":        startIndex,
+				"target_fetch_count": targetFetchCount,
+				"fetched_count":      len(accumulatedResponse.Items),
+			})
+
+			break
+		}
+
 		// 이번 페이지에서 가져온 상품 목록을 전체 수집 버퍼에 순서대로 병합합니다.
 		accumulatedResponse.Items = append(accumulatedResponse.Items, currentResponse.Items...)
 
 		// 다음 루프에서는 이번 페이지의 마지막 아이템 다음부터 조회를 시작합니다.
-		startIndex += defaultDisplayCount
+		startIndex += len(currentResponse.Items)
 
 		// 다음 startIndex가 목표 수집량을 초과하면 더 가져올 페이지가 없으므로 루프를 즉시 종료합니다.
 		if startIndex > targetFetchCount {
@@ -290,6 +329,9 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 	// 이렇게 하면 루프 중 슬라이스가 동적으로 확장될 때마다 발생하는 메모리 재할당과 데이터 복사를 방지합니다.
 	collectedProducts := make([]*product, 0, len(accumulatedResponse.Items))
 
+	// 중복 상품을 제거하기 위한 Set(집합) 상태 공간입니다.
+	seenProducts := make(map[string]bool)
+
 	for _, item := range accumulatedResponse.Items {
 		// 매 항목 처리 전에 취소 신호를 확인하여, 대량의 데이터를 처리하는 중에도 빠르게 중단할 수 있도록 합니다.
 		if t.IsCanceled() {
@@ -312,6 +354,13 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 		if !keywordFilter.Match(plainTitle) {
 			continue
 		}
+
+		// [중복 제거] 이미 수집된 상품인지 고유 ID를 통해 확인합니다.
+		// 이 조건은 실시간 랭킹 변동으로 인해 페이징을 넘어갈 때 이전 내용이 다시 검색되는 문제를 방지합니다.
+		if seenProducts[item.ProductID] {
+			continue
+		}
+		seenProducts[item.ProductID] = true
 
 		// [2차 필터] 상품 데이터를 파싱하고, 설정된 가격 상한선 미만인 경우에만 최종 수집 목록에 추가합니다.
 		if p := t.parseProduct(item); p != nil {

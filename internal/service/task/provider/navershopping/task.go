@@ -28,7 +28,7 @@ func init() {
 			{
 				ID: WatchPriceAnyCommand,
 
-				AllowMultiple: true,
+				AllowMultiple: false,
 
 				NewSnapshot: func() any { return &watchPriceSnapshot{} },
 			},

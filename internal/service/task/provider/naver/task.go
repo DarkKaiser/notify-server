@@ -26,7 +26,7 @@ func init() {
 			{
 				ID: WatchNewPerformancesCommand,
 
-				AllowMultiple: true,
+				AllowMultiple: false,
 
 				NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
 			},
