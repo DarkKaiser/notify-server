@@ -6,6 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
+	"github.com/PuerkitoBio/goquery"
+	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
@@ -104,6 +108,62 @@ func (p *product) updateLowestPrice() bool {
 		return true
 	}
 	return false
+}
+
+// extractPriceDetails HTML DOM에서 가격 상세 정보(정상가, 할인가, 할인율)를 추출하여 Product 구조체에 매핑합니다.
+//
+// [동작 방식]
+// 마켓컬리 상세 페이지의 가격 표시 DOM 구조는 할인 적용 여부에 따라 상이합니다.
+// 본 함수는 이 구조적 차이를 식별하여 적절한 필드에 값을 바인딩합니다.
+//
+//  1. 할인 미적용: 단일 가격 요소(Price)만 존재
+//  2. 할인 적용중: 할인율(Rate) + 할인가(Discounted) + 정상가(Price, 취소선) 모두 존재
+//
+// [매개변수]
+//   - sel: 가격 정보가 포함된 DOM Selection
+//   - productPageURL: 에러 발생 시 디버깅을 돕기 위해 로그에 포함할 상품 페이지 URL
+func (p *product) extractPriceDetails(sel *goquery.Selection, productPageURL string) error {
+	var err error
+	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
+	if ps.Length() == 0 /* 가격, 단위(원) */ {
+		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		if ps.Length() != 2 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
+		}
+
+		// 가격
+		p.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
+		}
+	} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
+		// 할인율
+		p.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
+		}
+
+		// 할인 가격
+		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		if ps.Length() != 2 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
+		}
+
+		p.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
+		if err != nil {
+			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
+		}
+
+		// 가격
+		ps = sel.Find("span.css-1s96j0s > span")
+		if ps.Length() != 1 /* 가격 + 단위(원) */ {
+			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
+		}
+		p.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
+	} else {
+		return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
+	}
+	return nil
 }
 
 // Render 상품 정보를 알림 메시지 포맷으로 변환합니다.
