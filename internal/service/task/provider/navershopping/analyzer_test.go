@@ -1,6 +1,7 @@
 package navershopping
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -173,7 +174,8 @@ func TestAnalyzeAndReport_TableDriven(t *testing.T) {
 			currentItems: []*product{p1},
 			prevItems:    []*product{p1Same},
 			checkMsg: func(t *testing.T, msg string, hasChanges bool) {
-				// renderSearchConditionsSummary 결과로 Query가 포함되어야 함
+				// renderSearchConditionsSummary 결과로 Query가 포함되어야 함.
+				// 단, HTML 모드일 때와 아닐 때 출력 양식이 다를 수 있으나 현재 구현상 "test"는 항상 포함됨
 				assert.Contains(t, msg, "test", "검색 조건 요약(Query)이 메시지에 포함되어야 합니다")
 			},
 		},
@@ -183,12 +185,34 @@ func TestAnalyzeAndReport_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tsk := newTestTask(tt.runBy)
-			current := makePriceSnapshot(tt.currentItems)
-			prev := makePriceSnapshot(tt.prevItems)
+			// supportsHTML을 true/false 양쪽 케이스로 나누어서 실행 및 검증
+			for _, supportsHTML := range []bool{true, false} {
+				t.Run(fmt.Sprintf("supportsHTML=%v", supportsHTML), func(t *testing.T) {
+					tsk := newTestTask(tt.runBy)
+					current := makePriceSnapshot(tt.currentItems)
+					prev := makePriceSnapshot(tt.prevItems)
 
-			msg, hasChanges := tsk.analyzeAndReport(&settings, current, prev, false)
-			tt.checkMsg(t, msg, hasChanges)
+					msg, hasChanges := tsk.analyzeAndReport(&settings, current, prev, supportsHTML)
+
+					// 기본 메시지 및 상태 검증
+					tt.checkMsg(t, msg, hasChanges)
+
+					// HTML 지원 모드별 전용 태그 존재 여부 교차 검증 (메시지가 있는 경우만)
+					if msg != "" {
+						if supportsHTML {
+							// HTML 렌더링 모드에서는 볼드체(<b>)나 링크(<a>) 태그가 메시지에 포함되어야 함
+							// 단, "상품이 존재하지 않습니다" (결과 없음) 케이스의 경우 검색조건 요약에서
+							// 값이 모두 빈 값이라면 <b> 태그가 안 생길 수 있으므로 조건부 검증
+							if tt.name != "결과 없음 (User) → '상품이 존재하지 않습니다' 반환" {
+								assert.Contains(t, msg, "<b>", "HTML 모드에서는 최소한 하나의 강조(볼드) 태그가 포함되어야 합니다")
+							}
+						} else {
+							assert.NotContains(t, msg, "<b>", "텍스트 모드에서는 <b> 태그가 포함되어서는 안 됩니다")
+							assert.NotContains(t, msg, "<a href=", "텍스트 모드에서는 링크(<a>) 태그가 포함되어서는 안 됩니다")
+						}
+					}
+				})
+			}
 		})
 	}
 }

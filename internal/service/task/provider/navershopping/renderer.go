@@ -2,6 +2,7 @@ package navershopping
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
@@ -96,9 +97,9 @@ func formatProductItem(p *product, supportsHTML bool, m mark.Mark, prev *product
 
 		fmt.Fprintf(&sb,
 			htmlFormat,
-			p.Link,
-			p.Title,
-			p.MallName,
+			html.EscapeString(p.Link),
+			html.EscapeString(p.Title),
+			html.EscapeString(p.MallName),
 			strutil.Comma(p.LowPrice),
 		)
 	} else {
@@ -172,18 +173,29 @@ func renderCurrentStatus(snapshot *watchPriceSnapshot, supportsHTML bool) string
 //
 // 매개변수:
 //   - settings: 렌더링에 사용할 조회 조건 값들입니다.
+//   - supportsHTML: 알림을 수신할 메신저 채널(예: 텔레그램)의 HTML 서식 지원 여부
 //
 // 반환값: 여러 조건 항목이 글머리 기호(•)로 정리된 사람이 읽기 쉬운(Human-Readable) 형식의 문자열
-func renderSearchConditionsSummary(settings *watchPriceSettings) string {
+func renderSearchConditionsSummary(settings *watchPriceSettings, supportsHTML bool) string {
+	query := settings.Query
+	includedKeywords := settings.Filters.IncludedKeywords
+	excludedKeywords := settings.Filters.ExcludedKeywords
+
+	if supportsHTML {
+		query = html.EscapeString(query)
+		includedKeywords = html.EscapeString(includedKeywords)
+		excludedKeywords = html.EscapeString(excludedKeywords)
+	}
+
 	return fmt.Sprintf(`조회 조건은 아래와 같습니다:
 
   • 검색 키워드 : %s
   • 상품명 포함 키워드 : %s
   • 상품명 제외 키워드 : %s
   • %s원 미만의 상품`,
-		settings.Query,
-		settings.Filters.IncludedKeywords,
-		settings.Filters.ExcludedKeywords,
+		query,
+		includedKeywords,
+		excludedKeywords,
 		strutil.Comma(settings.Filters.PriceLessThan),
 	)
 }

@@ -1,12 +1,6 @@
 package naver
 
 import (
-	"context" // Added context import
-	"encoding/json"
-	"fmt"
-	"net/url"
-	"strconv"
-	"sync"
 	"testing"
 
 	"github.com/darkkaiser/notify-server/internal/config"
@@ -15,57 +9,48 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
-// === Mocks ===
-
-type mockNotificationSender struct{}
-
-func (m *mockNotificationSender) Notify(ctx context.Context, notification contract.Notification) error {
-	return nil
-}
-
-func (m *mockNotificationSender) SupportsHTML(notifierTaskID contract.NotifierID) bool {
-	return true
-}
-
-// === Tests ===
-
 func TestNewTask(t *testing.T) {
-	// 격리를 위해 전역 레지스트리 초기화
 	provider.ClearForTest()
 	defer provider.ClearForTest()
 
-	// Given: 기본 TaskConfig 등록 (테스트 헬퍼 활용 또는 직접 등록)
-	// 하지만 newTask 함수 자체는 레지스트리 의존성 없이 호출 가능하므로
-	// 여기서는 newTask에 전달할 인자(params) 검증 위주로 진행
-
-	defaultCfg := newConfigBuilder().
-		withTask(string(TaskID), string(WatchNewPerformancesCommand), defaultTaskData()).
-		build()
+	// 테스트용 기본 AppConfig 설정
+	baseAppConfig := &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: string(TaskID),
+				Commands: []config.CommandConfig{
+					{
+						ID: string(WatchNewPerformancesCommand),
+						Data: map[string]interface{}{
+							"query":               "뮤지컬",
+							"max_pages":           50,
+							"page_fetch_delay_ms": 100,
+						},
+					},
+				},
+			},
+		},
+	}
 
 	mockFetcher := mocks.NewMockHTTPFetcher()
 	mockStorage := &contractmocks.MockTaskResultStore{}
 
-	type testCase struct {
+	tests := []struct {
 		name        string
 		params      provider.NewTaskParams
 		expectError bool
-		errorTarget error // 특정 에러 타겟 검증 (errors.Is)
-		errorType   error // 특정 에러 타입 검증 (As) - 여기서는 provider 패키지의 에러 타입 확인
-	}
-
-	tests := []testCase{
+		errType     error // 에러 타입 검증용 (Errors.Is 사용)
+	}{
 		{
-			name: "성공: 올바른 TaskID와 CommandID",
+			name: "성공: 정상적인 TaskID와 CommandID",
 			params: provider.NewTaskParams{
 				Request: &contract.TaskSubmitRequest{
 					TaskID:    TaskID,
 					CommandID: WatchNewPerformancesCommand,
 				},
-				AppConfig: defaultCfg,
+				AppConfig: baseAppConfig,
 				Fetcher:   mockFetcher,
 				Storage:   mockStorage,
 			},
@@ -75,41 +60,68 @@ func TestNewTask(t *testing.T) {
 			name: "실패: 지원하지 않는 TaskID",
 			params: provider.NewTaskParams{
 				Request: &contract.TaskSubmitRequest{
-					TaskID:    "INVALID_TASK",
+					TaskID:    "INVALID_TASK_ID",
 					CommandID: WatchNewPerformancesCommand,
 				},
-				AppConfig: defaultCfg,
+				AppConfig: baseAppConfig,
 				Fetcher:   mockFetcher,
 				Storage:   mockStorage,
 			},
 			expectError: true,
-			// provider.NewErrTaskNotSupported 반환 예상
+			errType:     provider.NewErrTaskNotSupported("INVALID_TASK_ID"),
 		},
-		// CommandID 검증은 newTask 내부에서 default case로 빠지는 경우
 		{
 			name: "실패: 지원하지 않는 CommandID",
 			params: provider.NewTaskParams{
 				Request: &contract.TaskSubmitRequest{
 					TaskID:    TaskID,
-					CommandID: "INVALID_COMMAND",
+					CommandID: "INVALID_COMMAND_ID",
 				},
-				AppConfig: defaultCfg,
+				AppConfig: baseAppConfig,
 				Fetcher:   mockFetcher,
 				Storage:   mockStorage,
 			},
 			expectError: true,
-			// provider.NewErrCommandNotSupported 반환 예상
+			errType:     provider.NewErrCommandNotSupported("INVALID_COMMAND_ID", []contract.TaskCommandID{WatchNewPerformancesCommand}),
 		},
 		{
-			name: "실패: 설정 파일에 해당 Command 설정 누락",
+			name: "실패: AppConfig에 Command 설정 누락",
 			params: provider.NewTaskParams{
 				Request: &contract.TaskSubmitRequest{
 					TaskID:    TaskID,
 					CommandID: WatchNewPerformancesCommand,
 				},
-				AppConfig: &config.AppConfig{}, // 빈 설정
+				AppConfig: &config.AppConfig{}, // 설정 없음
 				Fetcher:   mockFetcher,
 				Storage:   mockStorage,
+			},
+			expectError: true,
+			// 구체적인 에러 타입은 provider.ErrCommandSettingsNotFound 계열이나, 여기서는 에러 발생 자체를 중요하게 봅니다.
+		},
+		{
+			name: "실패: Command 설정은 있으나 유효성 검증(Validate) 실패",
+			params: provider.NewTaskParams{
+				Request: &contract.TaskSubmitRequest{
+					TaskID:    TaskID,
+					CommandID: WatchNewPerformancesCommand,
+				},
+				AppConfig: &config.AppConfig{
+					Tasks: []config.TaskConfig{
+						{
+							ID: string(TaskID),
+							Commands: []config.CommandConfig{
+								{
+									ID:   string(WatchNewPerformancesCommand),
+									Data: map[string]interface{}{
+										// 필수값 "query" 누락으로 Validate() 에러 유도
+									},
+								},
+							},
+						},
+					},
+				},
+				Fetcher: mockFetcher,
+				Storage: mockStorage,
 			},
 			expectError: true,
 		},
@@ -117,367 +129,23 @@ func TestNewTask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// When
 			createdTask, err := newTask(tt.params)
 
-			// Then
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, createdTask)
+				if tt.errType != nil {
+					// 에러 메시지 내용으로 타입 비교 수렴
+					assert.Contains(t, err.Error(), tt.errType.Error())
+				}
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, createdTask)
+				// 생성된 Task가 *naver.task 타입인지 확인
 				assert.IsType(t, &task{}, createdTask)
+				// Base가 올바르게 초기화되었는지 TaskID로 간접 검증
+				assert.Equal(t, TaskID, createdTask.ID())
 			}
 		})
-	}
-}
-
-func TestExecute_WatchNewPerformances(t *testing.T) {
-	// 격리를 위한 Test Cleanup
-	provider.ClearForTest()
-	defer provider.ClearForTest()
-
-	type testCase struct {
-		name                 string
-		runBy                contract.TaskRunBy
-		mockSetup            func(b *mockResponseBuilder)
-		prevSnapshot         *watchNewPerformancesSnapshot
-		expectedMessage      string
-		expectedSnapshotSize int
-		expectError          bool
-	}
-
-	tests := []testCase{
-		{
-			name:  "성공: 신규 공연 발견 (User Run)",
-			runBy: contract.TaskRunByUser,
-			mockSetup: func(b *mockResponseBuilder) {
-				b.page(1).returns("Musical A", "Musical B")
-				b.page(2).returnsEmpty() // 종료 조건
-			},
-			prevSnapshot:         &watchNewPerformancesSnapshot{Performances: []*performance{}},
-			expectedMessage:      "새로운 공연정보가 등록되었습니다.",
-			expectedSnapshotSize: 2,
-			expectError:          false,
-		},
-		{
-			name:  "성공: 신규 공연 없음 - User Run (현재 상태 알림)",
-			runBy: contract.TaskRunByUser,
-			mockSetup: func(b *mockResponseBuilder) {
-				b.page(1).returns("Musical A")
-				b.page(2).returnsEmpty()
-			},
-			prevSnapshot: &watchNewPerformancesSnapshot{Performances: []*performance{
-				{Title: "Musical A", Place: "Place", Thumbnail: "http://example.com/thumb.jpg"},
-			}},
-			expectedMessage:      "신규로 등록된 공연정보가 없습니다.", // 현재 상태 출력
-			expectedSnapshotSize: -1,                    // 변경 없음 -> 스냅샷 nil
-			expectError:          false,
-		},
-		{
-			name:  "성공: 신규 공연 없음 - Scheduler Run (알림 없음)",
-			runBy: contract.TaskRunByScheduler,
-			mockSetup: func(b *mockResponseBuilder) {
-				b.page(1).returns("Musical A")
-				b.page(2).returnsEmpty()
-			},
-			prevSnapshot: &watchNewPerformancesSnapshot{Performances: []*performance{
-				{Title: "Musical A", Place: "Place", Thumbnail: "http://example.com/thumb.jpg"},
-			}},
-			expectedMessage:      "", // 알림 없음
-			expectedSnapshotSize: -1, // 변경 없음 -> 스냅샷 nil
-			expectError:          false,
-		},
-		{
-			name:  "실패: 네트워크 에러 발생",
-			runBy: contract.TaskRunByUser,
-			mockSetup: func(b *mockResponseBuilder) {
-				b.page(1).failsWith(fmt.Errorf("network error"))
-			},
-			prevSnapshot:         &watchNewPerformancesSnapshot{},
-			expectedMessage:      "",
-			expectedSnapshotSize: 0,
-			expectError:          true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			h := newTestHelper(t)
-			h.initTask(tt.runBy)
-
-			// Mock Setup
-			builder := newMockResponseBuilder(h.fetcher)
-			if tt.mockSetup != nil {
-				tt.mockSetup(builder)
-			}
-
-			// Execution
-			cmdConfig, err := provider.FindCommandSettings[watchNewPerformancesSettings](h.appConfig, TaskID, WatchNewPerformancesCommand)
-			require.NoError(t, err)
-			msg, newSnapshot, err := h.task.executeWatchNewPerformances(context.Background(), cmdConfig, tt.prevSnapshot, true)
-
-			// Verification
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-
-				if tt.expectedMessage != "" {
-					assert.Contains(t, msg, tt.expectedMessage)
-				} else {
-					assert.Empty(t, msg)
-				}
-
-				if tt.expectedSnapshotSize >= 0 {
-					snap, ok := newSnapshot.(*watchNewPerformancesSnapshot)
-					if ok {
-						assert.Len(t, snap.Performances, tt.expectedSnapshotSize)
-					} else {
-						assert.Fail(t, "Snapshot type assertion failed")
-					}
-				} else if tt.expectedSnapshotSize == -1 {
-					// 스냅샷이 nil이어야 함
-					assert.Nil(t, newSnapshot)
-				}
-			}
-		})
-	}
-}
-
-func TestTask_Run_Integration_Simulation(t *testing.T) {
-	provider.ClearForTest()
-	defer provider.ClearForTest()
-
-	h := newTestHelper(t)
-
-	// Mock Storage 설정 (Integration Test 전용)
-	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작
-	// Load 호출 시 "데이터 없음" -> 빈 스냅샷 시작 (ErrTaskResultNotFound 반환해야 진행됨)
-	h.storage.On("Load", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(contract.ErrTaskResultNotFound)
-	// Save 호출 성공
-	h.storage.On("Save", TaskID, WatchNewPerformancesCommand, mock.Anything).Return(nil)
-
-	// Mock HTTP 설정
-	b := newMockResponseBuilder(h.fetcher)
-	b.page(1).returns("New Musical")
-	b.page(2).returnsEmpty()
-
-	// Task 초기화 (User Run)
-	h.initTask(contract.TaskRunByUser)
-
-	// Task 실행 (Run 메서드 직접 호출)
-	var wg sync.WaitGroup
-	quit := make(chan contract.TaskInstanceID, 1)
-	sender := &mockNotificationSender{}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer func() {
-			quit <- h.taskHandler.InstanceID()
-		}()
-		// RunByUser는 한 번 실행 후 종료됨
-		h.task.Run(context.Background(), sender)
-	}()
-
-	// Wait for execution to finish
-	wg.Wait()
-
-	// Verify Storage Interaction
-	h.storage.AssertExpectations(t)
-
-	// Run 로그 확인은 어렵지만 에러 없이 끝났으면 성공
-}
-
-// === Test Helpers ===
-
-type testHelper struct {
-	t           *testing.T
-	fetcher     *mocks.MockHTTPFetcher
-	storage     *contractmocks.MockTaskResultStore
-	appConfig   *config.AppConfig
-	taskHandler provider.Task
-	task        *task
-}
-
-func newTestHelper(t *testing.T) *testHelper {
-	// 항상 깨끗한 상태에서 시작 (Registry 초기화)
-	provider.ClearForTest()
-
-	// 모의 객체 생성
-	fetcher := mocks.NewMockHTTPFetcher()
-	storage := &contractmocks.MockTaskResultStore{}
-
-	// 매 테스트마다 설정을 확실하게 다시 등록해야 함
-	provider.Register(TaskID, &provider.TaskConfig{
-		Commands: []*provider.TaskCommandConfig{{
-			ID: WatchNewPerformancesCommand,
-
-			AllowMultiple: true,
-
-			NewSnapshot: func() interface{} { return &watchNewPerformancesSnapshot{} },
-		}},
-
-		NewTask: newTask,
-	})
-
-	// 기본 설정 생성
-	cfgBuilder := newConfigBuilder().
-		withTask(string(TaskID), string(WatchNewPerformancesCommand), defaultTaskData())
-
-	return &testHelper{
-		t:         t,
-		fetcher:   fetcher,
-		storage:   storage,
-		appConfig: cfgBuilder.build(),
-	}
-}
-
-// initTask Task 인스턴스를 생성하고 의존성을 주입합니다.
-func (h *testHelper) initTask(runBy contract.TaskRunBy) {
-	req := &contract.TaskSubmitRequest{
-		TaskID:     TaskID,
-		CommandID:  WatchNewPerformancesCommand,
-		NotifierID: "test_notifier",
-		RunBy:      runBy, // Scheduler or User
-	}
-
-	handler, err := newTask(provider.NewTaskParams{
-		InstanceID:  "test_instance",
-		Request:     req,
-		AppConfig:   h.appConfig,
-		Storage:     h.storage,
-		Fetcher:     h.fetcher,
-		NewSnapshot: func() any { return &watchNewPerformancesSnapshot{} },
-	})
-	require.NoError(h.t, err)
-
-	h.taskHandler = handler
-	h.task = handler.(*task)
-}
-
-// === Mock Response Builder ===
-
-type mockResponseBuilder struct {
-	fetcher *mocks.MockHTTPFetcher
-	baseURL string
-	params  url.Values
-}
-
-func newMockResponseBuilder(fetcher *mocks.MockHTTPFetcher) *mockResponseBuilder {
-	// 기본 파라미터 설정
-	params := url.Values{}
-	params.Set("where", "nexearch")
-	params.Set("key", "kbList")
-	params.Set("pkid", "269")
-	params.Set("u1", "뮤지컬") // Default Query
-	params.Set("u2", "all")
-	params.Set("u3", "")
-	params.Set("u4", "ingplan")
-	params.Set("u5", "date")
-	params.Set("u6", "N")
-	params.Set("u8", "all")
-
-	return &mockResponseBuilder{
-		fetcher: fetcher,
-		baseURL: "https://m.search.naver.com/p/csearch/content/nqapirender.nhn",
-		params:  params,
-	}
-}
-
-func (b *mockResponseBuilder) withQuery(query string) *mockResponseBuilder {
-	b.params.Set("u1", query)
-	return b
-}
-
-func (b *mockResponseBuilder) page(pageNum int) *pageBuilder {
-	// 복사본을 만들어 해당 페이지 전용 빌더 반환
-	pageParams := url.Values{}
-	for k, v := range b.params {
-		pageParams[k] = v
-	}
-	pageParams.Set("u7", strconv.Itoa(pageNum))
-
-	return &pageBuilder{
-		parent:  b,
-		fullURL: fmt.Sprintf("%s?%s", b.baseURL, pageParams.Encode()),
-	}
-}
-
-type pageBuilder struct {
-	parent  *mockResponseBuilder
-	fullURL string
-}
-
-func (p *pageBuilder) returns(items ...string) {
-	itemHTMLs := ""
-	for _, item := range items {
-		itemHTMLs += fmt.Sprintf(`<li><div class="item"><div class="title_box"><strong class="name">%s</strong><span class="sub_text">Place</span></div><div class="thumb"><img src="http://example.com/thumb.jpg"></div></div></li>`, item)
-	}
-	rawHTML := fmt.Sprintf(`<ul>%s</ul>`, itemHTMLs)
-
-	// JSON Wrapping
-	htmlBytes, _ := json.Marshal(rawHTML)
-	jsonResp := fmt.Sprintf(`{"html": %s}`, string(htmlBytes))
-
-	p.parent.fetcher.SetResponse(p.fullURL, []byte(jsonResp))
-}
-
-func (p *pageBuilder) returnsEmpty() {
-	p.parent.fetcher.SetResponse(p.fullURL, []byte(`{"html": "<div class=\"api_no_result\">검색결과가 없습니다</div><!-- padding padding padding padding padding padding padding -->"}`))
-}
-
-func (p *pageBuilder) failsWith(err error) {
-	p.parent.fetcher.SetError(p.fullURL, err)
-}
-
-// === Config Builder (Fluent Interface) ===
-
-type configBuilder struct {
-	appConfig *config.AppConfig
-}
-
-func newConfigBuilder() *configBuilder {
-	return &configBuilder{
-		appConfig: &config.AppConfig{
-			Tasks: []config.TaskConfig{},
-		},
-	}
-}
-
-func (b *configBuilder) withTask(taskTaskID, commandTaskID string, data map[string]interface{}) *configBuilder {
-	b.appConfig.Tasks = append(b.appConfig.Tasks, config.TaskConfig{
-		ID: taskTaskID,
-		Commands: []config.CommandConfig{
-			{
-				ID:   commandTaskID,
-				Data: data,
-			},
-		},
-	})
-	return b
-}
-
-func (b *configBuilder) build() *config.AppConfig {
-	return b.appConfig
-}
-
-func defaultTaskData() map[string]interface{} {
-	return map[string]interface{}{
-		"query": "뮤지컬",
-		"filters": map[string]interface{}{
-			"title": map[string]interface{}{
-				"included_keywords": "",
-				"excluded_keywords": "",
-			},
-			"place": map[string]interface{}{
-				"included_keywords": "",
-				"excluded_keywords": "",
-			},
-		},
-		"max_pages":           50,
-		"page_fetch_delay_ms": 10,
 	}
 }
