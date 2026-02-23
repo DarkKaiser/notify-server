@@ -281,9 +281,6 @@ func (s *Service) handleTaskSubmit(serviceStopCtx context.Context, req *contract
 //   - Task가 존재하는 경우: 완료 로그를 기록하고 목록에서 인스턴스를 제거합니다.
 //   - Task가 존재하지 않는 경우: 비정상적인 완료 신호로 판단하여 경고 로그를 기록합니다.
 func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	if task, exists := s.tasks[instanceID]; exists {
 		applog.WithComponentAndFields(component, applog.Fields{
 			"task_id":     task.ID(),
@@ -309,9 +306,6 @@ func (s *Service) handleTaskDone(instanceID contract.TaskInstanceID) {
 //   - Task가 존재하는 경우: 실행 중인 Task를 즉시 취소하고, 알림을 발송합니다.
 //   - Task가 존재하지 않는 경우: 등록되지 않은 ID에 대한 취소 요청이므로 실패 알림을 발송합니다.
 func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID contract.TaskInstanceID) {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	if task, exists := s.tasks[instanceID]; exists {
 		// 해당 Task에 취소 신호를 보내 작업을 취소합니다.
 		task.Cancel()
@@ -387,11 +381,13 @@ func (s *Service) handleStop() {
 	// =====================================================================
 	// [단계 2] 입력 채널 닫기
 	// =====================================================================
-	// 채널을 닫으면 이벤트 루프가 더 이상 외부 요청(Submit, Cancel)을 받지 않습니다.
-	// 단계 1에서 running = false를 먼저 설정했으므로, 이 시점 이후에 Submit()/Cancel()이
-	// 호출되더라도 채널 전송 전에 early return하여 패닉이 발생하지 않습니다.
-	close(s.taskSubmitC)
-	close(s.taskCancelC)
+	// [중요] taskSubmitC, taskCancelC 채널을 의도적으로 닫지 않는 이유
+	// s.running = false 플래그를 통해 이미 안전하게 외부 요청(Submit, Cancel)을 차단하고 있으므로,
+	// 채널은 닫지 않고 열어둔 채 가비지 컬렉터(GC)가 자연스럽게 회수하도록 두는 것이
+	// Go 언어의 관례(Idiomatic Go)에 부합하고 성능상/구조적으로 안전합니다.
+	//
+	// close(s.taskSubmitC)
+	// close(s.taskCancelC)
 
 	// =====================================================================
 	// [단계 3] 모든 Task 고루틴 종료 대기
@@ -430,11 +426,15 @@ func (s *Service) handleStop() {
 	// [단계 4] taskDoneC 닫기 및 리소스 정리
 	// =====================================================================
 
-	// taskDoneC는 반드시 taskStopWG.Wait()가 완료된 이후에 닫아야 합니다.
-	// 이유: Wait() 완료 전까지는 Task 고루틴들이 아직 살아있을 수 있으며,
-	// 이들이 종료되며 taskDoneC에 전송을 시도할 수 있습니다.
-	// 미리 닫아버리면 "send on closed channel" 패닉이 발생합니다.
-	close(s.taskDoneC)
+	// [중요] taskDoneC 채널을 의도적으로 닫지 않는 이유
+	// 위에서 타임아웃(30초)이 발생한 경우, 일부 Task 고루틴은 아직 살아있을 수 있습니다.
+	// 이 상태에서 채널을 닫아버리면, 뒤늦게 종료된 Task 고루틴이 '닫힌 채널에 전송'을
+	// 시도하다가(send on closed channel) 서버 전체에 Panic이 발생합니다.
+	//
+	// Go 언어에서 채널은 열어둔 채로 두더라도 더 이상 참조하는 고루틴이 없어지면
+	// GC(Garbage Collector)가 알아서 안전하게 회수합니다.
+	// 따라서 안전한 Graceful Shutdown을 위해 절대 채널을 명시적으로 닫지 않습니다.
+	// close(s.taskDoneC)
 
 	// 서비스 내부 상태를 초기화하여 GC가 관련 리소스를 회수할 수 있도록 합니다.
 	s.runningMu.Lock()
@@ -454,9 +454,6 @@ func (s *Service) handleStop() {
 // true를 반환하여 호출자가 새로운 Task 시작을 즉시 중단할 수 있도록 합니다.
 // 중복이 없다면 false를 반환합니다.
 func (s *Service) rejectIfAlreadyRunning(serviceStopCtx context.Context, req *contract.TaskSubmitRequest) bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	for _, task := range s.tasks {
 		if task.ID() == req.TaskID && task.CommandID() == req.CommandID && !task.IsCanceled() {
 			// 동일한 작업이 이미 실행 중임을 사용자에게 알립니다.
@@ -481,179 +478,120 @@ func (s *Service) rejectIfAlreadyRunning(serviceStopCtx context.Context, req *co
 
 // registerAndRunTask 새로운 Task 인스턴스를 생성하고, 활성 목록에 안전하게 등록한 뒤 고루틴으로 실행합니다.
 //
-// # 재시도 전략
-//
-// InstanceID 생성과 등록 사이의 극히 짧은 시간 간격(TOCTOU) 동안 동일 ID가 충돌할 가능성에 대비하여,
-// 최대 3회까지 새로운 ID를 발급받아 등록을 재시도합니다.
-//
-// # 2단계 ID 충돌 감지 설계
-//
-// 충돌 감지는 의도적으로 두 번에 걸쳐 수행됩니다:
-//
-//  1. [1차 확인 - 빠른 사전 검증]: Task 인스턴스 생성(NewTask) 이전에 ID 충돌을 미리 감지합니다.
-//     생성 비용이 발생하기 전에 낭비를 조기에 차단하는 것이 목적입니다.
-//
-//  2. [2차 확인 - 최종 등록 전 원자적 확인]: NewTask 실행 중에 드물게 동일 ID가 등록될 수 있으므로,
-//     s.tasks 맵에 쓰기 직전 락을 잡은 상태에서 다시 한번 충돌 여부를 확인합니다.
-//     이 과정이 실질적인 레이스 컨디션(Race Condition)을 원천 차단합니다.
-//
 // # Task 생성 실패 처리
 //
 // NewTask가 nil을 반환하는 경우는 설정 오류 등 복구 불가능한 상황이므로,
 // 재시도 없이 즉시 사용자에게 오류 알림을 보내고 종료합니다.
+//
+// =====================================================================
+// [아키텍처 노트: Lock-free 설계]
+// 이 메서드는 단일 고루틴으로 동작하는 이벤트 루프(runEventLoop) 내에서만 순차적으로 실행됩니다.
+// 따라서 다른 고루틴이 동시에 s.tasks 맵에 접근하거나 ID를 선점하는 Race Condition이 발생하지 않으므로,
+// 뮤텍스 락(Mutex)이나 이중 충돌 검증, 재시도 루프와 같은 멀티 스레드용 방어 로직이 필요하지 않습니다.
+// =====================================================================
 func (s *Service) registerAndRunTask(serviceStopCtx context.Context, req *contract.TaskSubmitRequest, cfg *provider.ResolvedConfig) {
-	// 무한 루프 방지를 위한 최대 재시도 횟수입니다.
-	// ID 충돌은 매우 드문 이벤트이므로 3회면 충분합니다.
-	const maxRetries = 3
+	// =====================================================================
+	// [단계 1] InstanceID 생성
+	// =====================================================================
+	instanceID := s.idGenerator.New()
 
-	for i := range maxRetries {
-		// =====================================================================
-		// [단계 1] InstanceID 생성
-		// =====================================================================
-		// ID 생성은 락 바깥에서 수행하여 Lock Holding Time을 최소화합니다.
-		var instanceID = s.idGenerator.New()
+	// =====================================================================
+	// [단계 2] ID 충돌 확인
+	// =====================================================================
 
-		// =====================================================================
-		// [단계 2] 1차 충돌 확인 (빠른 사전 검증)
-		// =====================================================================
-		// Task 생성(NewTask) 전에 ID 충돌을 빠르게 감지해 불필요한 생성 비용을 예방합니다.
-		// 충돌 시, 락 내에서 재시도하지 않고(Deadlock 위험 방지) 즉시 락을 해제한 뒤
-		// 루프 처음으로 돌아가 새로운 ID를 발급받습니다.
-		s.runningMu.Lock()
-		if _, exists := s.tasks[instanceID]; exists {
-			s.runningMu.Unlock()
+	// ID 충돌은 정상적인 시스템에서 발생할 수 없는 매우 극단적인 상황이므로, 발생 시 즉시 에러 처리합니다.
+	if _, exists := s.tasks[instanceID]; exists {
+		applog.WithComponentAndFields(component, applog.Fields{
+			"task_id":      req.TaskID,
+			"command_id":   req.CommandID,
+			"notifier_id":  req.NotifierID,
+			"instance_id":  instanceID,
+			"run_by":       req.RunBy,
+			"active_tasks": len(s.tasks),
+		}).Error("Task 실행 실패: ID 생성 충돌 발생")
 
-			applog.WithComponentAndFields(component, applog.Fields{
-				"task_id":     req.TaskID,
-				"command_id":  req.CommandID,
-				"instance_id": instanceID,
-				"attempt":     i + 1,
-				"max_retries": maxRetries,
-			}).Debug("Task 1차 등록 실패: ID 충돌 (재시도 예정)")
-
-			continue
-		}
-		s.runningMu.Unlock()
-
-		// =====================================================================
-		// [단계 3] Task 인스턴스 생성
-		// =====================================================================
-		// 락 바깥에서 Task를 생성하여 락 보유 시간을 최소화합니다.
-		task, err := cfg.Task.NewTask(provider.NewTaskParams{
-			AppConfig:   s.appConfig,
-			Request:     req,
-			InstanceID:  instanceID,
-			Storage:     s.taskResultStore,
-			Fetcher:     s.fetcher,
-			NewSnapshot: cfg.Command.NewSnapshot,
+		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+			NotifierID:    req.NotifierID,
+			TaskID:        req.TaskID,
+			CommandID:     req.CommandID,
+			InstanceID:    "",
+			Message:       "시스템 오류로 작업 실행에 실패했습니다. (ID 충돌)",
+			Elapsed:       0,
+			ErrorOccurred: true,
+			Cancelable:    false,
 		})
-		if task == nil {
-			applog.WithComponentAndFields(component, applog.Fields{
-				"task_id":     req.TaskID,
-				"command_id":  req.CommandID,
-				"notifier_id": req.NotifierID,
-				"instance_id": instanceID,
-				"error":       err,
-			}).Error(err)
 
-			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
-				NotifierID:    req.NotifierID,
-				TaskID:        req.TaskID,
-				CommandID:     req.CommandID,
-				InstanceID:    "",
-				Message:       err.Error(),
-				Elapsed:       0,
-				ErrorOccurred: true,
-				Cancelable:    false,
-			})
-
-			return // Task 생성 실패는 설정 오류 등 복구 불가능한 상황이므로, 재시도 없이 즉시 종료합니다.
-		}
-
-		// =====================================================================
-		// [단계 4] 2차 충돌 확인 및 최종 등록 (원자적 처리)
-		// =====================================================================
-		// NewTask 실행 중 극히 드물게 동일 ID가 등록될 수 있으므로,
-		// s.tasks 맵에 쓰기 직전 락을 잡고 다시 한번 충돌 여부를 확인합니다.
-		s.runningMu.Lock()
-		if _, exists := s.tasks[instanceID]; exists {
-			s.runningMu.Unlock()
-
-			applog.WithComponentAndFields(component, applog.Fields{
-				"task_id":     req.TaskID,
-				"command_id":  req.CommandID,
-				"instance_id": instanceID,
-				"attempt":     i + 1,
-				"max_retries": maxRetries,
-			}).Warn("Task 2차 등록 실패: 레이스 컨디션 감지 (재시도 예정)")
-
-			continue
-		}
-
-		// 충돌이 없다면, 락을 잡은 상태에서 원자적으로 등록합니다.
-		s.tasks[instanceID] = task
-
-		s.runningMu.Unlock()
-
-		// =====================================================================
-		// [단계 5] Task 실행
-		// =====================================================================
-		s.taskStopWG.Add(1)
-		go func(t provider.Task) {
-			defer s.taskStopWG.Done()
-			defer func() {
-				s.taskDoneC <- t.InstanceID()
-			}()
-
-			// context.Background()를 전달하는 이유:
-			// serviceStopCtx가 취소되더라도 Task 내부의 알림 전송이 중단되지 않도록 하기 위함입니다.
-			// Task의 중단은 context가 아닌 task.Cancel()을 통해 명시적으로 처리합니다.
-			t.Run(context.Background(), s.notificationSender)
-		}(task)
-
-		// =====================================================================
-		// [단계 6] 시작 알림 전송 (선택적)
-		// =====================================================================
-		if req.NotifyOnStart {
-			go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
-				NotifierID:    req.NotifierID,
-				TaskID:        req.TaskID,
-				CommandID:     req.CommandID,
-				InstanceID:    instanceID,
-				Message:       "작업 진행중입니다. 잠시만 기다려 주세요.",
-				Elapsed:       0,
-				ErrorOccurred: false,
-				Cancelable:    req.RunBy == contract.TaskRunByUser,
-			})
-		}
-
-		return // 모든 단계가 성공적으로 완료되었습니다.
+		return
 	}
 
 	// =====================================================================
-	// 모든 재시도 소진
+	// [단계 3] Task 인스턴스 생성
 	// =====================================================================
-	// maxRetries 횟수를 모두 사용했음에도 ID 충돌이 해소되지 않은 경우입니다.
-	// 이는 정상적인 운영 환경에서는 발생해서는 안 되는 비정상 상황입니다.
-
-	applog.WithComponentAndFields(component, applog.Fields{
-		"task_id":      req.TaskID,
-		"command_id":   req.CommandID,
-		"notifier_id":  req.NotifierID,
-		"max_retries":  maxRetries,
-		"active_tasks": len(s.tasks),
-	}).Error("Task 실행 실패: ID 생성 충돌 한도 초과")
-
-	go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
-		NotifierID:    req.NotifierID,
-		TaskID:        req.TaskID,
-		CommandID:     req.CommandID,
-		InstanceID:    "",
-		Message:       "시스템 오류로 작업 실행에 실패했습니다. (ID 충돌)",
-		Elapsed:       0,
-		ErrorOccurred: true,
-		Cancelable:    false,
+	task, err := cfg.Task.NewTask(provider.NewTaskParams{
+		AppConfig:   s.appConfig,
+		Request:     req,
+		InstanceID:  instanceID,
+		Storage:     s.taskResultStore,
+		Fetcher:     s.fetcher,
+		NewSnapshot: cfg.Command.NewSnapshot,
 	})
+	if task == nil {
+		applog.WithComponentAndFields(component, applog.Fields{
+			"task_id":     req.TaskID,
+			"command_id":  req.CommandID,
+			"notifier_id": req.NotifierID,
+			"instance_id": instanceID,
+			"error":       err,
+		}).Error(err)
+
+		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+			NotifierID:    req.NotifierID,
+			TaskID:        req.TaskID,
+			CommandID:     req.CommandID,
+			InstanceID:    "",
+			Message:       err.Error(),
+			Elapsed:       0,
+			ErrorOccurred: true,
+			Cancelable:    false,
+		})
+
+		return // Task 생성 실패는 설정 오류 등 복구 불가능한 상황이므로 즉시 종료합니다.
+	}
+
+	// 단일 스레드 안전성 보장: 락 없이 맵에 원자적으로 등록합니다.
+	s.tasks[instanceID] = task
+
+	// =====================================================================
+	// [단계 4] Task 실행
+	// =====================================================================
+	s.taskStopWG.Add(1)
+	go func(t provider.Task) {
+		defer s.taskStopWG.Done()
+		defer func() {
+			s.taskDoneC <- t.InstanceID()
+		}()
+
+		// context.Background()를 전달하는 이유:
+		// serviceStopCtx가 취소되더라도 Task 내부의 알림 전송이 중단되지 않도록 하기 위함입니다.
+		// Task의 중단은 context가 아닌 task.Cancel()을 통해 명시적으로 처리합니다.
+		t.Run(context.Background(), s.notificationSender)
+	}(task)
+
+	// =====================================================================
+	// [단계 5] 시작 알림 전송 (선택적)
+	// =====================================================================
+	if req.NotifyOnStart {
+		go s.notificationSender.Notify(serviceStopCtx, contract.Notification{
+			NotifierID:    req.NotifierID,
+			TaskID:        req.TaskID,
+			CommandID:     req.CommandID,
+			InstanceID:    instanceID,
+			Message:       "작업 진행중입니다. 잠시만 기다려 주세요.",
+			Elapsed:       0,
+			ErrorOccurred: false,
+			Cancelable:    req.RunBy == contract.TaskRunByUser,
+		})
+	}
 }
 
 // Submit Task 실행 요청을 검증하고 이벤트 루프의 실행 큐에 등록합니다.
@@ -681,23 +619,6 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 	if err := req.Validate(); err != nil {
 		return err
 	}
-
-	// handleStop()이 taskSubmitC를 닫은 이후에 Submit() 메서드가 호출될 경우,
-	// 닫힌 채널에 전송을 시도해 패닉이 발생할 수 있습니다.
-	// defer + recover로 이를 잡아 패닉을 에러로 변환하여 호출자에게 안전하게 반환합니다.
-	defer func() {
-		if r := recover(); r != nil {
-			err = newTaskSubmitPanicError(r)
-
-			applog.WithComponentAndFields(component, applog.Fields{
-				"task_id":          req.TaskID,
-				"command_id":       req.CommandID,
-				"notifier_id":      req.NotifierID,
-				"submit_queue_len": len(s.taskSubmitC),
-				"panic":            r,
-			}).Error("Task 실행 요청 실패: 패닉 발생")
-		}
-	}()
 
 	// [검증 1] 요청받은 작업을 수행할 수 있는 유효한 설정이 있는지 조회합니다.
 	// Fail Fast 원칙에 따라, 이벤트 루프에 전달하기 전에 미리 걸러냅니다.
@@ -737,21 +658,6 @@ func (s *Service) Submit(ctx context.Context, req *contract.TaskSubmitRequest) (
 //   - nil: 취소 요청이 성공적으로 큐에 등록된 경우
 //   - error: 서비스가 실행 중이 아니거나, 취소 요청 큐가 가득 찬 경우
 func (s *Service) Cancel(instanceID contract.TaskInstanceID) (err error) {
-	// handleStop()이 taskCancelC를 닫은 이후에 Cancel() 메서드가 호출될 경우,
-	// 닫힌 채널에 전송을 시도해 패닉이 발생할 수 있습니다.
-	// defer + recover로 이를 잡아 패닉을 에러로 변환하여 호출자에게 안전하게 반환합니다.
-	defer func() {
-		if r := recover(); r != nil {
-			err = newTaskCancelPanicError(r)
-
-			applog.WithComponentAndFields(component, applog.Fields{
-				"instance_id":      instanceID,
-				"cancel_queue_len": len(s.taskCancelC),
-				"panic":            r,
-			}).Error("Task 취소 실패: 패닉 발생")
-		}
-	}()
-
 	// 서비스 실행 상태를 확인합니다.
 	// running 플래그를 읽을 때는 뮤텍스로 보호하여 데이터 레이스를 방지합니다.
 	s.runningMu.Lock()
