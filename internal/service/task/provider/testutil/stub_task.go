@@ -66,6 +66,12 @@ func (s *StubTask) RunCount() int64 {
 	return s.runCalled.Load()
 }
 
+// WaitCanceled Task가 취소될 때 (Cancel 호출 시) 닫히는 채널을 반환합니다.
+// RunFunc 등 사용자 정의 테스트 동작에서 취소를 감지하고 종료하는 데 사용됩니다.
+func (s *StubTask) WaitCanceled() <-chan struct{} {
+	return s.cancelC
+}
+
 func (s *StubTask) Run(ctx context.Context, ns contract.NotificationSender) {
 	s.runCalled.Add(1)
 
