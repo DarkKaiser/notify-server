@@ -21,32 +21,32 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 		{
 			name: "성공: 정상적인 CSV 파일 경로",
 			settings: &watchProductPriceSettings{
-				WatchProductsFile: "products.csv",
+				WatchListFile: "products.csv",
 			},
 			wantErr: false,
 		},
 		{
 			name: "성공: 대소문자 구분 없이 CSV 확장자 허용",
 			settings: &watchProductPriceSettings{
-				WatchProductsFile: "PRODUCTS.CSV",
+				WatchListFile: "PRODUCTS.CSV",
 			},
 			wantErr: false,
 		},
 		{
 			name: "실패: 파일 경로 미입력",
 			settings: &watchProductPriceSettings{
-				WatchProductsFile: "",
+				WatchListFile: "",
 			},
 			wantErr:   true,
-			errSubstr: "watch_products_file이 입력되지 않았거나 공백입니다",
+			errSubstr: "watch_list_file이 설정되지 않았거나 공백입니다",
 		},
 		{
 			name: "실패: 지원하지 않는 파일 확장자 (.txt)",
 			settings: &watchProductPriceSettings{
-				WatchProductsFile: "products.txt",
+				WatchListFile: "products.txt",
 			},
 			wantErr:   true,
-			errSubstr: ".csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
+			errSubstr: "watch_list_file은 .csv 파일 경로여야 합니다",
 		},
 	}
 

@@ -2,14 +2,11 @@ package kurly
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/internal/pkg/mark"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestFormatProductPageURL_TableDriven formatProductPageURL 함수의 다양한 입력 타입 처리를 검증합니다.
@@ -53,7 +50,7 @@ func TestFormatProductPageURL_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := formatProductPageURL(tt.id)
+			got := buildProductPageURL(tt.id)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -67,7 +64,7 @@ func TestProduct_URL_Integration(t *testing.T) {
 	want := "https://www.kurly.com/goods/99999"
 
 	// product.URL()은 내부적으로 formatProductPageURL을 호출해야 함
-	assert.Equal(t, want, p.URL(), "product.URL() should delegate to formatProductPageURL correctly")
+	assert.Equal(t, want, p.pageURL(), "product.URL() should delegate to formatProductPageURL correctly")
 }
 
 // TestProduct_IsOnSale_TableDriven 할인 여부 판단 로직을 검증합니다.
@@ -127,7 +124,7 @@ func TestProduct_IsOnSale_TableDriven(t *testing.T) {
 				Price:           tt.price,
 				DiscountedPrice: tt.discountedPrice,
 			}
-			assert.Equal(t, tt.want, p.IsOnSale())
+			assert.Equal(t, tt.want, p.isOnSale())
 		})
 	}
 }
@@ -189,7 +186,7 @@ func TestProduct_EffectivePrice_TableDriven(t *testing.T) {
 				Price:           tt.price,
 				DiscountedPrice: tt.discountedPrice,
 			}
-			assert.Equal(t, tt.want, p.EffectivePrice())
+			assert.Equal(t, tt.want, p.effectivePrice())
 		})
 	}
 }
@@ -251,7 +248,7 @@ func TestProduct_PriceChanged_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, tt.curr.PriceChanged(tt.prev))
+			assert.Equal(t, tt.want, tt.curr.hasPriceChangedFrom(tt.prev))
 		})
 	}
 }
@@ -351,7 +348,7 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 			originalTime := p.LowestPriceTimeUTC
 
 			// Execute
-			gotUpdated := p.updateLowestPrice()
+			gotUpdated := p.tryUpdateLowestPrice()
 
 			// Verify
 			assert.Equal(t, tt.wantLowestPrice, p.LowestPrice, "LowestPrice mismatch")
@@ -485,7 +482,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.Render(tt.supportsHTML, tt.mark)
+			got := renderProduct(tt.product, tt.supportsHTML, tt.mark)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want, "Missing expected substring: %s", want)
 			}
@@ -551,7 +548,7 @@ func TestProduct_RenderDiff_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tt.product.RenderDiff(tt.supportsHTML, "", tt.prev)
+			got := formatProductItem(tt.product, tt.supportsHTML, "", tt.prev)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want, "Missing expected substring: %s", want)
 			}
@@ -579,7 +576,7 @@ func BenchmarkProduct_Render(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = p.Render(true, mark.BestPrice)
+		_ = renderProduct(p, true, mark.BestPrice)
 	}
 }
 
@@ -605,7 +602,7 @@ func BenchmarkProduct_RenderDiff(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = p.RenderDiff(true, mark.BestPrice, prev)
+		_ = formatProductItem(p, true, mark.BestPrice, prev)
 	}
 }
 
@@ -624,11 +621,11 @@ func Example_render() {
 
 	// 1. Basic Render
 	fmt.Println("--- Render ---")
-	fmt.Println(p.Render(false, ""))
+	fmt.Println(renderProduct(p, false, ""))
 
 	// 2. Diff Render
 	fmt.Println("\n--- RenderDiff ---")
-	fmt.Println(p.RenderDiff(false, mark.Mark("📉"), prev))
+	fmt.Println(formatProductItem(p, false, mark.Mark("📉"), prev))
 
 	// Output:
 	// --- Render ---
@@ -639,83 +636,4 @@ func Example_render() {
 	// ☞ Example Item 📉
 	//       • 현재 가격 : 10,000원 ⇒ 9,000원 (10%)
 	//       • 이전 가격 : 11,000원
-}
-
-// TestProduct_ExtractPriceDetails HTML DOM에서 상품 가격 정보를 올바르게 추출하는지 검증합니다.
-func TestProduct_ExtractPriceDetails(t *testing.T) {
-	t.Parallel()
-
-	tmplNormal := `
-<div id="product-atf">
-	<section class="css-1ua1wyk">
-		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
-		<h2 class="css-xrp7wx">%s</h2>
-	</section>
-</div>`
-
-	tests := []struct {
-		name        string
-		mockHTML    string
-		wantProduct *product
-		wantErr     bool
-		errSubstr   string
-	}{
-		{
-			name: "성공: 정상 상품 파싱 (할인 없음)",
-			mockHTML: fmt.Sprintf(tmplNormal, "맛있는 사과",
-				`<div class="css-o2nlqt"><span>10,000</span><span>원</span></div>`),
-			wantProduct: &product{
-				Name:  "맛있는 사과",
-				Price: 10000,
-			},
-			wantErr: false,
-		},
-		{
-			name: "성공: 정상 상품 파싱 (할인 중)",
-			mockHTML: fmt.Sprintf(tmplNormal, "할인 바나나",
-				`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
-			wantProduct: &product{
-				Name:            "할인 바나나",
-				Price:           10000,
-				DiscountedPrice: 9000,
-				DiscountRate:    10,
-			},
-			wantErr: false,
-		},
-		{
-			name: "실패: CSS 구조 변경됨 (가격 정보 없음)",
-			mockHTML: `
-<div id="product-atf">
-	<section class="css-1ua1wyk">
-		<div class="css-84rb3h"><div>Header Only</div></div>
-	</section>
-</div>`,
-			wantErr:   true,
-			errSubstr: "상품 가격(0) 추출이 실패하였습니다",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			doc, _ := goquery.NewDocumentFromReader(strings.NewReader(tt.mockHTML))
-			sel := doc.Find("#product-atf > section.css-1ua1wyk")
-
-			p := &product{}
-			err := p.extractPriceDetails(sel, "http://example.com")
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errSubstr != "" {
-					assert.Contains(t, err.Error(), tt.errSubstr)
-				}
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.wantProduct.Price, p.Price)
-				assert.Equal(t, tt.wantProduct.DiscountedPrice, p.DiscountedPrice)
-				assert.Equal(t, tt.wantProduct.DiscountRate, p.DiscountRate)
-			}
-		})
-	}
 }

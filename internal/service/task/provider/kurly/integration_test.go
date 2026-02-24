@@ -73,7 +73,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -95,13 +95,13 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 
 	// CSV 파일 생성 (테스트용 임시 파일)
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	// 초기 결과 데이터 (비어있음)
 	resultData := &watchProductPriceSnapshot{
@@ -109,7 +109,7 @@ func TestKurlyTask_RunWatchProductPrice_Integration(t *testing.T) {
 	}
 
 	// CSV Provider 생성
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// 4. 실행
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
@@ -158,7 +158,7 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -180,23 +180,26 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	resultData := &watchProductPriceSnapshot{}
 
 	// CSV Loader 생성
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// 4. 실행
-	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
-	// 5. 검증
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "network error")
+	// 5. 검증: 부분 실패는 에러로 간주되지 않고 해당 상품이 무시됩니다.
+	// 따라서 전체 실행은 성공(err == nil)하고, 결과에는 수집된 상품이 0개이므로
+	// 이전 상태와의 차이가 없어서 변경 알림(message)과 신규 저장 스냅샷(newResultData)이 생성되지 않습니다.
+	require.NoError(t, err)
+	require.Empty(t, message)
+	require.Nil(t, newResultData)
 }
 
 func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
@@ -223,7 +226,7 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -245,34 +248,30 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 
 	// 3. 테스트 데이터 준비
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,Test Product,1\n", productID)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	resultData := &watchProductPriceSnapshot{}
 
 	// [Dependency Injection]
 	// 테스트 환경에서도 실제 CSVLoader를 사용하여 E2E	// [Dependency Injection]
 	// 테스트 환경에서도 실제 CSVLoader를 사용하여 E2E 시나리오를 검증합니다.
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// -------------------------------------------------------------------------
 	// 5. Execute Task Logic
 	// -------------------------------------------------------------------------
 	// 상품 코드가 숫자가 아니므로, 파싱 전 단계에서 에러가 반환되어야 합니다.
-	_, _, err = tTask.executeWatchProductPrice(context.Background(), loader, nil, false)
-
-	// resultData는 본 테스트 케이스에서 사용되지 않으므로 선언 제거가 필요하지만,
-	// 코드 구조상 상단에 선언되어 있어 여기서는 err 검증에 집중합니다.
-	_ = resultData
+	// 변경된 스펙: 부분 실패는 격리되며 에러를 반환하지 않습니다.
+	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, false)
 
 	// 5. 검증
-	require.Error(t, err)
-	// Kurly는 HTML에서 JSON 데이터를 추출하므로 다른 에러 메시지가 발생
-	// "JSON 데이터 추출이 실패하였습니다" 메시지 예상
-	require.Contains(t, err.Error(), "JSON 데이터 추출이 실패하였습니다")
+	require.NoError(t, err)
+	require.Empty(t, message)
+	require.Nil(t, newResultData)
 }
 
 func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
@@ -330,7 +329,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -350,11 +349,11 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	require.True(t, ok)
 
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	// 기존 결과 데이터 (동일한 데이터)
 	resultData := &watchProductPriceSnapshot{
@@ -370,7 +369,7 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	}
 
 	// CSV Loader 생성
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// 실행
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
@@ -436,7 +435,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -456,11 +455,11 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	require.True(t, ok)
 
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	// 기존 결과 데이터 (이전 가격)
 	resultData := &watchProductPriceSnapshot{
@@ -476,7 +475,7 @@ func TestKurlyTask_RunWatchProductPrice_PriceChange(t *testing.T) {
 	}
 
 	// CSV Loader 생성
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// 실행
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
@@ -526,7 +525,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 					{
 						ID: string(WatchProductPriceCommand),
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -546,11 +545,11 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	require.True(t, ok)
 
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: "test_products.csv",
+		WatchListFile: "test_products.csv",
 	}
 	csvContent := fmt.Sprintf("No,Name,Status\n%s,%s,1\n", productID, productName)
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
-	commandConfig.WatchProductsFile = csvFile
+	commandConfig.WatchListFile = csvFile
 
 	// 기존 결과 데이터 (정상 판매 중)
 	resultData := &watchProductPriceSnapshot{
@@ -567,7 +566,7 @@ func TestKurlyTask_RunWatchProductPrice_SoldOut(t *testing.T) {
 	}
 
 	// CSV Loader 생성
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	// 실행
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)

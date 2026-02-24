@@ -25,7 +25,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 					{
 						ID: "WatchProductPrice",
 						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
+							"watch_list_file": "test_products.csv",
 						},
 					},
 				},
@@ -41,7 +41,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 					{
 						ID: "WatchProductPrice",
 						Data: map[string]interface{}{
-							"watch_products_file": "invalid_extension.txt", // .csv required
+							"watch_list_file": "invalid_extension.txt", // .csv required
 						},
 					},
 				},
@@ -57,7 +57,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 					{
 						ID: "WatchProductPrice",
 						Data: map[string]interface{}{
-							"watch_products_file": "   ", // 공백 문자열
+							"watch_list_file": "   ", // 공백 문자열
 						},
 					},
 				},
@@ -159,7 +159,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: invalidConfig_NoCSV,
 			wantErr:   true,
-			errMsg:    "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
+			errMsg:    "watch_list_file은 .csv 파일 경로여야 합니다",
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (파일명 공백)",
@@ -169,7 +169,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: invalidConfig_EmptyFile,
 			wantErr:   true,
-			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다",
+			errMsg:    "watch_list_file이 설정되지 않았거나 공백입니다",
 		},
 		{
 			name: "실패: 설정 유효성 검사 실패 (필수 필드 누락)",
@@ -179,7 +179,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			},
 			appConfig: invalidConfig_MissingField,
 			wantErr:   true,
-			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다", // 필수 필드 확인 실패 메시지
+			errMsg:    "watch_list_file이 설정되지 않았거나 공백입니다", // 필수 필드 확인 실패 메시지
 		},
 	}
 

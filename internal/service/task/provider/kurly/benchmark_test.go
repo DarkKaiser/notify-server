@@ -96,7 +96,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	}
 
 	commandConfig := &watchProductPriceSettings{
-		WatchProductsFile: tmpfile.Name(),
+		WatchListFile: tmpfile.Name(),
 	}
 
 	resultData := &watchProductPriceSnapshot{
@@ -104,7 +104,7 @@ func BenchmarkKurlyTask_RunWatchProductPrice(b *testing.B) {
 	}
 	// [Benchmarking Target]
 	// 실제 파일 I/O와 파싱 부하를 포함하여 성능을 측정합니다.
-	loader := &CSVWatchListLoader{FilePath: commandConfig.WatchProductsFile}
+	loader := &csvWatchListLoader{filePath: commandConfig.WatchListFile}
 
 	b.ResetTimer() // 준비 시간 제외
 	for i := 0; i < b.N; i++ {

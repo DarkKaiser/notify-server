@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
@@ -20,7 +22,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 	tmplNormal := `
 <html>
 <body>
-<script id="__NEXT_DATA__">{"product": {"no": %d}}</script>
+<script id="__NEXT_DATA__">{"props":{"pageProps":{"product": {"no": %d}}}}</script>
 <div id="product-atf">
 	<section class="css-1ua1wyk">
 		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
@@ -88,7 +90,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 			name:           "성공: 판매 중지 상품 (IsUnavailable)",
 			productID:      101,
 			mockStatusCode: 200,
-			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": null}</script></body></html>`,
+			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"props":{"pageProps":{"product":null}}}</script></body></html>`,
 			wantProduct: &product{
 				ID:            101,
 				IsUnavailable: true,
@@ -99,7 +101,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 			name:           "실패: CSS 구조 변경됨 (섹션 없음)",
 			productID:      102,
 			mockStatusCode: 200,
-			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": {}}</script><div>Changed Layout</div></body></html>`,
+			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"props":{"pageProps":{"product":{}}}}</script><div>Changed Layout</div></body></html>`,
 			wantErr:        true,
 			errSubstr:      "상품정보 섹션 추출 실패",
 		},
@@ -109,7 +111,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			mockFetcher := new(mocks.MockFetcher)
-			url := formatProductPageURL(tt.productID)
+			url := buildProductPageURL(tt.productID)
 
 			if tt.mockFetchErr != nil {
 				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
@@ -156,6 +158,82 @@ func TestTask_FetchProductInfo(t *testing.T) {
 				}
 			}
 			mockFetcher.AssertExpectations(t)
+		})
+	}
+}
+
+// TestExtractPriceDetails HTML DOM에서 상품 가격 정보를 올바르게 추출하는지 검증합니다.
+func TestExtractPriceDetails(t *testing.T) {
+	t.Parallel()
+
+	tmplNormal := `
+<div id="product-atf">
+	<section class="css-1ua1wyk">
+		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
+		<h2 class="css-xrp7wx">%s</h2>
+	</section>
+</div>`
+
+	tests := []struct {
+		name                string
+		mockHTML            string
+		wantPrice           int
+		wantDiscountedPrice int
+		wantDiscountRate    int
+		wantErr             bool
+		errSubstr           string
+	}{
+		{
+			name: "성공: 정상 상품 파싱 (할인 없음)",
+			mockHTML: fmt.Sprintf(tmplNormal, "맛있는 사과",
+				`<div class="css-o2nlqt"><span>10,000</span><span>원</span></div>`),
+			wantPrice:           10000,
+			wantDiscountedPrice: 0,
+			wantDiscountRate:    0,
+			wantErr:             false,
+		},
+		{
+			name: "성공: 정상 상품 파싱 (할인 중)",
+			mockHTML: fmt.Sprintf(tmplNormal, "할인 바나나",
+				`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
+			wantPrice:           10000,
+			wantDiscountedPrice: 9000,
+			wantDiscountRate:    10,
+			wantErr:             false,
+		},
+		{
+			name: "실패: CSS 구조 변경됨 (가격 정보 없음)",
+			mockHTML: `
+<div id="product-atf">
+	<section class="css-1ua1wyk">
+		<div class="css-84rb3h"><div>Header Only</div></div>
+	</section>
+</div>`,
+			wantErr:   true,
+			errSubstr: "상품 가격(0) 추출이 실패하였습니다",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			doc, _ := goquery.NewDocumentFromReader(strings.NewReader(tt.mockHTML))
+			sel := doc.Find("#product-atf > section.css-1ua1wyk")
+
+			price, discountedPrice, discountRate, err := extractPriceDetails(sel, "http://example.com")
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errSubstr != "" {
+					assert.Contains(t, err.Error(), tt.errSubstr)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantPrice, price)
+				assert.Equal(t, tt.wantDiscountedPrice, discountedPrice)
+				assert.Equal(t, tt.wantDiscountRate, discountRate)
+			}
 		})
 	}
 }

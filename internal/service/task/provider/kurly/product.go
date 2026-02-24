@@ -1,96 +1,102 @@
 package kurly
 
 import (
-	"fmt"
-	"html/template"
-	"strings"
 	"time"
-
-	"strconv"
-
-	"github.com/PuerkitoBio/goquery"
-	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
-	"github.com/darkkaiser/notify-server/internal/pkg/mark"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
 )
 
-const (
-	// productPageURLFormat 마켓컬리 상품 상세 페이지의 URL을 생성하기 위한 포맷 문자열입니다.
-	//
-	// 사용 예시:
-	//
-	//  url := fmt.Sprintf(productPageURLFormat, 12345) // "https://www.kurly.com/goods/12345"
-	productPageURLFormat = "https://www.kurly.com/goods/%v"
-
-	// timeLayout 최저가 갱신 시간 등을 표시할 때 사용하는 날짜/시간 포맷입니다.
-	timeLayout = "2006/01/02 15:04"
-)
-
-var (
-	// kstZone 한국 표준시(KST, UTC+9) 타임존 객체입니다.
-	kstZone = time.FixedZone("KST", 9*60*60)
-)
-
-// product 마켓컬리 상품 상세 페이지에서 조회된 개별 상품 정보를 담는 도메인 모델입니다.
+// product 마켓컬리 상품 상세 페이지에서 수집된 개별 상품 정보를 담는 도메인 모델입니다.
+//
+// 스냅샷에 포함되어 스토리지에 영속화되며, 다음 수집 사이클에서 가격 변동을 비교하는 기준으로 활용됩니다.
 type product struct {
-	ID                 int       `json:"no"`                // 상품 코드
-	Name               string    `json:"name"`              // 상품 이름
-	Price              int       `json:"price"`             // 가격
-	DiscountedPrice    int       `json:"discounted_price"`  // 할인 가격
-	DiscountRate       int       `json:"discount_rate"`     // 할인율
-	LowestPrice        int       `json:"lowest_price"`      // 최저 가격
-	LowestPriceTimeUTC time.Time `json:"lowest_price_time"` // 최저 가격이 등록된 시간 (UTC)
-	// IsUnavailable 상품 정보를 불러올 수 없는지에 대한 여부(상품 코드가 존재하지 않거나, 판매를 하고 있지 않는 상품)
+	// ID 마켓컬리에서 부여한 상품 고유 코드입니다. URL의 상품 번호와 동일합니다.
+	ID int `json:"no"`
+
+	// Name 상품의 표시 이름입니다.
+	Name string `json:"name"`
+
+	// Price 할인 전 정가입니다.
+	Price int `json:"price"`
+
+	// DiscountedPrice 할인이 적용된 판매가입니다.
+	// 할인이 없는 경우 0 또는 Price와 동일한 값이 됩니다.
+	DiscountedPrice int `json:"discounted_price"`
+
+	// DiscountRate 할인율(정수 퍼센트)입니다.
+	DiscountRate int `json:"discount_rate"`
+
+	// LowestPrice 이 상품의 역대 최저 가격입니다.
+	// 수집 작업 시마다 tryUpdateLowestPrice()를 호출하여 현재 가격과 비교한 후 갱신합니다.
+	// 0이면 아직 최저가가 기록된 적이 없음을 의미합니다.
+	LowestPrice int `json:"lowest_price"`
+
+	// LowestPriceTimeUTC LowestPrice가 마지막으로 갱신된 시각(UTC)입니다.
+	LowestPriceTimeUTC time.Time `json:"lowest_price_time"`
+
+	// IsUnavailable 상품 정보를 정상적으로 수집할 수 없는 상태인지 여부입니다.
+	// 상품 페이지가 존재하지 않거나 판매 중지된 경우 true로 설정됩니다.
+	// 또는 FetchFailedCount가 임계치(3회)에 도달할 때도 true로 강제 전이됩니다.
 	//
-	// [참고] JSON 태그는 'is_unknown_product'이지만, Go 구조체 필드명은 의미의 명확성을 위해
-	// 부정형 'IsUnknownProduct' 대신 'IsUnavailable'을 사용합니다.
+	// [참고] JSON 태그는 하위 호환을 위해 'is_unknown_product'을 유지하지만, 필드명은 의미의 명확성을 위해 'IsUnavailable'을 사용합니다.
 	IsUnavailable bool `json:"is_unknown_product"`
+
+	// FetchFailedCount 상품 페이지 크롤링에 연속으로 실패한 횟수입니다.
+	// 일시적인 네트워크 장애와 영구적인 상품 소멸을 구별하기 위해 추적합니다.
+	// 3회 이상 연속 실패 시 IsUnavailable=true로 전이하여 좀비 데이터 생성을 방지합니다.
+	FetchFailedCount int `json:"fetch_failed_count,omitempty"`
 }
 
-// URL 상품 상세 페이지의 전체 URL을 반환합니다.
-func (p *product) URL() string {
-	return formatProductPageURL(p.ID)
+// pageURL 이 상품의 마켓컬리 상세 페이지 URL을 반환합니다.
+func (p *product) pageURL() string {
+	return buildProductPageURL(p.ID)
 }
 
-// IsOnSale 상품이 현재 할인 중인지 여부를 반환합니다.
-// 할인가가 존재하고(0보다 크고), 정가보다 저렴해야 할인 중으로 간주합니다.
-func (p *product) IsOnSale() bool {
+// isOnSale 상품이 현재 할인 중인지 여부를 반환합니다.
+//
+// 다음 두 조건을 모두 만족해야 할인 중으로 간주합니다.
+//   - DiscountedPrice > 0 : 할인가 정보가 존재할 것
+//   - DiscountedPrice < Price : 할인가가 정가보다 실제로 저렴할 것
+//
+// 할인가가 있더라도 정가 이상이면 데이터 오류로 보고 false를 반환합니다.
+func (p *product) isOnSale() bool {
 	return p.DiscountedPrice > 0 && p.DiscountedPrice < p.Price
 }
 
-// EffectivePrice 상품의 실제 구매 가(유효 가격)를 반환합니다.
-// 할인 중일 경우 할인가를, 그렇지 않을 경우 정가를 반환합니다.
-func (p *product) EffectivePrice() int {
-	if p.IsOnSale() {
+// effectivePrice 고객이 실제로 지불하는 가격을 반환합니다.
+//
+// 할인 중(isOnSale)이면 DiscountedPrice를, 그렇지 않으면 Price(정가)를 반환합니다.
+func (p *product) effectivePrice() int {
+	if p.isOnSale() {
 		return p.DiscountedPrice
 	}
+
 	return p.Price
 }
 
-// PriceChanged 현재 상품의 가격 정보가 이전 상품(prev)의 가격 정보와 다른지 확인합니다.
+// hasPriceChangedFrom 현재 상품의 가격 정보가 이전 상품(prev)과 하나라도 달라졌는지 확인합니다.
 //
-// [검사 범위]
-// 단순히 최종 가격뿐만 아니라 정가(Price), 할인가(DiscountedPrice), 할인율(DiscountRate) 중
-// 어느 하나라도 변경되었다면, 사용자에게 알릴 가치가 있는 '변동 사항'으로 간주합니다.
-func (p *product) PriceChanged(prev *product) bool {
+// 정가(Price), 할인가(DiscountedPrice), 할인율(DiscountRate) 중 하나라도 변경되었다면
+// 사용자에게 알릴 가치가 있는 변동으로 간주하여 true를 반환합니다.
+//
+// prev가 nil인 경우(이전 스냅샷이 없는 신규 상품)는 변경된 것으로 간주합니다.
+func (p *product) hasPriceChangedFrom(prev *product) bool {
 	if prev == nil {
-		return true // 비교 대상이 없으면 변경된 것으로 간주 (혹은 false, 정책에 따름)
+		return true
 	}
+
 	return p.Price != prev.Price ||
 		p.DiscountedPrice != prev.DiscountedPrice ||
 		p.DiscountRate != prev.DiscountRate
 }
 
-// updateLowestPrice 현재 상품의 가격(정가 또는 할인가)과 기존 최저가를 비교하여,
-// 더 낮은 가격이 발견되면 최저가 및 갱신 시간을 업데이트합니다.
+// tryUpdateLowestPrice 현재 가격이 역대 최저가보다 낮으면 최저가 정보를 갱신합니다.
 //
-// [동작 상세]
-// 1. 현재 상품의 유효 가격(Effective Price)을 결정합니다. (할인가 존재 시 할인가 우선)
-// 2. 유효 가격이 기존 최저가보다 낮거나, 기존 최저가 정보가 없는 경우 갱신합니다.
-// 3. 갱신 시점의 시간을 UTC 기준으로 고정하여 데이터 정합성을 보장합니다.
-func (p *product) updateLowestPrice() bool {
-	// 현재 시점의 가장 "낮은 가격"을 먼저 결정
-	effectivePrice := p.EffectivePrice()
+// 갱신이 발생한 경우 true를, 갱신이 불필요하거나 가격이 유효하지 않으면 false를 반환합니다.
+//
+// [주의] 반드시 상품 변동 사항 비교 이전에 호출해야 합니다.
+// 최저가를 먼저 확정해 두어야, 이번 수집 작업의 현재 가격이 역대 최저가 달성인지를 올바르게 판별할 수 있습니다.
+func (p *product) tryUpdateLowestPrice() bool {
+	// 이번 수집 작업의 가장 "낮은 가격"을 먼저 결정
+	effectivePrice := p.effectivePrice()
 
 	// 유효하지 않은 가격(0원 이하)은 최저가로 갱신하지 않습니다.
 	if effectivePrice <= 0 {
@@ -100,170 +106,12 @@ func (p *product) updateLowestPrice() bool {
 	// 서버 환경(TimeZone)에 의존하지 않기 위해 UTC를 명시적으로 사용합니다.
 	now := time.Now().UTC()
 
-	// 기존 최저가가 설정되어 있지 않거나(0), 현재 유효 가격이 기존 최저가보다 낮은 경우
-	// 최저가 정보를 갱신합니다.
-	if p.LowestPrice == 0 || p.LowestPrice > effectivePrice {
+	// 기존 최저가가 설정되어 있지 않거나(0), 현재 가격이 기존 최저가보다 낮은 경우 최저가 정보를 갱신합니다.
+	if p.LowestPrice == 0 || effectivePrice < p.LowestPrice {
 		p.LowestPrice = effectivePrice
 		p.LowestPriceTimeUTC = now
 		return true
 	}
+
 	return false
-}
-
-// extractPriceDetails HTML DOM에서 가격 상세 정보(정상가, 할인가, 할인율)를 추출하여 Product 구조체에 매핑합니다.
-//
-// [동작 방식]
-// 마켓컬리 상세 페이지의 가격 표시 DOM 구조는 할인 적용 여부에 따라 상이합니다.
-// 본 함수는 이 구조적 차이를 식별하여 적절한 필드에 값을 바인딩합니다.
-//
-//  1. 할인 미적용: 단일 가격 요소(Price)만 존재
-//  2. 할인 적용중: 할인율(Rate) + 할인가(Discounted) + 정상가(Price, 취소선) 모두 존재
-//
-// [매개변수]
-//   - sel: 가격 정보가 포함된 DOM Selection
-//   - productPageURL: 에러 발생 시 디버깅을 돕기 위해 로그에 포함할 상품 페이지 URL
-func (p *product) extractPriceDetails(sel *goquery.Selection, productPageURL string) error {
-	var err error
-	ps := sel.Find("h2.css-xrp7wx > span.css-8h3us8")
-	if ps.Length() == 0 /* 가격, 단위(원) */ {
-		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
-		if ps.Length() != 2 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
-		}
-
-		// 가격
-		p.Price, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
-		if err != nil {
-			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 가격의 숫자 변환이 실패하였습니다")
-		}
-	} else if ps.Length() == 1 /* 할인율, 할인 가격, 단위(원) */ {
-		// 할인율
-		p.DiscountRate, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), "%", ""))
-		if err != nil {
-			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인율의 숫자 변환이 실패하였습니다")
-		}
-
-		// 할인 가격
-		ps = sel.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
-		if ps.Length() != 2 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
-		}
-
-		p.DiscountedPrice, err = strconv.Atoi(strings.ReplaceAll(ps.Eq(0).Text(), ",", ""))
-		if err != nil {
-			return apperrors.Wrap(err, apperrors.ExecutionFailed, "상품 할인 가격의 숫자 변환이 실패하였습니다")
-		}
-
-		// 가격
-		ps = sel.Find("span.css-1s96j0s > span")
-		if ps.Length() != 1 /* 가격 + 단위(원) */ {
-			return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(0) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
-		}
-		p.Price, _ = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(ps.Text(), ",", ""), "원", ""))
-	} else {
-		return apperrors.New(apperrors.ExecutionFailed, fmt.Sprintf("상품 가격(1) 추출이 실패하였습니다. CSS셀렉터를 확인하세요.(%s)", productPageURL))
-	}
-	return nil
-}
-
-// Render 상품 정보를 알림 메시지 포맷으로 변환합니다.
-// 주로 신규 상품 알림이나 단일 상품 상태 조회와 같이 비교 대상이 없는 경우에 사용됩니다.
-func (p *product) Render(supportsHTML bool, m mark.Mark) string {
-	return p.renderInternal(supportsHTML, m, nil)
-}
-
-// RenderDiff 현재 상품 상태와 과거 상태를 비교하여 변경 사항을 강조한 알림 메시지를 생성합니다.
-// 가격 변동, 품절 해제 등 사용자가 주목해야 할 변화가 있을 때 사용되며, 내부적으로 이전 가격 정보를 포함하여 렌더링합니다.
-func (p *product) RenderDiff(supportsHTML bool, m mark.Mark, prev *product) string {
-	return p.renderInternal(supportsHTML, m, prev)
-}
-
-// renderInternal 상품 알림 메시지를 생성하는 핵심 내부 구현체입니다.
-func (p *product) renderInternal(supportsHTML bool, m mark.Mark, prev *product) string {
-	var sb strings.Builder
-
-	// 예상되는 문자열 크기만큼 미리 할당
-	sb.Grow(512)
-
-	// 상품 이름 및 링크
-	// HTML 모드일 때만 이스케이프를 적용하여 Text 모드의 가독성을 높입니다.
-	var displayName string
-	if supportsHTML {
-		safeName := template.HTMLEscapeString(p.Name)
-		displayName = fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", p.URL(), safeName)
-	} else {
-		displayName = p.Name
-	}
-
-	fmt.Fprintf(&sb, "☞ %s%s", displayName, m.WithSpace())
-
-	// 현재 가격
-	sb.WriteString("\n      • 현재 가격 : ")
-	writeFormattedPrice(&sb, p.Price, p.DiscountedPrice, p.DiscountRate, supportsHTML)
-
-	// 이전 가격
-	if prev != nil {
-		sb.WriteString("\n      • 이전 가격 : ")
-		writeFormattedPrice(&sb, prev.Price, prev.DiscountedPrice, prev.DiscountRate, supportsHTML)
-	}
-
-	// 최저 가격
-	if p.LowestPrice != 0 {
-		sb.WriteString("\n      • 최저 가격 : ")
-		writeFormattedPrice(&sb, p.LowestPrice, 0, 0, supportsHTML)
-
-		// UTC 시간을 한국 시간(KST, UTC+9)으로 변환하여 표시
-		kst := p.LowestPriceTimeUTC.In(kstZone)
-		fmt.Fprintf(&sb, " (%s)", kst.Format(timeLayout))
-	}
-
-	return sb.String()
-}
-
-// writeFormattedPrice 정가, 할인가, 할인율 정보를 조합하여 사용자 친화적인 가격 문자열을 생성하고 빌더에 기록합니다.
-//
-// [기능 상세]
-// 1. 할인이 적용되지 않은 경우: 정가만 표시 (예: "10,000원")
-// 2. 할인이 적용된 경우:
-//   - HTML 모드: 정가에 취소선(<s>) 적용 + 할인가 + 할인율 (예: "<s>10,000원</s> 9,000원 (10%)")
-//   - Text 모드: 정가 ⇒ 할인가 + 할인율 (예: "10,000원 ⇒ 9,000원 (10%)")
-//
-// [매개변수]
-//   - sb: 결과를 기록할 strings.Builder 포인터
-//   - price: 할인 전 원래 가격 (정가)
-//   - discountedPrice: 할인 후 가격 (0 또는 price와 같으면 할인 없음으로 간주)
-//   - discountRate: 할인율 (정수 퍼센트)
-//   - supportsHTML: HTML 태그 포함 여부 (Telegram 등 리치 텍스트 지원 클라이언트용)
-func writeFormattedPrice(sb *strings.Builder, price, discountedPrice, discountRate int, supportsHTML bool) {
-	// [방어적 코드]
-	// 1. discountedPrice <= 0: 할인가 정보 없음
-	// 2. discountedPrice >= price: 할인가가 정가보다 비싸거나 같음 (데이터 오류 또는 할인 없음)
-	// 위 경우에는 할인 표기를 하지 않고 '정가'만 노출하여 혼란을 방지합니다.
-	if discountedPrice <= 0 || discountedPrice >= price {
-		fmt.Fprintf(sb, "%s원", strutil.Comma(price))
-		return
-	}
-
-	formattedPrice := strutil.Comma(price)
-	formattedDiscountedPrice := strutil.Comma(discountedPrice)
-
-	// 할인율이 유효한 경우에만 문자열 생성 (0% 표시 방지)
-	var discountRateStr string
-	if discountRate > 0 {
-		discountRateStr = fmt.Sprintf(" (%d%%)", discountRate)
-	}
-
-	if supportsHTML {
-		// 예: <s>10,000원</s> 9,000원 (10%)
-		fmt.Fprintf(sb, "<s>%s원</s> %s원%s", formattedPrice, formattedDiscountedPrice, discountRateStr)
-		return
-	}
-
-	// 예: 10,000원 ⇒ 9,000원 (10%)
-	fmt.Fprintf(sb, "%s원 ⇒ %s원%s", formattedPrice, formattedDiscountedPrice, discountRateStr)
-}
-
-// formatProductPageURL 상품 ID를 받아 상품 상세 페이지의 전체 URL을 반환합니다.
-func formatProductPageURL(id any) string {
-	return fmt.Sprintf(productPageURLFormat, id)
 }

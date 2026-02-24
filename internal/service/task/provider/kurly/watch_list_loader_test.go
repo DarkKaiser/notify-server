@@ -102,7 +102,7 @@ func TestReadWatchListRecords_TableDriven(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := strings.NewReader(tt.input)
-			got, err := readWatchListRecords(r)
+			got, err := parseWatchListRecords(r)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -133,7 +133,7 @@ func TestCSVWatchListLoader_Load_Integration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Loader 생성 및 실행
-		loader := &CSVWatchListLoader{FilePath: filePath}
+		loader := &csvWatchListLoader{filePath: filePath}
 		records, err := loader.Load()
 
 		// 검증
@@ -145,7 +145,7 @@ func TestCSVWatchListLoader_Load_Integration(t *testing.T) {
 
 	t.Run("실패: 존재하지 않는 파일", func(t *testing.T) {
 		nonExistentPath := filepath.Join(tempDir, "ghost.csv")
-		loader := &CSVWatchListLoader{FilePath: nonExistentPath}
+		loader := &csvWatchListLoader{filePath: nonExistentPath}
 
 		records, err := loader.Load()
 
@@ -159,7 +159,7 @@ func TestCSVWatchListLoader_Load_Integration(t *testing.T) {
 		err := os.WriteFile(filePath, []byte(""), 0644)
 		require.NoError(t, err)
 
-		loader := &CSVWatchListLoader{FilePath: filePath}
+		loader := &csvWatchListLoader{filePath: filePath}
 		records, err := loader.Load()
 
 		assert.Error(t, err)

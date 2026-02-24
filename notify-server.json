@@ -120,7 +120,7 @@
 					},
 					"default_notifier_id": "darkkaiser_test_bot",
 					"data": {
-						"watch_products_file": "notify-server-task-kurly-watch-product-list.csv"
+						"watch_list_file": "notify-server-task-kurly-watch-product-list.csv"
 					}
 				}
 			]
