@@ -3,8 +3,6 @@ package kurly
 import (
 	"testing"
 
-	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,88 +61,6 @@ func TestWatchProductPriceSettings_Validate(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-		})
-	}
-}
-
-func TestExtractDuplicateRecords(t *testing.T) {
-	t.Parallel()
-	tsk := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     "T",
-				CommandID:  "C",
-				NotifierID: "N",
-				RunBy:      contract.TaskRunByUser,
-			},
-			InstanceID: "I",
-			NewSnapshot: func() interface{} {
-				return &watchProductPriceSnapshot{}
-			},
-		}, false),
-	}
-
-	tests := []struct {
-		name          string
-		input         [][]string
-		wantDistinct  int
-		wantDuplicate int
-	}{
-		{
-			name: "중복 없음",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-			},
-			wantDistinct:  2,
-			wantDuplicate: 0,
-		},
-		{
-			name: "단일 중복 발생",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1001", "A", "1"},
-			},
-			wantDistinct:  1,
-			wantDuplicate: 1,
-		},
-		{
-			name: "다수 중복 발생",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-				{"1003", "C", "1"},
-			},
-			wantDistinct:  3,
-			wantDuplicate: 2,
-		},
-		{
-			name: "빈 행 무시",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{},
-				{"1002", "B", "1"},
-			},
-			wantDistinct:  2,
-			wantDuplicate: 0,
-		},
-		{
-			name:          "빈 입력",
-			input:         [][]string{},
-			wantDistinct:  0,
-			wantDuplicate: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			distinct, duplicate := tsk.extractDuplicateRecords(tt.input)
-			assert.Equal(t, tt.wantDistinct, len(distinct))
-			assert.Equal(t, tt.wantDuplicate, len(duplicate))
 		})
 	}
 }

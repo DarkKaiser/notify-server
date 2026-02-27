@@ -43,7 +43,7 @@ func TestCompare_FirstRun_NoPrev(t *testing.T) {
 		},
 	}
 
-	diffs, hasChanges := curr.Compare(nil)
+	diffs, hasChanges := curr.AnalyzeChanges(nil)
 
 	// 모두 신규 이벤트
 	require.Len(t, diffs, 3)
@@ -61,7 +61,7 @@ func TestCompare_FirstRun_EmptyProducts(t *testing.T) {
 	t.Parallel()
 
 	curr := &watchPriceSnapshot{Products: []*product{}}
-	diffs, hasChanges := curr.Compare(nil)
+	diffs, hasChanges := curr.AnalyzeChanges(nil)
 
 	assert.Empty(t, diffs)
 	assert.False(t, hasChanges)
@@ -87,7 +87,7 @@ func TestCompare_NoChanges(t *testing.T) {
 		},
 	}
 
-	diffs, hasChanges := curr.Compare(prev)
+	diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 	assert.Empty(t, diffs)
 	assert.False(t, hasChanges)
@@ -111,7 +111,7 @@ func TestCompare_NewProduct(t *testing.T) {
 		},
 	}
 
-	diffs, hasChanges := curr.Compare(prev)
+	diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 	require.Len(t, diffs, 1)
 	assert.True(t, hasChanges)
@@ -144,7 +144,7 @@ func TestCompare_PriceChanged(t *testing.T) {
 			prev := &watchPriceSnapshot{Products: []*product{makeSimpleProduct("A", tt.prevPrice)}}
 			curr := &watchPriceSnapshot{Products: []*product{makeSimpleProduct("A", tt.currPrice)}}
 
-			diffs, hasChanges := curr.Compare(prev)
+			diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 			require.Len(t, diffs, 1)
 			assert.True(t, hasChanges)
@@ -198,7 +198,7 @@ func TestCompare_MetaChanged(t *testing.T) {
 			prev := &watchPriceSnapshot{Products: []*product{tt.prev}}
 			curr := &watchPriceSnapshot{Products: []*product{tt.curr}}
 
-			diffs, hasChanges := curr.Compare(prev)
+			diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 			assert.Empty(t, diffs, "메타 변경은 알림 대상이 아닙니다")
 			assert.True(t, hasChanges, "메타 변경도 스냅샷 갱신 대상이어야 합니다")
@@ -226,7 +226,7 @@ func TestCompare_ProductRemoved(t *testing.T) {
 		Products: []*product{makeSimpleProduct("A", 10000)},
 	}
 
-	diffs, hasChanges := curr.Compare(prev)
+	diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 	assert.Empty(t, diffs, "삭제된 상품은 알림 대상이 아닙니다")
 	assert.True(t, hasChanges, "상품 수 감소는 스냅샷 갱신 대상이어야 합니다")
@@ -249,7 +249,7 @@ func TestCompare_EmptyResult_Protection(t *testing.T) {
 	}
 	curr := &watchPriceSnapshot{Products: []*product{}} // 0건 수집
 
-	diffs, hasChanges := curr.Compare(prev)
+	diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 	assert.Nil(t, diffs, "0건 방어: diffs는 nil이어야 합니다")
 	assert.False(t, hasChanges, "0건 방어: 스냅샷을 갱신하지 않습니다")
@@ -260,7 +260,7 @@ func TestCompare_EmptyResult_FirstRun(t *testing.T) {
 	t.Parallel()
 
 	curr := &watchPriceSnapshot{Products: []*product{}}
-	diffs, hasChanges := curr.Compare(nil)
+	diffs, hasChanges := curr.AnalyzeChanges(nil)
 
 	// prev=nil 이면 prevLen=0 이므로 0건 방어 조건 불충족 → 정상 처리
 	assert.Empty(t, diffs)
@@ -283,7 +283,7 @@ func TestCompare_SortByPrice(t *testing.T) {
 		},
 	}
 
-	diffs, _ := curr.Compare(nil)
+	diffs, _ := curr.AnalyzeChanges(nil)
 
 	require.Len(t, diffs, 3)
 	assert.Equal(t, 10000, diffs[0].Product.LowPrice)
@@ -303,7 +303,7 @@ func TestCompare_SortByTitleOnSamePrice(t *testing.T) {
 		},
 	}
 
-	diffs, _ := curr.Compare(nil)
+	diffs, _ := curr.AnalyzeChanges(nil)
 
 	require.Len(t, diffs, 3)
 	assert.Equal(t, "Apple", diffs[0].Product.Title)
@@ -338,7 +338,7 @@ func TestCompare_Mixed(t *testing.T) {
 		},
 	}
 
-	diffs, hasChanges := curr.Compare(prev)
+	diffs, hasChanges := curr.AnalyzeChanges(prev)
 
 	assert.True(t, hasChanges)
 

@@ -9,18 +9,17 @@ import (
 )
 
 // columnIndex 파싱된 레코드 내 각 필드 위치를 나타내는 인덱스 타입입니다.
-// int가 아닌 별도 타입으로 정의하여 일반 정수와의 혼용을 컴파일 타임에 방지합니다.
 type columnIndex int
 
 const (
-	// columnID 상품 코드 컬럼의 인덱스 (0번째)입니다.
+	// columnID 상품 번호 컬럼의 인덱스입니다. (0번째)
 	// 마켓컬리에서 부여한 숫자형 ID를 문자열 그대로 담습니다. (예: "12345")
 	columnID columnIndex = iota
 
-	// columnName 상품 이름 컬럼의 인덱스 (1번째)입니다.
+	// columnName 상품 이름 컬럼의 인덱스입니다. (1번째)
 	columnName
 
-	// columnStatus 감시 활성화 여부 컬럼의 인덱스 (2번째)입니다.
+	// columnStatus 감시 활성화 여부 컬럼의 인덱스입니다. (2번째)
 	// 값이 statusEnabled("1")이면 활성, 그 외 모든 값은 비활성으로 처리합니다.
 	columnStatus
 )
@@ -147,6 +146,16 @@ func parseWatchListRecords(r io.Reader) ([][]string, error) {
 			continue
 		}
 
+		// csv.Reader의 FieldsPerRecord = -1 옵션으로 인해, 행마다 컬럼 수가 다를 수 있습니다.
+		// 예를 들어, 사용자가 status 컬럼을 쉼표 없이 생략하면 해당 레코드의 길이는 2가 됩니다.
+		// 이 상태로 반환하면, 소비 단에서 record[columnStatus](인덱스 2)에 접근할 때
+		// Index Out of Range 패닉이 발생합니다.
+		// 따라서 모든 레코드의 길이가 최소 columnStatus + 1(인덱스 3)이 되도록
+		// 누락된 자리를 빈 문자열("")로 패딩합니다. (빈 값 = statusEnabled가 아님 = 비활성 취급)
+		for len(record) <= int(columnStatus) {
+			record = append(record, "")
+		}
+
 		sanitizedRecords = append(sanitizedRecords, record)
 	}
 
@@ -155,4 +164,62 @@ func parseWatchListRecords(r io.Reader) ([][]string, error) {
 	}
 
 	return sanitizedRecords, nil
+}
+
+// separateDuplicateRecords 레코드 목록을 상품 번호(columnID) 기준으로 순회하면서,
+// 최초로 등장한 레코드는 '고유 레코드 목록'으로, 이미 등장한 레코드는 '중복 레코드 목록'으로 분리합니다.
+//
+// 중복이 존재하더라도 오류로 처리하지 않고, 이 함수를 사용하는 곳에서 중복 여부를 별도로 판단(예: 경고 로그)할 수 있도록
+// 두 슬라이스를 함께 반환하는 방식을 채택합니다.
+//
+// 파라미터:
+//   - records: parseWatchListRecords가 정제한 레코드 목록. 각 레코드는 최소 columnID 인덱스를 포함해야 합니다.
+//
+// 반환값:
+//   - distinctRecords: 상품 번호 기준으로 중복이 제거된 고유 레코드 목록
+//     동일 상품 중 하나라도 활성 상태("1")인 레코드가 있다면 해당 고유 레코드의 상태도 활성 상태로 합산(승격)됩니다.
+//   - duplicateRecords: 이미 distinctRecords에 포함된 상품 번호가 재등장한 중복 레코드 목록
+func separateDuplicateRecords(records [][]string) ([][]string, [][]string) {
+	distinctRecords := make([][]string, 0, len(records))
+	duplicateRecords := make([][]string, 0, len(records)/2)
+
+	// 중복 레코드 등장 시 기존 고유 레코드의 상태를 갱신할 수 있도록
+	// distinctRecords 배열 내의 저장 위치(Index)를 추적하는 맵입니다.
+	//  - Key: 상품 번호 (ID)
+	//  - Value: distinctRecords 배열 내 해당 레코드의 인덱스
+	distinctIdxByID := make(map[string]int, len(records))
+
+	for _, record := range records {
+		// 필수 컬럼(상품 번호 및 상태) 존재 여부 확인
+		if len(record) <= int(columnStatus) {
+			continue
+		}
+
+		productID := record[columnID]
+		if distinctIdx, exists := distinctIdxByID[productID]; !exists {
+			// 처음 발견된 상품: 향후 중복 레코드 출현 시 고유 레코드의 상태를 합산·갱신할 수 있도록,
+			// 고유 레코드 목록에 추가될 위치(Index)를 맵에 미리 기록해 둡니다.
+			distinctIdxByID[productID] = len(distinctRecords)
+
+			// 고유 레코드 목록에 추가
+			// 중복 레코드 처리 시 고유 레코드 요소의 상태(status)값을 변경하는 로직이 있습니다.
+			// 원본 슬라이스(records)와의 메모리 공유로 인한 의도치 않은 데이터 오염을 막기 위해
+			// 새로운 슬라이스를 할당하여 깊은 복사(Deep Copy)를 수행합니다.
+			clonedRecord := make([]string, len(record))
+			copy(clonedRecord, record)
+			distinctRecords = append(distinctRecords, clonedRecord)
+		} else {
+			// 이미 발견된 상품: 중복 레코드 목록에 추가
+			duplicateRecords = append(duplicateRecords, record)
+
+			// 중복으로 등장한 레코드 중 하나라도 '감시 활성화(1)' 상태라면,
+			// 대표로 수집을 수행할 고유 레코드의 상태도 '감시 활성화'로 강제 승격(합산)시킵니다.
+			// 이를 통해 사용자가 여러 레코드 중 하나만 활성화해도 정상적으로 수집이 수행되도록 보장합니다.
+			if record[columnStatus] == statusEnabled {
+				distinctRecords[distinctIdx][columnStatus] = statusEnabled
+			}
+		}
+	}
+
+	return distinctRecords, duplicateRecords
 }

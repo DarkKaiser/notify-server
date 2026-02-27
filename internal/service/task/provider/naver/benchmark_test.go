@@ -221,7 +221,7 @@ func BenchmarkNaverTask_DiffOnly(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = currentSnapshot.Compare(prevSnapshot)
+		_, _ = currentSnapshot.AnalyzeChanges(prevSnapshot)
 	}
 }
 

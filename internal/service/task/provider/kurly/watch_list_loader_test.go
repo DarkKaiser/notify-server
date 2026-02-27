@@ -167,3 +167,70 @@ func TestCSVWatchListLoader_Load_Integration(t *testing.T) {
 		assert.Nil(t, records)
 	})
 }
+func TestSeparateDuplicateRecords(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		input         [][]string
+		wantDistinct  int
+		wantDuplicate int
+	}{
+		{
+			name: "중복 없음",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
+			},
+			wantDistinct:  2,
+			wantDuplicate: 0,
+		},
+		{
+			name: "단일 중복 발생",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1001", "A", "1"},
+			},
+			wantDistinct:  1,
+			wantDuplicate: 1,
+		},
+		{
+			name: "다수 중복 발생",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
+				{"1001", "A", "1"},
+				{"1002", "B", "1"},
+				{"1003", "C", "1"},
+			},
+			wantDistinct:  3,
+			wantDuplicate: 2,
+		},
+		{
+			name: "빈 행 무시",
+			input: [][]string{
+				{"1001", "A", "1"},
+				{},
+				{"1002", "B", "1"},
+			},
+			wantDistinct:  2,
+			wantDuplicate: 0,
+		},
+		{
+			name:          "빈 입력",
+			input:         [][]string{},
+			wantDistinct:  0,
+			wantDuplicate: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			distinct, duplicate := separateDuplicateRecords(tt.input)
+			assert.Equal(t, tt.wantDistinct, len(distinct))
+			assert.Equal(t, tt.wantDuplicate, len(duplicate))
+		})
+	}
+}

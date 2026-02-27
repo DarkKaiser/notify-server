@@ -129,7 +129,7 @@ func TestSnapshot_Compare(t *testing.T) {
 				prevSnap = &watchNewPerformancesSnapshot{Performances: tt.prev}
 			}
 
-			diffs, hasChanges := currSnap.Compare(prevSnap)
+			diffs, hasChanges := currSnap.AnalyzeChanges(prevSnap)
 
 			assert.Equal(t, tt.expectedChanges, hasChanges, "hasChanges mismatch: "+tt.desc)
 			assert.Len(t, diffs, tt.expectedDiffs, "diffs count mismatch: "+tt.desc)
@@ -171,6 +171,6 @@ func BenchmarkSnapshot_Compare(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		currSnap.Compare(prevSnap)
+		currSnap.AnalyzeChanges(prevSnap)
 	}
 }

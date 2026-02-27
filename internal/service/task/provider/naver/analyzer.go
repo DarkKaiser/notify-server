@@ -34,12 +34,12 @@ func (t *task) analyzeAndReport(currentSnapshot *watchNewPerformancesSnapshot, p
 
 	// 현재 스냅샷과 이전 스냅샷을 비교하여 달라진 공연 목록을 추출합니다.
 	// hasChanges는 신규 추가/삭제/내용 변경 중 하나라도 감지된 경우 true가 됩니다.
-	diffs, hasChanges := currentSnapshot.Compare(prevSnapshot)
+	performanceDiffs, hasChanges := currentSnapshot.AnalyzeChanges(prevSnapshot)
 
 	// 신규로 등록된 공연이 있으면 변경 목록을 포맷팅하여 알림 메시지를 구성합니다.
 	// 공연 삭제나 내용 변경만 발생한 경우에는 message가 빈 문자열로 유지됩니다.
-	if len(diffs) > 0 {
-		message = "새로운 공연정보가 등록되었습니다.\n\n" + renderPerformanceDiffs(diffs, supportsHTML)
+	if len(performanceDiffs) > 0 {
+		message = "새로운 공연정보가 등록되었습니다.\n\n" + renderPerformanceDiffs(performanceDiffs, supportsHTML)
 	}
 
 	// [변경 사항이 있는 경우 (hasChanges == true)]

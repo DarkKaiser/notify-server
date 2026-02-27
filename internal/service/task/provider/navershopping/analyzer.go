@@ -21,16 +21,16 @@ import (
 func (t *task) analyzeAndReport(commandSettings *watchPriceSettings, currentSnapshot *watchPriceSnapshot, prevSnapshot *watchPriceSnapshot, supportsHTML bool) (string, bool) {
 	// 현재 스냅샷과 이전 스냅샷을 비교하여 변동된 상품 목록을 추출합니다.
 	// hasChanges는 신규 추가/삭제/가격변동/메타 변경 중 하나라도 감지된 경우 true가 됩니다.
-	diffs, hasChanges := currentSnapshot.Compare(prevSnapshot)
+	productDiffs, hasChanges := currentSnapshot.AnalyzeChanges(prevSnapshot)
 
 	// 신규 등록 또는 가격 변동 상품이 발견된 경우, 조회 조건과 변동 목록을 함께 조합하여 알림 메시지를 구성합니다.
-	if len(diffs) > 0 {
+	if len(productDiffs) > 0 {
 		searchConditionsSummary := renderSearchConditionsSummary(commandSettings, supportsHTML)
 
-		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s", searchConditionsSummary, renderProductDiffs(diffs, supportsHTML)), hasChanges
+		return fmt.Sprintf("조회 조건에 해당되는 상품 정보가 변경되었습니다.\n\n%s\n\n%s", searchConditionsSummary, renderProductDiffs(productDiffs, supportsHTML)), hasChanges
 	}
 
-	// 알림 대상인 diffs(신규 등록, 가격 변동)는 없는 상태입니다.
+	// 알림 대상인 productDiffs(신규 등록, 가격 변동)는 없는 상태입니다.
 	// (단, 삭제·메타 변경은 발생했을 수 있으므로 hasChanges가 true일 수도 있습니다)
 	// 스케줄러 실행 시에는 조용히 스냅샷만 갱신하고,
 	// 사용자 직접 실행 시에는 "현재 조회 조건에 해당되는 상품 목록 전체"를 알림으로 전송하여 시스템이 정상 동작 중임을 확인시켜 줍니다.

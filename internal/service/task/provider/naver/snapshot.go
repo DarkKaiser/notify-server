@@ -13,7 +13,7 @@ const (
 
 // performanceDiff 스냅샷 비교 결과로 발견된 공연 정보의 변경 사항을 표현하는 구조체입니다.
 //
-// 이 구조체는 Compare() 메서드의 반환값으로 사용되며, 알림 메시지 생성 시
+// 이 구조체는 AnalyzeChanges() 메서드의 반환값으로 사용되며, 알림 메시지 생성 시
 // 어떤 공연이 어떻게 변경되었는지 판단하는 데 활용됩니다.
 type performanceDiff struct {
 	// Type 변경 유형 (신규 등록, 삭제 등)
@@ -32,7 +32,7 @@ type watchNewPerformancesSnapshot struct {
 	Performances []*performance `json:"performances"`
 }
 
-// Compare 현재 스냅샷과 이전 스냅샷을 비교하여 공연 정보의 변경 사항을 감지합니다.
+// AnalyzeChanges 현재 스냅샷과 이전 스냅샷을 비교하여 공연 정보의 변경 사항을 감지합니다.
 //
 // 다음 시나리오에 대한 변화를 감지합니다:
 //  1. 신규 공연 등록: 이전 스냅샷에 없던 공연이 현재 스냅샷에 추가된 경우
@@ -45,7 +45,7 @@ type watchNewPerformancesSnapshot struct {
 // 반환값:
 //   - diffs: 신규로 추가된 공연 목록 (알림 메시지 생성용)
 //   - hasChanges: 스냅샷 갱신이 필요한지 여부 (추가/삭제/내용변경 모두 포함)
-func (s *watchNewPerformancesSnapshot) Compare(prev *watchNewPerformancesSnapshot) (diffs []performanceDiff, hasChanges bool) {
+func (s *watchNewPerformancesSnapshot) AnalyzeChanges(prev *watchNewPerformancesSnapshot) (diffs []performanceDiff, hasChanges bool) {
 	// 1단계: 이전 스냅샷의 공연 목록을 Map으로 변환하여 빠른 조회가 가능하게 함
 	// Key: 공연 고유 식별자, Value: 공연 객체 (내용 비교용)
 	prevMap := make(map[string]*performance)

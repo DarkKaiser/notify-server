@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/config"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
@@ -194,12 +195,17 @@ func TestKurlyTask_RunWatchProductPrice_NetworkError(t *testing.T) {
 	// 4. 실행
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, true)
 
-	// 5. 검증: 부분 실패는 에러로 간주되지 않고 해당 상품이 무시됩니다.
-	// 따라서 전체 실행은 성공(err == nil)하고, 결과에는 수집된 상품이 0개이므로
-	// 이전 상태와의 차이가 없어서 변경 알림(message)과 신규 저장 스냅샷(newResultData)이 생성되지 않습니다.
+	// 5. 검증: 네트워크 에러, 파싱 에러 등의 부분 실패도 임시 상태(FetchFailedCount) 카운팅을 위해
+	// 영속화(Save) 대상이 됩니다. 따라서 err는 nil이고, message는 빈 문자열이지만,
+	// 스냅샷(newResultData)은 반드시 반환되어야 합니다.
 	require.NoError(t, err)
 	require.Empty(t, message)
-	require.Nil(t, newResultData)
+
+	require.NotNil(t, newResultData)
+	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
+	require.True(t, ok)
+	require.Equal(t, 1, len(typedResultData.Products))
+	require.Equal(t, 1, typedResultData.Products[0].FetchFailedCount)
 }
 
 func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
@@ -268,10 +274,15 @@ func TestKurlyTask_RunWatchProductPrice_ParsingError(t *testing.T) {
 	// 변경된 스펙: 부분 실패는 격리되며 에러를 반환하지 않습니다.
 	message, newResultData, err := tTask.executeWatchProductPrice(context.Background(), loader, resultData, false)
 
-	// 5. 검증
+	// 5. 검증: 파싱 실패 등 부분 실패 시에도 임시 실패 상태 전이를 위해 스냅샷 영속화가 진행됩니다.
 	require.NoError(t, err)
 	require.Empty(t, message)
-	require.Nil(t, newResultData)
+
+	require.NotNil(t, newResultData)
+	typedResultData, ok := newResultData.(*watchProductPriceSnapshot)
+	require.True(t, ok)
+	require.Equal(t, 1, len(typedResultData.Products))
+	require.Equal(t, 1, typedResultData.Products[0].FetchFailedCount)
 }
 
 func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
@@ -355,15 +366,18 @@ func TestKurlyTask_RunWatchProductPrice_NoChange(t *testing.T) {
 	csvFile := testutil.CreateTestFile(t, "test_products.csv", csvContent)
 	commandConfig.WatchListFile = csvFile
 
+	var fixedTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	// 기존 결과 데이터 (동일한 데이터)
 	resultData := &watchProductPriceSnapshot{
 		Products: []*product{
 			{
-				ID:              12345,
-				Name:            productName,
-				Price:           10000,
-				DiscountedPrice: 8000,
-				DiscountRate:    20,
+				ID:                 12345,
+				Name:               productName,
+				Price:              10000,
+				DiscountedPrice:    8000,
+				DiscountRate:       20,
+				LowestPrice:        8000,
+				LowestPriceTimeUTC: fixedTime,
 			},
 		},
 	}

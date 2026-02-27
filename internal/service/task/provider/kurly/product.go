@@ -1,7 +1,19 @@
 package kurly
 
 import (
+	"fmt"
 	"time"
+)
+
+const (
+	// productPageURLFormat 마켓컬리 상품 상세 페이지 URL을 생성하기 위한 fmt.Sprintf 포맷 문자열입니다.
+	//
+	// %v 자리에 상품 코드(int)를 대입하면 해당 상품의 상세 페이지 URL이 완성됩니다.
+	//
+	// 사용 예시:
+	//
+	//  url := fmt.Sprintf(productPageURLFormat, 12345) // → "https://www.kurly.com/goods/12345"
+	productPageURLFormat = "https://www.kurly.com/goods/%v"
 )
 
 // product 마켓컬리 상품 상세 페이지에서 수집된 개별 상품 정보를 담는 도메인 모델입니다.
@@ -24,7 +36,7 @@ type product struct {
 	// DiscountRate 할인율(정수 퍼센트)입니다.
 	DiscountRate int `json:"discount_rate"`
 
-	// LowestPrice 이 상품의 역대 최저 가격입니다.
+	// LowestPrice 이 상품의 역대 최저가입니다.
 	// 수집 작업 시마다 tryUpdateLowestPrice()를 호출하여 현재 가격과 비교한 후 갱신합니다.
 	// 0이면 아직 최저가가 기록된 적이 없음을 의미합니다.
 	LowestPrice int `json:"lowest_price"`
@@ -45,9 +57,14 @@ type product struct {
 	FetchFailedCount int `json:"fetch_failed_count,omitempty"`
 }
 
-// pageURL 이 상품의 마켓컬리 상세 페이지 URL을 반환합니다.
+// productPageURL 상품 ID를 받아 상품 상세 페이지 URL을 반환합니다.
+func productPageURL(id any) string {
+	return fmt.Sprintf(productPageURLFormat, id)
+}
+
+// pageURL 이 상품의 상세 페이지 URL을 반환합니다.
 func (p *product) pageURL() string {
-	return buildProductPageURL(p.ID)
+	return productPageURL(p.ID)
 }
 
 // isOnSale 상품이 현재 할인 중인지 여부를 반환합니다.
@@ -103,13 +120,13 @@ func (p *product) tryUpdateLowestPrice() bool {
 		return false
 	}
 
-	// 서버 환경(TimeZone)에 의존하지 않기 위해 UTC를 명시적으로 사용합니다.
-	now := time.Now().UTC()
-
 	// 기존 최저가가 설정되어 있지 않거나(0), 현재 가격이 기존 최저가보다 낮은 경우 최저가 정보를 갱신합니다.
 	if p.LowestPrice == 0 || effectivePrice < p.LowestPrice {
 		p.LowestPrice = effectivePrice
-		p.LowestPriceTimeUTC = now
+
+		// 서버 환경(TimeZone)에 의존하지 않기 위해 UTC를 명시적으로 사용합니다.
+		p.LowestPriceTimeUTC = time.Now().UTC()
+
 		return true
 	}
 

@@ -3,7 +3,6 @@ package kurly
 import (
 	"fmt"
 	"html/template"
-	"strconv"
 	"strings"
 	"time"
 
@@ -100,7 +99,7 @@ func renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
 //   - m: 상품명 옆에 표시될 상태 마크 (예: 신규 "🆕", 최저가 "🔥", 가격 변동 "🔄")
 //   - prev: 가격 비교의 기준이 되는 이전 상품 정보 (nil이면 이전 가격 항목 표시 생략)
 //
-// 반환값: 체널 규격(HTML/텍스트)에 맞게 포맷팅된 상품 알림 라인 문자열
+// 반환값: 채널 규격(HTML/텍스트)에 맞춰 포맷팅된 단일 상품 정보 문자열
 func formatProductItem(p *product, supportsHTML bool, m mark.Mark, prev *product) string {
 	var sb strings.Builder
 
@@ -186,110 +185,41 @@ func writeFormattedPrice(sb *strings.Builder, price, discountedPrice, discountRa
 	fmt.Fprintf(sb, "%s원 ⇒ %s원%s", formattedPrice, formattedDiscountedPrice, formattedDiscountRate)
 }
 
-// @@@@@ 함수를 분리해야 한다고 함
-func buildDuplicateRecordsMessage(duplicateRecords [][]string, duplicateNotifiedIDs []string, supportsHTML bool) (string, []string) {
-	if len(duplicateRecords) == 0 {
-		return "", nil
-	}
-
-	// 빠른 조회를 위해 이미 알림이 나간 ID 목록을 Set으로 변환
-	reportedMap := make(map[string]struct{}, len(duplicateNotifiedIDs))
-	for _, id := range duplicateNotifiedIDs {
-		reportedMap[id] = struct{}{}
-	}
-
-	// 현재 회차의 전체 중복 ID 목록 (추후 저장용)
-	newReportedIDs := make([]string, 0, len(duplicateRecords))
-	// 새로 알림을 내보낼 중복 ID들 (메시지 생성용)
-	var newDuplicateRecords [][]string
-
-	for _, record := range duplicateRecords {
-		productID := strings.TrimSpace(record[columnID])
-		newReportedIDs = append(newReportedIDs, productID)
-
-		if _, alreadyReported := reportedMap[productID]; !alreadyReported {
-			newDuplicateRecords = append(newDuplicateRecords, record)
-		}
-	}
-
+// renderDuplicateRecords 이번 수집 사이클에서 처음으로 감지된 중복 등록 상품 목록을
+// 사용자에게 발송할 알림 포맷에 맞게 렌더링합니다.
+//
+// 매개변수:
+//   - newDuplicateRecords: 이번 사이클에 새롭게 중복이 확인된 레코드 목록 (CSV 원시 행 배열)
+//     이미 알림이 발송된 상품은 이 함수에 도달하기 전에 제외됩니다.
+//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
+//
+// 반환값: 중복 상품 목록이 담긴 알림 메시지 문자열 (전달된 목록이 없으면 빈 문자열을 반환합니다)
+func renderDuplicateRecords(newDuplicateRecords [][]string, supportsHTML bool) string {
 	if len(newDuplicateRecords) == 0 {
-		return "", newReportedIDs
+		return ""
 	}
 
 	var sb strings.Builder
 
-	// 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
+	// 중복 레코드 수 기준으로 버퍼 크기를 사전 예약하여 루프 중 불필요한 메모리 재할당을 방지합니다.
 	sb.Grow(len(newDuplicateRecords) * 150)
 
 	for i, record := range newDuplicateRecords {
+		// 두 번째 항목부터는 항목 사이에 줄바꿈을 삽입하여 목록을 구분합니다.
 		if i > 0 {
 			sb.WriteString("\n")
 		}
 
+		// CSV 레코드에서 상품 ID와 상품명을 추출합니다.
 		productID := strings.TrimSpace(record[columnID])
 		productName := strings.TrimSpace(record[columnName])
 
-		// 상품명이 비어있는 경우 대체 텍스트 제공
+		// CSV의 상품명 칼럼이 비어있는 경우, 알림 메시지에 공백이 그대로 노출되지 않도록 대체 텍스트를 사용합니다.
 		if productName == "" {
 			productName = fallbackProductName
 		}
 
-		sb.WriteString("      • ")
-		sb.WriteString(renderProductLink(productID, productName, supportsHTML))
-	}
-
-	return sb.String(), newReportedIDs
-}
-
-// @@@@@
-func buildUnavailableProductsMessage(products []*product, prevProductsMap map[int]*product, records [][]string, supportsHTML bool) string {
-	if len(products) == 0 {
-		return ""
-	}
-
-	// CSV 레코드를 Map으로 인덱싱하여 검색 속도 향상
-	recordMap := make(map[string]string, len(records))
-	for _, record := range records {
-		if len(record) > int(columnName) {
-			id := strings.TrimSpace(record[columnID])
-			name := strings.TrimSpace(record[columnName])
-			recordMap[id] = name
-		}
-	}
-
-	var sb strings.Builder
-
-	// 예상되는 문자열 크기만큼 미리 할당하여 메모리 복사 비용 방지 (라인당 약 150바이트 예상)
-	sb.Grow(len(products) * 150)
-
-	for _, p := range products {
-		if !p.IsUnavailable {
-			continue
-		}
-
-		// 무한 스팸 방지: 기존에도 판매 중지(Unavailable) 상태였던 상품이면 스킵 (Status transition 판별)
-		if prevProductsMap != nil {
-			if prevProduct, exists := prevProductsMap[p.ID]; exists && prevProduct.IsUnavailable {
-				continue
-			}
-		}
-
-		productID := strconv.Itoa(p.ID)
-		productName, found := recordMap[productID]
-		if !found {
-			// 감시 대상 상품(레코드) 목록에 없는 상품은 보고 대상에서 제외합니다
-			continue
-		}
-
-		// 상품명이 비어있는 경우 대체 텍스트 제공
-		if productName == "" {
-			productName = fallbackProductName
-		}
-
-		if sb.Len() > 0 {
-			sb.WriteString("\n")
-		}
-
+		// 글머리 기호(•)와 함께 상품 링크를 렌더링합니다.
 		sb.WriteString("      • ")
 		sb.WriteString(renderProductLink(productID, productName, supportsHTML))
 	}
@@ -297,40 +227,112 @@ func buildUnavailableProductsMessage(products []*product, prevProductsMap map[in
 	return sb.String()
 }
 
-// @@@@@
-func buildNotificationMessage(runBy contract.TaskRunBy, currentSnapshot *watchProductPriceSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage string, supportsHTML bool) string {
-	// [메시지 조합 여부 판단 (Change Detection)]
-	// 개별 메시지들(가격 변동, 중복, 식별 불가) 중에서 유효한 내용이 단 하나라도 존재하는지 검사합니다.
-	// 이는 알림의 성격을 단순 '현황 보고'에서 유의미한 '이벤트 알림'으로 전환하는 기준이 됩니다.
-	hasChanges := strutil.AnyContent(productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage)
-	if hasChanges {
+// renderUnavailableProducts 이번 수집 사이클에서 새롭게 판매 불가(단종·접근 불가) 상태로 전이된 상품 목록을
+// 사용자에게 발송할 알림 포맷에 맞게 렌더링합니다.
+//
+// 매개변수:
+//   - newlyUnavailableProducts: 이번 사이클에 처음으로 판매 불가로 전이된 상품의 ID·Name 슬라이스
+//     이전 사이클에서 이미 판매 불가였던 상품은 이 함수에 도달하기 전에 제외됩니다.
+//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
+//
+// 반환값: 판매 불가 상품 목록이 담긴 알림 메시지 문자열 (전달된 목록이 없으면 빈 문자열을 반환합니다)
+func renderUnavailableProducts(newlyUnavailableProducts []struct{ ID, Name string }, supportsHTML bool) string {
+	if len(newlyUnavailableProducts) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// 판매 불가 상품 수 기준으로 버퍼 크기를 사전 예약하여 루프 중 불필요한 메모리 재할당을 방지합니다.
+	sb.Grow(len(newlyUnavailableProducts) * 150)
+
+	for i, p := range newlyUnavailableProducts {
+		// 두 번째 항목부터는 항목 사이에 줄바꿈을 삽입하여 목록을 구분합니다.
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		// 글머리 기호(•)와 함께 상품 링크를 렌더링합니다.
+		sb.WriteString("      • ")
+		sb.WriteString(renderProductLink(p.ID, p.Name, supportsHTML))
+	}
+
+	return sb.String()
+}
+
+// renderProductLink 상품 ID와 상품명을 채널 규격에 맞는 링크 문자열로 렌더링합니다.
+//
+// 매개변수:
+//   - id: 상품 ID
+//   - name: 상품명
+//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
+//
+// 반환값: 채널 규격에 맞게 포맷팅된 상품 링크 문자열
+func renderProductLink(id, name string, supportsHTML bool) string {
+	if supportsHTML {
+		escapedName := template.HTMLEscapeString(name)
+		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", productPageURL(id), escapedName)
+	}
+
+	return fmt.Sprintf("%s(%s)", name, id)
+}
+
+// buildNotificationMessage 각 렌더러가 생성한 개별 메시지들을 조합하여 최종 알림 메시지를 완성합니다.
+//
+// [동작 흐름]
+// 아래 두 단계를 순서대로 처리합니다.
+//
+//  1. 변경 사항이 있는 경우 (hasChanges=true)
+//     가격 변동·중복 등록·판매 불가 메시지 중 내용이 있는 것만 골라 하나의 문자열로 합칩니다.
+//     각 섹션에는 사용자가 읽기 쉽도록 헤더 문장이 앞에 붙습니다.
+//
+//  2. 변경 사항이 없지만 사용자가 직접 실행한 경우 (runBy=TaskRunByUser)
+//     변경 없음을 알리는 문장과 함께 현재 감시 중인 전체 상품 현황을 반환합니다.
+//     자동 실행(스케줄러)에 의한 경우에는 빈 문자열을 반환하여 불필요한 알림을 억제합니다.
+//
+// 매개변수:
+//   - runBy: 작업 실행 주체 (사용자 직접 실행 vs 스케줄러 자동 실행)
+//   - currentSnapshot: 이번 수집 사이클의 최신 상태 스냅샷 (상품 목록 현황 보고에 사용)
+//   - productDiffsMessage: 가격 변동 상품 렌더링 결과 (없으면 빈 문자열)
+//   - newDuplicateRecordsMessage: 중복 등록 상품 렌더링 결과 (없으면 빈 문자열)
+//   - newlyUnavailableProductsMessage: 판매 불가 전이 상품 렌더링 결과 (없으면 빈 문자열)
+//   - supportsHTML: 수신 채널(텔레그램 등)의 HTML 태그 지원 여부
+//
+// 반환값: 발송할 최종 알림 메시지 문자열. 알림을 보낼 필요가 없으면 빈 문자열을 반환합니다.
+func buildNotificationMessage(runBy contract.TaskRunBy, currentSnapshot *watchProductPriceSnapshot, productDiffsMessage, newDuplicateRecordsMessage, newlyUnavailableProductsMessage string, supportsHTML bool) string {
+	// 세 개의 개별 메시지(가격 변동·중복 등록·판매 불가) 중 하나라도 내용이 있으면 이벤트 알림 메시지를 조립합니다.
+	// 모두 빈 문자열이면 아래 사용자 직접 실행 여부 확인으로 넘어갑니다.
+	hasAnyMessage := strutil.AnyContent(productDiffsMessage, newDuplicateRecordsMessage, newlyUnavailableProductsMessage)
+	if hasAnyMessage {
 		var sb strings.Builder
 
-		// 예상되는 최소 용량을 미리 할당하여 메모리 재할당 비용 최적화
-		expectedSize := len(productsDiffMessage) + len(duplicateRecordsMessage) + len(unavailableProductsMessage) + 100
-		sb.Grow(expectedSize)
+		// 루프 중 불필요한 메모리 재할당을 줄이기 위해 버퍼 용량을 미리 할당합니다.
+		// 세 메시지의 길이 합산에 헤더 문장 오버헤드 100바이트를 더해 예상 크기를 계산합니다.
+		sb.Grow(len(productDiffsMessage) + len(newDuplicateRecordsMessage) + len(newlyUnavailableProductsMessage) + 100)
 
-		if len(productsDiffMessage) > 0 {
+		// 유효한 메시지만 선택적으로 조합합니다. 빈 문자열인 섹션은 자연스럽게 생략됩니다.
+		if len(productDiffsMessage) > 0 {
 			sb.WriteString("상품 정보가 변경되었습니다.\n\n")
-			sb.WriteString(productsDiffMessage)
+			sb.WriteString(productDiffsMessage)
 			sb.WriteString("\n\n")
 		}
-		if len(duplicateRecordsMessage) > 0 {
+		if len(newDuplicateRecordsMessage) > 0 {
 			sb.WriteString("중복으로 등록된 상품 목록:\n\n")
-			sb.WriteString(duplicateRecordsMessage)
+			sb.WriteString(newDuplicateRecordsMessage)
 			sb.WriteString("\n\n")
 		}
-		if len(unavailableProductsMessage) > 0 {
+		if len(newlyUnavailableProductsMessage) > 0 {
 			sb.WriteString("알 수 없는 상품 목록:\n\n")
-			sb.WriteString(unavailableProductsMessage)
+			sb.WriteString(newlyUnavailableProductsMessage)
 			sb.WriteString("\n\n")
 		}
 
 		return sb.String()
 	}
 
-	// 변경 사항이 없더라도, 사용자가 명시적 의도로 작업(RunByUser)을 실행한 경우에는 침묵하지 않고 현재 상태를 보고합니다.
-	// 이는 시스템이 정상 동작 중임을 사용자에게 확신시켜 주기 위한 중요한 UX 장치입니다.
+	// 변경 사항이 없더라도, 사용자가 직접 실행(TaskRunByUser)한 경우에는 침묵하지 않고 현재 상태를 보고합니다.
+	// 사용자가 직접 실행한 경우에는 "변경 없음 + 현재 상품 현황"을 응답하여, 시스템이 정상 동작 중임을 사용자가 확인할 수 있도록 합니다.
+	// 반면 스케줄러 자동 실행 중에는 변경이 없을 때 빈 문자열을 반환하여 불필요한 알림 발송을 억제합니다.
 	if runBy == contract.TaskRunByUser {
 		if len(currentSnapshot.Products) == 0 {
 			return "등록된 상품 정보가 존재하지 않습니다."
@@ -338,31 +340,23 @@ func buildNotificationMessage(runBy contract.TaskRunBy, currentSnapshot *watchPr
 
 		var sb strings.Builder
 
-		// 예상되는 최소 용량을 미리 할당하여 메모리 재할당 비용 최적화
+		// 불필요한 메모리 재할당을 줄이기 위해 버퍼 용량을 미리 할당합니다.
+		// 상품당 약 400바이트, 헤더 문장 오버헤드 100바이트를 더해 예상 크기를 계산합니다.
 		sb.Grow(len(currentSnapshot.Products)*400 + 100)
 
 		sb.WriteString("변경된 상품 정보가 없습니다.\n\n")
 		sb.WriteString("현재 등록된 상품 정보는 아래와 같습니다:\n\n")
 
-		lineSpacing := "\n\n"
-		for i, actualityProduct := range currentSnapshot.Products {
+		for i, p := range currentSnapshot.Products {
 			if i > 0 {
-				sb.WriteString(lineSpacing)
+				sb.WriteString("\n\n")
 			}
-			sb.WriteString(renderProduct(actualityProduct, supportsHTML, ""))
+
+			sb.WriteString(renderProduct(p, supportsHTML, ""))
 		}
 
 		return sb.String()
 	}
 
 	return ""
-}
-
-// @@@@@
-func renderProductLink(productID, productName string, supportsHTML bool) string {
-	if supportsHTML {
-		escapedName := template.HTMLEscapeString(productName)
-		return fmt.Sprintf("<a href=\"%s\"><b>%s</b></a>", buildProductPageURL(productID), escapedName)
-	}
-	return fmt.Sprintf("%s(%s)", productName, productID)
 }

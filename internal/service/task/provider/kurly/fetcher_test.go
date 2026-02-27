@@ -84,7 +84,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 			mockStatusCode: 200,
 			mockHTML:       "<html><body>Nothing here</body></html>",
 			wantErr:        true,
-			errSubstr:      "JSON 데이터 추출이 실패하였습니다",
+			errSubstr:      "__NEXT_DATA__ JSON 태그를 찾을 수 없습니다",
 		},
 		{
 			name:           "성공: 판매 중지 상품 (IsUnavailable)",
@@ -103,7 +103,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 			mockStatusCode: 200,
 			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"props":{"pageProps":{"product":{}}}}</script><div>Changed Layout</div></body></html>`,
 			wantErr:        true,
-			errSubstr:      "상품정보 섹션 추출 실패",
+			errSubstr:      "상품 정보 섹션(#product-atf",
 		},
 	}
 
@@ -111,7 +111,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			mockFetcher := new(mocks.MockFetcher)
-			url := buildProductPageURL(tt.productID)
+			url := productPageURL(tt.productID)
 
 			if tt.mockFetchErr != nil {
 				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
@@ -139,7 +139,7 @@ func TestTask_FetchProductInfo(t *testing.T) {
 				}, true),
 			}
 
-			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
+			got, err := tsk.fetchProduct(context.Background(), tt.productID)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -210,7 +210,7 @@ func TestExtractPriceDetails(t *testing.T) {
 	</section>
 </div>`,
 			wantErr:   true,
-			errSubstr: "상품 가격(0) 추출이 실패하였습니다",
+			errSubstr: "상품 가격 요소",
 		},
 	}
 

@@ -50,7 +50,7 @@ func TestFormatProductPageURL_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := buildProductPageURL(tt.id)
+			got := productPageURL(tt.id)
 			assert.Equal(t, tt.want, got)
 		})
 	}

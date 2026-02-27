@@ -194,7 +194,7 @@ func (t *task) fetchProducts(ctx context.Context, commandSettings *watchPriceSet
 			//   - context.Canceled  → 사용자가 명시적으로 취소한 경우: 알림 생략 (정상)
 			//   - context.DeadlineExceeded → 타임아웃으로 실패한 경우:  알림 전송 (이상 상황)
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				t.Log(component, applog.WarnLevel, "수집 중단: 컨텍스트 종료", ctxErr, applog.Fields{
+				t.Log(component, applog.InfoLevel, "수집 중단: 컨텍스트 종료", ctxErr, applog.Fields{
 					"query":              commandSettings.Query,
 					"start_index":        startIndex,
 					"target_fetch_count": targetFetchCount,

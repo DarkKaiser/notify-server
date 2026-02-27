@@ -1,237 +1,274 @@
 package kurly
 
 import (
-	"github.com/darkkaiser/notify-server/internal/service/contract"
-	"github.com/darkkaiser/notify-server/pkg/strutil"
+	"strconv"
+	"strings"
 )
 
-// @@@@@ 개선 문의
-// syncLowestPrices 현재 수집된 상품 정보와 이전 스냅샷을 동기화하여 데이터의 연속성을 보장합니다.
-//
-// [역할: 상태 동기화]
-// 데이터를 변경하고 최신화하는 작업은 오직 여기서만 수행합니다. (Side Effect 전담)
-//
-// 1. 빠른 조회 준비 (Indexing): 이전 상품 목록을 Map으로 만들어 승계 속도를 높입니다. (O(N))
-// 2. 과거 데이터 계승 (Restoration): 지난번 실행 때까지의 '역대 최저가' 기록을 현재 객체로 가져옵니다.
-// 3. 최신 상태 반영 (Update): 현재 가격과 비교하여 최저가를 최종 갱신합니다.
-// 4. 누락 데이터 이관 (Carry-over): 통신 장애 등 일시적 이유로 현재 사이클에서 누락된 이전 상품을 스냅샷에 포함시켜 과거 데이터를 보존합니다. 단, 감시 대상에서 제외(삭제/비활성화)된 상품은 가비지 컬렉션(GC) 처리하여 스토리지 누수를 방지합니다.
-func syncLowestPrices(currentSnapshot, prevSnapshot *watchProductPriceSnapshot, activeRecordIDs map[int]struct{}) map[int]*product {
-	// 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
-	var prevProductsMap map[int]*product
-	if prevSnapshot != nil {
-		prevProductsMap = make(map[int]*product, len(prevSnapshot.Products))
-		for _, p := range prevSnapshot.Products {
-			prevProductsMap[p.ID] = p
-		}
-	}
-
-	// 누락된 과거 상품을 식별하기 위해 현재 수집된 상품 ID 목록을 기록합니다.
-	currentProductIDs := make(map[int]struct{}, len(currentSnapshot.Products))
-
-	// 모든 상품의 최저가 정보를 최신으로 갱신합니다.
-	// 이로써 이후의 비교 로직은 순수한 '조회' 작업만 수행하게 됩니다.
-	for _, currentProduct := range currentSnapshot.Products {
-		currentProductIDs[currentProduct.ID] = struct{}{}
-
-		// 크롤링으로 수집된 '현재 상태(Stateless)'에는 과거의 기록인 '역대 최저가' 정보가 부재합니다.
-		// 따라서 이전 실행 결과(Snapshot)로부터 누적된 최저가 데이터를 조회하여
-		// 현재 객체로 이월(Carry-over)하는 상태 복원(State Restoration) 과정을 수행합니다.
-		if prevProductsMap != nil {
-			if prevProduct, exists := prevProductsMap[currentProduct.ID]; exists {
-				currentProduct.LowestPrice = prevProduct.LowestPrice
-				currentProduct.LowestPriceTimeUTC = prevProduct.LowestPriceTimeUTC
-
-				// 크롤링에 실패하여 임시 객체로 전달된 경우(FetchFailedCount > 0) 실패 횟수를 누적하고 상태를 복원/전이합니다.
-				if currentProduct.FetchFailedCount > 0 {
-					currentProduct.FetchFailedCount += prevProduct.FetchFailedCount
-					if currentProduct.FetchFailedCount >= 3 {
-						// 연속 실패 임계값(3회) 도달 시 단종(혹은 접근 불가) 상태로 강제 전환하여 좀비 데이터를 방지합니다.
-						currentProduct.IsUnavailable = true
-					} else {
-						// 임계값 미달 시 일시적 장애로 간주하여 이전 정상 데이터(가격, 상태 등)를 승계합니다.
-						currentProduct.Name = prevProduct.Name
-						currentProduct.Price = prevProduct.Price
-						currentProduct.DiscountedPrice = prevProduct.DiscountedPrice
-						currentProduct.DiscountRate = prevProduct.DiscountRate
-						currentProduct.IsUnavailable = prevProduct.IsUnavailable
-					}
-				}
-			}
-		}
-
-		// 만약 최초 수집부터 계속 실패하여 누적되었거나(기존 기록 없음), 임계값 도달 시 재확인
-		if currentProduct.FetchFailedCount >= 3 {
-			currentProduct.IsUnavailable = true
-		}
-
-		// [최저가 갱신 로직 실행]
-		// 현재 시점의 실구매가(Effective Price)와 기존 역대 최저가를 비교하여 상태를 동기화합니다.
-		//
-		// 이 메서드는 단순 비교를 넘어 다음과 같은 중요한 상태 변경(State Mutation)을 수행합니다:
-		// 1. 최저가 갱신 (Atomicity): 현재 가격이 더 낮을 경우 즉시 새로운 최저가로 덮어씁니다.
-		// 2. 시계열 기록 (Timestamping): 갱신 시점의 시간(UTC)을 기록하여 데이터의 이력을 보존합니다.
-		//
-		// 중요: 반드시 Diff 계산(calculateProductDiffs) 이전에 수행되어야 합니다.
-		// 이를 통해 '이번 크롤링 사이클에서 최저가가 갱신되었는지'를 정확히 판별할 수 있습니다.
-		currentProduct.tryUpdateLowestPrice()
-	}
-
-	// [누락 데이터 이관 (Carry-over)]
-	// 웹 스크래핑 실패 등 통신 장애로 인해 이번 회차에 수집되지 못한 '과거 상품'들을 찾아냅니다.
-	// 발견된 누락 상품 중 사용자가 여전히 감시 중인 상품(activeRecordIDs 포함)은 현재 스냅샷에 추가하여 역대 최저가 이력 유실을 방지합니다.
-	// 단, 사용자가 CSV에서 의도적으로 삭제하거나 비활성화한 상품은 저장소 누수(Storage Leak)를 방지하기 위해 가비지 컬렉션(GC) 처리합니다.
-	if prevProductsMap != nil {
-		for id, prevProduct := range prevProductsMap {
-			if _, exists := currentProductIDs[id]; !exists {
-				// 현재 수집된 상품 목록(currentProductIDs)에는 없지만, 여전히 감시 대상(activeRecordIDs)으로 설정되어 있다면,
-				// 이는 의도적 삭제가 아닌 수집 실패로 간주하여 과거 데이터를 현재 스냅샷으로 이관하여 보존합니다.
-				if _, isActive := activeRecordIDs[id]; isActive {
-					currentSnapshot.Products = append(currentSnapshot.Products, prevProduct)
-				}
-			}
-		}
-	}
-
-	return prevProductsMap
-}
-
-// @@@@@ 개선사항 존재유무 확인
-// analyzeAndReport 수집된 데이터를 분석하여 사용자에게 보낼 알림 메시지를 생성합니다.
-//
-// [주요 동작]
-// 1. 변화 확인: 이전 데이터와 비교해 새로운 상품이나 가격 변동이 있는지 확인합니다.
-// 2. 메시지 작성: 발견된 변화를 보기 좋게 포맷팅합니다.
-// 3. 알림 결정:
-//   - 스케줄러 실행: 변화가 있을 때만 알림을 보냅니다. (조용히 모니터링)
-//   - 사용자 실행: 변화가 없어도 "변경 없음"이라고 알려줍니다. (확실한 피드백)
-func analyzeAndReport(runBy contract.TaskRunBy, currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product, reportedDuplicateIDs []string, records, duplicateRecords [][]string, supportsHTML bool) (message string, shouldSave bool) {
-	// 신규 상품 및 가격 변동을 식별합니다.
-	diffs := calculateProductDiffs(currentSnapshot, prevProductsMap)
-
-	// 식별된 변동 사항을 사용자가 이해하기 쉬운 알림 메시지로 변환합니다.
-	productsDiffMessage := renderProductDiffs(diffs, supportsHTML)
-
-	// 단순한 가격 변동 알림을 넘어, 사용자의 설정 오류(중복 등록)나 외부 요인에 의한 상품 상태 변화(판매 중지)를 식별하여 보고합니다.
-	// 이전 상태(reportedDuplicateIDs, prevProductsMap)를 매개변수로 전달하여 이미 이전에 보고가 된 대상은 스킵하는
-	// State-machine 무한 알람 스팸 방지 로직이 적용되어 있습니다.
-	duplicateRecordsMessage, newDuplicateNotifiedIDs := buildDuplicateRecordsMessage(duplicateRecords, reportedDuplicateIDs, supportsHTML)
-	currentSnapshot.DuplicateNotifiedIDs = newDuplicateNotifiedIDs
-
-	unavailableProductsMessage := buildUnavailableProductsMessage(currentSnapshot.Products, prevProductsMap, records, supportsHTML)
-
-	// 최종 알림 메시지 조합
-	// 앞서 생성된 핵심 변경 내역과 부가 정보들을 하나의 완결된 사용자 메시지로 통합합니다.
-	// 이 단계에서는 각 메시지 조각의 유무에 따라 조건부로 포맷팅을 수행하며, 최종적으로 사용자가 받아볼 깔끔하고 가독성 높은 리포트를 완성합니다.
-	message = buildNotificationMessage(runBy, currentSnapshot, productsDiffMessage, duplicateRecordsMessage, unavailableProductsMessage, supportsHTML)
-
-	// 결과 처리 (알림 vs 저장)
-	// 알림을 보내는 기준과 데이터를 저장하는 기준을 다르게 적용하여 효율성을 높입니다.
-	// - 알림: 사용자가 직접 확인하고 싶어 할 때(RunByUser)는 변경 사항이 없더라도 현재 상태를 리포트하여 안심시켜 줍니다.
-	// - 저장: 매번 불필요하게 저장하지 않고, 실제로 가격, 상태, 혹은 내부 추적 데이터(중복 ID 등)가 변했을 때만 저장합니다.
-	reportedDuplicateIDsChanged := !isStringSliceEqual(reportedDuplicateIDs, newDuplicateNotifiedIDs)
-	hasChanges := len(diffs) > 0 || strutil.AnyContent(duplicateRecordsMessage, unavailableProductsMessage) || reportedDuplicateIDsChanged
-	return message, hasChanges
-}
-
-// @@@@@
-// isStringSliceEqual 두 문자열 슬라이스의 요소가 동일한지 비교하는 헬퍼 함수입니다.
-func isStringSliceEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, v := range a {
-		if v != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// @@@@@
-// calculateProductDiffs 현재 상품 정보와 과거 상품 정보를 비교하여 사용자에게 알릴 만한 변화(Diff)를 찾아냅니다.
+// extractProductDiffs 현재 스냅샷의 상품 목록과 이전 스냅샷의 상품 맵을 비교하여,
+// 사용자에게 알림을 전송해야 하는 변화(Diff) 목록을 추출합니다.
 //
 // [동작 흐름]
-// 상품의 상태 변화를 세 단계로 나누어 순차적으로 분석합니다.
+// 각 상품을 대상으로 아래 세 단계를 순서대로 수행하며, 각 단계에서 조건이 충족되면
+// 해당 상품에 대한 처리를 완료하고 다음 상품으로 넘어갑니다.
 //
-// 1. 신규 여부: "처음 보는 상품인가?" (New Product)
-// 2. 판매 상태: "품절되었다가 다시 들어왔는가?" (Restock)
-// 3. 가격 변동: "가격이 오르거나 내렸는가? 역대 최저가인가?" (Price Change)
-func calculateProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductsMap map[int]*product) []productDiff {
+//  1. 신규 상품 감지 ("이전 스냅샷에 없던 상품인가?")
+//     이전 기록이 없거나, 최초 수집 시 통신 장애로 임시 실패 객체(Price=0)로만 기록된 경우입니다.
+//     현재 상태가 정상 수집된 경우에만 productEventNew 이벤트로 기록합니다.
+//     단, 아직 수집 실패 중인 상품(FetchFailedCount > 0)은 알림을 보류합니다.
+//
+//  2. 판매 가능 여부 전이 감지 ("품절 또는 재입고가 발생했는가?")
+//     - Available → Unavailable(판매 중지): 내부 상태만 갱신하고 별도 알림 없이 조용히 넘어갑니다.
+//     - Unavailable → Available(재입고): productEventReappeared 이벤트로 기록합니다.
+//     - Unavailable → Unavailable(유지): 상태 변화가 없으므로 무시합니다.
+//
+//  3. 가격 변동 감지 ("현재 판매 중인 상품의 가격이 달라졌는가?")
+//     위 두 단계를 통과한 상품은 '이전에도, 현재도 정상 판매 중'임이 보장된 상태입니다.
+//     실구매가 기준으로 변동이 없으면 무시하고, 변동이 있으면 역대 최저가 갱신 여부에 따라
+//     productEventLowestPriceAchieved 또는 productEventPriceChanged 이벤트로 분기합니다.
+//
+// 매개변수:
+//   - currentSnapshot: 이번 수집 결과로 구성된 현재 상태의 스냅샷
+//   - prevProductsByID: 이전 스냅샷의 상품 목록을 ID 기준으로 색인한 Map (빠른 조회용)
+//
+// 반환값:
+//   - []productDiff: 이번 사이클에 감지된 모든 변화 목록. 알림 전송 대상이 없으면 nil.
+func extractProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProductsByID map[int]*product) []productDiff {
 	var diffs []productDiff
 
 	for _, currentProduct := range currentSnapshot.Products {
-		prevProduct, exists := prevProductsMap[currentProduct.ID]
+		prevProduct, exists := prevProductsByID[currentProduct.ID]
 
-		// 1. 신규 상품 처리
-		// 이전 기록이 없는 경우, 현재 상태가 유효하다면 '신규 상품'으로 처리합니다.
-		// 단, 최초 수집부터 실패한 상품(FetchFailedCount > 0)은 정상 수집될 때까지 신규 알림을 보류합니다.
-		if !exists {
-			if !currentProduct.IsUnavailable && currentProduct.FetchFailedCount == 0 {
+		// -------------------------------------------------------------------------
+		// 1단계: 신규 상품 감지 — "이전 스냅샷에 없던 상품인가?"
+		// -------------------------------------------------------------------------
+		// 아래 두 가지 경우를 모두 '논리적 신규 등장'으로 동일하게 취급합니다.
+		//   (A) !exists: 이전 스냅샷 자체에 해당 ID가 없는 경우. 진짜 새로운 상품입니다.
+		//   (B) Price==0 && FetchFailedCount>0: 감시 목록에 추가된 이후 단 한 번도 정상 수집에
+		//       성공하지 못해, 스냅샷에 임시 실패 객체(가격 0원)만 남아있는 경우입니다.
+		//       실제 정보를 단 한 번도 정상 수집한 적이 없으므로, 이번에 처음 정상 수집된 것과 사실상 동일합니다.
+		if !exists || (prevProduct.Price == 0 && prevProduct.FetchFailedCount > 0) {
+			// 현재 사이클에서도 여전히 수집에 실패 중이거나(FetchFailedCount > 0),
+			// 정상 수집됐지만 품절·판매중지(IsUnavailable=true) 상태라면 아직 알림을 보낼 수 없습니다.
+			// 조건이 갖춰질 때까지 productEventNew 이벤트 발행을 조용히 보류합니다.
+			if currentProduct.FetchFailedCount == 0 && !currentProduct.IsUnavailable {
 				diffs = append(diffs, productDiff{
 					Type:    productEventNew,
 					Product: currentProduct,
-					Prev:    nil,
+
+					// 이전 유효 가격 데이터가 없는 신규 상품이므로 Prev를 nil로 설정합니다.
+					// 0원짜리 임시 실패 객체와 현재 가격을 비교하여 렌더링하면 잘못된 인상을 줄 수 있습니다.
+					Prev: nil,
 				})
 			}
+
 			continue
 		}
 
-		// 2. 상태 전이 처리 (Unavailable <-> Available)
-		// 이전 기록이 존재하는 경우, 상품의 판매 가능 여부(IsUnavailable) 변화를 감지합니다.
+		// -------------------------------------------------------------------------
+		// 2단계: 판매 가능 여부 전이 감지 — "품절이 됐거나, 다시 판매가 시작됐는가?"
+		// -------------------------------------------------------------------------
+		// 이전 기록이 존재하는 상품에 대해 IsUnavailable 필드의 변화를 감지합니다.
+		// 총 3가지 경우의 수(재입고/판매중지/유지)를 순서대로 처리합니다.
 
-		// 2-1. 재입고 (Unavailable -> Available)
-		// 이전에는 품절/판매중지 상태였으나, 현재 구매 가능해진 경우입니다.
+		// [2-1] 재입고: Unavailable → Available
+		// 이전에는 품절·판매중지였던 상품이 현재 다시 구매 가능해진 경우입니다.
+		// 사용자에게 '다시 살 수 있다'는 사실 자체가 핵심이므로, 가격 비교 없이 신규처럼 알림을 보냅니다.
 		if prevProduct.IsUnavailable && !currentProduct.IsUnavailable {
 			diffs = append(diffs, productDiff{
 				Type:    productEventReappeared,
 				Product: currentProduct,
-				Prev:    nil, // 재입고는 가격 비교보다는 '등장' 자체가 중요하므로 Prev 없이 신규처럼 취급
+
+				// 재입고 알림은 가격 변동 정보보다 '재등장' 사실이 핵심입니다.
+				// 이전 품절 시점의 가격과 비교하는 것은 의미가 없으므로 Prev를 nil로 설정합니다.
+				Prev: nil,
 			})
+
 			continue
 		}
 
-		// 2-2. 판매 중지 (Available -> Unavailable)
-		// 기존에 판매 중이던 상품이 품절, 판매중지 등의 사유로 정보를 확인할 수 없게 된 경우입니다.
+		// [2-2] 판매 중지: Available → Unavailable
+		// 이전까지 정상 판매 중이던 상품이 품절·판매중지 상태로 전환된 경우입니다.
+		// 사용자에게 알림은 보내지 않지만, 이 상태 변화는 스냅샷에 자동으로 반영됩니다.
 		if !prevProduct.IsUnavailable && currentProduct.IsUnavailable {
 			continue
 		}
 
-		// 2-3. 계속 판매 불가 (Unavailable -> Unavailable)
-		// 이전에도 상품 정보를 확인할 수 없었고(품절/판매중지), 현재도 여전히 확인이 불가능한 상태입니다.
-		// 상태의 변화가 없으므로 별도의 알림이나 처리를 수행하지 않고 무시합니다.
+		// [2-3] 판매 불가 유지: Unavailable → Unavailable
+		// 이전에도, 현재도 판매 불가 상태입니다. 아무런 상태 변화가 없으므로 무시합니다.
 		if prevProduct.IsUnavailable && currentProduct.IsUnavailable {
 			continue
 		}
 
-		// 3. 가격 변동 확인
-		//
-		// 위 단계에서 상품의 존재 여부와 판매 상태(Availability)에 대한 검증을 모두 마쳤습니다.
-		// 즉, 이 시점의 상품은 '과거에도 존재했고 판매 중이었으며', '현재도 여전히 판매 중인' 정상적인 상태임이 보장됩니다.
-		//
-		// 따라서 이후는 복잡한 상태 판별 로직 없이, 오직 '가격 데이터'의 수치적 변동만을 순수하게 비교합니다.
+		// -------------------------------------------------------------------------
+		// 3단계: 가격 변동 감지 — "실구매가가 달라졌는가? 역대 최저가를 경신했는가?"
+		// -------------------------------------------------------------------------
+		// 여기까지 도달한 상품은 '이전에도 정상 판매 중이었고, 현재도 정상 판매 중'임이 보장됩니다.
+		// 복잡한 상태 판별은 이미 1·2단계에서 모두 처리했으므로, 이후는 순수하게 가격 숫자만 비교합니다.
 
-		// 가격 변동 사항이 없다면 즉시 다음 상품으로 넘어갑니다.
+		// 실구매가(할인가 또는 정가) 기준으로 변동이 없다면 알림 없이 다음 상품으로 넘어갑니다.
 		if !currentProduct.hasPriceChangedFrom(prevProduct) {
 			continue
 		}
 
-		// 실구매가를 기준으로 최저가 갱신 여부를 최종 판단합니다.
-		currentEffectivePrice := currentProduct.effectivePrice()
-
-		if currentEffectivePrice == currentProduct.LowestPrice {
+		// 가격이 변동된 상품에 대해 역대 최저가 갱신 여부를 최종 판단합니다.
+		// effectivePrice()는 할인가가 존재하면 할인가를, 없으면 정가를 반환합니다.
+		// 현재 실구매가가 누적 집계된 역대 최저가(LowestPrice)와 일치하면 최저가 달성으로 분기합니다.
+		if currentProduct.effectivePrice() == currentProduct.LowestPrice {
 			diffs = append(diffs, productDiff{
 				Type:    productEventLowestPriceAchieved,
 				Product: currentProduct,
-				Prev:    prevProduct,
+
+				// 이전 가격과 현재 최저가를 비교 렌더링하기 위해 Prev를 전달합니다.
+				Prev: prevProduct,
 			})
 		} else {
 			diffs = append(diffs, productDiff{
 				Type:    productEventPriceChanged,
 				Product: currentProduct,
-				Prev:    prevProduct,
+
+				// 가격이 얼마나 오르거나 내렸는지 비교 렌더링하기 위해 Prev를 전달합니다.
+				Prev: prevProduct,
 			})
 		}
 	}
 
 	return diffs
+}
+
+// extractNewDuplicateRecords 중복 상품 레코드 목록을 훑어, 이번 수집 사이클에서 처음으로 감지된 중복 상품 레코드만 골라내고,
+// 다음 사이클을 위해 갱신된 '발송 완료 상품 ID 목록'도 함께 반환합니다.
+//
+// [역할: 중복 상품 알림 스팸 방지 State-Machine]
+// 감시 목록에 같은 상품이 실수로 두 번 이상 등록된 경우, 수집 사이클마다 동일한 "중복 등록" 알림이 반복 발송되는 스팸이 발생할 수 있습니다.
+// 이를 방지하기 위해 이전 스냅샷에 저장된 발송 이력(prevDuplicateNotifiedIDs)을 참조하여, 이미 알림을 보낸 상품은 조용히 건너뛰고
+// 이번에 처음 발견된 중복 상품에만 알림을 발행합니다.
+//
+// 매개변수:
+//   - duplicateRecords: 이번 수집 사이클에서 감지된 중복 상품 레코드 목록 (CSV 원시 행 배열)
+//   - prevDuplicateNotifiedIDs: 이전 스냅샷에 기록된 '이미 중복 알림이 발송된 상품 ID' 목록
+//
+// 반환값:
+//   - newDuplicateRecords: 이번 사이클에 처음으로 중복이 감지되어 알림을 보내야 하는 레코드 목록
+//   - updatedDuplicateNotifiedIDs: 이번 사이클 기준으로 갱신된 '발송 완료 상품 ID 전체 목록'
+//     중복 목록에서 상품이 사라지면 자동으로 제외됩니다. 다음 스냅샷에 저장하여 State-Machine 기억으로 활용합니다.
+func extractNewDuplicateRecords(duplicateRecords [][]string, prevDuplicateNotifiedIDs []string) (newDuplicateRecords [][]string, updatedDuplicateNotifiedIDs []string) {
+	if len(duplicateRecords) == 0 {
+		return nil, nil
+	}
+
+	// O(1) 조회를 위해 이전 발송 이력 슬라이스를 Set(map)으로 변환합니다.
+	notifiedSet := make(map[string]struct{}, len(prevDuplicateNotifiedIDs))
+	for _, id := range prevDuplicateNotifiedIDs {
+		notifiedSet[id] = struct{}{}
+	}
+
+	// 이번 사이클의 갱신된 발송 이력을 담을 슬라이스를 미리 확보합니다.
+	// 중복 레코드 수만큼 용량을 사전에 배정하여, append 과정에서의 불필요한 재할당을 방지합니다.
+	updatedDuplicateNotifiedIDs = make([]string, 0, len(duplicateRecords))
+
+	for _, record := range duplicateRecords {
+		if len(record) <= int(columnID) {
+			continue
+		}
+
+		productID := strings.TrimSpace(record[columnID])
+
+		// 이번 사이클의 갱신된 발송 이력에 현재 상품 ID를 추가합니다.
+		// 중복 목록에서 사라진 상품은 자동으로 제외되므로, 이 슬라이스가 유효한 최신 상태가 됩니다.
+		updatedDuplicateNotifiedIDs = append(updatedDuplicateNotifiedIDs, productID)
+
+		if _, alreadyNotified := notifiedSet[productID]; !alreadyNotified {
+			newDuplicateRecords = append(newDuplicateRecords, record)
+
+			// [중요] 알림 대상으로 추가한 즉시 notifiedSet에도 등록하여 상태를 동기화합니다.
+			// 만약 이 갱신을 누락하면, 동일 루프 내에서 같은 상품이 연달아 등장했을 때 후속 레코드가 또다시 '새로운 중복'으로 오인되어
+			// 결국 단일 사이클 안에서 스팸 알림이 중복 발송되는 심각한 버그가 발생합니다.
+			notifiedSet[productID] = struct{}{}
+		}
+	}
+
+	return newDuplicateRecords, updatedDuplicateNotifiedIDs
+}
+
+// extractNewlyUnavailableProducts 현재 상품 목록과 이전 스냅샷을 비교하여,
+// 이번 수집 사이클에서 새롭게 판매 불가(IsUnavailable=true) 상태로 전이된 상품들만 추려냅니다.
+//
+// [역할: 단종 알림 스팸 방지]
+// '처음부터 판매 불가였던 상품'에 대해 수집 사이클마다 알림이 반복 발송되는 스팸을 방지합니다.
+// 이전 스냅샷과 대조하여, 오직 이번 수집 사이클에 '판매 중 → 판매 불가'로 전이된 상품만 추출합니다.
+//
+// 매개변수:
+//   - currentProducts: 이번 수집 사이클에서 상태 병합까지 완료된 최종 상품 목록
+//   - prevProductsByID: 이전 스냅샷의 상품 목록을 ID 기준으로 색인한 Map (상태 전이 판별용)
+//     최초 실행 시(이전 스냅샷 없음)에는 nil을 전달하며, 이 경우 상태 전이 비교를 건너뜁니다.
+//   - records: 감시 대상 CSV 레코드 목록. 아래 두 가지 목적으로 활용됩니다.
+//     1. 알림에 표시할 상품명 조회 (columnName 칼럼). 판매 불가 상태에서는 크롤링이 실패하여
+//     product.Name이 비어 있거나 오래된 값일 수 있으므로, 사용자가 직접 입력한 CSV 값을 우선합니다.
+//     2. 감시 대상 여부 필터링 — 목록에 없는 상품(삭제되거나 비활성화된 상품)은 알림 대상에서 제외
+//
+// 반환값:
+//   - newlyUnavailableProducts: 새롭게 판매 불가로 전이된 상품들의 ID·Name 슬라이스
+//     상품명이 CSV에 없으면 fallbackProductName으로 대체됩니다.
+func extractNewlyUnavailableProducts(currentProducts []*product, prevProductsByID map[int]*product, records [][]string) []struct{ ID, Name string } {
+	if len(currentProducts) == 0 {
+		return nil
+	}
+
+	// 루프 안에서 상품 ID(문자열)로 상품명을 O(1)에 조회하기 위해 CSV 레코드를 Map으로 변환합니다.
+	// key: 상품 ID 문자열, value: 상품명
+	//
+	// 이 Map은 아래 루프에서 두 가지 목적으로 활용됩니다.
+	//   1. 알림 메시지에 표시할 상품명 조회
+	//   2. 감시 대상 여부 확인 — Map에 키가 없는 상품은 CSV에서 삭제됐거나 비활성화된 상품이므로 알림 대상에서 제외
+	productNamesByID := make(map[string]string, len(records))
+	for _, record := range records {
+		if len(record) > int(columnName) {
+			id := strings.TrimSpace(record[columnID])
+			name := strings.TrimSpace(record[columnName])
+			productNamesByID[id] = name
+		}
+	}
+
+	// 이번 사이클에 새롭게 판매 불가로 전이된 상품들을 담을 결과 슬라이스입니다.
+	var newlyUnavailableProducts []struct{ ID, Name string }
+
+	for _, currentProduct := range currentProducts {
+		// 현재 사이클에서 정상 판매 중인 상품은 이 함수의 관심 대상(판매 불가 전이)이 아니므로 건너뜁니다.
+		if !currentProduct.IsUnavailable {
+			continue
+		}
+
+		// [스팸 방지] 이전 스냅샷에서도 이미 판매 불가(Unavailable) 상태였던 상품은 건너뜁니다.
+		// 이 함수는 '이번 사이클에 처음으로 판매 불가로 전이된 상품'만 추출하는 것이 목표입니다.
+		// 직전에도 이미 단종 상태였다면 상태 변화가 없으므로, 알림을 다시 보낼 이유가 없습니다.
+		//
+		// prevProductsByID가 nil인 경우는 서버 최초 실행 등으로 비교할 이전 스냅샷이 없는 상황을 뜻합니다.
+		// 이 경우에는 전이 여부를 판별할 수 없으므로 비교를 건너뛰고, 아래의 감시 대상 여부 확인으로 진행합니다.
+		if prevProductsByID != nil {
+			if prevProduct, exists := prevProductsByID[currentProduct.ID]; exists && prevProduct.IsUnavailable {
+				continue
+			}
+		}
+
+		productID := strconv.Itoa(currentProduct.ID)
+		productName, exists := productNamesByID[productID]
+		if !exists {
+			// productNamesByID에 해당 ID가 없다는 것은, 이 상품이 현재 감시 대상 CSV에 없다는 의미입니다.
+			// CSV에서 행이 삭제됐거나 사용자가 감시를 비활성화한 상품일 가능성이 높으므로, 알림 대상에서 제외합니다.
+			continue
+		}
+
+		// CSV의 상품명 칼럼이 비어있는 경우, 알림 메시지에 공백이 그대로 노출되지 않도록 대체 텍스트를 사용합니다.
+		if productName == "" {
+			productName = fallbackProductName
+		}
+
+		newlyUnavailableProducts = append(newlyUnavailableProducts, struct{ ID, Name string }{
+			ID:   productID,
+			Name: productName,
+		})
+	}
+
+	return newlyUnavailableProducts
 }

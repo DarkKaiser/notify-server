@@ -70,7 +70,7 @@ func TestTask_DiffAndNotify(t *testing.T) {
 			prev:            []*product{newProduct(1, 1000)},
 			runBy:           contract.TaskRunByScheduler,
 			wantMsgContent:  nil,
-			wantDataChanged: false,
+			wantDataChanged: true,
 		},
 	}
 
@@ -88,7 +88,9 @@ func TestTask_DiffAndNotify(t *testing.T) {
 				}
 			}
 
-			msg, shouldSave := analyzeAndReport(tt.runBy, curSnap, prevProductsMap, nil, nil, nil, false)
+			diffs := extractProductDiffs(curSnap, prevProductsMap)
+			msg := buildNotificationMessage(tt.runBy, curSnap, renderProductDiffs(diffs, false), "", "", false)
+			shouldSave := curSnap.HasChanged(prevSnap)
 
 			if len(tt.wantMsgContent) > 0 {
 				assert.NotEmpty(t, msg)
@@ -101,10 +103,11 @@ func TestTask_DiffAndNotify(t *testing.T) {
 
 			assert.Equal(t, tt.wantDataChanged, shouldSave, "데이터 저장 필요 여부(shouldSave)가 기대값과 다릅니다")
 		})
+
 	}
 }
 
-func TestTask_SyncLowestPrices(t *testing.T) {
+func TestTask_SyncProductState(t *testing.T) {
 	t.Parallel()
 
 	// Given
@@ -130,7 +133,9 @@ func TestTask_SyncLowestPrices(t *testing.T) {
 	}
 
 	// When
-	syncLowestPrices(curSnap, prevSnap, activeRecordIDs)
+	// 1. syncProductState 실행
+	updatedProducts, _ := mergeWithPreviousState(curSnap.Products, prevSnap, activeRecordIDs)
+	curSnap.Products = updatedProducts
 
 	// Then
 	// 1번 상품은 최저가가 유지/갱신되어야 하고,
