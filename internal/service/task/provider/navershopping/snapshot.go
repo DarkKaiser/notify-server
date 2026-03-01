@@ -18,7 +18,7 @@ const (
 
 // productDiff 이전 스냅샷과 현재 수집된 상품 정보를 비교하여 발견된 개별 상품의 변경 사항을 정의합니다.
 //
-// watchPriceSnapshot.Compare()의 결과물로 생성되며, 신규 상품 등록이나 가격 변동과 같은 이벤트를 발생시킵니다.
+// watchPriceSnapshot.AnalyzeChanges()의 결과물로 생성되며, 신규 상품 등록이나 가격 변동과 같은 이벤트를 발생시킵니다.
 // 수집된 원본 데이터와 이전 상태를 동시에 보유하여, 나중에 알림 메시지를 구성할 때 구체적인 차이점을 보여줄 수 있도록 돕습니다.
 type productDiff struct {
 	// Type 발견된 변경 사항의 종류를 식별합니다. (예: 신규 상품 등록, 최저가 변동)
@@ -35,13 +35,13 @@ type productDiff struct {
 // watchPriceSnapshot 네이버 쇼핑 수집 작업의 특정 시점 상태를 기록하는 스냅샷 구조체입니다.
 //
 // API를 통해 조회된 상품 정보들을 보관하며, 데이터베이스나 캐시에 저장되어
-// 다음번 수집 결과와 비교(Compare)하기 위한 기준 데이터로 활용됩니다.
+// 다음번 수집 결과와 비교하기 위한 기준 데이터로 활용됩니다.
 type watchPriceSnapshot struct {
 	// Products 수집된 시점에 발견된 상품 정보들의 전체 목록입니다.
 	Products []*product `json:"products"`
 }
 
-// Compare 현재 수집된 상품 스냅샷을 이전 상태와 대조하여 유의미한 변화를 감지합니다.
+// AnalyzeChanges 현재 수집된 상품 스냅샷을 이전 상태와 대조하여 유의미한 변화를 감지합니다.
 //
 // 다음 시나리오에 대한 변화를 감지합니다:
 //  1. 신규 상품 등록: 이전 스냅샷에 없던 상품이 현재 검색 결과에 새롭게 등장한 경우
@@ -58,7 +58,7 @@ type watchPriceSnapshot struct {
 // 반환값:
 //   - diffs: 알림 대상인 변동 상품 목록 (신규 등록, 가격 변동)
 //   - hasChanges: 스냅샷 갱신이 필요한지 여부 (신규/삭제/가격변동/메타변경 모두 포함)
-func (s *watchPriceSnapshot) Compare(prev *watchPriceSnapshot) (diffs []productDiff, hasChanges bool) {
+func (s *watchPriceSnapshot) AnalyzeChanges(prev *watchPriceSnapshot) (diffs []productDiff, hasChanges bool) {
 	// 1. 빠른 조회를 위해 이전 상품 목록을 Map으로 변환한다.
 	prevMap := make(map[string]*product)
 	if prev != nil {

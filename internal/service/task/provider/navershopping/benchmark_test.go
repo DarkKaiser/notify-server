@@ -177,7 +177,7 @@ func BenchmarkSnapshotCompare(b *testing.B) {
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_, _ = curr.Compare(prev)
+				_, _ = curr.AnalyzeChanges(prev)
 			}
 		})
 	}

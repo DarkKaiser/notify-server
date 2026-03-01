@@ -592,8 +592,9 @@ func (b *Base) prepareExecution(ctx context.Context, notificationSender contract
 					"notification_message": message,
 				})
 
-				// 사용자가 명시적으로 작업을 취소한 경우에는, 불필요한 알림 소음을 방지하기 위해 에러 알림 전송을 생략합니다.
-				if !errors.Is(err, context.Canceled) {
+				// 사용자가 명시적으로 작업을 취소하거나(Canceled), 작업이 타임아웃된 경우(DeadlineExceeded)에는
+				// 불필요한 알림 소음을 방지하기 위해 에러 알림 전송을 생략합니다.
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 					b.sendErrorNotification(ctx, notificationSender, message)
 				}
 
@@ -639,8 +640,9 @@ func (b *Base) finalizeExecution(ctx context.Context, notificationSender contrac
 			"notification_message": notifyMsg,
 		})
 
-		// 사용자가 명시적으로 작업을 취소한 경우에는, 불필요한 알림 소음을 방지하기 위해 에러 알림 전송을 생략합니다.
-		if !errors.Is(err, context.Canceled) {
+		// 사용자가 명시적으로 작업을 취소하거나(Canceled), 작업이 타임아웃된 경우(DeadlineExceeded)에는
+		// 불필요한 알림 소음을 방지하기 위해 에러 알림 전송을 생략합니다.
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			b.sendErrorNotification(ctx, notificationSender, notifyMsg)
 		}
 

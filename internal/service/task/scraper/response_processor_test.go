@@ -365,6 +365,21 @@ func TestReadErrorResponseBody(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+
+	t.Run("Read Error", func(t *testing.T) {
+		s := New(new(mocks.MockFetcher)).(*scraper)
+		resp := &http.Response{
+			Body:   io.NopCloser(&faultyReader{err: errors.New("read error in error body")}),
+			Header: http.Header{"Content-Type": []string{"text/plain"}},
+		}
+
+		got, err := s.readErrorResponseBody(resp)
+
+		// Assert: Error should be returned
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "read error in error body")
+		assert.Empty(t, got)
+	})
 }
 
 func TestPreviewBody(t *testing.T) {

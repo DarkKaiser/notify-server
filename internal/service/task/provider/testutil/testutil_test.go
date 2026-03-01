@@ -1,10 +1,12 @@
 package testutil
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	contractmocks "github.com/darkkaiser/notify-server/internal/service/contract/mocks"
@@ -161,4 +163,60 @@ func TestCreateTestJSONFile(t *testing.T) {
 	err = json.Unmarshal(fileData, &parsed)
 	require.NoError(t, err)
 	assert.Equal(t, data, parsed)
+}
+
+func TestStubTask(t *testing.T) {
+	task := NewStubTask("task-1", "cmd-1", "inst-1")
+	assert.Equal(t, contract.TaskID("task-1"), task.ID())
+	assert.Equal(t, contract.TaskCommandID("cmd-1"), task.CommandID())
+	assert.Equal(t, contract.TaskInstanceID("inst-1"), task.InstanceID())
+	assert.Equal(t, contract.NotifierID("test-notifier"), task.NotifierID())
+	task.NotifierIDValue = "custom-notifier"
+	assert.Equal(t, contract.NotifierID("custom-notifier"), task.NotifierID())
+
+	assert.False(t, task.IsCanceled())
+	assert.Equal(t, time.Duration(0), task.Elapsed())
+	task.FixedElapsed = time.Second
+	assert.Equal(t, time.Second, task.Elapsed())
+	assert.Equal(t, int64(0), task.RunCount())
+
+	// Test Run blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	task.Run(ctx, nil) // Should block until timeout
+	assert.Equal(t, int64(1), task.RunCount())
+
+	// Test Run with RunFunc
+	runFuncCalled := false
+	task.RunFunc = func(ctx context.Context, ns contract.NotificationSender) {
+		runFuncCalled = true
+	}
+	task.Run(context.Background(), nil)
+	assert.True(t, runFuncCalled)
+	assert.Equal(t, int64(2), task.RunCount())
+
+	// Test Cancel
+	task.Cancel()
+	assert.True(t, task.IsCanceled())
+	select {
+	case <-task.WaitCanceled():
+	default:
+		t.Fatal("WaitCanceled block wasn't closed")
+	}
+}
+
+func TestStubIDGenerator(t *testing.T) {
+	gen := &StubIDGenerator{}
+	id1 := gen.New()
+	id2 := gen.New()
+	assert.Equal(t, contract.TaskInstanceID("stub-id-1"), id1)
+	assert.Equal(t, contract.TaskInstanceID("stub-id-2"), id2)
+
+	gen.Prefix = "test-prefix-"
+	id3 := gen.New()
+	assert.Equal(t, contract.TaskInstanceID("test-prefix-3"), id3)
+
+	gen.FixedID = "fixed-id"
+	id4 := gen.New()
+	assert.Equal(t, contract.TaskInstanceID("fixed-id"), id4)
 }

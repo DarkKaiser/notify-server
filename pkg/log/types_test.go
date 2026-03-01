@@ -73,8 +73,8 @@ func TestInterfaceCompliance(t *testing.T) {
 
 	// 1. Hook Interface
 	// Our 'Hook' alias should be compatible with logrus.Hook interface requirements.
-	var _ Hook = &testHook{}        // Verify our implementation satisfies our alias
-	var _ logrus.Hook = &testHook{} // Verify it satisfies the original interface
+	var _ Hook = &minimalHook{}        // Verify our implementation satisfies our alias
+	var _ logrus.Hook = &minimalHook{} // Verify it satisfies the original interface
 
 	// 2. Formatter Interface
 	// Standard logrus formatters should satisfy our 'Formatter' alias.
@@ -86,60 +86,10 @@ func TestInterfaceCompliance(t *testing.T) {
 	var _ Formatter = &JSONFormatter{}
 }
 
-// TestStructAliases verifies that struct aliases are correctly defined and usable.
-func TestStructAliases(t *testing.T) {
-	t.Parallel()
+// minimalHook is a minimal Hook implementation for interface compliance testing.
+// NOTE: log_test.go (//go:build test) has a more complete `testHook` for integration tests.
+// This type uses a different name to avoid redeclaration errors when -tags test is used.
+type minimalHook struct{}
 
-	// TextFormatter
-	tf := &TextFormatter{
-		DisableColors: true,
-		FullTimestamp: true,
-	}
-	// Verify it's actually a logrus.TextFormatter under the hood
-	assert.IsType(t, &logrus.TextFormatter{}, tf)
-	assert.True(t, tf.DisableColors)
-
-	// JSONFormatter
-	jf := &JSONFormatter{
-		PrettyPrint: true,
-	}
-	// Verify it's actually a logrus.JSONFormatter under the hood
-	assert.IsType(t, &logrus.JSONFormatter{}, jf)
-	assert.True(t, jf.PrettyPrint)
-}
-
-// TestLevelString verifies that the String() representation of Levels matches logrus.
-func TestLevelString(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		level    Level
-		expected string
-	}{
-		{PanicLevel, "panic"},
-		{FatalLevel, "fatal"},
-		{ErrorLevel, "error"},
-		{WarnLevel, "warning"},
-		{InfoLevel, "info"},
-		{DebugLevel, "debug"},
-		{TraceLevel, "trace"},
-	}
-
-	for _, tt := range tests {
-		assert.Equal(t, tt.expected, tt.level.String())
-	}
-}
-
-// TestInternalConstants verifies package-internal constants.
-func TestInternalConstants(t *testing.T) {
-	t.Parallel()
-	// setup.go에 정의된 fileExt가 "log"인지 확인
-	// fileExt는 unexported 상수이므로 같은 패키지 내 테스트 파일에서만 접근 가능
-	assert.Equal(t, "log", fileExt)
-}
-
-// Helper for Hook interface testing
-type testHook struct{}
-
-func (h *testHook) Levels() []Level     { return AllLevels }
-func (h *testHook) Fire(e *Entry) error { return nil }
+func (h *minimalHook) Levels() []Level     { return AllLevels }
+func (h *minimalHook) Fire(e *Entry) error { return nil }

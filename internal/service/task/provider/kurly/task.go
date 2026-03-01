@@ -8,6 +8,9 @@ import (
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
 )
 
+// component Task 서비스의 Kurly Provider 로깅용 컴포넌트 이름
+const component = "task.provider.kurly"
+
 const (
 	// TaskID 마켓컬리(https://www.kurly.com/) 서비스와 연동되는 Task의 고유 식별자입니다.
 	TaskID contract.TaskID = "KURLY"
@@ -59,9 +62,7 @@ func newTask(params provider.NewTaskParams) (provider.Task, error) {
 			}
 
 			// CSV 파일에서 감시 대상 상품 목록을 읽어오는 Loader를 생성합니다.
-			loader := &CSVWatchListLoader{
-				FilePath: commandSettings.WatchProductsFile,
-			}
+			loader := NewCSVWatchListLoader(commandSettings.WatchListFile)
 
 			return kurlyTask.executeWatchProductPrice(ctx, loader, prevSnapshot, supportsHTML)
 		})

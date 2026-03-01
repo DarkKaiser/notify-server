@@ -182,6 +182,12 @@ func TestParseAnalysisResult(t *testing.T) {
 			contains:      nil,
 		},
 		{
+			name:          "Empty After Header",
+			input:         "- 분석결과",
+			expectedError: apperrors.New(apperrors.InvalidInput, "당첨번호 예측 결과 파일의 형식이 유효하지 않거나 내용을 식별할 수 없습니다"),
+			contains:      nil,
+		},
+		{
 			name: "Extra Whitespace around Numbers",
 			input: `
 - 분석결과

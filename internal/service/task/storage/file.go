@@ -33,6 +33,10 @@ type fileTaskResultStore struct {
 	// locks 동일한 파일에 대한 동시 쓰기를 방지하기 위한 파일별 뮤텍스입니다.
 	// 파일 경로를 키로 사용하여 각 파일마다 독립적인 락을 관리합니다.
 	locks *concurrency.KeyedMutex[string]
+
+	// createTempFile 임시 파일 생성 함수입니다. nil이면 os.CreateTemp를 사용합니다.
+	// 테스트에서 실패 시나리오를 주입하기 위해 사용됩니다.
+	createTempFile func(dir, pattern string) (*os.File, error)
 }
 
 // 컴파일 타임에 인터페이스 구현 여부를 검증합니다.
@@ -319,7 +323,11 @@ func (s *fileTaskResultStore) writeAtomic(filename string, data []byte) error {
 
 	// 2단계: 임시 파일 생성
 	// 같은 디렉토리 내에 생성해야 rename이 원자적으로 동작합니다.
-	tmpFile, err := os.CreateTemp(dir, tempFilePattern)
+	createTemp := os.CreateTemp
+	if s.createTempFile != nil {
+		createTemp = s.createTempFile
+	}
+	tmpFile, err := createTemp(dir, tempFilePattern)
 	if err != nil {
 		return NewErrTempFileCreationFailed(err)
 	}

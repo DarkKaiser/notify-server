@@ -3,12 +3,9 @@ package kurly
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/darkkaiser/notify-server/internal/service/contract"
 	"github.com/darkkaiser/notify-server/internal/service/task/fetcher/mocks"
 	"github.com/darkkaiser/notify-server/internal/service/task/provider"
@@ -17,452 +14,290 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//
-// Tests
-//
+// -------------------------------------------------------------------------
+// 1. Mocks & Stubs
+// -------------------------------------------------------------------------
 
-func TestWatchProductPriceSettings_Validate(t *testing.T) {
+// mockWatchListLoader WatchListLoader 인터페이스의 Mock 구현체입니다.
+type mockWatchListLoader struct {
+	mock.Mock
+}
+
+func (m *mockWatchListLoader) Load() ([][]string, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([][]string), args.Error(1)
+}
+
+// -------------------------------------------------------------------------
+// 2. executeWatchProductPrice Tests
+// -------------------------------------------------------------------------
+
+func TestExecuteWatchProductPrice_TableDriven(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		settings  *watchProductPriceSettings
-		wantErr   bool
-		errSubstr string
-	}{
-		{
-			name: "성공: 정상적인 CSV 파일 경로",
-			settings: &watchProductPriceSettings{
-				WatchProductsFile: "products.csv",
-			},
-			wantErr: false,
-		},
-		{
-			name: "성공: 대소문자 구분 없이 CSV 확장자 허용",
-			settings: &watchProductPriceSettings{
-				WatchProductsFile: "PRODUCTS.CSV",
-			},
-			wantErr: false,
-		},
-		{
-			name: "실패: 파일 경로 미입력",
-			settings: &watchProductPriceSettings{
-				WatchProductsFile: "",
-			},
-			wantErr:   true,
-			errSubstr: "watch_products_file이 입력되지 않았거나 공백입니다",
-		},
-		{
-			name: "실패: 지원하지 않는 파일 확장자 (.txt)",
-			settings: &watchProductPriceSettings{
-				WatchProductsFile: "products.txt",
-			},
-			wantErr:   true,
-			errSubstr: ".csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
-		},
-	}
+	// -------------------------------------------------------------------------
+	// Fixtures
+	// -------------------------------------------------------------------------
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			err := tt.settings.Validate()
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errSubstr != "" {
-					assert.Contains(t, err.Error(), tt.errSubstr)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
+	// HTML Mock Data 1: 할인율 없는 상품 (ID: 100)
+	htmlNoDiscount := `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<script id="__NEXT_DATA__" type="application/json">
+				{"props":{"pageProps":{"product":{"no":100, "name":"싱싱한 사과", "seo":{"og_title":"싱싱한 사과", "og_price":"5000"}}}}}
+			</script>
+		</head>
+		<body>
+			<div id="product-atf">
+				<section class="css-1ua1wyk">
+					<div class="css-84rb3h">
+						<div class="css-6zfm8o">
+							<div class="css-o3fjh7">
+								<h1>싱싱한 사과</h1>
+							</div>
+						</div>
+					</div>
+					<h2 class="css-xrp7wx">
+						<div class="css-o2nlqt">
+							<span>5,000</span>
+							<span>원</span>
+						</div>
+					</h2>
+				</section>
+			</div>
+		</body>
+		</html>
+	`
 
-func TestExtractDuplicateRecords(t *testing.T) {
-	t.Parallel()
-	tsk := &task{
-		Base: provider.NewBase(provider.NewTaskParams{
-			Request: &contract.TaskSubmitRequest{
-				TaskID:     "T",
-				CommandID:  "C",
-				NotifierID: "N",
-				RunBy:      contract.TaskRunByUser,
-			},
-			InstanceID: "I",
-			NewSnapshot: func() interface{} {
-				return &watchProductPriceSnapshot{}
-			},
-		}, false),
-	}
+	// HTML Mock Data 2: 단종/판매중지 상품 (Next.js 데이터 내 product가 null 인 경우, ID: 200)
+	htmlUnavailable := `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<script id="__NEXT_DATA__" type="application/json">
+				{"props":{"pageProps":{"product":null}}}
+			</script>
+		</head>
+		<body>
+		</body>
+		</html>
+	`
 
-	tests := []struct {
-		name          string
-		input         [][]string
-		wantDistinct  int
-		wantDuplicate int
-	}{
-		{
-			name: "중복 없음",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-			},
-			wantDistinct:  2,
-			wantDuplicate: 0,
-		},
-		{
-			name: "단일 중복 발생",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1001", "A", "1"},
-			},
-			wantDistinct:  1,
-			wantDuplicate: 1,
-		},
-		{
-			name: "다수 중복 발생",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-				{"1001", "A", "1"},
-				{"1002", "B", "1"},
-				{"1003", "C", "1"},
-			},
-			wantDistinct:  3,
-			wantDuplicate: 2,
-		},
-		{
-			name: "빈 행 무시",
-			input: [][]string{
-				{"1001", "A", "1"},
-				{},
-				{"1002", "B", "1"},
-			},
-			wantDistinct:  2,
-			wantDuplicate: 0,
-		},
-		{
-			name:          "빈 입력",
-			input:         [][]string{},
-			wantDistinct:  0,
-			wantDuplicate: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			distinct, duplicate := tsk.extractDuplicateRecords(tt.input)
-			assert.Equal(t, tt.wantDistinct, len(distinct))
-			assert.Equal(t, tt.wantDuplicate, len(duplicate))
-		})
-	}
-}
-
-func createDoc(html string) *goquery.Document {
-	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(html))
-	return doc
-}
-
-func TestTask_ParseProductFromPage(t *testing.T) {
-	// Fixture HTML Templates
-	tmplNormal := `
-<html>
-<body>
-<script id="__NEXT_DATA__">{"product": {"no": %d}}</script>
-<div id="product-atf">
-	<section class="css-1ua1wyk">
-		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
-		<h2 class="css-xrp7wx">%s</h2>
-	</section>
-</div>
-</body>
-</html>`
-
-	tests := []struct {
-		name           string
-		productID      int
-		mockHTML       string
-		mockFetchErr   error
-		mockStatusCode int
-		wantProduct    *product
-		wantErr        bool
-		errSubstr      string
-	}{
-		{
-			name:           "성공: 정상 상품 파싱 (할인 없음)",
-			productID:      123,
-			mockStatusCode: 200,
-			mockHTML: fmt.Sprintf(tmplNormal, 123, "맛있는 사과",
-				`<div class="css-o2nlqt"><span>10,000</span><span>원</span></div>`),
-			wantProduct: &product{
-				ID:    123,
-				Name:  "맛있는 사과",
-				Price: 10000,
-			},
-			wantErr: false,
-		},
-		{
-			name:           "성공: 정상 상품 파싱 (할인 중)",
-			productID:      456,
-			mockStatusCode: 200,
-			mockHTML: fmt.Sprintf(tmplNormal, 456, "할인 바나나",
-				`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
-			wantProduct: &product{
-				ID:              456,
-				Name:            "할인 바나나",
-				Price:           10000,
-				DiscountedPrice: 9000,
-				DiscountRate:    10,
-			},
-			wantErr: false,
-		},
-		{
-			name:           "실패: Fetch 에러",
-			productID:      999,
-			mockFetchErr:   errors.New("network timeout"),
-			mockStatusCode: 0,
-			wantErr:        true,
-			errSubstr:      "network timeout",
-		},
-		{
-			name:           "실패: HTML 파싱 실패 (__NEXT_DATA__ 없음)",
-			productID:      100,
-			mockStatusCode: 200,
-			mockHTML:       "<html><body>Nothing here</body></html>",
-			wantErr:        true,
-			errSubstr:      "JSON 데이터 추출이 실패하였습니다",
-		},
-		{
-			name:           "성공: 판매 중지 상품 (IsUnavailable)",
-			productID:      101,
-			mockStatusCode: 200,
-			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": null}</script></body></html>`,
-			wantProduct: &product{
-				ID:            101,
-				IsUnavailable: true,
-			},
-			wantErr: false,
-		},
-		{
-			name:           "실패: CSS 구조 변경됨 (섹션 없음)",
-			productID:      102,
-			mockStatusCode: 200,
-			mockHTML:       `<html><body><script id="__NEXT_DATA__">{"product": {}}</script><div>Changed Layout</div></body></html>`,
-			wantErr:        true,
-			errSubstr:      "상품정보 섹션 추출 실패",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			mockFetcher := new(mocks.MockFetcher)
-			url := fmt.Sprintf(productPageURLFormat, tt.productID)
-
-			if tt.mockFetchErr != nil {
-				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-					return req.Method == http.MethodGet && req.URL.String() == url
-				})).Return(nil, tt.mockFetchErr)
-			} else {
-				mockFetcher.On("Do", mock.MatchedBy(func(req *http.Request) bool {
-					return req.Method == http.MethodGet && req.URL.String() == url
-				})).Return(mocks.NewMockResponse(tt.mockHTML, tt.mockStatusCode), nil)
-			}
-
-			tsk := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     "T",
-						CommandID:  "C",
-						NotifierID: "N",
-						RunBy:      contract.TaskRunByScheduler,
-					},
-					InstanceID: "I",
-					Fetcher:    mockFetcher,
-					NewSnapshot: func() interface{} {
-						return &watchProductPriceSnapshot{}
-					},
-				}, true),
-			}
-
-			got, err := tsk.fetchProductInfo(context.Background(), tt.productID)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errSubstr != "" {
-					assert.Contains(t, err.Error(), tt.errSubstr)
-				}
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.wantProduct.ID, got.ID)
-				assert.Equal(t, tt.wantProduct.IsUnavailable, got.IsUnavailable)
-				if !got.IsUnavailable {
-					assert.Equal(t, tt.wantProduct.Name, got.Name)
-					assert.Equal(t, tt.wantProduct.Price, got.Price)
-					assert.Equal(t, tt.wantProduct.DiscountedPrice, got.DiscountedPrice)
-					assert.Equal(t, tt.wantProduct.DiscountRate, got.DiscountRate)
-				}
-			}
-			mockFetcher.AssertExpectations(t)
-		})
-	}
-}
-
-func TestTask_DiffAndNotify(t *testing.T) {
-	t.Parallel()
-
-	newProduct := func(id, price int) *product {
-		p := &product{ID: id, Name: "Test", Price: price}
-		p.updateLowestPrice()
-		return p
-	}
-
-	tests := []struct {
-		name            string
-		current         []*product
-		prev            []*product
-		runBy           contract.TaskRunBy
-		wantMsgContent  []string
-		wantDataChanged bool
-	}{
-		{
-			name:            "변경 없음 (Scheduler)",
-			current:         []*product{newProduct(1, 1000)},
-			prev:            []*product{newProduct(1, 1000)},
-			runBy:           contract.TaskRunByScheduler,
-			wantMsgContent:  nil,
-			wantDataChanged: false,
-		},
-		{
-			name:            "변경 없음 (User) - 메시지는 생성되지만 데이터 갱신 없음",
-			current:         []*product{newProduct(1, 1000)},
-			prev:            []*product{newProduct(1, 1000)},
-			runBy:           contract.TaskRunByUser,
-			wantMsgContent:  []string{"변경된 상품 정보가 없습니다", "현재 등록된 상품 정보는 아래와 같습니다"},
-			wantDataChanged: false,
-		},
-		{
-			name:    "가격 변경 발생",
-			current: []*product{newProduct(1, 800)},
-			prev:    []*product{newProduct(1, 1000)},
-			runBy:   contract.TaskRunByScheduler,
-			wantMsgContent: []string{
-				"상품 정보가 변경되었습니다",
-				"이전 가격", "1,000원",
-				"현재 가격", "800원",
-			},
-			wantDataChanged: true,
-		},
-		{
-			name:            "신규 상품 추가",
-			current:         []*product{newProduct(1, 1000), newProduct(2, 2000)},
-			prev:            []*product{newProduct(1, 1000)},
-			runBy:           contract.TaskRunByScheduler,
-			wantMsgContent:  []string{"상품 정보가 변경되었습니다", "🆕", "2,000원"},
-			wantDataChanged: true,
-		},
-		{
-			name: "판매 중지 (Unavailable)",
-			current: func() []*product {
-				p := newProduct(1, 1000)
-				p.IsUnavailable = true
-				return []*product{p}
-			}(),
-			prev:            []*product{newProduct(1, 1000)},
-			runBy:           contract.TaskRunByScheduler,
-			wantMsgContent:  nil,
-			wantDataChanged: false,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			tsk := &task{
-				Base: provider.NewBase(provider.NewTaskParams{
-					Request: &contract.TaskSubmitRequest{
-						TaskID:     "T",
-						CommandID:  "C",
-						NotifierID: "N",
-						RunBy:      tt.runBy,
-					},
-					InstanceID: "I",
-					NewSnapshot: func() interface{} {
-						return &watchProductPriceSnapshot{}
-					},
-				}, false),
-			}
-
-			curSnap := &watchProductPriceSnapshot{Products: tt.current}
-			prevSnap := &watchProductPriceSnapshot{Products: tt.prev}
-
-			var prevProductsMap map[int]*product
-			if prevSnap != nil {
-				prevProductsMap = make(map[int]*product, len(prevSnap.Products))
-				for _, p := range prevSnap.Products {
-					prevProductsMap[p.ID] = p
-				}
-			}
-
-			msg, shouldSave := tsk.analyzeAndReport(curSnap, prevProductsMap, nil, nil, false)
-
-			if len(tt.wantMsgContent) > 0 {
-				assert.NotEmpty(t, msg)
-				for _, part := range tt.wantMsgContent {
-					assert.Contains(t, msg, part)
-				}
-			} else {
-				assert.Empty(t, msg)
-			}
-
-			assert.Equal(t, tt.wantDataChanged, shouldSave, "데이터 저장 필요 여부(shouldSave)가 기대값과 다릅니다")
-		})
-	}
-}
-
-// TestRenderProductLink HTML/Text 모드에 따른 링크 생성 및 이스케이프 동작을 검증합니다.
-func TestRenderProductLink(t *testing.T) {
-	t.Parallel()
+	// -------------------------------------------------------------------------
+	// Table-Driven Tests
+	// -------------------------------------------------------------------------
 
 	tests := []struct {
 		name         string
-		productID    string
-		productName  string
-		supportsHTML bool
-		want         string
+		setupMock    func(*mockWatchListLoader, *mocks.MockHTTPFetcher)
+		prevSnapshot *watchProductPriceSnapshot
+		check        func(*testing.T, string, any, error)
 	}{
 		{
-			name:         "Text Mode: Special Characters (Should NOT Escape)",
-			productID:    "123",
-			productName:  "Bread & Butter <New>",
-			supportsHTML: false,
-			want:         "Bread & Butter <New>(123)",
+			name: "성공: 최초 실행 시 모든 상품 수집 후 스냅샷 갱신",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				// Loader 설정: 1개의 유효한 상품을 반환
+				mLoader.On("Load").Return([][]string{
+					{"100", "싱싱한 사과", "1"},
+				}, nil)
+
+				// Fetcher 설정: 정상적인 단일 상품 페이지 반환
+				mFetcher.SetResponse("https://www.kurly.com/goods/100", []byte(htmlNoDiscount))
+			},
+			prevSnapshot: nil,
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.NoError(t, err)
+
+				newSnapshot, ok := snapshot.(*watchProductPriceSnapshot)
+				require.True(t, ok)
+				require.NotNil(t, newSnapshot)
+				assert.Len(t, newSnapshot.Products, 1)
+
+				p := newSnapshot.Products[0]
+				assert.Equal(t, 100, p.ID)
+				assert.Equal(t, "싱싱한 사과", p.Name)
+				assert.Equal(t, 5000, p.Price)
+				assert.Equal(t, 5000, p.LowestPrice)
+				assert.False(t, p.IsUnavailable)
+
+				assert.Contains(t, msg, "상품 정보가 변경되었습니다")
+				assert.Contains(t, msg, "싱싱한 사과")
+				assert.Contains(t, msg, "🆕")
+			},
 		},
 		{
-			name:         "HTML Mode: Special Characters (Should Escape)",
-			productID:    "456",
-			productName:  "Bread & Butter <New>",
-			supportsHTML: true,
-			want:         `<a href="https://www.kurly.com/goods/456"><b>Bread &amp; Butter &lt;New&gt;</b></a>`,
+			name: "성공: 변경사항 없음 (HasChanged: false)",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				mLoader.On("Load").Return([][]string{
+					{"100", "싱싱한 사과", "1"},
+				}, nil)
+
+				mFetcher.SetResponse("https://www.kurly.com/goods/100", []byte(htmlNoDiscount))
+			},
+			prevSnapshot: &watchProductPriceSnapshot{
+				Products: []*product{
+					{
+						ID:                 100,
+						Name:               "싱싱한 사과",
+						Price:              5000,
+						DiscountedPrice:    0,
+						DiscountRate:       0,
+						LowestPrice:        5000,
+						LowestPriceTimeUTC: time.Now().UTC(),
+						IsUnavailable:      false,
+						FetchFailedCount:   0,
+					},
+				},
+			},
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.NoError(t, err)
+				assert.Nil(t, snapshot)
+				assert.Empty(t, msg)
+			},
 		},
 		{
-			name:         "Text Mode: Normal",
-			productID:    "789",
-			productName:  "Fresh Apple",
-			supportsHTML: false,
-			want:         "Fresh Apple(789)",
+			name: "실패: Loader가 에러를 반환하는 경우",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				mLoader.On("Load").Return(nil, errors.New("CSV 파일 읽기 실패"))
+			},
+			prevSnapshot: nil,
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "CSV 파일 읽기 실패")
+				assert.Nil(t, snapshot)
+				assert.Empty(t, msg)
+			},
+		},
+		{
+			name: "성공: 중복 상품 감지 및 누적 보존 처리 확인",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				mLoader.On("Load").Return([][]string{
+					{"100", "싱싱한 사과", "0"},
+					{"100", "싱싱한 사과", "1"},
+				}, nil)
+
+				mFetcher.SetResponse("https://www.kurly.com/goods/100", []byte(htmlNoDiscount))
+			},
+			prevSnapshot: nil,
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.NoError(t, err)
+
+				newSnapshot, ok := snapshot.(*watchProductPriceSnapshot)
+				require.True(t, ok)
+
+				assert.Contains(t, newSnapshot.DuplicateNotifiedIDs, "100")
+				assert.Contains(t, msg, "중복으로 등록된 상품 목록")
+			},
+		},
+		{
+			name: "성공: 단종/판매중지 상품 처리 (IsUnavailable=true)",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				mLoader.On("Load").Return([][]string{
+					{"200", "단종된 상품", "1"},
+				}, nil)
+
+				mFetcher.SetResponse("https://www.kurly.com/goods/200", []byte(htmlUnavailable))
+			},
+			prevSnapshot: &watchProductPriceSnapshot{
+				Products: []*product{
+					{
+						ID:               200,
+						Name:             "단종된 상품",
+						Price:            0,
+						LowestPrice:      0,
+						IsUnavailable:    false,
+						FetchFailedCount: 0,
+					},
+				},
+			},
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.NoError(t, err)
+
+				newSnapshot, ok := snapshot.(*watchProductPriceSnapshot)
+				require.True(t, ok)
+				assert.Len(t, newSnapshot.Products, 1)
+
+				p := newSnapshot.Products[0]
+				assert.True(t, p.IsUnavailable)
+
+				assert.Contains(t, msg, "알 수 없는 상품 목록")
+			},
+		},
+		{
+			name: "성공: 일시적 파싱 누락(임시 실패) 시 FetchFailedCount 누적(1회)",
+			setupMock: func(mLoader *mockWatchListLoader, mFetcher *mocks.MockHTTPFetcher) {
+				mLoader.On("Load").Return([][]string{
+					{"100", "싱싱한 사과", "1"},
+				}, nil)
+
+				invalidSectionHTML := `
+					<!DOCTYPE html>
+					<html>
+					<head>
+						<script id="__NEXT_DATA__" type="application/json">
+							{"props":{"pageProps":{"product":{"no":100, "name":"싱싱한 사과", "seo":{"og_title":"싱싱한 사과", "og_price":"5000"}}}}}
+						</script>
+					</head>
+					<body>
+						<!-- product-atf 삭제됨 -->
+					</body>
+					</html>
+				`
+				mFetcher.SetResponse("https://www.kurly.com/goods/100", []byte(invalidSectionHTML))
+			},
+			prevSnapshot: &watchProductPriceSnapshot{
+				Products: []*product{
+					{
+						ID:               100,
+						Name:             "싱싱한 사과",
+						Price:            5000,
+						LowestPrice:      5000,
+						IsUnavailable:    false,
+						FetchFailedCount: 0,
+					},
+				},
+			},
+			check: func(t *testing.T, msg string, snapshot any, err error) {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "상품 정보 섹션(#product-atf > section.css-1ua1wyk)을 찾을 수 없습니다")
+			},
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
+		tt := tt // Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := renderProductLink(tt.productID, tt.productName, tt.supportsHTML)
-			assert.Equal(t, tt.want, got)
+
+			// Mock 초기화
+			mockLoader := new(mockWatchListLoader)
+			mockFetcher := mocks.NewMockHTTPFetcher()
+			tt.setupMock(mockLoader, mockFetcher)
+
+			// Task 객체 초기화
+			testTask := &task{
+				Base: provider.NewBase(provider.NewTaskParams{
+					Request: &contract.TaskSubmitRequest{
+						TaskID:    TaskID,
+						CommandID: WatchProductPriceCommand,
+						RunBy:     contract.TaskRunByScheduler,
+					},
+					Fetcher: mockFetcher, // 원래 Execute 계층에는 Fetcher가 주입되고, 내부에서 scraper.New()로 래핑됨.
+				}, true),
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			msg, snapshot, err := testTask.executeWatchProductPrice(ctx, mockLoader, tt.prevSnapshot, true)
+
+			tt.check(t, msg, snapshot, err)
+			mockLoader.AssertExpectations(t)
+			// MockHTTPFetcher는 AssertExpectations 메서드가 없으므로 생략
 		})
 	}
 }

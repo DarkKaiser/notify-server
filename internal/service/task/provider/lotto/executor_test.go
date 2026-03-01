@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,23 +94,36 @@ func TestLimitWriter_Write(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, 2, n)
 
-		// 2. Truncation message write error
+		// 2. Truncation message write error - exactly at limit
+		errWriter.failOnTruncate = true
 		lw.written = 10
-		n, err = lw.Write([]byte("exceed"))
+		lw.truncated = false
+		n, err = lw.Write([]byte("exceed")) // limit 초과된 기록 시도 -> 잘림 메시지 기록 시도 -> 에러
 		assert.Error(t, err)
 		assert.Equal(t, 0, n)
+
+		// 3. Truncation message write error - exceeding limit during write
+		lw.written = 8
+		lw.truncated = false
+		n, err = lw.Write([]byte("abcd")) // 남은 용량 2바이트 기록(성공), 이후 잘림 메시지 기록 시도 -> 에러
+		assert.Error(t, err)
+		assert.Equal(t, 2, n)
 	})
 }
 
 type errorWriter struct {
-	err error
+	err            error
+	failOnTruncate bool
 }
 
 func (e *errorWriter) Write(p []byte) (n int, err error) {
+	if e.failOnTruncate && bytes.Equal(p, []byte("\n...(생략됨)")) {
+		return 0, e.err
+	}
 	if len(p) > 2 && string(p[:2]) == "12" {
 		return 2, e.err
 	}
-	return 0, e.err
+	return len(p), nil
 }
 
 func TestLimitWriter_LargeData(t *testing.T) {
@@ -313,4 +327,13 @@ func TestDefaultCommandProcess_Kill(t *testing.T) {
 
 	err = proc.Wait()
 	assert.Error(t, err)
+
+	t.Run("Kill nil process", func(t *testing.T) {
+		// cmd.Process가 nil인 프로세스를 흉내
+		p := &defaultCommandProcess{
+			cmd: exec.Command("echo"), // Start()를 하지 않으면 Process는 nil
+		}
+		err := p.Kill()
+		assert.NoError(t, err)
+	})
 }

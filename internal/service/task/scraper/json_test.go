@@ -366,6 +366,21 @@ func TestFetchJSON_Comprehensive(t *testing.T) {
 			},
 		},
 		{
+			name:   "Error: Unmarshal Type Error",
+			method: http.MethodGet,
+			url:    "https://api.example.com/type-error",
+			target: &User{}, // ID is int, Name is string
+			setupMock: func(t *testing.T, m *mocks.MockFetcher) {
+				typeErrJSON := `{"id": "NotAnInteger", "name": "Bob"}`
+				resp := mocks.NewMockResponse(typeErrJSON, 200)
+				resp.Header.Set("Content-Type", "application/json")
+				m.On("Do", mock.Anything).Return(resp, nil)
+			},
+			wantErr:     true,
+			errType:     apperrors.ParsingFailed,
+			errContains: []string{"구문 오류로 인해 응답 데이터를 변환할 수 없습니다"},
+		},
+		{
 			name:   "Error: Extra Data after JSON (Strict Mode)",
 			method: http.MethodGet,
 			url:    "https://api.example.com/extra",
@@ -524,6 +539,22 @@ func TestDecodeJSONResponse_CharsetLogic(t *testing.T) {
 		err := s.decodeJSONResponse(context.Background(), result, &target, "http://url", logger)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "JSON 파싱 실패")
+	})
+
+	t.Run("Context Canceled Error Passthrough", func(t *testing.T) {
+		// faultyReader로 읽기 오류를 유발하여 decodeJSONResponse의 charset 변환 에러 경로를 커버합니다.
+		result := fetchResult{
+			Response: &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(&faultyReader{err: context.DeadlineExceeded}),
+			},
+			Body: nil,
+		}
+		var target any
+
+		err := s.decodeJSONResponse(context.Background(), result, &target, "http://url", logger)
+		assert.Error(t, err)
 	})
 }
 

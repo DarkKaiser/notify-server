@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// estimatedProductMsgSize 단일 상품 정보를 렌더링할 때 필요한 예상 버퍼 크기(Byte)입니다.
-	estimatedProductMsgSize = 300
+	// estimatedProductDiffSize 단일 상품 정보를 렌더링할 때 필요한 예상 버퍼 크기(Byte)입니다.
+	estimatedProductDiffSize = 300
 )
 
 // renderProduct 단일 상품 정보를 알림 메시지 포맷에 맞게 렌더링합니다.
@@ -47,7 +47,7 @@ func renderProductDiffs(diffs []productDiff, supportsHTML bool) string {
 	var sb strings.Builder
 
 	// 상품 개수 x 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
-	sb.Grow(len(diffs) * estimatedProductMsgSize)
+	sb.Grow(len(diffs) * estimatedProductDiffSize)
 
 	needSeparator := false
 	for _, diff := range diffs {
@@ -90,7 +90,7 @@ func formatProductItem(p *product, supportsHTML bool, m mark.Mark, prev *product
 	var sb strings.Builder
 
 	// 상품 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
-	sb.Grow(estimatedProductMsgSize)
+	sb.Grow(estimatedProductDiffSize)
 
 	if supportsHTML {
 		const htmlFormat = `☞ <a href="%s"><b>%s</b></a> (%s) %s원`
@@ -151,7 +151,7 @@ func renderCurrentStatus(snapshot *watchPriceSnapshot, supportsHTML bool) string
 	var sb strings.Builder
 
 	// 상품 개수 x 평균 메시지 크기로 버퍼 크기 사전 할당 (메모리 재할당 최소화)
-	sb.Grow(len(snapshot.Products) * estimatedProductMsgSize)
+	sb.Grow(len(snapshot.Products) * estimatedProductDiffSize)
 
 	for i, p := range snapshot.Products {
 		// 첫 번째 상품이 아니면 구분을 위해 빈 줄 추가

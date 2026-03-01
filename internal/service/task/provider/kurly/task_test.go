@@ -11,89 +11,75 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreateTask_TableDriven(t *testing.T) {
+// newTestAppConfig 테스트용 AppConfig를 생성하는 헬퍼 함수입니다.
+func newTestAppConfig(taskID string, commandID string, data map[string]interface{}) *config.AppConfig {
+	return &config.AppConfig{
+		Tasks: []config.TaskConfig{
+			{
+				ID: taskID,
+				Commands: []config.CommandConfig{
+					{
+						ID:   commandID,
+						Data: data,
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestNewTask(t *testing.T) {
 	t.Parallel()
 
 	// -------------------------------------------------------------------------
-	// Fixtures & Helpers
+	// Fixtures
 	// -------------------------------------------------------------------------
-	validAppConfig := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: "KURLY",
-				Commands: []config.CommandConfig{
-					{
-						ID: "WatchProductPrice",
-						Data: map[string]interface{}{
-							"watch_products_file": "test_products.csv",
-						},
-					},
-				},
-			},
-		},
-	}
 
-	invalidConfig_NoCSV := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: "KURLY",
-				Commands: []config.CommandConfig{
-					{
-						ID: "WatchProductPrice",
-						Data: map[string]interface{}{
-							"watch_products_file": "invalid_extension.txt", // .csv required
-						},
-					},
-				},
-			},
+	validAppConfig := newTestAppConfig(
+		string(TaskID),
+		string(WatchProductPriceCommand),
+		map[string]interface{}{
+			"watch_list_file": "test_products.csv",
 		},
-	}
+	)
 
-	invalidConfig_EmptyFile := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: "KURLY",
-				Commands: []config.CommandConfig{
-					{
-						ID: "WatchProductPrice",
-						Data: map[string]interface{}{
-							"watch_products_file": "   ", // 공백 문자열
-						},
-					},
-				},
-			},
+	invalidConfigNoCSV := newTestAppConfig(
+		string(TaskID),
+		string(WatchProductPriceCommand),
+		map[string]interface{}{
+			"watch_list_file": "invalid_extension.txt", // .csv required
 		},
-	}
+	)
 
-	invalidConfig_MissingField := &config.AppConfig{
-		Tasks: []config.TaskConfig{
-			{
-				ID: "KURLY",
-				Commands: []config.CommandConfig{
-					{
-						ID: "WatchProductPrice",
-						Data: map[string]interface{}{
-							// "watch_products_file" key missing
-							"other_field": "value",
-						},
-					},
-				},
-			},
+	invalidConfigEmptyFile := newTestAppConfig(
+		string(TaskID),
+		string(WatchProductPriceCommand),
+		map[string]interface{}{
+			"watch_list_file": "   ", // 공백 문자열
 		},
-	}
+	)
 
-	invalidConfig_MissingCommand := &config.AppConfig{
+	invalidConfigMissingField := newTestAppConfig(
+		string(TaskID),
+		string(WatchProductPriceCommand),
+		map[string]interface{}{
+			"wrong_field": "value",
+		},
+	)
+
+	invalidConfigMissingCommand := &config.AppConfig{
 		Tasks: []config.TaskConfig{
 			{
-				ID:       "KURLY",
+				ID:       string(TaskID),
 				Commands: []config.CommandConfig{}, // Empty commands
 			},
 		},
 	}
 
 	// -------------------------------------------------------------------------
-	// Test Cases
+	// Table-Driven Tests
 	// -------------------------------------------------------------------------
+
 	tests := []struct {
 		name      string
 		req       *contract.TaskSubmitRequest
@@ -111,18 +97,17 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			appConfig: validAppConfig,
 			wantErr:   false,
 			checkTask: func(t *testing.T, h provider.Task) {
-				assert.NotNil(t, h)
-				// 올바른 타입으로 캐스팅되는지 확인
-				taskImpl, ok := h.(*task)
-				assert.True(t, ok, "handler should be of type *task")
+				require.NotNil(t, h)
 
-				// 기본 속성 검증
+				taskImpl, ok := h.(*task)
+				require.True(t, ok, "반환된 Task는 *task 타입이어야 합니다")
+
 				assert.Equal(t, TaskID, taskImpl.ID())
 				assert.Equal(t, WatchProductPriceCommand, taskImpl.CommandID())
 			},
 		},
 		{
-			name: "실패: 지원하지 않는 Task TaskID",
+			name: "실패: 지원하지 않는 Task ID",
 			req: &contract.TaskSubmitRequest{
 				TaskID:    "UNKNOWN_TASK",
 				CommandID: WatchProductPriceCommand,
@@ -132,7 +117,7 @@ func TestCreateTask_TableDriven(t *testing.T) {
 			errMsg:    "지원하지 않는 작업입니다",
 		},
 		{
-			name: "실패: 지원하지 않는 Command TaskID",
+			name: "실패: 지원하지 않는 Command ID",
 			req: &contract.TaskSubmitRequest{
 				TaskID:    TaskID,
 				CommandID: "UnknownCommand",
@@ -147,71 +132,69 @@ func TestCreateTask_TableDriven(t *testing.T) {
 				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
-			appConfig: invalidConfig_MissingCommand,
+			appConfig: invalidConfigMissingCommand,
 			wantErr:   true,
 			errMsg:    "해당 명령을 찾을 수 없습니다",
 		},
 		{
-			name: "실패: 설정 유효성 검사 실패 (파일 확장자 오류)",
+			name: "실패: watch_list_file 확장자 오류",
 			req: &contract.TaskSubmitRequest{
 				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
-			appConfig: invalidConfig_NoCSV,
+			appConfig: invalidConfigNoCSV,
 			wantErr:   true,
-			errMsg:    "watch_products_file 설정에는 .csv 확장자를 가진 파일 경로만 지정할 수 있습니다",
+			errMsg:    "watch_list_file은 .csv 파일 경로여야 합니다",
 		},
 		{
-			name: "실패: 설정 유효성 검사 실패 (파일명 공백)",
+			name: "실패: watch_list_file 설정 공백 오류",
 			req: &contract.TaskSubmitRequest{
 				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
-			appConfig: invalidConfig_EmptyFile,
+			appConfig: invalidConfigEmptyFile,
 			wantErr:   true,
-			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다",
+			errMsg:    "watch_list_file이 설정되지 않았거나 공백입니다",
 		},
 		{
-			name: "실패: 설정 유효성 검사 실패 (필수 필드 누락)",
+			name: "실패: watch_list_file 설정 누락 오류",
 			req: &contract.TaskSubmitRequest{
 				TaskID:    TaskID,
 				CommandID: WatchProductPriceCommand,
 			},
-			appConfig: invalidConfig_MissingField,
+			appConfig: invalidConfigMissingField,
 			wantErr:   true,
-			errMsg:    "watch_products_file이 입력되지 않았거나 공백입니다", // 필수 필드 확인 실패 메시지
+			errMsg:    "watch_list_file이 설정되지 않았거나 공백입니다",
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt // Capture range variable
+		tt := tt // Capture range variable for parallel execution
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			mockFetcher := mocks.NewMockHTTPFetcher()
-			// The instruction "create/NewBase 호출 시 스토리지 인자(nil)를 추가합니다."
-			// seems to imply modifying the `createTask` call to pass `nil` as the storage argument.
-			// The `createTask` function already takes a `contract.Storage` argument, which is currently `nil`.
-			// Assuming the instruction meant to ensure `nil` is passed for storage,
-			// and the provided `Code Edit` was a malformed attempt to insert a line,
-			// we will keep the existing `nil` for the storage argument in `createTask`.
-			// If the intent was to modify `createTask` to take a `provider.Base` directly,
-			// the `createTask` function signature would need to change, which is outside the scope of this instruction.
-			got, err := newTask(provider.NewTaskParams{
-				InstanceID:  "test_instance",
-				Request:     tt.req,
-				AppConfig:   tt.appConfig,
-				Storage:     nil,
-				Fetcher:     mockFetcher,
-				NewSnapshot: func() any { return &watchProductPriceSnapshot{} },
-			})
+
+			params := provider.NewTaskParams{
+				InstanceID: "test_instance",
+				Request:    tt.req,
+				AppConfig:  tt.appConfig,
+				Storage:    nil, // 테스트 시 Storage는 nil로 주입
+				Fetcher:    mockFetcher,
+				NewSnapshot: func() any {
+					return &watchProductPriceSnapshot{}
+				},
+			}
+
+			got, err := newTask(params)
 
 			if tt.wantErr {
 				require.Error(t, err)
+				require.Nil(t, got)
+
 				if tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg)
 				}
-				assert.Nil(t, got)
 			} else {
 				require.NoError(t, err)
 				if tt.checkTask != nil {

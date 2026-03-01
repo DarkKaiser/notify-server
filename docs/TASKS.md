@@ -58,7 +58,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
       },
       "default_notifier_id": "my-telegram",
       "data": {
-        "watch_products_file": "/usr/local/app/kurly_products.csv"
+        "watch_list_file": "/usr/local/app/kurly_products.csv"
       }
     }
   ]
@@ -70,7 +70,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 | 옵션                  | 설명                           | 필수 | 예시                                |
 | --------------------- | ------------------------------ | ---- | ----------------------------------- |
 | `scheduler.time_spec` | 가격 확인 주기                 | 예   | `0 0,15,30,45 9-23 * * *`           |
-| `watch_products_file` | 감시할 상품 목록 CSV 파일 경로 | 예   | `/usr/local/app/kurly_products.csv` |
+| `watch_list_file`     | 감시할 상품 목록 CSV 파일 경로 | 예   | `/usr/local/app/kurly_products.csv` |
 
 **감시 상품 파일 형식 (CSV)**
 
@@ -189,7 +189,9 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
             "included_keywords": "서울,경기",
             "excluded_keywords": ""
           }
-        }
+        },
+        "max_pages": 50,
+        "page_fetch_delay_ms": 100
       }
     }
   ]
@@ -198,13 +200,15 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 **설정 옵션**
 
-| 옵션                              | 설명                                      | 필수   |
-| --------------------------------- | ----------------------------------------- | ------ |
-| `query`                           | 검색 키워드                               | 예     |
-| `filters.title.included_keywords` | 제목에 포함되어야 할 키워드 (쉼표로 구분) | 아니오 |
-| `filters.title.excluded_keywords` | 제목에서 제외할 키워드 (쉼표로 구분)      | 아니오 |
-| `filters.place.included_keywords` | 장소에 포함되어야 할 키워드               | 아니오 |
-| `filters.place.excluded_keywords` | 장소에서 제외할 키워드                    | 아니오 |
+| 옵션                              | 설명                                          | 필수   |
+| --------------------------------- | --------------------------------------------- | ------ |
+| `query`                           | 검색 키워드                                   | 예     |
+| `filters.title.included_keywords` | 제목에 포함되어야 할 키워드 (쉼표로 구분)     | 아니오 |
+| `filters.title.excluded_keywords` | 제목에서 제외할 키워드 (쉼표로 구분)          | 아니오 |
+| `filters.place.included_keywords` | 장소에 포함되어야 할 키워드                   | 아니오 |
+| `filters.place.excluded_keywords` | 장소에서 제외할 키워드                        | 아니오 |
+| `max_pages`                       | 최대 수집 페이지 수 (기본값: 50)              | 아니오 |
+| `page_fetch_delay_ms`             | 페이지 수집 간 대기 시간 밀리초 (기본값: 100) | 아니오 |
 
 **알림 내용**
 
@@ -253,7 +257,8 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
           "included_keywords": "2024,신형",
           "excluded_keywords": "중고,리퍼",
           "price_less_than": 2000000
-        }
+        },
+        "page_fetch_delay_ms": 100
       }
     }
   ],
@@ -273,12 +278,13 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
 
 **Command 레벨 설정**
 
-| 옵션                        | 설명                               | 필수   |
-| --------------------------- | ---------------------------------- | ------ |
-| `query`                     | 검색 키워드                        | 예     |
-| `filters.included_keywords` | 포함되어야 할 키워드 (쉼표로 구분) | 아니오 |
-| `filters.excluded_keywords` | 제외할 키워드 (쉼표로 구분)        | 아니오 |
-| `filters.price_less_than`   | 최대 가격 (원)                     | 아니오 |
+| 옵션                        | 설명                                          | 필수                  |
+| --------------------------- | --------------------------------------------- | --------------------- |
+| `query`                     | 검색 키워드                                   | 예                    |
+| `filters.included_keywords` | 포함되어야 할 키워드 (쉼표로 구분)            | 아니오                |
+| `filters.excluded_keywords` | 제외할 키워드 (쉼표로 구분)                   | 아니오                |
+| `filters.price_less_than`   | 최대 가격 (원)                                | 아니오 (0보다 커야함) |
+| `page_fetch_delay_ms`       | 페이지 수집 간 대기 시간 밀리초 (기본값: 100) | 아니오                |
 
 **알림 내용**
 
@@ -373,7 +379,7 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
           },
           "default_notifier_id": "my-telegram",
           "data": {
-            "watch_products_file": "/usr/local/app/kurly_products.csv"
+            "watch_list_file": "/usr/local/app/kurly_products.csv"
           }
         }
       ]
@@ -399,7 +405,8 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
               "included_keywords": "2024,신형",
               "excluded_keywords": "중고,리퍼",
               "price_less_than": 2000000
-            }
+            },
+            "page_fetch_delay_ms": 100
           }
         }
       ],
@@ -415,6 +422,12 @@ NotifyServer가 지원하는 Task들에 대한 상세 설정 가이드입니다.
       "tls_cert_file": "/etc/letsencrypt/live/yourdomain.com/fullchain.pem",
       "tls_key_file": "/etc/letsencrypt/live/yourdomain.com/privkey.pem",
       "listen_port": 2443
+    },
+    "cors": {
+      "allow_origins": [
+        "https://www.darkkaiser.com",
+        "https://api.darkkaiser.com"
+      ]
     },
     "applications": [
       {
