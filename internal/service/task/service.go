@@ -326,7 +326,7 @@ func (s *Service) handleTaskCancel(serviceStopCtx context.Context, instanceID co
 			CommandID:     task.CommandID(),
 			InstanceID:    instanceID,
 			Message:       "사용자 요청에 의해 작업이 취소되었습니다.",
-			Elapsed:       task.Elapsed(),
+			Elapsed:       0,
 			ErrorOccurred: false,
 			Cancelable:    false,
 		})
@@ -464,7 +464,7 @@ func (s *Service) rejectIfAlreadyRunning(serviceStopCtx context.Context, req *co
 				CommandID:     req.CommandID,
 				InstanceID:    task.InstanceID(),
 				Message:       "요청하신 작업은 이미 진행중입니다.\n이전 작업을 취소하시려면 아래 명령어를 클릭하여 주세요.",
-				Elapsed:       task.Elapsed(),
+				Elapsed:       0,
 				ErrorOccurred: false,
 				Cancelable:    req.RunBy == contract.TaskRunByUser,
 			})
