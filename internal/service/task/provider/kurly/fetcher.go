@@ -163,7 +163,7 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		}
 
 		// 추출한 가격 숫자 텍스트에서 쉼표(,)를 제거한 후 정수 타입으로 변환합니다.
-		text := priceSel.Eq(0).Text()
+		text := strings.TrimSpace(priceSel.Eq(0).Text())
 		price, err = strconv.Atoi(strings.ReplaceAll(text, ",", ""))
 		if err != nil {
 			return 0, 0, 0, newErrPriceConversionFailed(err, text)
@@ -175,7 +175,7 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 
 		// 1. 할인율을 추출합니다.
 		//    span.css-8h3us8의 텍스트(예: "10%")에서 "%" 기호를 제거한 후 정수 타입으로 변환합니다.
-		text := discountRateSel.Eq(0).Text()
+		text := strings.TrimSpace(discountRateSel.Eq(0).Text())
 		discountRate, err = strconv.Atoi(strings.ReplaceAll(text, "%", ""))
 		if err != nil {
 			return 0, 0, 0, newErrDiscountRateConversionFailed(err, text)
@@ -191,7 +191,7 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		}
 
 		// 추출한 할인가 숫자 텍스트에서 쉼표(,)를 제거한 후 정수 타입으로 변환합니다.
-		text = discountedPriceSel.Eq(0).Text()
+		text = strings.TrimSpace(discountedPriceSel.Eq(0).Text())
 		discountedPrice, err = strconv.Atoi(strings.ReplaceAll(text, ",", ""))
 		if err != nil {
 			return 0, 0, 0, newErrDiscountedPriceConversionFailed(err, text)
@@ -205,7 +205,7 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "span.css-1s96j0s > span")
 		}
 
-		price, err = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(priceSel.Text(), ",", ""), "원", ""))
+		price, err = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(priceSel.Text()), ",", ""), "원", ""))
 		if err != nil {
 			// 정가(취소선) 파싱에 실패하더라도 실구매가(할인가) 정보가 정상 수집되었다면,
 			// 전체 수집을 실패 처리하지 않고 정가를 할인가와 동일하게 보정합니다.

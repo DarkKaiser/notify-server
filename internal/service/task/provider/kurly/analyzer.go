@@ -44,10 +44,11 @@ func extractProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProduct
 		// -------------------------------------------------------------------------
 		// 아래 두 가지 경우를 모두 '논리적 신규 등장'으로 동일하게 취급합니다.
 		//   (A) !exists: 이전 스냅샷 자체에 해당 ID가 없는 경우. 진짜 새로운 상품입니다.
-		//   (B) Price==0 && FetchFailedCount>0: 감시 목록에 추가된 이후 단 한 번도 정상 수집에
-		//       성공하지 못해, 스냅샷에 임시 실패 객체(가격 0원)만 남아있는 경우입니다.
+		//   (B) Price==0 && FetchFailedCount>0 && LowestPrice==0: 감시 목록에 추가된 이후
+		//       단 한 번도 정상 수집에 성공하지 못해, 스냅샷에 임시 실패 객체(가격 0원)만 남아있는 경우입니다.
+		//       기존에 한 번이라도 정상 수집 이력이 있었다면 LowestPrice가 0보다 큽니다.
 		//       실제 정보를 단 한 번도 정상 수집한 적이 없으므로, 이번에 처음 정상 수집된 것과 사실상 동일합니다.
-		if !exists || (prevProduct.Price == 0 && prevProduct.FetchFailedCount > 0) {
+		if !exists || (prevProduct.Price == 0 && prevProduct.FetchFailedCount > 0 && prevProduct.LowestPrice == 0) {
 			// 현재 사이클에서도 여전히 수집에 실패 중이거나(FetchFailedCount > 0),
 			// 정상 수집됐지만 품절·판매중지(IsUnavailable=true) 상태라면 아직 알림을 보낼 수 없습니다.
 			// 조건이 갖춰질 때까지 productEventNew 이벤트 발행을 조용히 보류합니다.
@@ -112,9 +113,9 @@ func extractProductDiffs(currentSnapshot *watchProductPriceSnapshot, prevProduct
 		}
 
 		// 가격이 변동된 상품에 대해 역대 최저가 갱신 여부를 최종 판단합니다.
-		// effectivePrice()는 할인가가 존재하면 할인가를, 없으면 정가를 반환합니다.
-		// 현재 실구매가가 누적 집계된 역대 최저가(LowestPrice)와 일치하면 최저가 달성으로 분기합니다.
-		if currentProduct.effectivePrice() == currentProduct.LowestPrice {
+		// 이전 스냅샷의 역대 최저가(prevProduct.LowestPrice)와 비교하여,
+		// 이번에 새롭게 최저가를 갱신했거나(이전보다 낮아짐), 이전 기록이 없는(0) 경우에만 최저가 달성으로 분기합니다.
+		if prevProduct.LowestPrice == 0 || currentProduct.LowestPrice < prevProduct.LowestPrice {
 			diffs = append(diffs, productDiff{
 				Type:    productEventLowestPriceAchieved,
 				Product: currentProduct,

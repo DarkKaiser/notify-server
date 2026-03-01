@@ -77,6 +77,27 @@ func TestSetup_Singleton_Error(t *testing.T) {
 	assert.Equal(t, err1, err2, "Setup must return the cached error from the first attempt")
 }
 
+// TestSetup_DirCreationFailed 로그 디렉토리 생성에 실패할 때 에러를 반환하는지 검증합니다.
+// setup.go:97-99 (os.MkdirAll 실패 경로)를 커버합니다.
+func TestSetup_DirCreationFailed(t *testing.T) {
+	resetGlobalState()
+
+	// 기존 파일 경로를 Dir로 설정하면 하위 디렉토리를 만들 수 없어 MkdirAll이 실패합니다.
+	tempDir := t.TempDir()
+	conflictFile := filepath.Join(tempDir, "conflict_file")
+	require.NoError(t, os.WriteFile(conflictFile, []byte("conflict"), 0644))
+
+	// conflictFile/subdir 를 로그 디렉토리로 설정 → MkdirAll 실패 유도
+	opts := Options{
+		Name: "fail-app",
+		Dir:  filepath.Join(conflictFile, "subdir"), // 파일 안에 디렉토리를 만들 수 없음
+	}
+
+	_, err := Setup(opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "로그 디렉토리 생성 실패")
+}
+
 // TestSetup_Defaults 필수값이 누락되었을 때 기본값이 올바르게 적용되는지 검증합니다.
 func TestSetup_Defaults(t *testing.T) {
 	resetGlobalState()
@@ -102,6 +123,81 @@ func TestSetup_Defaults(t *testing.T) {
 
 	assert.Equal(t, defaultMaxSizeMB, mainLogger.MaxSize)
 	assert.Equal(t, defaultMaxBackups, mainLogger.MaxBackups)
+}
+
+// TestSetup_EmptyDir Dir이 비어있으면 "logs" 기본 디렉토리를 사용하는 경로를 검증합니다.
+// setup.go:92-94 (if logDir == "" 분기)를 커버합니다.
+func TestSetup_EmptyDir(t *testing.T) {
+	resetGlobalState()
+
+	// Dir=="" 이어야 하므로 별도 TempDir를 사용하지 않습니다.
+	// setupInternal 내부에서 logDir = "logs" 로 대체되어 os.MkdirAll("logs", 0755)를 호출합니다.
+	opts := Options{
+		Name: "empty-dir-app",
+		// Dir을 명시하지 않으면 setup.go 내에서 "logs"로 대체됩니다.
+	}
+
+	cl, err := Setup(opts)
+	require.NoError(t, err)
+	defer cl.Close()
+	defer os.RemoveAll("logs") // 생성된 "logs" 디렉토리 정리
+
+	// "logs" 디렉토리가 현재 작업 디렉토리에 생성되었음을 확인
+	info, statErr := os.Stat("logs")
+	require.NoError(t, statErr)
+	assert.True(t, info.IsDir())
+}
+
+// TestSetup_EnableConsoleLog EnableConsoleLog=true 시 콘솔 Writer가 hook에 연결되는지 검증합니다.
+// setup.go:117-119 (if opts.EnableConsoleLog 분기) 및 hook 생성 시 consoleWriter 연결 경로를 커버합니다.
+func TestSetup_EnableConsoleLog(t *testing.T) {
+	resetGlobalState()
+	tempDir := t.TempDir()
+
+	opts := Options{
+		Name:             "console-log-app",
+		Dir:              tempDir,
+		EnableConsoleLog: true, // consoleWriter = os.Stdout 경로 실행
+	}
+
+	cl, err := Setup(opts)
+	require.NoError(t, err)
+	defer cl.Close()
+
+	c, ok := cl.(*closer)
+	require.True(t, ok)
+	require.NotNil(t, c.hook, "hook이 생성되어야 합니다")
+	assert.NotNil(t, c.hook.consoleWriter, "EnableConsoleLog=true이면 consoleWriter가 연결되어야 합니다")
+}
+
+// TestSetup_CallerPathPrefix CallerPathPrefix가 실제 함수명에 매칭될 때 경로가 단축되는지 검증합니다.
+// setup.go:82-85 (strings.CutPrefix found=true 분기)를 커버합니다.
+func TestSetup_CallerPathPrefix(t *testing.T) {
+	resetGlobalState()
+	tempDir := t.TempDir()
+
+	// 현재 패키지 경로를 CallerPathPrefix로 설정
+	_, currentFile, _, _ := runtime.Caller(0)
+	// "...notify-server" 부분까지를 prefix로 설정
+	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(currentFile)))
+
+	opts := Options{
+		Name:             "prefix-app",
+		Dir:              tempDir,
+		ReportCaller:     true,
+		CallerPathPrefix: projectRoot,
+		EnableConsoleLog: false,
+	}
+
+	cl, err := Setup(opts)
+	require.NoError(t, err)
+	defer cl.Close()
+
+	Info("CallerPrefix Test")
+
+	content := readLogFile(t, tempDir, "prefix-app.log")
+	// 프로젝트 루트 경로가 제거되고 "..." 접두어로 대체되어야 합니다.
+	assert.NotContains(t, content, projectRoot, "CallerPathPrefix가 경로에서 제거되어야 합니다")
 }
 
 // =============================================================================

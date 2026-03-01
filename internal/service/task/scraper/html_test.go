@@ -258,6 +258,29 @@ func TestFetchHTML_Comprehensive(t *testing.T) {
 			errType:     apperrors.Unknown, // Raw context error returned
 			errContains: []string{"context deadline exceeded"},
 		},
+		{
+			name:   "Error: Context Canceled during Request",
+			method: http.MethodGet,
+			url:    "http://example.com/canceled",
+			setupMock: func(m *mocks.MockFetcher) {
+				m.On("Do", mock.Anything).Return(nil, context.Canceled)
+			},
+			wantErr:     true,
+			errType:     apperrors.Unknown, // Raw context error returned
+			errContains: []string{"context canceled"},
+		},
+		{
+			name:   "Error: Invalid URL Creation",
+			method: http.MethodGet,
+			// \x00 같은 제어문자가 포함된 URL은 net/url.Parse 에서 에러 반환 -> request 생성 실패
+			url: "http://example.com/invalid\x00url",
+			setupMock: func(m *mocks.MockFetcher) {
+				// Do not expect Do to be called
+			},
+			wantErr:     true,
+			errType:     apperrors.ExecutionFailed,
+			errContains: []string{"요청 객체 초기화 중 오류 발생"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -390,6 +413,22 @@ func TestParseHTML_Comprehensive(t *testing.T) {
 			errType:     apperrors.Unavailable,
 			errContains: []string{"read error"},
 		},
+		{
+			name:        "Warning: Invalid Base URL Parsing in ParseHTML",
+			input:       strings.NewReader(`<html><body>Success</body></html>`),
+			url:         "://invalid-url",
+			contentType: "text/html",
+			validate: func(t *testing.T, doc *goquery.Document) {
+				assert.Equal(t, "Success", doc.Find("body").Text())
+			},
+		},
+		{
+			name:        "Error: Context Canceled during Parse(LimitReader)",
+			input:       &slowReader{}, // Read 중 지연 발생
+			contentType: "text/html",
+			wantErr:     true,
+			errType:     apperrors.Unknown, // context error pass-through
+		},
 	}
 
 	for _, tt := range tests {
@@ -400,7 +439,15 @@ func TestParseHTML_Comprehensive(t *testing.T) {
 			}
 			s := New(&mocks.MockFetcher{}, opts...).(*scraper)
 
-			doc, err := s.ParseHTML(context.Background(), tt.input, tt.url, tt.contentType)
+			// slowReader용 짧은 타임아웃
+			ctx := context.Background()
+			if tt.name == "Error: Context Canceled during Parse(LimitReader)" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 10*time.Millisecond)
+				defer cancel()
+			}
+
+			doc, err := s.ParseHTML(ctx, tt.input, tt.url, tt.contentType)
 
 			if tt.wantErr {
 				require.Error(t, err)

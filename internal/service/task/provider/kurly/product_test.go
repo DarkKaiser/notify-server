@@ -371,7 +371,7 @@ func TestProduct_UpdateLowestPrice_TableDriven(t *testing.T) {
 }
 
 // TestProduct_Render_TableDriven Render 메서드의 단일 상품 렌더링 로직을 정밀 검증합니다.
-// HTML/Text 모드, 할인, 최저가 표시 등 다양한 시나리오를 커버합니다.
+// HTML/Text 모드, 할인, 최저가 표시, mark 이모지, XSS 방어 등 다양한 시나리오를 커버합니다.
 func TestProduct_Render_TableDriven(t *testing.T) {
 	t.Parallel()
 
@@ -435,7 +435,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name: "HTML Mode - Discounted Price",
+			name: "HTML Mode - Discounted Price (취소선 렌더링)",
 			product: &product{
 				Name:            "Sale Item HTML",
 				Price:           20000,
@@ -448,7 +448,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name: "With Lowest Price History",
+			name: "With Lowest Price History - UTC → KST 변환 검증",
 			product: &product{
 				Name:               "History Item",
 				Price:              10000,
@@ -460,6 +460,25 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 				"• 최저 가격 : 9,000원",
 				"(2023/05/05 09:00)",
 			},
+		},
+		{
+			// LowestPrice == 0 이면 최저가 이력이 없어 해당 섹션을 출력하지 않아야 합니다.
+			name: "LowestPrice == 0 → 최저가 섹션 미출력",
+			product: &product{
+				Name:        "No History",
+				Price:       7000,
+				LowestPrice: 0,
+			},
+			supportsHTML: false,
+			unwants:      []string{"• 최저 가격"},
+		},
+		{
+			// mark.Mark 이모지가 상품명 옆에 정확히 추가되는지 확인합니다.
+			name:         "mark 이모지 포함 렌더링 검증",
+			product:      baseProduct,
+			supportsHTML: false,
+			mark:         mark.BestPrice,
+			wants:        []string{string(mark.BestPrice)},
 		},
 		{
 			name: "Edge Case - Discount Rate 0%",
@@ -494,7 +513,7 @@ func TestProduct_Render_TableDriven(t *testing.T) {
 }
 
 // TestProduct_RenderDiff_TableDriven RenderDiff 메서드의 비교 렌더링 로직을 검증합니다.
-// 이전 가격(prev) 유무에 따른 동작 차이를 중점적으로 테스트합니다.
+// 이전 가격(prev) 유무, HTML 모드, mark 이모지 조합에 따른 동작 차이를 중점적으로 테스트합니다.
 func TestProduct_RenderDiff_TableDriven(t *testing.T) {
 	t.Parallel()
 
@@ -508,11 +527,12 @@ func TestProduct_RenderDiff_TableDriven(t *testing.T) {
 		product      *product
 		prev         *product
 		supportsHTML bool
+		mark         mark.Mark
 		wants        []string
 		unwants      []string
 	}{
 		{
-			name:         "With Previous Price",
+			name:         "Text Mode - 이전 가격 있음",
 			product:      curr,
 			prev:         &product{Price: 12000},
 			supportsHTML: false,
@@ -522,24 +542,45 @@ func TestProduct_RenderDiff_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name:         "Previous Price is Nil (Should behave like Render)",
+			name:         "Text Mode - 이전 가격 nil (Render처럼 동작)",
 			product:      curr,
 			prev:         nil,
 			supportsHTML: false,
 			wants: []string{
 				"• 현재 가격 : 10,000원",
 			},
-			unwants: []string{
-				"• 이전 가격",
-			},
+			unwants: []string{"• 이전 가격"},
 		},
 		{
-			name:         "Previous Price with Discount",
+			name:         "Text Mode - 이전 가격에 할인 적용",
 			product:      curr,
 			prev:         &product{Price: 12000, DiscountedPrice: 11000, DiscountRate: 8},
 			supportsHTML: false,
 			wants: []string{
 				"12,000원 ⇒ 11,000원 (8%)",
+			},
+		},
+		{
+			// HTML 모드에서 이전 가격도 취소선(<s>) 스타일로 렌더링돼야 합니다.
+			name:         "HTML Mode - 이전 가격 있을 때 취소선 렌더링",
+			product:      curr,
+			prev:         &product{Price: 15000, DiscountedPrice: 13000, DiscountRate: 13},
+			supportsHTML: true,
+			wants: []string{
+				"• 현재 가격 : 10,000원",
+				"<s>15,000원</s> 13,000원 (13%)",
+			},
+		},
+		{
+			// mark 이모지가 상품명 옆에 정확히 포함돼야 합니다.
+			name:         "mark 이모지 포함 렌더링",
+			product:      curr,
+			prev:         &product{Price: 12000},
+			supportsHTML: false,
+			mark:         mark.Mark("📉"),
+			wants: []string{
+				"📉",
+				"• 이전 가격 : 12,000원",
 			},
 		},
 	}
@@ -548,7 +589,7 @@ func TestProduct_RenderDiff_TableDriven(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := formatProductItem(tt.product, tt.supportsHTML, "", tt.prev)
+			got := formatProductItem(tt.product, tt.supportsHTML, tt.mark, tt.prev)
 			for _, want := range tt.wants {
 				assert.Contains(t, got, want, "Missing expected substring: %s", want)
 			}

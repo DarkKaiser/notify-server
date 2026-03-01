@@ -594,3 +594,285 @@ func TestService_GracefulShutdown(t *testing.T) {
 	require.Nil(t, srvCtx.Service.tasks, "태스크 맵이 nil로 초기화되어 메모리가 해제되어야 함")
 	require.False(t, srvCtx.Service.running, "실행 상태는 false여야 함")
 }
+
+// =============================================================================
+// handleTaskDone Tests
+// =============================================================================
+
+func TestService_HandleTaskDone(t *testing.T) {
+	t.Parallel()
+
+	t.Run("정상: Task 완료 후 tasks 맵에서 제거됨", func(t *testing.T) {
+		// Task를 실행하고, 완료 후 tasks 맵에서 제거되는지 확인합니다.
+		taskDone := make(chan struct{})
+
+		registerTestTask(t, "DONE_TASK", "DONE_CMD", true, func(ctx context.Context, sender contract.NotificationSender) {
+			// 즉시 종료하여 handleTaskDone 호출 유도
+			close(taskDone)
+		})
+
+		srvCtx := setupTestContext(t, true)
+		defer srvCtx.Teardown()
+
+		srvCtx.MockIDGen.ExpectedCalls = nil
+		srvCtx.MockIDGen.On("New").Return(contract.TaskInstanceID("done-instance")).Once()
+
+		err := srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+			TaskID:     "DONE_TASK",
+			CommandID:  "DONE_CMD",
+			NotifierID: "tester",
+			RunBy:      contract.TaskRunByUser,
+		})
+		require.NoError(t, err)
+
+		// Task Run() 완료 대기
+		select {
+		case <-taskDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Task Run()이 완료되지 않음")
+		}
+
+		// handleTaskDone이 이벤트 루프에서 처리されるため 잠시 대기
+		time.Sleep(100 * time.Millisecond)
+
+		// tasks 맵에서 제거되었는지 확인
+		_, exists := srvCtx.Service.tasks["done-instance"]
+		require.False(t, exists, "Task 완료 후 tasks 맵에서 제거되어야 함")
+	})
+
+	t.Run("비정상: 등록되지 않은 InstanceID Done 수신(경고만 출력)", func(t *testing.T) {
+		srvCtx := setupTestContext(t, true)
+		defer srvCtx.Teardown()
+
+		// 이벤트 루프를 통해 직접 taskDoneC에 알 수 없는 ID 전송
+		select {
+		case srvCtx.Service.taskDoneC <- contract.TaskInstanceID("unknown-instance"):
+		case <-time.After(1 * time.Second):
+			t.Fatal("taskDoneC에 전송 실패")
+		}
+
+		// 경고 로그만 남기며 패닉/에러 없이 처리되는지 확인하기 위해 잠시 대기
+		// (정상적으로 처리되면 테스트 통과)
+		time.Sleep(100 * time.Millisecond)
+	})
+}
+
+// =============================================================================
+// registerAndRunTask Edge Case Tests
+// =============================================================================
+
+func TestService_RegisterAndRunTask_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("에러: Task 생성 실패 시 에러 알림 발송", func(t *testing.T) {
+		// NewTask가 (nil, error)를 반환하는 Task 등록
+		registerTestTask(t, "FAIL_CREATE_TASK", "FAIL_CREATE_CMD", true, nil)
+
+		// RegisterForTest로 NewTask가 nil을 반환하도록 덮어씌우기
+		provider.RegisterForTest("FAIL_CREATE_TASK_NIL", &provider.TaskConfig{
+			Commands: []*provider.TaskCommandConfig{
+				{
+					ID:            "FAIL_CMD",
+					AllowMultiple: true,
+					NewSnapshot:   func() interface{} { return &struct{}{} },
+				},
+			},
+			NewTask: func(p provider.NewTaskParams) (provider.Task, error) {
+				return nil, fmt.Errorf("task 생성 실패: 테스트 오류")
+			},
+		})
+
+		notifyCalled := make(chan struct{}, 1)
+		srvCtx := setupTestContext(t, true)
+		defer srvCtx.Teardown()
+
+		srvCtx.MockSender.ExpectedCalls = nil
+		srvCtx.MockSender.On("Notify", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			n, ok := args.Get(1).(contract.Notification)
+			if ok && n.ErrorOccurred {
+				select {
+				case notifyCalled <- struct{}{}:
+				default:
+				}
+			}
+		}).Return(nil).Maybe()
+
+		err := srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+			TaskID:     "FAIL_CREATE_TASK_NIL",
+			CommandID:  "FAIL_CMD",
+			NotifierID: "tester",
+			RunBy:      contract.TaskRunByUser,
+		})
+		require.NoError(t, err)
+
+		select {
+		case <-notifyCalled:
+			// 에러 알림 발송 확인
+		case <-time.After(3 * time.Second):
+			t.Fatal("Task 생성 실패 시 에러 알림이 발송되지 않음")
+		}
+	})
+
+	t.Run("정상: NotifyOnStart=true 시 시작 알림 발송", func(t *testing.T) {
+		startNotifyCalled := make(chan struct{}, 1)
+		var notifyStartWaitCanceled <-chan struct{}
+
+		registerTestTask(t, "NOTIFY_START_TASK", "NOTIFY_CMD", true, func(ctx context.Context, sender contract.NotificationSender) {
+			<-notifyStartWaitCanceled
+		}, func(cancelC <-chan struct{}) {
+			notifyStartWaitCanceled = cancelC
+		})
+
+		srvCtx := setupTestContext(t, true)
+		defer srvCtx.Teardown()
+
+		srvCtx.MockIDGen.ExpectedCalls = nil
+		srvCtx.MockIDGen.On("New").Return(contract.TaskInstanceID("notify-start-inst")).Once()
+
+		srvCtx.MockSender.ExpectedCalls = nil
+		srvCtx.MockSender.On("Notify", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			n, ok := args.Get(1).(contract.Notification)
+			// 시작 알림은 Cancelable=true, ErrorOccurred=false이며 "진행중" 메시지 포함
+			if ok && !n.ErrorOccurred && n.Cancelable && n.InstanceID == "notify-start-inst" {
+				select {
+				case startNotifyCalled <- struct{}{}:
+				default:
+				}
+			}
+		}).Return(nil).Maybe()
+
+		err := srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+			TaskID:        "NOTIFY_START_TASK",
+			CommandID:     "NOTIFY_CMD",
+			NotifierID:    "tester",
+			RunBy:         contract.TaskRunByUser,
+			NotifyOnStart: true,
+		})
+		require.NoError(t, err)
+
+		select {
+		case <-startNotifyCalled:
+			// 시작 알림 정상 발송
+		case <-time.After(3 * time.Second):
+			t.Fatal("NotifyOnStart=true 시 시작 알림이 발송되지 않음")
+		}
+	})
+
+	t.Run("에러: InstanceID 충돌 시 에러 알림 발송", func(t *testing.T) {
+		// 동일한 InstanceID를 반환하는 MockIDGenerator → 두 번째 Submit 시 충돌
+		conflictNotifyCalled := make(chan struct{}, 1)
+		taskStarted := make(chan struct{})
+		var conflictWaitCanceled <-chan struct{}
+
+		registerTestTask(t, "CONFLICT_TASK", "CONFLICT_CMD", true, func(ctx context.Context, sender contract.NotificationSender) {
+			close(taskStarted)
+			<-conflictWaitCanceled
+		}, func(cancelC <-chan struct{}) {
+			conflictWaitCanceled = cancelC
+		})
+
+		srvCtx := setupTestContext(t, true)
+		defer srvCtx.Teardown()
+
+		// 모든 호출에 동일한 ID 반환
+		srvCtx.MockIDGen.ExpectedCalls = nil
+		srvCtx.MockIDGen.On("New").Return(contract.TaskInstanceID("dup-instance"))
+
+		srvCtx.MockSender.ExpectedCalls = nil
+		srvCtx.MockSender.On("Notify", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			n, ok := args.Get(1).(contract.Notification)
+			if ok && n.ErrorOccurred {
+				select {
+				case conflictNotifyCalled <- struct{}{}:
+				default:
+				}
+			}
+		}).Return(nil).Maybe()
+
+		// 1차: 정상 실행 (tasks에 dup-instance 등록)
+		err := srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+			TaskID:     "CONFLICT_TASK",
+			CommandID:  "CONFLICT_CMD",
+			NotifierID: "tester",
+			RunBy:      contract.TaskRunByUser,
+		})
+		require.NoError(t, err)
+
+		// Task가 started 확인
+		select {
+		case <-taskStarted:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Task가 시작되지 않음")
+		}
+
+		// 2차: 동일 ID → 충돌 발생 → 에러 알림
+		err = srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+			TaskID:     "CONFLICT_TASK",
+			CommandID:  "CONFLICT_CMD",
+			NotifierID: "tester",
+			RunBy:      contract.TaskRunByUser,
+		})
+		require.NoError(t, err)
+
+		select {
+		case <-conflictNotifyCalled:
+			// ID 충돌로 인한 에러 알림 확인
+		case <-time.After(3 * time.Second):
+			t.Fatal("InstanceID 충돌 시 에러 알림이 발송되지 않음")
+		}
+	})
+}
+
+// =============================================================================
+// EventLoop Panic Recovery Tests
+// =============================================================================
+
+func TestService_EventLoop_PanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	// 이벤트 루프의 패닉 복구 동작을 검증합니다.
+	// 이벤트 루프 내부(handleTaskCancel)에서 패닉을 유발하기 위해
+	// tasks 맵에 nil Task를 직접 주입 후 Cancel을 호출합니다.
+	// nil Task에 대해 task.Cancel()을 호출하면 패닉이 발생하여 recover()가 작동해야 합니다.
+
+	normalDone := make(chan struct{})
+	registerTestTask(t, "NORMAL_AFTER_PANIC2", "NORMAL_CMD2", true, func(ctx context.Context, sender contract.NotificationSender) {
+		close(normalDone)
+	})
+
+	srvCtx := setupTestContext(t, true)
+	defer srvCtx.Teardown()
+
+	// tasks 맵에 nil Task를 직접 삽입하여 handleTaskCancel에서 패닉 유발
+	// (nil Task에 대해 Cancel() 호출 시 nil pointer dereference 발생)
+	panicInstanceID := contract.TaskInstanceID("panic-nil-task")
+	srvCtx.Service.tasks[panicInstanceID] = nil
+
+	// Cancel 요청 → 이벤트 루프에서 handleTaskCancel 실행 → nil.Cancel() 패닉 발생
+	err := srvCtx.Service.Cancel(panicInstanceID)
+	require.NoError(t, err)
+
+	// 패닉 복구 후 이벤트 루프가 살아있는지 확인하기 위해 정상 Task 제출
+	time.Sleep(100 * time.Millisecond)
+
+	err = srvCtx.Service.Submit(srvCtx.Context, &contract.TaskSubmitRequest{
+		TaskID:     "NORMAL_AFTER_PANIC2",
+		CommandID:  "NORMAL_CMD2",
+		NotifierID: "tester",
+		RunBy:      contract.TaskRunByUser,
+	})
+	require.NoError(t, err)
+
+	// 정상 Task가 이벤트 루프에 의해 처리되었는지 확인
+	select {
+	case <-normalDone:
+		// 패닉 이후에도 이벤트 루프가 정상 동작 확인
+	case <-time.After(3 * time.Second):
+		t.Fatal("패닉 복구 이후 이벤트 루프가 정상 동작하지 않음")
+	}
+
+	// Teardown 시 handleStop 패닉 방지를 위해 의도적으로 삽입한 nil 값을 제거합니다.
+	srvCtx.Service.runningMu.Lock()
+	delete(srvCtx.Service.tasks, panicInstanceID)
+	srvCtx.Service.runningMu.Unlock()
+}

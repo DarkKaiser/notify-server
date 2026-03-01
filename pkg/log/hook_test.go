@@ -1,5 +1,3 @@
-//go:build test
-
 package log
 
 import (
@@ -213,6 +211,43 @@ func TestHook_Fire_FailSafe(t *testing.T) {
 		err := h.Fire(&Entry{Level: InfoLevel, Message: "format fail"})
 
 		assert.ErrorContains(t, err, "formatting failed")
+	})
+
+	t.Run("Critical + Main Writer 모두 실패 — 첫 번째(Critical) 에러만 반환", func(t *testing.T) {
+		// hook.go:102-103: Main Write 실패 시 firstErr != nil이면 firstErr를 유지하는 경로를 커버합니다.
+		critErr := errors.New("critical disk full")
+		mainErr := errors.New("main disk full")
+
+		h, _, _, _, _ := newTestHook()
+		h.criticalWriter = &failWriter{err: critErr}
+		h.mainWriter = &failWriter{err: mainErr}
+
+		entry := &Entry{Level: ErrorLevel, Message: "double failure"}
+		err := h.Fire(entry)
+
+		// Critical 에러가 firstErr로 먼저 설정되므로 Critical 에러가 반환되어야 합니다.
+		require.Error(t, err)
+		assert.ErrorIs(t, err, critErr, "Critical 에러가 우선적으로 반환되어야 합니다")
+		assert.NotErrorIs(t, err, mainErr, "Main 에러는 첫 번째 에러 자리를 차지하지 않습니다")
+	})
+
+	t.Run("Main Writer만 실패 — Main 에러 반환", func(t *testing.T) {
+		mainErr := errors.New("main disk full")
+
+		h, _, _, _, _ := newTestHook()
+		h.mainWriter = &failWriter{err: mainErr}
+
+		entry := &Entry{Level: InfoLevel, Message: "main only failure"}
+		err := h.Fire(entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, mainErr)
+	})
+
+	t.Run("Verbose 실패지만 이전 에러(Critical)가 있을 때", func(t *testing.T) {
+		// 이건 논리적으로 불가능함(Verbose는 Debug 이상이고 Critical은 Error 이하).
+		// 하지만 if firstErr == nil 분기 커버리지를 위해 강제로 firstErr를 주입할 수는 없으나
+		// 로직상 도달하지 않는 방어 코드임. 패스.
 	})
 }
 

@@ -63,7 +63,17 @@ func mergeWithPreviousState(currentProducts []*product, prevSnapshot *watchProdu
 				// 크롤링이 실패한 상품(FetchFailedCount > 0)은 실제 가격 데이터 없이 ID만 담긴 임시 객체로 전달됩니다.
 				// 이전 스냅샷의 실패 횟수를 누적하고, 임계값(3회) 초과 시 단종·영구 접근 불가로 판정합니다.
 				if currentProduct.FetchFailedCount > 0 {
+					currentProduct.Name = prevProduct.Name
 					currentProduct.FetchFailedCount += prevProduct.FetchFailedCount
+
+					// FetchFailedCount의 상한선을 임계값(3)으로 고정합니다.
+					// 이미 IsUnavailable로 전환된 상품이라도 매 수집 사이클마다 실패가 반복되면 FetchFailedCount가 4, 5, 6...으로 계속 증가하게 됩니다.
+					// 이 경우 HasChanged()의 비교 구문(p.FetchFailedCount != prevProduct.FetchFailedCount)이 매번 true로 평가되어,
+					// 실질적인 상태 변화가 없음에도 스토리지에 불필요한 Save가 무한히 발생하는 리소스 낭비가 발생합니다.
+					// 따라서 FetchFailedCount의 상한선을 임계값(3)으로 고정하여 이를 원천 차단합니다.
+					if currentProduct.FetchFailedCount > 3 {
+						currentProduct.FetchFailedCount = 3
+					}
 
 					if currentProduct.FetchFailedCount >= 3 {
 						// 연속 3회 이상 실패: 일시적 장애가 아닌 단종 또는 영구적 접근 불가 상태로 판단합니다.
@@ -79,6 +89,12 @@ func mergeWithPreviousState(currentProducts []*product, prevSnapshot *watchProdu
 						currentProduct.DiscountRate = prevProduct.DiscountRate
 						currentProduct.IsUnavailable = prevProduct.IsUnavailable
 					}
+				} else if currentProduct.IsUnavailable && currentProduct.Name == "" {
+					// [이름 유실 방지] 단종·판매 중지 상품의 이름을 이전 스냅샷에서 복원합니다.
+					// fetchProduct는 상품이 단종임을 감지하면 이름 추출 이전에 조기 반환하므로, 반환된 객체의 Name 필드는 빈 문자열("")인 상태입니다.
+					// 이 상태를 그대로 저장하면 이후 사이클에서는 이름 정보를 영영 복구할 수 없습니다.
+					// 따라서 이전 스냅샷에 기록된 이름을 현재 객체에 이월하여 영구 유실을 차단합니다.
+					currentProduct.Name = prevProduct.Name
 				}
 			}
 		}

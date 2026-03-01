@@ -109,53 +109,83 @@ func TestExecutePrediction(t *testing.T) {
 			expectedError: "예측 프로세스 실행 중 오류가 발생하였습니다",
 		},
 		{
+			name: "Wait Fail (No Stderr)",
+			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
+				mockProcess.On("Wait").Return(errors.New("exit status 1"))
+				mockProcess.On("Stderr").Return("") // Stderr 없음 분기 커버
+				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
+			},
+			expectedError: "exit status 1",
+		},
+		{
 			name: "Log File Parse Fail (No path in output)",
 			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
 				mockProcess.On("Wait").Return(nil)
 				mockProcess.On("Stdout").Return("Invalid Output: No path here")
-				mockProcess.On("Stderr").Return("Maybe some error info") // Called because extract failed
+				mockProcess.On("Stderr").Return("") // Called because extract failed
 				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
 			},
-			expectedError: "당첨번호 예측 프로세스 실행 중 오류가 발생하였습니다",
+			expectedError: "당첨번호 예측 작업의 종료 상태를 확인할 수 없습니다",
+		},
+		{
+			name: "Result File is Relative Path",
+			setup: func(t *testing.T, logFilePath string) {
+				// 상대 경로로 추출되는 상황 흉내
+				// 실행 위치(tmpDir)에 "rel_result.log" 생성
+				relFile := filepath.Join(filepath.Dir(logFilePath), "rel_result.log")
+				createDummyLogFile(t, relFile)
+			},
+			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
+				mockProcess.On("Wait").Return(nil)
+				// 절대 경로가 아닌 파일명(상대경로) 반환 -> filepath.IsAbs() = false 경로 커버
+				mockProcess.On("Stdout").Return("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:rel_result.log)")
+				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
+			},
+			expectedMsg: "당첨번호1 [ 1, 2, 3, 4, 5, 6 ]",
 		},
 		{
 			name: "Result File Access Fail (File Not Found)",
 			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
-				// We don't create the file, so EvalSymlinks or Open will fail
 				mockProcess.On("Wait").Return(nil)
 				mockProcess.On("Stdout").Return(fmt.Sprintf("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:%s)", logFilePath))
 				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
 			},
-			// Expecting "예측 결과 파일의 절대 경로를 확인(Resolve)하는 도중 시스템 오류가 발생했습니다" (as EvalSymlinks fails on non-existent file on Windows/Linux usually)
 			expectedError: "도중 시스템 오류가 발생했습니다",
 		},
 		{
 			name: "Security: Path Traversal Attempt",
 			setup: func(t *testing.T, logFilePath string) {
-				// We need a file that exists for EvalSymlinks to pass (if it checks existence),
-				// but returns a path outside appPath.
-				// However, if we just mock Stdout to return "../secret.txt", EvalSymlinks will fail if it doesn't exist.
-				// If we create it in parent dir, we might not have permission or it's complex.
-				// BUT checking logic:
-				// fullPath := filepath.Join(appPath, "../secret.txt") -> effectively outside.
-				// If we mock Stdout as "secret.txt" (filename only), it joins with appPath.
-
-				// Let's rely on the fact that if EvalSymlinks fails (file not found), it returns a specific error.
-				// The Security Check comes *after* EvalSymlinks.
-				// So to test Security Check, we must provide a file that EXISTS but resolves to outside appPath.
-				// This is hard to do portably without writing outside TempDir.
-
-				// Alternative: Malicious Path that *would* be traversal if resolved, but we mock Stdout.
-				// If the file doesn't exist, we hit "File Not Found" error, not "Security Violation".
-				// So we'll skip the strict "Security Violation" assertion here unless we can easily create a file outside.
-				// But we CAN test "Abs/Rel" failure.
+				// 경로 이탈 공격 테스트.
+				// EvalSymlinks, Abs를 통과하려면 실제로 파일이 존재해야 합니다.
+				// 현재 디렉터리(tmpDir) 바깥(부모)에 파일을 생성합니다.
+				parentDir := filepath.Dir(filepath.Dir(logFilePath))
+				traversalFile := filepath.Join(parentDir, "traversal.log")
+				_ = os.WriteFile(traversalFile, []byte("dummy"), 0644)
+				// 주의: 다른 테스트와 충돌하지 않도록 별도의 테스트 코드로 빼거나 정리를 잘 해야합니다.
+				// 여기서는 Setup에서 파일을 만들지만, Teardown이 까다로울 수 있어
+				// 차라리 Symlink를 이용해 이탈을 표현할 수도 있습니다.
+				// 단순화를 위해 rel 경로를 통해 이탈되는지 검사합니다.
 			},
 			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
-				// Let's pretend the output points to something that we can't delete or accept
-				// Actually, we can just skip this specific scenario in table test and use a dedicated test if needed,
-				// or accept that "File Not Found" for a malicious path IS a valid defense (it fails safe).
-				// We'll skip for now to keep table clean and robust.
+				parentDir := filepath.Dir(filepath.Dir(logFilePath))
+				traversalFile := filepath.Join(parentDir, "traversal.log")
+				mockProcess.On("Wait").Return(nil)
+				mockProcess.On("Stdout").Return(fmt.Sprintf("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:%s)", traversalFile))
+				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
 			},
+			expectedError: "허용되지 않은 파일 경로 접근 시도가 감지되었습니다",
+		},
+		{
+			name: "Not a Regular File (Directory)",
+			setup: func(t *testing.T, logFilePath string) {
+				_ = os.MkdirAll(logFilePath, 0755) // 파일을 폴더로 만듬 -> IsRegular() == false 커버
+			},
+			mockSetup: func(mockExecutor *MockCommandExecutor, mockProcess *MockCommandProcess, logFilePath string) {
+				mockProcess.On("Wait").Return(nil)
+				mockProcess.On("Stdout").Return(fmt.Sprintf("로또 당첨번호 예측작업이 종료되었습니다. 5개의 대상 당첨번호가 추출되었습니다.(경로:%s)", logFilePath))
+				mockExecutor.On("Start", mock.Anything, "java", mock.Anything).Return(mockProcess, nil)
+			},
+			expectedError: "내용을 파싱하는 도중 오류가 발생했습니다", // "일반 파일이 아닙니다" 래핑
 		},
 		{
 			name: "Result File Size Limit Exceeded",
