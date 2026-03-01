@@ -765,7 +765,7 @@ func (b *Base) newNotification(message string, errorOccurred bool) contract.Noti
 		InstanceID: b.InstanceID(),
 
 		Message: message,
-		Elapsed: b.Elapsed(),
+		Elapsed: 0,
 
 		ErrorOccurred: errorOccurred,
 		Cancelable:    false,
