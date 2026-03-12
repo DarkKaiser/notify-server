@@ -23,8 +23,8 @@ COPY . .
 
 # 빌드 도구 설치, Swagger 문서 및 코드 생성 (레이어 최적화)
 RUN apk add --no-cache git && \
-    go install golang.org/x/tools/cmd/stringer@latest && \
-    go install github.com/swaggo/swag/cmd/swag@latest && \
+    go install golang.org/x/tools/cmd/stringer@v0.42.0 && \
+    go install github.com/swaggo/swag/cmd/swag@v1.16.6 && \
     go generate ./... && \
     swag init -g cmd/notify-server/main.go
 
@@ -69,7 +69,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
     org.opencontainers.image.version="${APP_VERSION}" \
     org.opencontainers.image.revision="${GIT_COMMIT_HASH}" \
     org.opencontainers.image.title="Notify Server" \
-    org.opencontainers.image.description="웹 페이지 스크래핑 및 RSS 피드 제공 서버" \
+    org.opencontainers.image.description="웹 페이지 스크래핑을 통해 정보를 수집하고 텔레그램으로 알림을 전송하는 서버" \
     build.number="${BUILD_NUMBER}"
 
 # 필수 패키지 설치 및 사용자 생성을 하나의 레이어로 통합
