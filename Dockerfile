@@ -40,7 +40,7 @@ RUN go test ./... -v -coverprofile=coverage.out
 # RUN golangci-lint run ./...
 
 # 빌드 정보를 바이너리에 주입
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -a \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath \
     -ldflags="-s -w \
     -X 'github.com/darkkaiser/notify-server/internal/pkg/version.appVersion=${APP_VERSION}' \
     -X 'github.com/darkkaiser/notify-server/internal/pkg/version.gitCommitHash=${GIT_COMMIT_HASH}' \
