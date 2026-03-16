@@ -136,7 +136,7 @@ func run() error {
 	// 서비스 안정성과 보안을 높이기 위한 권장 설정 준수 여부를 검사한 결과입니다.
 	// 미준수 항목은 경고(Warn) 레벨로 로깅되며, 실행 흐름에는 영향을 주지 않습니다.
 	for _, warning := range warnings {
-		applog.WithComponent("config").Warn(warning)
+		applog.WithComponent(component).Warn(warning)
 	}
 
 	// 4. 서버 아이덴티티 출력

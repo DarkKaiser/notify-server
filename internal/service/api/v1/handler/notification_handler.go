@@ -25,8 +25,8 @@ const component = "api.handler.notification"
 // @Description 설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.
 // @Description
 // @Description ## 인증 방식
-// @Description - **권장**: X-App-Key 헤더로 전달
-// @Description - **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)
+// @Description - **권장**: X-App-Key 및 X-Application-Id 헤더로 전달
+// @Description - **레거시**: app_key 쿼리 파라미터 및 본문의 application_id로 전달 (하위 호환성 유지)
 // @Description
 // @Description ## 사용 예시 (로컬 환경)
 // @Description ### 헤더 방식 (권장)
@@ -34,6 +34,7 @@ const component = "api.handler.notification"
 // @Description curl -X POST "http://localhost:2443/api/v1/notifications" \
 // @Description   -H "Content-Type: application/json" \
 // @Description   -H "X-App-Key: your-app-key" \
+// @Description   -H "X-Application-Id: my-app" \
 // @Description   -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
 // @Description ```
 // @Description
@@ -58,6 +59,7 @@ const component = "api.handler.notification"
 // @Accept json
 // @Produce json
 // @Param X-App-Key header string false "Application Key (인증용, 권장)" example(your-app-key-here)
+// @Param X-Application-Id header string false "Application ID (성능 최적화용, 권장)" example(my-app)
 // @Param app_key query string false "Application Key (인증용, 레거시)" example(your-app-key-here)
 // @Param message body request.NotificationRequest true "알림 메시지 정보"
 // @Success 200 {object} response.SuccessResponse "성공"
