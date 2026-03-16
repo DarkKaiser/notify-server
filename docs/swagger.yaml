@@ -145,13 +145,13 @@ paths:
         설정 파일(notify-server.json)의 notify_api.applications에 애플리케이션을 등록해야 합니다.
 
         ## 인증 방식
-        - **권장**: X-App-Key 헤더로 전달
-        - **레거시**: app_key 쿼리 파라미터로 전달 (하위 호환성 유지)
+        - **권장**: X-App-Key 및 X-Application-Id 헤더로 전달
+        - **레거시**: app_key 쿼리 파라미터 및 본문의 application_id로 전달 (하위 호환성 유지)
 
         ## 사용 예시 (로컬 환경)
         ### 헤더 방식 (권장)
         ```bash
-        curl -X POST "http://localhost:2443/api/v1/notifications" -H "Content-Type: application/json" -H "X-App-Key: your-app-key" -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
+        curl -X POST "http://localhost:2443/api/v1/notifications" -H "Content-Type: application/json" -H "X-App-Key: your-app-key" -H "X-Application-Id: my-app" -d '{"application_id":"my-app","message":"테스트 메시지","error_occurred":false}'
         ```
 
         ### 쿼리 파라미터 방식 (레거시)
@@ -174,6 +174,11 @@ paths:
         example: your-app-key-here
         in: header
         name: X-App-Key
+        type: string
+      - description: Application ID (성능 최적화용, 권장)
+        example: my-app
+        in: header
+        name: X-Application-Id
         type: string
       - description: Application Key (인증용, 레거시)
         example: your-app-key-here
