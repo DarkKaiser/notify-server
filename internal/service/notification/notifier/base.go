@@ -266,8 +266,20 @@ func (b *Base) prepareSend(ctx context.Context, notification contract.Notificati
 	}
 
 	// 6. 요청 객체 생성
+	//
+	// [중요] context.WithoutCancel(ctx)를 사용하는 이유:
+	//
+	// 이 채널은 비동기(Worker Pool) 방식으로 동작합니다. 즉, 요청자(예: HTTP 핸들러)가 Send()를 호출하여
+	// 채널에 메시지를 넣은 후 즉시 반환하고, 실제 발송은 별도의 Sender 고루틴이 나중에 처리합니다.
+	//
+	// 문제: HTTP 요청의 ctx를 그대로 저장하면, HTTP 응답이 완료된 후 상위 ctx가 취소(Done) 되는 순간
+	// Sender 고루틴의 rateLimiter.Wait(ctx) 등도 함께 즉시 에러를 반환하여 메시지가 유실됩니다.
+	// (연달아 두 번 전송 시 두 번째 메시지가 발송 안 되는 버그의 원인)
+	//
+	// 해결: context.WithoutCancel(ctx)는 상위 ctx의 Value는 그대로 상속하되, 취소(Cancel) 신호는
+	// 전파받지 않는 새 Context를 반환합니다. 이를 통해 Sender 고루틴이 요청자의 생명주기와 무관하게 독립적으로 동작합니다.
 	req = &notificationRequest{
-		Ctx:          ctx,
+		Ctx:          context.WithoutCancel(ctx),
 		Notification: notification,
 	}
 
