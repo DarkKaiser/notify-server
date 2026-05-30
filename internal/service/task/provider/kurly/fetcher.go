@@ -100,14 +100,16 @@ func (t *task) fetchProduct(ctx context.Context, id int) (*product, error) {
 	// =====================================================================
 	if !product.IsUnavailable {
 		// 상품의 주요 정보(이름, 가격 등)가 포함된 최상위 컨테이너(섹션)를 선택합니다.
-		productSection := doc.Find("#product-atf > section.css-1ua1wyk")
+		// 동적 해시 클래스명(css-1ua1wyk)을 배제하여 레이아웃 변경 시에도 안전하게 태그 위주로 선택합니다.
+		productSection := doc.Find("#product-atf > section")
 		if productSection.Length() != 1 {
 			// 셀렉터 결과가 정확히 1개가 아니면 페이지 레이아웃이 변경된 것으로 판단합니다.
 			return nil, newErrProductSectionExtractionFailed(targetURL)
 		}
 
 		// 상품 이름을 추출합니다.
-		nameSel := productSection.Find("div.css-84rb3h > div.css-6zfm8o > div.css-o3fjh7 > h1")
+		// 난독화된 div 체인을 모두 걷어내고 section 하위의 유일한 h1 타이틀 태그를 찾습니다.
+		nameSel := productSection.Find("h1")
 		if nameSel.Length() != 1 {
 			return nil, newErrProductNameExtractionFailed(targetURL)
 		}
@@ -146,20 +148,35 @@ func (t *task) fetchProduct(ctx context.Context, id int) (*product, error) {
 //   - err: DOM 구조를 찾을 수 없거나 데이터 변환에 실패한 경우의 에러
 func extractPriceDetails(productSection *goquery.Selection, targetURL string) (price, discountedPrice, discountRate int, err error) {
 	// 마켓컬리는 할인 적용 여부에 따라 가격 영역의 DOM 구조가 달라집니다.
-	// 할인율 요소(span.css-8h3us8)의 개수를 기준으로 현재 페이지가 어느 구조인지 판별합니다.
-	discountRateSel := productSection.Find("h2.css-xrp7wx > span.css-8h3us8")
+	// 동적 해시 클래스명을 배제하고, 가격 영역 h2 내부의 span 요소 구조로 판별합니다.
+	// 이때 취소선 정가 span이 섞이는 것을 방지하기 위해, 텍스트에 '%' 문자가 포함된 span만 필터링하여 할인율 요소로 선택합니다.
+	var discountRateSel *goquery.Selection
+	productSection.Find("h2 > span").Each(func(i int, s *goquery.Selection) {
+		if strings.Contains(s.Text(), "%") {
+			if discountRateSel == nil {
+				discountRateSel = s
+			} else {
+				discountRateSel = discountRateSel.AddSelection(s)
+			}
+		}
+	})
 
-	if discountRateSel.Length() == 0 {
+	var discountRateLen = 0
+	if discountRateSel != nil {
+		discountRateLen = discountRateSel.Length()
+	}
+
+	if discountRateLen == 0 {
 		// =====================================================================
 		// [할인 미적용] 할인이 적용되지 않아 정가만 표시되는 경우입니다.
 		// =====================================================================
 
-		// 가격 컨테이너(div.css-o2nlqt) 하위에는 2개의 span 태그가 있어야 정상적인 요소 구조입니다.
+		// 가격 컨테이너(h2 > div > span) 하위에는 2개의 span 태그가 있어야 정상적인 요소 구조입니다.
 		// - Eq(0): 가격 숫자 (예: "10,000")
 		// - Eq(1): 가격 단위 (예: "원")
-		priceSel := productSection.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		priceSel := productSection.Find("h2 > div > span")
 		if priceSel.Length() != 2 {
-			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "h2.css-xrp7wx > div.css-o2nlqt > span")
+			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "h2 > div > span")
 		}
 
 		// 추출한 가격 숫자 텍스트에서 쉼표(,)를 제거한 후 정수 타입으로 변환합니다.
@@ -168,13 +185,13 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		if err != nil {
 			return 0, 0, 0, newErrPriceConversionFailed(err, text)
 		}
-	} else if discountRateSel.Length() == 1 {
+	} else if discountRateLen == 1 {
 		// =====================================================================
 		// [할인 적용 중] 할인율, 할인가(실구매가), 정가(취소선) 세 요소가 모두 존재하는 경우입니다.
 		// =====================================================================
 
 		// 1. 할인율을 추출합니다.
-		//    span.css-8h3us8의 텍스트(예: "10%")에서 "%" 기호를 제거한 후 정수 타입으로 변환합니다.
+		//    할인율 span의 텍스트(예: "10%")에서 "%" 기호를 제거한 후 정수 타입으로 변환합니다.
 		text := strings.TrimSpace(discountRateSel.Eq(0).Text())
 		discountRate, err = strconv.Atoi(strings.ReplaceAll(text, "%", ""))
 		if err != nil {
@@ -182,12 +199,12 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		}
 
 		// 2. 할인가(실구매가)를 추출합니다.
-		//    가격 컨테이너(div.css-o2nlqt) 하위에는 2개의 span 태그가 있어야 정상적인 요소 구조입니다.
+		//    가격 컨테이너(h2 > div > span) 하위에는 2개의 span 태그가 있어야 정상적인 요소 구조입니다.
 		//    - Eq(0): 할인가 숫자 (예: "9,000")
 		//    - Eq(1): 가격 단위 (예: "원")
-		discountedPriceSel := productSection.Find("h2.css-xrp7wx > div.css-o2nlqt > span")
+		discountedPriceSel := productSection.Find("h2 > div > span")
 		if discountedPriceSel.Length() != 2 {
-			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "h2.css-xrp7wx > div.css-o2nlqt > span")
+			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "h2 > div > span")
 		}
 
 		// 추출한 할인가 숫자 텍스트에서 쉼표(,)를 제거한 후 정수 타입으로 변환합니다.
@@ -198,11 +215,10 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		}
 
 		// 3. 정가(원래 가격)를 취소선 영역에서 추출합니다.
-		//    span.css-1s96j0s > span 셀렉터는 정가 숫자만을 담은 span 1개만 반환해야 합니다.
-		//    텍스트에 "원" 단위가 포함되어 있으므로 쉼표(",")와 "원"을 모두 제거한 후 정수 타입으로 변환합니다.
-		priceSel := productSection.Find("span.css-1s96j0s > span")
+		//    난독화 클래스를 배제하여 span > span 셀렉터 구조로 정가 숫자만을 담은 span을 안전하게 추출합니다.
+		priceSel := productSection.Find("span > span")
 		if priceSel.Length() != 1 {
-			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "span.css-1s96j0s > span")
+			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "span > span")
 		}
 
 		price, err = strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(priceSel.Text()), ",", ""), "원", ""))
@@ -222,7 +238,7 @@ func extractPriceDetails(productSection *goquery.Selection, targetURL string) (p
 		// [예외 상황] 할인율 요소가 2개 이상 감지된 경우입니다.
 		// =====================================================================
 
-		// 정상적인 상품 페이지에서는 할인율 요소(span.css-8h3us8)가 0개(할인 없음) 또는 1개(할인 적용)만 존재해야 합니다.
+		// 정상적인 상품 페이지에서는 할인율 요소(h2 > span)가 0개(할인 없음) 또는 1개(할인 적용)만 존재해야 합니다.
 		// 2개 이상 감지되었다는 것은 마켓컬리의 페이지 레이아웃이 변경되어 전혀 다른 DOM 구조가 나타났음을 의미합니다.
 		return 0, 0, 0, newErrPriceStructureInvalid(targetURL)
 	}
