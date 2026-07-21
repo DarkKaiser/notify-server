@@ -96,9 +96,10 @@ func TestTask_FetchProductInfo(t *testing.T) {
 			mockStatusCode: http.StatusOK,
 			mockHTML:       fmt.Sprintf(htmlNormalPage, 123, "맛있는 사과", priceHTML("10,000")),
 			wantProduct: &product{
-				ID:    123,
-				Name:  "맛있는 사과",
-				Price: 10000,
+				ID:              123,
+				Name:            "맛있는 사과",
+				Price:           10000,
+				DiscountedPrice: 10000,
 			},
 		},
 		{
@@ -260,27 +261,28 @@ func TestExtractPriceDetails(t *testing.T) {
 			name:                "성공: 할인 없음 — 정가만 출력",
 			html:                htmlProductSection(priceHTML("10,000")),
 			wantPrice:           10000,
-			wantDiscountedPrice: 0,
+			wantDiscountedPrice: 10000,
 			wantDiscountRate:    0,
 		},
 		{
 			name:                "성공: 할인 없음 — 천단위 쉼표 포함 큰 금액",
 			html:                htmlProductSection(priceHTML("1,234,500")),
 			wantPrice:           1234500,
-			wantDiscountedPrice: 0,
+			wantDiscountedPrice: 1234500,
 			wantDiscountRate:    0,
 		},
 		{
-			name:      "실패: 할인 없음 — price span 개수 부족",
+			name:      "성공: 할인 없음 — price span 개수 부족 (자동보정)",
 			html:      htmlProductSection(`<div><span>10,000</span></div>`),
-			wantErr:   true,
-			errSubstr: "상품 가격 요소",
+			wantPrice:           10000,
+			wantDiscountedPrice: 10000,
+			wantDiscountRate:    0,
 		},
 		{
 			name:      "실패: 할인 없음 — price span 가격이 숫자가 아님",
 			html:      htmlProductSection(`<div><span>N/A</span><span>원</span></div>`),
 			wantErr:   true,
-			errSubstr: "정가 텍스트",
+			errSubstr: "price elements not found",
 		},
 		// ── 할인 적용 중 ──────────────────────────────────────────────────────
 		{
@@ -298,16 +300,18 @@ func TestExtractPriceDetails(t *testing.T) {
 			wantDiscountRate:    50,
 		},
 		{
-			name:      "실패: 할인 중 — 할인율이 숫자가 아님",
-			html:      htmlProductSection(`<span>N/A%</span><div><span>10,000</span><span>원</span><span>9,000</span><span>원</span></div>`),
-			wantErr:   true,
-			errSubstr: "할인율 텍스트",
+			name:                "성공: 할인 중 — 할인율이 숫자가 아님 (자동 보정: 할인율 0)",
+			html:                htmlProductSection(`<span>N/A%</span><div><span>10,000</span><span>원</span><span>9,000</span><span>원</span></div>`),
+			wantPrice:           10000,
+			wantDiscountedPrice: 9000,
+			wantDiscountRate:    0,
 		},
 		{
-			name:      "실패: 할인 중 — discountedPrice span 개수 부족",
-			html:      htmlProductSection(`<span>10%</span><div><span>9,000</span></div>`),
-			wantErr:   true,
-			errSubstr: "상품 가격 요소",
+			name:                "성공: 할인 중 — discountedPrice span 개수 부족 (자동 보정)",
+			html:                htmlProductSection(`<span>10%</span><div><span>9,000</span></div>`),
+			wantPrice:           9000,
+			wantDiscountedPrice: 9000,
+			wantDiscountRate:    0,
 		},
 		{
 			// 정가(취소선) 파싱 실패 시 → discountedPrice 동일하게 보정되고 에러 없이 반환
@@ -318,10 +322,11 @@ func TestExtractPriceDetails(t *testing.T) {
 			wantDiscountRate:    0, // 보정 후 0으로 초기화
 		},
 		{
-			name:      "실패: 할인 중 — 정가(취소선) 셀렉터 없음",
-			html:      htmlProductSection(`<span>10%</span><div><span>9,000</span><span>원</span></div>`),
-			wantErr:   true,
-			errSubstr: "상품 가격 요소",
+			name:                "성공: 할인 중 — 정가(취소선) 셀렉터 없음 (자동 보정)",
+			html:                htmlProductSection(`<span>10%</span><div><span>9,000</span><span>원</span></div>`),
+			wantPrice:           9000,
+			wantDiscountedPrice: 9000,
+			wantDiscountRate:    0,
 		},
 		// ── 예외 상황 (DOM 구조 이상) ─────────────────────────────────────────
 		{

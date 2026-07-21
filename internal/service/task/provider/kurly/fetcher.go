@@ -2,6 +2,7 @@ package kurly
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -147,97 +148,48 @@ func (t *task) fetchProduct(ctx context.Context, id int) (*product, error) {
 //   - discountRate: 할인율 (예: 10% -> 10. 할인이 없는 경우 0)
 //   - err: DOM 구조를 찾을 수 없거나 데이터 변환에 실패한 경우의 에러
 func extractPriceDetails(productSection *goquery.Selection, targetURL string) (price, discountedPrice, discountRate int, err error) {
-	var discountRateLen = 0
-	var discountRateSel *goquery.Selection
+	var rates []int
+	var prices []int
+	priceRegex := regexp.MustCompile(`^([0-9,]+)원?$`)
+
 	productSection.Find("span").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
-		if strings.HasSuffix(text, "%") && len(text) <= 4 {
-			if discountRateSel == nil {
-				discountRateSel = s
-			}
-			discountRateLen++
-		}
-	})
-
-	if discountRateLen > 1 {
-		return 0, 0, 0, newErrPriceStructureInvalid(targetURL)
-	}
-
-	// 2. 가격 정보를 포함하는 컨테이너를 찾습니다.
-	// "원" 텍스트를 가진 span 중 그 이전 요소가 있는 패턴을 가진 부모 div를 선택합니다.
-	var priceContainer *goquery.Selection
-	productSection.Find("span").Each(func(i int, s *goquery.Selection) {
-		if priceContainer != nil {
-			return
-		}
-		if strings.TrimSpace(s.Text()) == "원" {
-			prev := s.Prev()
-			if prev.Length() > 0 {
-				priceContainer = s.Parent()
-			}
-		}
-	})
-
-	if priceContainer == nil || priceContainer.Length() == 0 {
-		return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "price container")
-	}
-
-	spans := priceContainer.Find("span")
-	spanCount := spans.Length()
-
-	if spanCount == 2 {
-		if discountRateLen > 0 {
-			// 할인이 적용되었다고 나오는데 가격 정보가 부족한 경우
-			return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "price container")
-		}
-		// =====================================================================
-		// [할인 미적용] 가격과 단위(원) 2개의 span으로 구성됩니다.
-		// =====================================================================
-		text := strings.TrimSpace(spans.Eq(0).Text())
-		price, err = strconv.Atoi(strings.ReplaceAll(text, ",", ""))
-		if err != nil {
-			return 0, 0, 0, newErrPriceConversionFailed(err, text)
-		}
-	} else if spanCount >= 4 {
-		// =====================================================================
-		// [할인 적용 중] 정가, 단위(원), 할인가, 단위(원) 4개의 span 이상으로 구성됩니다.
-		// =====================================================================
 		
-		if discountRateLen == 1 {
-			text := strings.TrimSpace(discountRateSel.Text())
-			discountRate, err = strconv.Atoi(strings.ReplaceAll(text, "%", ""))
-			if err != nil {
-				return 0, 0, 0, newErrDiscountRateConversionFailed(err, text)
+		if strings.HasSuffix(text, "%") && len(text) <= 4 {
+			if rate, err := strconv.Atoi(strings.TrimSuffix(text, "%")); err == nil {
+				rates = append(rates, rate)
 			}
 		}
 
-		origText := strings.TrimSpace(spans.Eq(0).Text())
-		price, err = strconv.Atoi(strings.ReplaceAll(origText, ",", ""))
-		var origErr error
-		if err != nil {
-			origErr = newErrPriceConversionFailed(err, origText)
-		}
-
-		discText := strings.TrimSpace(spans.Eq(2).Text())
-		discountedPrice, err = strconv.Atoi(strings.ReplaceAll(discText, ",", ""))
-		if err != nil {
-			// 둘 다 실패하면 에러를 반환
-			if origErr != nil {
-				return 0, 0, 0, origErr
+		if matches := priceRegex.FindStringSubmatch(text); len(matches) == 2 {
+			priceStr := strings.ReplaceAll(matches[1], ",", "")
+			if p, err := strconv.Atoi(priceStr); err == nil && p > 0 { // 0원(총 상품금액 등) 제외
+				prices = append(prices, p)
 			}
-			return 0, 0, 0, newErrDiscountedPriceConversionFailed(err, discText)
 		}
+	})
 
-		// 정가 파싱에 실패했지만 할인가 파싱에 성공했다면 자동 보정
-		if origErr != nil {
-			price = discountedPrice
-			discountRate = 0
-		}
-	} else {
-		// =====================================================================
-		// [예외 상황] 알려지지 않은 DOM 구조
-		// =====================================================================
+	if len(rates) > 1 {
 		return 0, 0, 0, newErrPriceStructureInvalid(targetURL)
+	}
+
+	if len(prices) == 0 {
+		return 0, 0, 0, newErrPriceExtractionFailed(targetURL, "price elements not found")
+	}
+
+	if len(rates) == 1 {
+		discountRate = rates[0]
+	}
+
+	if len(prices) == 1 {
+		// 할인 미적용 또는 가격 요소가 1개만 감지된 경우 (예: 정가 파싱 실패 시 자동 보정)
+		price = prices[0]
+		discountedPrice = prices[0]
+		discountRate = 0 // 보정: 할인가만 있으면 할인율을 무시함
+	} else {
+		// 가격 요소가 2개 이상이면 첫번째가 정가, 두번째가 할인가 (DOM 상 정가가 먼저 나타남)
+		price = prices[0]
+		discountedPrice = prices[1]
 	}
 
 	return price, discountedPrice, discountRate, nil
