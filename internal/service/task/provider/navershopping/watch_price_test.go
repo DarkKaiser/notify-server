@@ -313,7 +313,6 @@ func TestTask_FetchProducts_URLVerification(t *testing.T) {
 // TestTask_FetchProducts_EdgeCases fetchProducts 메서드 내의 컨텍스트 취소, 타임아웃, 외부 중단 시나리오 등
 // 예외 상황(Edge Cases) 블록들이 올바르게 처리되는지 커버리지 및 로직을 모두 검증합니다.
 func TestTask_FetchProducts_EdgeCases(t *testing.T) {
-	t.Parallel()
 
 	// 1. fetchPageProducts 내부에서 ctx.Err()가 DeadlineExceeded 일 때
 	t.Run("Context_DeadlineExceeded_Error_Handling", func(t *testing.T) {
