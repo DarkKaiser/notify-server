@@ -144,7 +144,7 @@ func TestExecuteWatchProductPrice_TableDriven(t *testing.T) {
 						ID:                 100,
 						Name:               "싱싱한 사과",
 						Price:              5000,
-						DiscountedPrice:    0,
+						DiscountedPrice:    5000,
 						DiscountRate:       0,
 						LowestPrice:        5000,
 						LowestPriceTimeUTC: time.Now().UTC(),
