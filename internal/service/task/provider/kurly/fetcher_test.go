@@ -29,8 +29,10 @@ const htmlNormalPage = `
 <script id="__NEXT_DATA__">{"props":{"pageProps":{"product": {"no": %d}}}}</script>
 <div id="product-atf">
 	<section class="css-1ua1wyk">
-		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
-		<h2 class="css-xrp7wx">%s</h2>
+		<h2>%s</h2>
+		<div class="price-area">
+			%s
+		</div>
 	</section>
 </div>
 </body>
@@ -38,16 +40,15 @@ const htmlNormalPage = `
 
 // priceHTML 할인 없는 경우의 가격 HTML 픽스처를 생성합니다.
 func priceHTML(price string) string {
-	return fmt.Sprintf(`<div class="css-o2nlqt"><span>%s</span><span>원</span></div>`, price)
+	return fmt.Sprintf(`<div><span>%s</span><span>원</span></div>`, price)
 }
 
 // discountPriceHTML 할인 중인 경우의 가격 HTML 픽스처를 생성합니다.
 func discountPriceHTML(rate, salePrice, originalPrice string) string {
 	return fmt.Sprintf(
-		`<span class="css-8h3us8">%s</span>`+
-			`<div class="css-o2nlqt"><span>%s</span><span>원</span></div>`+
-			`<span class="css-1s96j0s"><span>%s원</span></span>`,
-		rate, salePrice, originalPrice,
+		`<span>%s</span>`+
+			`<div><span>%s</span><span>원</span><span>%s</span><span>원</span></div>`,
+		rate, originalPrice, salePrice,
 	)
 }
 
@@ -230,8 +231,10 @@ func htmlProductSection(priceAreaHTML string) string {
 	return fmt.Sprintf(`
 <div id="product-atf">
 	<section class="css-1ua1wyk">
-		<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>상품명</h1></div></div></div>
-		<h2 class="css-xrp7wx">%s</h2>
+		<h2>상품명</h2>
+		<div class="price-area">
+			%s
+		</div>
 	</section>
 </div>`, priceAreaHTML)
 }
@@ -269,13 +272,13 @@ func TestExtractPriceDetails(t *testing.T) {
 		},
 		{
 			name:      "실패: 할인 없음 — price span 개수 부족",
-			html:      htmlProductSection(`<div class="css-o2nlqt"><span>10,000</span></div>`),
+			html:      htmlProductSection(`<div><span>10,000</span></div>`),
 			wantErr:   true,
 			errSubstr: "상품 가격 요소",
 		},
 		{
 			name:      "실패: 할인 없음 — price span 가격이 숫자가 아님",
-			html:      htmlProductSection(`<div class="css-o2nlqt"><span>N/A</span><span>원</span></div>`),
+			html:      htmlProductSection(`<div><span>N/A</span><span>원</span></div>`),
 			wantErr:   true,
 			errSubstr: "정가 텍스트",
 		},
@@ -296,27 +299,27 @@ func TestExtractPriceDetails(t *testing.T) {
 		},
 		{
 			name:      "실패: 할인 중 — 할인율이 숫자가 아님",
-			html:      htmlProductSection(`<span class="css-8h3us8">N/A%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
+			html:      htmlProductSection(`<span>N/A%</span><div><span>10,000</span><span>원</span><span>9,000</span><span>원</span></div>`),
 			wantErr:   true,
 			errSubstr: "할인율 텍스트",
 		},
 		{
 			name:      "실패: 할인 중 — discountedPrice span 개수 부족",
-			html:      htmlProductSection(`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span></div><span class="css-1s96j0s"><span>10,000원</span></span>`),
+			html:      htmlProductSection(`<span>10%</span><div><span>9,000</span></div>`),
 			wantErr:   true,
 			errSubstr: "상품 가격 요소",
 		},
 		{
 			// 정가(취소선) 파싱 실패 시 → discountedPrice 동일하게 보정되고 에러 없이 반환
 			name:                "성공: 할인 중 — 정가(취소선) 파싱 실패 → 자동 보정 (price=discountedPrice, rate=0)",
-			html:                htmlProductSection(`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div><span class="css-1s96j0s"><span>숫자아님</span></span>`),
+			html:                htmlProductSection(`<span>10%</span><div><span>숫자아님</span><span>원</span><span>9,000</span><span>원</span></div>`),
 			wantPrice:           9000, // discountedPrice로 보정
 			wantDiscountedPrice: 9000,
 			wantDiscountRate:    0, // 보정 후 0으로 초기화
 		},
 		{
 			name:      "실패: 할인 중 — 정가(취소선) 셀렉터 없음",
-			html:      htmlProductSection(`<span class="css-8h3us8">10%</span><div class="css-o2nlqt"><span>9,000</span><span>원</span></div>`),
+			html:      htmlProductSection(`<span>10%</span><div><span>9,000</span><span>원</span></div>`),
 			wantErr:   true,
 			errSubstr: "상품 가격 요소",
 		},
