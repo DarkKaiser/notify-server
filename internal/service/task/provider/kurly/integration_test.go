@@ -46,17 +46,19 @@ func htmlOnSale(productID, productName, discountRate, salePrice, originalPrice s
 	<script id="__NEXT_DATA__">{"props":{"pageProps":{"product":{"no":%s}}}}</script>
 	<div id="product-atf">
 		<section class="css-1ua1wyk">
-			<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
-			<h2 class="css-xrp7wx">
-				<span class="css-8h3us8">%s%%</span>
-				<div class="css-o2nlqt"><span>%s</span><span>원</span></div>
-			</h2>
-			<span class="css-1s96j0s"><span>%s원</span></span>
+			<h2>%s</h2>
+			<div class="price-area">
+				<span>%s%%</span>
+				<div>
+					<span>%s</span><span>원</span>
+					<span>%s</span><span>원</span>
+				</div>
+			</div>
 		</section>
 	</div>
 </body>
 </html>`,
-		productID, productName, discountRate, salePrice, originalPrice)
+		productID, productName, discountRate, originalPrice, salePrice)
 }
 
 // htmlFullPrice 할인 없는 정가 판매 상품 HTML을 반환합니다.
@@ -67,10 +69,10 @@ func htmlFullPrice(productID, productName, price string) string {
 	<script id="__NEXT_DATA__">{"props":{"pageProps":{"product":{"no":%s}}}}</script>
 	<div id="product-atf">
 		<section class="css-1ua1wyk">
-			<div class="css-84rb3h"><div class="css-6zfm8o"><div class="css-o3fjh7"><h1>%s</h1></div></div></div>
-			<h2 class="css-xrp7wx">
-				<div class="css-o2nlqt"><span>%s</span><span>원</span></div>
-			</h2>
+			<h2>%s</h2>
+			<div class="price-area">
+				<div><span>%s</span><span>원</span></div>
+			</div>
 		</section>
 	</div>
 </body>
