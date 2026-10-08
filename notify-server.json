@@ -1,192 +1,192 @@
 {
-	"debug": false,
-	"http_retry": {
-		"max_retries": 3,
-		"retry_delay": "2s"
-	},
-	"notifier": {
-		"default_notifier_id": "darkkaiser_test_bot",
-		"telegrams": [
-			{
-				"id": "darkkaiser_test_bot",
-				"bot_token": "272909453:AAGKJGb9W_GTq2mkRrsL-WfWz31cUZSBdhk",
-				"chat_id": 297396697
-			}
-		]
-	},
-	"tasks": [
-		{
-			"id": "NAVER",
-			"title": "네이버",
-			"commands": [
-				{
-					"id": "WatchNewPerformances",
-					"title": "신규 공연정보 확인",
-					"description": "네이버에 신규 공연정보가 등록되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 1 9 * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"query": "jl",
-						"filters": {
-							"title": {
-								"included_keywords": "",
-								"excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순, - 영광, - 장성, - 진도, - 구미, - 담양, - 부안, - 강진"
-							},
-							"place": {
-								"included_keywords": "",
-								"excluded_keywords": "전동성당, 전북대학교 삼성문화회관, 안숙선명창의여정, 전주한벽문화관, 전주덕진예술회관, 전북예술회관, 군산예술의전당, 한국소리문화의전당, 익산예술의전당, 딥인투, 김제문화예술회관, 나주정미소, 정읍사예술회관, 목포시민문화체육센터, 경기전 수복청, 경기전수복청"
-							}
-						},
-						"max_pages": 50,
-						"page_fetch_delay_ms": 100
-					}
-				}
-			]
-		},
-		{
-			"id": "NS",
-			"title": "네이버쇼핑",
-			"commands": [
-				{
-					"id": "WatchPrice_PHYTOMES",
-					"title": "피토메스 2종세트 가격 확인",
-					"description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 5 * * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"query": "피토메스",
-						"filters": {
-							"included_keywords": "2종",
-							"excluded_keywords": "3종",
-							"price_less_than": 36400
-						},
-						"page_fetch_delay_ms": 100
-					}
-				},
-				{
-					"id": "WatchPrice_TRUELAC_KIDSUP",
-					"title": "트루락 키즈업 90포(3개월) 가격 확인",
-					"description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 10 * * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"query": "트루락 키즈업",
-						"filters": {
-							"included_keywords": "트루락, 키즈업, 90포|3개월|3박스",
-							"excluded_keywords": "30포, 60포, 1박스, 2박스",
-							"price_less_than": 150000
-						},
-						"page_fetch_delay_ms": 100
-					}
-				}
-			],
-			"data": {
-				"client_id": "w3WkOLxgngQhNC7VD8XX",
-				"client_secret": "e53iKU0iij"
-			}
-		},
-		{
-			"id": "KURLY",
-			"title": "마켓컬리",
-			"commands": [
-				{
-					"id": "WatchProductPrice",
-					"title": "상품 가격 변동 확인",
-					"description": "마켓컬리에서 등록된 상품의 가격이 변동되었는지를 확인합니다.",
-					"scheduler": {
-						"runnable": true,
-						"time_spec": "0 * * * * *"
-					},
-					"notifier": {
-						"usable": true
-					},
-					"default_notifier_id": "darkkaiser_test_bot",
-					"data": {
-						"watch_list_file": "notify-server-task-kurly-watch-product-list.csv"
-					}
-				}
-			]
-		},
-		{
-			"id": "LOTTO",
-			"title": "로또",
-			"commands": [
-				{
-					"id": "Prediction",
-					"title": "로또 당첨번호 예측",
-					"description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
-					"scheduler": {
-						"runnable": false,
-						"time_spec": "0 0 8 * * 0"
-					},
-					"notifier": {
-						"usable": false
-					},
-					"default_notifier_id": "darkkaiser_test_bot"
-				}
-			],
-			"data": {
-				"app_path": "/usr/local/lotto-prediction"
-			}
-		}
-	],
-	"notify_api": {
-		"ws": {
-			"tls_server": false,
-			"tls_cert_file": "",
-			"tls_key_file": "",
-			"listen_port": 2443
-		},
-		"cors": {
-			"allow_origins": ["*"]
-		},
-		"applications": [
-			{
-				"id": "torrentad",
-				"title": "알림 > TorrentAD 앱",
-				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot",
-				"app_key": "{APP_KEY}"
-			},
-			{
-				"id": "rss-feed-server",
-				"title": "알림 > RSS Feed 서버",
-				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot",
-				"app_key": "{APP_KEY}"
-			},
-			{
-				"id": "reposition-torrent-downloaded-files",
-				"title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
-				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot",
-				"app_key": "{APP_KEY}"
-			},
-			{
-				"id": "lotto-prediction",
-				"title": "알림 > 로또 당첨번호 예측 앱",
-				"description": "",
-				"default_notifier_id": "darkkaiser_test_bot",
-				"app_key": "{APP_KEY}"
-			}
-		]
-	}
+  "debug": false,
+  "http_retry": {
+    "max_retries": 3,
+    "retry_delay": "2s"
+  },
+  "notifier": {
+    "default_notifier_id": "darkkaiser_test_bot",
+    "telegrams": [
+      {
+        "id": "darkkaiser_test_bot",
+        "bot_token": "272909453:AAFH8CzORDkgNCw88Jl2rW6WJYwolibBG3s",
+        "chat_id": 297396697
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "NAVER",
+      "title": "네이버",
+      "commands": [
+        {
+          "id": "WatchNewPerformances",
+          "title": "신규 공연정보 확인",
+          "description": "네이버에 신규 공연정보가 등록되었는지를 확인합니다.",
+          "scheduler": {
+            "runnable": false,
+            "time_spec": "0 1 9 * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "darkkaiser_test_bot",
+          "data": {
+            "query": "jl",
+            "filters": {
+              "title": {
+                "included_keywords": "",
+                "excluded_keywords": "- 전주, in 전주, - 군산, - 무안, - 목포, - 정읍, - 김제, - 익산, - 나주, - 보성, - 고창, - 해남, - 완주, - 장흥, - 상주, - 화순, - 영광, - 장성, - 진도, - 구미, - 담양, - 부안, - 강진"
+              },
+              "place": {
+                "included_keywords": "",
+                "excluded_keywords": "전동성당, 전북대학교 삼성문화회관, 안숙선명창의여정, 전주한벽문화관, 전주덕진예술회관, 전북예술회관, 군산예술의전당, 한국소리문화의전당, 익산예술의전당, 딥인투, 김제문화예술회관, 나주정미소, 정읍사예술회관, 목포시민문화체육센터, 경기전 수복청, 경기전수복청"
+              }
+            },
+            "max_pages": 50,
+            "page_fetch_delay_ms": 100
+          }
+        }
+      ]
+    },
+    {
+      "id": "NS",
+      "title": "네이버쇼핑",
+      "commands": [
+        {
+          "id": "WatchPrice_PHYTOMES",
+          "title": "피토메스 2종세트 가격 확인",
+          "description": "네이버쇼핑에서 피토메스 2종세트의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
+          "scheduler": {
+            "runnable": false,
+            "time_spec": "0 5 * * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "darkkaiser_test_bot",
+          "data": {
+            "query": "피토메스",
+            "filters": {
+              "included_keywords": "2종",
+              "excluded_keywords": "3종",
+              "price_less_than": 36400
+            },
+            "page_fetch_delay_ms": 100
+          }
+        },
+        {
+          "id": "WatchPrice_TRUELAC_KIDSUP",
+          "title": "트루락 키즈업 90포(3개월) 가격 확인",
+          "description": "네이버쇼핑에서 트루락 키즈업 90포(3개월)의 가격을 확인하고, 등록된 조건에 맞는 상품을 알립니다.",
+          "scheduler": {
+            "runnable": false,
+            "time_spec": "0 10 * * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "darkkaiser_test_bot",
+          "data": {
+            "query": "트루락 키즈업",
+            "filters": {
+              "included_keywords": "트루락, 키즈업, 90포|3개월|3박스",
+              "excluded_keywords": "30포, 60포, 1박스, 2박스",
+              "price_less_than": 150000
+            },
+            "page_fetch_delay_ms": 100
+          }
+        }
+      ],
+      "data": {
+        "client_id": "w3WkOLxgngQhNC7VD8XX",
+        "client_secret": "e53iKU0iij"
+      }
+    },
+    {
+      "id": "KURLY",
+      "title": "마켓컬리",
+      "commands": [
+        {
+          "id": "WatchProductPrice",
+          "title": "상품 가격 변동 확인",
+          "description": "마켓컬리에서 등록된 상품의 가격이 변동되었는지를 확인합니다.",
+          "scheduler": {
+            "runnable": true,
+            "time_spec": "0 * * * * *"
+          },
+          "notifier": {
+            "usable": true
+          },
+          "default_notifier_id": "darkkaiser_test_bot",
+          "data": {
+            "watch_list_file": "notify-server-task-kurly-watch-product-list.csv"
+          }
+        }
+      ]
+    },
+    {
+      "id": "LOTTO",
+      "title": "로또",
+      "commands": [
+        {
+          "id": "Prediction",
+          "title": "로또 당첨번호 예측",
+          "description": "이번주 로또 당첨번호를 예측하여 발송합니다.",
+          "scheduler": {
+            "runnable": false,
+            "time_spec": "0 0 8 * * 0"
+          },
+          "notifier": {
+            "usable": false
+          },
+          "default_notifier_id": "darkkaiser_test_bot"
+        }
+      ],
+      "data": {
+        "app_path": "/usr/local/lotto-prediction"
+      }
+    }
+  ],
+  "notify_api": {
+    "ws": {
+      "tls_server": false,
+      "tls_cert_file": "",
+      "tls_key_file": "",
+      "listen_port": 2443
+    },
+    "cors": {
+      "allow_origins": ["*"]
+    },
+    "applications": [
+      {
+        "id": "torrentad",
+        "title": "알림 > TorrentAD 앱",
+        "description": "",
+        "default_notifier_id": "darkkaiser_test_bot",
+        "app_key": "{APP_KEY}"
+      },
+      {
+        "id": "rss-feed-server",
+        "title": "알림 > RSS Feed 서버",
+        "description": "",
+        "default_notifier_id": "darkkaiser_test_bot",
+        "app_key": "{APP_KEY}"
+      },
+      {
+        "id": "reposition-torrent-downloaded-files",
+        "title": "알림 > 토렌트 다운로드 완료파일 위치이동 앱",
+        "description": "",
+        "default_notifier_id": "darkkaiser_test_bot",
+        "app_key": "{APP_KEY}"
+      },
+      {
+        "id": "lotto-prediction",
+        "title": "알림 > 로또 당첨번호 예측 앱",
+        "description": "",
+        "default_notifier_id": "darkkaiser_test_bot",
+        "app_key": "{APP_KEY}"
+      }
+    ]
+  }
 }
