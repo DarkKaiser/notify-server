@@ -4,11 +4,12 @@ import (
 	"fmt"
 
 	apperrors "github.com/darkkaiser/notify-server/internal/pkg/errors"
+	"github.com/darkkaiser/notify-server/internal/service/contract"
 )
 
 // NewErrInvalidBotToken 제공된 Bot Token이 유효하지 않아 텔레그램 API 클라이언트 초기화가 실패하였을 때 반환하는 에러를 생성합니다.
-func NewErrInvalidBotToken(err error) error {
-	return apperrors.Wrap(err, apperrors.InvalidInput, "텔레그램 봇 API 클라이언트 초기화가 실패하였습니다. BotToken이 올바른지 확인해주세요")
+func NewErrInvalidBotToken(err error, notifierID contract.NotifierID) error {
+	return apperrors.Wrapf(err, apperrors.InvalidInput, "텔레그램 봇 API 클라이언트 초기화가 실패하였습니다. BotToken이 올바른지 확인해주세요 (NotifierID: '%s')", notifierID)
 }
 
 // NewErrInvalidCommandIDs 명령어 등록 과정에서 필수 식별자인 TaskID 또는 CommandID가 누락된 경우 반환하는 에러를 생성합니다.

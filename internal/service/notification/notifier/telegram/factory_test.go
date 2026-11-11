@@ -226,6 +226,7 @@ func TestNewNotifier_Integration(t *testing.T) {
 			// then
 			if tt.expectErr {
 				require.Error(t, err)
+				assert.Contains(t, err.Error(), "test-notifier")
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}

@@ -118,7 +118,7 @@ func newNotifier(id contract.NotifierID, executor contract.TaskExecutor, args cr
 	// 앞서 생성한 안전한 HTTP 클라이언트를 주입하여 API와의 모든 통신을 처리합니다.
 	botAPI, err := tgbotapi.NewBotAPIWithClient(args.BotToken, tgbotapi.APIEndpoint, httpClient)
 	if err != nil {
-		return nil, NewErrInvalidBotToken(err)
+		return nil, NewErrInvalidBotToken(err, id)
 	}
 
 	// 3. 디버그 모드 설정
