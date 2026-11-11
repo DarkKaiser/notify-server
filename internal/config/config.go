@@ -23,6 +23,10 @@ const (
 	// 실행 인자를 통해 명시적인 경로가 제공되지 않을 경우, 시스템은 이 파일을 탐색하여 구성을 로드합니다.
 	DefaultFilename = AppName + ".json"
 
+	// DefaultDevFilename 로컬 개발 환경에서 우선 탐색하는 비공개 설정 파일 경로입니다.
+	// 해당 파일이 존재할 경우 DefaultFilename보다 우선하여 로드됩니다.
+	DefaultDevFilename = "secrets/" + AppName + ".개발.json"
+
 	// ------------------------------------------------------------------------------------------------
 	// HTTP 재시도 정책 설정
 	// ------------------------------------------------------------------------------------------------
@@ -59,8 +63,18 @@ func newDefaultConfig() AppConfig {
 }
 
 // Load 기본 설정 파일을 읽어 애플리케이션 설정을 로드합니다.
+// 로컬 개발용 설정 파일(DefaultDevFilename)이 존재하면 이를 우선 로드하고, 존재하지 않으면 기본 설정 파일(DefaultFilename)을 로드합니다.
 func Load() (*AppConfig, []string, error) {
-	return LoadWithFile(DefaultFilename)
+	return LoadWithFile(resolveDefaultFilename())
+}
+
+// resolveDefaultFilename 로드할 기본 설정 파일 경로를 결정합니다.
+// 비공개 개발 설정 파일(DefaultDevFilename)이 존재하면 우선 반환하고, 그렇지 않으면 DefaultFilename을 반환합니다.
+func resolveDefaultFilename() string {
+	if info, err := os.Stat(DefaultDevFilename); err == nil && !info.IsDir() {
+		return DefaultDevFilename
+	}
+	return DefaultFilename
 }
 
 // LoadWithFile 지정된 경로의 설정 파일을 읽어 AppConfig 객체를 생성합니다.
