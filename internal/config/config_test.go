@@ -388,3 +388,52 @@ func TestConfig_StringMasking(t *testing.T) {
 		assert.NotContains(t, str, "12")
 	})
 }
+
+func TestResolveDefaultFilename_And_LoadPriority(t *testing.T) {
+	origDir, err := os.Getwd()
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	t.Cleanup(func() {
+		_ = os.Chdir(origDir)
+	})
+	require.NoError(t, os.Chdir(tempDir))
+
+	// 1. 개발용 설정 파일이 없을 때는 기본 파일명(notify-server.json)을 반환해야 함
+	assert.Equal(t, DefaultFilename, resolveDefaultFilename())
+
+	// 기본 설정 파일 생성
+	defaultConfigJSON := `{
+		"notifier": {
+			"default_notifier_id": "default-bot",
+			"telegrams": [{ "id": "default-bot", "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", "chat_id": 100 }]
+		},
+		"notify_api": {
+			"cors": { "allow_origins": ["*"] }
+		}
+	}`
+	require.NoError(t, os.WriteFile(DefaultFilename, []byte(defaultConfigJSON), 0644))
+
+	cfg, _, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "default-bot", cfg.Notifier.DefaultNotifierID)
+
+	// 2. secrets/notify-server.개발.json 파일이 존재하면 이를 우선 로드해야 함
+	require.NoError(t, os.MkdirAll("secrets", 0755))
+	devConfigJSON := `{
+		"notifier": {
+			"default_notifier_id": "dev-bot",
+			"telegrams": [{ "id": "dev-bot", "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", "chat_id": 200 }]
+		},
+		"notify_api": {
+			"cors": { "allow_origins": ["*"] }
+		}
+	}`
+	require.NoError(t, os.WriteFile(DefaultDevFilename, []byte(devConfigJSON), 0644))
+
+	assert.Equal(t, DefaultDevFilename, resolveDefaultFilename())
+
+	cfg, _, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, "dev-bot", cfg.Notifier.DefaultNotifierID)
+}
